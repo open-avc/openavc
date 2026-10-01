@@ -80,13 +80,13 @@ Fill in identity:
 
 | Field | Example | Notes |
 |-------|---------|-------|
-| Driver ID | `extron_sw4` | Lowercase letters, digits, underscores. Renamable later if no devices in the current project reference it. |
-| Driver Name | `Extron SW4 HD 4K` | Shown in the Add Device dialog. |
-| Manufacturer | `Extron` | |
+| Driver ID | `acme_sw4` | Lowercase letters, digits, underscores. Renamable later if no devices in the current project reference it. |
+| Driver Name | `Acme SW4 Switcher` | Shown in the Add Device dialog. |
+| Manufacturer | `Acme` | |
 | Category | Switcher | Dropdown — pick the closest fit. |
 | Version | `1.0.0` | Semver. Bump on every meaningful change. |
 | Author | `Your Name` | |
-| Description | `Controls Extron SW4 HD 4K HDMI switcher via RS-232 or TCP.` | One sentence. Shown in the catalog. |
+| Description | `Controls the Acme SW4 HDMI switcher over RS-232 or TCP.` | One sentence. Shown in the catalog. |
 
 Below the identity block, the **Help & Setup** section takes these markdown fields:
 
@@ -117,7 +117,7 @@ When the same command and response strings work byte-identically over more than 
 The other Connection sub-sections are optional:
 
 - **Authentication** — for devices that present a `login:` / `password:` prompt over Telnet or SSH after connect (Lutron HomeWorks QS, some Cisco gear, legacy serial-over-IP gateways). Off by default.
-- **Connect Sequence** (`on_connect`) — wire strings sent automatically on every connect. Common uses: enabling verbose/feedback mode (Extron `\x1b3CV\r\n`), initial state dumps (`< GET ALL >`), OSC subscriptions (`/xremote`).
+- **Connect Sequence** (`on_connect`) — wire strings sent automatically on every connect. Common uses: turning on the device's feedback mode, asking for a full state dump, subscribing to OSC updates.
 - **Frame Parser** — advanced. Only for binary protocols framed by length prefix or fixed length. Most drivers leave this off and rely on the message delimiter instead.
 - **Configuration Fields** (`config_schema`) — per-device settings users fill in on the Add Device dialog (display IDs, instance tags, custom passwords). Become `{placeholders}` in command strings. The **Computed Fields** table underneath builds derived values from other config fields via templates (`config_derived`), so one friendly field can drive several address forms.
 
@@ -155,7 +155,7 @@ A command name the driver does not declare is refused the same way, with `Comman
 
 **Sets State / Reports** — at the bottom of each command card, declare what the command does to device state: **Sets State** rows name the state variables the command changes (to a literal, or to one of the command's `{param}` values), and **Reports** marks the command as a status query answered with the named variable. The auto-generated simulator applies and answers these instead of guessing from the command's name, so Live Test and simulation behave like the real device. On a command with exactly one `child_id` parameter, both can name a state variable of that child type — the effect applies to the addressed child.
 
-Example for an Extron switcher:
+Example for the switcher above:
 
 | Command ID | Label | Send | Parameters |
 |------------|-------|------|------------|
@@ -306,33 +306,33 @@ Both directories are scanned at startup. Files are loaded, validated, and regist
 
 You can also import an `.avcdriver` file through the Driver Builder UI (click **Import from File**), which copies it into `driver_repo/` for you.
 
-### Full Example: Extron SIS Switcher
+### Full Example: Text-Protocol Switcher
 
 ```yaml
-# Extron SIS Switcher Driver
-# Reference: Extron SIS Command/Response Reference, Section 3
+# Acme SW4 Switcher Driver
+# Reference: Acme SW4 control protocol guide, section 3
 # Protocol: text-based over TCP (port 23) or RS-232 (9600 8N1)
 
-id: extron_sis_switcher
-name: Extron SIS Switcher
-manufacturer: Extron
+id: acme_sw4
+name: Acme SW4 Switcher
+manufacturer: Acme
 category: switcher
 version: 1.0.0
 author: OpenAVC Community
-description: Controls Extron SIS-compatible switchers over TCP or serial.
+description: Controls the Acme SW4 HDMI switcher over TCP or serial.
 transport: tcp
 delimiter: "\r\n"
 
 help:
   overview: >
-    Controls Extron SIS-compatible switchers. Supports input routing,
+    Controls the Acme SW4 HDMI switcher. Supports input routing,
     volume control, and mute.
   # Use `|` (literal), not `>` (folded), for numbered steps. Folded style
   # joins the lines, so the Add Device dialog shows "1. … 2. …" as one
   # run-on paragraph.
   setup: |
     1. Connect the switcher to the network or via RS-232 (9600 8N1).
-    2. For TCP, use port 23 (default Extron telnet port).
+    2. For TCP, use port 23 (the switcher's default control port).
 
 default_config:
   host: ""
@@ -487,7 +487,7 @@ The tables below document each field in detail.
 | `liveness` | No | Connection watchdog — send a probe on an interval, reconnect after consecutive misses. See `liveness` section below. |
 | `push` | No | Device-initiated push notifications — a multicast group the device sends frames to, an SSE event stream on its HTTP API, a TCP port the device dials back to, or an HTTP listener the device posts webhooks to. Everything feeds the same `responses` rules. See `push` section below. |
 | `frame_parser` | No | Advanced: custom receive framing (see below). |
-| `send_frame` | No | Advanced: send-side packet framing — wraps every command in a binary header with a computed data length (e.g. eISCP). The send twin of `frame_parser` (see below). Byte-stream transports only. |
+| `send_frame` | No | Advanced: send-side packet framing — wraps every command in a binary header with a computed data length. The send twin of `frame_parser` (see below). Byte-stream transports only. |
 | `protocols` | No | Protocol names this driver speaks (e.g., `["pjlink"]`, `["extron_sis"]`). Helps discovery match devices to drivers. |
 | `discovery` | No | Discovery declarations — fingerprints and hints. See Discovery below. |
 | `inline_protocol` | No | Built-in generic devices only. Turns on the no-code Commands & Responses editor on the device page, where the commands, responses and state variables live in that device's own config and merge into the driver at runtime. A driver you write ships its protocol in the driver file, so leave this off. |
@@ -511,9 +511,8 @@ and Edit Device dialogs. Nothing changes about how the value is stored or read;
 it is purely where the field sits on screen. Use it for a setting that already
 has a working default and only gets touched when something needs tuning (a poll
 interval, an inter-command delay), or for one whose answer is not knowable at
-the moment the device is added — `vmix` marks its four SRT ports this way,
-because SRT gets enabled on the vMix PC later and the port has no answer before
-that. Do not mark a field the driver cannot work without.
+the moment the device is added, such as the port of a stream that gets turned on
+later. Do not mark a field the driver cannot work without.
 
 An older platform that predates this flag ignores it and draws the field
 normally, so it needs no `min_platform_version`.
@@ -553,7 +552,7 @@ device_settings:
       The name other devices use to subscribe to this NDI source
       on the network. Must be unique across all NDI devices.
     state_key: ndi_name
-    default: BIRDDOG
+    default: CAMERA-1
     setup: true
     unique: true
     write:
@@ -894,7 +893,7 @@ If a device — or a child entity — offers a video stream a browser can show (
 | `preview_url` | string | The stream URL, reachable **from the OpenAVC server** (the server proxies it to the panel; the panel never connects to the AV network directly). Set it to `""` when no stream is available right now. |
 | `preview_format` | string | `mjpeg` for multipart MJPEG over HTTP (rendered as a live image), `rtsp`, or `srt` (both played through the same WebRTC pipeline). Optional: with it left out, the URL's scheme is used. |
 
-Declare them like any other `state_variables` entry and set them as the device reports. The plugin reuses the device's or child's `label` (or `name`) for the dropdown entry, so there's nothing extra to name. Device-level keys are `device.<id>.preview_url`; child-level keys follow the child-entity convention (`device.<id>.<type>.<padded>.preview_url`). A worked example is the `chazy_control_pro` encoder child, which derives these from its secondary-stream URLs; `vmix` publishes them per output for its SRT streams. Whether the stream needs transcoding is not your problem — the consumer reads that back from the stream itself.
+Declare them like any other `state_variables` entry and set them as the device reports. The plugin reuses the device's or child's `label` (or `name`) for the dropdown entry, so there's nothing extra to name. Device-level keys are `device.<id>.preview_url`; child-level keys follow the child-entity convention (`device.<id>.<type>.<padded>.preview_url`). A worked example is the `chazy_control_pro` encoder child, which derives these from its secondary-stream URLs. Whether the stream needs transcoding is not your problem — the consumer reads that back from the stream itself.
 
 ##### When there is no stream, and something could be done about it
 
@@ -914,9 +913,9 @@ configuration lives. The picker looks it up in your `config_schema`, so it is
 shown with your label and help text, and writes the value into the device's
 config.
 
-`vmix` is the case this exists for: vMix reports that an output has SRT running
-and never reports which port it is on, so the driver knows there is a picture
-and cannot build a URL for it.
+For example, a device that reports an output has SRT running but never says
+which port it is on: the driver knows there is a picture and cannot build a URL
+for it.
 
 ```python
 self.set_child_state_batch("output", number, {
@@ -925,8 +924,8 @@ self.set_child_state_batch("output", number, {
     "preview_status": "needs_setup",
     "preview_setup_field": f"srt_port_{number}",
     "preview_status_detail": (
-        f"SRT is running on Output {number}, but vMix does not report which "
-        f"port. Enter the SRT Port shown beside it in vMix: Settings > Outputs."
+        f"SRT is running on Output {number}, but the device does not report "
+        f"which port. Enter the SRT port set for this output on the device."
     ),
 })
 ```
@@ -1320,19 +1319,19 @@ Commands sent once immediately after the TCP/serial connection is established, b
 
 ```yaml
 on_connect:
-  - "\x1b3CV\r\n"    # Extron: enable verbose mode 3 (push all changes)
+  - "NOTIFY ON\r\n"  # ask the device to push every change
 ```
 
 ```yaml
 on_connect:
-  - "< GET ALL >"    # Shure: request all current state values
+  - "GET ALL\r\n"    # request every current value
 ```
 
-For **OSC** drivers, a bare address subscribes for pushes (`/xremote`). When the connect message needs to *set* a value rather than just subscribe, use the `{address, args}` form with typed arguments — the Driver Builder shows an argument editor for each OSC step:
+For **OSC** drivers, a bare address subscribes for pushes (`/subscribe`). When the connect message needs to *set* a value rather than just subscribe, use the `{address, args}` form with typed arguments — the Driver Builder shows an argument editor for each OSC step:
 
 ```yaml
 on_connect:
-  - "/xremote"                                            # subscribe
+  - "/subscribe"                                          # subscribe
   - { address: "/main/mute", args: [{ type: i, value: "0" }] }   # set a value on connect
 ```
 
@@ -1388,27 +1387,26 @@ The poll cadence is **not** set in the `polling` block — it comes from `defaul
 
 #### `liveness` section
 
-Some links can die without the driver ever noticing: UDP is connectionless (queries are fire-and-forget, so a dead host answers nothing and nothing errors), OSC likewise, and a push-style TCP device that vanishes without closing the socket looks connected forever. A `liveness` block arms a watchdog: send a cheap probe every `interval` seconds, expect a reply within `timeout`, and after `max_failures` consecutive misses drop the connection so the platform reconnects and the device card shows *Not responding*.
+A `liveness` block arms a watchdog for a link that can die without the transport noticing (UDP, OSC, a push-style TCP device with long idle gaps): send a probe every `interval` seconds, expect a reply within `timeout`, and after `max_failures` misses in a row drop the connection, so the platform reconnects and the device card shows *Not responding*.
 
 ```yaml
 liveness:
-  send: "STATUS?\r\n"     # probe payload — raw protocol string, same rules as polling.queries
+  send: "STATUS?\r\n"      # raw protocol string, same rules as polling.queries
                            # (escape sequences, {config} substitution, terminator included);
-                           # on osc transport this is an OSC address (optional args: list)
-  expect: "^(STATUS|ERR)"  # optional regex — only matching replies count; if omitted,
-                           # ANY inbound data during the wait counts as alive
+                           # on osc transport, an OSC address (optional args: list)
+  expect: "^(STATUS|ERR)"  # optional regex: only matching replies count. Without it,
+                           # any data that arrives during the wait counts
   interval: 30             # seconds between probes (default 30)
   timeout: 5               # reply deadline per probe (default 5)
-  max_failures: 2          # consecutive misses before dropping the link (default 2)
+  max_failures: 2          # misses in a row before dropping the link (default 2)
 ```
 
-Pick a probe the device answers however it is set up. A status or version query the driver already polls is ideal, and its reply also refreshes state through normal response matching. Never probe with something the integrator configured, such as a zone, a preset, an object address or the first row of a table: a wrong setting then looks like a dead device, reconnecting never fixes a setting, and the device drops every minute or so for as long as it runs.
+- **Probe with something every unit answers however it is set up**, such as a status or version query the driver already polls (its reply also goes through the normal response rules). Never with something the integrator configured: a zone, a preset, an object address, a table row.
+- **Any reply counts, an error included.** Leave `expect` off unless the device sends so much on its own that any data would hide a dead control channel. When you set it, match the error reply as well as the normal one (`^(STATUS|ERR)`, not `^STATUS`), with the whitespace the protocol allows (`"cmd"\s*:\s*"status"`, not `"cmd":"status"`).
 
-Any reply proves the link is up, an error included. Leave `expect` off unless the device chatters on its own so much that "any data" would mask a dead control channel. When you do set it, make it match the device's error reply to the probe as well as the normal one (`^(STATUS|ERR)`, not `^STATUS`), and allow the whitespace the protocol allows (`"cmd"\s*:\s*"status"`, not `"cmd":"status"`).
+Valid on `tcp`, `serial`, `udp`, and `osc`. HTTP drivers don't need it: every HTTP poll awaits its response, so missed polls take the device offline.
 
-Valid on `tcp`, `serial`, `udp`, and `osc`. HTTP drivers don't need it: every HTTP poll already awaits its response, so missed polls flip the device offline on their own. Use it whenever the device is UDP/OSC-polled, or push-based over TCP with long idle gaps.
-
-For plain TCP request/response devices you can also enable OS-level keepalive instead: set `tcp_keepalive: true` in `default_config` and the socket itself detects a dead peer (roughly 90 seconds, tuned by the platform). The two are complementary — `tcp_keepalive` proves the TCP path is up; `liveness` proves the device is actually answering the protocol.
+For a plain TCP request/response device, `tcp_keepalive: true` in `default_config` has the socket itself detect a dead peer (in about 90 seconds). `tcp_keepalive` proves the TCP path is up; `liveness` proves the device answers the protocol.
 
 #### `routing` section
 
@@ -1489,38 +1487,38 @@ For `length_prefix`:
 - `header_size` — bytes that hold the body length. Must be `1`, `2`, or `4`.
 - `header_offset` — added to the length the header decodes to. Use a negative value (e.g. `-2`) when the length field counts the header bytes themselves, so only the body is read. Default `0`.
 - `include_header` — `true` keeps the header bytes in the parsed frame; `false` (default) returns just the body.
-- `length_offset` — constant bytes **before** the length field, when the length isn't the first thing on the wire. Default `0`. eISCP, for example, puts its 4-byte length at offset 8, behind the `ISCP` magic and a header-size field.
-- `header_extra` — constant bytes **after** the length field, before the data (e.g. eISCP's version + reserved = 4). Default `0`. The full fixed header consumed per frame is `length_offset + header_size + header_extra`.
+- `length_offset` — constant bytes **before** the length field, when the length isn't the first thing on the wire. Default `0`. The `send_frame` example below puts its 4-byte length at offset 8, behind a 4-byte magic and a header-size field.
+- `header_extra` — constant bytes **after** the length field, before the data (in that example, version + reserved = 4). Default `0`. The full fixed header consumed per frame is `length_offset + header_size + header_extra`.
 - `length_endian` — `big` (default) or `little`. Byte order of the length field.
 
 For `fixed_length`, set `length` to the byte count of every frame.
 
 #### `send_frame` (advanced)
 
-The send-side twin of `frame_parser`. Use it when a protocol wraps every command in a binary packet header whose data-length is **computed per message** — something a static `command_prefix` can't express, because the length changes with each command (a feedback query like `PWRQSTN` is longer than a set like `PWR01`). The canonical case is **eISCP** (Onkyo / Integra / Pioneer receivers over TCP 60128): a 16-byte header of `ISCP` magic + header-size + a 4-byte data length + version/reserved, wrapping the `!1…<CR>` ISCP command.
+The send-side twin of `frame_parser`. Use it when a protocol wraps every command in a binary packet header whose data-length is **computed per message** — something a static `command_prefix` can't express, because the length changes with each command (a query like `POWER?` is longer than a set like `PW1`). The example is a 16-byte header: a 4-byte magic, a header-size field, a 4-byte data length, then version and reserved bytes, wrapping a text command that `command_prefix` and `command_suffix` frame as `!1…<CR>`.
 
 ```yaml
 send_frame:
   type: length_prefix
-  header: "ISCP\x00\x00\x00\x10"     # magic + fixed header-size (16), big-endian
+  header: "ACME\x00\x00\x00\x10"     # magic + fixed header-size (16), big-endian
   length_size: 4                     # width of the computed data-length field
   length_endian: big                 # big (default) | little
   after_length: "\x01\x00\x00\x00"   # version + 3 reserved bytes, before the data
 ```
 
-On the wire each command becomes `header + <computed length> + after_length + (command_prefix + send + command_suffix)`. The length is the byte length of the framed command data (e.g. `!1PWR01\r` = 8). `header` and `after_length` are literal-escape byte strings (`\r`, `\n`, `\xHH`). `send_frame` applies to every byte-stream send origin — commands, raw poll/on_connect queries, the liveness probe, and device-setting writes — so a length-framed device answers all of them.
+On the wire each command becomes `header + <computed length> + after_length + (command_prefix + send + command_suffix)`. The length is the byte length of the framed command data (e.g. `!1PW1\r` = 6). `header` and `after_length` are literal-escape byte strings (`\r`, `\n`, `\xHH`). `send_frame` applies to every byte-stream send origin — commands, raw poll/on_connect queries, the liveness probe, and device-setting writes — so a length-framed device answers all of them.
 
-Pair it with a matching `frame_parser` to read the device's replies. For eISCP the reply header is identical, so the parser is `length_prefix` with the 4-byte length at offset 8:
+Pair it with a matching `frame_parser` to read the device's replies. Here the reply header is identical, so the parser is `length_prefix` with the 4-byte length at offset 8:
 
 ```yaml
 frame_parser:
   type: length_prefix
-  length_offset: 8    # skip "ISCP" + header-size
+  length_offset: 8    # skip the magic + header-size
   header_size: 4      # 4-byte length field
   header_extra: 4     # skip version + reserved
 ```
 
-`command_prefix` / `command_suffix` still handle the inner ISCP framing (`!1` and `\r`); `send_frame` adds the outer packet header on top. For a serial protocol that uses the same `!1…\r` command bodies but no packet header, drop `send_frame` and keep just `command_prefix` / `command_suffix`.
+`command_prefix` / `command_suffix` still handle the inner framing (`!1` and `\r`); `send_frame` adds the outer packet header on top. For a serial protocol that uses the same `!1…\r` command bodies but no packet header, drop `send_frame` and keep just `command_prefix` / `command_suffix`.
 
 #### `push` section
 
@@ -1548,15 +1546,15 @@ push:
 ```
 
 - `type` — `sse`.
-- `path` — the event-stream URL path on the device, or a **list** of paths for devices that stream each resource separately (Barco ClickShare lets you subscribe to every endpoint you can GET). Literal paths start with `/`; `{config_field}` templates are allowed.
-- `idle_timeout` — optional. If the stream is silent (keepalives included) for this many seconds, the connection is presumed dead and reopened. Set it above the device's keepalive interval (ClickShare sends one every 90 s); omit it to wait indefinitely.
+- `path` — the event-stream URL path on the device, or a **list** of paths for devices that stream each resource separately. Literal paths start with `/`; `{config_field}` templates are allowed.
+- `idle_timeout` — optional. If the stream is silent (keepalives included) for this many seconds, the connection is presumed dead and reopened. Set it above the device's keepalive interval; omit it to wait indefinitely.
 
-Some devices open the stream **empty** and wait to be told what to send: the reply names the session it opened, and the controller subscribes that session to resources with a second request. Sennheiser's SSCv2 devices (the TeamConnect Ceiling Medium, the TC Bar, the EW-DX receivers) work this way: `GET /api/ssc/state/subscriptions` answers with a `Content-Location` header naming the session and an `open` event repeating it, a `PUT` of a path list to `/api/ssc/state/subscriptions/{id}` arms it, and a `close` event says the device ended it. Declare that handshake with a `session` block and the register commands:
+Some devices open the stream **empty** and wait to be told what to send: the reply names the session it opened, and the controller subscribes that session to resources with a second request. In the example below, `GET /api/subscriptions` answers with a `Content-Location` header naming the session and an `open` event repeating it, a `PUT` of a path list to `/api/subscriptions/{id}` arms it, and a `close` event says the device ended it. Declare that handshake with a `session` block and the register commands:
 
 ```yaml
 push:
   type: sse
-  path: /api/ssc/state/subscriptions
+  path: /api/subscriptions
   idle_timeout: 300
   session:
     header: Content-Location          # response header carrying the session id
@@ -1573,17 +1571,17 @@ push:
 commands:
   subscribe_device:
     method: PUT
-    path: /api/ssc/state/subscriptions/{push_session}/add
+    path: /api/subscriptions/{push_session}/add
     body: '["/api/device/state", "/api/device/identity"]'
   subscribe_channel:
     method: PUT
-    path: /api/ssc/state/subscriptions/{push_session}/add
+    path: /api/subscriptions/{push_session}/add
     body: '["/api/channel/{channel}"]'
     params:
       channel: { type: child_id, child_type: channel, map: { 1: 0, 2: 1 } }
   end_session:
     method: DELETE
-    path: /api/ssc/state/subscriptions/{push_session}
+    path: /api/subscriptions/{push_session}
 ```
 
 - `session.header` — the response header on the stream's 200 reply that carries the session id. Read first.
@@ -1685,19 +1683,19 @@ discovery:
   #   mdns:
   #     - "_pjlink._tcp.local."
   #     - service: "_http._tcp.local."
-  #       txt: { manufacturer: "Shure" }   # TXT-record filter
+  #       txt: { manufacturer: "Acme" }    # TXT-record filter
 
   ssdp: "urn:schemas-upnp-org:device:MediaRenderer:1"
   # OR list; entries can filter on the UPnP device description when a
   # vendor's whole family shares one URN:
   #   ssdp:
-  #     - device_type: "urn:schemas-upnp-org:device:ATCUDevice:1"
-  #       model: "ATDM-0604a"            # exact match, case-insensitive
+  #     - device_type: "urn:acme-com:device:Switcher:1"
+  #       model: "SW4"                   # exact match, case-insensitive
   #       # also: manufacturer, friendly_name
 
   amx_ddp:
-    make: "Polycom"
-    model_pattern: "SoundStructure*"   # optional, default "*"
+    make: "Acme"
+    model_pattern: "SW*"               # optional, default "*"
 
   tcp_probe:
     port: 4352
@@ -1722,9 +1720,9 @@ discovery:
   udp_probe:
     port: 6454
     send_hex: "417274..."
-    expect_regex: "NovaStar"
+    expect_regex: "ACME"
     cross_vendor: false
-    extract_manufacturer: "NovaStar"
+    extract_manufacturer: "Acme"
     timeout_ms: 2000                    # optional, default 2000 for UDP
                                         # (tcp_probe defaults to 3000), max 10000
 
@@ -1732,13 +1730,13 @@ discovery:
     file: ./pjlink_class1_discovery.py
     cross_vendor: true
   # Path is relative to the driver YAML. The module must export
-  # `async def probe(ctx) -> None`. See OpenAVC-Discovery-Spec.md
-  # § Python escape-hatch for the companion API.
+  # `async def probe(ctx) -> None`; the companion API is under
+  # "5. Discovery tab" above.
 
   # ─── Hints — combine to narrow candidates ─────────────────────────
 
-  oui: ["00:0e:dd", "d8:34:ee"]              # MAC vendor blocks
-  hostname: ["^MXA", "^ANI"]                  # regex patterns
+  oui: ["aa:bb:cc"]                           # MAC vendor blocks
+  hostname: ["^ACME-"]                        # regex patterns
   port_open: [2202]                           # vendor-specific TCP ports
   manufacturer_alias: ["NEC", "Sharp NEC"]   # case-insensitive
   snmp_pen: 17049                             # IANA Private Enterprise Number
@@ -1866,10 +1864,10 @@ For devices controlled via HTTP/REST APIs (Panasonic PTZ cameras, Sony Bravia di
 HTTP commands use `method`, `path`, and `body` instead of `send`:
 
 ```yaml
-# Panasonic AW-series PTZ Camera (HTTP CGI control)
-id: panasonic_aw_ptz
-name: Panasonic AW PTZ Camera
-manufacturer: Panasonic
+# Acme PTZ Camera (HTTP CGI control)
+id: acme_ptz_camera
+name: Acme PTZ Camera
+manufacturer: Acme
 category: camera
 transport: http
 
@@ -1922,17 +1920,17 @@ commands:
   power_on:
     label: Power On
     method: GET
-    path: "/cgi-bin/aw_ptz?cmd=%23O1&res=1"
+    path: "/cgi-bin/ptz?cmd=power&value=1"
 
   power_off:
     label: Power Off
     method: GET
-    path: "/cgi-bin/aw_ptz?cmd=%23O0&res=1"
+    path: "/cgi-bin/ptz?cmd=power&value=0"
 
   recall_preset:
     label: Recall Preset
     method: GET
-    path: "/cgi-bin/aw_ptz?cmd=%23R{preset:02d}&res=1"
+    path: "/cgi-bin/ptz?cmd=preset&value={preset:02d}"
     params:
       preset:
         type: integer
@@ -1944,7 +1942,7 @@ commands:
   set_pan_tilt:
     label: Set Pan/Tilt
     method: GET
-    path: "/cgi-bin/aw_ptz?cmd=%23APC{pan}{tilt}&res=1"
+    path: "/cgi-bin/ptz?cmd=pantilt&pan={pan}&tilt={tilt}"
     params:
       pan:
         type: string
@@ -1956,16 +1954,16 @@ commands:
         label: Tilt (hex, 4 chars)
 
 responses:
-  # Power query response contains "p1" (on) or "p0" (off)
-  - match: 'p1'
+  # Power query response contains "power=1" (on) or "power=0" (off)
+  - match: 'power=1'
     set: { power: "on" }
-  - match: 'p0'
+  - match: 'power=0'
     set: { power: "off" }
 
 polling:
   # Cadence comes from default_config.poll_interval (5s above), not here.
   queries:
-    - "/cgi-bin/aw_ptz?cmd=%23O&res=1"
+    - "/cgi-bin/ptz?cmd=power"
 ```
 
 When the device answers with a JSON object instead of plain text like this, use a `json: true` response (see the `responses` entry section above) so one reply fills every state variable, rather than writing a regex per field.
@@ -2070,7 +2068,7 @@ With `level=75`, this sends `POST /api/audio` with body `{"channel": "program", 
 
 ### OSC (Open Sound Control) Drivers
 
-For devices controlled via OSC over UDP (Behringer X32, QLab, ETC Eos, TouchDesigner, Resolume, etc.), set `transport: osc` and use OSC-specific command and response fields.
+For devices controlled via OSC over UDP (Behringer X32, ETC Eos, TouchDesigner, Resolume, etc.), set `transport: osc` and use OSC-specific command and response fields.
 
 OSC commands use `address` and `args` instead of `send` (TCP/serial) or `method`/`path` (HTTP). OSC responses match by address pattern instead of regex.
 
@@ -2133,7 +2131,7 @@ Responses use `address` instead of `match`/`pattern`, and `arg` (argument index)
 ```yaml
 # on_connect: send bare addresses (no args) or dicts with args
 on_connect:
-  - "/xremote"
+  - "/subscribe"
   - "/info"
 
 # Polling: command names or bare OSC addresses
@@ -2158,36 +2156,23 @@ The platform also monitors poll responses. If no data arrives from the device fo
 
 #### Listen Port
 
-Most OSC devices reply to the sender's port (set `listen_port: 0`, the default). Some devices send feedback to a separate port. Set `listen_port` in the config if your device documentation specifies one.
-
-#### Common OSC Ports
-
-| Device | Send Port | Listen Port |
-|--------|-----------|-------------|
-| Behringer X32 / X32 Compact | 10023 | 0 (same socket) |
-| Behringer X-Air (XR18, XR16, XR12) | 10024 | 0 (same socket) |
-| Midas M32 | 10023 | 0 (same socket) |
-| QLab | 53000 | 53001 (UDP replies always go to this port; unused over TCP) |
-| ETC Eos | 3032 | 0 |
-| Resolume Arena | 7000 | 0 |
-| vMix | 8088 | 0 |
+Most OSC devices reply to the sender's port (set `listen_port: 0`, the default). Some devices send feedback to a separate port. Set `listen_port` in the config if your device documentation specifies one, and the device's control port as `port` in `default_config`.
 
 #### Extracting a value from a JSON reply (`json_path`)
 
-Some OSC devices answer with the useful value buried inside JSON. QLab, for
-example, replies as `/reply/<the address you sent>` with a single string
-argument that holds JSON like `{"status":"ok","data":"Intro Music"}`. Add
-`json_path` to a mapping to parse that string and pull out the value before it
-is coerced and stored:
+Some OSC devices answer with the useful value inside JSON: the reply has a
+single string argument holding something like
+`{"status":"ok","data":"Intro Music"}`. Add `json_path` to a mapping to parse
+that string and pull out the value before it is coerced and stored:
 
 ```yaml
 responses:
-  # QLab reply: the string arg is JSON; take its "data" field.
-  - address: "/reply*/cue/playhead/displayName"
+  # The string arg is JSON; take its "data" field.
+  - address: "/status/clip/name"
     mappings:
       - arg: 0
         json_path: data
-        state: current_cue_name
+        state: current_clip
         type: string
 ```
 
@@ -2197,12 +2182,12 @@ responses:
 `integer` state becomes the count:
 
 ```yaml
-  # data is a JSON array of running cues; boolean-coerces to "anything running?"
-  - address: "/reply*/runningOrPausedCues"
+  # data is a JSON array of playing clips; boolean-coerces to "anything playing?"
+  - address: "/status/playing"
     mappings:
       - arg: 0
         json_path: data
-        state: is_running
+        state: is_playing
         type: boolean
 ```
 
@@ -2214,8 +2199,8 @@ it is applied to the captured group.
 
 #### OSC over TCP (SLIP framing)
 
-QLab and some other OSC gear accept OSC over **TCP** as well as UDP. TCP is the
-reliable path when replies are large (full cue lists) or delivery matters. Add a
+Some OSC devices accept OSC over **TCP** as well as UDP. TCP is the reliable
+path when replies are large (a long list in one reply) or delivery matters. Add a
 `transport_mode` config field; when it is `tcp`, the platform frames OSC with
 SLIP (RFC 1055) over a TCP connection and replies arrive on the same socket
 (`listen_port` is not used in TCP mode):
@@ -2237,18 +2222,18 @@ unaffected.
 #### Derived config values (`config_derived`)
 
 `config_derived` computes extra config values from other config fields. The
-classic use is an **optional address prefix**: QLab messages are either rootless
-(`/go`, the front workspace) or workspace-scoped (`/workspace/<id>/go`). Expose
-one friendly `workspace_id` field and derive the prefix:
+classic use is an **optional address prefix**, for a device whose messages are
+either global (`/play`) or scoped to one zone (`/zone/<name>/play`). Expose one
+friendly `zone` field and derive the prefix:
 
 ```yaml
 config_derived:
-  ws: "/workspace/{workspace_id}"   # "" when workspace_id is blank
+  zone_prefix: "/zone/{zone}"       # "" when zone is blank
 
 commands:
-  go:
-    label: GO
-    address: "{ws}/go"              # "/go" rootless, or "/workspace/<id>/go"
+  play:
+    label: Play
+    address: "{zone_prefix}/play"   # "/play", or "/zone/<name>/play"
 ```
 
 Each entry is a template substituted from config. If **any** `{field}` it
@@ -2579,24 +2564,24 @@ OpenAVC scans `driver_repo/` at startup and dynamically loads any Python file th
 
 After installation, the driver appears in the "Add Device" dialog.
 
-### Full Example: Binary Protocol (Samsung MDC)
+### Full Example: Binary Protocol (Display)
 
-For binary protocols, you override `_create_frame_parser()` and `_resolve_delimiter()` to tell the transport how to split the byte stream into messages. The example below is written against the Samsung MDC protocol to show the shape; it is illustrative, not a copy of any shipped driver.
+For binary protocols, you override `_create_frame_parser()` and `_resolve_delimiter()` to tell the transport how to split the byte stream into messages. The example below is written against an invented display protocol (a start byte, a command, the display's ID, a data length, the data, a checksum) to show the shape.
 
 ```python
-# displays/samsung_mdc.py — a Python driver in your driver library
+# displays/acme_display.py — a Python driver in your driver library
 
 from openavc.drivers.base import BaseDriver
 from openavc.transport.binary_helpers import checksum_sum
 from openavc.transport.frame_parsers import CallableFrameParser, FrameParser
 from typing import Any, Optional
 
-# MDC command constants
+# Command constants
 CMD_POWER = 0x11
 CMD_VOLUME = 0x12
 
 # Frame builder helper
-def _build_mdc_frame(cmd: int, display_id: int, data: bytes = b"") -> bytes:
+def _build_frame(cmd: int, display_id: int, data: bytes = b"") -> bytes:
     frame = bytes([cmd, display_id, len(data)]) + data
     cs = checksum_sum(frame)
     return bytes([0xAA]) + frame + bytes([cs])
@@ -2607,7 +2592,7 @@ def _build_mdc_frame(cmd: int, display_id: int, data: bytes = b"") -> bytes:
 # return no message. That is how a binary driver recovers from a bad packet:
 # return less buffer than you were given to throw bytes away, or the buffer
 # unchanged to wait for more data. Note both kinds of return below.
-def _parse_mdc_frame(buffer: bytes) -> tuple[bytes | None, bytes]:
+def _parse_frame(buffer: bytes) -> tuple[bytes | None, bytes]:
     start = buffer.find(0xAA)
     if start == -1:
         return None, b""      # no start byte at all: discard, nothing here is a frame
@@ -2623,17 +2608,17 @@ def _parse_mdc_frame(buffer: bytes) -> tuple[bytes | None, bytes]:
     return frame, buffer[total_len:]
 
 
-class SamsungMDCDriver(BaseDriver):
+class AcmeDisplayDriver(BaseDriver):
     DRIVER_INFO = {
-        "id": "samsung_mdc",
-        "name": "Samsung MDC Display",
-        "manufacturer": "Samsung",
+        "id": "acme_display",
+        "name": "Acme Display",
+        "manufacturer": "Acme",
         "category": "display",
         "transport": "tcp",
-        "default_config": {"host": "", "port": 1515, "display_id": 1, "poll_interval": 15},
+        "default_config": {"host": "", "port": 5000, "display_id": 1, "poll_interval": 15},
         "config_schema": {
             "host": {"type": "string", "required": True, "label": "IP Address"},
-            "port": {"type": "integer", "default": 1515, "label": "Port"},
+            "port": {"type": "integer", "default": 5000, "label": "Port"},
             "display_id": {"type": "integer", "default": 1, "label": "Display ID"},
         },
         "state_variables": {
@@ -2648,7 +2633,7 @@ class SamsungMDCDriver(BaseDriver):
 
     def _create_frame_parser(self) -> Optional[FrameParser]:
         # Use a callable parser for custom binary framing
-        return CallableFrameParser(_parse_mdc_frame)
+        return CallableFrameParser(_parse_frame)
 
     def _resolve_delimiter(self) -> Optional[bytes]:
         # Binary protocol -- no delimiter
@@ -2663,10 +2648,10 @@ class SamsungMDCDriver(BaseDriver):
 
         match command:
             case "power_on":
-                await self.transport.send(_build_mdc_frame(CMD_POWER, display_id, bytes([1])))
+                await self.transport.send(_build_frame(CMD_POWER, display_id, bytes([1])))
             case "set_volume":
                 level = max(0, min(100, int(params.get("level", 0))))
-                await self.transport.send(_build_mdc_frame(CMD_VOLUME, display_id, bytes([level])))
+                await self.transport.send(_build_frame(CMD_VOLUME, display_id, bytes([level])))
 
     async def on_data_received(self, data: bytes) -> None:
         if len(data) < 3:
@@ -3183,7 +3168,7 @@ Two things follow for a driver author. A `connect()` that is expensive (spawning
 
 ### The liveness probe
 
-Override `_liveness_probe()` when the link can die without the transport noticing: a push-mostly TCP device that vanishes without closing the socket, UDP, OSC. The platform calls it every `HEALTH_INTERVAL_S` seconds (default 30) under a `HEALTH_TIMEOUT_S` deadline (default 5). Returning means the device answered. Any exception is a miss, and after `HEALTH_MAX_FAILURES` misses in a row (default 2) the platform drops the connection with `no_response` and `HEALTH_FAULT_MESSAGE` and reconnects. All four are class attributes you can override.
+Override `_liveness_probe()` when the link can die without the transport noticing (UDP, OSC, a push-mostly TCP device). The platform calls it every `HEALTH_INTERVAL_S` seconds (default 30) under a `HEALTH_TIMEOUT_S` deadline (default 5). Returning means the device answered; any exception is a miss. After `HEALTH_MAX_FAILURES` misses in a row (default 2) the platform drops the connection with `no_response` and `HEALTH_FAULT_MESSAGE`, then reconnects. All four are class attributes you can override.
 
 ```python
 async def _liveness_probe(self) -> None:
@@ -3193,10 +3178,10 @@ async def _liveness_probe(self) -> None:
         return  # the device answered with an error: the link is up
 ```
 
-- **Ask something every unit answers however it is set up**: a version or model query, a no-op, the protocol's own keep-alive. Never the first zone, register, object or display ID from the device's configuration. A wrong setting would look like a dead device, reconnecting never fixes a setting, and the device would drop every minute or so for as long as it runs. Report a wrong setting where it shows instead: a sub-unit's fault, `last_error`, or a typed `invalid_config`.
-- **Any reply proves the link is up, an error included.** The platform counts every exception as a miss, so catch your protocol's own error reply (a NAK, an exception response, an error frame) and return.
-- **When every message is addressed to something configured**, as on a bus of displays that each answer only their own ID, ask the address that answered most recently on this connection, then the others, and raise only when none of them answers.
-- **Never use the probe to log back in.** If the device forgets your session, log in again on the connection you have when its refusal arrives. A rejected password is `auth_failed`, which stops the retries.
+- **Ask something every unit answers however it is set up**: a version or model query, a no-op, the protocol's own keep-alive. Never a zone, register, object or display ID from the device's configuration. Report a wrong setting where it shows: a sub-unit's fault, `last_error`, or a typed `invalid_config`.
+- **Any reply counts, an error included.** Catch your protocol's error reply (a NAK, an exception response, an error frame) and return.
+- **When every message is addressed to something configured**, as on a bus of displays that each answer only their own ID, ask the address that answered most recently on this connection, then the others, and raise only when none answers.
+- **Never log back in from the probe.** Log in again on the connection you have when the device's refusal arrives. A rejected password is `auth_failed`, which stops the retries.
 
 ### Convenience Methods
 
@@ -3497,17 +3482,17 @@ DRIVER_INFO = {
     },
 
     # --- Protocol declarations (catalog metadata) ---
-    "protocols": ["extron_sis"],
+    "protocols": ["acme_text"],
 
     # --- Discovery declarations (optional — fingerprints + hints) ---
     "discovery": {
         "tcp_probe": {
             "port": 23,
-            "send_ascii": "\x1b3CV\r\n",
-            "expect": "Vrbn",
-            "extract_manufacturer": "Extron",
+            "send_ascii": "VERSION?\r\n",
+            "expect": "ACME",
+            "extract_manufacturer": "Acme",
         },
-        "oui": ["00:05:a6"],            # hint; produces "possible" state
+        "oui": ["aa:bb:cc"],            # hint; produces "possible" state
     },
 
     # --- Where routing lives (optional — only for devices that switch) ---
@@ -3632,7 +3617,7 @@ Then open the Programmer UI at `http://localhost:8080/programmer`:
 
 ### Writing automated tests
 
-See `tests/test_pjlink_driver.py` or `tests/test_samsung_mdc_driver.py` for examples. The pattern is:
+The `tests/` folder of the [community driver repository](https://github.com/open-avc/openavc-drivers/tree/main/tests) has examples. The pattern is:
 
 1. Create a simulator fixture that listens on a test port.
 2. Create a driver fixture that connects to the simulator.

@@ -1894,40 +1894,28 @@ class BaseDriver(ABC):
     async def _liveness_probe(self) -> None:
         """Optional hook: send a cheap request and await the device's reply.
 
-        Override in drivers whose link can die silently — push/receive-mostly
-        TCP (no FIN when the device vanishes), UDP (genuinely connectionless),
-        anything where neither polling nor the transport surfaces a dead peer.
-        Return normally when the device answered; raise (TimeoutError /
-        ConnectionError / OSError) when it did not. The base class runs the
-        probe every HEALTH_INTERVAL_S under a HEALTH_TIMEOUT_S deadline and,
-        after HEALTH_MAX_FAILURES consecutive misses, tears the transport down
-        with a typed ``no_response`` fault so the platform reconnects and the
-        device card shows the real cause. Overriding this is the whole
-        opt-in — connect() starts the loop, disconnect and the transport-drop
-        cleanup stop it.
+        Override in drivers whose link can die silently: push/receive-mostly
+        TCP (no FIN when the device vanishes), UDP, anything where neither
+        polling nor the transport surfaces a dead peer. Return normally when
+        the device answered; raise when it did not. _health_loop runs it
+        (see the HEALTH_* attributes). Overriding this is the whole opt-in:
+        connect() starts the loop, disconnect and the transport-drop cleanup
+        stop it.
 
-        The probe answers one question, whether the link is up, so:
-
-        - Ask something every unit answers however it is set up: a firmware
-          or model query, a no-op, the protocol's own keep-alive. Never an
-          address from the device's configuration (a zone, register, object,
-          display ID or workspace). A wrong setting would read as a dead
-          device, and a reconnect never fixes a setting, so the device would
-          drop every few intervals for as long as it runs. A wrong setting is
-          reported where it shows: a child's fault, ``last_error``, or a
-          typed ``invalid_config``.
-        - Any reply proves the link is up, an error included. The loop counts
-          every exception as a miss, so catch the protocol's own "the device
-          answered with an error" (a NAK, an exception response, an error
+        - Ask something every unit answers however it is set up (a firmware
+          or model query, a no-op, the protocol's keep-alive), never an
+          address from the device's configuration. Report a wrong setting
+          as a child's fault, ``last_error`` or ``invalid_config``.
+        - Any reply means the link is up, an error included: catch the
+          protocol's error reply (a NAK, an exception response, an error
           frame) and return.
-        - When every message is addressed to something configured (a display
-          ID on a shared bus, say), ask whichever address answered most
-          recently on this connection, then the rest, and raise only when
-          none answers.
-        - Never use the probe to log back in. A session the device forgot is
-          logged in again on the connection you have when the refusal
-          arrives; a rejected credential is ``auth_failed``, which stops the
-          retries.
+        - When every message is addressed to something configured (a
+          display ID on a shared bus), ask the address that answered most
+          recently on this connection, then the rest; raise only when none
+          answers.
+        - Never log back in from here. Log in again on the connection you
+          have when the refusal arrives; a rejected credential is
+          ``auth_failed``.
         """
         raise NotImplementedError
 
