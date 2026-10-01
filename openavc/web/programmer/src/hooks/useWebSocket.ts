@@ -10,6 +10,7 @@ import { useUiFilesStore } from "../store/uiFilesStore";
 import { useDiscoveryStore } from "../store/discoveryStore";
 import { usePluginStore } from "../store/pluginStore";
 import { usePanelDevicesStore } from "../store/panelDevicesStore";
+import { useDriverBuilderStore } from "../store/driverBuilderStore";
 import { invalidatePluginMacroActions } from "../components/macros/pluginMacroActions";
 import { showSuccess, showInfo, showError } from "../store/toastStore";
 import type { ProjectConfig } from "../api/types";
@@ -441,6 +442,13 @@ export function useWebSocket() {
       // only; the notice and the Dashboard's Panels card read the store.
       if (msg.type === "panel.devices.changed") {
         usePanelDevicesStore.getState().applyChange(msg);
+      }
+
+      // A driver was installed, updated or removed, by this tab or any other
+      // door (Discovery, a device page, the assistant, an upload, a project
+      // that brought its drivers). Drivers > Installed and the Builder follow.
+      if (msg.type === "drivers.changed") {
+        useDriverBuilderStore.getState().refreshDriverLists().catch(console.error);
       }
 
       // Plugin events — refresh plugin list AND macro builder's plugin

@@ -610,6 +610,10 @@ async def import_library_project(request: Request) -> dict[str, Any]:
     except ValueError as e:
         raise _api_error(422, f"Invalid project file '{filename}'", e)
 
+    if result.get("installed_drivers"):
+        from openavc.api.routes.drivers import announce_drivers_changed
+        await announce_drivers_changed()
+
     return {
         "status": "imported",
         "project_id": result["id"],
@@ -660,6 +664,9 @@ async def open_from_library(data: LibraryOpenRequest) -> dict[str, Any]:
         "source": "library",
     })
     await engine.reload_project()
+    # A saved project installs the drivers it carries as it opens.
+    from openavc.api.routes.drivers import announce_drivers_changed
+    await announce_drivers_changed()
 
     return {"status": "created", "project_name": data.project_name}
 

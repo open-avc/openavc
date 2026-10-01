@@ -47,6 +47,32 @@ from openavc.drivers.registry import (
 
 log = get_logger(__name__)
 
+
+async def announce_drivers_changed(driver_id: str | None = None) -> None:
+    """Tell every open Programmer that the drivers on this server changed.
+
+    The IDE keeps its driver lists (Drivers > Installed, the Builder's
+    definitions) in a store that only reloads when that store does the
+    installing. Many installs happen elsewhere: Discovery's Install & Add, a
+    device page's Install, the AI's install tool, an upload, a Builder save,
+    a Python driver edit, a project that brings its own drivers, another
+    browser. So the server says it once, at every door that writes a driver,
+    and every Programmer refreshes. ``driver_id`` is left out when a door
+    wrote several (or cannot say which).
+    """
+    from openavc.api._engine import get_engine_optional
+
+    engine = get_engine_optional()
+    if engine is None:
+        return
+    try:
+        message: dict[str, Any] = {"type": "drivers.changed"}
+        if driver_id:
+            message["driver_id"] = driver_id
+        await engine.ws.broadcast(message, client_type="programmer")
+    except Exception:
+        log.exception("Could not announce the driver change for '%s'", driver_id)
+
 router = APIRouter()
 
 
@@ -716,6 +742,7 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
     except Exception:
         log.exception("Failed to retry orphans after install")
 
+    await announce_drivers_changed(body.driver_id)
     return {
         "status": "installed",
         "driver_id": body.driver_id,
@@ -826,6 +853,7 @@ async def upload_driver(request: Request) -> dict[str, Any]:
     except Exception:
         log.exception("Failed to retry orphans after upload")
 
+    await announce_drivers_changed(driver_id)
     return {
         "status": "uploaded",
         "driver_id": driver_id,
@@ -973,6 +1001,7 @@ async def upload_driver_bundle(request: Request) -> dict[str, Any]:
     except Exception:
         log.exception("Failed to retry orphans after bundle upload")
 
+    await announce_drivers_changed(driver_id)
     return {
         "status": "uploaded",
         "driver_id": driver_id,
@@ -1131,6 +1160,7 @@ async def uninstall_driver(driver_id: str) -> dict[str, Any]:
     from openavc.api.discovery import refresh_all_device_matches
     await refresh_all_device_matches()
 
+    await announce_drivers_changed(driver_id)
     return {"status": "uninstalled", "driver_id": driver_id}
 
 
@@ -1366,6 +1396,7 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
     from openavc.api.discovery import refresh_all_device_matches
     await refresh_all_device_matches()
 
+    await announce_drivers_changed(driver_id)
     return {
         "status": "updated",
         "driver_id": driver_id,
@@ -1523,6 +1554,7 @@ async def create_driver_definition(body: DriverDefinitionRequest) -> dict:
     # it's authored (mirrors the Python hot-reload path; no full reload needed).
     reconnected = await _get_engine().devices.reload_driver(driver_def["id"])
 
+    await announce_drivers_changed(driver_def["id"])
     return {"status": "created", "driver_id": driver_def["id"], "devices_reconnected": reconnected}
 
 
@@ -1600,6 +1632,7 @@ async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest
         restore_driver_registration(driver_id, dirs)
         reconnected = reconnected + await engine.devices.reload_driver(driver_id)
 
+    await announce_drivers_changed(driver_def["id"])
     return {"status": "updated", "driver_id": driver_def["id"], "devices_reconnected": reconnected}
 
 
@@ -1679,6 +1712,7 @@ async def patch_driver_definition(driver_id: str, body: dict) -> dict:
     register_driver(driver_class)
     reconnected = await _get_engine().devices.reload_driver(driver_id)
 
+    await announce_drivers_changed(driver_id)
     return {"status": "updated", "driver_id": driver_id, "devices_reconnected": reconnected}
 
 
@@ -1714,6 +1748,7 @@ async def delete_driver_definition_endpoint(driver_id: str) -> dict:
     if restored:
         # Reconnect devices on this driver so they pick up the restored class.
         await _get_engine().devices.reload_driver(driver_id)
+    await announce_drivers_changed(driver_id)
     return {"status": "deleted", "driver_id": driver_id, "builtin_restored": restored}
 
 

@@ -89,6 +89,9 @@ interface DriverBuilderState {
   loadRegisteredDrivers: () => Promise<void>;
   loadCommunityDrivers: () => Promise<void>;
   loadInstalledDrivers: () => Promise<void>;
+  /** Reload every list a driver install, update or removal changes. Called
+   *  when the server says a driver changed, whoever changed it. */
+  refreshDriverLists: () => Promise<void>;
   installDriver: (driverId: string, fileUrl: string, minPlatformVersion?: string) => Promise<void>;
   uninstallDriver: (driverId: string) => Promise<void>;
   updateDriver: (driverId: string, fileUrl: string, minPlatformVersion?: string) => Promise<string[]>;
@@ -355,6 +358,16 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
           console.error("Failed to load installed drivers:", e);
         }
       }
+    },
+
+    refreshDriverLists: async () => {
+      // The loaders are latest-wins guarded, so this overlapping an action's
+      // own refresh cannot put a stale list back.
+      await Promise.all([
+        get().loadRegisteredDrivers(),
+        get().loadInstalledDrivers(),
+        get().loadDefinitions(),
+      ]);
     },
 
     installDriver: async (driverId, fileUrl, minPlatformVersion) => {

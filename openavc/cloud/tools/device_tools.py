@@ -768,6 +768,8 @@ class DeviceToolsMixin:
         save_driver_definition(definition, save_dir)
         driver_class = create_configurable_driver_class(definition)
         register_driver(driver_class)
+        from openavc.api.routes.drivers import announce_drivers_changed
+        await announce_drivers_changed(definition["id"])
         return {"status": "created", "id": definition["id"]}
 
     async def _update_driver_definition(self, input: dict) -> Any:
@@ -828,6 +830,8 @@ class DeviceToolsMixin:
             # overriding a shipped built-in, re-register the built-in so the
             # old id keeps working; otherwise drop the stale registration.
             restore_driver_registration(driver_id, dirs)
+        from openavc.api.routes.drivers import announce_drivers_changed
+        await announce_drivers_changed(new_id)
         return {"status": "updated", "id": new_id}
 
     async def _test_driver_command(self, input: dict) -> Any:

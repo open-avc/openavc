@@ -41,6 +41,13 @@ log = get_logger(__name__)
 router = APIRouter()
 
 
+async def _announce(driver_id: str) -> None:
+    # Imported here: drivers.py imports this module.
+    from openavc.api.routes.drivers import announce_drivers_changed
+
+    await announce_drivers_changed(driver_id)
+
+
 def remove_python_companions(main_path: Path) -> list[str]:
     """Delete a Python driver's conventional sibling companions.
 
@@ -211,6 +218,7 @@ async def create_python_driver(body: PythonDriverCreateRequest) -> dict:
     if driver_class:
         register_driver(driver_class)
 
+    await _announce(body.id)
     return {"status": "created", "driver_id": body.id}
 
 
@@ -245,6 +253,7 @@ async def delete_python_driver(driver_id: str) -> dict:
     sys.modules.pop(module_name, None)
 
     log.info(f"Deleted Python driver: {driver_id}")
+    await _announce(driver_id)
     return {"status": "deleted", "driver_id": driver_id, "removed_companions": removed_companions}
 
 
@@ -278,4 +287,5 @@ async def reload_python_driver_endpoint(driver_id: str) -> dict:
         reconnected.extend(await engine.devices.reload_driver(old_driver_id))
 
     result["devices_reconnected"] = reconnected
+    await _announce(new_driver_id)
     return result
