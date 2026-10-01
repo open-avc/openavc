@@ -24,7 +24,7 @@ import re
 import zipfile
 from pathlib import Path, PurePosixPath
 
-from openavc.utils.paths import passes_through_link
+from openavc.utils.paths import files_below, passes_through_link
 
 #: What may be written into ``ui/``: the file types a browser-side control is
 #: actually built from. Notably absent are ``.py`` and ``.sh`` — this tree is
@@ -110,13 +110,8 @@ def resolve_within(ui_dir: Path, relpath: str) -> Path:
 
 
 def iter_files(ui_dir: Path) -> list[Path]:
-    """Every real file in the tree, sorted, symlinks skipped."""
-    if not ui_dir.is_dir():
-        return []
-    return [
-        f for f in sorted(ui_dir.rglob("*"))
-        if f.is_file() and not f.is_symlink()
-    ]
+    """Every real file in the tree, sorted, nothing reached through a link."""
+    return files_below(ui_dir)
 
 
 def tree_totals(ui_dir: Path, *, excluding: Path | None = None) -> tuple[int, int]:

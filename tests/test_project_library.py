@@ -25,6 +25,8 @@ from openavc.core.project_library import (
     _install_bundled_drivers,
     _project_meta,
 )
+from tests import gates
+from tests.helpers import folder_link_kinds, make_folder_link
 
 
 # --- Fixtures ---
@@ -525,6 +527,47 @@ class TestAssetPropagation:
                         "Proj", "", assets_dir=assets)
 
         assert (tmp_lib / "proj" / "assets" / "logo.png").read_bytes() == b"PNGDATA"
+
+    @pytest.mark.parametrize("kind", folder_link_kinds())
+    def test_a_saved_copy_holds_no_linked_folder(self, tmp_lib, tmp_path, sample_project_config, kind):
+        """The library copy carries what is in the project, not what a linked
+        folder in it points to elsewhere on the disk."""
+        active = tmp_path / "active"
+        (active / "scripts").mkdir(parents=True)
+        (active / "assets").mkdir()
+        (active / "assets" / "logo.png").write_bytes(b"PNGDATA")
+        (active / "ui" / "dial").mkdir(parents=True)
+        (active / "ui" / "dial" / "index.html").write_text("<b>dial</b>", encoding="utf-8")
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "secret.txt").write_text("not the project's", encoding="utf-8")
+        make_folder_link(kind, active / "assets" / "shared", outside)
+        make_folder_link(kind, active / "ui" / "shared", outside)
+
+        save_to_library("proj", sample_project_config, active / "scripts", "Proj", "",
+                        assets_dir=active / "assets", ui_dir=active / "ui")
+
+        saved = tmp_lib / "proj"
+        assert sorted(
+            p.relative_to(saved).as_posix()
+            for tree in ("assets", "ui") for p in (saved / tree).rglob("*") if p.is_file()
+        ) == ["assets/logo.png", "ui/dial/index.html"]
+
+    @gates.skipif_missing(gates.SYMLINKS, gates.symlink_reason())
+    def test_a_saved_copy_holds_no_linked_file(self, tmp_lib, tmp_path, sample_project_config):
+        active = tmp_path / "active"
+        (active / "scripts").mkdir(parents=True)
+        (active / "assets").mkdir()
+        (active / "assets" / "logo.png").write_bytes(b"PNGDATA")
+        secret = tmp_path / "secret.png"
+        secret.write_bytes(b"not the project's")
+        (active / "assets" / "alias.png").symlink_to(secret)
+
+        save_to_library("proj", sample_project_config, active / "scripts", "Proj", "",
+                        assets_dir=active / "assets")
+
+        assert (tmp_lib / "proj" / "assets" / "logo.png").exists()
+        assert not (tmp_lib / "proj" / "assets" / "alias.png").exists()
 
     def test_duplicate_project_copies_assets(self, tmp_lib, sample_project_data):
         _seed_project(tmp_lib, "src", sample_project_data)

@@ -27,7 +27,7 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
-from openavc.utils.paths import safe_path_within
+from openavc.utils.paths import files_below, safe_path_within
 
 ASSETS_DIR_NAME = "assets"
 
@@ -57,12 +57,9 @@ def zip_entries(
     about what an ``assets/`` tree contains — they did, and the backup was the
     one that was wrong.
     """
-    if not assets_dir.is_dir():
-        return []
     return [
         (f"{prefix}/{f.relative_to(assets_dir).as_posix()}", f)
-        for f in sorted(assets_dir.rglob("*"))
-        if f.is_file() and not f.is_symlink()
+        for f in files_below(assets_dir)
     ]
 
 

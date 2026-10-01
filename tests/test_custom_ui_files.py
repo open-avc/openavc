@@ -25,12 +25,14 @@ from openavc.core.custom_ui import (
     MAX_FILE_SIZE,
     CustomUIPathError,
     extract_from_zip,
+    iter_files,
     normalize_relpath,
     resolve_within,
     tree_totals,
     zip_entries,
 )
 from tests import gates
+from tests.helpers import folder_link_kinds, make_folder_link
 
 # The symlink guards are checked wherever this account can make a symlink.
 _NEEDS_SYMLINKS = gates.skipif_missing(gates.SYMLINKS, gates.symlink_reason())
@@ -143,6 +145,23 @@ def test_an_archive_does_not_write_through_a_link(tmp_path):
     written = extract_from_zip(_zip_of({"ui/link.html": b"<p>replaced</p>"}), ui)
     assert written == []
     assert (ui / "real.html").read_text(encoding="utf-8") == "<p>keep</p>"
+
+
+@pytest.mark.parametrize("kind", folder_link_kinds())
+def test_a_linked_folder_is_not_listed_counted_or_exported(tmp_path, kind):
+    """The listing, the size limits and an export or backup all read the same
+    walk, and it does not go into a linked folder."""
+    ui = tmp_path / "ui"
+    (ui / "room").mkdir(parents=True)
+    (ui / "room" / "index.html").write_text("mine", encoding="utf-8")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("not the project's", encoding="utf-8")
+    make_folder_link(kind, ui / "shared", outside)
+
+    assert [f.relative_to(ui).as_posix() for f in iter_files(ui)] == ["room/index.html"]
+    assert [name for name, _ in zip_entries(ui)] == ["ui/room/index.html"]
+    assert tree_totals(ui) == (len("mine"), 1)
 
 
 def _zip_of(members: dict[str, bytes]) -> zipfile.ZipFile:

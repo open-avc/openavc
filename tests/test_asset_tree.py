@@ -12,8 +12,11 @@ import io
 import zipfile
 from pathlib import Path
 
+import pytest
+
 from openavc.core import asset_tree
 from tests import gates
+from tests.helpers import folder_link_kinds, make_folder_link
 
 
 def _zip(files: dict[str, bytes]) -> zipfile.ZipFile:
@@ -51,6 +54,21 @@ def test_collection_skips_a_symlink(tmp_path: Path):
     (assets / "link.png").symlink_to(outside)
 
     assert asset_tree.zip_entries(assets) == []
+
+
+@pytest.mark.parametrize("kind", folder_link_kinds())
+def test_collection_does_not_walk_into_a_linked_folder(tmp_path: Path, kind):
+    """An export or a backup carries what is in the tree, not what a linked
+    folder in it points to."""
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (assets / "logo.png").write_bytes(b"ours")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.png").write_bytes(b"not ours")
+    make_folder_link(kind, assets / "shared", outside)
+
+    assert [name for name, _ in asset_tree.zip_entries(assets)] == ["assets/logo.png"]
 
 
 # --- extracting the tree from an archive ------------------------------------

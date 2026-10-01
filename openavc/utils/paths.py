@@ -55,6 +55,32 @@ def passes_through_link(base: Path, relpath: str) -> bool:
     current = base
     for part in Path(relpath).parts:
         current = current / part
-        if current.is_symlink() or _is_junction(current):
+        if _is_link(current):
             return True
     return False
+
+
+def files_below(base: Path) -> list[Path]:
+    """Every regular file under ``base``, sorted, none of them reached by a link.
+
+    A linked folder is not walked into and a linked file is left out, so a
+    copy or an archive of ``base`` holds what is really in it and nothing a
+    link points to elsewhere. ``rglob`` already skips a symlinked folder but
+    walks into a junction, and keeps a symlinked file. ``base`` itself may be
+    a link, as in :func:`passes_through_link`.
+    """
+    if not base.is_dir():
+        return []
+    found: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(base):
+        here = Path(dirpath)
+        dirnames[:] = [name for name in dirnames if not _is_link(here / name)]
+        for name in filenames:
+            path = here / name
+            if path.is_file() and not _is_link(path):
+                found.append(path)
+    return sorted(found)
+
+
+def _is_link(path: Path) -> bool:
+    return path.is_symlink() or _is_junction(path)

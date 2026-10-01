@@ -37,7 +37,7 @@ from openavc.system_config import (
 )
 from openavc.utils.fileio import atomic_write_text as _atomic_write_text
 from openavc.utils.logger import get_logger
-from openavc.utils.paths import safe_path_within
+from openavc.utils.paths import files_below, safe_path_within
 from openavc.drivers.registry import is_driver_registered, register_driver
 
 log = get_logger(__name__)
@@ -116,15 +116,14 @@ def _copy_tree(src: Path, dest: Path) -> None:
     No-op when the source doesn't exist. Used so saving, duplicating, and
     opening library projects carry uploaded images/backgrounds (``assets/``)
     and hand-written custom controls (``ui/``) along, instead of leaving dead
-    asset:// references or a control that renders nothing.
+    asset:// references or a control that renders nothing. A link is not
+    followed: the copy holds what is in the tree, the same files an export
+    carries, and nothing a link points to elsewhere.
     """
-    if not src.is_dir():
-        return
-    for f in src.rglob("*"):
-        if f.is_file():
-            target = dest / f.relative_to(src)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(f, target)
+    for f in files_below(src):
+        target = dest / f.relative_to(src)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(f, target)
 
 
 #: The file trees that belong to the live project rather than to its .avc, and

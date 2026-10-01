@@ -46,6 +46,35 @@ async def wait_for_condition(
     raise TimeoutError(f"{message} within {timeout}s")
 
 
+def folder_link_kinds() -> list:
+    """The two kinds of folder link, as parameters for a test that makes one.
+
+    A symlink needs permission (the SYMLINKS gate); a junction exists only on
+    Windows and needs none there. Built when a test module asks, so a broken
+    SYMLINKS promise fails that module and not every importer of this file.
+    """
+    import os
+
+    import pytest
+
+    from tests import gates
+
+    return [
+        pytest.param("symlink", marks=gates.skipif_missing(gates.SYMLINKS, gates.symlink_reason())),
+        pytest.param("junction", marks=pytest.mark.skipif(os.name != "nt", reason="junctions are Windows-only")),
+    ]
+
+
+def make_folder_link(kind: str, link, target) -> None:
+    """Make the folder ``link`` point at the folder ``target``."""
+    if kind == "junction":
+        import _winapi
+
+        _winapi.CreateJunction(str(target), str(link))
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+
 def tunnel_stream_client(response) -> Any:
     """A stand-in httpx client whose ``.stream()`` hands back ``response``.
 
