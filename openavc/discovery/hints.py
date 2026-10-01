@@ -114,7 +114,8 @@ class ResponseMatch:
 
 
 def describe_response_match(match: ResponseMatch) -> str:
-    """Return a short ``kind:value`` description of the matcher.
+    """Return a short description of the matcher: ``regex:<pattern>``,
+    ``contains:<text>``, or ``hex aa ff`` for the bytes a reply starts with.
 
     Used by the probe runner to bake the matched pattern into evidence
     records so the scan-results "Why?" reveal can render lines like
@@ -127,7 +128,8 @@ def describe_response_match(match: ResponseMatch) -> str:
     """
     parts: list[str] = []
     if match.starts_with is not None:
-        parts.append(f"hex:{match.starts_with.hex()}")
+        # Bytes as every sentence writes them: "hex aa ff".
+        parts.append(f"hex {match.starts_with.hex(' ')}")
     if match.regex is not None and match.regex_source:
         parts.append(f"regex:{match.regex_source}")
     if match.contains is not None:
@@ -460,7 +462,7 @@ def _parse_response_match(
     """Pull ``expect:``, ``expect_regex:``, or ``expect_hex:`` out of a probe block.
 
     Spec §2 rule 3: exactly one matcher per probe. Mixing them silently
-    AND-matches both, which produces "matched hex:abcd, regex:<vendor>"
+    AND-matches both, which produces "matched hex ab cd, regex:<vendor>"
     output that's almost never the author's intent. If ``require_match``
     is True, exactly one must be present — UDP probes need a matcher to
     filter junk. A TCP probe may declare zero matchers (a "banner-read"

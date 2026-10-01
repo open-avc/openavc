@@ -488,7 +488,7 @@ def test_traffic_lines_say_what_the_bytes_do_not():
         "method": "GET", "target": "/x", "error": "timed out",
     })) == "no response to GET /x: timed out"
     assert _traffic_text(entry("udp", "rx", "\x01\x02", {"peer": "10.0.0.5:9"})) == (
-        "10.0.0.5:9: hex 0102"
+        "10.0.0.5:9: hex 01 02"
     )
     assert _traffic_text(entry("mqtt", "tx", "on", {"topic": "acme/power"})) == (
         'topic acme/power: "on"'

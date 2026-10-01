@@ -92,6 +92,7 @@ def _files(data: bytes) -> dict[str, str]:
 def _forms(value: str) -> list[str]:
     return [
         value, value.encode().hex(), value.encode().hex().upper(),
+        value.encode().hex(" "), value.encode().hex(" ").upper(),
         json.dumps(value)[1:-1],
     ]
 
@@ -226,6 +227,18 @@ async def test_the_model_name_and_model_number_are_reported_apart():
     # A number the model already holds is not said twice.
     session.footprint.ssdp["model_number"] = "3000"
     assert build_report(session)["device"]["reported"]["model_number"] is None
+
+
+def test_every_sentence_writes_bytes_one_way():
+    """A sentence writes bytes as hex pairs, ``hex aa 0b 01``; a ``hex`` field
+    holds them unspaced. A long run is cut at the same number of bytes."""
+    from openavc.audit.report import _quote, hex_pairs
+
+    assert hex_pairs("aa0b01000c") == "aa 0b 01 00 0c"
+    assert _quote({"hex": "aa0b01000c", "text": "\xaa\x0b\x01\x00\x0c"}) == "hex aa 0b 01 00 0c"
+    long = {"hex": "00" * 100, "text": "\x00" * 100}
+    assert _quote(long, limit=8) == "hex 00 00 00 00..."
+    assert _quote({"hex": "414243", "text": "ABC"}) == '"ABC"'
 
 
 def test_a_manufacturer_the_driver_supplies_reads_as_the_drivers():

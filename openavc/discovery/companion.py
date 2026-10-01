@@ -155,8 +155,8 @@ class ProbeContext:
         ``extract_vendor_strings`` finalize step.
 
         ``port`` is the UDP port the companion broadcast to and
-        ``matched_pattern`` is a short ``kind:value`` description of the
-        matcher that fired (e.g. ``"hex:deadbeef"`` /
+        ``matched_pattern`` is a short description of the
+        matcher that fired (e.g. ``"hex de ad be ef"`` /
         ``"regex:<vendor-pattern>"``). Both feed the scan-results "Why?"
         reveal — pass them so the UI can render the full §10 phrasing.
         """
@@ -182,8 +182,8 @@ class ProbeContext:
 
         Defaults ``probe_id`` to ``custom_<driver_id>_companion_tcp``.
         ``port`` is the TCP port the companion connected to.
-        ``matched_pattern`` is a short ``kind:value`` description of the
-        matcher that fired (e.g. ``"hex:aaff..."`` /
+        ``matched_pattern`` is a short description of the
+        matcher that fired (e.g. ``"hex aa ff"`` /
         ``"regex:Lightware"``). Both feed the scan-results "Why?"
         reveal — pass them so the UI can render the full §10 phrasing
         ("TCP probe on port <p> returned <excerpt>" when the response

@@ -942,7 +942,7 @@ def evidence_broadcast(
     ``udp_probe.port``) and ``matched_pattern`` is a human-readable
     description of the regex / hex / substring matcher that the
     response satisfied (e.g. ``"regex:<vendor-pattern>"``,
-    ``"hex:deadbeef"``). Both feed the scan-results "Why?" reveal.
+    ``"hex de ad be ef"``). Both feed the scan-results "Why?" reveal.
     ``driver_supplied`` names the ``txt`` fields the driver's own rule set
     to a literal (``extract_manufacturer``), not read from the reply.
     """
@@ -979,7 +979,7 @@ def evidence_active_probe(
     ``port`` is the TCP port the probe targeted (from
     ``tcp_probe.port``) and ``matched_pattern`` is a human-readable
     description of the regex / hex / substring matcher that the
-    response satisfied (e.g. ``"regex:Lightware"``, ``"hex:aaff..."``).
+    response satisfied (e.g. ``"regex:Lightware"``, ``"hex aa ff"``).
     Both feed the scan-results "Why?" reveal: the UI prefers
     "TCP probe on port <port> returned <excerpt>" when the response
     decodes to readable text and falls back to "TCP probe on port

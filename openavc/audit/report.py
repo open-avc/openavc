@@ -35,6 +35,9 @@
   ``cached`` (from an earlier fetch) or ``none``.
 - ``footprint``: every raw observation of the network check. Bytes appear as
   ``{"hex", "text"}`` with the text decoded latin-1, so every byte survives.
+  A ``hex`` field is the bytes unspaced (``aa0b01``); every sentence, in
+  ``report.json``, ``summary.html`` and ``timeline.txt`` alike, writes bytes
+  ``hex aa 0b 01`` (``hex_pairs``), as the wizard shows them.
   Each web page carries ``tries``: 2 when it did not answer the first GET
   and was asked once more (the exchange kept is the second).
 - ``evidence``: the discovery Evidence records built from those observations.
@@ -180,7 +183,8 @@
 
 **Redaction.** Every secret the person typed (a read community other than
 ``public``, a driver credential) and every credential the driver's config
-registered is replaced in every file, in its plain, JSON, HTML and hex forms,
+registered is replaced in every file, in its plain, JSON, HTML and hex forms
+(unspaced and in pairs),
 before anything is written, the driver files included (each copy says whether
 that changed it); a serial number the person asked to leave out is replaced
 the same way. Traffic is masked (``***``) as it is written out, so the hex of
@@ -258,6 +262,9 @@ def _forms(redaction: Redaction) -> list[tuple[str, str, bool]]:
         (html.escape(value), html.escape(repl), alone),
         (value.encode("utf-8").hex(), repl.encode("utf-8").hex(), False),
         (value.encode("utf-8").hex().upper(), repl.encode("utf-8").hex().upper(), False),
+        # The spaced form a sentence writes bytes in (``hex_pairs``).
+        (value.encode("utf-8").hex(" "), repl.encode("utf-8").hex(" "), False),
+        (value.encode("utf-8").hex(" ").upper(), repl.encode("utf-8").hex(" ").upper(), False),
     ]
     seen: dict[str, tuple[str, bool]] = {}
     for form, replacement, bounded in triples:
@@ -856,18 +863,28 @@ def _clock(t: float | None) -> str:
     return dt.strftime("%H:%M:%S.") + f"{dt.microsecond // 1000:03d}"
 
 
+def hex_pairs(hex_text: str) -> str:
+    """Bytes as every sentence in a report writes them, ``aa 0b 01``: two
+    digits a byte, spaced (a ``hex`` field holds the same bytes unspaced)."""
+    return " ".join(hex_text[i:i + 2] for i in range(0, len(hex_text), 2))
+
+
 def _quote(view: dict[str, str] | None, limit: int = 160) -> str:
-    """A byte view as a reader sees it: text when printable, else hex."""
+    """A byte view as a reader sees it: text when printable, else hex pairs
+    (the first ``limit / 2`` bytes)."""
     if not view:
         return "nothing"
     text = view.get("text", "")
     if not text:
         return "nothing"
     printable = all(c.isprintable() or c in "\r\n\t" for c in text)
-    shown = text.encode("unicode_escape").decode("ascii") if printable else "hex " + view.get("hex", "")
+    if not printable:
+        raw = view.get("hex", "")
+        return "hex " + hex_pairs(raw[:limit]) + ("..." if len(raw) > limit else "")
+    shown = text.encode("unicode_escape").decode("ascii")
     if len(shown) > limit:
         shown = shown[:limit] + "..."
-    return f'"{shown}"' if printable else shown
+    return f'"{shown}"'
 
 
 def _traffic_text(entry: dict[str, Any], limit: int = 400) -> str:

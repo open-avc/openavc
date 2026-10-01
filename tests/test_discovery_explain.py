@@ -324,6 +324,13 @@ class TestProbes:
                          "vendor_string")
         assert check.detail == "The device's manufacturer name is Acme Corp."
 
+    def test_a_probe_writes_its_bytes_as_hex_pairs(self):
+        hint = _hint("acme_widget", tcp_probe={
+            "port": 5000, "send_hex": "AA0B01000C", "expect_hex": "AAFF",
+        })
+        [check] = evaluate_driver_signals(hint, DeviceObservations())
+        assert check.declared == "TCP port 5000, send hex aa 0b 01 00 0c, expect hex aa ff"
+
     def test_the_companion_is_one_check(self):
         hint = _hint("acme_widget", python="acme_widget_discovery.py")
         [check] = evaluate_driver_signals(hint, DeviceObservations())
