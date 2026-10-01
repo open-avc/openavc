@@ -581,7 +581,10 @@ async def test_a_page_that_misses_the_first_request_is_asked_again(monkeypatch, 
     assert fp.web_tries == {slow_port: 2, dead_port: 2}
     assert seen == {"slow": 2, "dead": 2}
     assert fp.to_dict()["web"][str(slow_port)]["tries"] == 2
+    # The line lists pages by port number, and both ports are ephemeral, so
+    # the expected order is the sorted one, not the order they were made in.
+    pages = {bench["web"]: "Widget 3000 Login", slow_port: "HTTP 200, no title"}
+    listed = "; ".join(f"{port}: {what}" for port, what in sorted(pages.items()))
     assert check.activities["web"].message == (
-        f"Pages: {bench['web']}: Widget 3000 Login; {slow_port}: HTTP 200, no title. "
-        f"No page from {dead_port} (no answer, asked twice)."
+        f"Pages: {listed}. No page from {dead_port} (no answer, asked twice)."
     )
