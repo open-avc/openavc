@@ -200,6 +200,34 @@ async def test_the_record_has_every_section():
     json.dumps(report)
 
 
+async def test_the_model_name_and_model_number_are_reported_apart():
+    """An SSDP description's modelName and modelNumber stay two fields: a
+    driver's SSDP ``model:`` filter reads modelName alone, so a joined
+    "Widget 3000 WebRemote1.0" in the title would be copied into one."""
+    manager, session = await _session()
+    session.footprint.ssdp = {
+        "device_types": ["urn:acme-com:device:Widget:1"],
+        "model_name": "Widget 3000", "model_number": "WebRemote1.0",
+    }
+    try:
+        report = build_report(session)
+    finally:
+        await manager.shutdown()
+    reported = report["device"]["reported"]
+    assert reported["model"] == "Widget 3000"
+    assert reported["model_number"] == "WebRemote1.0"
+    assert report_filename(report).startswith("openavc-device-audit-acme-widget-3000-")
+    html = render_summary(report)
+    assert "<title>Device audit: Acme Widget 3000</title>" in html
+    identity = html.split("<h2>What the device reported</h2>")[1].split("</table>")[0]
+    assert "<th>Model</th><td>Widget 3000</td>" in identity
+    assert "<th>Model number</th><td>WebRemote1.0</td>" in identity
+
+    # A number the model already holds is not said twice.
+    session.footprint.ssdp["model_number"] = "3000"
+    assert build_report(session)["device"]["reported"]["model_number"] is None
+
+
 async def test_a_report_taken_mid_check_says_so():
     manager = AuditManager(None)
     session = await manager.start(AuditTarget(address="10.0.0.50", ip="10.0.0.50"))

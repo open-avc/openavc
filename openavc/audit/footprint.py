@@ -1108,7 +1108,8 @@ class NetworkCheck:
         if self._ssdp is not None and fp.ip in self._ssdp.results:
             result = self._ssdp.results[fp.ip]
             evidence.extend(result.to_evidence_records())
-            merge_device_info(device, result.to_device_info(), "ssdp")
+            # The model name alone: the report gives the model number apart.
+            merge_device_info(device, result.to_device_info(join_model_number=False), "ssdp")
         if self._amx is not None and fp.ip in self._amx.results:
             beacon = self._amx.results[fp.ip]
             evidence.append(beacon.to_evidence())

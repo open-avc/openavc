@@ -133,8 +133,14 @@ class SSDPResult:
             return
         self.device_types.append(v)
 
-    def to_device_info(self) -> dict[str, Any]:
-        """Convert to a dict suitable for merge_device_info()."""
+    def to_device_info(self, *, join_model_number: bool = True) -> dict[str, Any]:
+        """Convert to a dict suitable for merge_device_info().
+
+        ``model`` is the description's modelName with its modelNumber after
+        it, a label for a Discovery card. ``join_model_number=False`` keeps
+        modelName alone (the device audit, which reports the two apart:
+        a driver's SSDP ``model:`` filter reads modelName only).
+        """
         info: dict[str, Any] = {}
 
         if self.friendly_name:
@@ -145,7 +151,7 @@ class SSDPResult:
         # Use model_name, append model_number if both present
         if self.model_name:
             model = self.model_name
-            if self.model_number and self.model_number not in model:
+            if join_model_number and self.model_number and self.model_number not in model:
                 model = f"{model} {self.model_number}"
             info["model"] = model
         elif self.model_number:

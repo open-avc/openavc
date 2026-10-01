@@ -25,7 +25,10 @@
   yet).
 - ``device``: manufacturer, model and firmware as the person entered them on
   "Which driver?" (``entered``, null where left empty), and the identity the
-  device reported to the network check (``reported``).
+  device reported to the network check (``reported``: ``manufacturer``,
+  ``model``, ``model_number``, ``firmware``, ``serial_number``,
+  ``device_name``, ``hostname``, ``mac``). An SSDP description's modelName is
+  ``model`` and its modelNumber ``model_number``, never joined.
 - ``catalog``: where the driver catalog came from, when it was fetched
   (``fetched_at``, ``last_attempt``), the ``sha256`` of its ``index.json``, its
   ``driver_count``, whether it was ``reachable``, and ``used``: ``fresh``,
@@ -385,6 +388,24 @@ def place_driver_files(session: "AuditSession", redactor: "Redactor") -> list[Pl
     return placed
 
 
+def _reported(device: dict[str, Any], ssdp: dict[str, Any]) -> dict[str, Any]:
+    """The identity the network check heard, each part as the device gave it.
+
+    ``model_number`` is the SSDP description's modelNumber, kept apart from
+    ``model`` (its modelName, which is what a driver's SSDP ``model:`` filter
+    reads); null when the description gave none or the model already holds it.
+    """
+    out = {
+        key: device.get(key)
+        for key in ("manufacturer", "model", "firmware", "serial_number",
+                    "device_name", "hostname", "mac")
+    }
+    number = ssdp.get("model_number")
+    model = str(out.get("model") or "")
+    out["model_number"] = number if number and number not in model else None
+    return out
+
+
 def _entered(values: dict[str, Any]) -> dict[str, Any]:
     return {key: (values.get(key) or None) for key in ("manufacturer", "model", "firmware")}
 
@@ -589,13 +610,7 @@ def build_report(session: "AuditSession") -> dict[str, Any]:
         },
         "device": {
             "entered": _entered(getattr(session, "device_entered", None) or {}),
-            "reported": {
-                key: device.get(key)
-                for key in (
-                    "manufacturer", "model", "firmware", "serial_number",
-                    "device_name", "hostname", "mac",
-                )
-            },
+            "reported": _reported(device, fp.get("ssdp") or {}),
         },
         "catalog": (fp.get("verdict") or {}).get("catalog", {}),
         "footprint": raw_footprint,
@@ -1019,7 +1034,8 @@ def render_summary(report: dict[str, Any]) -> str:
     # Identity.
     parts.append("<h2>What the device reported</h2><table>")
     for key, label in (
-        ("manufacturer", "Manufacturer"), ("model", "Model"), ("firmware", "Firmware"),
+        ("manufacturer", "Manufacturer"), ("model", "Model"), ("model_number", "Model number"),
+        ("firmware", "Firmware"),
         ("serial_number", "Serial number"), ("device_name", "Name"), ("hostname", "Host name"),
         ("mac", "MAC address"),
     ):

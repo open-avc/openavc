@@ -50,6 +50,7 @@ DESCRIPTION = (
     '<?xml version="1.0"?><root xmlns="urn:schemas-upnp-org:device-1-0"><device>'
     f"<deviceType>{URN}</deviceType><friendlyName>Lobby Widget</friendlyName>"
     "<manufacturer>Acme</manufacturer><modelName>Widget 3000</modelName>"
+    "<modelNumber>WebRemote1.0</modelNumber>"
     "<serialNumber>AW3-0042</serialNumber></device></root>"
 )
 
@@ -335,6 +336,9 @@ async def test_the_check_records_everything_the_device_says(discovery, bench):
     # The device record a Discovery card would show.
     assert fp.device.manufacturer == "Acme"
     assert fp.device.serial_number == "AW3-0042"
+    # The description's model name alone; its model number is reported apart.
+    assert fp.device.model == "Widget 3000"
+    assert fp.ssdp["model_number"] == "WebRemote1.0"
 
     # Limits that always hold are said.
     ids = {limit.id for limit in fp.limits}

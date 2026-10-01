@@ -916,6 +916,12 @@ class TestSSDPResult:
         info = result.to_device_info()
         assert info["model"] == "UN55NU8000"  # Not duplicated
 
+    def test_to_device_info_keeps_model_name_alone_when_asked(self):
+        """The device audit reports modelName and modelNumber apart."""
+        result = SSDPResult(ip="192.168.1.65", model_name="UE55", model_number="UN55NU8000")
+        assert result.to_device_info(join_model_number=False)["model"] == "UE55"
+        assert result.to_device_info()["model"] == "UE55 UN55NU8000"
+
     def test_to_device_info_model_number_only(self):
         result = SSDPResult(ip="192.168.1.70", model_number="XYZ123")
         info = result.to_device_info()
