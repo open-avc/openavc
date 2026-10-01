@@ -705,6 +705,57 @@ class TestDriverMatching:
         assert result["identification"]["state"] == "unknown"
 
 
+class TestCategoryFromIdentifyingDriver:
+    """An identified device with no category takes its driver's own."""
+
+    _ACME = {
+        "id": "acme_dsp",
+        "name": "Acme DSP",
+        "category": "audio",
+        "manufacturer": "Acme",
+        "transport": "tcp",
+        "discovery": {"mdns": ["_acme-dsp._tcp"]},
+    }
+
+    def _device(self, **info) -> DiscoveredDevice:
+        from openavc.discovery.tier_matcher import evidence_mdns
+
+        device = DiscoveredDevice(ip="10.0.0.5", **info)
+        device.evidence_log.append(evidence_mdns("_acme-dsp._tcp"))
+        return device
+
+    async def test_identified_device_takes_the_driver_category(self):
+        engine = DiscoveryEngine()
+        engine.load_driver_hints_from_registry([dict(self._ACME)])
+        engine.results["10.0.0.5"] = self._device()
+        result = await engine.refresh_device_matches("10.0.0.5")
+        assert result["identification"]["state"] == "identified"
+        assert result["category"] == "audio"
+
+    async def test_a_category_already_on_the_device_stays(self):
+        engine = DiscoveryEngine()
+        engine.load_driver_hints_from_registry([dict(self._ACME)])
+        engine.results["10.0.0.5"] = self._device(category="display")
+        result = await engine.refresh_device_matches("10.0.0.5")
+        assert result["category"] == "display"
+
+    async def test_the_catalog_copy_supplies_it_when_the_driver_is_not_installed(self):
+        engine = DiscoveryEngine()
+        engine.load_driver_hints_from_registry([])
+        engine._rebuild_signal_index(community_drivers=[dict(self._ACME)])
+        engine.results["10.0.0.5"] = self._device()
+        result = await engine.refresh_device_matches("10.0.0.5")
+        assert result["identification"]["driver_id"] == "acme_dsp"
+        assert result["category"] == "audio"
+
+    async def test_an_unidentified_device_gets_none(self):
+        engine = DiscoveryEngine()
+        engine.load_driver_hints_from_registry([dict(self._ACME)])
+        engine.results["10.0.0.5"] = DiscoveredDevice(ip="10.0.0.5")
+        result = await engine.refresh_device_matches("10.0.0.5")
+        assert result["category"] is None
+
+
 # --- collect passive results tests ---
 
 

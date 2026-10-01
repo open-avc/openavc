@@ -50,6 +50,7 @@ from openavc.discovery.tier_matcher import (
     vendor_strings_in_text,
 )
 from openavc.discovery.result import (
+    DeviceState,
     DiscoveredDevice,
     device_info_from_evidence,
     merge_device_info,
@@ -436,6 +437,10 @@ class DiscoveryEngine:
         self.signal_index: SignalIndex = SignalIndex()
         self.tier_matcher: TierMatcher = TierMatcher(self.signal_index)
         self._installed_registry: list[dict[str, Any]] = []
+        # driver_id -> the category that driver declares (installed or
+        # catalog copy, whichever the signal index uses). An identified device
+        # with no category takes its driver's; see _fill_category_from_match.
+        self._driver_categories: dict[str, str] = {}
         # Driver-supplied Python discovery companions
         # ({driver_id: async probe}). Populated by
         # load_discovery_companions_from_dirs().
@@ -597,6 +602,14 @@ class DiscoveryEngine:
         installed_hints = load_discovery_hints(installed_kept)
         community_hints = load_discovery_hints(catalog_only)
 
+        # Every driver that can identify a device, with or without a
+        # discovery: block (a companion identifies without one).
+        self._driver_categories = {
+            str(d["id"]): str(d["category"])
+            for d in installed_kept + catalog_only
+            if d.get("id") and isinstance(d.get("category"), str) and d["category"]
+        }
+
         all_hints = installed_hints + community_hints
         self.discovery_hints = all_hints
 
@@ -710,7 +723,24 @@ class DiscoveryEngine:
             return None
 
         device.identification = self.tier_matcher.match(device.evidence_log)
+        self._fill_category_from_match(device)
         return device.to_dict()
+
+    def _fill_category_from_match(self, device: DiscoveredDevice) -> None:
+        """An identified device takes its driver's category when it has none.
+
+        The category is what the driver declares about itself, the same data
+        an ``oui:`` hint's category comes from, so core learns nothing about
+        any product here. Only an outright identification counts (a
+        "possible" names several drivers), and a category already on the
+        device stays.
+        """
+        match = device.identification
+        if match is None or match.state != DeviceState.IDENTIFIED or not match.driver_id:
+            return
+        category = self._driver_categories.get(match.driver_id)
+        if category:
+            merge_device_info(device, {"category": category}, "driver_match", fill_only=True)
 
     async def start_scan(
         self,
@@ -1651,6 +1681,7 @@ class DiscoveryEngine:
             ))
 
             device.identification = self.tier_matcher.match(device.evidence_log)
+            self._fill_category_from_match(device)
             await self._emit_device_update(device, "driver_match")
             if finalize_total > 0:
                 await self._update_intra_progress((i + 1) / finalize_total)

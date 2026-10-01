@@ -36,6 +36,7 @@ import {
   snmpCommunityField,
 } from "./discoveryViewHelpers";
 import { describeEvidence, EvidenceList } from "./discoveryEvidence";
+import { DRIVER_CATEGORIES, type CatalogCategoryId } from "../components/driver-builder/driverCategories";
 
 const HIDDEN_KEY = "openavc_discovery_hidden_ips";
 
@@ -175,7 +176,9 @@ function describeIdentificationSource(
 }
 
 type SortKey = "state" | "ip" | "manufacturer" | "category";
-type FilterCategory = "all" | "projector" | "display" | "audio" | "camera" | "switcher" | "control" | "other";
+// The catalog's categories: a device takes one from its MAC prefix or from
+// the driver that identified it, so these are the only values a filter can hit.
+type FilterCategory = "all" | CatalogCategoryId;
 
 /** Standalone view with ViewContainer header. Used when Discovery has its own sidebar tab. */
 export function DiscoveryView() {
@@ -820,12 +823,9 @@ export function DiscoveryPanel() {
           Filter:{" "}
           <select value={filterCat} onChange={(e) => setFilterCat(e.target.value as FilterCategory)}>
             <option value="all">All</option>
-            <option value="projector">Projectors</option>
-            <option value="display">Displays</option>
-            <option value="audio">Audio</option>
-            <option value="camera">Cameras</option>
-            <option value="switcher">Switchers</option>
-            <option value="control">Control</option>
+            {DRIVER_CATEGORIES.map((c) => (
+              <option key={c.value} value={c.value}>{c.label}</option>
+            ))}
           </select>
         </label>
         <label>
