@@ -2167,7 +2167,7 @@ Most OSC devices reply to the sender's port (set `listen_port: 0`, the default).
 | Behringer X32 / X32 Compact | 10023 | 0 (same socket) |
 | Behringer X-Air (XR18, XR16, XR12) | 10024 | 0 (same socket) |
 | Midas M32 | 10023 | 0 (same socket) |
-| QLab | 53000 | 0 |
+| QLab | 53000 | 53001 (UDP replies always go to this port; unused over TCP) |
 | ETC Eos | 3032 | 0 |
 | Resolume Arena | 7000 | 0 |
 | vMix | 8088 | 0 |
