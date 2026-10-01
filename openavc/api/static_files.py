@@ -31,6 +31,8 @@ from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from starlette.staticfiles import NotModifiedResponse
 
+from openavc.utils.paths import passes_through_link
+
 #: Extension -> content type for files the panel fetches from a plugin or a
 #: project's ``ui/`` tree. Anything absent is served as
 #: ``application/octet-stream`` so a browser never executes something we did
@@ -170,7 +172,7 @@ def serve_static_file(
         resolved.relative_to(base_dir.resolve())
     except ValueError:
         denied = True
-    if not denied and resolved.is_symlink():
+    if not denied and passes_through_link(base_dir, file_path):
         denied = True
 
     if denied:

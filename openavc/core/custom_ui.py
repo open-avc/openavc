@@ -10,8 +10,9 @@ drag-and-drop upload, a ``.zip`` import, and a project import or backup
 restore. A path rule spelled once at the API door would leave the archive
 doors free to write anywhere.
 
-Deliberately dependency-free (stdlib only) so ``core`` never has to reach into
-``api`` for it. Serving is the other half and lives in ``api/static_files.py``:
+Deliberately dependency-free (stdlib, plus the stdlib-only path checks in
+``utils/paths.py``) so ``core`` never has to reach into ``api`` for it.
+Serving is the other half and lives in ``api/static_files.py``:
 this module says what may be *written*, that one says what a browser is told a
 file *is*. The first is a subset of the second by construction, pinned by
 ``tests/test_custom_ui_files.py``.
@@ -22,6 +23,8 @@ from __future__ import annotations
 import re
 import zipfile
 from pathlib import Path, PurePosixPath
+
+from openavc.utils.paths import passes_through_link
 
 #: What may be written into ``ui/``: the file types a browser-side control is
 #: actually built from. Notably absent are ``.py`` and ``.sh`` — this tree is
@@ -91,16 +94,17 @@ def normalize_relpath(raw: str, *, require_extension: bool = True) -> str:
 def resolve_within(ui_dir: Path, relpath: str) -> Path:
     """Resolve a normalized relative path under ``ui_dir``.
 
-    Raises :class:`CustomUIPathError` if it escapes the tree or lands on a
-    symlink — the two things ``normalize_relpath`` cannot see, because they
-    depend on what is actually on disk.
+    Raises :class:`CustomUIPathError` if it escapes the tree or passes
+    through a link (the file, or a folder on the way to it) — the two things
+    ``normalize_relpath`` cannot see, because they depend on what is actually
+    on disk.
     """
     resolved = (ui_dir / relpath).resolve()
     try:
         resolved.relative_to(ui_dir.resolve())
     except ValueError:
         raise CustomUIPathError("That path is outside the project's custom UI folder.")
-    if resolved.is_symlink():
+    if passes_through_link(ui_dir, relpath):
         raise CustomUIPathError("Links are not allowed in custom UI files.")
     return resolved
 

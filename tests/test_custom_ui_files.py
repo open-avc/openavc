@@ -110,6 +110,41 @@ def test_resolve_within_refuses_a_symlink(tmp_path):
         resolve_within(ui, "link.html")
 
 
+@_NEEDS_SYMLINKS
+def test_resolve_within_refuses_a_link_that_stays_inside(tmp_path):
+    """A link is refused for being a link, not only for where it leads:
+    resolving a path follows its links, so the check is made before that."""
+    ui = tmp_path / "ui"
+    ui.mkdir()
+    (ui / "real.html").write_text("<p>real</p>", encoding="utf-8")
+    (ui / "link.html").symlink_to(ui / "real.html")
+    with pytest.raises(CustomUIPathError, match="Links are not allowed"):
+        resolve_within(ui, "link.html")
+
+
+@_NEEDS_SYMLINKS
+def test_resolve_within_refuses_a_path_through_a_linked_folder(tmp_path):
+    ui = tmp_path / "ui"
+    (ui / "real").mkdir(parents=True)
+    (ui / "real" / "index.html").write_text("<p>real</p>", encoding="utf-8")
+    (ui / "alias").symlink_to(ui / "real", target_is_directory=True)
+    with pytest.raises(CustomUIPathError, match="Links are not allowed"):
+        resolve_within(ui, "alias/index.html")
+    assert resolve_within(ui, "real/index.html") == (ui / "real" / "index.html").resolve()
+
+
+@_NEEDS_SYMLINKS
+def test_an_archive_does_not_write_through_a_link(tmp_path):
+    """Writing to a link's name used to overwrite the file it points at."""
+    ui = tmp_path / "ui"
+    ui.mkdir()
+    (ui / "real.html").write_text("<p>keep</p>", encoding="utf-8")
+    (ui / "link.html").symlink_to(ui / "real.html")
+    written = extract_from_zip(_zip_of({"ui/link.html": b"<p>replaced</p>"}), ui)
+    assert written == []
+    assert (ui / "real.html").read_text(encoding="utf-8") == "<p>keep</p>"
+
+
 def _zip_of(members: dict[str, bytes]) -> zipfile.ZipFile:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
@@ -266,6 +301,19 @@ def test_a_refused_page_is_a_document_too(client, project_dir, tmp_path):
     assert resp.headers["content-type"].startswith("text/html")
     assert "not yours" not in resp.text
     assert "detail" not in resp.text
+
+
+@_NEEDS_SYMLINKS
+def test_a_link_to_a_file_beside_it_is_not_served(client, project_dir):
+    """Served under the link's name, a file would also take the link's type:
+    a link named like an image could hand the panel a page."""
+    ui = project_dir / "ui"
+    ui.mkdir(parents=True, exist_ok=True)
+    (ui / "real.html").write_text("<p>real</p>", encoding="utf-8")
+    (ui / "link.html").symlink_to(ui / "real.html")
+
+    assert client.get("/api/projects/default/ui/link.html").status_code == 403
+    assert client.get("/api/projects/default/ui/real.html").status_code == 200
 
 
 def test_a_save_carries_what_the_file_will_get_wrong_in_a_room(client):

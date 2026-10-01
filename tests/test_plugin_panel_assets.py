@@ -17,6 +17,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from openavc.main import app
+from tests import gates
+
+_NEEDS_SYMLINKS = gates.skipif_missing(gates.SYMLINKS, gates.symlink_reason())
 
 
 @pytest.fixture
@@ -133,3 +136,23 @@ def test_an_unchanged_file_still_answers_304_to_both_headers(plugin_client):
     assert date_only.status_code == 304, (
         "a caller that sent no ETag is still entitled to the date comparison"
     )
+
+
+@_NEEDS_SYMLINKS
+def test_a_link_inside_the_panel_folder_is_not_served(plugin_client):
+    """A link is refused for being a link, even one to a file beside it."""
+    panel = _panel_asset(plugin_client).parent
+    (panel / "alias.js").symlink_to(panel / "widget.js")
+    assert plugin_client.get("/api/plugins/demo_plugin/panel/alias.js").status_code == 403
+    assert plugin_client.get("/api/plugins/demo_plugin/panel/widget.js").status_code == 200
+
+
+@_NEEDS_SYMLINKS
+def test_a_plugin_folder_that_is_itself_a_link_still_serves(plugin_client):
+    """Only the path below the plugin's folder is asked: a plugin linked into
+    the repo while it is developed is still served."""
+    plugin = _panel_asset(plugin_client).parent.parent
+    (plugin.parent / "linked_plugin").symlink_to(plugin, target_is_directory=True)
+    resp = plugin_client.get("/api/plugins/linked_plugin/panel/widget.js")
+    assert resp.status_code == 200, resp.text
+    assert "v1" in resp.text
