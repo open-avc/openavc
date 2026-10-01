@@ -612,6 +612,17 @@ export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
       if (!o.summary) continue;
       lines.push({ label: `${outageNames[o.kind] ?? o.kind}${suffix}`, value: o.summary });
     }
+    const confidence = d.suggested_confidence;
+    if (confidence) {
+      lines.push({
+        label: `Suggested confidence${suffix}`,
+        value: confidence.level ?? "Not enough to suggest one",
+      });
+      const holding = confidence.reasons.filter((r) => !r.held).map((r) => r.text);
+      if (holding.length > 0) {
+        lines.push({ label: `Holding it back${suffix}`, value: holding.join(" ") });
+      }
+    }
   });
   return lines;
 }

@@ -641,6 +641,13 @@ export interface AuditReportDriver {
   run: number;
   driver: { id: string; name: string; version: string; modified: boolean };
   attempts: AuditReportAttempt[];
+  /** What the run suggests for the catalog's confidence in this model, and why. */
+  suggested_confidence?: {
+    level: "full" | "partial" | null;
+    reasons: { held: boolean; text: string }[];
+  };
+  /** The catalog's Driver test report form, filled in from this run (catalog drivers only). */
+  test_report?: { url: string; fields: Record<string, string> } | null;
   commands?: { trials: AuditCommandTrial[]; changed?: AuditChangedValue[] } | null;
   settings?: { trials: AuditSettingTrial[] } | null;
   outages?: AuditOutage[];

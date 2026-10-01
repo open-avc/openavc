@@ -260,6 +260,24 @@ describe("the on-screen summary", () => {
     ]);
   });
 
+  it("says the suggested confidence and what holds it back", () => {
+    const attempt = {
+      status: "done", error: "", started_at: 100, connected_at: 100.1, declared: 2,
+      reported: 2, offline: null, contract: { counts: {} }, unprompted_replies: { count: 0 },
+      drops: 0, reconnects: 0, traffic: { count: 9, sent: 4, received: 5, not_captured: false },
+    };
+    const run = { run: 0, driver: { id: "acme", name: "Acme", version: "1.0.0", modified: false },
+      attempts: [attempt],
+      suggested_confidence: { level: "partial", reasons: [
+        { held: true, text: "Connected." },
+        { held: false, text: "1 of 2 commands tried were confirmed; not: Set Volume." },
+      ] } } as unknown as AuditReportDriver;
+    expect(driverLines([run]).slice(-2)).toEqual([
+      { label: "Suggested confidence", value: "partial" },
+      { label: "Holding it back", value: "1 of 2 commands tried were confirmed; not: Set Volume." },
+    ]);
+  });
+
   it("names the drivers a verdict points at, in its order, with each one's signals", () => {
     const port = { tier: "enrichment", source: "open_port:23", data: { kind: "open_port", value: 23 } };
     const vendor = {

@@ -137,6 +137,19 @@ export function ReportStep() {
               ))}
             </tbody>
           </table>
+          {(report.drivers ?? [])
+            .filter((d) => d.test_report?.url)
+            .map((d) => (
+              <p key={d.run} style={{ ...hintStyle, margin: "var(--space-sm) 0 0" }}>
+                <a href={d.test_report!.url} target="_blank" rel="noreferrer">
+                  Open a driver test report on GitHub
+                  {(report.drivers ?? []).filter((x) => x.test_report?.url).length > 1
+                    ? ` for ${d.driver.name}`
+                    : ""}
+                </a>
+                , with these results filled in. Download the report first and attach the file to it.
+              </p>
+            ))}
           {report.limits.length > 0 && (
             <div style={{ marginTop: "var(--space-md)" }}>
               <div style={{ fontWeight: 600, fontSize: "var(--font-size-sm)" }}>

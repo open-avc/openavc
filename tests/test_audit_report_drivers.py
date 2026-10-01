@@ -24,6 +24,7 @@ from openavc.audit.driver_choice import DriverChoice
 from openavc.audit.listen import DONE, start_listen
 from openavc.audit.passes import DriverRun, set_connection
 from openavc.audit.report import (
+    TEST_REPORT_URL_MAX,
     Redactor,
     _attempt_sentence,
     _driver_limits,
@@ -33,6 +34,8 @@ from openavc.audit.report import (
     render_summary,
     render_timeline,
     report_zip,
+    suggested_confidence,
+    driver_test_report,
 )
 from openavc.audit.session import AuditOptions, AuditSession, AuditTarget
 from openavc.core.device_traffic import get_traffic_recorder
@@ -375,6 +378,98 @@ def test_the_summary_says_when_the_device_sent_nothing_back():
     assert _attempt_sentence(attempt) == (
         "Connected 0.1 s after starting; 3 of 4 status values reported in 180 seconds of listening."
     )
+
+
+def _run_section(**over):
+    """A connected run: every value reported, nothing mishandled, two commands
+    (one answered Yes, one confirmed by its sets), one setting round-tripped."""
+    section = {
+        "driver": {"id": "acme_widget", "name": "Acme Widget", "version": "1.2.0",
+                   "source": "catalog", "files": [{"name": "acme_widget.avcdriver"}]},
+        "entered": {"manufacturer": "Acme", "model": "W-100", "firmware": "2.1"},
+        "connection": {"transport": "tcp", "config": {"host": "10.0.0.50", "port": 4999}},
+        "attempts": [{
+            "connected_at": 1.0, "contract": {"counts": {}},
+            "traffic": {"sent": 10, "received": 12, "not_captured": False},
+            "status_table": {"variables": [
+                {"name": "power", "label": "Power", "reported": True},
+                {"name": "last_error", "label": "Last Error", "reported": False},
+            ]},
+        }],
+        "commands": {"trials": [
+            {"label": "Power On", "command": "power_on", "answer": {"answer": "yes"},
+             "summary": "Power went from off to on."},
+            {"label": "Set Volume", "command": "set_volume", "answer": None,
+             "effects": [{"outcome": "confirmed"}], "summary": "Volume is now 40."},
+        ]},
+        "settings": {"trials": [{"label": "Name", "write": {"confirmed": True},
+                                 "restore": {"confirmed": True}, "summary": "Read back."}]},
+        "outages": [],
+    }
+    section.update(over)
+    return section
+
+
+def test_full_when_every_condition_holds_and_last_error_is_not_a_gap():
+    confidence = suggested_confidence(_run_section())
+    assert confidence["level"] == "full"
+    assert all(r["held"] for r in confidence["reasons"])
+
+
+def test_partial_and_none_say_what_held_them_back():
+    section = _run_section()
+    section["commands"]["trials"][1]["effects"] = [{"outcome": "different"}]
+    confidence = suggested_confidence(section)
+    assert confidence["level"] == "partial"
+    assert [r["text"] for r in confidence["reasons"] if not r["held"]] == [
+        "1 of 2 commands tried were confirmed; not: Set Volume (confirmed means the person "
+        "answered Yes, or the values it declares it sets read back)."
+    ]
+    section["commands"]["trials"][0]["answer"] = {"answer": "cant_tell"}
+    assert suggested_confidence(section)["level"] is None
+    silent = _run_section()
+    silent["attempts"][0]["traffic"] = {"sent": 1237, "received": 0, "not_captured": False}
+    texts = [r["text"] for r in suggested_confidence(silent)["reasons"] if not r["held"]]
+    assert texts[:2] == [
+        "The device sent nothing back to 1237 messages.",
+        "None of the status values came from the device; any it shows are the driver's own.",
+    ]
+    assert suggested_confidence(_run_section(attempts=[{"connected_at": None}]))["level"] is None
+
+
+def test_the_test_report_fills_the_catalog_form_by_its_ids():
+    from urllib.parse import parse_qs, urlsplit
+
+    section = _run_section()
+    section["suggested_confidence"] = suggested_confidence(section)
+    report = {"generator": {"openavc_version": "9.9.9"}, "device": {"reported": {}}}
+    filled = driver_test_report(report, section)
+    query = parse_qs(urlsplit(filled["url"]).query)
+    assert query["template"] == ["driver-test-report.yml"]
+    assert query["driver"] == ["acme_widget 1.2.0  (acme_widget.avcdriver)"]
+    assert query["models"] == ["W-100"] and query["firmware"] == ["2.1"]
+    assert query["transport"] == ["tcp, port 4999"]
+    # The form's dropdowns take no value from a link, so the level is in the notes.
+    assert "confidence" not in query
+    assert "The audit suggests confidence: full." in query["notes"][0]
+    assert "Power On: Power went from off to on." in query["worked"][0]
+    assert "OpenAVC 9.9.9" in query["notes"][0]
+    # A driver the catalog does not carry has no catalog report to open.
+    section["driver"]["source"] = "imported"
+    assert driver_test_report(report, section) is None
+
+
+def test_a_long_test_report_link_is_cut_to_fit():
+    section = _run_section()
+    section["commands"]["trials"] = [
+        {"label": f"Command {n}", "answer": {"answer": "yes"}, "summary": "x" * 200}
+        for n in range(80)
+    ]
+    section["suggested_confidence"] = suggested_confidence(section)
+    filled = driver_test_report({"generator": {}, "device": {"reported": {}}}, section)
+    assert len(filled["url"]) <= TEST_REPORT_URL_MAX
+    assert "more+in+the+attached+report" in filled["url"] or "more%20in%20the%20attached%20report" in filled["url"]
+    assert filled["fields"]["worked"].count("Command") == 80  # the record keeps everything
 
 
 def test_traffic_lines_say_what_the_bytes_do_not():

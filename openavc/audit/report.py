@@ -137,6 +137,12 @@
     "after"}``, the value read back and how many seconds after the write;
     ``restore.automatic`` when the audit put it back as the driver stopped)
     and ``summary``.
+  - ``suggested_confidence``: ``level`` (``full``, ``partial`` or null) and
+    the ``reasons`` it rests on, each ``{"held", "text"}`` (the rule is
+    ``suggested_confidence``'s docstring).
+  - ``test_report``: the catalog's Driver test report form filled in from
+    this run (``fields`` by the form's ids, and the ``url`` that opens it),
+    or null for a driver the catalog does not carry.
   - ``outages``: each power cycle and cable pull, in order: ``number``,
     ``kind`` (``power_cycle``, ``cable_pull``), ``status`` (``done`` or
     ``stopped``, with ``end_reason`` and ``end_code``: ``person`` when Stop
@@ -600,7 +606,203 @@ def build_report(session: "AuditSession") -> dict[str, Any]:
         "timeline": [entry.to_dict() for entry in session.timeline],
         "limits": limits,
     }
-    return redactor.tree(report)
+    report = redactor.tree(report)
+    # Read off the redacted record, so neither can carry a secret.
+    for section in report["drivers"]:
+        section["suggested_confidence"] = suggested_confidence(section)
+        section["test_report"] = driver_test_report(report, section)
+    return report
+
+
+# ---------------------------------------------------------------------------
+# Suggested confidence, and the driver test report
+# ---------------------------------------------------------------------------
+
+# The catalog's issue form for a driver test report, and the most a link may
+# carry (GitHub answers "URI Too Long" well before a browser gives up).
+TEST_REPORT_FORM = (
+    "https://github.com/open-avc/openavc-drivers/issues/new?template=driver-test-report.yml"
+)
+TEST_REPORT_URL_MAX = 6000
+
+
+def _command_confirmed(trial: dict[str, Any]) -> bool:
+    """The person said the device did it, or every value the command
+    declares it sets read back as it should."""
+    if (trial.get("answer") or {}).get("answer") == "yes":
+        return True
+    effects = trial.get("effects") or []
+    return bool(effects) and all(e.get("outcome") in ("confirmed", "already") for e in effects)
+
+
+def suggested_confidence(section: dict[str, Any]) -> dict[str, Any]:
+    """A suggestion for the catalog's per-model confidence, with every
+    condition it rests on: ``level`` ``full`` (connected, every status value
+    reported, nothing the driver could not handle, every command tried
+    confirmed, every setting written read back and put back), ``partial``
+    (connected and at least one command confirmed) or null; ``reasons``, each
+    ``{"held", "text"}``. A command is confirmed when the person said the
+    device did it, or every value it declares it sets read back."""
+    attempts = section.get("attempts") or []
+    connected = [a for a in attempts if a.get("connected_at")]
+    reasons: list[dict[str, Any]] = []
+
+    def say(held: bool, text: str) -> bool:
+        reasons.append({"held": held, "text": text})
+        return held
+
+    ok = say(bool(connected), "Connected." if connected else "Did not connect.")
+    if not connected:
+        return {"level": None, "reasons": reasons}
+    last = connected[-1]
+    traffic = last.get("traffic") or {}
+    silent = not traffic.get("not_captured") and not traffic.get("received")
+    if not traffic.get("not_captured"):
+        received = traffic.get("received", 0)
+        ok &= say(
+            received > 0,
+            f"The device answered ({received} received)." if received
+            else f"The device sent nothing back to {traffic.get('sent', 0)} messages.",
+        )
+    # last_error is written only when something goes wrong, so an empty one
+    # is the good case, not a value missing.
+    values = [
+        v for v in (last.get("status_table") or {}).get("variables") or []
+        if v.get("name") != "last_error"
+    ]
+    missing = [str(v.get("label") or v.get("name")) for v in values if not v.get("reported")]
+    if silent:
+        ok &= say(False, "None of the status values came from the device; any it shows are "
+                         "the driver's own.")
+    else:
+        ok &= say(
+            not missing,
+            f"Every status value was reported ({len(values)})." if not missing
+            else f"{len(missing)} of {len(values)} status values were never reported: "
+                 f"{', '.join(missing[:5])}{' and more' if len(missing) > 5 else ''}.",
+        )
+    problems = sum(sum((a.get("contract") or {}).get("counts", {}).values()) for a in attempts)
+    ok &= say(
+        problems == 0,
+        "Nothing came up that the driver could not handle." if problems == 0
+        else f"{problems} times the driver met something it could not handle "
+             "(a reply no rule matched, an undeclared value).",
+    )
+    trials = (section.get("commands") or {}).get("trials") or []
+    tried: dict[str, bool] = {}
+    for trial in trials:
+        if trial.get("error"):
+            tried.setdefault(trial.get("label") or trial.get("command"), False)
+            continue
+        name = trial.get("label") or trial.get("command")
+        tried[name] = tried.get(name, False) or _command_confirmed(trial)
+    confirmed = [name for name, yes in tried.items() if yes]
+    unconfirmed = [name for name, yes in tried.items() if not yes]
+    if not tried:
+        ok &= say(False, "No command was tried.")
+    elif unconfirmed:
+        ok &= say(False, (
+            f"{len(confirmed)} of {len(tried)} commands tried were confirmed; not: "
+            f"{', '.join(unconfirmed[:5])}{' and more' if len(unconfirmed) > 5 else ''} "
+            "(confirmed means the person answered Yes, or the values it declares it sets "
+            "read back)."
+        ))
+    else:
+        say(True, f"Every command tried was confirmed ({len(tried)}).")
+    written = (section.get("settings") or {}).get("trials") or []
+    if written:
+        round_trip = [
+            t for t in written
+            if (t.get("write") or {}).get("confirmed") and (t.get("restore") or {}).get("confirmed")
+        ]
+        ok &= say(
+            len(round_trip) == len(written),
+            f"Every setting written was read back and put back ({len(written)})."
+            if len(round_trip) == len(written)
+            else f"{len(written) - len(round_trip)} of {len(written)} settings written were not "
+                 "both read back and put back.",
+        )
+    level = "full" if ok else ("partial" if confirmed else None)
+    return {"level": level, "reasons": reasons}
+
+
+def driver_test_report(report: dict[str, Any], section: dict[str, Any]) -> dict[str, Any] | None:
+    """The catalog's Driver test report, filled in from this audit: ``fields``
+    by the issue form's ids and ``url``, the form opened with them. None for
+    a driver the catalog does not carry (imported or built in)."""
+    from urllib.parse import quote
+
+    driver = section.get("driver") or {}
+    if driver.get("source") != "catalog":
+        return None
+    entered = section.get("entered") or {}
+    reported = (report.get("device") or {}).get("reported") or {}
+    connection = section.get("connection") or {}
+    config = connection.get("config") or {}
+    files = ", ".join(f.get("name", "") for f in driver.get("files") or [] if f.get("name"))
+
+    worked: list[str] = []
+    didnt: list[str] = []
+    for reason in (section.get("suggested_confidence") or {}).get("reasons") or []:
+        (worked if reason["held"] else didnt).append(reason["text"])
+    for trial in (section.get("commands") or {}).get("trials") or []:
+        line = f"{trial.get('label')}: {_trial_outcome(trial)}"
+        answer = (trial.get("answer") or {}).get("answer")
+        if trial.get("error") or answer in ("no", "partly"):
+            didnt.append(line + (f" ({ANSWER_WORDS[answer]})" if answer in ANSWER_WORDS else ""))
+        elif _command_confirmed(trial):
+            worked.append(line)
+    for trial in (section.get("settings") or {}).get("trials") or []:
+        (worked if (trial.get("write") or {}).get("confirmed") else didnt).append(
+            f"Setting {trial.get('label') or trial.get('key')}: {trial.get('summary')}"
+        )
+    for test in section.get("outages") or []:
+        if test.get("summary"):
+            worked.append(f"{str(test.get('kind', '')).replace('_', ' ').capitalize()}: {test['summary']}")
+
+    level = (section.get("suggested_confidence") or {}).get("level")
+    version = (report.get("generator") or {}).get("openavc_version")
+    model = entered.get("model") or reported.get("model") or ""
+    fields = {
+        "title": f"[Test report] {driver.get('id')} on {model or 'unknown model'}",
+        "driver": f"{driver.get('id')} {driver.get('version') or ''}".strip()
+                  + (f"  ({files})" if files else ""),
+        "models": model,
+        "firmware": entered.get("firmware") or reported.get("firmware") or "",
+        "transport": ", ".join(
+            bit for bit in (connection.get("transport"),
+                            f"port {config['port']}" if config.get("port") else "") if bit
+        ),
+        "worked": "\n".join(worked),
+        "didnt": "\n".join(didnt),
+        # A link fills the form's text fields but not its dropdowns (seen on
+        # github.com 2026-10-01), so the suggested confidence rides in the notes.
+        "notes": (
+            f"From an OpenAVC device audit (OpenAVC {version}). The audit report file is attached."
+            + (f" The audit suggests confidence: {level}." if level else "")
+        ),
+    }
+
+    def build(values: dict[str, str]) -> str:
+        return TEST_REPORT_FORM + "".join(
+            f"&{key}={quote(value, safe='')}" for key, value in values.items() if value
+        )
+
+    # The detail lives in the attached report; the link carries what fits,
+    # cutting what worked before what did not.
+    sent = dict(fields)
+    for key in ("worked", "didnt"):
+        lines = sent[key].split("\n") if sent[key] else []
+        while lines and len(build(sent)) > TEST_REPORT_URL_MAX:
+            lines.pop()
+            sent[key] = "\n".join(lines + [_MORE_IN_REPORT])
+    return {"url": build(sent), "fields": fields}
+
+
+_MORE_IN_REPORT = "(more in the attached report)"
+
+
+ANSWER_WORDS = {"no": "the person said it did not happen", "partly": "the person said it partly happened"}
 
 
 # ---------------------------------------------------------------------------
@@ -1213,6 +1415,32 @@ def _render_driver(section: dict[str, Any]) -> list[str]:
     parts.extend(_render_commands(section.get("commands")))
     parts.extend(_render_settings(section.get("settings")))
     parts.extend(_render_outages(section.get("outages")))
+    parts.extend(_render_confidence(section))
+    return parts
+
+
+def _render_confidence(section: dict[str, Any]) -> list[str]:
+    """The suggested confidence with what it rests on, and the test report."""
+    confidence = section.get("suggested_confidence") or {}
+    if not confidence:
+        return []
+    level = confidence.get("level")
+    parts = [
+        "<h3>Suggested confidence</h3>",
+        f"<p>{_e(level) if level else 'Not enough to suggest one'} "
+        "(a suggestion for how sure the driver catalog can be about this model)</p><ul>",
+    ]
+    for reason in confidence.get("reasons") or []:
+        css = "matched" if reason.get("held") else "not_matched"
+        mark = "Yes" if reason.get("held") else "No"
+        parts.append(f"<li><span class=\"{css}\">{mark}</span>: {_e(reason.get('text'))}</li>")
+    parts.append("</ul>")
+    report = section.get("test_report")
+    if report and report.get("url"):
+        parts.append(
+            f"<p><a href=\"{_e(report['url'])}\">Open a driver test report on GitHub</a>, "
+            "with these results filled in. Attach this report file to it.</p>"
+        )
     return parts
 
 
