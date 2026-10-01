@@ -714,6 +714,39 @@ class TestVendorStringIntegration:
             and d.data.get("value") == "fakevendor"
             for d in derived
         )
+        # The literal is the driver's word, not the reply's.
+        assert ev.data["driver_supplied"] == ["manufacturer"]
+        assert all(d.data.get("from_driver") is True for d in derived)
+
+    @pytest.mark.asyncio
+    async def test_a_literal_manufacturer_is_the_drivers_and_a_captured_one_the_devices(self):
+        port = _tcp_responder(b"ACME-WIDGET Vendor=Acme\n")
+        literal = _make_hint("acme_widget", tcp_probe={
+            "port": port, "send_ascii": "x", "expect": "ACME-WIDGET",
+            "extract_manufacturer": "Acme Corp",
+        })
+        ev = await run_tcp_active_probe(
+            literal.tcp_probe, target="127.0.0.1", source_ip="127.0.0.1", stagger_ms=0,
+        )
+        assert ev is not None
+        assert ev.data["driver_supplied"] == ["manufacturer"]
+        [named] = extract_vendor_strings([ev])
+        assert named.data["value"] == "acme corp"
+        assert named.data["from_driver"] is True
+
+        port = _tcp_responder(b"ACME-WIDGET Vendor=Acme\n")
+        captured = _make_hint("acme_gadget", tcp_probe={
+            "port": port, "send_ascii": "x", "expect": "ACME-WIDGET",
+            "extract": {"manufacturer": {"regex": r"Vendor=(\S+)", "group": 1}},
+        })
+        ev = await run_tcp_active_probe(
+            captured.tcp_probe, target="127.0.0.1", source_ip="127.0.0.1", stagger_ms=0,
+        )
+        assert ev is not None
+        assert "driver_supplied" not in ev.data
+        [named] = extract_vendor_strings([ev])
+        assert named.data["value"] == "acme"
+        assert "from_driver" not in named.data
 
 
 class TestBestDriverFirstIntegration:

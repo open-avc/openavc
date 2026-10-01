@@ -228,6 +228,20 @@ async def test_the_model_name_and_model_number_are_reported_apart():
     assert build_report(session)["device"]["reported"]["model_number"] is None
 
 
+def test_a_manufacturer_the_driver_supplies_reads_as_the_drivers():
+    from openavc.audit.report import _signal_text
+
+    def line(**data):
+        return _signal_text({"evidence": {"data": {"kind": "vendor_string", "value": "acme", **data}}})
+
+    assert line(source_probe_id="custom_acme_widget_tcp", from_kind="probe") == (
+        'Manufacturer "acme" named in a probe reply'
+    )
+    assert line(source_probe_id="custom_acme_widget_tcp", from_kind="probe", from_driver=True) == (
+        'Manufacturer "acme" named by the driver when its probe matched'
+    )
+
+
 async def test_a_report_taken_mid_check_says_so():
     manager = AuditManager(None)
     session = await manager.start(AuditTarget(address="10.0.0.50", ip="10.0.0.50"))

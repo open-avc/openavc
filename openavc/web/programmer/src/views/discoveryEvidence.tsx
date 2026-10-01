@@ -141,8 +141,11 @@ export function describeEvidence(ev: DiscoveryEvidence): { headline: string; det
         ? (data.raw as string) : null;
       const from = typeof data.source_probe_id === "string" ? (data.source_probe_id as string) : "";
       const kind = typeof data.from_kind === "string" ? (data.from_kind as string) : "";
+      const where = data.from_driver === true
+        ? "by the driver when its probe matched"
+        : vendorStringWhere(from, kind);
       return {
-        headline: `Manufacturer "${value}" named ${vendorStringWhere(from, kind)}`,
+        headline: `Manufacturer "${value}" named ${where}`,
         detail: raw ? `"${raw}"` : null,
       };
     }
@@ -158,7 +161,8 @@ export function describeEvidence(ev: DiscoveryEvidence): { headline: string; det
 /** Where a manufacturer string came from, as a line reads it. The server keys
  *  free text as ``greeting:<port>``, ``http_server:<port>`` or ``ssdp_server``,
  *  and a manufacturer field by the kind of evidence that carried it (a probe's
- *  own id is internal and never shown). */
+ *  own id is internal and never shown). One the driver's probe supplies
+ *  (``from_driver``) is said before this is asked. */
 function vendorStringWhere(from: string, kind: string): string {
   const [what, port] = from.split(":");
   if (what === "greeting" && port) return `in the greeting on port ${port}`;

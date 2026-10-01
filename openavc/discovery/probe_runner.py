@@ -282,6 +282,16 @@ def _apply_extract(
     return reserved, extracted
 
 
+def _driver_supplied(rules: tuple[ExtractRule, ...]) -> list[str] | None:
+    """The reserved fields a rule sets to a literal (``extract_manufacturer``):
+    the driver's word, not the device's. None when there are none."""
+    keys = sorted({
+        rule.field_name for rule in rules
+        if rule.value is not None and rule.field_name in RESERVED_EXTRACT_KEYS
+    })
+    return keys or None
+
+
 # ---------------------------------------------------------------------------
 # UDP broadcast probe runner
 # ---------------------------------------------------------------------------
@@ -472,6 +482,7 @@ async def observe_udp_probe(
                 txt=txt or None,
                 port=spec.port,
                 matched_pattern=describe_response_match(spec.response_match) or None,
+                driver_supplied=_driver_supplied(spec.extract),
             )
             matched_from.add(sender_ip)
             if obs is None:
@@ -819,5 +830,6 @@ async def observe_tcp_active_probe(
         response=response,
         port=spec.port,
         matched_pattern=matched_pattern,
+        driver_supplied=_driver_supplied(spec.extract),
     )
     return obs

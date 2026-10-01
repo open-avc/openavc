@@ -1126,6 +1126,10 @@ class NetworkCheck:
                 continue
             evidence.append(obs.evidence)
             probe_info = device_info_from_evidence(obs.evidence)
+            # A manufacturer the driver's rule supplies is not what the
+            # device reported (the evidence still says the driver named it).
+            if obs.evidence.data.get("driver_supplied"):
+                probe_info.pop("manufacturer", None)
             if probe_info:
                 merge_device_info(device, probe_info, "protocol_probe", fill_only=True)
         for raw in fp.companion_evidence:

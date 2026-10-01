@@ -620,3 +620,25 @@ async def test_a_page_that_misses_the_first_request_is_asked_again(monkeypatch, 
     assert check.activities["web"].message == (
         f"Pages: {listed}. No page from {dead_port} (no answer, asked twice)."
     )
+
+
+async def test_a_manufacturer_the_driver_supplies_is_not_what_the_device_reported(discovery, bench):
+    """``extract_manufacturer`` is the driver's word when its probe matches:
+    it still counts for matching, and the report says the driver named it,
+    but it is not part of what the device reported about itself."""
+    from openavc.discovery.probe_runner import ProbeObservation
+    from openavc.discovery.tier_matcher import evidence_active_probe
+
+    check, _ = _check(discovery, bench)
+    obs = ProbeObservation(
+        probe_id="custom_acme_widget_tcp", kind="tcp", port=bench["banner"], target=HOST,
+    )
+    obs.evidence = evidence_active_probe(
+        "custom_acme_widget_tcp", {"text": "ACME-WIDGET 3000", "manufacturer": "Acme Corp"},
+        port=bench["banner"], driver_supplied=["manufacturer"],
+    )
+    check.footprint.probes = [obs]
+    check._build_evidence()
+    assert check.footprint.device.manufacturer is None
+    [named] = [ev for ev in check.footprint.evidence if ev.data.get("kind") == "vendor_string"]
+    assert named.data["value"] == "acme corp" and named.data["from_driver"] is True

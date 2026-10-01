@@ -298,6 +298,32 @@ class TestProbes:
         check = evaluate_driver_signals(hint, DeviceObservations(evidence=[ev]))[0]
         assert check.status == MATCHED
 
+    def test_a_manufacturer_the_driver_supplies_is_not_called_the_devices(self):
+        hint = _hint(
+            "acme_widget",
+            tcp_probe={"port": 5000, "send_ascii": "ID?\r", "expect": "ACME",
+                       "extract_manufacturer": "Acme Corp"},
+            manufacturer_alias=["Acme Corp"],
+        )
+        ev = evidence_active_probe(
+            "custom_acme_widget_tcp", {"text": "ACME 3000", "manufacturer": "Acme Corp"},
+            port=5000, driver_supplied=["manufacturer"],
+        )
+        check = _by_kind(evaluate_driver_signals(hint, DeviceObservations(evidence=[ev])),
+                         "vendor_string")
+        assert check.status == MATCHED
+        assert check.detail == (
+            "The driver's probe names the manufacturer Acme Corp when it matches; "
+            "it is not read from the device's reply."
+        )
+        # Said by the device itself, it is the device's.
+        ev = evidence_active_probe(
+            "custom_acme_widget_tcp", {"text": "ACME 3000", "manufacturer": "Acme Corp"}, port=5000,
+        )
+        check = _by_kind(evaluate_driver_signals(hint, DeviceObservations(evidence=[ev])),
+                         "vendor_string")
+        assert check.detail == "The device's manufacturer name is Acme Corp."
+
     def test_the_companion_is_one_check(self):
         hint = _hint("acme_widget", python="acme_widget_discovery.py")
         [check] = evaluate_driver_signals(hint, DeviceObservations())

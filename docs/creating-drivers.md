@@ -1808,7 +1808,7 @@ Enforced at driver-load time and mirrored at catalog-build time by `openavc-driv
 2. **`tcp_probe` and `udp_probe` accept exactly one of `send_ascii` / `send_hex`.** Both is an error; omitting both is allowed for TCP connect-only banner reads.
 3. **Probes declare exactly one of `expect` / `expect_regex` / `expect_hex`.** Required for both `tcp_probe` and `udp_probe`. Regex patterns are compiled at load time — invalid patterns fail validation.
 4. **`timeout_ms` ≤ 10 000.** Hard cap.
-5. **`extract_manufacturer:` is sugar for the manufacturer-alias enrichment path.** The probe runner lifts the value into the evidence response so the matcher can pick a vendor-specific peer when this driver carries `cross_vendor: true`.
+5. **`extract_manufacturer:` is sugar for the manufacturer-alias enrichment path.** The probe runner lifts the value into the evidence response so the matcher can pick a vendor-specific peer when this driver carries `cross_vendor: true`. The value is the driver's, not the device's: a scan's **Why?** list and a device audit say the driver named that manufacturer when its probe matched.
 6. **`manufacturer_alias` is case-insensitive and de-duplicated** at parse time. Multiple drivers may declare the same alias.
 7. **Fingerprint collisions raise.** Two drivers cannot claim the same fingerprint (same kind, same source ID, same TXT filter) without explicit cross-vendor framing. The signal index raises at build time.
 8. **Template drivers exempt.** Drivers whose ID starts with `generic_` skip discovery validation entirely — they are project starting points, not discoverable devices.

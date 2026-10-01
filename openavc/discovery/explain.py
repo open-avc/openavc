@@ -613,6 +613,15 @@ def _check_soft(
             hits.append(ev)
     shown = list(dict.fromkeys(_observed_soft(ev, rule) for ev in (hits or same_kind)))
     noun = _SOFT_NOUN[rule.kind]
+    if hits and hits[0].data.get("from_driver"):
+        # extract_manufacturer: the driver's word when its probe matched.
+        return _check(
+            rule, declared=declared, status=MATCHED, observed=shown,
+            detail=(
+                f"The driver's probe names the manufacturer {shown[0]} when it matches; "
+                "it is not read from the device's reply."
+            ),
+        )
     if hits:
         return _check(
             rule, declared=declared, status=MATCHED, observed=shown,

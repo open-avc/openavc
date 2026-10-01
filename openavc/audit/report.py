@@ -1498,9 +1498,16 @@ def _signal_text(sig: dict[str, Any]) -> str:
     return source or "A signal"
 
 
+# A manufacturer the driver's own probe supplies when it matches
+# (``extract_manufacturer``): the device did not say it.
+DRIVER_NAMED = "by the driver when its probe matched"
+
+
 def _vendor_where(data: dict[str, Any]) -> str:
     """Where a manufacturer string came from (``vendorStringWhere`` in the
     IDE). A probe's own id is internal and never shown."""
+    if data.get("from_driver"):
+        return DRIVER_NAMED
     source = str(data.get("source_probe_id") or "")
     kind = str(data.get("from_kind") or "")
     what, _, port = source.partition(":")

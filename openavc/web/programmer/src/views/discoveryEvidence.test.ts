@@ -53,5 +53,10 @@ describe("the evidence lines", () => {
       kind: "vendor_string", value: "acme", raw: "Acme", source_probe_id: "urn:acme:device:W:1",
       from_kind: "ssdp",
     })).headline).toBe('Manufacturer "acme" named in the SSDP description');
+    // A manufacturer the driver's own probe supplies is the driver's word.
+    expect(describeEvidence(ev({
+      kind: "vendor_string", value: "acme", raw: "Acme", source_probe_id: "custom_acme_widget_tcp",
+      from_kind: "probe", from_driver: true,
+    })).headline).toBe('Manufacturer "acme" named by the driver when its probe matched');
   });
 });
