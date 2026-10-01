@@ -79,6 +79,11 @@ BACK_UNNOTICED_SECONDS = 30.0
 MAX_SECONDS = 15 * 60.0
 # How often the device is pinged, and how long each ping waits.
 PING_SECONDS = 1.0
+# One ping says little: a ping can be lost, and a device powering down can
+# answer once more. The device is gone after this many misses in a row and
+# back after this many replies in a row, each dated from the first of its run.
+MISSES_GONE = 2
+REPLIES_BACK = 3
 PING_TIMEOUT = 0.8
 # How often the wizard hears about a test.
 FLUSH_SECONDS = 0.5
@@ -341,6 +346,10 @@ class OutageTest:
         next_ping = 0.0
         next_flush = 0.0
         answering: bool | None = None
+        # The current run of identical answers: what, how many, since when.
+        run_alive: bool | None = None
+        run_length = 0
+        run_from = 0.0
         try:
             while self.status == RUNNING:
                 now = time.time()
@@ -352,15 +361,35 @@ class OutageTest:
                         log.debug("Audit ping failed", exc_info=True)
                         alive = None
                     now = time.time()
-                    if alive is False and answering is not False and self.unreachable_at is None:
-                        self.unreachable_at = now
-                        self._timeline("outage.unreachable", "The device stopped answering ping.")
-                    elif alive and answering is False and self.unreachable_at is not None \
-                            and self.reachable_at is None:
-                        self.reachable_at = now
-                        self._timeline("outage.reachable", "The device answers ping again.")
                     if alive is not None:
-                        answering = alive
+                        if alive is run_alive:
+                            run_length += 1
+                        else:
+                            run_alive, run_length, run_from = alive, 1, now
+                    if alive is False and run_length >= MISSES_GONE and answering is not False:
+                        answering = False
+                        if self.unreachable_at is None:
+                            self.unreachable_at = run_from
+                            self._timeline(
+                                "outage.unreachable", "The device stopped answering ping.",
+                            )
+                        elif self.reachable_at is not None and self.reconnected_at is None:
+                            # It answered for a while and went quiet again before
+                            # the driver was back: it was not back yet.
+                            self.reachable_at = None
+                            if self._ends_by == "back_unnoticed":
+                                self.ends_at = None
+                                self._ends_by = ""
+                            self._timeline(
+                                "outage.unreachable_again",
+                                "The device stopped answering ping again.",
+                            )
+                    elif alive and run_length >= REPLIES_BACK and answering is not True:
+                        if answering is False and self.unreachable_at is not None \
+                                and self.reachable_at is None:
+                            self.reachable_at = run_from
+                            self._timeline("outage.reachable", "The device answers ping again.")
+                        answering = True
                 self._step(now)
                 if now >= next_flush:
                     next_flush = now + self.flush_seconds

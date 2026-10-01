@@ -292,6 +292,48 @@ async def test_a_power_cycle_is_measured_through_production(driver):
     assert "Power and cable" in render_summary(report)
 
 
+async def test_a_stray_ping_reply_after_power_off_is_not_the_device_back(driver):
+    """A unit powering down answered one more ping a second after it went
+    dark, and the test took that reply as the unit back: every time after it
+    was measured from it. One reply is not the device back, and a device that
+    answers for a while and goes quiet again before the driver returns was
+    not back either."""
+    import time as _time
+
+    unit = Unit()
+    await unit.start()
+    session, run = await _connected(unit, [])
+    # Answering, then a miss, one stray reply and quiet; then three replies
+    # and quiet again (a boot that brings the network up and down); then
+    # whatever the unit says.
+    script = [True, True, True, False, True, False, False, False, False,
+              True, True, True, False, False, False, False]
+
+    async def pinger() -> bool:
+        return script.pop(0) if script else unit.on
+
+    try:
+        test = start_outage(session, run, POWER_CYCLE, pinger=pinger, **QUICK)
+        test.mark("off")
+        await unit.power_off()
+        await _until(lambda: not script and test.noticed_at is not None, timeout=10.0)
+        assert test.unreachable_at is not None
+        # Neither the stray reply nor the short run that went quiet again.
+        assert test.reachable_at is None
+        kinds = [e.kind for e in session.timeline]
+        assert kinds.count("outage.unreachable") == 1
+        assert "outage.unreachable_again" in kinds
+        on_at = _time.time()
+        test.mark("on")
+        await unit.power_on()
+        await _until(lambda: test.status == DONE, timeout=20.0)
+        assert test.reachable_at is not None and test.reachable_at >= on_at
+        assert test.to_dict()["measured"]["answered_after_on"] >= 0
+    finally:
+        await run.stop()
+        await unit.close()
+
+
 async def test_a_connection_that_drops_again_is_waited_out(driver):
     """A device that accepts the reconnect as it boots and then resets it (an
     amplifier did, 2.7 s in): the test records the second drop, waits for the
