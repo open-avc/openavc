@@ -70,11 +70,12 @@ function confidenceByModel(
   return out;
 }
 
-/** The confidence to show for a driver: the chosen model's when one is
- *  chosen and listed, else the manufacturer-wide one. */
+/** The confidence to show for a driver: the chosen model's, when one is
+ *  chosen and listed. With no model chosen there is none to show: the
+ *  catalog gives confidence per model. */
 export function optionConfidence(o: DriverOption, model: string | null): ModelConfidence | null {
-  if (model) return o.modelConfidence[model.trim().toLowerCase()] ?? null;
-  return o.confidence;
+  if (!model) return null;
+  return o.modelConfidence[model.trim().toLowerCase()] ?? null;
 }
 
 /** Every entry the picker can offer: catalog drivers per brand, then the
@@ -281,10 +282,10 @@ export function installState(
   return o.blockedBy ? "blocked" : "install";
 }
 
-/** The confidence the catalog gives a model, in words. */
+/** The confidence the catalog gives a model, in Browse Drivers' words. */
 export function confidenceText(c: ModelConfidence | null): string {
-  if (c === "full") return "Tested on this model";
-  if (c === "partial") return "Partly tested";
-  if (c === "untested") return "Not tested on hardware yet";
+  if (c === "full") return "Full support for this model";
+  if (c === "partial") return "Partial support for this model";
+  if (c === "untested") return "Untested on this model";
   return "";
 }

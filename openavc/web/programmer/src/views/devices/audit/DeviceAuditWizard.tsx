@@ -118,7 +118,7 @@ export function DeviceAuditWizard() {
 
   return (
     <Modal
-      label="Audit a device"
+      label="Audit a Device"
       closeOnBackdrop={false}
       closeOnEscape={false}
       panelStyle={{

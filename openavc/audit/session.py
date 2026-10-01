@@ -565,8 +565,8 @@ class AuditManager:
                 session.paused.remove(held)
                 session.add_timeline(
                     "device.released",
-                    f"{held.name} is no longer in the project, so the audit "
-                    "stopped holding it.",
+                    f"{held.name} was removed from the project, so the audit no longer "
+                    "pauses it.",
                     device_id=held.device_id,
                 )
 

@@ -233,7 +233,7 @@ async def preview_connect(driver: Any) -> ConnectPreview:
     if not isinstance(driver, ConfigurableDriver):
         return ConnectPreview(
             available=False,
-            reason="This driver's connection steps are written in code.",
+            reason="OpenAVC cannot show what this driver sends before it connects.",
         )
     definition = driver._definition
     transport_type = str(driver.config.get("transport") or definition.get("transport") or "tcp")

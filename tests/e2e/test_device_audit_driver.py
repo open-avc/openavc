@@ -230,7 +230,9 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     traffic = dialog.get_by_role("log", name="Traffic")
     expect(traffic.get_by_text('"PWR?\\r"').first).to_be_visible(timeout=EXPECT_TIMEOUT)
     expect(traffic.get_by_text('"LAMP=450"').first).to_be_visible(timeout=EXPECT_TIMEOUT)
-    expect(dialog.get_by_text("Replies no response rule matched", exact=False)).to_be_visible(
+    expect(dialog.get_by_text(
+        "Replies that matched none of the driver's rules", exact=False,
+    )).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )
     expect(dialog.get_by_text("Status values (2 of 3 reported)")).to_be_visible(
@@ -242,12 +244,14 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     expect(dialog.get_by_role("heading", name="Commands", exact=True)).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )
-    # The list says where each command stands, the driver's key ones marked;
+    # The list says where each command stands, the driver's suggested ones marked;
     # opening one shows what it takes.
-    expect(dialog.get_by_text("1 command, none tried yet · Key: 0 of 1 tried", exact=True)).to_be_visible(
+    expect(dialog.get_by_text(
+        "1 command, none tried yet · Suggested: 0 of 1 tried", exact=True,
+    )).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )
-    dialog.get_by_role("button", name="Set Input (key): Not tried").click()
+    dialog.get_by_role("button", name="Set Input (suggested): Not tried yet").click()
     dialog.get_by_role("button", name="Select...", exact=True).click()
     page.get_by_role("option", name=re.compile("^hdmi2")).click()
     dialog.get_by_role("button", name="Send", exact=True).click()
@@ -261,18 +265,18 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     expect(answers.get_by_role("button", name="Yes")).to_have_attribute(
         "aria-pressed", "true", timeout=EXPECT_TIMEOUT,
     )
-    expect(dialog.get_by_role("button", name="Set Input (key): Worked")).to_be_visible(
+    expect(dialog.get_by_role("button", name="Set Input (suggested): Worked")).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )
     expect(dialog.get_by_text(
-        "1 of 1 command tried, 1 answered · Key: 1 of 1 tried", exact=True,
+        "1 of 1 command tried, 1 answered · Suggested: 1 of 1 tried", exact=True,
     )).to_be_visible()
 
     # A device setting: written, read back, put back.
     dialog.get_by_placeholder("New value").fill("Boardroom")
     dialog.get_by_role("button", name="Write Display label, then put it back").click()
     expect(dialog.get_by_text(re.compile(
-        r"^Wrote Display label = Boardroom: the device reported it back after .* "
+        r"^Wrote Boardroom to Display label: the device reported it back after .* "
         r"Put Display label back to Lobby: the device reported it back after"
     ))).to_be_visible(timeout=EXPECT_TIMEOUT)
 
@@ -290,7 +294,7 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     )
     dialog.get_by_role("button", name="Start the power cycle test").click()
     dialog.get_by_role("button", name="I turned it off").click(timeout=EXPECT_TIMEOUT)
-    expect(dialog.get_by_role("row", name="Turned off you said so")).to_be_visible(
+    expect(dialog.get_by_role("row", name="Turned off yes")).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )
     dialog.get_by_role("button", name="Stop the test").click()
@@ -300,7 +304,7 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     # And the cable pull, the same way.
     dialog.get_by_role("button", name="Start the cable pull test").click()
     dialog.get_by_role("button", name="I unplugged it").click(timeout=EXPECT_TIMEOUT)
-    expect(dialog.get_by_role("row", name="Cable out you said so")).to_be_visible(
+    expect(dialog.get_by_role("row", name="Cable out yes")).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )
     expect(dialog.get_by_role("row", name=re.compile(r"^OpenAVC noticed not yet"))).to_be_visible(
@@ -321,7 +325,7 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     expect(dialog.get_by_role("row", name="Status values 3 of 3 reported")).to_be_visible()
     expect(dialog.get_by_role("row", name="Commands sent 1")).to_be_visible()
     expect(dialog.get_by_role("row", name="Did it happen 1 yes")).to_be_visible()
-    expect(dialog.get_by_role("row", name="Settings written 1: 1 read back, 1 put back")).to_be_visible()
+    expect(dialog.get_by_role("row", name="Settings written 1 (1 read back, 1 put back)")).to_be_visible()
     expect(dialog.get_by_role("row", name="Values changed Input")).to_be_visible()
 
     with page.expect_download(timeout=EXPECT_TIMEOUT) as info:

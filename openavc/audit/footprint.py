@@ -346,8 +346,10 @@ def web_summary(fp: "Footprint") -> str:
     if failed:
         parts.append(f"No page from {', '.join(failed)}.")
     others = len([p for p in fp.certificates if p not in fp.web])
-    if others:
-        parts.append(f"{others} more certificate{'s' if others != 1 else ''}.")
+    if others == 1:
+        parts.append("A certificate from 1 other port.")
+    elif others:
+        parts.append(f"Certificates from {others} other ports.")
     return " ".join(parts) or "No web page or certificate was read."
 
 
@@ -672,7 +674,7 @@ class NetworkCheck:
         if open_ports:
             message = f"Open: {', '.join(str(p) for p in open_ports)}."
         elif refused:
-            message = "No open ports; the device refused connections, so it is there."
+            message = "No open ports, but the device refused the connections, so it is on the network."
         else:
             message = "No port answered."
         self._set("ports", DONE, message)
@@ -697,10 +699,13 @@ class NetworkCheck:
 
         await asyncio.gather(*(one(p) for p in open_ports))
         spoke = [p for p in open_ports if fp.greetings[p].data]
-        message = (
-            f"Sent something unprompted: {', '.join(str(p) for p in spoke)}."
-            if spoke else "No port sent anything unprompted."
-        )
+        if len(spoke) == 1:
+            message = f"Port {spoke[0]} sent a greeting when OpenAVC connected."
+        elif spoke:
+            ports = ", ".join(str(p) for p in spoke[:-1]) + f" and {spoke[-1]}"
+            message = f"Ports {ports} sent a greeting when OpenAVC connected."
+        else:
+            message = "No port sent a greeting when OpenAVC connected."
         self._set("greetings", DONE, message)
 
     def _web_targets(self) -> tuple[dict[int, str], set[int]]:
@@ -951,9 +956,12 @@ class NetworkCheck:
         fp.companions_run = sorted(companions)
         total = len(tcp_specs) + len(udp_specs) + len(companions)
         if not total:
-            self._set("probes", SKIPPED, "No driver declares a check this device could answer.")
+            self._set("probes", SKIPPED, "No driver has an identification check for this device.")
             return
-        self._set("probes", RUNNING, f"Running {total} driver identification checks.")
+        self._set(
+            "probes", RUNNING,
+            f"Running {total} identification check{'s' if total != 1 else ''}.",
+        )
 
         async def udp(spec) -> list[ProbeObservation]:
             observed = await observe_udp_probe(
@@ -978,23 +986,35 @@ class NetworkCheck:
         for result in await udp_task:
             if isinstance(result, list):
                 fp.probes.extend(result)
+        answered: set[str] = set()
         if companions:
-            await self._companions(companions)
-        matched = sorted({o.probe_id for o in fp.probes if o.matched})
-        self._set(
-            "probes", DONE,
-            f"{len(matched)} of {total} matched." if matched
-            else f"None of {total} matched.",
-        )
+            answered = await self._companions(companions)
+        matched = len({o.probe_id for o in fp.probes if o.matched}) + len(answered)
+        if total == 1:
+            message = (
+                "The one identification check matched this device." if matched
+                else "The one identification check did not match this device."
+            )
+        elif matched:
+            message = f"{matched} of {total} identification checks matched this device."
+        else:
+            message = f"None of the {total} identification checks matched this device."
+        self._set("probes", DONE, message)
 
-    async def _companions(self, companions: dict[str, Any]) -> None:
+    async def _companions(self, companions: dict[str, Any]) -> set[str]:
+        """Run each companion check; the drivers whose check said something
+        about this device."""
         fp = self.footprint
         by_port = {port: (fp.ip,) for port in fp.open_ports()}
+        answered: set[str] = set()
 
-        async def emit(host: str, ev: Evidence) -> None:
-            if host != fp.ip:
-                return
-            fp.companion_evidence.append(ev.to_dict())
+        def emit_for(driver_id: str):
+            async def emit(host: str, ev: Evidence) -> None:
+                if host != fp.ip:
+                    return
+                fp.companion_evidence.append(ev.to_dict())
+                answered.add(driver_id)
+            return emit
 
         companion_log = logging.getLogger("discovery.companion.run")
         runs = [
@@ -1004,12 +1024,13 @@ class NetworkCheck:
                 target_subnets=(f"{fp.ip}/32",),
                 timeout_seconds=DEFAULT_PROBE_TIMEOUT_SECONDS,
                 log=companion_log,
-                _emit_for_host=emit,
+                _emit_for_host=emit_for(driver_id),
                 hosts_by_open_port=by_port,
             ))
             for driver_id, probe_fn in companions.items()
         ]
         await asyncio.gather(*runs, return_exceptions=True)
+        return answered
 
     async def _late_mac(self) -> None:
         """The MAC address, read once this computer has talked to the device."""
@@ -1037,7 +1058,7 @@ class NetworkCheck:
             else:
                 fp.add_limit(
                     "mac_unread",
-                    "This computer's address table has no MAC address for the device.",
+                    "OpenAVC could not read the device's MAC address from this computer.",
                 )
 
     # -- evidence and verdict -------------------------------------------------
@@ -1202,7 +1223,7 @@ class NetworkCheck:
                 fp.add_limit(
                     f"{key}_silent",
                     f"This computer heard no {name} from any device, so a firewall may be "
-                    f"blocking it. That the device sent none is not proven.",
+                    f"blocking it. The device may still send it.",
                 )
         catalog = fp.verdict.get("catalog", {})
         if catalog.get("used") == "none":
@@ -1366,7 +1387,10 @@ def start_check(session: "AuditSession") -> None:
         except Exception as exc:
             log.exception("Network check failed")
             check.status = "failed"
-            check.error = f"The network check stopped: {exc}"
+            check.error = (
+                f"The network check stopped: {str(exc).rstrip('.')}. "
+                "Start a new audit to run it again."
+            )
             session.add_timeline("check.failed", check.error)
         finally:
             session.publish_state()

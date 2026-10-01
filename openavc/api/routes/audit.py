@@ -68,7 +68,7 @@ from openavc.api.models import (
     AuditStartRequest,
     AuditTesterRequest,
 )
-from openavc.audit.commands import commands_for
+from openavc.audit.commands import NOT_CONNECTED_YET, commands_for
 from openavc.audit.footprint import open_for_session, resolve_address, start_check
 from openavc.audit.listen import start_listen
 from openavc.audit.origin import device_target, origin_for
@@ -135,7 +135,11 @@ def manager_or_none() -> AuditManager | None:
 
 def _get_manager() -> AuditManager:
     if _manager is None:
-        raise HTTPException(status_code=503, detail="Device audits are not available yet.")
+        raise HTTPException(
+            status_code=503,
+            detail="Device audits are not available yet. Wait for OpenAVC to finish starting, "
+                   "then try again.",
+        )
     return _manager
 
 
@@ -190,7 +194,7 @@ async def audit_device_target(device_id: str) -> dict[str, Any]:
     target = device_target(getattr(_get_engine(), "project", None), device_id)
     if target is None:
         raise HTTPException(
-            status_code=404, detail=f"No device named '{device_id}' in this project.",
+            status_code=404, detail="That device is no longer in this project.",
         )
     return target
 
@@ -215,7 +219,7 @@ async def start_session(body: AuditStartRequest) -> dict[str, Any]:
     for device_id in [*body.pause, *([body.from_device] if body.from_device else [])]:
         if device_id not in names:
             raise HTTPException(
-                status_code=404, detail=f"No device named '{device_id}' in this project.",
+                status_code=404, detail="That device is no longer in this project.",
             )
     try:
         session = await manager.start(
@@ -339,7 +343,7 @@ async def set_session_connection(session_id: str, body: AuditConnectionRequest) 
 def _listening_run(session: AuditSession):
     run = current_run(session)
     if run is None or run.listen is None:
-        raise HTTPException(status_code=409, detail="Connect the driver first.")
+        raise HTTPException(status_code=409, detail=NOT_CONNECTED_YET)
     return run
 
 
@@ -449,7 +453,7 @@ async def list_audit_children(session_id: str, child_type: str) -> dict[str, Any
     run = _listening_run(session)
     driver = run.listen.sandbox.driver if run.listen.sandbox.started else None
     if driver is None:
-        raise HTTPException(status_code=409, detail="Connect the driver first.")
+        raise HTTPException(status_code=409, detail=NOT_CONNECTED_YET)
     types = driver.get_child_entity_types()
     if child_type not in types:
         raise HTTPException(

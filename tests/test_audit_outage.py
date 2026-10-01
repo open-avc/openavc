@@ -357,7 +357,7 @@ async def test_what_a_test_needs_before_it_starts(driver):
         with pytest.raises(AuditError, match="Finish the test that is running first"):
             start_outage(session, run, POWER_CYCLE, pinger=pinger)
         # "Back on" before anything went off says what to do instead.
-        with pytest.raises(AuditError, match="went off before"):
+        with pytest.raises(AuditError, match="Press I turned it off first"):
             test.mark("on")
     finally:
         await run.stop()
@@ -369,7 +369,7 @@ async def test_what_a_test_needs_before_it_starts(driver):
 async def test_nothing_to_drop_without_a_connected_driver(driver):
     session = AuditSession("out2", AuditTarget("127.0.0.1", "127.0.0.1"), AuditOptions())
     run = DriverRun(index=0, choice=DriverChoice(driver_id="acme_outage"))
-    with pytest.raises(AuditError, match="nothing to see drop"):
+    with pytest.raises(AuditError, match="these tests cannot run"):
         start_outage(session, run, POWER_CYCLE)
 
 
@@ -417,9 +417,9 @@ async def test_a_pulled_cable_the_driver_never_notices_is_said_plainly(driver):
         record = test.record()
         assert record["unreachable_at"] and record["reachable_at"]
         assert record["summary"].startswith(
-            "OpenAVC did not notice the device was gone within 1 second. This driver has no "
-            "liveness probe, so it notices a device that stops answering only when something "
-            "it sends fails"
+            "OpenAVC did not notice the device was gone within 1 second. This driver does not "
+            "check on its own whether the device is still there, so it notices only when "
+            "something it sends fails"
         )
         assert "outage.not_noticed" in [e.kind for e in session.timeline]
     finally:

@@ -97,14 +97,15 @@ export function OutageStep() {
     <div style={{ maxWidth: 820 }}>
       <h2 style={headingStyle}>Power and cable</h2>
       <p style={{ fontSize: "var(--font-size-sm)", margin: "0 0 var(--space-md)" }}>
-        These show how the driver copes when the device goes away and comes back. Each needs
-        someone at the device and takes a few minutes. Run one at a time. This step is optional.
+        These tests show whether OpenAVC notices when the device goes away, and how the driver
+        reconnects when it comes back. Each needs someone at the device and takes a few minutes.
+        Run one at a time. This step is optional.
       </p>
       {error && <ErrorLine text={error} />}
 
       {!connected && !running && (
         <div style={{ ...panelStyle, marginBottom: "var(--space-md)", fontSize: "var(--font-size-sm)" }}>
-          The driver is not connected to the device, so there is nothing to see drop.{" "}
+          The driver is not connected to the device, so these tests cannot run.{" "}
           <button
             type="button"
             onClick={() => useAuditStore.getState().setStep("listen")}
@@ -129,7 +130,7 @@ export function OutageStep() {
               <>
                 <div role="status" style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-xs)", marginTop: "var(--space-sm)", fontWeight: 600 }}>
                   <Loader2 size={14} style={{ ...spinStyle, flexShrink: 0, marginTop: 2 }} />
-                  <span>{outageNowText(live)}</span>
+                  <span>{outageNowText(live, now)}</span>
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-sm)", marginTop: "var(--space-sm)" }}>
                   <button

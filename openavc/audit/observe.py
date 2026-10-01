@@ -55,12 +55,12 @@ REPLY_WINDOW_SECONDS = 2.0
 
 # Each contract event kind, in words (the wizard's timeline and the report).
 CONTRACT_TEXT = {
-    "unmatched_response": "A reply matched none of the driver's response rules",
-    "undeclared_state": "The driver wrote a status value it does not declare",
-    "type_mismatch": "A status value is not of the type the driver declares",
-    "coercion_failure": "A reply's value could not be converted to its declared type",
+    "unmatched_response": "A reply matched none of the driver's rules",
+    "undeclared_state": "The driver wrote a status value it does not list",
+    "type_mismatch": "A status value is not the type the driver says it is",
+    "coercion_failure": "A reply's value could not be converted to the type the driver says it is",
     "unknown_command": "The driver was asked for a command it does not have",
-    "child_unregistered": "The driver wrote status for a channel or zone it never registered",
+    "child_unregistered": "The driver wrote status for a channel or zone it does not have",
 }
 
 # Channels a reply-to-nobody check reads: request/response byte streams.

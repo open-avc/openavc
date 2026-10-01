@@ -62,7 +62,7 @@ export function SettingsPanel({
       <p style={{ fontSize: "var(--font-size-sm)", margin: "0 0 var(--space-sm)" }}>
         This checks that a setting OpenAVC writes takes effect on the device. Enter a new value and
         press Write and put back: OpenAVC writes it, checks that the device reports it back, then
-        puts the old value back and checks that too. Try as many as are safe to change on this unit
+        puts the old value back and checks that too. Try as many as are safe to change on this device
         for a moment{first ? "; the suggested one is a good place to start." : "."}
       </p>
       <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, margin: "0 0 var(--space-sm)" }}>

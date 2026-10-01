@@ -140,7 +140,7 @@ NOT_CONNECTED_YET = "Connect the driver first, on the Connect and listen step."
 BUSY = "Wait for {label} to finish before sending another command."
 BATCH_BUSY = "Wait for the status queries to finish before sending another command."
 NO_SUCH_COMMAND = "{driver} has no command named {name}."
-NO_QUERIES = "{driver} declares no status queries that can run without a value."
+NO_QUERIES = "{driver} has no status queries that can run without a value."
 NOT_WATCHING = "No command is being watched."
 WATCH_CAP = "A command is watched for {span} at most."
 NO_SUCH_TRIAL = "There is no command number {number} to send again."
@@ -818,7 +818,7 @@ class CommandPass:
         if trial.sent_nothing:
             self.session.add_timeline(
                 "contract.command_sent_nothing",
-                f"{trial.label} returned success, but nothing was sent to the device.",
+                f"{trial.label}: the driver said it succeeded, but nothing was sent to the device.",
                 run=self.run.index, trial=trial.number, command=trial.command,
             )
         self._publish(trial)
@@ -837,6 +837,7 @@ class CommandPass:
         traffic = self._window_traffic(trial)
         changed = {c["key"] for c in trial.changes}
         driver = self._driver()
+        info = getattr(driver, "DRIVER_INFO", None) or {}
         entry = {**trial.declared, "params": self._params_of(trial.command)}
 
         if not trial.error:
@@ -855,7 +856,10 @@ class CommandPass:
                     outcome = "different"
                 else:
                     outcome = "unchanged"
-                trial.effects.append({**effect, "value": _shown(now), "outcome": outcome})
+                trial.effects.append({
+                    **effect, "label": state_label(info, key), "value": _shown(now),
+                    "outcome": outcome,
+                })
 
         query_for = trial.declared.get("query_for")
         if query_for and not trial.error:
@@ -867,7 +871,8 @@ class CommandPass:
             answered = any(e.direction == RX for e in traffic)
             value = state.get(key)
             trial.query = {
-                "state": query_for, "state_key": key, "value": _shown(value),
+                "state": query_for, "state_key": key, "label": state_label(info, key),
+                "value": _shown(value),
                 "changed": key in changed,
                 "outcome": "no_reply" if not answered
                 else ("reported" if value is not None else "not_reported"),
@@ -1193,13 +1198,13 @@ EFFECT_TEXT = {
     "different": "{state} changed to {value}, not {expected}",
     "unchanged": "{state} is still {value}, not {expected}",
     "not_reported": "the device has not reported {state}",
-    "no_value": "{state} takes a value this command was not given",
+    "no_value": "{state} was not checked: it depends on a value this command was not given",
 }
 
 
 def effect_sentence(effect: dict[str, Any]) -> str:
     return EFFECT_TEXT[effect["outcome"]].format(
-        state=effect["state"], expected=_value_text(effect["expected"]),
+        state=effect.get("label") or effect["state"], expected=_value_text(effect["expected"]),
         value=_value_text(effect.get("value")),
     )
 
@@ -1241,10 +1246,11 @@ def trial_sentence(trial: dict[str, Any]) -> str:
     parts.extend(effect_sentence(e) for e in trial.get("effects") or [])
     if trial.get("query"):
         q = trial["query"]
+        name = q.get("label") or q["state"]
         parts.append(
-            f"it reported {q['state']} as {_value_text(q['value'])}" if q["outcome"] == "reported"
+            f"it reported {name} as {_value_text(q['value'])}" if q["outcome"] == "reported"
             else "nothing came back" if q["outcome"] == "no_reply"
-            else f"a reply came, but {q['state']} was not reported"
+            else f"a reply came, but {name} was not reported"
         )
     # What else it moved, less what was already changing and what the
     # declared effect or the query already said.
@@ -1271,7 +1277,7 @@ def trial_sentence(trial: dict[str, Any]) -> str:
         if r["back_after"] is not None:
             parts.append(
                 f"the device came back {r['back_after']} s after the command "
-                f"(the driver declares {r['declared_seconds']} s)"
+                f"(the driver says up to {r['declared_seconds']} s)"
             )
         elif r["went_away_after"] is not None:
             parts.append("the device went away and had not come back when the audit stopped watching")

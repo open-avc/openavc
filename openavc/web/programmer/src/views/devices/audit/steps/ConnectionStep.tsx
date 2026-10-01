@@ -206,8 +206,7 @@ export function ConnectionStep() {
           </label>
           {savedDevice && savedDevice.secrets_set.length > 0 && (
             <div style={hintStyle}>
-              Its saved {savedDevice.secrets_set.join(" and ")} {savedDevice.secrets_set.length === 1 ? "is" : "are"} used
-              unless you type a new one here.
+              {savedSecretsText(savedDevice.secrets_set.map((k) => String(schema[k]?.label || k)))}
             </div>
           )}
         </div>
@@ -240,7 +239,7 @@ export function ConnectionStep() {
               <div style={labelStyle}>{field.label}</div>
               {field.help && <div style={{ ...hintStyle, marginTop: 0 }}>{field.help}</div>}
               <div style={{ ...hintStyle, marginTop: 0, marginBottom: "var(--space-sm)" }}>
-                Enter what this unit has: the driver works with the rows listed here.
+                List what this device has. The driver uses only the rows listed here.
               </div>
               <TableRowsEditor
                 columns={field.columns}
@@ -267,7 +266,7 @@ export function ConnectionStep() {
           style={buttonStyle("muted", busy || !loaded)}
         >
           {busy && <Loader2 size={14} style={spinStyle} />}
-          {connection ? "Save and update the preview" : "Save and show what connecting sends"}
+          Save and show what connecting sends
         </button>
       </div>
 
@@ -288,6 +287,15 @@ export function ConnectionStep() {
       </div>
     </div>
   );
+}
+
+/** The saved secrets a paused device's settings keep, named by their labels. */
+function savedSecretsText(labels: string[]): string {
+  const named =
+    labels.length <= 1 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`;
+  return labels.length === 1
+    ? `Its saved ${named} is used unless you type a new one here.`
+    : `Its saved ${named} are used unless you type new ones here.`;
 }
 
 function PreviewPanel({ connection }: { connection: audit.AuditConnection }) {

@@ -16,6 +16,7 @@ import {
   parseCommunities,
   pauseNotice,
   appendTraffic,
+  childCountText,
   currentRun,
   displayBytes,
   LIVE_TRAFFIC_KEPT,
@@ -79,6 +80,15 @@ describe("where the wizard picks up", () => {
     idle.check!.status = "idle";
     expect(checkStarted(idle)).toBe(false);
     expect(checkStarted(session())).toBe(true);
+  });
+});
+
+describe("a child type's count", () => {
+  it("names the type by its label, singular or plural", () => {
+    const labels = { one: "Processing Object", many: "Processing Objects" };
+    expect(childCountText(labels, "object", 4)).toBe("Processing Objects: 4 found");
+    expect(childCountText(labels, "object", 1)).toBe("Processing Object: 1 found");
+    expect(childCountText(undefined, "zone", 8)).toBe("zone: 8 found");
   });
 });
 
@@ -217,14 +227,14 @@ describe("the on-screen summary", () => {
       { label: "Connected", value: "Yes, 0.5 s after starting" },
       { label: "Replies", value: "28 received for 12 sent" },
       { label: "Status values", value: "5 of 7 reported" },
-      { label: "Replies not understood", value: "3 matched none of the driver's rules" },
+      { label: "Unmatched replies", value: "3 matched none of the driver's rules" },
     ]);
     const two = { run: 1, driver: { id: "acme2", name: "Acme Two", version: "", modified: true },
       attempts: [failed] } as unknown as AuditReportDriver;
     const unused = { run: 2, driver: { id: "x", name: "X", version: "", modified: false },
       attempts: [] } as unknown as AuditReportDriver;
     expect(driverLines([one, two, unused]).map((l) => l.label)).toEqual([
-      "Driver (1)", "Connected (1)", "Replies (1)", "Status values (1)", "Replies not understood (1)",
+      "Driver (1)", "Connected (1)", "Replies (1)", "Status values (1)", "Unmatched replies (1)",
       "Driver (2)", "Connected (2)", "Status values (2)",
     ]);
     expect(driverLines([two])[0].value).toBe("Acme Two, a modified copy");
@@ -255,8 +265,8 @@ describe("the on-screen summary", () => {
       { label: "Driver", value: "Acme 1.0.3" },
       { label: "Connected", value: "Yes, 0.1 s after starting" },
       { label: "Replies", value: "None: the device sent nothing back to 1237 messages" },
-      { label: "Status values", value: "3 of 4 reported, all by the driver itself" },
-      { label: "Link dropped", value: "10 times, reconnected 10 times" },
+      { label: "Status values", value: "3 of 4 reported, none of them by the device" },
+      { label: "Connection dropped", value: "10 times, reconnected 10 times" },
     ]);
   });
 
@@ -273,8 +283,8 @@ describe("the on-screen summary", () => {
         { held: false, text: "1 of 2 commands tried were confirmed; not: Set Volume." },
       ] } } as unknown as AuditReportDriver;
     expect(driverLines([run]).slice(-2)).toEqual([
-      { label: "Suggested confidence", value: "partial" },
-      { label: "Holding it back", value: "1 of 2 commands tried were confirmed; not: Set Volume." },
+      { label: "Suggested confidence", value: "Partial support" },
+      { label: "Why not full support", value: "1 of 2 commands tried were confirmed; not: Set Volume." },
     ]);
   });
 

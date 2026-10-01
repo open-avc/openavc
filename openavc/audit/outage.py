@@ -90,13 +90,13 @@ STOPPED = "stopped"
 MARKS = ("off", "on")
 
 NOT_CONNECTED = (
-    "The driver is not connected to the device now, so there is nothing to see drop. "
+    "The driver is not connected to the device, so these tests cannot run. "
     "Connect it on the Connect and listen step first."
 )
 BUSY = "Wait for {label} to finish first."
 TEST_RUNNING = "Finish the test that is running first."
 NOT_RUNNING = "No power or cable test is running."
-MARK_ORDER = "Say when it went off before saying it is back on."
+
 
 # The words for each test: its name, the person's two marks, and how the
 # sentence says the device came back.
@@ -113,6 +113,11 @@ WORDS = {
         "on": "The person said they plugged the network cable back in.",
         "back": "the cable was plugged back in",
     },
+}
+# Back on before off: the button to press first.
+MARK_ORDER = {
+    POWER_CYCLE: "Press I turned it off first.",
+    CABLE_PULL: "Press I unplugged it first.",
 }
 
 # Pings the audited device once; True when it answered.
@@ -256,7 +261,7 @@ class OutageTest:
                     self.ends_at = None
                     self._ends_by = ""
                 gone = self.gone_at()
-                after = f", {self.noticed_at - gone:.1f} s after the device went" if gone else ""
+                after = f", {self.noticed_at - gone:.1f} s after the device went away" if gone else ""
                 self._timeline("outage.noticed", f"OpenAVC noticed the device was gone{after}.")
             elif self.reconnected_at is not None and self.dropped_again_at is None:
                 self.dropped_again_at = time.time()
@@ -317,8 +322,8 @@ class OutageTest:
         if ping.get("result") != icmp.RESULT_ALIVE:
             self.ping = {
                 "used": False,
-                "why": "The device did not answer ping in the network check, so when it went "
-                       "away and came back are the person's own marks.",
+                "why": "The device did not answer ping in the network check, so the times "
+                       "come from the buttons pressed during the test.",
             }
             return
         method = ping.get("method") or icmp.METHOD_EXEC
@@ -413,7 +418,7 @@ class OutageTest:
                 self._timeline("outage.off", WORDS[self.kind]["off"])
         else:
             if self.off_at is None and self.unreachable_at is None:
-                raise AuditError(MARK_ORDER)
+                raise AuditError(MARK_ORDER[self.kind])
             if self.on_at is None:
                 self.on_at = now
                 self._timeline("outage.on", WORDS[self.kind]["on"])
@@ -556,7 +561,7 @@ def outage_sentence(record: dict[str, Any]) -> str:
             # answering ping (a service that stops before the network does).
             when = f" {-after} s before it stopped answering ping"
         elif after is not None:
-            when = f" {after} s after it went"
+            when = f" {after} s after it went away"
         else:
             when = ""
         parts.append("OpenAVC noticed the device was gone" + when + (f" ({why})" if why else ""))
@@ -569,8 +574,8 @@ def outage_sentence(record: dict[str, Any]) -> str:
         )
         if not (record.get("watch") or {}).get("liveness_probe"):
             text += (
-                ". This driver has no liveness probe, so it notices a device that stops "
-                "answering only when something it sends fails"
+                ". This driver does not check on its own whether the device is still "
+                "there, so it notices only when something it sends fails"
             )
         parts.append(text)
     if measured.get("answered_after_on") is not None:

@@ -255,7 +255,7 @@ export type CommandStatusKey =
  *  decides, and the person's answer is the word once there is one. */
 export function commandStatus(trials: AuditCommandTrial[]): { key: CommandStatusKey; text: string } {
   const last = trials[trials.length - 1];
-  if (!last) return { key: "not_tried", text: "Not tried" };
+  if (!last) return { key: "not_tried", text: "Not tried yet" };
   if (last.status !== "done") return { key: "watching", text: "Watching" };
   if (last.error) return { key: "not_accepted", text: "Not accepted" };
   if (last.batch) return { key: "batch", text: "Sent with the status queries" };
@@ -267,8 +267,9 @@ export function commandStatus(trials: AuditCommandTrial[]): { key: CommandStatus
 }
 
 /** How far through the commands the person is: "3 of 58 commands tried,
- *  2 answered · Key: 2 of 4 tried". A command counts as answered when its
- *  last try has an answer; the key part is there when the driver has key ones. */
+ *  2 answered · Suggested: 2 of 4 tried". A command counts as answered when
+ *  its last try has an answer; the suggested part is there when the driver
+ *  has suggested ones. */
 export function commandProgress(catalog: AuditCommandInfo[], trials: AuditCommandTrial[]): string {
   const n = catalog.length;
   if (n === 0) return "";
@@ -280,10 +281,10 @@ export function commandProgress(catalog: AuditCommandInfo[], trials: AuditComman
     last.size === 0
       ? `${plural(n, "command", "commands")}, none tried yet`
       : `${last.size} of ${plural(n, "command", "commands")} tried, ${answered} answered`;
-  const key = catalog.filter((c) => c.suggested);
-  if (key.length === 0) return all;
-  const keyTried = key.filter((c) => last.has(c.name)).length;
-  return `${all} · Key: ${keyTried} of ${key.length} tried`;
+  const suggested = catalog.filter((c) => c.suggested);
+  if (suggested.length === 0) return all;
+  const tried = suggested.filter((c) => last.has(c.name)).length;
+  return `${all} · Suggested: ${tried} of ${suggested.length} tried`;
 }
 
 /** The device setting to try first: a name-like one (a string) if the
@@ -336,6 +337,17 @@ export function paramsText(params: Record<string, unknown>): string {
 export const LIVE_TRAFFIC_KEPT = 500;
 
 /** Append an ``audit.traffic`` batch to what the wizard shows. */
+/** How many of one child type the driver found, by the type's own name:
+ *  "Processing Objects: 4 found". */
+export function childCountText(
+  labels: { one: string; many: string } | undefined,
+  ctype: string,
+  count: number,
+): string {
+  const name = count === 1 ? labels?.one : labels?.many;
+  return `${name || ctype}: ${count} found`;
+}
+
 /** The number a message about an audit carries: its own, or for the state
  *  sent on subscribing (which has none), the state's. */
 export function messageSeq(msg: Record<string, unknown>): number | null {
@@ -586,11 +598,11 @@ export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
       label: `Status values${suffix}`,
       value:
         `${last.reported} of ${last.declared} reported` +
-        (silent && last.reported > 0 ? ", all by the driver itself" : ""),
+        (silent && last.reported > 0 ? ", none of them by the device" : ""),
     });
     if (last.drops > 0) {
       lines.push({
-        label: `Link dropped${suffix}`,
+        label: `Connection dropped${suffix}`,
         value:
           `${plural(last.drops, "time", "times")}, reconnected ${plural(last.reconnects, "time", "times")}`,
       });
@@ -598,7 +610,7 @@ export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
     const unmatched = last.contract.counts.unmatched_response ?? 0;
     if (unmatched > 0) {
       lines.push({
-        label: `Replies not understood${suffix}`,
+        label: `Unmatched replies${suffix}`,
         value: `${unmatched} matched none of the driver's rules`,
       });
     }
@@ -608,7 +620,7 @@ export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
       const back = written.filter((t) => t.restore?.confirmed).length;
       lines.push({
         label: `Settings written${suffix}`,
-        value: `${written.length}: ${readBack} read back, ${back} put back`,
+        value: `${written.length} (${readBack} read back, ${back} put back)`,
       });
     }
     const trials = d.commands?.trials ?? [];
@@ -644,7 +656,7 @@ export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
           label: `Restart${suffix}`,
           value:
             `${t.label}: back ${r.back_after} s after the command ` +
-            `(the driver declares ${r.declared_seconds} s)`,
+            `(the driver says up to ${r.declared_seconds} s)`,
         });
       }
     }
@@ -656,16 +668,22 @@ export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
     if (confidence) {
       lines.push({
         label: `Suggested confidence${suffix}`,
-        value: confidence.level ?? "Not enough to suggest one",
+        value: confidence.level ? CONFIDENCE_WORDS[confidence.level] : "Not enough to suggest one",
       });
-      const holding = confidence.reasons.filter((r) => !r.held).map((r) => r.text);
-      if (holding.length > 0) {
-        lines.push({ label: `Holding it back${suffix}`, value: holding.join(" ") });
+      const missing = confidence.reasons.filter((r) => !r.held).map((r) => r.text);
+      if (missing.length > 0) {
+        lines.push({ label: `Why not full support${suffix}`, value: missing.join(" ") });
       }
     }
   });
   return lines;
 }
+
+/** The catalog's words for a confidence level, as Browse Drivers shows them. */
+const CONFIDENCE_WORDS: Record<"full" | "partial", string> = {
+  full: "Full support",
+  partial: "Partial support",
+};
 
 /** The drivers a verdict lists, in the server's order (the one it matched,
  *  then its candidates, then every other driver a signal points at), each
@@ -769,10 +787,20 @@ export function secondsBetween(from: number | null, to: number | null): number |
   return Math.round((to - from) * 10) / 10;
 }
 
-/** Seconds elapsed on a running clock: never below zero, since the page's
- *  clock and the server's times are read at different moments. */
+/** Whole seconds elapsed on a running clock: never below zero, since the
+ *  page's clock and the server's times are read at different moments. */
 function elapsed(from: number, now: number): number {
-  return Math.max(0, secondsBetween(from, now) ?? 0);
+  return Math.max(0, Math.floor(now - from));
+}
+
+/** A measured span as the step writes it: "12.0 s". */
+function measured(seconds: number): string {
+  return `${seconds.toFixed(1)} s`;
+}
+
+/** Whole seconds until the test ends on its own, or null before it knows. */
+function endsIn(o: AuditOutage, now: number): number | null {
+  return o.ends_at === null ? null : Math.max(0, Math.ceil(o.ends_at - now));
 }
 
 /** A power cycle whose driver notices through its liveness probe, and has not
@@ -785,7 +813,7 @@ function awaitingProbe(o: AuditOutage): boolean {
 }
 
 /** What to do now, while a test runs. */
-export function outageNowText(o: AuditOutage): string {
+export function outageNowText(o: AuditOutage, now: number): string {
   const gone = o.off_at !== null || o.unreachable_at !== null;
   const back = o.on_at !== null || o.reachable_at !== null;
   const cable = o.kind === "cable_pull";
@@ -809,21 +837,28 @@ export function outageNowText(o: AuditOutage): string {
     }
     if (o.noticed_at === null && o.not_noticed_at === null) {
       const minutes = Math.round(o.notice_ceiling_seconds / 60) || 1;
-      return (
-        `Leave it unplugged until OpenAVC notices. The table below shows it.` +
-        (o.watch.liveness_probe
-          ? ""
-          : ` This driver does not check on its own whether the device is still there, so OpenAVC ` +
-            `may not notice. The test says so when the ${minutes} minutes are up.`)
-      );
+      return o.watch.liveness_probe
+        ? `Leave it unplugged until OpenAVC notices it is gone. This driver checks every ` +
+            `${o.watch.probe_every} s, so it can take up to ${Math.ceil(o.watch.notice_within)} s. ` +
+            `The table below shows it.`
+        : `Leave it unplugged until OpenAVC notices it is gone, up to ${minutes} minutes. This ` +
+            `driver does not check on its own whether the device is still there, so OpenAVC may ` +
+            `not notice at all. The table below shows it.`;
     }
     return "Now plug the cable back in and press I plugged it back in.";
   }
-  if (o.reconnected_at === null) return "Waiting for the driver to reconnect.";
+  const left = endsIn(o, now);
+  if (o.reconnected_at === null) {
+    return o.noticed_at === null && left !== null
+      ? `OpenAVC has not noticed the device went away. The test ends in ${left} s.`
+      : "Waiting for the driver to reconnect.";
+  }
   if (o.dropped_again_at !== null && o.reconnected_again_at === null) {
     return "The connection dropped again. Waiting for the driver to reconnect.";
   }
-  return "Watching the status values come back. The test ends on its own.";
+  return left !== null
+    ? `Watching the status values come back. The test ends on its own in ${left} s.`
+    : "Watching the status values come back. The test ends on its own.";
 }
 
 /** The mark the person should press next: "off", "on", or none. */
@@ -851,16 +886,16 @@ export function outageProgress(o: AuditOutage, now: number): { label: string; va
         ? "yes"
         : o.reachable_at === null
           ? `no, for ${elapsed(o.unreachable_at, now)} s`
-          : `again, after ${secondsBetween(o.unreachable_at, o.reachable_at)} s without`,
+          : `yes again, after ${measured(o.reachable_at - o.unreachable_at)} without an answer`,
     });
   }
-  if (o.off_at !== null) lines.push({ label: offWord, value: "you said so" });
+  if (o.off_at !== null) lines.push({ label: offWord, value: "yes" });
   if (o.noticed_at !== null) {
     const after = secondsBetween(gone, o.noticed_at);
     const why = (o.reason?.detail || o.reason?.code || "").replace(/\.$/, "");
     lines.push({
       label: "OpenAVC noticed",
-      value: `${after !== null ? `${Math.max(0, after)} s after it went` : "yes"}${why ? ` (${why})` : ""}`,
+      value: `${after !== null ? `${measured(Math.max(0, after))} after it went away` : "yes"}${why ? ` (${why})` : ""}`,
     });
   } else if (o.not_noticed_at !== null) {
     lines.push({
@@ -870,24 +905,31 @@ export function outageProgress(o: AuditOutage, now: number): { label: string; va
   } else if (gone !== null && o.status === "running") {
     const waited = elapsed(gone, now);
     const left = Math.max(0, Math.ceil(o.notice_ceiling_seconds - waited));
-    lines.push({ label: "OpenAVC noticed", value: `not yet (${waited} s; ${left} s left)` });
+    lines.push({ label: "OpenAVC noticed", value: `not yet (${waited} s so far, ${left} s left)` });
   }
-  if (o.on_at !== null) lines.push({ label: onWord, value: "you said so" });
+  if (o.on_at !== null) {
+    const away = o.off_at !== null ? o.on_at - o.off_at : null;
+    const how = o.kind === "power_cycle" ? "off" : "out";
+    lines.push({
+      label: onWord,
+      value: away !== null && away >= 0 ? `yes, after ${measured(away)} ${how}` : "yes",
+    });
+  }
   if (o.reconnected_at !== null) {
     const after = secondsBetween(back, o.reconnected_at);
     lines.push({
       label: "Driver reconnected",
-      value: after !== null && after >= 0 ? `${after} s after the device was back` : "yes",
+      value: after !== null && after >= 0 ? `${measured(after)} after the device was back` : "yes",
     });
     if (o.dropped_again_at !== null) {
       lines.push({
         label: "Dropped again",
-        value: `${secondsBetween(o.reconnected_at, o.dropped_again_at)} s after reconnecting`,
+        value: `${measured(o.dropped_again_at - o.reconnected_at)} after reconnecting`,
       });
       lines.push({
         label: "Reconnected again",
         value: o.reconnected_again_at !== null
-          ? `${secondsBetween(o.dropped_again_at, o.reconnected_again_at)} s later`
+          ? `${measured(o.reconnected_again_at - o.dropped_again_at)} later`
           : o.status === "running" ? "not yet" : "no",
       });
     }

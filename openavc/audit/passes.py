@@ -399,7 +399,7 @@ async def _preview(
         result = await preview_connect(driver)
     except Exception as exc:
         log.debug("Connection preview failed", exc_info=True)
-        return {"available": False, "reason": f"The preview could not be built: {exc}",
+        return {"available": False, "reason": f"OpenAVC could not work out what connecting sends: {exc}",
                 "steps": [], "poll_interval": 0, "keep_alive_interval": 0}
     finally:
         get_secret_registry().forget(preview_id)

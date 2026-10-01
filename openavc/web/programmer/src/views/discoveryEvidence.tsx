@@ -41,22 +41,21 @@ export function describeEvidence(ev: DiscoveryEvidence): { headline: string; det
     case "ssdp": {
       const urn = sourceId ?? "(unknown device type)";
       const fields: string[] = [];
-      for (const f of ["manufacturer", "model", "friendly_name", "server"] as const) {
+      const names = { manufacturer: "manufacturer", model: "model", friendly_name: "name", server: "server" };
+      for (const [f, name] of Object.entries(names)) {
         const v = data[f];
-        if (typeof v === "string" && v) fields.push(`${f}: ${v}`);
+        if (typeof v === "string" && v) fields.push(`${name}: ${v}`);
       }
       return {
-        headline: `SSDP NOTIFY for ${urn}`,
+        headline: `SSDP announcement for ${urn}`,
         detail: fields.length > 0 ? fields.join("; ") : null,
       };
     }
     case "amx_ddp": {
-      const make = typeof data.make === "string" ? data.make : "?";
-      const model = typeof data.model === "string" ? data.model : "?";
-      return { headline: `AMX DDP beacon (make=${make}, model=${model})`, detail: null };
+      const named = [data.make, data.model].filter((v) => typeof v === "string" && v).join(" ");
+      return { headline: named ? `AMX DDP beacon: ${named}` : "AMX DDP beacon", detail: null };
     }
     case "broadcast": {
-      const probeId = sourceId ?? "(unknown probe)";
       const port = typeof data.port === "number" ? (data.port as number) : null;
       const matchedPattern = typeof data.matched_pattern === "string"
         ? (data.matched_pattern as string) : null;
@@ -64,7 +63,7 @@ export function describeEvidence(ev: DiscoveryEvidence): { headline: string; det
         ? (data.response as Record<string, unknown>) : {};
       const ip = typeof response.ip === "string" ? (response.ip as string) : null;
       const txt = data.txt && typeof data.txt === "object" ? (data.txt as Record<string, unknown>) : null;
-      const parts: string[] = [`probe ${probeId}`];
+      const parts: string[] = [];
       if (ip) parts.push(`response from ${ip}`);
       if (txt && Object.keys(txt).length > 0) parts.push(txtExcerpt(txt));
       // Spec §10 row: "UDP probe on port <port> matched <regex/hex pattern>"
@@ -75,10 +74,9 @@ export function describeEvidence(ev: DiscoveryEvidence): { headline: string; det
           : matchedPattern
             ? `UDP probe matched ${matchedPattern}`
             : "UDP probe matched";
-      return { headline, detail: parts.join("; ") };
+      return { headline, detail: parts.length > 0 ? parts.join("; ") : null };
     }
     case "probe": {
-      const probeId = sourceId ?? "(unknown probe)";
       const port = typeof data.port === "number" ? (data.port as number) : null;
       const matchedPattern = typeof data.matched_pattern === "string"
         ? (data.matched_pattern as string) : null;
@@ -107,7 +105,7 @@ export function describeEvidence(ev: DiscoveryEvidence): { headline: string; det
       } else {
         head = portLabel ? `TCP probe ${portLabel} answered` : "TCP probe answered";
       }
-      return { headline: head, detail: `probe ${probeId}` };
+      return { headline: head, detail: null };
     }
     case "oui": {
       const prefix = typeof data.value === "string" ? (data.value as string) : "(unknown prefix)";
@@ -116,7 +114,7 @@ export function describeEvidence(ev: DiscoveryEvidence): { headline: string; det
       // without one the MAC was seen and matched nothing.
       return {
         headline: vendor
-          ? `OUI lookup matched ${prefix} → ${vendor}`
+          ? `MAC address prefix ${prefix} belongs to ${vendor}`
           : `MAC address prefix ${prefix} seen`,
         detail: null,
       };
@@ -150,7 +148,7 @@ export function describeEvidence(ev: DiscoveryEvidence): { headline: string; det
     }
     case "open_port": {
       const port = data.value;
-      return { headline: `Port ${port} observed open`, detail: null };
+      return { headline: `Port ${port} is open`, detail: null };
     }
     default:
       return { headline: ev.source || "(no signal)", detail: null };
@@ -168,7 +166,7 @@ function vendorStringWhere(from: string, kind: string): string {
   if (from === "ssdp_server") return "in the SSDP server name";
   if (kind === "ssdp") return "in the SSDP description";
   if (kind === "mdns") return "in an mDNS announcement";
-  if (kind === "amx_ddp") return "in the AMX beacon";
+  if (kind === "amx_ddp") return "in the AMX DDP beacon";
   return "in a probe reply";
 }
 
@@ -186,7 +184,7 @@ export function EvidenceList({
   if (evidence.length === 0) {
     return (
       <div style={{ marginTop: 4, fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
-        No evidence collected.
+        No signals found.
       </div>
     );
   }

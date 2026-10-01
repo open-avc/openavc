@@ -347,7 +347,7 @@ export function DriverStep() {
           style={buttonStyle("muted", busy !== "")}
         >
           {busy === "none" && <Loader2 size={14} style={spinStyle} />}
-          There is no driver for this device yet
+          No driver yet: skip to the report
         </button>
       </div>
       {!loading && chosen && !chosen.installed && (
@@ -404,11 +404,10 @@ function DriverRow({
       />
       <div style={{ flex: 1, minWidth: 0, fontSize: "var(--font-size-sm)" }}>
         <div style={{ fontWeight: 600 }}>
-          {option.name}{" "}
-          <span style={{ color: "var(--text-secondary)", fontWeight: 400 }}>
-            {option.id}
-            {version ? ` · ${version}` : ""}
-          </span>
+          {option.name}
+          {version && (
+            <span style={{ color: "var(--text-secondary)", fontWeight: 400 }}> {version}</span>
+          )}
         </div>
         <div
           style={{

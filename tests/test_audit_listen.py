@@ -130,7 +130,7 @@ async def test_connect_and_listen_records_the_whole_story(driver):
         assert table["power"]["reported"] and table["power"]["value"] is True
         # An empty value comes with the rule that would have set it.
         assert not table["volume"]["reported"]
-        assert table["volume"]["sources"] == [r"reply matching /VOL=(\d+)/"]
+        assert table["volume"]["sources"] == [r"a reply matching /VOL=(\d+)/"]
         assert state["contract"]["counts"]["unmatched_response"] >= 1
         assert state["traffic"]["sent"] >= 3  # polled at the driver's cadence
         assert state["traffic"]["not_captured"] is False

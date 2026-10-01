@@ -61,7 +61,7 @@ def test_an_audit_runs_through_the_programmer_and_hands_over_its_report(
     expect(dialog.get_by_role("heading", name="Which driver?")).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )
-    dialog.get_by_role("button", name="There is no driver for this device yet").click()
+    dialog.get_by_role("button", name="No driver yet: skip to the report").click()
     expect(dialog.get_by_text("What the audit could not see")).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )

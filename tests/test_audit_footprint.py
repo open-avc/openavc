@@ -384,6 +384,34 @@ async def test_a_companion_is_judged_by_whether_it_ran(monkeypatch, bench):
     )
 
 
+async def test_a_companion_that_reports_the_device_counts_as_matched(monkeypatch, bench):
+    """The identification checks' count includes a companion that said
+    something about the device, not only the driver-declared probes."""
+    raw = json.loads(_catalog(bench))
+    raw["drivers"][1]["discovery"]["python"] = "acme_gadget_discovery.py"
+
+    async def fetch(_path):
+        return json.dumps(raw).encode(), ""
+
+    monkeypatch.setattr(ci, "_fetch_raw_with_retry", fetch)
+    engine = DiscoveryEngine()
+    engine.load_driver_hints_from_registry([])
+
+    async def gadget_probe(ctx):
+        await ctx.emit_active(HOST, {"text": "ACME GADGET"}, port=bench["banner"])
+
+    engine._discovery_companions = {"acme_gadget": gadget_probe}
+    check, _ = _check(engine, bench)
+    fp = await check.run()
+
+    probes = len({o.probe_id for o in fp.probes if o.matched})
+    assert fp.companion_evidence
+    assert check.activities["probes"].message.startswith(f"{probes + 1} of ")
+    assert check.activities["probes"].message.endswith(
+        " identification checks matched this device."
+    )
+
+
 async def test_the_mdns_name_counts_as_the_host_name(monkeypatch, bench):
     """The check judges a host-name hint against the name the device
     announced over mDNS (``widget.local``, matched bare), as a scan does."""

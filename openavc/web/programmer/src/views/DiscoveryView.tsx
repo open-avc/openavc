@@ -142,11 +142,11 @@ function stateTone(state: DeviceState): { bg: string; fg: string; label: string 
 // to the user (spec §10 final paragraph).
 const SOURCE_KIND_FALLBACKS: Record<string, string> = {
   mdns: "mDNS announcement",
-  ssdp: "SSDP NOTIFY",
+  ssdp: "SSDP announcement",
   amx_ddp: "AMX DDP beacon",
   broadcast: "UDP probe response",
   probe: "TCP probe response",
-  oui: "OUI lookup",
+  oui: "MAC address prefix",
   snmp_pen: "SNMP enterprise number",
   hostname: "Hostname pattern",
   vendor_string: "Manufacturer alias",

@@ -100,7 +100,7 @@ describe("device settings", () => {
       settings: { trials: [trial(), trial({ number: 2, restore: null })] },
     } as unknown as AuditReportDriver;
     expect(driverLines([d]).find((l) => l.label === "Settings written")).toEqual({
-      label: "Settings written", value: "2: 2 read back, 1 put back",
+      label: "Settings written", value: "2 (2 read back, 1 put back)",
     });
   });
 });

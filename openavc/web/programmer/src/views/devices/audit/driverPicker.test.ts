@@ -175,8 +175,8 @@ describe("the confidence a driver row shows", () => {
     expect(optionConfidence(option, "A-352D")).toBe("full");
     expect(optionConfidence(option, "a-84")).toBe("untested");
   });
-  it("is nothing for a model the driver does not list, and the brand's with no model", () => {
+  it("is nothing for a model the driver does not list, or with no model chosen", () => {
     expect(optionConfidence(option, "A-999")).toBeNull();
-    expect(optionConfidence(option, null)).toBe(option.confidence);
+    expect(optionConfidence(option, null)).toBeNull();
   });
 });

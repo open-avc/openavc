@@ -144,7 +144,7 @@ async def test_a_setting_is_written_read_back_and_put_back(driver):
         assert not trial.restore["automatic"]
         assert run.listen.sandbox.device_state()["device_name"] == "Lobby"
         texts = [e.text for e in session.timeline]
-        assert any(t.startswith("Wrote Device name = Boardroom: the device reported it back")
+        assert any(t.startswith("Wrote Boardroom to Device name: the device reported it back")
                    for t in texts)
         assert any(t.startswith("Put Device name back to Lobby: the device reported it back")
                    for t in texts)

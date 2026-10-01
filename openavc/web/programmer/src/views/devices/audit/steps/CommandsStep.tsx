@@ -216,10 +216,12 @@ export function CommandsStep() {
       </p>
       <ul style={{ fontSize: "var(--font-size-sm)", margin: "0 0 var(--space-md)", paddingLeft: "var(--space-lg)" }}>
         <li>
-          Try as many commands as you're willing to run on this unit; each one is checked on the
-          real device.{keyCount > 0 && " Make sure you try the key ones."}
+          Try as many commands as you can.{keyCount > 0 && " Make sure you try the suggested ones."}
         </li>
-        <li>Every command changes the device. Send only the ones that are safe to run on this unit.</li>
+        <li>
+          Commands other than status queries change the device. Send only the ones that are safe to
+          run on it.
+        </li>
         <li>This step is optional. Continue when you are done.</li>
       </ul>
 
@@ -238,7 +240,7 @@ export function CommandsStep() {
 
       {connected && catalog.length === 0 && (
         <div style={{ ...hintStyle, fontSize: "var(--font-size-sm)" }}>
-          This driver declares no commands.
+          This driver has no commands.
         </div>
       )}
 
@@ -293,7 +295,7 @@ export function CommandsStep() {
             <div style={labelStyle}>All commands ({catalog.length})</div>
             {keyCount > 0 && (
               <div style={{ ...hintStyle, marginTop: 0, marginBottom: "var(--space-xs)" }}>
-                The key ones come first: the commands the driver puts on a device page.
+                The suggested ones come first: the commands the driver puts on a device page.
               </div>
             )}
             {catalog.length > 8 && (
@@ -322,7 +324,7 @@ export function CommandsStep() {
               <div style={{ ...hintStyle, fontSize: "var(--font-size-sm)" }}>
                 {onlyNotTried && !ordered.some((c) => notTried(c, trials))
                   ? "Every command has been tried."
-                  : `No command ${onlyNotTried ? "not tried yet " : ""}matches "${search.trim()}".`}
+                  : `No ${onlyNotTried ? "untried " : ""}command matches "${search.trim()}".`}
               </div>
             )}
           </section>
@@ -365,7 +367,7 @@ function WhatChanged({ changed }: { changed: audit.AuditChangedValue[] }) {
     <div style={{ ...panelStyle, marginTop: "var(--space-lg)", fontSize: "var(--font-size-sm)" }}>
       <div style={labelStyle}>What changed</div>
       {left.length === 0 ? (
-        <div>Nothing the audit sent has left a value changed.</div>
+        <div>The audit has left no value changed.</div>
       ) : (
         <>
           <div>These values changed during the audit:</div>
@@ -427,7 +429,7 @@ function CommandRow({
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        aria-label={`${command.label}${command.suggested ? " (key)" : ""}: ${status.text}`}
+        aria-label={`${command.label}${command.suggested ? " (suggested)" : ""}: ${status.text}`}
         style={{
           display: "flex",
           alignItems: "center",
@@ -458,7 +460,7 @@ function CommandRow({
                 fontWeight: 600,
               }}
             >
-              Key
+              Suggested
             </span>
           )}
           {tags.map((t) => (

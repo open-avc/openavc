@@ -27,18 +27,29 @@ function outage(extra: Partial<AuditOutage> = {}): AuditOutage {
 describe("what to do now, while a test runs", () => {
   it("walks a power cycle through off, back on, and the reconnect", () => {
     const o = outage();
-    expect(outageNowText(o)).toBe("Now turn the device off, and press I turned it off as you do.");
+    expect(outageNowText(o, 100)).toBe("Now turn the device off, and press I turned it off as you do.");
     expect(outageNextMark(o)).toBe("off");
     const off = { ...o, off_at: 101 };
-    expect(outageNowText(off)).toBe(
+    expect(outageNowText(off, 110)).toBe(
       "Leave it off for about 10 seconds, then turn it back on and press I turned it back on.",
     );
     expect(outageNextMark(off)).toBe("on");
     const on = { ...off, on_at: 115 };
-    expect(outageNowText(on)).toBe("Waiting for the driver to reconnect.");
+    expect(outageNowText(on, 116)).toBe("Waiting for the driver to reconnect.");
     expect(outageNextMark(on)).toBe("");
-    expect(outageNowText({ ...on, reconnected_at: 120 })).toBe(
+    expect(outageNowText({ ...on, reconnected_at: 120 }, 121)).toBe(
       "Watching the status values come back. The test ends on its own.",
+    );
+    // Once the driver has settled the test knows when it ends, and counts down.
+    expect(outageNowText({ ...on, reconnected_at: 120, ends_at: 140.2 }, 121)).toBe(
+      "Watching the status values come back. The test ends on its own in 20 s.",
+    );
+  });
+
+  it("says when the device is back and OpenAVC never noticed it went", () => {
+    const back = outage({ off_at: 101, on_at: 115, ends_at: 145 });
+    expect(outageNowText(back, 120)).toBe(
+      "OpenAVC has not noticed the device went away. The test ends in 25 s.",
     );
   });
 
@@ -46,13 +57,13 @@ describe("what to do now, while a test runs", () => {
     const off = outage({
       off_at: 101, watch: { liveness_probe: true, probe_every: 30, notice_within: 66, poll_interval: 5 },
     });
-    expect(outageNowText(off)).toBe(
+    expect(outageNowText(off, 110)).toBe(
       "Leave it off until OpenAVC notices it is gone. This driver checks every 30 s, so it can " +
         "take up to 66 s. The table below shows it.",
     );
     expect(outageNextMark(off)).toBe("");
     const noticed = { ...off, noticed_at: 150 };
-    expect(outageNowText(noticed)).toBe("Now turn it back on and press I turned it back on.");
+    expect(outageNowText(noticed, 151)).toBe("Now turn it back on and press I turned it back on.");
     expect(outageNextMark(noticed)).toBe("on");
   });
 
@@ -61,24 +72,25 @@ describe("what to do now, while a test runs", () => {
     const lost = outage({ off_at: 101, unreachable_at: 104.4 });
     const rows = outageProgress(lost, 100);
     expect(rows.find((r) => r.label === "Answers ping")?.value).toBe("no, for 0 s");
-    expect(rows.find((r) => r.label === "OpenAVC noticed")?.value).toBe("not yet (0 s; 300 s left)");
+    expect(rows.find((r) => r.label === "OpenAVC noticed")?.value).toBe("not yet (0 s so far, 300 s left)");
   });
 
   it("keeps a pulled cable out until OpenAVC notices or the limit passes", () => {
     const pulled = outage({ kind: "cable_pull", off_at: 101 });
     // No liveness check: say it may not notice, and hold the plug-in back.
-    expect(outageNowText(pulled)).toBe(
-      "Leave it unplugged until OpenAVC notices. The table below shows it. This driver does not " +
-        "check on its own whether the device is still there, so OpenAVC may not notice. The test " +
-        "says so when the 5 minutes are up.",
+    expect(outageNowText(pulled, 110)).toBe(
+      "Leave it unplugged until OpenAVC notices it is gone, up to 5 minutes. This driver does not " +
+        "check on its own whether the device is still there, so OpenAVC may not notice at all. " +
+        "The table below shows it.",
     );
     expect(outageNextMark(pulled)).toBe("");
     const checked = { ...pulled, watch: { liveness_probe: true, probe_every: 30, notice_within: 66, poll_interval: 5 } };
-    expect(outageNowText(checked)).toBe(
-      "Leave it unplugged until OpenAVC notices. The table below shows it.",
+    expect(outageNowText(checked, 110)).toBe(
+      "Leave it unplugged until OpenAVC notices it is gone. This driver checks every 30 s, so it " +
+        "can take up to 66 s. The table below shows it.",
     );
     for (const seen of [{ noticed_at: 130 }, { not_noticed_at: 401 }]) {
-      expect(outageNowText({ ...pulled, ...seen })).toBe(
+      expect(outageNowText({ ...pulled, ...seen }, 410)).toBe(
         "Now plug the cable back in and press I plugged it back in.",
       );
       expect(outageNextMark({ ...pulled, ...seen })).toBe("on");
@@ -95,7 +107,7 @@ describe("a connection that drops again after the reconnect", () => {
   });
 
   it("says so, and waits for the driver", () => {
-    expect(outageNowText(back)).toBe(
+    expect(outageNowText(back, 165)).toBe(
       "The connection dropped again. Waiting for the driver to reconnect.",
     );
     const lines = outageProgress(back, 170);
@@ -108,7 +120,7 @@ describe("a connection that drops again after the reconnect", () => {
     expect(outageProgress(again, 170)).toContainEqual({
       label: "Reconnected again", value: "5.5 s later",
     });
-    expect(outageNowText(again)).toBe(
+    expect(outageNowText(again, 170)).toBe(
       "Watching the status values come back. The test ends on its own.",
     );
     expect(outageProgress({ ...back, status: "done" }, 400)).toContainEqual({
@@ -125,16 +137,16 @@ describe("a power or cable test as it runs", () => {
     });
     expect(outageProgress(o, 110)).toEqual([
       { label: "Answers ping", value: "no, for 8 s" },
-      { label: "Turned off", value: "you said so" },
-      { label: "OpenAVC noticed", value: "2.5 s after it went (The device refused the connection)" },
+      { label: "Turned off", value: "yes" },
+      { label: "OpenAVC noticed", value: "2.5 s after it went away (The device refused the connection)" },
     ]);
   });
 
   it("counts down what OpenAVC has left to notice", () => {
     const o = outage({ kind: "cable_pull", off_at: 100, ping: { used: false, why: "No ping." } });
     expect(outageProgress(o, 160)).toEqual([
-      { label: "Cable out", value: "you said so" },
-      { label: "OpenAVC noticed", value: "not yet (60 s; 240 s left)" },
+      { label: "Cable out", value: "yes" },
+      { label: "OpenAVC noticed", value: "not yet (60 s so far, 240 s left)" },
     ]);
     expect(outageProgress({ ...o, not_noticed_at: 400 }, 401)[1]).toEqual({
       label: "OpenAVC noticed", value: "not within 5 minutes",
@@ -148,7 +160,8 @@ describe("a power or cable test as it runs", () => {
       announcements: [{ t: 139, protocol: "ssdp", detail: {} }],
     });
     const lines = outageProgress(o, 150);
-    expect(lines[0]).toEqual({ label: "Answers ping", value: "again, after 38 s without" });
+    expect(lines[0]).toEqual({ label: "Answers ping", value: "yes again, after 38.0 s without an answer" });
+    expect(lines).toContainEqual({ label: "Turned back on", value: "yes, after 11.0 s off" });
     expect(lines.slice(-3)).toEqual([
       { label: "Driver reconnected", value: "3.2 s after the device was back" },
       { label: "Values reported again", value: "1 of 2" },

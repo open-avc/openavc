@@ -104,7 +104,7 @@ export function NetworkCheckStep() {
               fontSize: "var(--font-size-xs)",
             }}
           >
-            <HelpCircle size={12} /> {showWhy ? "Hide evidence" : "Why?"}
+            <HelpCircle size={12} /> {showWhy ? "Hide the signals" : "Why?"}
           </button>
           {showWhy && (
             <EvidenceList
@@ -155,7 +155,7 @@ function DriverList({ result }: { result: audit.AuditCheckResult }) {
       <ul style={{ margin: "var(--space-xs) 0 0", paddingLeft: "var(--space-lg)" }}>
         {listed.map((d) => (
           <li key={d.id}>
-            {d.name} <span style={{ color: "var(--text-secondary)" }}>({d.id})</span>
+            {d.name}
             <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", overflowWrap: "anywhere" }}>
               {d.signals.map((ev) => describeEvidence(ev).headline).join("; ")}
             </div>

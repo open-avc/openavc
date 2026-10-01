@@ -126,7 +126,7 @@ async def test_a_python_drivers_steps_are_code():
 
     preview = await preview_connect(AcmeCode("preview-y", {}, StateStore(), EventBus()))
     assert preview.available is False
-    assert preview.reason == "This driver's connection steps are written in code."
+    assert preview.reason == "OpenAVC cannot show what this driver sends before it connects."
 
 
 async def _session_with_driver(wired, driver_id: str) -> str:  # noqa: F811

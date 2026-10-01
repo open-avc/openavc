@@ -66,7 +66,8 @@
     ``next_step``), ``declared`` and ``reported`` counts, ``status_table``
     (every declared value with ``value``, ``reported``,
     ``first_reported_at``, ``problem`` and ``sources``, the response rules
-    that would set it; ``children``; ``settings``, each with ``populated``),
+    that would set it; ``children``; ``child_labels``, each child type's ``one``
+    and ``many`` label; ``settings``, each with ``populated``),
     ``contract`` (``counts``
     by kind and the ``events`` kept, the first 50 of each kind),
     ``unprompted_replies`` (a hint: the ``seq`` of each reply with no request
@@ -107,10 +108,10 @@
     ``t``, ``key``, ``old``, ``new``), ``already_moving`` (the values that
     were already changing when it was sent), ``device_errors`` (errors the driver
     published for the device), ``effects`` (each declared ``sets`` entry:
-    ``state``, ``state_key``, ``expected``, ``has_value``, ``value`` and
+    ``state``, ``state_key``, ``label``, ``expected``, ``has_value``, ``value`` and
     ``outcome``, one of ``confirmed``, ``already``, ``different``,
     ``unchanged``, ``not_reported``, ``no_value``), ``query`` (a status
-    query's ``state``, ``state_key``, ``value``, ``changed`` and
+    query's ``state``, ``state_key``, ``label``, ``value``, ``changed`` and
     ``outcome``: ``reported``, ``not_reported`` or ``no_reply``),
     ``refusals`` (``device_errors``, ``last_error``, ``last_error_writes``,
     ``unmatched`` and ``unmatched_examples``), ``sent_nothing`` (true when
@@ -450,9 +451,9 @@ def _driver_limits(session: "AuditSession") -> list[dict[str, Any]]:
             if not test.ping.get("used"):
                 limits.append({
                     "id": "outage_by_marks", "run": run.index,
-                    "text": f"The device does not answer ping, so when it went away and came back "
-                            f"in {name}'s {test.to_dict()['kind'].replace('_', ' ')} test are the "
-                            "person's own marks.",
+                    "text": f"The device does not answer ping, so the times in {name}'s "
+                            f"{test.to_dict()['kind'].replace('_', ' ')} test come from the "
+                            "buttons pressed during it.",
                 })
                 break
         if any(attempt.sandbox.observer.truncated_at is not None for attempt in run.listens):
@@ -685,8 +686,8 @@ def suggested_confidence(section: dict[str, Any]) -> dict[str, Any]:
     ok &= say(
         problems == 0,
         "Nothing came up that the driver could not handle." if problems == 0
-        else f"{problems} times the driver met something it could not handle "
-             "(a reply no rule matched, an undeclared value).",
+        else f"The driver could not handle something {problems} times (a reply that "
+             "matched none of its rules, a status value it does not list).",
     )
     trials = (section.get("commands") or {}).get("trials") or []
     tried: dict[str, bool] = {}
@@ -702,10 +703,10 @@ def suggested_confidence(section: dict[str, Any]) -> dict[str, Any]:
         ok &= say(False, "No command was tried.")
     elif unconfirmed:
         ok &= say(False, (
-            f"{len(confirmed)} of {len(tried)} commands tried were confirmed; not: "
-            f"{', '.join(unconfirmed[:5])}{' and more' if len(unconfirmed) > 5 else ''} "
-            "(confirmed means the person answered Yes, or the values it declares it sets "
-            "read back)."
+            f"{len(confirmed)} of {len(tried)} commands tried were confirmed. Not confirmed: "
+            f"{', '.join(unconfirmed[:5])}{' and more' if len(unconfirmed) > 5 else ''}. "
+            "A command counts as confirmed when the person answered Yes, or the values it "
+            "should set read back."
         ))
     else:
         say(True, f"Every command tried was confirmed ({len(tried)}).")
@@ -1001,13 +1002,13 @@ def render_summary(report: dict[str, Any]) -> str:
         for sig in pointing:
             drivers = [str(names.get(d, {}).get("name") or d) for d in sig["drivers"]]
             verb = "identifies" if sig.get("strong") else "suggests"
-            items.append(f"<li><code>{_e(sig.get('source'))}</code> {verb} {_e(_join(drivers))}</li>")
+            items.append(f"<li>{_e(_signal_text(sig))} {verb} {_e(_join(drivers))}</li>")
         parts.append("<h3>Why</h3><ul>" + "".join(items) + "</ul>")
     if unused:
         parts.append(
             "<p class=\"meta\">Also seen, and no catalog driver uses "
             f"{'it' if len(unused) == 1 else 'them'}: "
-            + ", ".join(f"<code>{_e(sig.get('source'))}</code>" for sig in unused) + ".</p>"
+            + "; ".join(_e(_signal_text(sig)) for sig in unused) + ".</p>"
         )
     parts.append(
         f"<p class=\"meta\">Checked against {_e(catalog.get('driver_count'))} catalog drivers"
@@ -1037,7 +1038,8 @@ def render_summary(report: dict[str, Any]) -> str:
             ping.get("result"), ping.get("result"))
     )))
     parts.append(_row("MAC address", _e(
-        f"{mac.get('address')} (from {mac.get('source')})" if mac.get("address") else "not read"
+        f"{mac.get('address')} (from {_MAC_SOURCE_TEXT.get(mac.get('source'), mac.get('source'))})"
+        if mac.get("address") else "not read"
     )))
     if (fp.get("names") or {}).get("reverse_dns"):
         parts.append(_row("Reverse DNS", _e(fp["names"]["reverse_dns"])))
@@ -1061,12 +1063,12 @@ def render_summary(report: dict[str, Any]) -> str:
     greetings = fp.get("greetings", {})
     spoke = {p: g for p, g in greetings.items() if g.get("text")}
     if greetings:
-        parts.append("<h3>What each open port said, unprompted</h3>")
+        parts.append("<h3>What each open port sent when OpenAVC connected</h3>")
         if spoke:
             for port, g in spoke.items():
                 parts.append(f"<p>Port {_e(port)}:</p><pre>{_e(_quote(g, 600))}</pre>")
         else:
-            parts.append("<p>No open port sent anything before being spoken to.</p>")
+            parts.append("<p>No open port sent a greeting when OpenAVC connected.</p>")
 
     web = fp.get("web", {})
     if web:
@@ -1255,10 +1257,10 @@ def _attempt_sentence(attempt: dict[str, Any]) -> str:
             secs = round(listened)
             text += f" in {secs} {'second' if secs == 1 else 'seconds'} of listening"
         if silent and reported:
-            text += ", all by the driver itself"
+            text += ", none of them by the device"
         drops = attempt.get("drops") or 0
         if drops:
-            text += f"; the link dropped {drops} {'time' if drops == 1 else 'times'}"
+            text += f"; the connection dropped {drops} {'time' if drops == 1 else 'times'}"
         if status == "stopped":
             text += "; stopped before the listening window ended"
         return text + "."
@@ -1283,24 +1285,23 @@ def _status_rows(table: dict[str, Any]) -> list[str]:
         else:
             sources = var.get("sources") or []
             cell = "not reported" + (
-                f" (set by {_e(_join(sources))})" if sources else ""
+                f" (would be set by {_e(_join(sources))})" if sources else ""
             )
         if var.get("problem"):
             cell += f" <span class=\"not_matched\">{_e(var['problem'])}</span>"
-        label = var.get("label") or var.get("name")
-        name = var.get("name")
-        rows.append(_row(f"{label} ({name})" if label != name else str(name), cell))
+        rows.append(_row(str(var.get("label") or var.get("name")), cell))
     return rows
 
 
 def _render_driver(section: dict[str, Any]) -> list[str]:
     """One driver's test, for summary.html."""
+    from openavc.audit.listen import transport_name
     from openavc.audit.observe import CONTRACT_TEXT
 
     d = section.get("driver", {})
     parts = [f"<h2>Driver test: {_e(d.get('name'))} {_e(d.get('version'))}</h2><table>"]
     parts.append(_row("Driver", (
-        f"<code>{_e(d.get('id'))}</code>, {_e(d.get('format'))}, "
+        f"<code>{_e(d.get('id'))}</code>, {_e(_FORMAT_TEXT.get(d.get('format'), d.get('format')))}, "
         f"{_e(_SOURCE_TEXT.get(d.get('source'), d.get('source')))}"
     )))
     for f in d.get("files", []):
@@ -1328,7 +1329,7 @@ def _render_driver(section: dict[str, Any]) -> list[str]:
     if connection:
         config = ", ".join(f"{k}={v}" for k, v in (connection.get("config") or {}).items())
         parts.append(_row("Connection", _e(
-            f"{connection.get('transport')}: {config}"
+            f"{transport_name(str(connection.get('transport') or ''))}: {config}"
             + (f" (from {connection['saved_from']}'s saved settings)"
                if connection.get("saved_from") else "")
         )))
@@ -1386,8 +1387,12 @@ def _render_driver(section: dict[str, Any]) -> list[str]:
             parts.append("<h3>Status values</h3><table>" + "".join(rows) + "</table>")
         children = table.get("children") or {}
         if children:
-            counts = ", ".join(f"{len(ids)} {ctype}" for ctype, ids in children.items())
-            parts.append(f"<p>Registered: {_e(counts)} (values in report.json).</p>")
+            names = table.get("child_labels") or {}
+            counts = ", ".join(
+                f"{len(ids)} {(names.get(ctype) or {}).get('one' if len(ids) == 1 else 'many') or ctype}"
+                for ctype, ids in children.items()
+            )
+            parts.append(f"<p>Found: {_e(counts)} (values in report.json).</p>")
         settings = table.get("settings") or []
         if settings:
             parts.append("<h3>Device settings</h3><table>")
@@ -1419,16 +1424,83 @@ def _render_driver(section: dict[str, Any]) -> list[str]:
     return parts
 
 
+_SIGNAL_PREFIXES = {
+    "mdns": "mDNS announcement on {}",
+    "ssdp": "SSDP announcement for {}",
+    "oui": "MAC address prefix {} seen",
+    "snmp_pen": "SNMP enterprise number {}",
+    "hostname": "Hostname {} observed",
+    "port_open": "Port {} is open",
+}
+
+
+def _signal_text(sig: dict[str, Any]) -> str:
+    """A signal as the wizard's evidence lines say it (``describeEvidence`` in
+    the IDE): what was seen, never a probe's own id."""
+    data = (sig.get("evidence") or {}).get("data") or {}
+    kind = data.get("kind")
+    sid = data.get("source_id")
+    port = data.get("port") if isinstance(data.get("port"), int) else None
+    on = f" on port {port}" if port is not None else ""
+    pattern = data.get("matched_pattern")
+    value = data.get("value")
+    if kind == "mdns":
+        return f"mDNS announcement on {sid or 'an unknown service'}"
+    if kind == "ssdp":
+        return f"SSDP announcement for {sid or 'an unknown device type'}"
+    if kind == "amx_ddp":
+        named = " ".join(str(v) for v in (data.get("make"), data.get("model")) if v)
+        return f"AMX DDP beacon: {named}" if named else "AMX DDP beacon"
+    if kind == "broadcast":
+        return f"UDP probe{on} matched" + (f" {pattern}" if pattern else "")
+    if kind == "probe":
+        text = " ".join(str((data.get("response") or {}).get("text") or "").split())[:80]
+        if text:
+            return f'TCP probe{on} returned "{text}"'
+        return f"TCP probe{on} matched {pattern}" if pattern else f"TCP probe{on} answered"
+    if kind == "oui":
+        vendor = data.get("vendor")
+        return (f"MAC address prefix {value} belongs to {vendor}" if vendor
+                else f"MAC address prefix {value} seen")
+    if kind == "hostname":
+        return (f"Hostname pattern {pattern} matched {value}" if pattern
+                else f"Hostname {value} observed")
+    if kind == "snmp_pen":
+        return f"SNMP enterprise number {value}"
+    if kind == "vendor_string":
+        return f'Manufacturer "{value}" named in what the device sent'
+    if kind == "open_port":
+        return f"Port {value} is open"
+    source = str(sig.get("source") or "")
+    prefix, _, rest = source.partition(":")
+    if prefix in _SIGNAL_PREFIXES and rest:
+        return _SIGNAL_PREFIXES[prefix].format(rest)
+    if prefix == "probe":
+        return "A TCP identification check answered"
+    if prefix == "broadcast":
+        return "A UDP identification check answered"
+    return source or "A signal"
+
+
+_MAC_SOURCE_TEXT = {
+    "arp": "this computer's address table",
+    "netbios": "NetBIOS",
+    "snmp": "SNMP",
+}
+
+_FORMAT_TEXT = {"avcdriver": "YAML driver", "python": "Python driver"}
+
+
 def _render_confidence(section: dict[str, Any]) -> list[str]:
     """The suggested confidence with what it rests on, and the test report."""
     confidence = section.get("suggested_confidence") or {}
     if not confidence:
         return []
     level = confidence.get("level")
+    words = {"full": "Full support", "partial": "Partial support"}
     parts = [
-        "<h3>Suggested confidence</h3>",
-        f"<p>{_e(level) if level else 'Not enough to suggest one'} "
-        "(a suggestion for how sure the driver catalog can be about this model)</p><ul>",
+        "<h3>Suggested confidence for this model</h3>",
+        f"<p>{_e(words.get(level, level)) if level else 'Not enough to suggest one'}</p><ul>",
     ]
     for reason in confidence.get("reasons") or []:
         css = "matched" if reason.get("held") else "not_matched"

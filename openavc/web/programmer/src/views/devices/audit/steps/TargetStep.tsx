@@ -158,7 +158,7 @@ export function TargetStep() {
       {showOptions && (
         <div style={{ ...panelStyle, marginTop: "var(--space-sm)" }}>
           <fieldset style={{ border: "none", margin: 0, padding: 0 }}>
-            <legend style={labelStyle}>Check</legend>
+            <legend style={labelStyle}>Network check</legend>
             <label style={{ display: "flex", gap: "var(--space-sm)", fontSize: "var(--font-size-sm)" }}>
               <input
                 type="radio"

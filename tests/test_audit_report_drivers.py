@@ -198,7 +198,7 @@ async def test_a_driver_run_is_the_whole_story_and_no_secret_leaves(driver):
         assert attempt["drops"] == 0
         assert "listen.dropped" not in [e["kind"] for e in report["timeline"]]
         assert table["volume"]["reported"] is False
-        assert table["volume"]["sources"] == [r"reply matching /VOL=(\d+)/"]
+        assert table["volume"]["sources"] == [r"a reply matching /VOL=(\d+)/"]
         # LAMP=450 matched no rule: kept in full, and counted.
         assert attempt["contract"]["counts"]["unmatched_response"] >= 1
         assert any(e["kind"] == "unmatched_response" for e in attempt["contract"]["events"])
@@ -235,7 +235,7 @@ async def test_a_driver_run_is_the_whole_story_and_no_secret_leaves(driver):
         assert re.search(r'tx tcp +"PWR\?\\r"', timeline)
         assert re.search(r'rx tcp +"login: "', timeline)
         assert "Driver test: Acme Report 1.0.0" in texts["summary.html"]
-        assert "not reported (set by reply matching" in texts["summary.html"]
+        assert "not reported (would be set by a reply matching" in texts["summary.html"]
     finally:
         await run.stop()
         server.close()
@@ -370,8 +370,8 @@ def test_the_summary_says_when_the_device_sent_nothing_back():
     }
     assert _attempt_sentence(attempt) == (
         "Connected 0.1 s after starting; the device sent nothing back to 1237 messages; "
-        "3 of 4 status values reported in 180 seconds of listening, all by the driver itself; "
-        "the link dropped 10 times."
+        "3 of 4 status values reported in 180 seconds of listening, none of them by the "
+        "device; the connection dropped 10 times."
     )
     attempt["traffic"] = {"sent": 12, "received": 30, "not_captured": False}
     attempt["drops"] = 0
@@ -422,8 +422,8 @@ def test_partial_and_none_say_what_held_them_back():
     confidence = suggested_confidence(section)
     assert confidence["level"] == "partial"
     assert [r["text"] for r in confidence["reasons"] if not r["held"]] == [
-        "1 of 2 commands tried were confirmed; not: Set Volume (confirmed means the person "
-        "answered Yes, or the values it declares it sets read back)."
+        "1 of 2 commands tried were confirmed. Not confirmed: Set Volume. A command counts as "
+        "confirmed when the person answered Yes, or the values it should set read back."
     ]
     section["commands"]["trials"][0]["answer"] = {"answer": "cant_tell"}
     assert suggested_confidence(section)["level"] is None

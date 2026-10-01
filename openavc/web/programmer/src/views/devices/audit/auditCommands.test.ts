@@ -90,7 +90,7 @@ describe("the command list", () => {
 
 describe("where each command stands", () => {
   it("is not tried until it is sent, then waits for the person's answer", () => {
-    expect(commandStatus([])).toEqual({ key: "not_tried", text: "Not tried" });
+    expect(commandStatus([])).toEqual({ key: "not_tried", text: "Not tried yet" });
     expect(commandStatus([trial({ status: "watching" })]).text).toBe("Watching");
     expect(commandStatus([trial()])).toEqual({ key: "waiting", text: "Waiting for your answer" });
   });
@@ -128,13 +128,13 @@ describe("where each command stands", () => {
       command("mute", { suggested: true }),
       command("query_power"),
     ];
-    expect(commandProgress(catalog, [])).toBe("3 commands, none tried yet · Key: 0 of 2 tried");
+    expect(commandProgress(catalog, [])).toBe("3 commands, none tried yet · Suggested: 0 of 2 tried");
     const tries = [
       trial({ command: "query_power" }),
       trial({ number: 2, command: "power_on", answer: { answer: "yes", note: "", at: 2 } }),
     ];
     expect(commandProgress(catalog, tries)).toBe(
-      "2 of 3 commands tried, 1 answered · Key: 1 of 2 tried",
+      "2 of 3 commands tried, 1 answered · Suggested: 1 of 2 tried",
     );
   });
 });
@@ -272,7 +272,7 @@ describe("following the commands step", () => {
     } as unknown as AuditReportDriver;
     expect(driverLines([found]).slice(-2)).toEqual([
       { label: "Sent nothing", value: "Power On: the driver said it succeeded, but nothing was sent" },
-      { label: "Restart", value: "Reboot: back 48.4 s after the command (the driver declares 60 s)" },
+      { label: "Restart", value: "Reboot: back 48.4 s after the command (the driver says up to 60 s)" },
     ]);
   });
 });

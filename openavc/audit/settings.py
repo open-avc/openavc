@@ -54,9 +54,10 @@ DONE = "done"
 
 NO_SUCH_SETTING = "{driver} has no device setting named {key}."
 CANNOT_READ = (
-    "OpenAVC cannot read {label}'s value from the device, so it could not put it "
-    "back. The audit does not change it."
+    "OpenAVC cannot read {label} from the device, so it could not put it back. "
+    "The audit leaves it alone."
 )
+NOT_REPORTED_YET = "The device has not reported {label} yet. Once it does, the audit can test it."
 CANNOT_PUT_BACK = (
     "{label} is {value} now, which is not a value OpenAVC can write back ({why}), so "
     "the audit does not change it."
@@ -180,7 +181,11 @@ class SettingsPass:
             readable = state_key in variables
             current = state.get(state_key) if readable else None
             label = str(sdef.get("label") or key)
-            reason = "" if readable and current is not None else CANNOT_READ.format(label=label)
+            reason = (
+                CANNOT_READ.format(label=label) if not readable
+                else NOT_REPORTED_YET.format(label=label) if current is None
+                else ""
+            )
             out.append({
                 "key": key,
                 "label": label,
@@ -294,7 +299,7 @@ class SettingsPass:
         half.update({
             "confirmed": confirmed,
             "value": _shown(actual),
-            "after": round(time.time() - started, 2),
+            "after": round(time.time() - started, 1),
         })
         return half
 
@@ -410,8 +415,8 @@ def _read_back(half: dict[str, Any]) -> str:
 
 def _write_sentence(label: str, half: dict[str, Any], value: Any) -> str:
     if half.get("error"):
-        return f"Could not write {label} = {_value_text(value)}: {half['error']}"
-    return f"Wrote {label} = {_value_text(value)}: {_read_back(half)}"
+        return f"Could not write {_value_text(value)} to {label}: {half['error']}"
+    return f"Wrote {_value_text(value)} to {label}: {_read_back(half)}"
 
 
 def _restore_sentence(label: str, half: dict[str, Any], value: Any) -> str:

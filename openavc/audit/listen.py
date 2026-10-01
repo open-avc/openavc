@@ -107,15 +107,26 @@ def response_sources(driver: Any) -> dict[str, list[str]]:
     for rule in getattr(driver, "_compiled_responses", None) or []:
         pattern, mappings = rule[0], rule[1]
         for mapping in mappings or []:
-            add(mapping.get("state"), f"reply matching /{pattern.pattern}/")
+            add(mapping.get("state"), f"a reply matching /{pattern.pattern}/")
     for rule in getattr(driver, "_osc_responses", None) or []:
         address, mappings = rule[0], rule[1]
         for mapping in mappings or []:
-            add(mapping.get("state"), f"OSC message {address}")
+            add(mapping.get("state"), f"an OSC message {address}")
     for rule in getattr(driver, "_json_responses", None) or []:
         for mapping in rule[0] or []:
-            add(mapping.get("state"), f"JSON key {mapping.get('key')}")
+            add(mapping.get("state"), f"the JSON key {mapping.get('key')}")
     return out
+
+
+# A transport id as a sentence names it.
+TRANSPORT_NAMES = {
+    "tcp": "TCP", "udp": "UDP", "http": "HTTP", "osc": "OSC", "ssh": "SSH", "mqtt": "MQTT",
+    "snmp": "SNMP", "websocket": "WebSocket", "serial": "serial",
+}
+
+
+def transport_name(transport: str) -> str:
+    return TRANSPORT_NAMES.get(transport, transport.upper())
 
 
 class ListenPass:
@@ -197,7 +208,8 @@ class ListenPass:
         self._timeline(
             "listen.connecting",
             f"Connecting to {where}{':' + str(port) if port else ''} with "
-            f"{self.run.choice.identity.get('name')} over {sb.transport}.",
+            f"{self.run.choice.identity.get('name')}"
+            f"{' over ' + transport_name(sb.transport) if sb.transport else ''}.",
         )
         self.run.started_at = self.started_at
         # Sent as the whole state: the listen's own updates do not carry the
@@ -408,7 +420,7 @@ class ListenPass:
                 shown = ("true" if new else "false") if isinstance(new, bool) else str(new)
                 self._timeline(
                     "listen.reported",
-                    f"{prop} reported: {shown[:80]}, {self._since(now)} after starting.",
+                    f"{self._label(prop)} reported: {shown[:80]}, {self._since(now)} after starting.",
                     state=prop,
                 )
         self._dirty = True
@@ -469,6 +481,10 @@ class ListenPass:
     def _declared(self) -> list[str]:
         return list((self._driver_info().get("state_variables") or {}).keys())
 
+    def _label(self, prop: str) -> str:
+        spec = (self._driver_info().get("state_variables") or {}).get(prop)
+        return str(spec.get("label") or prop) if isinstance(spec, dict) else prop
+
     def status_table(self) -> dict[str, Any]:
         if self._final_table is not None and not self.sandbox.started:
             return self._final_table
@@ -493,7 +509,11 @@ class ListenPass:
                 "sources": self.sources.get(name, []),
             })
         children: dict[str, dict[str, dict[str, Any]]] = {}
-        for ctype in (info.get("child_entity_types") or {}):
+        child_labels: dict[str, dict[str, str]] = {}
+        for ctype, cdef in (info.get("child_entity_types") or {}).items():
+            cdef = cdef if isinstance(cdef, dict) else {}
+            one = str(cdef.get("label") or ctype)
+            child_labels[ctype] = {"one": one, "many": str(cdef.get("label_plural") or one)}
             prefix = f"{ctype}."
             for key, value in state.items():
                 if not key.startswith(prefix):
@@ -514,7 +534,10 @@ class ListenPass:
                 "value": _shown(value),
                 "populated": bool(state_key) and value is not None,
             })
-        return {"variables": variables, "children": children, "settings": settings}
+        return {
+            "variables": variables, "children": children, "child_labels": child_labels,
+            "settings": settings,
+        }
 
     def to_dict(self) -> dict[str, Any]:
         observer = self.sandbox.observer

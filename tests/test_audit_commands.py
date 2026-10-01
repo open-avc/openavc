@@ -260,8 +260,8 @@ async def test_the_status_queries_run_together(driver):
         assert run.listen.sandbox.device_state()["power"] is False
         # A status query's declared variable is read back from its reply.
         assert commands.trials[0].query == {
-            "state": "power", "state_key": "power", "value": False, "changed": True,
-            "outcome": "reported",
+            "state": "power", "state_key": "power", "label": "Power", "value": False,
+            "changed": True, "outcome": "reported",
         }
     finally:
         await run.stop()
@@ -411,8 +411,8 @@ async def test_the_declared_effect_is_checked_against_what_the_device_reports(dr
         commands = commands_for(session, run, **WINDOW)
         first = await _sent(commands, "power_on")
         assert first.effects == [{
-            "state": "power", "state_key": "power", "expected": True, "has_value": True,
-            "value": True, "outcome": "confirmed",
+            "state": "power", "state_key": "power", "label": "Power", "expected": True,
+            "has_value": True, "value": True, "outcome": "confirmed",
         }]
         assert first.sent_nothing is False
         # Again: it already was on, so the audit cannot tell it did anything.
@@ -428,7 +428,7 @@ async def test_the_declared_effect_is_checked_against_what_the_device_reports(dr
         assert wrong.effects[0]["value"] == "hdmi1"
         assert wrong.refusals["unmatched"] == 1
         assert wrong.refusals["unmatched_examples"] == ["LAMP=450"]
-        assert "input changed to hdmi1, not hdmi2" in session.timeline[-1].text
+        assert "Input changed to hdmi1, not hdmi2" in session.timeline[-1].text
         # The same again: it is still hdmi1.
         again = await _sent(commands, "set_input", again=wrong.number)
         assert again.params == {"source": "hdmi2"}

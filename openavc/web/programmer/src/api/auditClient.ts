@@ -272,6 +272,8 @@ export interface AuditListen {
   status_table: {
     variables: AuditStatusVariable[];
     children: Record<string, Record<string, Record<string, unknown>>>;
+    /** Each child type's label, singular and plural. */
+    child_labels?: Record<string, { one: string; many: string }>;
     settings: { key: string; label: string; state_key: string; value: unknown; populated: boolean }[];
   };
   front_panel: {

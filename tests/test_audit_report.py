@@ -264,9 +264,11 @@ def test_the_summary_says_why_only_with_the_signals_that_point_somewhere():
         },
     }
     page = render_summary(report)
-    assert "<code>ssdp:urn:acme-com:device:Widget:1</code> identifies Acme Widget" in page
-    assert ("Also seen, and no catalog driver uses them: <code>ssdp:upnp:rootdevice</code>, "
-            "<code>oui:aa:bb:cc</code>.") in page
+    # Each signal in words: what was seen, never its id.
+    assert "SSDP announcement for urn:acme-com:device:Widget:1 identifies Acme Widget" in page
+    assert ("Also seen, and no catalog driver uses them: SSDP announcement for "
+            "upnp:rootdevice; MAC address prefix aa:bb:cc seen.") in page
+    assert "<code>ssdp:" not in page
     assert "no driver claims it" not in page
     assert ("http://10.0.0.50:1400/a.xml; http://10.0.0.50:1400/b.xml (the one read)") in page
 

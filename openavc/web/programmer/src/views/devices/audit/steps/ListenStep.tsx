@@ -4,6 +4,7 @@ import * as audit from "../../../../api/auditClient";
 import { parseApiError } from "../../../../api/errors";
 import { useAuditStore } from "../../../../store/auditStore";
 import {
+  childCountText,
   currentRun,
   displayBytes,
   secondsLeft,
@@ -13,12 +14,12 @@ import { ErrorLine } from "../auditParts";
 import { buttonStyle, headingStyle, hintStyle, labelStyle, panelStyle, spinStyle } from "../auditStyles";
 
 const CONTRACT_LABELS: Record<string, string> = {
-  unmatched_response: "Replies no response rule matched",
-  undeclared_state: "Status values the driver does not declare",
-  type_mismatch: "Values not of their declared type",
+  unmatched_response: "Replies that matched none of the driver's rules",
+  undeclared_state: "Status values the driver does not list",
+  type_mismatch: "Values of the wrong type",
   coercion_failure: "Values that could not be converted",
   unknown_command: "Commands the driver does not have",
-  child_unregistered: "Status for channels or zones never registered",
+  child_unregistered: "Status for channels or zones the driver does not have",
 };
 
 /** Step 5: connect as adding the device to a space would, and listen. */
@@ -104,7 +105,7 @@ export function ListenStep() {
                 onClick={() => void act("extend", () => audit.keepListening(sessionId))}
                 disabled={busy !== "" || capped}
                 style={buttonStyle("muted", busy !== "" || capped)}
-                title={capped ? "The audit listens for five minutes at most." : undefined}
+                title={capped ? "The audit listens for 5 minutes at most." : undefined}
               >
                 {busy === "extend" && <Loader2 size={14} style={spinStyle} />}
                 Keep listening
@@ -130,7 +131,7 @@ export function ListenStep() {
             )}
           </div>
           {capped && (
-            <div style={hintStyle}>The audit listens for five minutes at most.</div>
+            <div style={hintStyle}>The audit listens for 5 minutes at most.</div>
           )}
 
           <StatusTable listen={listen} />
@@ -140,8 +141,8 @@ export function ListenStep() {
             <div style={{ ...panelStyle, marginTop: "var(--space-lg)" }}>
               <div style={labelStyle}>Front-panel check (optional)</div>
               <div style={{ fontSize: "var(--font-size-sm)" }}>
-                Change something on the device itself, like the volume or the input. Did OpenAVC
-                show the change?
+                Change something on the device itself, like the volume or the input. Did the
+                status values above show the change?
               </div>
               {listen.front_panel ? (
                 <div style={{ ...hintStyle, fontSize: "var(--font-size-sm)" }}>
@@ -209,7 +210,7 @@ function StatusBanner({ listen, left }: { listen: audit.AuditListen; left: numbe
   else if (listen.status === "not_connected") text = `Not connected yet${left !== null ? `, ${left} s left` : ""}.`;
   else if (listen.status === "done") text = `Listening finished: ${listen.reported} of ${listen.declared} status values reported. The driver stays connected until you finish.`;
   else if (listen.status === "failed") text = listen.error || "The driver did not connect while the audit was listening.";
-  else text = "This attempt was ended.";
+  else text = "This connection was closed.";
   return (
     <div
       role="status"
@@ -266,7 +267,7 @@ function StatusTable({ listen }: { listen: audit.AuditListen }) {
                 )}
               </td>
               <td style={{ ...cell, width: "35%" }}>
-                {v.label} <span style={{ color: "var(--text-secondary)" }}>{v.name !== v.label ? v.name : ""}</span>
+                {v.label}
               </td>
               <td style={{ ...cell, overflowWrap: "anywhere" }}>
                 <span style={{ color: v.reported ? "var(--text-primary)" : "var(--text-secondary)" }}>
@@ -274,7 +275,7 @@ function StatusTable({ listen }: { listen: audit.AuditListen }) {
                 </span>
                 {v.problem && <div style={hintStyle}>{v.problem}</div>}
                 {!v.reported && v.sources.length > 0 && (
-                  <div style={hintStyle}>Set by a {v.sources.join(", or a ")}.</div>
+                  <div style={hintStyle}>Would be set by {v.sources.join(", or ")}.</div>
                 )}
               </td>
             </tr>
@@ -296,7 +297,7 @@ function StatusTable({ listen }: { listen: audit.AuditListen }) {
       </table>
       {children.map(([ctype, byId]) => (
         <div key={ctype} style={{ ...hintStyle, fontSize: "var(--font-size-sm)" }}>
-          {ctype}: {Object.keys(byId).length} registered
+          {childCountText(listen.status_table.child_labels?.[ctype], ctype, Object.keys(byId).length)}
         </div>
       ))}
     </div>
@@ -308,7 +309,7 @@ function ContractSummary({ listen }: { listen: audit.AuditListen }) {
   if (counts.length === 0) return null;
   return (
     <div style={{ ...panelStyle, marginTop: "var(--space-md)", fontSize: "var(--font-size-sm)" }}>
-      <div style={labelStyle}>What the driver did not handle</div>
+      <div style={labelStyle}>What the driver could not handle</div>
       <ul style={{ margin: 0, paddingLeft: "var(--space-lg)" }}>
         {counts.map(([kind, n]) => (
           <li key={kind}>
