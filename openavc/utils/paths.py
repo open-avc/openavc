@@ -55,7 +55,7 @@ def passes_through_link(base: Path, relpath: str) -> bool:
     current = base
     for part in Path(relpath).parts:
         current = current / part
-        if _is_link(current):
+        if is_link(current):
             return True
     return False
 
@@ -74,13 +74,15 @@ def files_below(base: Path) -> list[Path]:
     found: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(base):
         here = Path(dirpath)
-        dirnames[:] = [name for name in dirnames if not _is_link(here / name)]
+        dirnames[:] = [name for name in dirnames if not is_link(here / name)]
         for name in filenames:
             path = here / name
-            if path.is_file() and not _is_link(path):
+            if path.is_file() and not is_link(path):
                 found.append(path)
     return sorted(found)
 
 
-def _is_link(path: Path) -> bool:
-    return path.is_symlink() or _is_junction(path)
+def is_link(path: Path) -> bool:
+    """True when ``path`` is a symlink or a junction. Never raises: a path
+    that cannot be read is not reported as a link."""
+    return os.path.islink(path) or _is_junction(path)
