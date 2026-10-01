@@ -1073,8 +1073,10 @@ def extract_vendor_strings(evidence_log: list[Evidence]) -> list[Evidence]:
     - ``data["manufacturer"]`` and ``data["make"]`` (top-level: SSDP/UPnP
       rootDesc manufacturer, AMX DDP make)
 
-    De-duplicates by ``(value, source_probe_id)`` so the same string from
-    one probe doesn't get emitted twice.
+    One record per string and kind of evidence, kept from the first record
+    that named it: a line says only the kind, so an SSDP device naming its
+    manufacturer in every NOTIFY, or two probes both naming it, would
+    otherwise read as the same line over and over.
     """
     seen: set[tuple[str, str]] = set()
     extracted: list[Evidence] = []
@@ -1085,7 +1087,7 @@ def extract_vendor_strings(evidence_log: list[Evidence]) -> list[Evidence]:
         normalized = value.strip().lower()
         if not normalized:
             return
-        key = (normalized, source_probe_id)
+        key = (normalized, kind if isinstance(kind, str) else source_probe_id)
         if key in seen:
             return
         seen.add(key)

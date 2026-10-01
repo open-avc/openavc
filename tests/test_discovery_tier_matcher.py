@@ -9,6 +9,7 @@ import pytest
 
 from openavc.discovery.result import (
     DeviceState,
+    Evidence,
     SignalTier,
 )
 from openavc.discovery.tier_matcher import (
@@ -625,6 +626,26 @@ class TestExtractVendorStrings:
         ]
         out = extract_vendor_strings(log)
         assert len(out) == 1
+
+    def test_one_record_per_value_and_kind(self):
+        # An SSDP device names its manufacturer in every NOTIFY, each its own
+        # source id, and a line says only "in the SSDP description": one
+        # record, not one per NOTIFY. The same value from another kind of
+        # evidence is still its own record, since it reads differently.
+        log = [
+            Evidence(
+                tier=SignalTier.PASSIVE_LISTENER,
+                source=f"ssdp:{st}",
+                data={"kind": "ssdp", "source_id": st, "manufacturer": "Acme Corporation"},
+            )
+            for st in ("upnp:rootdevice", "urn:acme-com:service:Widget:1",
+                       "urn:schemas-upnp-org:device:MediaRenderer:1")
+        ] + [evidence_mdns("_acme._tcp.local.", txt={"manufacturer": "Acme Corporation"})]
+        out = extract_vendor_strings(log)
+        assert [(ev.data["value"], ev.data["from_kind"]) for ev in out] == [
+            ("acme corporation", "ssdp"), ("acme corporation", "mdns"),
+        ]
+        assert out[0].data["source_probe_id"] == "upnp:rootdevice"
 
     def test_does_not_recurse_into_existing_vendor_strings(self):
         # If extract_vendor_strings is called on a log that already has
