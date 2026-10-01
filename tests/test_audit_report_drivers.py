@@ -25,6 +25,7 @@ from openavc.audit.listen import DONE, start_listen
 from openavc.audit.passes import DriverRun, set_connection
 from openavc.audit.report import (
     Redactor,
+    _attempt_sentence,
     _driver_limits,
     _traffic_text,
     build_report,
@@ -353,6 +354,27 @@ def test_the_session_log_keeps_lines_about_this_audit_only():
     emit(other, "Resolved widget.local")
     assert len(handler.lines) == 3 and handler.dropped == 1
     assert "192.168.1.10" not in handler.text() and "audit-abcd" not in handler.text()
+
+
+def test_the_summary_says_when_the_device_sent_nothing_back():
+    """The BLU-100 case: connected, three values, all the driver's own, no
+    byte from the device, a drop a minute. "Connected; 3 of 4 reported" alone
+    read as a working device."""
+    attempt = {
+        "status": "done", "started_at": 100.0, "connected_at": 100.1, "finished_at": 280.1,
+        "declared": 4, "reported": 3, "drops": 10,
+        "traffic": {"sent": 1237, "received": 0, "not_captured": False},
+    }
+    assert _attempt_sentence(attempt) == (
+        "Connected 0.1 s after starting; the device sent nothing back to 1237 messages; "
+        "3 of 4 status values reported in 180 seconds of listening, all by the driver itself; "
+        "the link dropped 10 times."
+    )
+    attempt["traffic"] = {"sent": 12, "received": 30, "not_captured": False}
+    attempt["drops"] = 0
+    assert _attempt_sentence(attempt) == (
+        "Connected 0.1 s after starting; 3 of 4 status values reported in 180 seconds of listening."
+    )
 
 
 def test_traffic_lines_say_what_the_bytes_do_not():

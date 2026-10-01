@@ -630,7 +630,10 @@ export interface AuditReportAttempt {
   offline: { code: string; detail: string; next_step: string } | null;
   contract: { counts: Record<string, number> };
   unprompted_replies: { count: number };
-  traffic: { count: number; not_captured: boolean };
+  /** How often the link dropped while the attempt ran, and how often the driver got it back. */
+  drops: number;
+  reconnects: number;
+  traffic: { count: number; sent: number; received: number; not_captured: boolean };
 }
 
 /** One driver run in the report. */

@@ -1039,13 +1039,24 @@ def _attempt_sentence(attempt: dict[str, Any]) -> str:
     started = attempt.get("started_at")
     if attempt.get("connected_at"):
         listened = (attempt.get("finished_at") or attempt.get("ends_at") or 0) - attempt["connected_at"]
-        text = (
-            f"Connected {_seconds_after(attempt['connected_at'], started)}; "
-            f"{attempt.get('reported', 0)} of {attempt.get('declared', 0)} status values reported"
-        )
+        traffic = attempt.get("traffic") or {}
+        # A device that never answers can still show values: the driver's own
+        # bookkeeping. Say what came back, and whose the values are.
+        silent = not traffic.get("not_captured") and not traffic.get("received")
+        reported = attempt.get("reported", 0)
+        text = f"Connected {_seconds_after(attempt['connected_at'], started)}; "
+        if silent:
+            sent = traffic.get("sent", 0)
+            text += f"the device sent nothing back to {sent} {'message' if sent == 1 else 'messages'}; "
+        text += f"{reported} of {attempt.get('declared', 0)} status values reported"
         if listened > 0:
             secs = round(listened)
             text += f" in {secs} {'second' if secs == 1 else 'seconds'} of listening"
+        if silent and reported:
+            text += ", all by the driver itself"
+        drops = attempt.get("drops") or 0
+        if drops:
+            text += f"; the link dropped {drops} {'time' if drops == 1 else 'times'}"
         if status == "stopped":
             text += "; stopped before the listening window ended"
         return text + "."

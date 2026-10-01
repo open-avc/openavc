@@ -525,14 +525,34 @@ export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
       connected = reason ? `No: ${reason}` : "No";
     }
     lines.push({ label: `Connected${suffix}`, value: connected });
-    lines.push({
-      label: `Status values${suffix}`,
-      value: `${last.reported} of ${last.declared} reported`,
-    });
+    // A device that never answers can still show values: the driver's own
+    // bookkeeping. So say what came back, and whose the values are.
+    const silent = !last.traffic.not_captured && last.connected_at && last.traffic.received === 0;
     if (last.traffic.not_captured) {
       lines.push({
         label: `Traffic${suffix}`,
         value: "Not captured: the driver manages its own connection",
+      });
+    } else if (last.connected_at) {
+      lines.push({
+        label: `Replies${suffix}`,
+        value: silent
+          ? `None: the device sent nothing back to ${plural(last.traffic.sent, "message", "messages")}`
+          : `${last.traffic.received} received for ` +
+            `${last.traffic.sent} sent`,
+      });
+    }
+    lines.push({
+      label: `Status values${suffix}`,
+      value:
+        `${last.reported} of ${last.declared} reported` +
+        (silent && last.reported > 0 ? ", all by the driver itself" : ""),
+    });
+    if (last.drops > 0) {
+      lines.push({
+        label: `Link dropped${suffix}`,
+        value:
+          `${plural(last.drops, "time", "times")}, reconnected ${plural(last.reconnects, "time", "times")}`,
       });
     }
     const unmatched = last.contract.counts.unmatched_response ?? 0;

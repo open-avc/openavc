@@ -203,7 +203,8 @@ describe("the on-screen summary", () => {
     const attempt = {
       status: "done", error: "", started_at: 100, connected_at: 100.5, declared: 7,
       reported: 5, offline: null, contract: { counts: { unmatched_response: 3 } },
-      unprompted_replies: { count: 0 }, traffic: { count: 40, not_captured: false },
+      unprompted_replies: { count: 0 }, drops: 0, reconnects: 0,
+      traffic: { count: 40, sent: 12, received: 28, not_captured: false },
     };
     const failed = {
       ...attempt, connected_at: null, reported: 0, contract: { counts: {} },
@@ -214,6 +215,7 @@ describe("the on-screen summary", () => {
     expect(driverLines([one])).toEqual([
       { label: "Driver", value: "Acme 1.2.0" },
       { label: "Connected", value: "Yes, 0.5 s after starting" },
+      { label: "Replies", value: "28 received for 12 sent" },
       { label: "Status values", value: "5 of 7 reported" },
       { label: "Replies not understood", value: "3 matched none of the driver's rules" },
     ]);
@@ -222,7 +224,7 @@ describe("the on-screen summary", () => {
     const unused = { run: 2, driver: { id: "x", name: "X", version: "", modified: false },
       attempts: [] } as unknown as AuditReportDriver;
     expect(driverLines([one, two, unused]).map((l) => l.label)).toEqual([
-      "Driver (1)", "Connected (1)", "Status values (1)", "Replies not understood (1)",
+      "Driver (1)", "Connected (1)", "Replies (1)", "Status values (1)", "Replies not understood (1)",
       "Driver (2)", "Connected (2)", "Status values (2)",
     ]);
     expect(driverLines([two])[0].value).toBe("Acme Two, a modified copy");
@@ -235,6 +237,26 @@ describe("the on-screen summary", () => {
     expect(summaryLines(entered).slice(0, 2)).toEqual([
       { label: "Device", value: "Acme W-100" },
       { label: "Firmware", value: "1.2" },
+    ]);
+  });
+
+  it("says when the device sent nothing back and how often the link dropped", () => {
+    // The BLU-100 with no design loaded: connected, every value the driver's
+    // own, nothing received, a drop a minute on its liveness check.
+    const attempt = {
+      status: "done", error: "", started_at: 100, connected_at: 100.1, declared: 4,
+      reported: 3, offline: null, contract: { counts: {} }, unprompted_replies: { count: 0 },
+      drops: 10, reconnects: 10,
+      traffic: { count: 1237, sent: 1237, received: 0, not_captured: false },
+    };
+    const blu = { run: 0, driver: { id: "acme", name: "Acme", version: "1.0.3", modified: false },
+      attempts: [attempt] } as unknown as AuditReportDriver;
+    expect(driverLines([blu])).toEqual([
+      { label: "Driver", value: "Acme 1.0.3" },
+      { label: "Connected", value: "Yes, 0.1 s after starting" },
+      { label: "Replies", value: "None: the device sent nothing back to 1237 messages" },
+      { label: "Status values", value: "3 of 4 reported, all by the driver itself" },
+      { label: "Link dropped", value: "10 times, reconnected 10 times" },
     ]);
   });
 
