@@ -996,6 +996,31 @@
                 "child_schema"
               ],
               "description": "child_schema: offer the controls of the child picked in the sibling child_id param."
+            },
+            "types": {
+              "type": "array",
+              "minItems": 1,
+              "description": "Offer only the controls of these types, e.g. [boolean] for a toggle. Omit to offer every control.",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "string",
+                  "integer",
+                  "number",
+                  "boolean",
+                  "enum",
+                  "float"
+                ]
+              }
+            },
+            "units": {
+              "type": "array",
+              "minItems": 1,
+              "description": "Offer only the controls with one of these units (case ignored), e.g. [dB] for a level step. Omit to offer every control.",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
             }
           },
           "additionalProperties": false

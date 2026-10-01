@@ -259,9 +259,11 @@ export function ParamInput({
         comboHint = `Pick ${optionsFrom.param} first to list its controls.`;
       } else {
         const chosen = findChildByValue(children, sv);
-        comboOptions = childSchemaOptions(chosen?.schema);
+        comboOptions = childSchemaOptions(chosen?.schema, optionsFrom);
         if (children !== undefined && !chosen) {
           comboHint = `No "${sv}" found. Type the control name.`;
+        } else if (chosen && comboOptions.length === 0 && childSchemaOptions(chosen.schema).length > 0) {
+          comboHint = `${chosen.display_name || sv} has no controls this command works on.`;
         }
       }
     }

@@ -4828,6 +4828,202 @@
   },
   "transport": "tcp"
  },
+ "param_options_from_types_empty": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "set_zone": {
+    "params": {
+     "prop": {
+      "options_from": {
+       "param": "zone",
+       "source": "child_schema",
+       "types": []
+      },
+      "type": "string"
+     },
+     "zone": {
+      "child_type": "zone",
+      "type": "child_id"
+     }
+    },
+    "send": "Z {zone} {prop}\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "param_options_from_types_unknown": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "set_zone": {
+    "params": {
+     "prop": {
+      "options_from": {
+       "param": "zone",
+       "source": "child_schema",
+       "types": [
+        "switch"
+       ]
+      },
+      "type": "string"
+     },
+     "zone": {
+      "child_type": "zone",
+      "type": "child_id"
+     }
+    },
+    "send": "Z {zone} {prop}\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "param_options_from_units_blank": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "set_zone": {
+    "params": {
+     "prop": {
+      "options_from": {
+       "param": "zone",
+       "source": "child_schema",
+       "units": [
+        " "
+       ]
+      },
+      "type": "string"
+     },
+     "zone": {
+      "child_type": "zone",
+      "type": "child_id"
+     }
+    },
+    "send": "Z {zone} {prop}\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "param_options_from_units_not_list": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "set_zone": {
+    "params": {
+     "prop": {
+      "options_from": {
+       "param": "zone",
+       "source": "child_schema",
+       "units": "dB"
+      },
+      "type": "string"
+     },
+     "zone": {
+      "child_type": "zone",
+      "type": "child_id"
+     }
+    },
+    "send": "Z {zone} {prop}\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "param_options_state_empty": {
   "commands": {
    "set_level": {

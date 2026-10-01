@@ -1179,6 +1179,24 @@ DEFS = {
                         'enum': PARAM_OPTIONS_FROM_SOURCES,
                         'doc': 'child_schema: offer the controls of the child picked in the sibling child_id param.',
                     },
+                    'types': {
+                        'type': 'array',
+                        'min_items': 1,
+                        'doc': 'Offer only the controls of these types, e.g. [boolean] for a toggle. Omit to offer every control.',
+                        'items': {
+                            'type': 'string',
+                            'enum': VALUE_TYPES,
+                        },
+                    },
+                    'units': {
+                        'type': 'array',
+                        'min_items': 1,
+                        'doc': 'Offer only the controls with one of these units (case ignored), e.g. [dB] for a level step. Omit to offer every control.',
+                        'items': {
+                            'type': 'string',
+                            'min_len': 1,
+                        },
+                    },
                 },
                 'required': ('param', 'source'),
                 'extra': False,

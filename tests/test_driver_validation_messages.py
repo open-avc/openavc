@@ -105,6 +105,19 @@ def _param(**pdef: Any) -> dict[str, Any]:
     )
 
 
+def _cascade(**narrow: Any) -> dict[str, Any]:
+    """A definition whose 'prop' param cascades off a 'zone' child_id param,
+    with ``narrow`` (types / units) added to its options_from."""
+    return _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        commands={"set_zone": {"send": "Z {zone} {prop}\r", "params": {
+            "zone": {"type": "child_id", "child_type": "zone"},
+            "prop": {"type": "string", "options_from": {
+                "param": "zone", "source": "child_schema", **narrow}},
+        }}},
+    )
+
+
 def _setting(**sdef: Any) -> dict[str, Any]:
     body = {"type": "integer", "state_key": "power", "write": {"send": "SET {value}\r"}}
     body.update(sdef)
@@ -454,6 +467,10 @@ CASES: dict[str, Any] = {
             "b": {"type": "string", "options_from": {"source": "child_schema", "param": "a"}},
         }}}
     ),
+    "param_options_from_types_unknown": _cascade(types=["switch"]),
+    "param_options_from_types_empty": _cascade(types=[]),
+    "param_options_from_units_not_list": _cascade(units="dB"),
+    "param_options_from_units_blank": _cascade(units=[" "]),
     "param_type_from_not_mapping": _param(type="string", type_from="other"),
     "param_type_from_param_missing": _param(type="string", type_from={}),
     "param_type_from_param_not_sibling": _param(type="string", type_from={"param": "ghost"}),

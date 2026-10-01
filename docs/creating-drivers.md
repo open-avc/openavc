@@ -1004,7 +1004,7 @@ set_dsp:
 **Option pickers.** Wherever the platform already knows a parameter's valid values, turn the field into a dropdown so an operator picks instead of typing a string they can misspell. Beyond `enum` (a static list) and `child_id` (live child entities), a parameter can say where its options come from. These pickers appear on every authoring surface — Send Command, Quick Actions, macro steps, and UI Builder button bindings — and stay forgiving (you can still type a value the device hasn't reported yet):
 
 - `options_state: <key>` — a dropdown sourced from this device's state. The IDE reads `device.<id>.<key>`, whose value is a JSON-encoded list (plain strings or `{value, label}` objects), and offers it. The driver publishes the list as a state variable and keeps it current (snapshot banks, named controls, router inputs, mixer channels — anything it enumerates at runtime).
-- `options_from: { param: <sibling>, source: child_schema }` — a *cascading* dropdown: the options follow another parameter's choice. With `source: child_schema`, picking a component in a sibling `child_id` parameter populates this one with that component's controls. This is how a "control name" follows the chosen component instead of being free-typed.
+- `options_from: { param: <sibling>, source: child_schema }` — a *cascading* dropdown: the options follow another parameter's choice. With `source: child_schema`, picking a component in a sibling `child_id` parameter populates this one with that component's controls. This is how a "control name" follows the chosen component instead of being free-typed. A command that works on only some controls narrows the list with `types` and `units`, read from each control's own declaration: `types: [boolean]` offers only on/off controls (a toggle), `types: [number], units: [dB]` offers only levels in dB (a level step). Units are compared ignoring case, and a control with no `unit` is left out when `units` is given. Leave both off and every control is offered.
 - `type_from: { param: <sibling> }` — make a parameter's *input type* follow the control chosen in a sibling cascade. The named sibling is itself an `options_from: { source: child_schema }` parameter; once a control is picked there, this parameter renders as that control's type (a number spinner with its range, a Yes/No for a boolean, etc.) instead of plain text. Until a control is picked, it stays a forgiving text box.
 
 ```yaml
@@ -1020,6 +1020,12 @@ set_component_control:
     component: { type: child_id, child_type: component, required: true }
     control:   { type: string, required: true, options_from: { param: component, source: child_schema } }
     value:     { type: string, required: true, type_from: { param: control } }   # follows the picked control's type
+
+toggle_component_control:
+  label: Toggle Component Control
+  params:
+    component: { type: child_id, child_type: component, required: true }
+    control:   { type: string, required: true, options_from: { param: component, source: child_schema, types: [boolean] } }
 ```
 
 **Forgiving free-text.** For a value that genuinely can't be listed, keep it a text box but constrain its shape so a typo can't silently go on the wire:

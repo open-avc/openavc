@@ -196,6 +196,16 @@ export interface ParamOptionsFrom {
    * child_id param.
    */
   source: "child_schema";
+  /**
+   * Offer only the controls of these types, e.g. [boolean] for a toggle. Omit
+   * to offer every control.
+   */
+  types?: ("string" | "integer" | "number" | "boolean" | "enum" | "float")[];
+  /**
+   * Offer only the controls with one of these units (case ignored), e.g. [dB]
+   * for a level step. Omit to offer every control.
+   */
+  units?: string[];
 }
 
 /**
@@ -244,7 +254,7 @@ export interface DriverParamDef {
    */
   options_state?: string;
   /** Cascade: source this param's options from a sibling param's chosen value. */
-  options_from?: { param: string; source: "child_schema" };
+  options_from?: { param: string; source: "child_schema"; types?: ("string" | "integer" | "number" | "boolean" | "enum" | "float")[]; units?: string[] };
   /**
    * Make this param's input type follow the control chosen in a sibling
    * cascade. The named param is itself an options_from child_schema cascade;

@@ -1157,6 +1157,42 @@ def test_options_from_child_schema_sibling_must_be_child_id():
     assert any("must be a child_id param" in e for e in errors)
 
 
+def test_options_from_types_and_units_accepted():
+    errors = validate_driver_definition(_def_with_command({
+        "component": {"type": "child_id", "child_type": "component"},
+        "control": {
+            "type": "string",
+            "options_from": {"param": "component", "source": "child_schema",
+                             "types": ["number", "integer"], "units": ["dB"]},
+        },
+    }, _COMPONENT_TYPE), strict=True)
+    assert errors == []
+
+
+def test_options_from_types_must_name_value_types():
+    errors = validate_driver_definition(_def_with_command({
+        "component": {"type": "child_id", "child_type": "component"},
+        "control": {
+            "type": "string",
+            "options_from": {"param": "component", "source": "child_schema",
+                             "types": ["switch"]},
+        },
+    }, _COMPONENT_TYPE))
+    assert any("options_from.types" in e for e in errors)
+
+
+def test_options_from_units_must_be_a_list_of_names():
+    errors = validate_driver_definition(_def_with_command({
+        "component": {"type": "child_id", "child_type": "component"},
+        "control": {
+            "type": "string",
+            "options_from": {"param": "component", "source": "child_schema",
+                             "units": "dB"},
+        },
+    }, _COMPONENT_TYPE))
+    assert any("options_from.units" in e for e in errors)
+
+
 def test_options_from_validated_on_actions():
     driver = _def_with_command({
         "component": {"type": "child_id", "child_type": "component"},

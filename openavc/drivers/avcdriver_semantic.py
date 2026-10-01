@@ -498,6 +498,25 @@ def _validate_param_option_providers(
                             f"'{ref}' must be a child_id param for source "
                             f"'child_schema'"
                         )
+                # A typo in either list would quietly empty the picker.
+                types = ofrom.get("types")
+                if types is not None and not (
+                    isinstance(types, list) and types
+                    and all(t in VALUE_TYPES for t in types)
+                ):
+                    errors.append(
+                        f"{where} param '{pname}': options_from.types must be "
+                        f"a non-empty list of {list(VALUE_TYPES)}"
+                    )
+                units = ofrom.get("units")
+                if units is not None and not (
+                    isinstance(units, list) and units
+                    and all(isinstance(u, str) and u.strip() for u in units)
+                ):
+                    errors.append(
+                        f"{where} param '{pname}': options_from.units must be "
+                        f"a non-empty list of unit names, e.g. [\"dB\"]"
+                    )
 
         tfrom = pdef.get("type_from")
         if tfrom is not None:

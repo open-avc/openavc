@@ -188,18 +188,30 @@ const PLATFORM_CHILD_KEYS = CHILD_RESERVED_PROPS;
  * platform-managed `online` / `label` is offered, so a driver that hasn't
  * opted in still gets a usable list.
  *
+ * A command that works on only some controls narrows the list with
+ * `options_from.types` / `options_from.units` (a toggle takes `boolean`, a
+ * level step takes a number in `dB`): a control is kept only when its declared
+ * type, and its declared unit (case ignored), are in the lists given.
+ *
  * The option `value` is the schema key (the control name the driver's command
  * expects); the `label` is the var-def's `label` when present.
  */
 export function childSchemaOptions(
   schema: Record<string, ChildEntityStateVarDef> | undefined,
+  narrow?: { types?: readonly string[]; units?: readonly string[] },
 ): ParamOption[] {
   if (!schema) return [];
   const entries = Object.entries(schema);
   const flagged = entries.filter(([, def]) => def && def.control === true);
-  const chosen = flagged.length > 0
+  const offered = flagged.length > 0
     ? flagged
     : entries.filter(([key]) => !PLATFORM_CHILD_KEYS.has(key));
+  const units = narrow?.units?.map((u) => u.trim().toLowerCase());
+  const chosen = offered.filter(([, def]) => {
+    if (narrow?.types && !narrow.types.includes(def?.type)) return false;
+    if (units && !units.includes((def?.unit ?? "").trim().toLowerCase())) return false;
+    return true;
+  });
   return chosen.map(([key, def]) => ({
     value: key,
     label: def?.label || key,

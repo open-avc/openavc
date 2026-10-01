@@ -1857,6 +1857,91 @@ function ParamRow({
   );
 }
 
+/** The control types a cascade can be narrowed to, named as the child
+ *  state-variable editor names them. */
+const CASCADE_TYPES: { value: string; label: string }[] = [
+  { value: "boolean", label: "Boolean" },
+  { value: "number", label: "Number" },
+  { value: "integer", label: "Integer" },
+  { value: "float", label: "Float" },
+  { value: "enum", label: "Enum" },
+  { value: "string", label: "String" },
+];
+
+type CascadeDef = NonNullable<DriverParamDef["options_from"]>;
+
+/** A cascade for a command that works on only some controls: a toggle takes
+ *  Boolean controls, a level step takes Numbers in dB. Nothing ticked and no
+ *  unit means every control is offered. */
+function CascadeNarrowing({
+  name,
+  optionsFrom,
+  onChange,
+}: {
+  name: string;
+  optionsFrom: CascadeDef;
+  onChange: (next: CascadeDef) => void;
+}) {
+  // The unit box keeps what is typed ("dB, " mid-entry) and writes the parsed
+  // list, so a trailing comma does not vanish under the cursor.
+  const [unitText, setUnitText] = useState((optionsFrom.units ?? []).join(", "));
+  const types = optionsFrom.types ?? [];
+
+  const write = (patch: Partial<CascadeDef>) => {
+    const next: CascadeDef = { ...optionsFrom, ...patch };
+    if (!next.types?.length) delete next.types;
+    if (!next.units?.length) delete next.units;
+    onChange(next);
+  };
+
+  return (
+    <div style={{ marginTop: "var(--space-xs)" }}>
+      <span style={{ display: "block", fontSize: "11px", color: "var(--text-muted)", marginBottom: 2 }}>
+        Only Offer Controls Of Type
+      </span>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-sm)" }}>
+        {CASCADE_TYPES.map((t) => (
+          <label key={t.value} style={{ fontSize: "var(--font-size-sm)", display: "flex", gap: 4, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={(types as readonly string[]).includes(t.value)}
+              onChange={(e) =>
+                write({
+                  types: (e.target.checked
+                    ? [...types, t.value]
+                    : types.filter((x) => x !== t.value)) as CascadeDef["types"],
+                })
+              }
+              data-testid={`param-options-from-type-${name}-${t.value}`}
+            />
+            {t.label}
+          </label>
+        ))}
+      </div>
+      <span style={{ display: "block", fontSize: "11px", color: "var(--text-muted)", margin: "var(--space-xs) 0 2px" }}>
+        Only Offer Controls With Unit
+      </span>
+      <input
+        value={unitText}
+        onChange={(e) => {
+          setUnitText(e.target.value);
+          write({
+            units: e.target.value.split(",").map((u) => u.trim()).filter(Boolean),
+          });
+        }}
+        placeholder="Any unit, or e.g. dB"
+        data-testid={`param-options-from-units-${name}`}
+        style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
+      />
+      <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: 2 }}>
+        For a command that works on only some controls: a toggle takes Boolean
+        controls, a level step takes Numbers in dB. Leave both empty to offer
+        every control. Separate several units with commas.
+      </div>
+    </div>
+  );
+}
+
 /** Where a parameter's choices come from.
  *
  *  One control for the three fields that answer that question, because to an
@@ -2002,6 +2087,7 @@ function ParamOptionsEditor({
               onChange={(e) =>
                 onUpdate({
                   options_from: {
+                    ...def.options_from,
                     param: e.target.value,
                     source: "child_schema",
                   },
@@ -2026,6 +2112,13 @@ function ParamOptionsEditor({
             Picking a child in that parameter fills this one with the child's
             own controls.
           </div>
+          {def.options_from && (
+            <CascadeNarrowing
+              name={name}
+              optionsFrom={def.options_from}
+              onChange={(next) => onUpdate({ options_from: next })}
+            />
+          )}
         </div>
       )}
 

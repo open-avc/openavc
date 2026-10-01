@@ -508,6 +508,18 @@
  "param_options_from_sibling_not_child_id": [
   "Command 'set' param 'b': options_from.param 'a' must be a child_id param for source 'child_schema'"
  ],
+ "param_options_from_types_empty": [
+  "Command 'set_zone' param 'prop': options_from.types must be a non-empty list of ['string', 'integer', 'number', 'boolean', 'enum', 'float']"
+ ],
+ "param_options_from_types_unknown": [
+  "Command 'set_zone' param 'prop': options_from.types must be a non-empty list of ['string', 'integer', 'number', 'boolean', 'enum', 'float']"
+ ],
+ "param_options_from_units_blank": [
+  "Command 'set_zone' param 'prop': options_from.units must be a non-empty list of unit names, e.g. [\"dB\"]"
+ ],
+ "param_options_from_units_not_list": [
+  "Command 'set_zone' param 'prop': options_from.units must be a non-empty list of unit names, e.g. [\"dB\"]"
+ ],
  "param_options_state_empty": [
   "Command 'set_level' param 'level': options_state must be a non-empty string"
  ],
