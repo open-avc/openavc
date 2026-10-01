@@ -201,6 +201,33 @@ def test_a_linked_projects_folder_is_restored_through_its_link(tmp_path, kind):
 
 
 @pytest.mark.parametrize("kind", KINDS)
+def test_a_projects_folder_linked_since_the_backup_survives_two_rollbacks(tmp_path, kind):
+    """projects/ became a link after the backup (or the backup predates the
+    link record): it is swapped like a folder, so the link ends up as
+    projects.pre-rollback. Nothing is moved out from behind it, and the next
+    rollback removes that link, not what it leads to."""
+    data = tmp_path / "data"
+    _room(data / "projects" / "default")
+    backup = create_backup(data, "0.7.0")
+    elsewhere = tmp_path / "elsewhere"
+    os.replace(data / "projects", elsewhere)
+    (elsewhere / "default" / "backups").mkdir()
+    (elsewhere / "default" / "backups" / "keep.zip").write_bytes(b"a project backup")
+    make_folder_link(kind, data / "projects", elsewhere)
+
+    assert restore_user_data(data, backup) is True
+
+    assert is_link(data / "projects.pre-rollback")
+    assert not is_link(data / "projects")
+    assert (elsewhere / "default" / "backups" / "keep.zip").read_bytes() == b"a project backup"
+    assert (data / "projects" / "default" / "backups" / "keep.zip").read_bytes() == b"a project backup"
+
+    assert restore_user_data(data, backup) is True
+    assert (elsewhere / "default" / "project.avc").exists()
+    assert (elsewhere / "default" / "backups" / "keep.zip").exists()
+
+
+@pytest.mark.parametrize("kind", KINDS)
 def test_a_rollback_moves_nothing_out_from_behind_a_link(tmp_path, kind):
     """Project backups are carried over from the displaced tree, but a
     ``backups`` folder behind a link left in it is somewhere else, not ours."""
@@ -240,17 +267,17 @@ def test_an_external_project_is_restored_through_its_linked_folder(tmp_path, kin
 def test_an_external_projects_linked_file_stays_a_link(tmp_path):
     data = tmp_path / "data"
     data.mkdir()
-    external = tmp_path / "remote" / "studio"
-    external.mkdir(parents=True)
-    kept = tmp_path / "synced" / "project.avc"
+    external = _room(tmp_path / "remote" / "studio")
+    kept = tmp_path / "synced" / "state.json"
     kept.parent.mkdir()
-    kept.write_text('{"openavc_version": "0.7.0"}', encoding="utf-8")
+    kept.write_text('{"var.x": 1}', encoding="utf-8")
+    (external / "state.json").symlink_to(kept)
     project_path = external / "project.avc"
-    project_path.symlink_to(kept)
     backup = create_backup(data, "0.7.0", project_path=project_path)
-    kept.write_text('{"openavc_version": "0.8.0"}', encoding="utf-8")
+    assert "state.json" in _recorded(backup)["external-project"]
+    kept.write_text('{"var.x": 2}', encoding="utf-8")
 
     assert restore_user_data(data, backup, project_path=project_path) is True
 
-    assert project_path.is_symlink()
-    assert kept.read_text(encoding="utf-8") == '{"openavc_version": "0.7.0"}'
+    assert (external / "state.json").is_symlink()
+    assert kept.read_text(encoding="utf-8") == '{"var.x": 1}'

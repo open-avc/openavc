@@ -416,8 +416,7 @@ def _restore_projects_tree(
                 shutil.copyfileobj(src, dst)
 
         # Swap: displaced tree survives at projects.pre-rollback.
-        if aside.exists():
-            shutil.rmtree(aside)
+        _clear(aside)
         if live.exists():
             os.replace(live, aside)
         os.replace(staging, live)
@@ -432,7 +431,19 @@ def _restore_projects_tree(
         shutil.rmtree(staging, ignore_errors=True)
         return False
 
-    _put_links_back(zf, members, live, aside, links)
+    # A projects/ that was itself a link the backup did not record (made since,
+    # or a backup from before links were recorded) was swapped like a folder:
+    # the link is now projects.pre-rollback, and what it leads to is not ours
+    # to rearrange. Its links stay where they are, and its project backups
+    # are copied over rather than moved out of it.
+    aside_is_link = is_link(aside)
+    if aside_is_link:
+        log.warning(
+            "projects/ was a link the backup did not record; restored it as a plain "
+            "folder, and the link is kept at %s", aside,
+        )
+    else:
+        _put_links_back(zf, members, live, aside, links)
 
     # User backups are excluded from the archive — carry them over from the
     # displaced tree so a rollback doesn't lose them. Not from behind a link
@@ -444,12 +455,26 @@ def _restore_projects_tree(
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
             try:
-                shutil.move(str(backups_dir), str(target))
+                if aside_is_link:
+                    shutil.copytree(backups_dir, target)
+                else:
+                    shutil.move(str(backups_dir), str(target))
             except OSError as e:
                 log.warning("Could not carry user backups %s over: %s", backups_dir, e)
 
     log.warning("Restored projects/ from pre-update backup (previous tree kept at %s)", aside)
     return True
+
+
+def _clear(path: Path) -> None:
+    """Remove ``path``: a link as itself, never what it leads to, or a folder tree."""
+    if is_link(path):
+        try:
+            os.unlink(path)
+        except OSError:
+            os.rmdir(path)  # a junction, or a folder symlink on Windows
+    elif path.exists():
+        shutil.rmtree(path)
 
 
 def _backups_dirs(root: Path) -> list[Path]:
@@ -530,7 +555,11 @@ def _restore_tree_through_link(
     The versions replaced are kept under ``aside``. Like an external project
     folder, files made after the backup stay where they are.
     """
-    shutil.rmtree(aside, ignore_errors=True)
+    try:
+        _clear(aside)
+    except OSError:
+        log.exception("Could not clear %s; projects/ was not restored", aside)
+        return False
     for member in members:
         rel = _member_relpath(member.filename, "projects/")
         if rel is None:
