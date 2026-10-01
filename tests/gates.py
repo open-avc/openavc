@@ -3,7 +3,9 @@
 Some tests need more than the Python packages: Node plus the Programmer UI's
 ``node_modules`` for the harnesses that bundle real TypeScript, ``bash`` for
 the installer scripts, ``openssl`` for certificate fixtures, the community
-driver library for the sweeps that read every shipped driver.
+driver library for the sweeps that read every shipped driver. One needs a
+permission rather than a tool: making a symlink, which an ordinary Windows
+account is refused.
 
 Skipping when the tool is missing is a kindness on a developer's machine --
 someone with only the Python side installed still gets a green run. In an
@@ -39,7 +41,9 @@ For a ``skipif`` mark evaluated while the module is being imported::
 
 from __future__ import annotations
 
+import functools
 import os
+import tempfile
 
 import pytest
 
@@ -63,11 +67,30 @@ GIT = "OPENAVC_REQUIRE_GIT"
 # Playwright and its browser download, for the end-to-end IDE tests.
 E2E = "OPENAVC_REQUIRE_E2E"
 
+# Permission to make a symlink, for the tests that check one is refused.
+# Windows grants it with Developer Mode or admin rights; CI's runner has them.
+SYMLINKS = "OPENAVC_REQUIRE_SYMLINKS"
+
 _TRUE = {"1", "true", "yes", "on"}
 
 
 class MissingRequiredTool(AssertionError):
     """A run promised to provide a gate's tool, and the tool is not there."""
+
+
+@functools.lru_cache(maxsize=1)
+def symlink_reason() -> str | None:
+    """None when this account can make a symlink; otherwise why not.
+
+    Found by trying, not by the platform's name: skipping on every Windows
+    machine would also skip the one that can run these tests, CI's.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            os.symlink(os.path.join(tmp, "target"), os.path.join(tmp, "link"))
+        except (OSError, NotImplementedError) as exc:
+            return f"this account cannot make a symlink ({getattr(exc, 'strerror', None) or exc})"
+    return None
 
 
 def is_required(gate: str) -> bool:

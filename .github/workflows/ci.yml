@@ -26,13 +26,16 @@ jobs:
     # skip" into "missing, fail". The Linux leg installs them all and promises
     # them; the Windows leg promises nothing, which says out loud that it does
     # not run those tests. Everything behind these is OS-independent, so
-    # covering it once is enough. See tests/gates.py.
+    # covering it once is enough. Symlinks are the exception, promised on
+    # both legs: how a symlink is refused is the part that differs on
+    # Windows, and the runner may make one. See tests/gates.py.
     env:
       OPENAVC_REQUIRE_NODE: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
       OPENAVC_REQUIRE_DRIVER_CORPUS: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
       OPENAVC_REQUIRE_BASH: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
       OPENAVC_REQUIRE_OPENSSL: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
       OPENAVC_REQUIRE_GIT: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
+      OPENAVC_REQUIRE_SYMLINKS: "1"
 
     steps:
       - uses: actions/checkout@v4

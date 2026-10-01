@@ -12,9 +12,8 @@ import io
 import zipfile
 from pathlib import Path
 
-import pytest
-
 from openavc.core import asset_tree
+from tests import gates
 
 
 def _zip(files: dict[str, bytes]) -> zipfile.ZipFile:
@@ -43,6 +42,7 @@ def test_collects_nothing_from_a_missing_tree(tmp_path: Path):
     assert asset_tree.zip_entries(tmp_path / "assets") == []
 
 
+@gates.skipif_missing(gates.SYMLINKS, gates.symlink_reason())
 def test_collection_skips_a_symlink(tmp_path: Path):
     assets = tmp_path / "assets"
     assets.mkdir()
@@ -101,9 +101,7 @@ def test_extract_skips_a_dotfile_and_a_dot_folder(tmp_path: Path):
     assert written == ["logo.png"]
 
 
-@pytest.mark.skipif(
-    not hasattr(Path, "symlink_to"), reason="platform has no symlinks"
-)
+@gates.skipif_missing(gates.SYMLINKS, gates.symlink_reason())
 def test_extract_will_not_write_through_a_symlinked_folder(tmp_path: Path):
     # The rule normalize-then-recheck exists for exactly this: the path is
     # clean, and the directory it lands in is not what it appears to be.

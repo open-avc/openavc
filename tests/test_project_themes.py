@@ -2,7 +2,6 @@
 
 import io
 import json
-import sys
 import zipfile
 from types import SimpleNamespace
 
@@ -14,6 +13,7 @@ from openavc.api import themes
 from openavc.api.routes import project as project_routes
 from openavc.core import backup_manager, project_library as library, theme_tree
 from openavc.core.project_loader import save_project
+from tests import gates
 
 
 @pytest.fixture
@@ -132,7 +132,7 @@ def test_import_does_not_flatten_or_write_unsafe_theme_members(room, tmp_path, n
     assert not (tmp_path / "escape.json").exists()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privilege on Windows")
+@gates.skipif_missing(gates.SYMLINKS, gates.symlink_reason())
 def test_theme_exports_do_not_follow_symlinks_or_include_unrelated_files(tmp_path):
     source = tmp_path / "themes"
     source.mkdir()

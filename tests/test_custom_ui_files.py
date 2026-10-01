@@ -11,7 +11,6 @@ gets a test rather than a promise.
 
 import io
 import json
-import os
 import zipfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -31,10 +30,10 @@ from openavc.core.custom_ui import (
     tree_totals,
     zip_entries,
 )
+from tests import gates
 
-# Windows needs Developer Mode or admin rights to create one, so the symlink
-# guards are checked where a symlink can actually exist.
-_CAN_SYMLINK = os.name != "nt"
+# The symlink guards are checked wherever this account can make a symlink.
+_NEEDS_SYMLINKS = gates.skipif_missing(gates.SYMLINKS, gates.symlink_reason())
 
 
 # --- The rules ---------------------------------------------------------------
@@ -100,7 +99,7 @@ def test_resolve_within_refuses_an_escape(tmp_path):
         resolve_within(ui, "../outside.html")
 
 
-@pytest.mark.skipif(not _CAN_SYMLINK, reason="symlinks need privilege on Windows")
+@_NEEDS_SYMLINKS
 def test_resolve_within_refuses_a_symlink(tmp_path):
     ui = tmp_path / "ui"
     ui.mkdir()
@@ -253,7 +252,7 @@ def test_a_missing_file_that_is_not_a_page_still_answers_json(client):
     assert resp.json()["detail"] == "File not found"
 
 
-@pytest.mark.skipif(not _CAN_SYMLINK, reason="symlinks need privilege on Windows")
+@_NEEDS_SYMLINKS
 def test_a_refused_page_is_a_document_too(client, project_dir, tmp_path):
     """The symlink refusal lands in the same iframe as the 404 does."""
     ui = project_dir / "ui"
