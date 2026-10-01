@@ -270,6 +270,7 @@ async def run_network_check(session_id: str) -> dict[str, Any]:
         start_check(session)
     except AuditError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    session.publish_state()
     return {"session": session.to_dict()}
 
 
@@ -421,6 +422,7 @@ async def wait_longer(session_id: str) -> dict[str, Any]:
         commands_for(session, run).extend()
     except AuditError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    session.publish_state()
     return {"session": session.to_dict()}
 
 
@@ -433,6 +435,7 @@ async def stop_watching(session_id: str) -> dict[str, Any]:
         commands_for(session, run).end_now()
     except AuditError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    session.publish_state()
     return {"session": session.to_dict()}
 
 
@@ -473,6 +476,7 @@ async def write_setting(session_id: str, key: str, body: AuditSettingRequest) ->
         await settings_for(session, run).write(key, body.value)
     except AuditError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    session.publish_state()
     return {"session": session.to_dict()}
 
 
@@ -485,6 +489,7 @@ async def put_setting_back(session_id: str, key: str) -> dict[str, Any]:
         await settings_for(session, run).put_back(key)
     except AuditError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    session.publish_state()
     return {"session": session.to_dict()}
 
 
@@ -522,6 +527,7 @@ async def mark_outage(session_id: str, body: AuditOutageMarkRequest) -> dict[str
         test.mark(body.mark)
     except AuditError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    session.publish_state()
     return {"session": session.to_dict()}
 
 
@@ -533,6 +539,7 @@ async def stop_outage(session_id: str) -> dict[str, Any]:
     if test is None:
         raise HTTPException(status_code=409, detail="No power or cable test is running.")
     await test.stop()
+    session.publish_state()
     return {"session": session.to_dict()}
 
 
@@ -547,6 +554,7 @@ async def answer_command(session_id: str, body: AuditAnswerRequest) -> dict[str,
         run.commands.answer(body.trial, body.answer, body.note.strip())
     except AuditError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    session.publish_state()
     return {"session": session.to_dict()}
 
 
@@ -573,6 +581,7 @@ async def set_tester(session_id: str, body: AuditTesterRequest) -> dict[str, Any
         if value not in ("", None)
     }
     session.enter_step("report")
+    session.publish_state()
     return {"session": session.to_dict()}
 
 

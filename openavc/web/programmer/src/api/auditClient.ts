@@ -595,6 +595,9 @@ export interface AuditSessionState {
   /** True when the person said there is no driver for this device yet. */
   no_driver?: boolean;
   runs?: AuditDriverRun[];
+  /** The number of the last message the server sent about this audit
+   *  before this state was taken. */
+  seq?: number;
 }
 
 export interface AuditTimelineEntry {

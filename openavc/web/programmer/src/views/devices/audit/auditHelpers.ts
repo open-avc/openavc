@@ -336,6 +336,35 @@ export function paramsText(params: Record<string, unknown>): string {
 export const LIVE_TRAFFIC_KEPT = 500;
 
 /** Append an ``audit.traffic`` batch to what the wizard shows. */
+/** The number a message about an audit carries: its own, or for the state
+ *  sent on subscribing (which has none), the state's. */
+export function messageSeq(msg: Record<string, unknown>): number | null {
+  if (typeof msg.seq === "number") return msg.seq;
+  const state = msg.state as { seq?: unknown } | undefined;
+  return state && typeof state.seq === "number" ? state.seq : null;
+}
+
+/**
+ * True when a session a request returned is older than what the wizard shows:
+ * a message the server sent after the reply was taken has already been
+ * applied. A reply can arrive after such a message (a driver that connects
+ * at once says so before the Connect request has answered), and applying it
+ * would put the older state back with nothing coming to correct it.
+ */
+export function isStaleReply(
+  current: AuditSessionState | null,
+  appliedSeq: number,
+  next: AuditSessionState | null,
+): boolean {
+  return (
+    !!current &&
+    !!next &&
+    next.session_id === current.session_id &&
+    typeof next.seq === "number" &&
+    next.seq < appliedSeq
+  );
+}
+
 export function appendTraffic(
   kept: AuditTrafficEntry[],
   msg: Record<string, unknown>,

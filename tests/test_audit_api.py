@@ -339,6 +339,45 @@ async def test_a_programmer_subscribes_and_only_it_hears(wired):
     await wired.manager.shutdown()
 
 
+async def test_every_message_is_numbered_and_a_reply_says_the_last_number(wired):
+    """A reply can reach the browser after a message sent later, so the state
+    says the number of the last message sent before it was taken."""
+    started = await routes.start_session(AuditStartRequest(address="127.0.0.1"))
+    session_id = started["session"]["session_id"]
+    session = wired.manager.current()
+    heard: list[dict] = []
+    session.subscribe(heard.append)
+    base = session.seq  # the start has already sent its own
+
+    session.add_timeline("check.ports", "Open: 23.")
+    reply = await routes.set_tester(session_id, AuditTesterRequest(name="Pat"))
+    session.add_timeline("check.ports", "Open: 80.")
+
+    assert [m["seq"] for m in heard] == [base + 1, base + 2, base + 3]
+    assert heard[1]["type"] == "audit.state"
+    assert reply["session"]["seq"] == base + 2
+    assert reply["session"]["tester"] == heard[1]["state"]["tester"] | {"name": "Pat"}
+
+
+def test_every_action_sends_its_state_before_it_replies():
+    """The wizard ignores a reply older than a message it has applied. That
+    loses nothing only if the reply's state also went out as a message."""
+    import inspect
+
+    missing = []
+    for route in routes.router.routes:
+        if not ({"POST", "PATCH"} & set(getattr(route, "methods", ()) or ())):
+            continue
+        source = inspect.getsource(route.endpoint)
+        if 'return {"session": session.to_dict()}' not in source:
+            continue
+        if route.endpoint is routes.start_session:
+            continue  # a new session: nothing is subscribed to it yet
+        if "session.publish_state()" not in source:
+            missing.append(route.endpoint.__name__)
+    assert missing == []
+
+
 async def test_a_disconnect_drops_the_subscription(wired):
     from openavc.api import ws as wsmod
     from tests.test_websocket_protocol import FakeWS, _make_engine

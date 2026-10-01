@@ -12,6 +12,8 @@ import type { AuditSessionState, AuditTimelineEntry, AuditTrafficEntry } from ".
 import {
   appendTraffic,
   applyAuditMessage,
+  isStaleReply,
+  messageSeq,
   type AuditStep,
 } from "../views/devices/audit/auditHelpers";
 
@@ -26,6 +28,9 @@ interface AuditStoreState {
   timeline: AuditTimelineEntry[];
   /** The driver's traffic as it arrives (the newest few hundred entries). */
   traffic: AuditTrafficEntry[];
+  /** The newest message number applied for this session: a reply older than
+   *  it is not applied (see isStaleReply). */
+  seq: number;
 
   openWizard: (opts?: { address?: string; deviceId?: string }) => void;
   closeWizard: () => void;
@@ -42,6 +47,7 @@ export const useAuditStore = create<AuditStoreState>((set) => ({
   session: null,
   timeline: [],
   traffic: [],
+  seq: 0,
 
   openWizard: (opts) =>
     set({
@@ -51,19 +57,30 @@ export const useAuditStore = create<AuditStoreState>((set) => ({
       step: "target",
       timeline: [],
       traffic: [],
+      seq: 0,
     }),
   closeWizard: () =>
-    set({ open: false, session: null, timeline: [], traffic: [], step: "target" }),
+    set({ open: false, session: null, timeline: [], traffic: [], step: "target", seq: 0 }),
   setStep: (step) => set({ step }),
-  setSession: (session) => set({ session }),
+  setSession: (session) =>
+    set((state) => {
+      if (isStaleReply(state.session, state.seq, session)) return state;
+      const same = !!session && session.session_id === state.session?.session_id;
+      return { session, seq: Math.max(same ? state.seq : 0, session?.seq ?? 0) };
+    }),
   applyMessage: (msg) =>
     set((state) => {
+      const mine = !!state.session && msg.session_id === state.session.session_id;
+      const seq = mine ? Math.max(state.seq, messageSeq(msg) ?? 0) : state.seq;
       if (msg.type === "audit.traffic") {
         const traffic = appendTraffic(state.traffic, msg, state.session?.session_id ?? null);
-        return traffic === state.traffic ? state : { traffic };
+        if (traffic === state.traffic) return seq === state.seq ? state : { seq };
+        return { traffic, seq };
       }
       const next = applyAuditMessage(state.session, state.timeline, msg);
-      if (next.session === state.session && next.timeline === state.timeline) return state;
-      return { session: next.session, timeline: next.timeline };
+      if (next.session === state.session && next.timeline === state.timeline) {
+        return seq === state.seq ? state : { seq };
+      }
+      return { session: next.session, timeline: next.timeline, seq };
     }),
 }));

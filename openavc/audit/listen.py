@@ -200,6 +200,10 @@ class ListenPass:
             f"{self.run.choice.identity.get('name')} over {sb.transport}.",
         )
         self.run.started_at = self.started_at
+        # Sent as the whole state: the listen's own updates do not carry the
+        # run, and once it has started a different driver needs Test another
+        # driver rather than a new choice.
+        self.session.publish_state()
         await sb.connect()
         if self.connected_at is None:
             self.status = NOT_CONNECTED

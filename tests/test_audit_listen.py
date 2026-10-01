@@ -149,6 +149,25 @@ async def test_connect_and_listen_records_the_whole_story(driver):
     assert run.to_dict()["listen"]["status"] == DONE
 
 
+async def test_the_wizard_hears_that_the_run_has_started(driver):
+    """The Connect reply leaves before the run starts, and the listen's own
+    updates do not carry the run, so its start goes out as the whole state."""
+    from openavc.audit.passes import open_runs
+
+    server, port = await _fake_device()
+    session, run, heard = _session_and_run(port)
+    open_runs(session)
+    try:
+        listen = await start_listen(session, run, **FAST)
+        await _until(lambda: listen.connected_at is not None)
+        states = [m["state"] for m in heard if m["type"] == "audit.state"]
+        assert states and states[-1]["runs"][0]["started_at"] == run.started_at
+        assert run.started_at is not None
+    finally:
+        await run.stop()
+        server.close()
+
+
 async def test_a_device_that_refuses_is_reported_with_its_reason(driver):
     probe = socket.socket()
     probe.bind(("127.0.0.1", 0))

@@ -266,6 +266,10 @@ class AuditSession:
         self._last_activity = clock()
         self._subscribers: dict[int, Subscriber] = {}
         self._next_subscriber = 0
+        # Every message to the browser is numbered, and the state carries the
+        # last number. A reply to a request can reach the browser after a
+        # message sent later; the wizard keeps the newer of the two.
+        self.seq = 0
         self._tasks: set[asyncio.Task] = set()
         self._teardown_hooks: list[Callable[[], Awaitable[None]]] = []
         self._state_providers: list[Callable[[], dict[str, Any]]] = []
@@ -311,7 +315,8 @@ class AuditSession:
 
     def publish(self, message: dict[str, Any]) -> None:
         """Send ``message`` to every subscriber, tagged with this session."""
-        message = {**message, "session_id": self.id}
+        self.seq += 1
+        message = {**message, "session_id": self.id, "seq": self.seq}
         for callback in list(self._subscribers.values()):
             try:
                 callback(message)
@@ -374,6 +379,7 @@ class AuditSession:
             "origin": dict(self.origin) if self.origin else None,
             "report_name": self.report_name,
             "tester": {k: v for k, v in self.tester.items()},
+            "seq": self.seq,
         }
         for provider in self._state_providers:
             try:
