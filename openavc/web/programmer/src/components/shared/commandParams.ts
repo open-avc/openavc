@@ -84,3 +84,15 @@ export function commandParamsBlocked(
 ): boolean {
   return hasInvalidParams(params, values) || hasMissingRequiredParams(params, values);
 }
+
+/** What to ask before a person sends this command by hand, or null to send at
+ *  once: the driver's own sentence, or a plain question for `confirm: true`. */
+export function commandConfirmMessage(
+  command: { confirm?: unknown } | null | undefined,
+  label: string,
+): string | null {
+  const confirm = command?.confirm;
+  if (typeof confirm === "string" && confirm.trim()) return confirm;
+  if (confirm === true) return `Send ${label}?`;
+  return null;
+}

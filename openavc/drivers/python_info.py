@@ -25,6 +25,7 @@ from typing import Any
 from openavc.drivers.avcdriver_semantic import (
     UNEVALUATED_KEY,
     child_param_reference_errors,
+    command_confirm_errors,
     device_setting_state_key_errors,
     platform_version_errors,
     routing_block_errors,
@@ -304,6 +305,19 @@ def python_driver_info_issues(
                 "declares device_settings but does not override "
                 "set_device_setting — every write will 501"
             )
+
+    # A command's confirm, from the same shared rule the YAML command walk
+    # runs. A command map built at runtime, or a confirm read from a
+    # constant, cannot be judged from the source and is not.
+    commands = info.get("commands")
+    if isinstance(commands, dict):
+        for cmd_name, cmd_def in commands.items():
+            if (
+                cmd_name != UNEVALUATED_KEY
+                and isinstance(cmd_def, dict)
+                and cmd_def.get("confirm") is not UNEVALUATED
+            ):
+                issues.extend(command_confirm_errors(f"Command '{cmd_name}'", cmd_def))
 
     # References out of a command's params into child_entity_types, from the
     # same shared function the YAML path calls. Its skip list is dropped here

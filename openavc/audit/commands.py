@@ -63,8 +63,10 @@ server, so a secret one never goes back to the browser). Every command
 records how long after the previous one it was sent, which is how a device
 that refuses a command for a few seconds after a related one shows up.
 
-The driver's own confirmation text for a command (an ``actions`` entry's
-``confirm``) is part of the command list, for the wizard to show first.
+The driver's own confirmation text for a command (the command's ``confirm``,
+else an ``actions`` entry's) is part of the command list, for the wizard to
+show first. The server sends the command either way: asking is the wizard's,
+as on the device page.
 
 **"Did it happen?"** Then the person says what they saw on the device
 itself (``yes``, ``no``, ``partly``, ``cant_tell``) with an optional note. It
@@ -220,6 +222,17 @@ def _command_actions(driver: Any) -> tuple[dict[str, str], set[str]]:
     return confirms, promoted
 
 
+def _confirm_text(cdef: dict[str, Any], name: str) -> str:
+    """The command's own ``confirm``: its sentence, a plain one for
+    ``confirm: true``, or "" for none."""
+    confirm = cdef.get("confirm")
+    if isinstance(confirm, str) and confirm:
+        return confirm
+    if confirm is True:
+        return f"The driver asks for a confirmation before {cdef.get('label') or name} runs."
+    return ""
+
+
 def command_catalog(driver: Any) -> list[dict[str, Any]]:
     """The driver's commands, in its own order, with what it says about each."""
     info = getattr(driver, "DRIVER_INFO", {}) or {}
@@ -249,9 +262,12 @@ def command_catalog(driver: Any) -> list[dict[str, Any]]:
             "available_offline": bool(cdef.get("available_offline")),
             "restarts_device_for": restarts,
             "needs_input": bool(missing_required_params(params, {})),
-            "confirm": confirms.get(name, ""),
+            "confirm": _confirm_text(cdef, name) or confirms.get(name, ""),
             # One to try first: on a device page, and nothing to warn about.
-            "suggested": name in promoted and name not in confirms and not restarts,
+            "suggested": (
+                name in promoted and name not in confirms and not restarts
+                and not _confirm_text(cdef, name)
+            ),
         })
     return out
 

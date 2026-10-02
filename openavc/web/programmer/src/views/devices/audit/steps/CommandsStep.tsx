@@ -220,12 +220,10 @@ export function CommandsStep() {
       </p>
       <ul style={{ fontSize: "var(--font-size-sm)", margin: "0 0 var(--space-md)", paddingLeft: "var(--space-lg)" }}>
         <li>
-          Try as many commands as you can.{keyCount > 0 && " Make sure you try the suggested ones."}
+          Send only the commands that are safe to run on this unit. Every command but a status query
+          changes the device, and one that erases or resets it asks before it is sent.
         </li>
-        <li>
-          Commands other than status queries change the device. Send only the ones that are safe to
-          run on it.
-        </li>
+        {keyCount > 0 && <li>Start with the suggested ones.</li>}
         <li>This step is optional. Continue when you are done.</li>
       </ul>
 

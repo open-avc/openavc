@@ -13,10 +13,12 @@ import { useAuditStore } from "../../store/auditStore";
 import type { BridgePort, DeviceConfig, DeviceInfo, DeviceSettingValue, DriverParamDef } from "../../api/types";
 import { CommandParamForm } from "../../components/shared/CommandParamForm";
 import {
+  commandConfirmMessage,
   commandParamsBlocked,
   seedCommandParams,
   type CommandParamDefs,
 } from "../../components/shared/commandParams";
+import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
 import {
   MonitorCell, MonitorControl, MonitorLimitsPanel, type DeclaredReading,
 } from "../../components/shared/MonitorControl";
@@ -58,6 +60,8 @@ export function DeviceDetail({
   const [selectedCommand, setSelectedCommand] = useState("");
   const [commandParams, setCommandParams] = useState<Record<string, string>>({});
   const [sending, setSending] = useState(false);
+  // What the driver asks before the chosen command is sent, while asking.
+  const [confirmSend, setConfirmSend] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [testResult, setTestResult] = useState<{
@@ -312,6 +316,13 @@ export function DeviceDetail({
   // or a required one left blank — the per-field inline error says which.
   // Authoring aid; the runtime gates both too.
   const sendBlocked = commandParamsBlocked(commandParamDefs, commandParams);
+  const commandLabel = (commandDef?.label as string | undefined) || selectedCommand;
+  // A command that erases or resets the device asks first.
+  const requestSend = () => {
+    const ask = commandConfirmMessage(commandDef, commandLabel);
+    if (ask) setConfirmSend(ask);
+    else void handleSendCommand();
+  };
 
   // Bridge: when this device's driver advertises bridge ports, it's a bridge
   // other devices route through. The card below lists each port + what's bound
@@ -1036,7 +1047,7 @@ export function DeviceDetail({
                   }}
                 />
                 <button
-                  onClick={handleSendCommand}
+                  onClick={requestSend}
                   disabled={!selectedCommand || sending || sendBlocked}
                   style={{
                     display: "flex",
@@ -1092,6 +1103,20 @@ export function DeviceDetail({
                 >
                   {commandResult}
                 </pre>
+              )}
+
+              {confirmSend !== null && (
+                <ConfirmDialog
+                  title={commandLabel}
+                  message={confirmSend}
+                  confirmLabel="Send"
+                  destructive
+                  onConfirm={() => {
+                    setConfirmSend(null);
+                    void handleSendCommand();
+                  }}
+                  onCancel={() => setConfirmSend(null)}
+                />
               )}
             </>
           )}

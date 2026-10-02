@@ -13,7 +13,12 @@ import type {
 } from "../../api/types";
 import * as api from "../../api/restClient";
 import { CommandParamForm } from "../shared/CommandParamForm";
-import { coerceCommandParams, seedCommandParams } from "../shared/commandParams";
+import {
+  coerceCommandParams,
+  commandConfirmMessage,
+  seedCommandParams,
+} from "../shared/commandParams";
+import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { BASE } from "../../api/base";
 import { ApiError } from "../../api/errors";
 import type {
@@ -109,6 +114,8 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
   const [rawVerifySsl, setRawVerifySsl] = useState(true);
   const [results, setResults] = useState<ResultEntry[]>([]);
   const [sending, setSending] = useState(false);
+  // What the command asks before it is sent, while asking.
+  const [confirmSend, setConfirmSend] = useState<string | null>(null);
   // A81 — production-device conflict tracking.
   const [conflicts, setConflicts] = useState<TestPanelConflict[]>([]);
   const [pausedDeviceIds, setPausedDeviceIds] = useState<string[]>([]);
@@ -423,6 +430,16 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
         c.device_id === deviceId ? { ...c, paused: false } : c,
       ),
     );
+  };
+
+  // A command that erases or resets the device asks first.
+  const requestSend = () => {
+    if (!canSend) return;
+    const ask = command
+      ? commandConfirmMessage(command, command.label || selectedCommand)
+      : null;
+    if (ask) setConfirmSend(ask);
+    else void handleSend();
   };
 
   const handleSend = async () => {
@@ -798,7 +815,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
           )}
         </div>
         <button
-          onClick={handleSend}
+          onClick={requestSend}
           disabled={!canSend || sending}
           style={{
             display: "flex",
@@ -820,6 +837,20 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
               : "Send"}
         </button>
       </div>
+
+      {confirmSend !== null && (
+        <ConfirmDialog
+          title={command?.label || selectedCommand}
+          message={confirmSend}
+          confirmLabel="Send"
+          destructive
+          onConfirm={() => {
+            setConfirmSend(null);
+            void handleSend();
+          }}
+          onCancel={() => setConfirmSend(null)}
+        />
+      )}
 
       {/* Results log */}
       {results.length > 0 && (

@@ -100,6 +100,9 @@ def _build_commands_meta(commands_def: dict[str, Any]) -> dict[str, Any]:
     it was carried here a YAML driver's declared window never opened. ``sets``
     and ``query_for`` are read off the live driver by the device audit, which
     checks a command's declared effect against what the device then reports.
+    ``confirm`` is read by every door a person sends a command from by hand
+    (the device page and its promoted buttons, the device audit), which asks
+    first.
     """
     commands_meta: dict[str, Any] = {}
     for cmd_name, cmd_def in (commands_def or {}).items():
@@ -112,6 +115,7 @@ def _build_commands_meta(commands_def: dict[str, Any]) -> dict[str, Any]:
         for key in (
             "method", "path", "body", "address", "args", "help",
             "available_offline", "restarts_device_for", "sets", "query_for",
+            "confirm",
         ):
             if key in cmd_def:
                 cmd_meta[key] = cmd_def[key]

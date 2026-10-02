@@ -59,8 +59,9 @@ the one before.
    The optional front-panel check asks you to change something on the device itself and say
    whether OpenAVC showed it, or that nothing on the device could be changed to try it.
 6. **Commands.** Open a command, press **Send**, then watch or listen to the device and say
-   whether it happened. The suggested commands come first. Commands other than status queries
-   change the device, so send only the ones that are safe to run on it. **Run all status
+   whether it happened. The suggested commands come first. Send only the commands that are safe
+   to run on this unit: every command but a status query changes the device, and one that
+   erases or resets it asks before it is sent. **Run all status
    queries** sends every query that needs no value. Under **Device settings**, **Write and put
    back** writes a new value, checks that the device reports it, then writes the old value back.
 7. **Power and cable.** The **power cycle** and **cable pull** tests show whether OpenAVC

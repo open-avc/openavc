@@ -466,6 +466,12 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                   </div>
                 </label>
 
+                <CommandConfirmField
+                  confirm={cmd.confirm}
+                  labelStyle={labelStyle}
+                  onChange={(confirm) => updateCommand(name, { confirm })}
+                />
+
                 <ParamEditor
                   params={cmd.params}
                   childTypes={Object.keys(draft.child_entity_types ?? {})}
@@ -499,6 +505,66 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
       >
         <Plus size={14} /> Add Command
       </button>
+    </div>
+  );
+}
+
+/** A command's `confirm`: ticked is `true`, a message makes it that sentence,
+ *  unticked removes it. */
+export function CommandConfirmField({
+  confirm,
+  labelStyle,
+  onChange,
+}: {
+  confirm: boolean | string | undefined;
+  labelStyle: React.CSSProperties;
+  onChange: (confirm: boolean | string | undefined) => void;
+}) {
+  const enabled = confirm === true || (typeof confirm === "string" && confirm !== "");
+  return (
+    <div style={{ marginBottom: "var(--space-md)" }}>
+      <label
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 6,
+          fontSize: "var(--font-size-sm)",
+          color: "var(--text-secondary)",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => onChange(e.target.checked ? true : undefined)}
+          style={{ marginTop: 3 }}
+        />
+        <span>
+          Ask before sending
+          <div
+            style={{
+              fontSize: "11px",
+              color: "var(--text-muted)",
+              marginTop: "var(--space-xs)",
+            }}
+          >
+            Tick this for a command that erases or resets the device. Someone
+            sending it from the device page, Live Test or a device audit is
+            asked first. Macros, triggers and panel buttons send it without
+            asking.
+          </div>
+        </span>
+      </label>
+      {enabled && (
+        <div style={{ marginTop: "var(--space-sm)" }}>
+          <label style={labelStyle}>Confirmation Message (optional)</label>
+          <input
+            value={typeof confirm === "string" ? confirm : ""}
+            onChange={(e) => onChange(e.target.value || true)}
+            placeholder="Leave blank for the generic prompt"
+            style={{ width: "100%" }}
+          />
+        </div>
+      )}
     </div>
   );
 }

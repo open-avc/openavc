@@ -410,6 +410,7 @@ CASES: dict[str, Any] = {
         }}
     ),
     "command_query_for_empty": _d(commands={"chk": {"send": "S?", "query_for": ""}}),
+    "command_confirm_bad_type": _d(commands={"chk": {"send": "S?", "confirm": 5}}),
     "command_query_for_undeclared_var": _d(
         commands={"chk": {"send": "S?", "query_for": "ghost"}}
     ),

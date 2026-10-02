@@ -128,7 +128,7 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   paramEntry: new Set(["child_type", "decimals", "default", "description", "help", "label", "map", "max", "min", "options_from", "options_state", "pattern", "required", "secret", "trim", "type", "type_from", "unit", "values"]),
   oscArg: new Set(["type", "value"]),
   udpSendEntry: new Set(["broadcast", "host", "magic_packet", "payload", "port"]),
-  commandEntry: new Set(["address", "args", "available_offline", "body", "headers", "help", "label", "method", "params", "path", "query_for", "query_params", "raw", "restarts_device_for", "send", "sets", "udp"]),
+  commandEntry: new Set(["address", "args", "available_offline", "body", "confirm", "headers", "help", "label", "method", "params", "path", "query_for", "query_params", "raw", "restarts_device_for", "send", "sets", "udp"]),
   actionEntry: new Set(["availability", "command", "confirm", "icon", "id", "kind", "label", "params", "url", "visible_when"]),
   visibleWhenCondition: new Set(["key", "operator", "value"]),
   mappingEntry: new Set(["arg", "contains", "group", "json_path", "key", "map", "state", "type", "value"]),
@@ -447,6 +447,16 @@ export interface DriverCommandDef {
    * 0.34.0.
    */
   restarts_device_for?: number;
+  /**
+   * Ask before sending this command by hand. true for a generic question, or
+   * the sentence to ask, written like help (e.g. "Erases every preset and
+   * returns the unit to DHCP."). A person sending it from the device page, the
+   * Driver Builder's Live Test or a device audit is asked first, and a Quick
+   * Action button for it asks too unless the action sets its own confirm.
+   * Macros, triggers and panel buttons send it without asking. Declare it on a
+   * command that erases or resets the device. Requires platform 0.36.0.
+   */
+  confirm?: boolean | string;
 }
 
 export interface DriverResponseMapping {

@@ -1397,6 +1397,11 @@ DEFS = {
                 'doc': "Seconds this command takes the device's control channel away for, because sending it restarts the device. The mirror of available_offline: that one says a command works while the device is away, this one says a command MAKES it go away. While the window is open the platform reports the device as restarting rather than as a fault — no offline_reason is published, so nothing counts it as an error or alerts on it, and the panel says it is coming back instead of telling somebody to check the network. The window ends the moment the device reconnects, when the seconds run out, or immediately if a fault appears that a person has to fix (a rejected login, an untrusted certificate). Set it only from a MEASURED window on real hardware, round up, and leave it unset when the control channel survives the command — a device that stays reachable in standby, or a projector that reports a warming state, needs nothing here.",
                 'since': '0.34.0',
             },
+            'confirm': {
+                'type': ['boolean', 'string'],
+                'doc': "Ask before sending this command by hand. true for a generic question, or the sentence to ask, written like help (e.g. \"Erases every preset and returns the unit to DHCP.\"). A person sending it from the device page, the Driver Builder's Live Test or a device audit is asked first, and a Quick Action button for it asks too unless the action sets its own confirm. Macros, triggers and panel buttons send it without asking. Declare it on a command that erases or resets the device.",
+                'since': '0.36.0',
+            },
         },
         'extra': False,
         'any_of': (

@@ -89,6 +89,13 @@ def _command_availability(cmd: Any) -> str:
     return _DEFAULT_AVAILABILITY
 
 
+def _command_confirm(cmd: Any) -> bool | str | None:
+    """The command's own ``confirm`` for a button that promotes it: True, the
+    sentence to ask, or None. Used for both promotion styles."""
+    confirm = cmd.get("confirm") if isinstance(cmd, dict) else None
+    return confirm if isinstance(confirm, (bool, str)) and confirm else None
+
+
 def resolve_device_actions(
     driver_info: dict[str, Any],
     config: dict[str, Any] | None = None,
@@ -160,7 +167,7 @@ def resolve_device_actions(
                 "command": cmd_id,
                 "label": cmd.get("label") or cmd_id,
                 "icon": None,
-                "confirm": None,
+                "confirm": _command_confirm(cmd),
                 "visible_when": None,
                 "availability": _command_availability(cmd),
                 "params": params if isinstance(params, dict) else {},
@@ -265,6 +272,10 @@ def _resolve_action_entry(
         if not isinstance(params, dict):
             params = cmd.get("params")
         resolved["params"] = params if isinstance(params, dict) else {}
+        # A command that asks before it is sent by hand asks from its button
+        # too, unless the action says otherwise (false included).
+        if "confirm" not in entry:
+            resolved["confirm"] = _command_confirm(cmd)
         # An available_offline command keeps its button live regardless of
         # connection state, unless the action pinned an explicit availability.
         if explicit_availability is None:

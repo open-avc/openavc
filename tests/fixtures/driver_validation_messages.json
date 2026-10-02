@@ -180,6 +180,9 @@
  "child_type_name_with_glob": [
   "child_entity_types: type name 'zone*' must not contain glob metacharacters (*) \u2014 they break state-change dispatch"
  ],
+ "command_confirm_bad_type": [
+  "Command 'chk': 'confirm' must be a boolean or a message string"
+ ],
  "command_legacy_string_alias": [
   "Command 'noop': must have 'send' (TCP/serial), 'path'/'method' (HTTP), 'address' (OSC), or 'udp' (a datagram beside the main transport)",
   "commands.noop: unknown key 'string'"

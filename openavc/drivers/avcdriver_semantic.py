@@ -1422,6 +1422,7 @@ def validate_driver_definition(
                         f"Command '{cmd_name}': query_for '{query_for}' is not "
                         f"a declared state variable"
                     )
+        errors.extend(command_confirm_errors(f"Command '{cmd_name}'", cmd_def))
 
     # References out of a command's params into child_entity_types. Shared
     # with the Python surface (a Python driver reaches the same function
@@ -2827,6 +2828,19 @@ def validate_driver_issues(
     )
     warnings = validate_driver_warnings(driver_def)
     return _as_issues(errors, "error") + _as_issues(warnings, "warning")
+
+
+def command_confirm_errors(where: str, cmd_def: dict[str, Any]) -> list[str]:
+    """A command's ``confirm`` is a flag or the sentence to ask.
+
+    Shared with the Python surface (``python_info``), so a Python driver's
+    ``confirm: 5`` is refused in the same words as a YAML one. Anything else
+    is dropped by every door that asks, and the command is sent unasked.
+    """
+    confirm = cmd_def.get("confirm")
+    if confirm is None or isinstance(confirm, (bool, str)):
+        return []
+    return [f"{where}: 'confirm' must be a boolean or a message string"]
 
 
 def device_setting_state_key_errors(
