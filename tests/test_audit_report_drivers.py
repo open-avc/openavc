@@ -663,3 +663,35 @@ def test_clock_times_say_their_time_zone_and_the_liveness_check_is_said():
     page = "".join(_render_driver(section))
     assert "Liveness check" in page
     assert "every 30.0 seconds, apart from the polls" in page
+
+
+def test_the_report_says_where_each_identity_field_came_from():
+    from openavc.audit.report import identity_sources
+
+    fp = {
+        "ssdp": {"model_name": "W-100", "model_number": "WebRemote1.0", "serial_number": "SN42"},
+        "names": {"reverse_dns": "widget.lan"},
+        "mac": {"address": "aa:bb:cc:00:11:22", "source": "arp"},
+    }
+    reported = {"model": "W-100", "model_number": "WebRemote1.0", "serial_number": "SN42",
+                "hostname": "widget.lan", "mac": "aa:bb:cc:00:11:22", "firmware": "2.1"}
+    assert identity_sources(fp, reported) == {
+        "model": "the UPnP description", "model_number": "the UPnP description",
+        "serial_number": "the UPnP description", "hostname": "reverse DNS",
+        "mac": "this computer's ARP table",
+    }
+
+
+def test_the_report_says_what_the_driver_read_and_what_was_not_run():
+    from openavc.audit.report import _render_driver, _render_outages
+
+    section = _run_section()
+    section["attempts"][0]["status_table"]["variables"] += [
+        {"name": "model", "label": "Model", "reported": True, "value": "W-200"},
+        {"name": "firmware", "label": "Firmware", "reported": True, "value": "2.1.0"},
+    ]
+    page = "".join(_render_driver(section))
+    assert "Model, as the driver read it</th><td>W-200 (not the model entered, W-100)" in page
+    assert "Firmware, as the driver read it</th><td>2.1.0</td>" in page
+    assert "Front-panel check</th><td>not run" in page
+    assert "The power cycle and cable pull tests were not run." in "".join(_render_outages([]))

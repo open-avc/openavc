@@ -31,6 +31,9 @@
   ``model``, ``model_number``, ``firmware``, ``serial_number``,
   ``device_name``, ``hostname``, ``mac``). An SSDP description's modelName is
   ``model`` and its modelNumber ``model_number``, never joined.
+  ``reported_sources`` says where each of those came from, in words (the
+  UPnP description, reverse DNS, SNMP, this computer's ARP table), where the
+  raw observations show it.
 - ``catalog``: where the driver catalog came from, when it was fetched
   (``fetched_at``, ``last_attempt``), the ``sha256`` of its ``index.json``, its
   ``driver_count``, whether it was ``reachable``, and ``used``: ``fresh``,
@@ -631,6 +634,49 @@ def _reported(device: dict[str, Any], ssdp: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+# Where a reported identity field can have come from, in the order looked
+# for: the raw observation that holds that same value, said in words.
+_MAC_SOURCES = {"arp": "this computer's ARP table", "netbios": "NetBIOS", "snmp": "SNMP"}
+
+
+def identity_sources(fp: dict[str, Any], reported: dict[str, Any]) -> dict[str, str]:
+    """For each identity field the network check reported, where it came
+    from: the raw observation in ``footprint`` that holds the same value."""
+    ssdp = fp.get("ssdp") or {}
+    amx = fp.get("amx_ddp") or {}
+    names = fp.get("names") or {}
+    netbios = names.get("netbios") or {}
+    snmp = (fp.get("snmp") or {}).get("values") or {}
+    upnp = "the UPnP description"
+    places: dict[str, list[tuple[Any, str]]] = {
+        "manufacturer": [(ssdp.get("manufacturer"), upnp), (amx.get("make"), "the AMX DDP beacon"),
+                         (snmp.get("entPhysicalMfgName"), "SNMP")],
+        "model": [(ssdp.get("model_name"), upnp), (amx.get("model"), "the AMX DDP beacon"),
+                  (snmp.get("entPhysicalModelName"), "SNMP")],
+        "model_number": [(ssdp.get("model_number"), upnp)],
+        "serial_number": [(ssdp.get("serial_number"), upnp), (snmp.get("entPhysicalSerialNum"), "SNMP")],
+        "firmware": [(snmp.get("entPhysicalFirmwareRev"), "SNMP")],
+        "device_name": [(ssdp.get("friendly_name"), upnp), (snmp.get("sysName"), "SNMP"),
+                        (netbios.get("hostname"), "NetBIOS")],
+        "hostname": [(names.get("reverse_dns"), "reverse DNS"), (netbios.get("hostname"), "NetBIOS")],
+    }
+    out: dict[str, str] = {}
+    for key, value in reported.items():
+        if not value:
+            continue
+        if key == "mac":
+            source = _MAC_SOURCES.get(str((fp.get("mac") or {}).get("source") or ""))
+        else:
+            source = next(
+                (where for raw, where in places.get(key, [])
+                 if raw and str(raw).strip().lower() == str(value).strip().lower()),
+                None,
+            )
+        if source:
+            out[key] = source
+    return out
+
+
 def _entered(values: dict[str, Any]) -> dict[str, Any]:
     return {key: (values.get(key) or None) for key in ("manufacturer", "model", "firmware")}
 
@@ -836,6 +882,7 @@ def build_report(session: "AuditSession") -> dict[str, Any]:
         "device": {
             "entered": _entered(getattr(session, "device_entered", None) or {}),
             "reported": _reported(device, fp.get("ssdp") or {}),
+            "reported_sources": identity_sources(fp, _reported(device, fp.get("ssdp") or {})),
         },
         "catalog": (fp.get("verdict") or {}).get("catalog", {}),
         "footprint": raw_footprint,
@@ -1361,7 +1408,8 @@ def render_summary(report: dict[str, Any]) -> str:
         ("mac", "MAC address"),
     ):
         if reported.get(key):
-            parts.append(_row(label, _e(reported[key])))
+            where = (report.get("device") or {}).get("reported_sources", {}).get(key)
+            parts.append(_row(label, _e(reported[key]) + (f" (from {_e(where)})" if where else "")))
     parts.append("</table>")
 
     # Network.
@@ -1579,6 +1627,43 @@ def _seconds_after(t: float | None, start: float | None) -> str:
     return f"{max(0.0, t - start):.1f} s after starting"
 
 
+# Status values that hold the device's own model and firmware.
+_READ_IDENTITY = (
+    ("model", "Model", ("model", "model_name")),
+    ("firmware", "Firmware", ("firmware", "firmware_version")),
+)
+
+
+def _driver_read_identity(section: dict[str, Any]) -> list[tuple[str, str, str]]:
+    """(key, label, value) for the model and firmware the device reported to
+    the driver, from the last attempt that connected."""
+    attempts = [a for a in section.get("attempts") or [] if a.get("connected_at")]
+    if not attempts:
+        return []
+    values = {
+        v.get("name"): v.get("value")
+        for v in (attempts[-1].get("status_table") or {}).get("variables") or []
+        if v.get("reported") and v.get("value") not in (None, "")
+    }
+    out = []
+    for key, label, names in _READ_IDENTITY:
+        read = next((values[n] for n in names if n in values), None)
+        if read is not None:
+            out.append((key, label, str(read)))
+    return out
+
+
+def _same_name(a: Any, b: Any) -> bool:
+    """Two ways of writing one model or version: equal, or one holds the
+    other, ignoring case, spaces and punctuation ("352D" in "Connect Series
+    Model 352D")."""
+    def squash(value: Any) -> str:
+        return "".join(ch for ch in str(value).lower() if ch.isalnum())
+
+    x, y = squash(a), squash(b)
+    return bool(x and y) and (x in y or y in x)
+
+
 def _attempt_sentence(attempt: dict[str, Any]) -> str:
     status = attempt.get("status")
     offline = attempt.get("offline") or {}
@@ -1667,6 +1752,12 @@ def _render_driver(section: dict[str, Any]) -> list[str]:
             said + (f", firmware {entered['firmware']}" if entered.get("firmware") else "")
             + (f" ({listed[listing]})" if listing in listed else "")
         )))
+    for key, what, read in _driver_read_identity(section):
+        typed = entered.get(key)
+        differs = typed and not _same_name(typed, read)
+        parts.append(_row(f"{what}, as the driver read it", _e(
+            read + (f" (not the {what.lower()} entered, {typed})" if differs else "")
+        )))
     parts.append(_row("Network check", _e(
         _AGREEMENT_TEXT.get(section.get("verdict_agreement"), "")
     )))
@@ -1733,6 +1824,8 @@ def _render_driver(section: dict[str, Any]) -> list[str]:
             parts.append(_row("Front-panel check", _e(
                 answer + (f" ({front['note']})" if front.get("note") else "")
             )))
+        elif attempt.get("connected_at"):
+            parts.append(_row("Front-panel check", "not run"))
         parts.append("</table>")
 
         table = attempt.get("status_table") or {}
@@ -1944,7 +2037,7 @@ def _render_outages(outages: list[dict[str, Any]] | None) -> list[str]:
     from openavc.audit.outage import WORDS, outage_sentence
 
     if not outages:
-        return []
+        return ["<h3>Power and cable</h3><p>The power cycle and cable pull tests were not run.</p>"]
     parts = ["<h3>Power and cable</h3><table>"]
     for test in outages:
         name = WORDS.get(test.get("kind"), {}).get("name") or str(test.get("kind"))

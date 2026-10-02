@@ -293,8 +293,9 @@ async def test_the_model_name_and_model_number_are_reported_apart():
     html = render_summary(report)
     assert "<title>Device audit: Acme Widget 3000</title>" in html
     identity = html.split("<h2>What the device reported</h2>")[1].split("</table>")[0]
-    assert "<th>Model</th><td>Widget 3000</td>" in identity
-    assert "<th>Model number</th><td>WebRemote1.0</td>" in identity
+    assert "<th>Model</th><td>Widget 3000 (from the UPnP description)</td>" in identity
+    assert "<th>Model number</th><td>WebRemote1.0 (from the UPnP description)</td>" in identity
+    assert report["device"]["reported_sources"]["model"] == "the UPnP description"
 
     # A number the model already holds is not said twice.
     session.footprint.ssdp["model_number"] = "3000"
