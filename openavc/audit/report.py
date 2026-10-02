@@ -954,10 +954,34 @@ def suggested_confidence(section: dict[str, Any]) -> dict[str, Any]:
     return {"level": level, "reasons": reasons}
 
 
+# An address in a sentence: IPv4 (with its port), IPv6, a MAC.
+_ADDRESS_PATTERNS = (
+    re.compile(r"(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?(?![\w.])"),
+    re.compile(r"(?<![\w:])(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}(?![\w:])"),
+    re.compile(r"(?<![\w:])(?=[0-9A-Fa-f:]*::)[0-9A-Fa-f:]{3,}(?![\w:])"),
+    re.compile(r"(?<![\w:-])(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}(?![\w:-])"),
+)
+NO_ADDRESS = "[address]"
+
+
+def _without_addresses(text: str, names: list[str], *, patterns: bool) -> str:
+    """``text`` with the device's addresses and names taken out (a test
+    report is public); with ``patterns``, any other address too (not in a
+    field where a version number could read as one)."""
+    if patterns:
+        for pattern in _ADDRESS_PATTERNS:
+            text = pattern.sub(NO_ADDRESS, text)
+    for name in sorted({n for n in names if n}, key=len, reverse=True):
+        text = text.replace(name, NO_ADDRESS)
+    return text
+
+
 def driver_test_report(report: dict[str, Any], section: dict[str, Any]) -> dict[str, Any] | None:
     """The catalog's Driver test report, filled in from this audit: ``fields``
     by the issue form's ids and ``url``, the form opened with them. None for
-    a driver the catalog does not carry (imported or built in)."""
+    a driver the catalog does not carry (imported or built in). A test report
+    is public, so no field names the device's address, host name or MAC, or
+    this computer's."""
     from urllib.parse import quote
 
     driver = section.get("driver") or {}
@@ -1006,9 +1030,17 @@ def driver_test_report(report: dict[str, Any], section: dict[str, Any]) -> dict[
         # A link fills the form's text fields but not its dropdowns (seen on
         # github.com 2026-10-01), so the suggested confidence rides in the notes.
         "notes": (
-            f"From an OpenAVC device audit (OpenAVC {version}). The audit report file is attached."
+            f"From an OpenAVC device audit (OpenAVC {version})."
             + (f" The audit suggests confidence: {level}." if level else "")
         ),
+    }
+    target = report.get("target") or {}
+    names = [
+        str(target.get(k) or "") for k in ("address", "ip", "hostname", "local_ip")
+    ] + [str(reported.get("mac") or "")]
+    fields = {
+        key: _without_addresses(value, names, patterns=key in ("worked", "didnt"))
+        for key, value in fields.items()
     }
 
     def build(values: dict[str, str]) -> str:

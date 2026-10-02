@@ -527,6 +527,35 @@ def test_the_test_report_fills_the_catalog_form_by_its_ids():
     assert driver_test_report(report, section) is None
 
 
+def test_the_test_report_names_no_address_and_claims_no_attachment():
+    """A test report is public: the device's address, host name and MAC, and
+    any other address a sentence names, are taken out; firmware that looks
+    like an address is not. The notes do not say a file is attached."""
+    from urllib.parse import parse_qs, urlsplit
+
+    section = _run_section()
+    section["entered"]["firmware"] = "4.0.1.12"
+    section["settings"] = {"trials": [{
+        "label": "Device name", "write": {"confirmed": False},
+        "summary": "Could not write Lobby: Can't reach 192.168.1.75:1023 (lab-amp.local, "
+                   "00:11:22:33:44:55, fe80::1).",
+    }]}
+    section["suggested_confidence"] = suggested_confidence(section)
+    report = {
+        "generator": {"openavc_version": "9.9.9"},
+        "device": {"reported": {"mac": "00:11:22:33:44:55"}},
+        "target": {"address": "lab-amp.local", "ip": "192.168.1.75", "hostname": "lab-amp.local"},
+    }
+    filled = driver_test_report(report, section)
+    query = parse_qs(urlsplit(filled["url"]).query)
+    text = " ".join(v for values in query.values() for v in values)
+    for private in ("192.168.1.75", "lab-amp.local", "00:11:22:33:44:55", "fe80::1"):
+        assert private not in text and private not in str(filled["fields"])
+    assert "Can't reach [address] ([address], [address], [address])." in query["didnt"][0]
+    assert query["firmware"] == ["4.0.1.12"]
+    assert "attached" not in query["notes"][0]
+
+
 def test_a_long_test_report_link_is_cut_to_fit():
     section = _run_section()
     section["commands"]["trials"] = [
