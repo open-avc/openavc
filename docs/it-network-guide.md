@@ -298,18 +298,19 @@ There is no setting that disables the ping sweep or the port scan on their own; 
 
 ### Device audit (on-demand only)
 
-A [device audit](device-audit.md) tests one device and its driver, and runs only when someone starts it in the Programmer. It is aimed at one address, and everything it sends goes to that address, except its mDNS and SSDP queries and one HTTPS request to `raw.githubusercontent.com` for the driver catalog. With a control adapter pinned in Settings > Network, it all leaves through that adapter.
+A [device audit](device-audit.md) tests one device and its driver, and runs only when someone starts it in the Programmer. It is aimed at one address, and everything it sends goes to that address, except a reverse DNS lookup to your DNS server, its mDNS and SSDP queries, any multicast query an installed driver's own discovery code sends, and one HTTPS request to `raw.githubusercontent.com` for the driver catalog. With a control adapter pinned in Settings > Network, it all leaves through that adapter.
 
 Its network check sends, to the one device:
 
 1. A ping, a reverse DNS lookup, and a NetBIOS name query (UDP 137).
 2. A TCP connection to each port on the Thorough discovery list, started 50 ms apart. The Extended option adds every port from 1 to 1024.
-3. On each open port, a connection that sends nothing and listens for a few seconds; on web ports, `GET /` and a TLS handshake for the certificate.
+3. On each open port, a connection that sends nothing and listens for a few seconds; on web ports, and on a port the device names in an SSDP or mDNS announcement, `GET /` and a TLS handshake for the certificate.
 4. SNMP v2c reads (UDP 161), community `public` and any the integrator enters. The Extended option reads every value the device offers, up to a limit.
 5. mDNS and SSDP queries on their multicast groups, and listening for mDNS, SSDP and AMX DDP announcements until the audit ends. Only the audited device's announcements are kept.
-6. The driver-declared TCP and UDP identification probes of the community catalog, sent to the device's address only.
+6. The driver-declared TCP and UDP identification probes of the community catalog, sent to the device's address only. Each sends its driver's own query, so one port (Telnet 23, say) can receive several, some typed at a login prompt.
+7. The identification checks of installed drivers that come with their own discovery code. One of those can send its own multicast query (a camera driver's WS-Discovery), which reaches every device of that kind on the segment.
 
-The driver test that follows connects to the device the way a configured device does. During its power and cable tests, the device is pinged once a second.
+The driver test that follows connects to the device the way a configured device does, including a TCP connection to ports 443, 80 and 8080 to find its web page. During its power and cable tests, the device is pinged once a second.
 
 To network monitoring this is a port scan of one host. It does not sweep the subnet.
 

@@ -108,7 +108,8 @@ OpenAVC keeps the ten newest reports, listed under **Recent reports** on the fir
 
 ## What the Audit Sends on the Network
 
-Everything goes to the device's address, except the multicast queries and the driver catalog.
+Everything goes to the device's address, except the reverse DNS lookup (to your DNS server),
+the multicast queries, and the driver catalog.
 
 **The network check:**
 
@@ -116,16 +117,22 @@ Everything goes to the device's address, except the multicast queries and the dr
 - A TCP connection to each port on Discovery's thorough port list, started 50 ms apart (with
   **Extended**, also every port from 1 to 1024).
 - On each open port, a connection that only listens for a few seconds.
-- On web ports, a `GET /`, and the certificate on TLS ports.
+- On web ports, and on a port the device names in an announcement, a `GET /`; the certificate
+  on TLS ports.
 - SNMP v2c reads (UDP 161) with `public`, then any community you added.
 - mDNS and SSDP queries, and listening for mDNS, SSDP and AMX DDP announcements until the audit
   ends.
 - Each catalog driver's identification check: TCP probes on the device's open ports, and UDP
-  probes sent to the device's address.
+  probes sent to the device's address. Each sends that driver's own query, so one port (Telnet
+  23, say) can receive several drivers' queries, some of them typed at a login prompt.
+- The identification checks of installed drivers that come with their own discovery code. One
+  of those can send its own multicast query, which reaches every device of that kind on the
+  network segment (a camera driver's WS-Discovery, for instance).
 - A request to `raw.githubusercontent.com` to read the community driver catalog.
 
 **The driver test** sends what the driver sends when a device is added to a space: its sign-in,
-start-up steps and status polls. A command or a setting is sent only when you press **Send** or
+start-up steps and status polls, and, as for any device added, a TCP connection to ports 443,
+80 and 8080 to find its web page. A command or a setting is sent only when you press **Send** or
 **Write and put back**. During a power or cable test, the audit pings the device once a second
 if it answered ping in the network check.
 
