@@ -1779,10 +1779,18 @@ def _signal_text(sig: dict[str, Any]) -> str:
     if kind == "broadcast":
         return f"UDP probe{on} matched" + (f" {pattern}" if pattern else "")
     if kind == "probe":
-        text = " ".join(str((data.get("response") or {}).get("text") or "").split())[:80]
-        if text:
-            return f'TCP probe{on} returned "{text}"'
-        return f"TCP probe{on} matched {pattern}" if pattern else f"TCP probe{on} answered"
+        response = data.get("response") or {}
+        raw = str(response.get("text") or "")
+        text, noise = _clean_banner(raw)
+        readable = len("".join(text.split()))
+        if readable >= 2 and noise * 2 <= readable:
+            text = text[:80]
+            return f"TCP probe{on} returned " + (f"'{text}'" if '"' in text else f'"{text}"')
+        if pattern:
+            return f"TCP probe{on} matched {pattern}"
+        if response.get("hex"):
+            return f"TCP probe{on} returned hex {hex_pairs(str(response['hex'])[:80])}"
+        return f"TCP probe{on} answered"
     if kind == "oui":
         vendor = data.get("vendor")
         return (f"MAC address prefix {value} belongs to {vendor}" if vendor
@@ -1805,6 +1813,39 @@ def _signal_text(sig: dict[str, Any]) -> str:
     if prefix == "broadcast":
         return "A UDP identification check answered"
     return source or "A signal"
+
+
+def _clean_banner(raw: str) -> tuple[str, int]:
+    """A reply's readable part and how many unprintable characters sit
+    inside it (``cleanBannerText`` in the IDE, the same rule): the preamble
+    before the first printable character goes, a run of four unprintable
+    ones ends the message, shorter runs read as a space. A reply reads as
+    text with two readable characters and no more than half as many
+    unprintable ones (``readsAsText``)."""
+    def printable(ch: str) -> bool:
+        return 0x20 <= ord(ch) <= 0x7E
+
+    start = 0
+    while start < len(raw) and not printable(raw[start]):
+        start += 1
+    end, run_start, run = len(raw), -1, 0
+    for i in range(start, len(raw)):
+        ch = raw[i]
+        if printable(ch):
+            run_start, run = -1, 0
+            continue
+        if ch in "\t\r\n":
+            continue
+        if run_start < 0:
+            run_start = i
+        run += 1
+        if run >= 4:
+            end = run_start
+            break
+    kept = raw[start:end]
+    text = " ".join("".join(ch if printable(ch) else " " for ch in kept).split())
+    noise = sum(1 for ch in kept if not printable(ch) and ch not in "\t\r\n")
+    return text, noise
 
 
 # A manufacturer the driver's own probe supplies when it matches

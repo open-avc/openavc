@@ -313,6 +313,26 @@ def test_every_sentence_writes_bytes_one_way():
     assert _quote({"hex": "414243", "text": "ABC"}) == '"ABC"'
 
 
+def test_a_binary_probe_reply_is_said_by_its_pattern_or_its_bytes():
+    """A checksummed binary reply holds a printable byte or two; the line
+    never draws those as the reply (it read "N ]" for a NAK). Same rule as
+    the IDE's evidence lines."""
+    from openavc.audit.report import _signal_text
+
+    def line(**data):
+        return _signal_text({"evidence": {"data": {"kind": "probe", "port": 1515, **data}}})
+
+    binary = {"text": "\xaa\xff\x01\x03N\x0b\x01]", "hex": "aaff01034e0b015d"}
+    assert line(response=binary, matched_pattern="hex aa ff") == (
+        "TCP probe on port 1515 matched hex aa ff"
+    )
+    assert line(response=binary) == "TCP probe on port 1515 returned hex aa ff 01 03 4e 0b 01 5d"
+    assert line(response={"text": "\xff\xfb\x01login: "}) == 'TCP probe on port 1515 returned "login:"'
+    assert line(response={"text": '/acme/model "W-100"\n'}) == (
+        "TCP probe on port 1515 returned '/acme/model \"W-100\"'"
+    )
+
+
 def test_a_manufacturer_the_driver_supplies_reads_as_the_drivers():
     from openavc.audit.report import _signal_text
 

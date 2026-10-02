@@ -87,6 +87,8 @@ export interface CleanedBanner {
   text: string;
   /** True when a binary payload was dropped off the end. */
   hadBinary: boolean;
+  /** Unprintable characters inside the part kept (each shown as a space). */
+  noise: number;
 }
 
 /**
@@ -133,8 +135,21 @@ export function cleanBannerText(raw: string): CleanedBanner {
 
   // Only claim a payload was dropped if something was actually there.
   const hadBinary = end < raw.length && raw.slice(end).trim().length > 0;
+  const noise = Array.from(kept).filter((ch) => !isPrintable(ch) && !SEPARATORS.includes(ch)).length;
 
-  return { text, hadBinary };
+  return { text, hadBinary, noise };
+}
+
+/**
+ * Whether a reply reads as text: at least two readable characters, and no
+ * more than half as many unprintable ones among them. A binary frame that
+ * happens to hold a printable byte or two (a checksummed reply) is not
+ * text, and is said by its pattern or its bytes instead.
+ */
+export function readsAsText(raw: string): boolean {
+  const { text, noise } = cleanBannerText(raw);
+  const readable = text.replace(/\s/g, "").length;
+  return readable >= 2 && noise * 2 <= readable;
 }
 
 /**

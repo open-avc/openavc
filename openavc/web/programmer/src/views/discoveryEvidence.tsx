@@ -1,5 +1,5 @@
 import type { DiscoveryEvidence } from "../api/discoveryClient";
-import { cleanBannerText } from "./discoveryViewHelpers";
+import { cleanBannerText, readsAsText } from "./discoveryViewHelpers";
 
 // --- Evidence list ("Why?" reveal) ---
 //
@@ -83,7 +83,10 @@ export function describeEvidence(ev: DiscoveryEvidence): { headline: string; det
       const response = data.response && typeof data.response === "object"
         ? (data.response as Record<string, unknown>) : {};
       const text = typeof response.text === "string" ? (response.text as string) : null;
-      const excerpt = text ? cleanBannerText(text).text.slice(0, 80) || null : null;
+      const hex = typeof response.hex === "string" ? (response.hex as string) : "";
+      const excerpt = text && readsAsText(text) ? cleanBannerText(text).text.slice(0, 80) || null : null;
+      // An excerpt that quotes something itself is set off with single quotes.
+      const quoted = excerpt?.includes('"') ? `'${excerpt}'` : `"${excerpt}"`;
       const portLabel = port !== null ? `on port ${port}` : null;
       // Spec §10 rows for active probes:
       //   "TCP probe on port <port> returned <response excerpt>"   (readable text)
@@ -96,12 +99,17 @@ export function describeEvidence(ev: DiscoveryEvidence): { headline: string; det
       let head: string;
       if (excerpt) {
         head = portLabel
-          ? `TCP probe ${portLabel} returned "${excerpt}"`
-          : `TCP probe returned "${excerpt}"`;
+          ? `TCP probe ${portLabel} returned ${quoted}`
+          : `TCP probe returned ${quoted}`;
       } else if (matchedPattern) {
         head = portLabel
           ? `TCP probe ${portLabel} matched ${matchedPattern}`
           : `TCP probe matched ${matchedPattern}`;
+      } else if (hex) {
+        const bytes = (hex.match(/../g) ?? []).slice(0, 40).join(" ");
+        head = portLabel
+          ? `TCP probe ${portLabel} returned hex ${bytes}`
+          : `TCP probe returned hex ${bytes}`;
       } else {
         head = portLabel ? `TCP probe ${portLabel} answered` : "TCP probe answered";
       }

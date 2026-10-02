@@ -4,6 +4,20 @@ import { describeEvidence } from "./discoveryEvidence";
 const ev = (data: Record<string, unknown>) => ({ tier: "enrichment", source: "x", data });
 
 describe("the evidence lines", () => {
+  it("says a binary reply by its pattern or its bytes, never its stray printable bytes", () => {
+    // A checksummed binary reply (latin-1 decoded): "N" and "]" are printable.
+    const binary = { text: "\xaa\xff\x01\x03N\x0b\x01]", hex: "aaff01034e0b015d" };
+    expect(describeEvidence(ev({
+      kind: "probe", port: 1515, response: binary, matched_pattern: "hex aa ff",
+    })).headline).toBe("TCP probe on port 1515 matched hex aa ff");
+    expect(describeEvidence(ev({ kind: "probe", port: 1515, response: binary })).headline)
+      .toBe("TCP probe on port 1515 returned hex aa ff 01 03 4e 0b 01 5d");
+    // A reply that quotes something itself is set off with single quotes.
+    expect(describeEvidence(ev({
+      kind: "probe", port: 4321, response: { text: '/acme/model "W-100"\n' },
+    })).headline).toBe(`TCP probe on port 4321 returned '/acme/model "W-100"'`);
+  });
+
   it("never shows a probe's own id", () => {
     expect(describeEvidence(ev({
       kind: "probe", source_id: "custom_acme_widget_tcp", port: 23, response: { text: "ACME W-100" },

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { bannerDisplayText, cleanBannerText } from "./discoveryViewHelpers";
+import { bannerDisplayText, cleanBannerText, readsAsText } from "./discoveryViewHelpers";
 
 // The fixtures below are bytes captured from a real scanned device: a
 // Dante Bluetooth wallplate answering on ports 22 and 23. Each is run
@@ -85,6 +85,15 @@ describe("cleanBannerText", () => {
     for (const raw of [asUtf8(TELNET), asLatin1(TELNET), asUtf8(SSH), asLatin1(SSH)]) {
       expect(cleanBannerText(raw).text).not.toMatch(/[^\x20-\x7e]/);
     }
+  });
+
+  it("tells a reply that reads as text from a binary frame with a printable byte or two", () => {
+    expect(readsAsText("\xaa\xff\x01\x03N\x0b\x01]")).toBe(false);
+    expect(readsAsText("PJLINK 0")).toBe(true);
+    expect(readsAsText("READY\xff\xfb\x01OK")).toBe(true);
+    expect(readsAsText("\xff\xfb\x01\xff\xfb\x03login: ")).toBe(true);
+    expect(readsAsText("OK")).toBe(true);
+    expect(readsAsText("\x06")).toBe(false);
   });
 
   it("leaves an already readable banner alone", () => {
