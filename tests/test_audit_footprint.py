@@ -446,6 +446,9 @@ async def test_a_silent_network_is_a_limit_not_a_finding(discovery, bench):
     ids = {limit.id for limit in fp.limits}
     assert {"mdns_silent", "ssdp_silent", "amx_ddp_silent"} <= ids
     assert fp.mdns is None
+    # AMX DDP comes only from gear that sends it: no firewall guess for it.
+    text = {limit.id: limit.text for limit in fp.limits}
+    assert "firewall" in text["mdns_silent"] and "firewall" not in text["amx_ddp_silent"]
 
 
 async def test_a_listener_that_never_ran_says_so(discovery, bench):
@@ -617,7 +620,11 @@ async def test_a_page_that_misses_the_first_request_is_asked_again(monkeypatch, 
     assert fp.to_dict()["web"][str(slow_port)]["tries"] == 2
     # The line lists pages by port number, and both ports are ephemeral, so
     # the expected order is the sorted one, not the order they were made in.
-    pages = {bench["web"]: "Widget 3000 Login", slow_port: "HTTP 200, no title"}
+    # Each page as the Report step says it: its status line, then its title.
+    pages = {
+        bench["web"]: 'HTTP/1.0 401 Unauthorized, "Widget 3000 Login"',
+        slow_port: "HTTP/1.0 200 OK",
+    }
     listed = "; ".join(f"{port}: {what}" for port, what in sorted(pages.items()))
     assert check.activities["web"].message == (
         f"Pages: {listed}. No page from {dead_port} (no answer, asked twice)."

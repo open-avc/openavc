@@ -16,6 +16,8 @@ export interface AuditConflictDevice {
   bridge: string;
   connected: boolean;
   paused: boolean;
+  /** False when it is not running (driver not installed, or disabled): nothing to pause. */
+  running?: boolean;
 }
 
 export interface AuditConflicts {

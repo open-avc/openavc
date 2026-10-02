@@ -65,6 +65,9 @@ class FakeDevices:
     def is_paused(self, device_id):
         return device_id in self.paused
 
+    def get_driver(self, device_id):
+        return object() if device_id in self.running else None
+
 
 class FakeCheck:
     """Stands in for the network check: no listener, a finished footprint."""
@@ -198,6 +201,12 @@ async def test_a_device_that_is_not_running_does_not_block_the_audit(wired):
         "nothing to pause." for e in session.timeline
     )
     wired.engine.project.devices[1].enabled = True  # enabled, its driver missing
+    # The first step says it is not running, not that it will be paused.
+    wired.engine.devices = wired.devices
+    rows = (await routes.audit_conflicts("127.0.0.1"))["devices"]
+    assert {r["device_id"]: r["running"] for r in rows if r["device_id"] in ("lobby", "spare")} == {
+        "lobby": True, "spare": False,
+    }
     wired.engine.state.set("device.lobby.paused", True)
     assert unpaused_devices_at(wired.engine.project, wired.engine.state, ["127.0.0.1"]) == []
     await routes.end_session(started["session"]["session_id"])

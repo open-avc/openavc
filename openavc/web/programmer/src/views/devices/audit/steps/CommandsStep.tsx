@@ -257,7 +257,8 @@ export function CommandsStep() {
               <div style={labelStyle}>Status queries</div>
               <div style={{ fontSize: "var(--font-size-sm)" }}>
                 {queryCount === 1 ? "This command only asks" : `These ${queryCount} commands only ask`}{" "}
-                the device for its status and change nothing, so they can all run at once.
+                the device for its status and change nothing, so they can run together, one after
+                another.
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginTop: "var(--space-sm)" }}>
                 <button

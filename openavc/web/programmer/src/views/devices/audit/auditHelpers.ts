@@ -204,7 +204,7 @@ export function publishedSecretNotices(runs: AuditDriverRun[] | undefined): stri
       const many = labels.length > 1;
       const driver = run.choice.identity?.name || run.choice.driver_id;
       return (
-        `The ${wordList(labels)} you entered for ${driver} ${many ? "are" : "is"} the driver's ` +
+        `The ${wordList(labels)} used for ${driver} ${many ? "are" : "is"} the driver's ` +
         `published default. The report masks ${many ? "them" : "it"} where ${many ? "they were" : "it was"} ` +
         `sent, but anyone can read the default in the driver.`
       );
@@ -449,16 +449,31 @@ export function statusValue(v: AuditStatusVariable): string {
 /** The sentence the first step shows about project devices at the address. */
 export function pauseNotice(devices: AuditConflictDevice[]): string {
   if (devices.length === 0) return "";
-  const names = devices.map((d) => d.device_name);
-  const who =
-    names.length === 1
-      ? `${names[0]} in this project uses`
-      : `${joinNames(names)} in this project use`;
-  const it = names.length === 1 ? "it" : "them";
-  return (
-    `${who} this device. OpenAVC pauses ${it} while the audit runs and ` +
-    `reconnects ${it} when you finish.`
-  );
+  const names = devices.filter((d) => d.running !== false).map((d) => d.device_name);
+  const idle = devices.filter((d) => d.running === false).map((d) => d.device_name);
+  const parts: string[] = [];
+  if (names.length > 0) {
+    const who =
+      names.length === 1
+        ? `${names[0]} in this project uses`
+        : `${joinNames(names)} in this project use`;
+    const it = names.length === 1 ? "it" : "them";
+    parts.push(
+      `${who} this device. OpenAVC pauses ${it} while the audit runs and ` +
+        `reconnects ${it} when you finish.`,
+    );
+  }
+  if (idle.length > 0) {
+    const one = idle.length === 1;
+    const uses = names.length > 0
+      ? (one ? "uses it too" : "use it too")
+      : (one ? "in this project uses this device" : "in this project use this device");
+    parts.push(
+      `${joinNames(idle)} ${uses} but ${one ? "is" : "are"} not running, so there is ` +
+        "nothing to pause.",
+    );
+  }
+  return parts.join(" ");
 }
 
 function joinNames(names: string[]): string {

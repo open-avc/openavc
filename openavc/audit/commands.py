@@ -154,7 +154,7 @@ ANSWERS = {
     "yes": "The person said the device did it.",
     "no": "The person said the device did not do it.",
     "partly": "The person said the device partly did it.",
-    "cant_tell": "The person could not tell from where they were.",
+    "cant_tell": "The person said they could not tell.",
 }
 
 _PARAM_REF = re.compile(r"\{([^{}]+)\}")

@@ -1252,6 +1252,16 @@ def _traffic_text(entry: dict[str, Any], limit: int = 400) -> str:
     return where + (body or "nothing")
 
 
+_PROBE_ID = re.compile(r"^custom_(.+?)_(?:companion_)?(?:tcp|udp)$")
+
+
+def _probe_owner(probe_id: Any) -> str:
+    """A probe as a line names it: the driver whose identification check it
+    is, never the probe's own id (``custom_<driver>_tcp``)."""
+    match = _PROBE_ID.match(str(probe_id or ""))
+    return f"{match.group(1)} identification check," if match else "Identification check,"
+
+
 def render_timeline(report: dict[str, Any]) -> str:
     """``timeline.txt``: the session's events, the check's exchanges and the
     driver's traffic, in order."""
@@ -1262,7 +1272,7 @@ def render_timeline(report: dict[str, Any]) -> str:
         proto = "TCP" if probe.get("kind") == "tcp" else "UDP"
         outcome = "matched" if probe.get("matched") else (probe.get("miss") or "no match")
         text = (
-            f"{probe.get('probe_id')} {proto} port {probe.get('port')}: "
+            f"{_probe_owner(probe.get('probe_id'))} {proto} port {probe.get('port')}: "
             f"sent {_quote(probe.get('sent'))}, reply {_quote(probe.get('reply'))}"
             f"{', ' + probe['error'] if probe.get('error') else ''} ({outcome})"
         )
@@ -1565,7 +1575,10 @@ def render_summary(report: dict[str, Any]) -> str:
                 "they are in report.json.</p>"
             )
     else:
-        parts.append(f"<p>No answer ({_e(snmp.get('communities_tried', 0))} communities tried).</p>")
+        tried = snmp.get("communities_tried", 0)
+        parts.append(
+            f"<p>No answer ({_e(tried)} {'community' if tried == 1 else 'communities'} tried).</p>"
+        )
 
     checks = verdict.get("checks", {})
     if checks:

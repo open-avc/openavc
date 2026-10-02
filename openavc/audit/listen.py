@@ -443,6 +443,7 @@ class ListenPass:
             self.first_reported[prop] = now
             if prop in self._declared():
                 shown = ("true" if new else "false") if isinstance(new, bool) else str(new)[:80]
+                shown = shown or "an empty value"
                 if self.first_rx_at is not None:
                     text = f"{self._label(prop)} reported: {shown}"
                 elif self.first_tx_at is not None:

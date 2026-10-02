@@ -168,6 +168,10 @@ def _device_rows(engine: Any, names: list[str]) -> list[dict[str, Any]]:
         row = conn.to_dict()
         row["connected"] = bool(engine.state.get(f"device.{conn.device_id}.connected"))
         row["paused"] = bool(engine.state.get(f"device.{conn.device_id}.paused"))
+        # Not running (its driver is not installed, or it is disabled): it
+        # holds no connection, so there is nothing to pause.
+        devices = getattr(engine, "devices", None)
+        row["running"] = devices is None or devices.get_driver(conn.device_id) is not None
         rows.append(row)
     return rows
 

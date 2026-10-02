@@ -695,3 +695,21 @@ def test_the_report_says_what_the_driver_read_and_what_was_not_run():
     assert "Firmware, as the driver read it</th><td>2.1.0</td>" in page
     assert "Front-panel check</th><td>not run" in page
     assert "The power cycle and cable pull tests were not run." in "".join(_render_outages([]))
+
+
+def test_the_timeline_names_a_probe_by_its_driver_and_the_words_read_plainly():
+    from openavc.audit.commands import ANSWERS
+    from openavc.audit.report import render_timeline
+
+    text = render_timeline({
+        "session": {"started_at": 1_700_000_000.0},
+        "target": {"address": "10.0.0.50", "ip": "10.0.0.50"},
+        "footprint": {"probes": [{
+            "probe_id": "custom_acme_widget_tcp", "kind": "tcp", "port": 23,
+            "sent": {"hex": "50", "text": "P"}, "reply": None, "matched": False, "miss": "no_reply",
+            "started_at": 1_700_000_001.0,
+        }]},
+    })
+    assert "acme_widget identification check, TCP port 23" in text
+    assert "custom_acme_widget_tcp" not in text
+    assert ANSWERS["cant_tell"] == "The person said they could not tell."

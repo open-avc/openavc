@@ -96,7 +96,8 @@ export function TargetStep() {
     }
   }, [address, conflicts, start]);
 
-  const needsPause = !!conflicts && conflicts.devices.length > 0;
+  const shared = !!conflicts && conflicts.devices.length > 0;
+  const needsPause = shared && conflicts.devices.some((d) => d.running !== false);
   const ready = address.trim().length > 0 && !busy;
 
   return (
@@ -211,7 +212,7 @@ export function TargetStep() {
         </div>
       )}
 
-      {needsPause && conflicts && (
+      {shared && conflicts && (
         <div
           role="status"
           style={{

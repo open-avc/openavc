@@ -151,6 +151,17 @@ describe("the words", () => {
         "them while the audit runs and reconnects them when you finish.",
     );
   });
+  it("does not claim to pause a device that is not running", () => {
+    expect(pauseNotice([device("Lobby lights"), { ...device("Old projector"), running: false }])).toBe(
+      "Lobby lights in this project uses this device. OpenAVC pauses it while the audit runs " +
+        "and reconnects it when you finish. Old projector uses it too but is not running, so " +
+        "there is nothing to pause.",
+    );
+    expect(pauseNotice([{ ...device("Old projector"), running: false }])).toBe(
+      "Old projector in this project uses this device but is not running, so there is nothing " +
+        "to pause.",
+    );
+  });
   it("says nothing when nothing needs pausing", () => {
     expect(pauseNotice([])).toBe("");
   });
@@ -408,11 +419,11 @@ describe("publishedSecretNotices", () => {
 
   it("says which typed credential is the driver's published default", () => {
     expect(publishedSecretNotices([run(["Password"])])).toEqual([
-      "The password you entered for Acme Box is the driver's published default. The report " +
+      "The password used for Acme Box is the driver's published default. The report " +
         "masks it where it was sent, but anyone can read the default in the driver.",
     ]);
     expect(publishedSecretNotices([run(["Username", "PSK"])])[0]).toMatch(
-      /^The username and PSK you entered for Acme Box are .* masks them where they were sent/,
+      /^The username and PSK used for Acme Box are .* masks them where they were sent/,
     );
   });
 

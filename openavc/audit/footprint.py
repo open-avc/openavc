@@ -341,10 +341,11 @@ def _worth_asking_again(exchange: HttpExchange) -> bool:
 
 
 def web_summary(fp: "Footprint") -> str:
-    """The web check in one line: each port that answered (its title, or its
-    status when it has none), each that did not and why, and the certificates."""
+    """The web check in one line: each port that answered (its status line
+    and its title, as the Report step says it), each that did not and why,
+    and the certificates."""
     answered = [
-        f"{p}: {x.title() or f'HTTP {x.status}, no title'}"
+        f"{p}: {x.status_line or f'HTTP {x.status}'}" + (f', "{x.title()}"' if x.title() else "")
         for p, x in sorted(fp.web.items()) if x.status is not None
     ]
     failed = [
@@ -1249,6 +1250,11 @@ class NetworkCheck:
             elif not found[key] and not health.get("other_devices_heard"):
                 fp.add_limit(
                     f"{key}_silent",
+                    # AMX DDP comes only from equipment that sends it; silence
+                    # from every device on a network without it says nothing.
+                    "No device on this network sent an AMX DDP beacon while the check "
+                    "listened, so whether this one sends it is unknown."
+                    if key == "amx_ddp" else
                     f"This computer heard no {name} from any device, so a firewall may be "
                     f"blocking it. The device may still send it.",
                 )
