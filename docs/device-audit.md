@@ -31,8 +31,8 @@ Open the wizard from any of these:
 
 One audit runs at a time, and a Discovery scan cannot run during one. An audit left with no
 activity for 30 minutes ends on its own, and closing the page cancels it unless the audit is
-open in another tab. Either way, what it
-found so far is saved under **Recent reports** on the first step.
+open in another tab. Either way, what it found so far is saved under **Recent reports** on the
+first step. Reloading the page reopens the wizard on the audit.
 
 ## The Steps
 

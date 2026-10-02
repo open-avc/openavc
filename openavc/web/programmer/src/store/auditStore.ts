@@ -17,6 +17,28 @@ import {
   type AuditStep,
 } from "../views/devices/audit/auditHelpers";
 
+// The audit this tab's wizard follows. Kept in the tab's session storage, so
+// a reload reopens the wizard on it: a page that closes cancels the audit
+// unless a page follows it again a moment later.
+const FOLLOWING_KEY = "openavc.audit.following";
+
+export function rememberFollowedAudit(sessionId: string | null): void {
+  try {
+    if (sessionId) sessionStorage.setItem(FOLLOWING_KEY, sessionId);
+    else sessionStorage.removeItem(FOLLOWING_KEY);
+  } catch {
+    /* storage blocked: a reload then ends the audit, as a closed page does */
+  }
+}
+
+export function followedAudit(): string | null {
+  try {
+    return sessionStorage.getItem(FOLLOWING_KEY);
+  } catch {
+    return null;
+  }
+}
+
 interface AuditStoreState {
   open: boolean;
   /** The address an entry point filled in (a Discovery result, say). */
@@ -59,8 +81,10 @@ export const useAuditStore = create<AuditStoreState>((set) => ({
       traffic: [],
       seq: 0,
     }),
-  closeWizard: () =>
-    set({ open: false, session: null, timeline: [], traffic: [], step: "target", seq: 0 }),
+  closeWizard: () => {
+    rememberFollowedAudit(null);
+    set({ open: false, session: null, timeline: [], traffic: [], step: "target", seq: 0 });
+  },
   setStep: (step) => set({ step }),
   setSession: (session) =>
     set((state) => {

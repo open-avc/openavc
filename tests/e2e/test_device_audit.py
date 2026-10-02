@@ -130,3 +130,43 @@ def test_an_audit_that_ends_while_the_page_is_open_says_so_and_offers_its_report
     assert name.startswith("openavc-device-audit-") and name.endswith(".zip")
     expect(dialog.get_by_text(f"Saved {name}.")).to_be_visible(timeout=EXPECT_TIMEOUT)
     expect(dialog.get_by_role("button", name="Start a new audit")).to_be_visible()
+
+
+def _current_session(base: str):
+    with urlopen(f"{base}/api/audit/sessions/current", timeout=10) as resp:
+        return json.loads(resp.read())["session"]
+
+
+def test_a_reload_keeps_the_audit_and_leaving_the_page_cancels_it(
+    openavc_server, page: Page,
+) -> None:
+    """A page that goes away cancels the audit unless a page follows it again
+    within the grace; a reload of the same tab reopens the wizard on it."""
+    import time
+
+    from openavc.api.routes.audit import CLOSE_GRACE_SECONDS
+
+    base = openavc_server.base_url
+    page.goto(f"{base}/programmer/#devices", wait_until="domcontentloaded")
+    page.get_by_role("tab", name="Drivers", exact=True).click()
+    page.get_by_role("button", name="Audit a Device", exact=True).click()
+    dialog = page.get_by_role("dialog", name="Audit a device")
+    expect(dialog).to_be_visible(timeout=EXPECT_TIMEOUT)
+    dialog.get_by_label("IP address or host name").fill("127.0.0.1")
+    dialog.get_by_role("button", name="Start the network check").click()
+    expect(dialog.get_by_text("Checking the address")).to_be_visible(timeout=EXPECT_TIMEOUT)
+    session_id = _current_session(base)["session_id"]
+
+    page.reload(wait_until="domcontentloaded")
+    expect(dialog).to_be_visible(timeout=EXPECT_TIMEOUT)
+    expect(dialog.get_by_text("Checking the address")).to_be_visible(timeout=EXPECT_TIMEOUT)
+    page.wait_for_timeout((CLOSE_GRACE_SECONDS + 2) * 1000)
+    current = _current_session(base)
+    assert current is not None and current["session_id"] == session_id
+    assert current["status"] == "active"
+
+    page.goto("about:blank")
+    deadline = time.monotonic() + CLOSE_GRACE_SECONDS + 20
+    while _current_session(base) is not None and time.monotonic() < deadline:
+        time.sleep(0.5)
+    assert _current_session(base) is None

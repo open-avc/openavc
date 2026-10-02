@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Download, Loader2, X } from "lucide-react";
 import { Modal } from "../../../components/shared/Modal";
-import { useAuditStore } from "../../../store/auditStore";
+import { rememberFollowedAudit, useAuditStore } from "../../../store/auditStore";
 import * as audit from "../../../api/auditClient";
 import { BASE } from "../../../api/base";
 import { onConnect, onMessage, send } from "../../../api/wsClient";
@@ -85,6 +85,13 @@ export function DeviceAuditWizard() {
     };
   }, [followId]);
 
+  // This tab reopens the wizard on the audit after a reload (DeviceAuditHost).
+  const ended = session !== null && session.status !== "active";
+  useEffect(() => {
+    if (sessionId) rememberFollowedAudit(sessionId);
+    else if (ended) rememberFollowedAudit(null);
+  }, [sessionId, ended]);
+
   // A closed page cancels the audit so paused project devices come back,
   // unless another page still follows it (a second tab, or this one reloaded).
   useEffect(() => {
@@ -114,8 +121,6 @@ export function DeviceAuditWizard() {
     }
     useAuditStore.getState().closeWizard();
   }, []);
-
-  const ended = session !== null && session.status !== "active";
 
   return (
     <Modal

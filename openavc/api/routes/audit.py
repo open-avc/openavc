@@ -254,8 +254,10 @@ async def current_session() -> dict[str, Any]:
 
 
 # A page closing asks with ``when_alone``: the audit is cancelled after this
-# long only if no other page follows it (a second tab, or this one reloaded).
-CLOSE_GRACE_SECONDS = 3.0
+# long only if no other page follows it (a second tab, or this one reloaded:
+# the wizard reopens on the audit the tab followed). Long enough for a slow
+# host to serve the reloaded page.
+CLOSE_GRACE_SECONDS = 10.0
 CHECK_RUNNING = "Wait for the network check to finish."
 
 
