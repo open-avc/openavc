@@ -344,7 +344,7 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     download.save_as(saved)
     with zipfile.ZipFile(io.BytesIO(saved.read_bytes())) as zf:
         assert set(zf.namelist()) == {
-            "summary.html", "report.json", "timeline.txt", "log.txt",
+            "summary.html", "report.json", "timeline.txt", "log.txt", "README.txt",
             f"driver/{DRIVER_FILE}",
         }
         report = json.loads(zf.read("report.json"))
