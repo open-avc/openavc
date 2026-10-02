@@ -332,10 +332,12 @@ def body_part(body: bytes) -> tuple[bytes, bool]:
 class TrafficRedactor:
     """Masks a set of secrets in an entry's bytes and in its metadata."""
 
-    def __init__(self, secrets: Iterable[str], *, min_length: int | None = None) -> None:
+    def __init__(
+        self, secrets: Iterable[str], *, min_length: int | None = None, bounded: bool = True,
+    ) -> None:
         values = [s for s in secrets if isinstance(s, str)]
-        self._bytes = compile_secret_bytes_pattern(values, min_length=min_length)
-        self._text = compile_secret_pattern(values, min_length=min_length)
+        self._bytes = compile_secret_bytes_pattern(values, min_length=min_length, bounded=bounded)
+        self._text = compile_secret_pattern(values, min_length=min_length, bounded=bounded)
 
     def data(self, data: bytes) -> bytes:
         return data if self._bytes is None else self._bytes.sub(b"***", data)

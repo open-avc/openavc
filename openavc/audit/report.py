@@ -212,12 +212,14 @@ here) is redacted, and its entry says whether that changed it.
 A secret shorter than ``observe.MIN_SECRET_LENGTH`` is not searched for,
 since it would match ordinary text everywhere; the report never writes a
 typed secret into a field of its own, so such a value could only appear if
-the device repeated it. A secret made only of hex digits (a numeric PIN,
-say) is replaced in its plain forms only where it stands alone, never inside
-a longer run of hex digits or after a decimal point: otherwise a PIN would
-be cut out of a timestamp, a SHA-256 or a hex dump. Its hex forms are
-replaced wherever they appear, since that is where its own bytes show in a
-hex dump.
+the device repeated it. A numeric secret (a PIN) is replaced in its plain
+forms wherever it is not part of a longer number (``CODE1234``, yes;
+``12345`` or ``1.1234``, no), and one made only of hex digits wherever it is
+not part of a longer run of them. In a hex or hash field (``hex``,
+``sha256``) only a secret's hex forms are looked for, since that is where
+its own bytes show; there they are replaced wherever they appear. A secret
+is also looked for as a URL writes it (percent-encoded) and as a traffic
+entry's text shows its UTF-8 bytes.
 
 **Recent reports** are kept in ``{data_dir}/audit_reports/``, the newest
 ``REPORTS_KEPT``, so closing a browser tab does not lose one.
@@ -264,31 +266,52 @@ class Redaction:
 
 
 _HEX_DIGITS = re.compile(r"[0-9A-Fa-f]+")
+_DIGITS = re.compile(r"[0-9]+")
+# Where a record holds bytes as hex or a hash: only a secret's hex forms are
+# looked for there (its plain digits would match inside any hex run).
+_HEX_FIELDS = frozenset({"hex", "sha256", "catalog_sha256"})
+
+# How a plain form is bounded: not at all; by digits (a numeric PIN is
+# masked in "CODE1234" but never cut out of "12345" or "1.1234"); by hex
+# digits (a secret that is all hex letters and digits).
+_FREE, _NOT_IN_A_NUMBER, _NOT_IN_HEX = "free", "number", "hex"
+_BOUNDS = {
+    _NOT_IN_A_NUMBER: (r"(?<![0-9.])", r"(?![0-9])"),
+    _NOT_IN_HEX: (r"(?<![0-9A-Fa-f.])", r"(?![0-9A-Fa-f])"),
+}
 
 
-def _forms(redaction: Redaction) -> list[tuple[str, str, bool]]:
-    """Each way ``value`` can be written in a report, with its replacement,
-    and whether it is replaced only where it stands alone (see the module
-    docstring: a hex-digit secret's plain forms)."""
+def _forms(redaction: Redaction) -> list[tuple[str, str, str, bool]]:
+    """Each way ``value`` can be written in a report: ``(form, replacement,
+    bound, is_hex)``, longest first (see the module docstring)."""
+    from openavc.utils.log_redaction import _percent_forms
+
     value, repl = redaction.value, redaction.replacement
-    alone = bool(_HEX_DIGITS.fullmatch(value))
-    triples = [
-        (value, repl, alone),
-        (json.dumps(value)[1:-1], json.dumps(repl)[1:-1], alone),
-        (html.escape(value), html.escape(repl), alone),
-        (value.encode("utf-8").hex(), repl.encode("utf-8").hex(), False),
-        (value.encode("utf-8").hex().upper(), repl.encode("utf-8").hex().upper(), False),
+    bound = (
+        _NOT_IN_A_NUMBER if _DIGITS.fullmatch(value)
+        else _NOT_IN_HEX if _HEX_DIGITS.fullmatch(value) else _FREE
+    )
+    raw = value.encode("utf-8")
+    quads = [
+        (value, repl, bound, False),
+        (json.dumps(value)[1:-1], json.dumps(repl)[1:-1], bound, False),
+        (html.escape(value), html.escape(repl), bound, False),
+        # Its UTF-8 bytes read as Latin-1: how a traffic entry's text shows them.
+        (raw.decode("latin-1"), repl, _FREE, False),
+        *((form, repl, _FREE, False) for form in _percent_forms(value)),
+        (raw.hex(), repl.encode("utf-8").hex(), _FREE, True),
+        (raw.hex().upper(), repl.encode("utf-8").hex().upper(), _FREE, True),
         # The spaced form a sentence writes bytes in (``hex_pairs``).
-        (value.encode("utf-8").hex(" "), repl.encode("utf-8").hex(" "), False),
-        (value.encode("utf-8").hex(" ").upper(), repl.encode("utf-8").hex(" ").upper(), False),
+        (raw.hex(" "), repl.encode("utf-8").hex(" "), _FREE, True),
+        (raw.hex(" ").upper(), repl.encode("utf-8").hex(" ").upper(), _FREE, True),
     ]
-    seen: dict[str, tuple[str, bool]] = {}
-    for form, replacement, bounded in triples:
+    seen: dict[str, tuple[str, str, bool]] = {}
+    for form, replacement, bounded, is_hex in quads:
         if form and form not in seen:
-            seen[form] = (replacement, bounded)
+            seen[form] = (replacement, bounded, is_hex)
     return sorted(
-        ((form, replacement, bounded) for form, (replacement, bounded) in seen.items()),
-        key=lambda triple: -len(triple[0]),
+        ((form, *rest) for form, rest in seen.items()),
+        key=lambda quad: -len(quad[0]),
     )
 
 
@@ -309,16 +332,18 @@ class Redactor:
         self._public = frozenset(public) | frozenset(names)
         self._shield: re.Pattern[str] | None = None
         self._pairs: list[tuple[str, str, re.Pattern[str] | None]] = []
+        self._hex_pairs: list[tuple[str, str, re.Pattern[str] | None]] = []
         for redaction in redactions:
             if len(redaction.value) < MIN_SECRET_LENGTH:
                 continue
-            for form, replacement, bounded in _forms(redaction):
-                pattern = (
-                    re.compile(rf"(?<![0-9A-Fa-f.]){re.escape(form)}(?![0-9A-Fa-f])")
-                    if bounded else None
-                )
+            for form, replacement, bound, is_hex in _forms(redaction):
+                left, right = _BOUNDS.get(bound, ("", ""))
+                pattern = re.compile(left + re.escape(form) + right) if left else None
                 self._pairs.append((form, replacement, pattern))
+                if is_hex:
+                    self._hex_pairs.append((form, replacement, pattern))
         self._pairs.sort(key=lambda triple: -len(triple[0]))
+        self._hex_pairs.sort(key=lambda triple: -len(triple[0]))
         # Only a name a secret would cut into needs shielding.
         shielded = sorted(
             {n for n in names if n and any(form in n for form, _, _ in self._pairs)},
@@ -336,8 +361,8 @@ class Redactor:
             )
         return self._replace(value)
 
-    def _replace(self, value: str) -> str:
-        for form, replacement, pattern in self._pairs:
+    def _replace(self, value: str, pairs: list | None = None) -> str:
+        for form, replacement, pattern in self._pairs if pairs is None else pairs:
             if form in value:
                 value = (
                     pattern.sub(lambda _m, r=replacement: r, value) if pattern is not None
@@ -347,12 +372,17 @@ class Redactor:
 
     def tree(self, value: Any) -> Any:
         """``value`` with every string in it redacted (dict keys included),
-        except a string that is exactly a published one."""
+        except a string that is exactly a published one; under a hex or hash
+        field only a secret's hex forms are looked for."""
         if isinstance(value, str):
             return value if value in self._public else self.text(value)
         if isinstance(value, dict):
-            return {self.tree(k) if isinstance(k, str) else k: self.tree(v)
-                    for k, v in value.items()}
+            return {
+                self.tree(k) if isinstance(k, str) else k:
+                self._replace(v, self._hex_pairs) if k in _HEX_FIELDS and isinstance(v, str)
+                else self.tree(v)
+                for k, v in value.items()
+            }
         if isinstance(value, (list, tuple)):
             return [self.tree(v) for v in value]
         return value

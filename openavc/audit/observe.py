@@ -27,7 +27,9 @@ Two faults are read from the traffic rather than reported by the driver:
 
 Secrets: the redaction set is snapshotted from the device's registered
 credentials while the device exists (removing it forgets them), and the audit
-adds the values the person typed.
+adds the values the person typed. The traffic is masked with no word
+boundaries (:func:`audit_traffic_redactor`): a PIN run into a frame
+(``CODE1234``) is masked too, in UTF-8, Latin-1 and percent-encoded form.
 """
 
 from __future__ import annotations
@@ -70,6 +72,12 @@ CONTRACT_TEXT = {
 # HTTP pairs every response with its request by construction, MQTT is
 # publish/subscribe, and the push channels exist to deliver unprompted.
 _REQUEST_REPLY_CHANNELS = frozenset({"tcp", "serial", "udp", "osc", "snmp", "ssh"})
+
+
+def audit_traffic_redactor(secrets: Iterable[str]) -> TrafficRedactor:
+    """How an audit masks secrets in traffic: from three characters, and
+    wherever they appear, run into other characters or not."""
+    return TrafficRedactor(secrets, min_length=MIN_SECRET_LENGTH, bounded=False)
 
 
 @dataclass
@@ -168,7 +176,7 @@ class AuditObserver:
 
     def redactor(self) -> TrafficRedactor:
         self.snapshot_secrets()
-        return TrafficRedactor(self._secrets, min_length=MIN_SECRET_LENGTH)
+        return audit_traffic_redactor(self._secrets)
 
     # -- reading ----------------------------------------------------------------
 

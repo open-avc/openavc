@@ -154,6 +154,42 @@ def test_a_numeric_secret_is_masked_without_cutting_into_numbers():
     assert json.loads(text) == {"t": 1790643142.167391, "pin": "[redacted]"}
 
 
+def test_a_secret_run_into_other_characters_is_masked_in_the_traffic():
+    """The audit's traffic masks a secret wherever it appears: glued to a
+    command, in Latin-1, and percent-encoded in a URL or a form body. The
+    server log keeps its word boundaries."""
+    from openavc.audit.observe import audit_traffic_redactor
+    from openavc.utils.log_redaction import compile_secret_bytes_pattern
+
+    redactor = audit_traffic_redactor({"1234", "café", "p@ss w0rd"})
+    assert redactor.data(b"CODE1234\r") == b"CODE***\r"
+    assert redactor.data(b"PASS caf\xe9\r") == b"PASS ***\r"
+    assert redactor.data("PASS café\r".encode()) == b"PASS ***\r"
+    assert redactor.data(b"GET /x?pw=p%40ss%20w0rd") == b"GET /x?pw=***"
+    assert redactor.data(b"pw=p%40ss+w0rd&x=1") == b"pw=***&x=1"
+    assert redactor.data(b"pw=p%40ss%20w0rd".lower()) == b"pw=***"
+    assert redactor.value({"target": "/x?pw=p%40ss%20w0rd"}) == {"target": "/x?pw=***"}
+    assert compile_secret_bytes_pattern(["1234"]).search(b"CODE1234") is None
+
+
+def test_the_record_masks_a_glued_or_encoded_secret_and_leaves_numbers_whole():
+    from openavc.audit.report import Redaction, Redactor
+
+    redactor = Redactor([Redaction("1234"), Redaction("p@ss w0rd"), Redaction("café")])
+    out = redactor.tree({
+        "note": "CODE1234 then 12345 and 1.1234",
+        "url": "/x?pw=p%40ss%20w0rd",
+        "text": "PASS caf\u00c3\u00a9",  # UTF-8 bytes shown as Latin-1
+        "hex": "ab1234cd" + "1234".encode().hex(),
+        "sha256": "001234ff",
+    })
+    assert out["note"] == "CODE[redacted] then 12345 and 1.1234"
+    assert out["url"] == "/x?pw=[redacted]"
+    assert out["text"] == "PASS [redacted]"
+    assert out["hex"] == "ab1234cd" + "[redacted]".encode().hex()
+    assert out["sha256"] == "001234ff"
+
+
 async def test_the_serial_number_can_be_left_out_everywhere():
     manager, session = await _session(leave_out_serial=True)
     try:

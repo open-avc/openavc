@@ -45,6 +45,7 @@ from __future__ import annotations
 import logging
 import re
 from typing import Any, Iterable
+from urllib.parse import quote, quote_plus
 
 # Config field names whose values are credentials. Matched case-insensitively:
 # exact names for ambiguous words (so a benign `user_label` isn't caught),
@@ -129,14 +130,26 @@ def collect_secret_values(
     return values
 
 
+def _percent_forms(secret: str) -> list[str]:
+    """How a secret reads in a URL or a form body: percent-encoded (either
+    case of hex), and with a space as ``+``."""
+    out = []
+    for encoded in (quote(secret, safe=""), quote_plus(secret, safe="")):
+        lower = re.sub(r"%[0-9A-F]{2}", lambda m: m.group(0).lower(), encoded)
+        out.extend(form for form in (encoded, lower) if form != secret and form not in out)
+    return out
+
+
 def _variants(secret: str) -> list[tuple[str, bool]]:
-    """A secret's matchable forms: the literal, and its hex encoding.
+    """A secret's matchable forms: the literal, as a URL writes it, and its
+    hex encoding.
 
     Returns ``(text, use_word_boundaries)`` pairs. Hex never gets boundaries —
     every hex character is a word character, so a boundary in the middle of a
     hex dump can never match.
     """
     forms: list[tuple[str, bool]] = [(secret, True)]
+    forms.extend((form, True) for form in _percent_forms(secret))
     try:
         hexed = secret.encode("utf-8").hex()
     except (UnicodeEncodeError, AttributeError):
@@ -146,8 +159,21 @@ def _variants(secret: str) -> list[tuple[str, bool]]:
     return forms
 
 
+def _byte_forms(secret: str) -> list[tuple[bytes, bool]]:
+    """The byte forms of :func:`_variants`, in UTF-8, plus the secret in
+    Latin-1 when a device would send that instead (one byte per character)."""
+    forms = [(text.encode("utf-8"), bounded) for text, bounded in _variants(secret)]
+    try:
+        latin = secret.encode("latin-1")
+    except UnicodeEncodeError:
+        return forms
+    if latin != secret.encode("utf-8"):
+        forms.append((latin, True))
+    return forms
+
+
 def compile_secret_pattern(
-    secrets: Iterable[str], *, min_length: int | None = None,
+    secrets: Iterable[str], *, min_length: int | None = None, bounded: bool = True,
 ) -> re.Pattern[str] | None:
     """Compile one alternation matching every form of every secret.
 
@@ -156,7 +182,9 @@ def compile_secret_pattern(
     worth of credentials would be paid on every line. Longest form first so a
     secret that is a substring of another is masked whole. ``min_length``
     lowers the floor for a caller that masks shorter secrets too (a device
-    audit's report).
+    audit's report); ``bounded=False`` drops the word boundaries, for a caller
+    that would rather mask a secret run into other characters (``CODE1234``)
+    than keep a word that contains one whole.
     """
     floor = MIN_SECRET_LEN if min_length is None else min_length
     forms: list[tuple[str, bool]] = []
@@ -168,15 +196,16 @@ def compile_secret_pattern(
         return None
 
     alternatives = []
-    for text, bounded in sorted(forms, key=lambda f: len(f[0]), reverse=True):
-        left = r"\b" if bounded and _WORD_EDGE.match(text[0]) else ""
-        right = r"\b" if bounded and _WORD_EDGE.match(text[-1]) else ""
+    for text, edges in sorted(forms, key=lambda f: len(f[0]), reverse=True):
+        edges = edges and bounded
+        left = r"\b" if edges and _WORD_EDGE.match(text[0]) else ""
+        right = r"\b" if edges and _WORD_EDGE.match(text[-1]) else ""
         alternatives.append(left + re.escape(text) + right)
     return re.compile("|".join(alternatives))
 
 
 def compile_secret_bytes_pattern(
-    secrets: Iterable[str], *, min_length: int | None = None,
+    secrets: Iterable[str], *, min_length: int | None = None, bounded: bool = True,
 ) -> re.Pattern[bytes] | None:
     """The byte form of :func:`compile_secret_pattern`, for raw wire bytes.
 
@@ -185,15 +214,15 @@ def compile_secret_bytes_pattern(
     work on the bytes themselves: replacing the text form would leave the hex
     view of the same entry carrying the secret, and replacing inside the hex
     would leave an odd-length string no reader can decode. Same forms and the
-    same edge rule as the text pattern, matched against the UTF-8 encoding.
+    same edge rule as the text pattern, matched against the UTF-8 encoding
+    (and the Latin-1 one, for a device that sends that).
     """
     floor = MIN_SECRET_LEN if min_length is None else min_length
     forms: list[tuple[bytes, bool]] = []
     for secret in secrets:
         if not isinstance(secret, str) or len(secret) < floor:
             continue
-        for text, bounded in _variants(secret):
-            forms.append((text.encode("utf-8"), bounded))
+        forms.extend(_byte_forms(secret))
     if not forms:
         return None
     def word(edge: bytes) -> bool:
@@ -201,9 +230,10 @@ def compile_secret_bytes_pattern(
         return edge.isalnum() or edge == b"_"
 
     alternatives = []
-    for raw, bounded in sorted(forms, key=lambda f: len(f[0]), reverse=True):
-        left = rb"\b" if bounded and word(raw[:1]) else b""
-        right = rb"\b" if bounded and word(raw[-1:]) else b""
+    for raw, edges in sorted(forms, key=lambda f: len(f[0]), reverse=True):
+        edges = edges and bounded
+        left = rb"\b" if edges and word(raw[:1]) else b""
+        right = rb"\b" if edges and word(raw[-1:]) else b""
         alternatives.append(left + re.escape(raw) + right)
     return re.compile(b"|".join(alternatives))
 

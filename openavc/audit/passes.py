@@ -419,7 +419,7 @@ async def _preview(
     session: "AuditSession", run: DriverRun, config: dict[str, Any],
 ) -> dict[str, Any]:
     """What connecting sends, masked for the browser."""
-    from openavc.core.device_traffic import TrafficRedactor
+    from openavc.audit.observe import audit_traffic_redactor
     from openavc.core.event_bus import EventBus
     from openavc.core.state_store import StateStore
     from openavc.drivers.dry_run import preview_connect
@@ -436,7 +436,7 @@ async def _preview(
                 "steps": [], "poll_interval": 0, "keep_alive_interval": 0}
     finally:
         get_secret_registry().forget(preview_id)
-    redactor = TrafficRedactor(run.secrets)
+    redactor = audit_traffic_redactor(run.secrets)
     steps = []
     for step in result.steps:
         if step["kind"] == "send":
