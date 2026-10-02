@@ -153,6 +153,33 @@ async def test_conflicts_lists_running_project_devices_at_the_address(wired):
     assert result["devices"][0]["port"] == 7000
 
 
+async def test_a_device_set_up_by_host_name_is_the_device_at_its_address(wired, monkeypatch):
+    """A project device whose host is a name that resolves to the audited
+    address is listed to pause, and connecting is refused while it runs."""
+    real = fpmod.resolve_address
+
+    async def resolve(address):
+        return "127.0.0.1" if address == "amp.lab" else await real(address)
+
+    monkeypatch.setattr(fpmod, "resolve_address", resolve)
+    wired.engine.project.devices.append(
+        DeviceConfig(id="named", driver="acme_audit_api", name="Amp by name",
+                     config={"host": "amp.lab"}),
+    )
+    wired.devices.running.add("named")
+    result = await routes.audit_conflicts(address="127.0.0.1")
+    assert [d["device_id"] for d in result["devices"]] == ["lobby", "named"]
+
+    from openavc.audit.sandbox import target_names, unpaused_devices_at
+
+    names = await target_names(wired.engine.project, "127.0.0.1", "127.0.0.1")
+    assert names == ["127.0.0.1", "amp.lab"]
+    # What connecting checks: both run, so the audit would share the device.
+    assert unpaused_devices_at(wired.engine.project, wired.engine.state, names) == [
+        "Lobby Display", "Amp by name",
+    ]
+
+
 async def test_start_pauses_then_finish_resumes(wired):
     started = await routes.start_session(AuditStartRequest(address="127.0.0.1", pause=["lobby"]))
     session_id = started["session"]["session_id"]

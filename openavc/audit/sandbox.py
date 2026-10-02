@@ -124,6 +124,37 @@ def serial_refusal(config: dict[str, Any]) -> str | None:
     return None
 
 
+async def target_names(project: Any, address: str, ip: str) -> list[str]:
+    """Every way the project names the audited device: what was typed, the
+    address it resolved to, and each project device's host name that
+    resolves to that address (a device set up as ``amp.local`` is the device
+    at the audited IP). Matched by :func:`devices_at_host`."""
+    import asyncio
+    import ipaddress
+
+    from openavc.audit.footprint import resolve_address
+    from openavc.core.device_config import device_connections
+
+    names = [address] + ([ip] if ip and ip != address else [])
+    if project is None or not ip:
+        return names
+    known = {n.strip().rstrip(".").lower() for n in names}
+    hosts = []
+    for conn in device_connections(project):
+        host = (conn.host or "").strip()
+        if conn.transport == "serial" or not host or host.rstrip(".").lower() in known:
+            continue
+        try:
+            ipaddress.ip_address(host)
+            continue  # an address that is not this one
+        except ValueError:
+            pass
+        if host not in hosts:
+            hosts.append(host)
+    resolved = await asyncio.gather(*(resolve_address(h) for h in hosts))
+    return names + [host for host, found in zip(hosts, resolved) if found == ip]
+
+
 def unpaused_devices_at(project: Any, state: Any, names: list[str]) -> list[str]:
     """Names of project devices that connect to ``names`` and are not paused.
 

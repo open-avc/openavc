@@ -82,7 +82,7 @@ from openavc.audit.passes import (
     saved_settings,
     set_connection,
 )
-from openavc.audit.sandbox import unpaused_devices_at
+from openavc.audit.sandbox import target_names, unpaused_devices_at
 from openavc.audit.report import (
     ReportStore,
     build_report,
@@ -179,12 +179,13 @@ async def audit_conflicts(address: str) -> dict[str, Any]:
     if not address:
         raise HTTPException(status_code=422, detail="Enter the device's IP address or host name.")
     ip = await resolve_address(address)
-    names = [address] + ([ip] if ip and ip != address else [])
+    engine = _get_engine()
+    names = await target_names(getattr(engine, "project", None), address, ip)
     return {
         "address": address,
         "ip": ip,
         "resolved": bool(ip),
-        "devices": _device_rows(_get_engine(), names),
+        "devices": _device_rows(engine, names),
     }
 
 
@@ -226,7 +227,9 @@ async def start_session(body: AuditStartRequest) -> dict[str, Any]:
             AuditTarget(address=address, ip=ip),
             AuditOptions(extended=body.extended, snmp_communities=list(body.snmp_communities)),
             pause=[(device_id, names[device_id]) for device_id in body.pause],
-            origin=origin_for(project, body.from_device, [address, ip]),
+            origin=origin_for(
+                project, body.from_device, await target_names(project, address, ip),
+            ),
         )
     except AuditBusy as exc:
         raise HTTPException(status_code=409, detail=str(exc))
@@ -356,10 +359,9 @@ async def connect_and_listen(session_id: str) -> dict[str, Any]:
     if run is None:
         raise HTTPException(status_code=409, detail="Choose the driver to test first.")
     engine = _get_engine()
-    names = [session.target.address] + (
-        [session.target.ip] if session.target.ip != session.target.address else []
-    )
-    running = unpaused_devices_at(getattr(engine, "project", None), engine.state, names)
+    project = getattr(engine, "project", None)
+    names = await target_names(project, session.target.address, session.target.ip)
+    running = unpaused_devices_at(project, engine.state, names)
     if running:
         raise HTTPException(
             status_code=409,
