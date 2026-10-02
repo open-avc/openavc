@@ -174,7 +174,8 @@ export function mergeSettings(
 /** The setting's last write, if it still needs putting back ("Put it back"). */
 export function needsPuttingBack(trial: AuditSettingTrial | undefined): boolean {
   if (!trial || trial.status !== "done") return false;
-  const wrote = "at" in trial.write && !trial.write.error;
+  // A write that failed after sending bytes may have changed it too.
+  const wrote = "at" in trial.write && (!trial.write.error || !!trial.write.sent);
   return wrote && !trial.restore?.confirmed;
 }
 

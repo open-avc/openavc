@@ -70,6 +70,15 @@ describe("device settings", () => {
       write: { at: 1, error: "The device is not connected.", confirmed: false, value: null },
       restore: null,
     }))).toBe(false);
+    // One that failed after sending bytes, or that the audit ended mid read-back, may have.
+    expect(needsPuttingBack(trial({
+      write: { at: 1, error: "Timed out.", confirmed: false, value: null, sent: true },
+      restore: null,
+    }))).toBe(true);
+    expect(needsPuttingBack(trial({
+      write: { at: 1, error: "", confirmed: false, value: null, interrupted: true },
+      restore: null,
+    }))).toBe(true);
     expect(needsPuttingBack(trial({ status: "restoring", restore: null }))).toBe(false);
     expect(needsPuttingBack(undefined)).toBe(false);
   });

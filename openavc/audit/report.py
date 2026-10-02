@@ -142,8 +142,10 @@
     ``key``, ``label``, ``original``, ``value``, ``started_at``, ``status``,
     ``write`` and ``restore`` (each ``{"at", "error", "confirmed", "value",
     "after"}``, the value read back and how many seconds after the write;
-    ``restore.automatic`` when the audit put it back as the driver stopped)
-    and ``summary``.
+    ``sent`` when a call that failed had already sent bytes, so the setting
+    was put back anyway; ``interrupted`` when the audit ended before the
+    read-back did; ``restore.automatic`` when the audit put it back as the
+    driver stopped) and ``summary``.
   - ``suggested_confidence``: ``level`` (``full``, ``partial`` or null) and
     the ``reasons`` it rests on, each ``{"held", "text"}`` (the rule is
     ``suggested_confidence``'s docstring).

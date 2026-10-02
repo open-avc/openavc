@@ -8,7 +8,8 @@ parameters are checked against the driver's own schema, a device that is not
 connected is refused (a command that declares ``available_offline`` passes),
 and so is one inside a commanded restart. Nothing reaches the device that the
 person did not press Send for, except the status queries they ask to run
-together.
+together and, as a setting is written, the status query that reads its value
+first (``audit/settings.py``).
 
 **The command list** is the live driver's own (``DRIVER_INFO["commands"]`` on
 the instance, so commands a Python driver builds once connected are there

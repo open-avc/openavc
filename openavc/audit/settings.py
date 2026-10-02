@@ -21,6 +21,13 @@ has, and puts back any setting still changed when the driver stops: Test
 another driver, Connect again, Finish, Cancel or a timeout. "Put it back"
 retries a restore that did not read back.
 
+A write counts as sent from the moment it starts, so an audit that ends while
+the device has not reported it back yet still puts the old value back; so does
+a write whose call failed after bytes had gone to the device. The value put
+back is read fresh first when the driver has a status query for it
+(``query_for``), so a change made at the device since the last poll is the
+one restored.
+
 One setting at a time, and never while a command is being watched, so a
 read-back belongs to the write that asked for it.
 """
@@ -32,7 +39,13 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from openavc.audit.commands import error_sentence, same_value
+from openavc.audit.commands import (
+    QUERY_WINDOW_SECONDS,
+    command_catalog,
+    error_sentence,
+    same_value,
+)
+from openavc.audit.observe import command_sent_nothing
 from openavc.audit.session import AuditError
 from openavc.core.state_store import is_flat_primitive
 from openavc.drivers.base import validate_device_setting_value
@@ -98,8 +111,10 @@ class SettingTrial:
     started_at: float
     restore_value: Any = None
     status: str = WRITING
-    # Each half: {"at", "error", "confirmed", "value", "after"}; ``restore``
-    # also says whether the audit did it on its own as the driver stopped.
+    # Each half: {"at", "error", "confirmed", "value", "after"}, plus "sent"
+    # (a failed call had already sent bytes) and "interrupted" (the audit
+    # ended before the read-back did); ``restore`` also says whether the audit
+    # did it on its own as the driver stopped.
     write: dict[str, Any] = field(default_factory=dict)
     restore: dict[str, Any] | None = None
     # The device's state before the write (for "what changed").
@@ -110,8 +125,9 @@ class SettingTrial:
         return bool(self.restore and self.restore.get("confirmed"))
 
     def needs_putting_back(self) -> bool:
-        """The write reached the device and the original is not confirmed back."""
-        return not self.write.get("error") and "at" in self.write and not self.put_back()
+        """The write may have reached the device and the original is not
+        confirmed back."""
+        return "at" in self.write and _may_have_landed(self.write) and not self.put_back()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -281,21 +297,36 @@ class SettingsPass:
             if commands.current() is not None:
                 raise AuditError(BUSY.format(label=commands.current().label))
 
-    async def _one(self, value: Any, *, key: str, timeout: float | None = None) -> dict[str, Any]:
-        """One write of ``value`` and its read-back."""
+    @staticmethod
+    def _half() -> dict[str, Any]:
+        return {"at": time.time(), "error": "", "confirmed": False, "value": None}
+
+    async def _one(
+        self, value: Any, *, key: str, half: dict[str, Any], timeout: float | None = None,
+    ) -> dict[str, Any]:
+        """One write of ``value`` and its read-back, recorded in ``half`` as
+        it goes (the caller holds it before anything is sent)."""
         sandbox = self.run.listen.sandbox
-        started = time.time()
-        half: dict[str, Any] = {"at": started, "error": "", "confirmed": False, "value": None}
+        started = half["at"]
         try:
             await sandbox.manager.set_device_setting(sandbox.device_id, key, value)
         except asyncio.CancelledError:
+            half["interrupted"] = True
             raise
         except Exception as exc:
             half["error"] = error_sentence(exc)
+            # A call that failed after bytes went out may still have changed it.
+            half["sent"] = not command_sent_nothing(
+                sandbox.observer.traffic, started, time.time(), grace=0.0,
+            )
             return half
-        confirmed, actual = await sandbox.manager.await_setting_readback(
-            sandbox.device_id, key, value, timeout=timeout,
-        )
+        try:
+            confirmed, actual = await sandbox.manager.await_setting_readback(
+                sandbox.device_id, key, value, timeout=timeout,
+            )
+        except asyncio.CancelledError:
+            half["interrupted"] = True
+            raise
         half.update({
             "confirmed": confirmed,
             "value": _shown(actual),
@@ -303,14 +334,75 @@ class SettingsPass:
         })
         return half
 
+    async def _refresh_original(self, trial: SettingTrial) -> None:
+        """Read the value to put back fresh, when the driver has a status
+        query for it: the last poll may be older than a change made at the
+        device since."""
+        sandbox = self.run.listen.sandbox
+        sdef = (self._definitions().get("device_settings") or {}).get(trial.key) or {}
+        state_key = sdef.get("state_key", trial.key) if isinstance(sdef, dict) else trial.key
+        query = next((
+            c for c in command_catalog(sandbox.driver)
+            if c["query_for"] == state_key and not c["needs_input"]
+        ), None)
+        if query is None:
+            return
+        asked = time.time()
+        try:
+            await sandbox.manager.send_command(sandbox.device_id, query["name"], {})
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.debug("Reading %s before writing it failed", trial.key, exc_info=True)
+            return
+        end = time.monotonic() + QUERY_WINDOW_SECONDS
+        while state_key not in sandbox.written_since(asked) and time.monotonic() < end:
+            await asyncio.sleep(0.05)
+        fresh = sandbox.device_state().get(state_key)
+        heard = state_key in sandbox.written_since(asked)
+        self.session.add_timeline(
+            "setting.read",
+            f"Asked the device for {trial.label} before writing it ({query['label']}): "
+            + (f"it reports {_value_text(fresh)}." if heard else "no reply, so the audit puts "
+               f"back {_value_text(trial.original)}, the value it last reported."),
+            run=self.run.index, setting=trial.key,
+        )
+        if fresh is None or same_value(fresh, trial.original):
+            return
+        trial.original = fresh
+        trial.restore_value = validate_device_setting_value(trial.key, sdef, fresh)
+        trial.before = dict(sandbox.device_state())
+
     async def _round_trip(self, trial: SettingTrial) -> None:
         try:
-            trial.write = await self._one(trial.value, key=trial.key)
-            self.session.add_timeline(
-                "setting.written", _write_sentence(trial.label, trial.write, trial.value),
-                run=self.run.index, setting=trial.key,
-            )
-            if trial.write.get("error"):
+            try:
+                await self._refresh_original(trial)
+            except ValueError as exc:
+                trial.write = {"at": time.time(), "error": CANNOT_PUT_BACK.format(
+                    label=trial.label, value=_value_text(trial.original), why=exc,
+                ), "confirmed": False, "value": None, "sent": False}
+                self.session.add_timeline(
+                    "setting.written", trial.write["error"], run=self.run.index, setting=trial.key,
+                )
+                return
+            if same_value(trial.value, trial.original):
+                # Changed at the device to the value asked for: nothing to write.
+                trial.write = {"at": time.time(), "error": SAME_VALUE.format(
+                    label=trial.label, value=_value_text(trial.original),
+                ), "confirmed": False, "value": None, "sent": False}
+                self.session.add_timeline(
+                    "setting.written", trial.write["error"], run=self.run.index, setting=trial.key,
+                )
+                return
+            trial.write = self._half()
+            try:
+                await self._one(trial.value, key=trial.key, half=trial.write)
+            finally:
+                self.session.add_timeline(
+                    "setting.written", _write_sentence(trial.label, trial.write, trial.value),
+                    run=self.run.index, setting=trial.key,
+                )
+            if not trial.needs_putting_back():
                 return
             trial.status = RESTORING
             self._publish(trial)
@@ -328,13 +420,16 @@ class SettingsPass:
 
     async def _restore(self, trial: SettingTrial, *, automatic: bool = False,
                        timeout: float | None = None) -> None:
-        half = await self._one(trial.restore_value, key=trial.key, timeout=timeout)
+        half = self._half()
         half["automatic"] = automatic
         trial.restore = half
-        self.session.add_timeline(
-            "setting.restored", _restore_sentence(trial.label, half, trial.original),
-            run=self.run.index, setting=trial.key,
-        )
+        try:
+            await self._one(trial.restore_value, key=trial.key, half=half, timeout=timeout)
+        finally:
+            self.session.add_timeline(
+                "setting.restored", _restore_sentence(trial.label, half, trial.original),
+                run=self.run.index, setting=trial.key,
+            )
 
     async def stop(self) -> None:
         """Before the driver stops: finish or cancel what is running, and put
@@ -404,10 +499,17 @@ class SettingsPass:
         })
 
 
+def _may_have_landed(half: dict[str, Any]) -> bool:
+    """A write that went out, or failed after sending bytes."""
+    return not half.get("error") or bool(half.get("sent"))
+
+
 def _read_back(half: dict[str, Any]) -> str:
     """What the device said after one write."""
     if half.get("confirmed"):
         return f"the device reported it back after {half['after']} s."
+    if half.get("interrupted"):
+        return "the audit ended before the device reported it back."
     if half.get("value") is None:
         return "the device did not report it back."
     return f"the device still reports {_value_text(half['value'])}."
@@ -415,7 +517,8 @@ def _read_back(half: dict[str, Any]) -> str:
 
 def _write_sentence(label: str, half: dict[str, Any], value: Any) -> str:
     if half.get("error"):
-        return f"Could not write {_value_text(value)} to {label}: {half['error']}"
+        sent = " Bytes had already gone to the device." if half.get("sent") else ""
+        return f"Could not write {_value_text(value)} to {label}: {half['error']}{sent}"
     return f"Wrote {_value_text(value)} to {label}: {_read_back(half)}"
 
 
@@ -432,7 +535,7 @@ def setting_sentence(trial: SettingTrial) -> str:
     text = _write_sentence(trial.label, trial.write, trial.value)
     if trial.restore is not None:
         text += " " + _restore_sentence(trial.label, trial.restore, trial.original)
-    elif trial.write and not trial.write.get("error"):
+    elif trial.write and _may_have_landed(trial.write):
         text += " It was not put back."
     return text
 

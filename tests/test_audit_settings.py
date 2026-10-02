@@ -47,7 +47,10 @@ DRIVER = {
         "device_name": {"type": "string", "label": "Name"},
         "mode": {"type": "enum", "values": ["auto", "manual"], "label": "Mode"},
     },
-    "commands": {"ping": {"label": "Ping", "send": "PING\\r"}},
+    "commands": {
+        "ping": {"label": "Ping", "send": "PING\\r"},
+        "read_name": {"label": "Read name", "send": "NAME?\\r", "query_for": "device_name"},
+    },
     "device_settings": {
         "device_name": {
             "type": "string", "label": "Device name", "state_key": "device_name",
@@ -92,7 +95,7 @@ async def _fake_device(state: dict | None = None):
                 line = (await reader.readuntil(b"\r")).decode().strip()
                 if line.startswith("NAME "):
                     state["name"] = line[5:]
-                if line.startswith(("NAME", "MODE")):
+                if line.startswith(("NAME", "MODE")) and not state.get("silent"):
                     writer.write(f"NAME={state['name']}\rMODE={state['mode']}\r".encode())
                     await writer.drain()
         except (asyncio.IncompleteReadError, ConnectionError):
@@ -113,12 +116,12 @@ async def _until(predicate, timeout: float = 10.0) -> None:
         await asyncio.sleep(0.02)
 
 
-async def _connected(port: int):
+async def _connected(port: int, **config):
     session = AuditSession("set1", AuditTarget("127.0.0.1", "127.0.0.1"), AuditOptions())
     run = DriverRun(index=0, choice=DriverChoice(
         driver_id="acme_settings", identity={"name": "Acme Settings", "version": "1.0.0"},
     ))
-    run.config = {"host": "127.0.0.1", "port": port}
+    run.config = {"host": "127.0.0.1", "port": port, **config}
     session.runs.append(run)
     listen = await start_listen(session, run, **FAST)
     await _until(lambda: listen.sandbox.device_state().get("mode") is not None)
@@ -280,6 +283,78 @@ async def test_a_setting_left_changed_goes_back_when_the_driver_stops(driver):
     assert trial.status == DONE and trial.restore is not None
     assert trial.restore["automatic"] and trial.restore["confirmed"]
     assert "as the driver stopped" in trial.to_dict()["summary"]
+
+
+async def test_an_audit_that_ends_before_the_read_back_still_puts_it_back(driver):
+    """Cancel, a closed tab or a shutdown while the device has not reported the
+    new value yet: the write went out, so the old value goes back."""
+    device: dict = {}
+    server, port = await _fake_device(device)
+    session, run = await _connected(port)
+    try:
+        settings = settings_for(session, run, stop_readback_seconds=0.3)
+        run.listen.sandbox.manager._confirm_window = lambda _driver: 30.0
+        device["silent"] = True  # takes the write, reports nothing
+        trial = await settings.write("device_name", "Boardroom")
+        await _until(lambda: device["name"] == "Boardroom")
+    finally:
+        await run.stop()
+        server.close()
+    assert device["name"] == "Lobby"
+    assert trial.status == DONE and trial.write["interrupted"]
+    assert trial.restore is not None and trial.restore["automatic"]
+    summary = trial.to_dict()["summary"]
+    assert "Wrote Boardroom to Device name: the audit ended before the device reported it" in summary
+    assert "Put Device name back to Lobby as the driver stopped" in summary
+
+
+async def test_a_write_that_failed_after_sending_is_put_back(driver):
+    device: dict = {}
+    server, port = await _fake_device(device)
+    session, run = await _connected(port)
+    try:
+        settings = settings_for(session, run)
+        drv = run.listen.sandbox.driver
+        real = drv.set_device_setting
+        calls: list = []
+
+        async def sends_then_fails(key, value):
+            calls.append(value)
+            result = await real(key, value)
+            if len(calls) == 1:
+                raise TimeoutError("no acknowledgement")
+            return result
+
+        drv.set_device_setting = sends_then_fails
+        trial = await settings.write("device_name", "Boardroom")
+        await _until(lambda: trial.status == DONE)
+        assert trial.write["error"] and trial.write["sent"]
+        assert calls == ["Boardroom", "Lobby"] and trial.restore["confirmed"]
+        assert device["name"] == "Lobby"
+        assert "Bytes had already gone to the device." in trial.to_dict()["summary"]
+    finally:
+        await run.stop()
+        server.close()
+
+
+async def test_the_value_put_back_is_read_fresh_first(driver):
+    """Changed at the device since the last poll: that is what goes back."""
+    device: dict = {}
+    server, port = await _fake_device(device)
+    session, run = await _connected(port, poll_interval=60)
+    try:
+        settings = settings_for(session, run)
+        device["name"] = "Changed at the device"
+        trial = await settings.write("device_name", "Boardroom")
+        await _until(lambda: trial.status == DONE)
+        assert trial.original == "Changed at the device"
+        assert trial.write["confirmed"] and trial.restore["confirmed"]
+        assert device["name"] == "Changed at the device"
+        assert ("Asked the device for Device name before writing it (Read name): it reports "
+                "Changed at the device.") in [e.text for e in session.timeline]
+    finally:
+        await run.stop()
+        server.close()
 
 
 async def test_put_it_back_retries_a_restore_that_did_not_read_back(driver):

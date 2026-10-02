@@ -453,6 +453,10 @@ export interface AuditSettingHalf {
   /** Seconds from the write to the read-back. */
   after?: number;
   automatic?: boolean;
+  /** The call failed after bytes had already gone to the device. */
+  sent?: boolean;
+  /** The audit ended before the read-back did. */
+  interrupted?: boolean;
 }
 
 /** One setting written, read back and put back. */
