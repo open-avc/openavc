@@ -101,7 +101,6 @@ from openavc.audit.session import (
     AuditTarget,
 )
 from openavc.core.device_config import devices_at_host
-from openavc.core.device_manager import DeviceNotFoundError
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -235,14 +234,6 @@ async def start_session(body: AuditStartRequest) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail=str(exc))
     except AuditError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    except DeviceNotFoundError as exc:
-        # In the project but not running (disabled, or its driver is missing).
-        log.warning("Could not pause project devices for an audit: %s", exc)
-        raise HTTPException(
-            status_code=409,
-            detail="A project device at this address could not be paused, so the audit did "
-                   "not start. Check that it is enabled, then try again.",
-        )
     try:
         await open_for_session(session, _discovery)
         open_runs(session)

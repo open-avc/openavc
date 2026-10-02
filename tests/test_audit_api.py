@@ -180,6 +180,28 @@ async def test_a_device_set_up_by_host_name_is_the_device_at_its_address(wired, 
     ]
 
 
+async def test_a_device_that_is_not_running_does_not_block_the_audit(wired):
+    """A project device at the address whose driver is not installed (or that
+    is disabled) holds no connection: the audit starts without pausing it,
+    says so, and connecting is not refused because of it."""
+    from openavc.audit.sandbox import unpaused_devices_at
+
+    wired.engine.state.set("device.spare.orphaned", True)
+    started = await routes.start_session(
+        AuditStartRequest(address="127.0.0.1", pause=["lobby", "spare"]),
+    )
+    session = wired.manager.current()
+    assert [p.device_id for p in session.paused] == ["lobby"]
+    assert any(
+        e.kind == "device.not_running" and e.text == "Spare is not running, so the audit had "
+        "nothing to pause." for e in session.timeline
+    )
+    wired.engine.project.devices[1].enabled = True  # enabled, its driver missing
+    wired.engine.state.set("device.lobby.paused", True)
+    assert unpaused_devices_at(wired.engine.project, wired.engine.state, ["127.0.0.1"]) == []
+    await routes.end_session(started["session"]["session_id"])
+
+
 async def test_start_pauses_then_finish_resumes(wired):
     started = await routes.start_session(AuditStartRequest(address="127.0.0.1", pause=["lobby"]))
     session_id = started["session"]["session_id"]
@@ -205,12 +227,6 @@ async def test_start_refusals_say_why(wired):
     with pytest.raises(HTTPException) as exc:
         await routes.start_session(AuditStartRequest(address="127.0.0.1", pause=["ghost"]))
     assert exc.value.status_code == 404
-
-    # In the project but not running: the audit does not start.
-    with pytest.raises(HTTPException) as exc:
-        await routes.start_session(AuditStartRequest(address="127.0.0.1", pause=["spare"]))
-    assert exc.value.status_code == 409 and "could not be paused" in exc.value.detail
-    assert wired.manager.current() is None
 
     await routes.start_session(AuditStartRequest(address="127.0.0.1"))
     with pytest.raises(HTTPException) as exc:

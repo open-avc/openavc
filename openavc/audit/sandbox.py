@@ -148,7 +148,9 @@ def unpaused_devices_at(project: Any, state: Any, names: list[str]) -> list[str]
         return []
     out = []
     for conn in devices_at_host(project, names):
-        if not state.get(f"device.{conn.device_id}.paused"):
+        prefix = f"device.{conn.device_id}."
+        # A device whose driver is not installed holds no connection.
+        if not state.get(prefix + "paused") and not state.get(prefix + "orphaned"):
             out.append(conn.name)
     return out
 

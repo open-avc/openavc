@@ -541,11 +541,23 @@ class AuditManager:
             return
         if self._devices is None:
             raise AuditError("Project devices cannot be paused right now.")
+        from openavc.core.device_manager import DeviceNotFoundError
+
         for device_id, name in pause:
             if any(p.device_id == device_id for p in session.paused):
                 continue
             owned = not self._devices.is_paused(device_id)
-            await self._devices.pause_device(device_id, ttl=self._pause_ttl)
+            try:
+                await self._devices.pause_device(device_id, ttl=self._pause_ttl)
+            except DeviceNotFoundError:
+                # In the project but not running (its driver is not installed,
+                # or it is disabled): it holds no connection to the device.
+                session.add_timeline(
+                    "device.not_running",
+                    f"{name} is not running, so the audit had nothing to pause.",
+                    device_id=device_id,
+                )
+                continue
             session.paused.append(PausedDevice(device_id, name, owned))
             session.add_timeline(
                 "device.paused", f"Paused {name} for the audit.", device_id=device_id,

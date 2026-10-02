@@ -218,15 +218,37 @@ async def test_a_pause_the_audit_did_not_make_is_not_the_audits_to_resume(dm, co
     assert state.get("device.widget1.paused") is True
 
 
-async def test_a_pause_that_fails_undoes_the_ones_before_it(dm, core):
+async def test_a_pause_that_fails_undoes_the_ones_before_it(dm, core, monkeypatch):
     state, _ = core
     _connected_widget(dm, core)
     manager = AuditManager(dm)
+    real = dm.pause_device
 
-    with pytest.raises(Exception):
-        await manager.start(TARGET, pause=[("widget1", "Lobby Widget"), ("gone", "Gone")])
+    async def pause(device_id, ttl=None):
+        if device_id == "broken":
+            raise RuntimeError("the disconnect failed")
+        await real(device_id, ttl=ttl)
+
+    monkeypatch.setattr(dm, "pause_device", pause)
+    with pytest.raises(RuntimeError):
+        await manager.start(TARGET, pause=[("widget1", "Lobby Widget"), ("broken", "Broken")])
     assert manager.current() is None
     assert state.get("device.widget1.paused") is False
+
+
+async def test_a_device_that_is_not_running_is_not_paused(dm, core):
+    """Not in the device manager (its driver is missing, or it is disabled):
+    nothing to pause, and the audit starts."""
+    _connected_widget(dm, core)
+    manager = AuditManager(dm)
+    session = await manager.start(TARGET, pause=[("widget1", "Lobby Widget"), ("gone", "Gone")])
+    try:
+        assert [p.device_id for p in session.paused] == ["widget1"]
+        assert "Gone is not running, so the audit had nothing to pause." in [
+            e.text for e in session.timeline
+        ]
+    finally:
+        await manager.finish(session.id)
 
 
 async def test_the_session_keeps_its_pauses_alive(dm, core):
