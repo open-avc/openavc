@@ -314,6 +314,7 @@ class SettingsPass:
         # device never reported): the read-back passes at once and proves
         # nothing unless the device reports again.
         held = same_value(value, sandbox.device_state().get(state_key))
+        mark = sandbox.state.seq
         try:
             await sandbox.manager.set_device_setting(sandbox.device_id, key, value)
         except asyncio.CancelledError:
@@ -337,7 +338,7 @@ class SettingsPass:
             "confirmed": confirmed,
             "value": _shown(actual),
             "after": round(time.time() - started, 1),
-            "unchanged": confirmed and held and state_key not in sandbox.written_since(started),
+            "unchanged": confirmed and held and state_key not in sandbox.written_after(mark),
         })
         return half
 
@@ -354,7 +355,7 @@ class SettingsPass:
         ), None)
         if query is None:
             return
-        asked = time.time()
+        asked = sandbox.state.seq
         try:
             await sandbox.manager.send_command(sandbox.device_id, query["name"], {})
         except asyncio.CancelledError:
@@ -363,10 +364,10 @@ class SettingsPass:
             log.debug("Reading %s before writing it failed", trial.key, exc_info=True)
             return
         end = time.monotonic() + QUERY_WINDOW_SECONDS
-        while state_key not in sandbox.written_since(asked) and time.monotonic() < end:
+        while state_key not in sandbox.written_after(asked) and time.monotonic() < end:
             await asyncio.sleep(0.05)
         fresh = sandbox.device_state().get(state_key)
-        heard = state_key in sandbox.written_since(asked)
+        heard = state_key in sandbox.written_after(asked)
         self.session.add_timeline(
             "setting.read",
             f"Asked the device for {trial.label} before writing it ({query['label']}): "

@@ -417,3 +417,33 @@ async def test_the_routes(wired, driver):  # noqa: F811
     finally:
         server.close()
         await wired.manager.shutdown()
+
+
+async def test_the_fresh_read_waits_for_a_write_after_the_question_on_one_clock_tick(
+    driver, monkeypatch,
+):
+    """Windows before Python 3.13 ticks time.time() every 15.6 ms, so the
+    connect-time poll's write and the moment the audit asks can share a
+    timestamp. The fresh read waits for a write that came after the question,
+    by order, not by clock."""
+    import time
+    from types import SimpleNamespace
+
+    import openavc.audit.sandbox as sandbox_mod
+    import openavc.audit.settings as settings_mod
+
+    frozen = SimpleNamespace(time=lambda: 1_700_000_000.0, monotonic=time.monotonic)
+    monkeypatch.setattr(sandbox_mod, "time", frozen)
+    monkeypatch.setattr(settings_mod, "time", frozen)
+    device: dict = {}
+    server, port = await _fake_device(device)
+    session, run = await _connected(port, poll_interval=60)
+    try:
+        settings = settings_for(session, run)
+        device["name"] = "Changed at the device"
+        trial = await settings.write("device_name", "Boardroom")
+        await _until(lambda: trial.status == DONE)
+        assert trial.original == "Changed at the device"
+    finally:
+        await run.stop()
+        server.close()

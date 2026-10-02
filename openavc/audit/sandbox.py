@@ -84,6 +84,11 @@ class AuditStateStore(StateStore):
     def __init__(self) -> None:
         super().__init__()
         self.written: dict[str, float] = {}
+        # Every write numbered in order, and each key's latest number: what
+        # came after a moment, exactly, where a clock that ticks every 15.6 ms
+        # gives two writes one timestamp.
+        self.seq = 0
+        self.written_seq: dict[str, int] = {}
         # (time, key, value, position), oldest first, at most
         # ERROR_WRITES_KEPT. ``position`` is how long the device's traffic
         # list was at the write, which places it against the requests sent
@@ -93,6 +98,8 @@ class AuditStateStore(StateStore):
 
     def _note(self, key: str, value: Any, now: float) -> None:
         self.written[key] = now
+        self.seq += 1
+        self.written_seq[key] = self.seq
         if key.endswith(".last_error") and len(self.error_writes) < ERROR_WRITES_KEPT:
             self.error_writes.append((now, key, value, self.position()))
 
@@ -297,6 +304,16 @@ class DriverSandbox:
 
         host = str((self.resolved.get("config") or {}).get("host") or "")
         return http_listener.callback_urls_for(self.device_id, host)
+
+    def written_after(self, seq: int) -> set[str]:
+        """The device's state keys (without the ``device.<id>.`` prefix)
+        written after the store's write number ``seq`` (``state.seq`` taken
+        earlier), whether or not the value changed."""
+        prefix = f"device.{self.device_id}."
+        return {
+            key[len(prefix):] for key, n in self.state.written_seq.items()
+            if n > seq and key.startswith(prefix)
+        }
 
     def written_since(self, since: float) -> set[str]:
         """The device's state keys (without the ``device.<id>.`` prefix)
