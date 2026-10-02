@@ -936,3 +936,43 @@ async def test_what_changed_lists_each_value_with_what_it_was(driver):
     assert "What the audit changed" in summary
     assert "not reported before, true now (after 1. Power On)" in summary
     assert "Also different now, but changing without the audit: Volume" in summary
+
+
+async def test_a_later_refusal_on_the_same_clock_tick_is_still_not_the_commands(driver, monkeypatch):
+    """Windows before Python 3.13 ticks time.time() every 15.6 ms, so the
+    driver's next request, its refusal and the command's return can share one
+    timestamp. The command's own exchange is cut by position, not by clock."""
+    import openavc.audit.commands as commands_mod
+    import openavc.audit.sandbox as sandbox_mod
+    import openavc.core.device_traffic as traffic_mod
+    from types import SimpleNamespace
+
+    server, port = await _fake_device()
+    session, run, _ = await _connected(port)
+    sandbox = run.listen.sandbox
+    real = time.time
+    frozen = {"at": None}
+
+    def clock() -> float:
+        return frozen["at"] if frozen["at"] is not None else real()
+
+    fake = SimpleNamespace(time=clock, monotonic=time.monotonic, sleep=time.sleep)
+    for mod in (commands_mod, sandbox_mod, traffic_mod):
+        monkeypatch.setattr(mod, "time", fake)
+    try:
+        commands = commands_for(
+            session, run, window_seconds=1.0, query_window_seconds=0.2, flush_seconds=0.05,
+        )
+        frozen["at"] = real()  # one tick from here to the refusal
+        trial = await commands.send("power_on")
+        await _until(lambda: trial.status == "watching")
+        await sandbox.manager.send_command(sandbox.device_id, "set_code", {"pin": "0000"})
+        await _until(lambda: any(w.get("error") for w in trial.error_writes) or bool(
+            [1 for w in sandbox.state.error_writes if w[2]]))
+        frozen["at"] = None  # the clock moves on; the window closes
+        await _until(lambda: trial.status == DONE)
+        assert trial.refusals["last_error"] is None
+        assert [later["error"] for later in trial.refusals["later"]] == ["refused"]
+    finally:
+        await run.stop()
+        server.close()

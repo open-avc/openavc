@@ -726,7 +726,10 @@ class CommandPass:
         def on_error(_event: str, payload: Any = None) -> None:
             if trial.status != DONE:
                 error = (payload or {}).get("error") if isinstance(payload, dict) else payload
-                trial.device_errors.append({"t": time.time(), "error": str(error or "")})
+                trial.device_errors.append({
+                    "t": time.time(), "error": str(error or ""),
+                    "position": len(sandbox.observer.traffic),
+                })
 
         def on_gone(_event: str, _payload: Any = None) -> None:
             if trial.status == DONE:
@@ -784,6 +787,7 @@ class CommandPass:
                 trial.error_type = type(exc).__name__
             finally:
                 trial.returned_at = time.time()
+                trial.marks["returned"] = len(sandbox.observer.traffic)
                 span = self.window_seconds if window is None else window
                 if not trial.error:
                     span = max(span, self._restart_span(trial))
@@ -807,8 +811,8 @@ class CommandPass:
             # when, a rewrite of the same text included.
             own_key = f"device.{sandbox.device_id}.last_error"
             trial.error_writes = [
-                {"t": t, "error": _shown(value)}
-                for t, key, value in error_writes[errors_from:] if key == own_key
+                {"t": t, "error": _shown(value), "position": position}
+                for t, key, value, position in error_writes[errors_from:] if key == own_key
             ]
             self._unwatch(sandbox, handles)
             self._finish(trial)
@@ -947,16 +951,31 @@ class CommandPass:
         from openavc.audit.report import _traffic_text
 
         returned = trial.returned_at or trial.sent_at
-        sent = [e for e in traffic if e.direction == TX]
-        after = [e for e in sent if e.t > returned]
-        if after and not any(e.t <= returned for e in sent):
+        # The window's traffic with each entry's place in the device's list,
+        # the order things happened in whatever the clock says.
+        start = trial.marks.get("traffic", 0)
+        returned_at = trial.marks.get("returned", start)
+        attempt = self.run.listens[trial.connect_attempt] if self.run.listens else None
+        window = trial.traffic_in(attempt.sandbox.observer) if attempt is not None else []
+        placed = [
+            (start + i, e) for i, e in enumerate(window)
+            if e.direction == TX and not e.chunk
+        ]
+        after = [(at, e) for at, e in placed if at >= returned_at]
+        if after and len(after) == len(placed):
             after = after[1:]  # sent once the call had returned: the command's own
-        own_end = returned + REPLY_WINDOW_SECONDS
-        if after:
-            own_end = min(own_end, after[0].t)
+        # A refusal belongs to the command when it came before the driver's
+        # next request and while its reply could still be on the way.
+        next_request = after[0][0] if after else None
+        deadline = returned + REPLY_WINDOW_SECONDS
 
-        own_errors = [e for e in trial.device_errors if e["t"] <= own_end]
-        own_writes = [w for w in trial.error_writes if w["t"] <= own_end and w.get("error")]
+        def own(sign: dict[str, Any]) -> bool:
+            if next_request is not None and sign.get("position", 0) > next_request:
+                return False
+            return sign["t"] <= deadline
+
+        own_errors = [e for e in trial.device_errors if own(e)]
+        own_writes = [w for w in trial.error_writes if own(w) and w.get("error")]
         said = (
             own_writes[-1]["error"] if own_writes
             else next((e["error"] for e in reversed(own_errors) if e.get("error")), None)
@@ -965,16 +984,18 @@ class CommandPass:
         later: dict[str, dict[str, Any]] = {}
         redactor = self._redactor(trial) if self.run.listens else None
         signs = sorted(
-            [(e["t"], e.get("error") or "") for e in trial.device_errors if e["t"] > own_end]
-            + [(w["t"], w["error"]) for w in trial.error_writes
-               if w["t"] > own_end and w.get("error")],
-            key=lambda s: s[0],
+            [(e.get("position", 0), e["t"], e.get("error") or "")
+             for e in trial.device_errors if not own(e)]
+            + [(w.get("position", 0), w["t"], w["error"]) for w in trial.error_writes
+               if not own(w) and w.get("error")],
+            key=lambda s: (s[0], s[1]),
         )
-        for t, text in signs:
+        for position, t, text in signs:
             if str(text) in later:
                 later[str(text)]["count"] += 1
                 continue
-            request = next((e for e in reversed(sent) if e.t <= t), None)
+            # The request it answered: the last one sent before it.
+            request = next((e for at, e in reversed(placed) if at < position), None)
             later[str(text)] = {
                 "error": text,
                 "after": round(t - trial.sent_at, 1),

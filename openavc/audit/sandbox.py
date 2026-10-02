@@ -84,13 +84,17 @@ class AuditStateStore(StateStore):
     def __init__(self) -> None:
         super().__init__()
         self.written: dict[str, float] = {}
-        # (time, key, value), oldest first, at most ERROR_WRITES_KEPT.
-        self.error_writes: list[tuple[float, str, Any]] = []
+        # (time, key, value, position), oldest first, at most
+        # ERROR_WRITES_KEPT. ``position`` is how long the device's traffic
+        # list was at the write, which places it against the requests sent
+        # around it exactly, where a clock that ticks every 15.6 ms cannot.
+        self.error_writes: list[tuple[float, str, Any, int]] = []
+        self.position: Callable[[], int] = lambda: 0
 
     def _note(self, key: str, value: Any, now: float) -> None:
         self.written[key] = now
         if key.endswith(".last_error") and len(self.error_writes) < ERROR_WRITES_KEPT:
-            self.error_writes.append((now, key, value))
+            self.error_writes.append((now, key, value, self.position()))
 
     def set(self, key: str, value: Any, source: str = "system") -> None:
         self._note(key, value, time.time())
@@ -190,6 +194,7 @@ class DriverSandbox:
         self.state.set_event_bus(self.events)
         self.manager = DeviceManager(self.state, self.events)
         self.observer = AuditObserver(device_id, on_entry=on_entry, on_event=on_event)
+        self.state.position = lambda: len(self.observer.traffic)
         # The config the device manager was handed, after the resolver.
         self.resolved: dict[str, Any] = {}
         self.transport = ""
