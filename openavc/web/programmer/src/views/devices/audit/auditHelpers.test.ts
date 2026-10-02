@@ -258,8 +258,8 @@ describe("the on-screen summary", () => {
     // own, nothing received, a drop a minute on its liveness check.
     const attempt = {
       status: "done", error: "", started_at: 100, connected_at: 100.1, declared: 4,
-      reported: 3, offline: null, contract: { counts: {} }, unprompted_replies: { count: 0 },
-      drops: 10, reconnects: 10,
+      reported: 0, set_by_driver: 3, offline: null, contract: { counts: {} },
+      unprompted_replies: { count: 0 }, drops: 10, reconnects: 10,
       traffic: { count: 1237, sent: 1237, received: 0, not_captured: false },
     };
     const blu = { run: 0, driver: { id: "acme", name: "Acme", version: "1.0.3", modified: false },
@@ -268,8 +268,8 @@ describe("the on-screen summary", () => {
       { label: "Driver", value: "Acme 1.0.3" },
       { label: "Connected", value: "Yes, 0.1 s after starting" },
       { label: "Replies", value: "None: the device sent nothing back to 1237 messages" },
-      { label: "Status values", value: "3 of 4 reported, none of them by the device" },
-      { label: "Connection dropped", value: "10 times, reconnected 10 times" },
+      { label: "Status values", value: "0 of 4 reported, 3 more set by the driver itself" },
+      { label: "Dropped while listening", value: "10 times, reconnected 10 times" },
     ]);
   });
 

@@ -296,3 +296,95 @@ async def test_the_routes(wired, driver):  # noqa: F811
     finally:
         server.close()
         await wired.manager.shutdown()
+
+
+async def test_a_value_the_driver_writes_before_the_device_answers_is_not_reported(driver):
+    """A value from the driver's own config, written before the device said
+    anything, is the driver's: "set by the driver", never "reported", and
+    the timeline, the listen step and the summary count it the same way."""
+    from openavc.audit.report import build_report, suggested_confidence
+
+    info = {**DRIVER, "id": "acme_zones", "state_variables": {
+        **DRIVER["state_variables"], "zones": {"type": "integer", "label": "Zones"},
+    }}
+    base = create_configurable_driver_class(info)
+
+    class AcmeZones(base):
+        async def connect(self):
+            self.set_state("zones", 2)  # from its config, before anything is sent
+            await super().connect()
+
+    _DRIVER_REGISTRY["acme_zones"] = AcmeZones
+    server, port = await _fake_device()
+    session, run, _ = _session_and_run(port)
+    run.choice = DriverChoice(driver_id="acme_zones", identity={"name": "Acme", "version": "1"})
+    try:
+        listen = await start_listen(session, run, **FAST)
+        await _until(lambda: listen.status == DONE)
+        state = listen.to_dict()
+        assert state["declared"] == 3 and state["reported"] == 1
+        assert state.get("set_by_driver") == 1
+        table = {v["name"]: v for v in state["status_table"]["variables"]}
+        assert table["zones"]["value"] == 2
+        assert not table["zones"]["reported"] and table["zones"]["set_by_driver"]
+        assert table["power"]["reported"] and not table["power"]["set_by_driver"]
+        texts = [e.text for e in session.timeline]
+        assert not any(t.startswith("Zones reported") for t in texts)
+        assert any(t.endswith("1 of 3 status values reported, 1 more set by the driver itself.")
+                   for t in texts)
+    finally:
+        await run.stop()
+        server.close()
+        _DRIVER_REGISTRY.pop("acme_zones", None)
+    section = build_report(session)["drivers"][0]
+    reasons = [r["text"] for r in suggested_confidence(section)["reasons"]]
+    assert "1 of 3 status values were reported. Never reported: Volume, Zones." in reasons
+
+
+def test_the_counts_say_what_the_listen_step_says():
+    from openavc.audit.report import suggested_confidence
+
+    def section(*variables):
+        attempt = {"connected_at": 1.0, "traffic": {"received": 5, "sent": 5},
+                   "status_table": {"variables": list(variables)}}
+        return {"attempts": [attempt]}
+
+    power = {"name": "power", "label": "Power", "reported": True}
+    error = {"name": "last_error", "label": "Last error", "reported": False}
+    reasons = [r["text"] for r in suggested_confidence(section(power, error))["reasons"]]
+    assert ("Every status value was reported (1 of 2, Last error aside: the driver writes it "
+            "only when something goes wrong).") in reasons
+    reasons = [r["text"] for r in suggested_confidence(
+        section(power, {**error, "reported": True}))["reasons"]]
+    assert "Every status value was reported (2 of 2)." in reasons
+
+
+async def test_a_drop_after_listening_is_not_the_listen_attempts(driver):
+    writers: list = []
+
+    async def handle(reader, writer):
+        writers.append(writer)
+        try:
+            while True:
+                await reader.readuntil(b"\r")
+                writer.write(b"PWR=on\r")
+                await writer.drain()
+        except (asyncio.IncompleteReadError, ConnectionError):
+            pass
+        finally:
+            writer.close()
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    session, run, _ = _session_and_run(server.sockets[0].getsockname()[1])
+    try:
+        listen = await start_listen(session, run, **FAST)
+        await _until(lambda: listen.status == DONE)
+        for w in writers:
+            w.close()  # the link drops after the window (a command, a test)
+        await _until(lambda: listen.drops + getattr(listen, "later_drops", 0) == 1)
+        state = listen.to_dict()
+        assert state["drops"] == 0
+        assert state.get("later_drops") == 1
+    finally:
+        await run.stop()
+        server.close()

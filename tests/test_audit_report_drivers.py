@@ -433,16 +433,16 @@ def test_the_summary_says_when_the_device_sent_nothing_back():
     read as a working device."""
     attempt = {
         "status": "done", "started_at": 100.0, "connected_at": 100.1, "finished_at": 280.1,
-        "declared": 4, "reported": 3, "drops": 10,
+        "declared": 4, "reported": 0, "set_by_driver": 3, "drops": 10,
         "traffic": {"sent": 1237, "received": 0, "not_captured": False},
     }
     assert _attempt_sentence(attempt) == (
         "Connected 0.1 s after starting; the device sent nothing back to 1237 messages; "
-        "3 of 4 status values reported in 180 seconds of listening, none of them by the "
-        "device; the connection dropped 10 times."
+        "0 of 4 status values reported in 180 seconds of listening, 3 more set by the "
+        "driver itself; the connection dropped 10 times while listening."
     )
     attempt["traffic"] = {"sent": 12, "received": 30, "not_captured": False}
-    attempt["drops"] = 0
+    attempt.update({"drops": 0, "reported": 3, "set_by_driver": 0})
     assert _attempt_sentence(attempt) == (
         "Connected 0.1 s after starting; 3 of 4 status values reported in 180 seconds of listening."
     )

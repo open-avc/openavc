@@ -6,9 +6,13 @@ steps, then status polling at the driver's own cadence. It sends none of the
 driver's commands. What it records:
 
 - **A timeline**: starting, the first byte sent, the first reply, connected
-  (each timed from the start), every declared status value's first report,
+  (each timed from the start), every declared status value's first value,
   each offline reason the manager classifies, every drop and reconnect, and
-  the first contract fault of each kind.
+  the first contract fault of each kind. A value counts as **reported** only
+  when the device said it: written at or after the device's first reply
+  (:meth:`ListenPass.from_device`). One the driver wrote before that (a value
+  from its config, its own bookkeeping) is **set by the driver**. Drops and
+  reconnects after the listening window are counted apart from the window's.
 - **A listening window** of at least ``MIN_SECONDS`` and ``MIN_CYCLES`` poll
   cycles from the moment the device connected; the person can extend it, up
   to ``MAX_SECONDS`` from the start. A device that does not connect is watched
@@ -157,8 +161,12 @@ class ListenPass:
         self.ends_at: float | None = None
         self.finished_at: float | None = None
         self.poll_interval = 0.0
+        # Drops and reconnects while listening, and after the window closed
+        # (in a command's window or a power test, which each say their own).
         self.reconnects = 0
         self.drops = 0
+        self.later_reconnects = 0
+        self.later_drops = 0
         self.offline: dict[str, str] | None = None
         self.first_reported: dict[str, float] = {}
         self.changes: list[dict[str, Any]] = []
@@ -240,15 +248,16 @@ class ListenPass:
     def _end_window(self) -> None:
         self.finished_at = time.time()
         declared = self._declared()
-        reported = [v for v in declared if v in self.first_reported]
+        reported, by_driver = self._reported_count()
         if self.status == LISTENING:
             self.status = DONE
             listened = self.finished_at - (self.connected_at or self.started_at)
             self._timeline(
                 "listen.done",
-                f"Listened for {round(listened)} seconds: {len(reported)} of "
-                f"{len(declared)} status values reported.",
-                reported=len(reported), declared=len(declared),
+                f"Listened for {round(listened)} seconds: {reported} of "
+                f"{len(declared)} status values reported"
+                + (f", {by_driver} more set by the driver itself" if by_driver else "") + ".",
+                reported=reported, declared=len(declared),
             )
         else:
             self.status = FAILED
@@ -380,7 +389,10 @@ class ListenPass:
             self.ends_at = self._window_end()
             self._timeline("listen.connected", f"Connected, {self._since(now)} after starting.")
         else:
-            self.reconnects += 1
+            if self._listening():
+                self.reconnects += 1
+            else:
+                self.later_reconnects += 1
             if self.status == NOT_CONNECTED:
                 self.status = LISTENING
             self._timeline("listen.reconnected", "Reconnected.")
@@ -388,9 +400,16 @@ class ListenPass:
 
     async def _on_disconnected(self, _event: str, _payload: Any = None) -> None:
         if self.connected_at is not None and not self._stopping:
-            self.drops += 1
+            if self._listening():
+                self.drops += 1
+            else:
+                self.later_drops += 1
             self._timeline("listen.dropped", "The connection dropped.")
         self._dirty = True
+
+    def _listening(self) -> bool:
+        """The listening window is still open."""
+        return self.status in (CONNECTING, LISTENING, NOT_CONNECTED)
 
     def _on_state(self, key: str, old: Any, new: Any, _source: str = "") -> None:
         if self._stopping:
@@ -417,11 +436,15 @@ class ListenPass:
         ):
             self.first_reported[prop] = now
             if prop in self._declared():
-                shown = ("true" if new else "false") if isinstance(new, bool) else str(new)
+                shown = ("true" if new else "false") if isinstance(new, bool) else str(new)[:80]
+                if self.first_rx_at is not None:
+                    text = f"{self._label(prop)} reported: {shown}"
+                elif self.first_tx_at is not None:
+                    text = f"{self._label(prop)} set by the driver before the device answered: {shown}"
+                else:
+                    text = f"{self._label(prop)}: {shown}"
                 self._timeline(
-                    "listen.reported",
-                    f"{self._label(prop)} reported: {shown[:80]}, {self._since(now)} after starting.",
-                    state=prop,
+                    "listen.reported", f"{text}, {self._since(now)} after starting.", state=prop,
                 )
         self._dirty = True
 
@@ -481,6 +504,27 @@ class ListenPass:
     def _declared(self) -> list[str]:
         return list((self._driver_info().get("state_variables") or {}).keys())
 
+    def from_device(self, prop: str) -> bool:
+        """The device reported ``prop``: it has a value written at or after the
+        device's first reply. A value the driver wrote before any reply (its
+        own bookkeeping, a value from its config) is the driver's, not the
+        device's. With no traffic captured at all (a driver that keeps its
+        own connection) there is no reply to time it by, so a value counts."""
+        if prop not in self.first_reported:
+            return False
+        if not self.sandbox.observer.frames():
+            return True
+        if self.first_rx_at is None:
+            return False
+        written = self.sandbox.state.written.get(f"device.{self.sandbox.device_id}.{prop}")
+        return written is not None and written >= self.first_rx_at
+
+    def _reported_count(self) -> tuple[int, int]:
+        """(reported by the device, set by the driver) among the declared values."""
+        declared = [v for v in self._declared() if v in self.first_reported]
+        device = sum(1 for v in declared if self.from_device(v))
+        return device, len(declared) - device
+
     def _label(self, prop: str) -> str:
         spec = (self._driver_info().get("state_variables") or {}).get(prop)
         return str(spec.get("label") or prop) if isinstance(spec, dict) else prop
@@ -503,7 +547,8 @@ class ListenPass:
                 "label": spec.get("label") or name,
                 "type": spec.get("type", "string"),
                 "value": _shown(value),
-                "reported": name in self.first_reported,
+                "reported": self.from_device(name),
+                "set_by_driver": name in self.first_reported and not self.from_device(name),
                 "first_reported_at": self.first_reported.get(name),
                 "problem": mismatches.get(name, ""),
                 "sources": self.sources.get(name, []),
@@ -546,6 +591,7 @@ class ListenPass:
         own_session = (
             not frames and any(v in self.first_reported for v in declared)
         )
+        reported, by_driver = self._reported_count()
         return {
             "status": self.status,
             # The driver is running against the device (the next step can send),
@@ -563,9 +609,12 @@ class ListenPass:
             "poll_interval": self.poll_interval,
             "reconnects": self.reconnects,
             "drops": self.drops,
+            "later_reconnects": self.later_reconnects,
+            "later_drops": self.later_drops,
             "offline": self.offline,
             "declared": len(declared),
-            "reported": sum(1 for v in declared if v in self.first_reported),
+            "reported": reported,
+            "set_by_driver": by_driver,
             "traffic": {
                 "entries": len(frames),
                 "sent": sum(1 for e in frames if e.direction == TX),

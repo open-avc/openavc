@@ -228,7 +228,10 @@ export interface AuditStatusVariable {
   label: string;
   type: string;
   value: unknown;
+  /** The device said it: written at or after its first reply. */
   reported: boolean;
+  /** It has a value the driver wrote before the device replied. */
+  set_by_driver?: boolean;
   first_reported_at: number | null;
   /** Why the value is not of its declared type, or "". */
   problem: string;
@@ -251,11 +254,15 @@ export interface AuditListen {
   finished_at: number | null;
   max_ends_at: number;
   poll_interval: number;
+  /** While listening; the later_ pair after the window closed. */
   reconnects: number;
   drops: number;
+  later_reconnects?: number;
+  later_drops?: number;
   offline: { code: string; detail: string; next_step: string } | null;
   declared: number;
   reported: number;
+  set_by_driver?: number;
   traffic: {
     entries: number;
     sent: number;
@@ -648,12 +655,16 @@ export interface AuditReportAttempt {
   connected_at: number | null;
   declared: number;
   reported: number;
+  set_by_driver?: number;
   offline: { code: string; detail: string; next_step: string } | null;
   contract: { counts: Record<string, number> };
   unprompted_replies: { count: number };
-  /** How often the link dropped while the attempt ran, and how often the driver got it back. */
+  /** How often the link dropped while listening, and how often the driver got it back. */
   drops: number;
   reconnects: number;
+  /** The same after the listening window closed. */
+  later_drops?: number;
+  later_reconnects?: number;
   traffic: { count: number; sent: number; received: number; not_captured: boolean };
 }
 

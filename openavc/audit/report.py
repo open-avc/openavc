@@ -68,9 +68,12 @@
     ``active``, ``error``, the times (``started_at``, ``first_tx_at``,
     ``first_rx_at``, ``connected_at``, ``ends_at``, ``max_ends_at`` (how far
     "Keep listening" can take it), ``finished_at``), ``poll_interval``,
-    ``reconnects``, ``drops``, ``offline`` (``code``, ``detail``,
-    ``next_step``), ``declared`` and ``reported`` counts, ``status_table``
-    (every declared value with ``value``, ``reported``,
+    ``reconnects`` and ``drops`` while listening, ``later_reconnects`` and
+    ``later_drops`` after the window closed, ``offline`` (``code``, ``detail``,
+    ``next_step``), ``declared``, ``reported`` (by the device: a value
+    written at or after its first reply) and ``set_by_driver`` (a value the
+    driver wrote before any reply) counts, ``status_table``
+    (every declared value with ``value``, ``reported``, ``set_by_driver``,
     ``first_reported_at``, ``problem`` and ``sources``, the response rules
     that would set it; ``children``; ``child_labels``, each child type's ``one``
     and ``many`` label; ``settings``, each with ``populated``),
@@ -901,22 +904,32 @@ def suggested_confidence(section: dict[str, Any]) -> dict[str, Any]:
             else f"The device sent nothing back to {traffic.get('sent', 0)} messages.",
         )
     # last_error is written only when something goes wrong, so an empty one
-    # is the good case, not a value missing.
-    values = [
-        v for v in (last.get("status_table") or {}).get("variables") or []
-        if v.get("name") != "last_error"
+    # is the good case, not a value missing. The counts are the listen step's
+    # ("N of M reported"), so the two never disagree.
+    every = (last.get("status_table") or {}).get("variables") or []
+    reported = sum(1 for v in every if v.get("reported"))
+    error_var = next((v for v in every if v.get("name") == "last_error"), None)
+    error_aside = (
+        f"{error_var.get('label') or 'last_error'} aside: the driver writes it only when "
+        "something goes wrong"
+        if error_var is not None and not error_var.get("reported") else ""
+    )
+    missing = [
+        str(v.get("label") or v.get("name")) for v in every
+        if v.get("name") != "last_error" and not v.get("reported")
     ]
-    missing = [str(v.get("label") or v.get("name")) for v in values if not v.get("reported")]
     if silent:
         ok &= say(False, "None of the status values came from the device; any it shows are "
                          "the driver's own.")
+    elif not missing:
+        say(True, f"Every status value was reported ({reported} of {len(every)}"
+                  f"{', ' + error_aside if error_aside else ''}).")
     else:
-        ok &= say(
-            not missing,
-            f"Every status value was reported ({len(values)})." if not missing
-            else f"{len(missing)} of {len(values)} status values were never reported: "
-                 f"{', '.join(missing[:5])}{' and more' if len(missing) > 5 else ''}.",
-        )
+        ok &= say(False, (
+            f"{reported} of {len(every)} status values were reported. Never reported: "
+            f"{', '.join(missing[:5])}{' and more' if len(missing) > 5 else ''}"
+            f"{' (' + error_aside + ')' if error_aside else ''}."
+        ))
     problems = sum(sum((a.get("contract") or {}).get("counts", {}).values()) for a in attempts)
     ok &= say(
         problems == 0,
@@ -1526,6 +1539,7 @@ def _attempt_sentence(attempt: dict[str, Any]) -> str:
         # bookkeeping. Say what came back, and whose the values are.
         silent = not traffic.get("not_captured") and not traffic.get("received")
         reported = attempt.get("reported", 0)
+        by_driver = attempt.get("set_by_driver", 0)
         text = f"Connected {_seconds_after(attempt['connected_at'], started)}; "
         if silent:
             sent = traffic.get("sent", 0)
@@ -1534,11 +1548,11 @@ def _attempt_sentence(attempt: dict[str, Any]) -> str:
         if listened > 0:
             secs = round(listened)
             text += f" in {secs} {'second' if secs == 1 else 'seconds'} of listening"
-        if silent and reported:
-            text += ", none of them by the device"
+        if by_driver:
+            text += f", {by_driver} more set by the driver itself"
         drops = attempt.get("drops") or 0
         if drops:
-            text += f"; the connection dropped {drops} {'time' if drops == 1 else 'times'}"
+            text += f"; the connection dropped {drops} {'time' if drops == 1 else 'times'} while listening"
         if status == "stopped":
             text += "; stopped before the listening window ended"
         return text + "."
@@ -1556,10 +1570,12 @@ def _attempt_sentence(attempt: dict[str, Any]) -> str:
 def _status_rows(table: dict[str, Any]) -> list[str]:
     rows = []
     for var in table.get("variables", []):
-        if var.get("reported") and var.get("value") is not None:
+        if (var.get("reported") or var.get("set_by_driver")) and var.get("value") is not None:
             value = var["value"]
             shown = ("true" if value else "false") if isinstance(value, bool) else str(value)
             cell = f"<code>{_e(shown)}</code>"
+            if not var.get("reported"):
+                cell += " set by the driver, not reported by the device"
         else:
             sources = var.get("sources") or []
             cell = "not reported" + (
@@ -1624,12 +1640,16 @@ def _render_driver(section: dict[str, Any]) -> list[str]:
         parts.append(_row("First reply", _e(_seconds_after(attempt.get("first_rx_at"), started))))
         if attempt.get("poll_interval"):
             parts.append(_row("Polls every", _e(f"{attempt['poll_interval']} seconds")))
-        if attempt.get("drops") or attempt.get("reconnects"):
-            drops, again = attempt.get("drops", 0), attempt.get("reconnects", 0)
-            parts.append(_row("Dropped", _e(
-                f"{drops} {'time' if drops == 1 else 'times'}, reconnected {again} "
-                f"{'time' if again == 1 else 'times'}"
-            )))
+        for label, drops, again in (
+            ("Dropped while listening", attempt.get("drops", 0), attempt.get("reconnects", 0)),
+            ("Dropped after listening", attempt.get("later_drops", 0),
+             attempt.get("later_reconnects", 0)),
+        ):
+            if drops or again:
+                parts.append(_row(label, _e(
+                    f"{drops} {'time' if drops == 1 else 'times'}, reconnected {again} "
+                    f"{'time' if again == 1 else 'times'}"
+                )))
         traffic = attempt.get("traffic") or {}
         if traffic.get("not_captured"):
             traffic_text = "not captured: this driver manages its own connection"

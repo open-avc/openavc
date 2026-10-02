@@ -439,9 +439,11 @@ export function secondsLeft(listen: AuditListen | undefined, now: number): numbe
 
 /** A status value as the table shows it. */
 export function statusValue(v: AuditStatusVariable): string {
-  if (!v.reported || v.value === null || v.value === undefined) return "Not reported";
-  if (typeof v.value === "boolean") return v.value ? "true" : "false";
-  return String(v.value);
+  if ((!v.reported && !v.set_by_driver) || v.value === null || v.value === undefined) {
+    return "Not reported";
+  }
+  const shown = typeof v.value === "boolean" ? (v.value ? "true" : "false") : String(v.value);
+  return v.reported ? shown : `${shown} (set by the driver, not reported by the device)`;
 }
 
 /** The sentence the first step shows about project devices at the address. */
@@ -639,13 +641,20 @@ export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
       label: `Status values${suffix}`,
       value:
         `${last.reported} of ${last.declared} reported` +
-        (silent && last.reported > 0 ? ", none of them by the device" : ""),
+        (last.set_by_driver ? `, ${last.set_by_driver} more set by the driver itself` : ""),
     });
     if (last.drops > 0) {
       lines.push({
-        label: `Connection dropped${suffix}`,
+        label: `Dropped while listening${suffix}`,
         value:
           `${plural(last.drops, "time", "times")}, reconnected ${plural(last.reconnects, "time", "times")}`,
+      });
+    }
+    if ((last.later_drops ?? 0) > 0) {
+      lines.push({
+        label: `Dropped after listening${suffix}`,
+        value:
+          `${plural(last.later_drops ?? 0, "time", "times")}, reconnected ${plural(last.later_reconnects ?? 0, "time", "times")}`,
       });
     }
     const unmatched = last.contract.counts.unmatched_response ?? 0;
