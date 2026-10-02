@@ -8,6 +8,7 @@ are pinned in ``test_route_auth_posture.py`` and ``test_rate_limit_tiers.py``.
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import zipfile
@@ -200,6 +201,36 @@ async def test_a_device_that_is_not_running_does_not_block_the_audit(wired):
     wired.engine.state.set("device.lobby.paused", True)
     assert unpaused_devices_at(wired.engine.project, wired.engine.state, ["127.0.0.1"]) == []
     await routes.end_session(started["session"]["session_id"])
+
+
+async def test_a_closing_page_cancels_only_when_no_other_page_follows(wired, monkeypatch):
+    monkeypatch.setattr(routes, "CLOSE_GRACE_SECONDS", 0.05)
+    started = await routes.start_session(AuditStartRequest(address="127.0.0.1"))
+    session_id = started["session"]["session_id"]
+    session = wired.manager.current()
+    unsubscribe = session.subscribe(lambda _m: None)  # another tab
+    await routes.end_session(session_id, cancel=True, when_alone=True)
+    await asyncio.sleep(0.2)
+    assert wired.manager.current() is session
+    unsubscribe()
+    await routes.end_session(session_id, cancel=True, when_alone=True)
+    await asyncio.sleep(0.2)
+    assert wired.manager.current() is None and session.status == "cancelled"
+
+
+async def test_the_driver_waits_for_the_network_check(wired):
+    started = await routes.start_session(AuditStartRequest(address="127.0.0.1"))
+    session_id = started["session"]["session_id"]
+    session = wired.manager.current()
+    session.check = SimpleNamespace(status="running")
+    with pytest.raises(HTTPException) as exc:
+        await routes.set_driver(session_id, routes.AuditDriverRequest(driver_id="acme_audit_api"))
+    assert exc.value.status_code == 409 and exc.value.detail == routes.CHECK_RUNNING
+    with pytest.raises(HTTPException) as exc:
+        await routes.connect_and_listen(session_id)
+    assert exc.value.detail == routes.CHECK_RUNNING
+    session.check = None
+    await routes.end_session(session_id)
 
 
 async def test_start_pauses_then_finish_resumes(wired):

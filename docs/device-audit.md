@@ -13,7 +13,8 @@ a bridge, cannot be audited.
 - Run OpenAVC on a computer on the same network as the device, so the audit can read the
   device's MAC address and hear its network announcements.
 - Close any other software connected to the device, such as the manufacturer's control app.
-  Some devices answer only one connection at a time.
+  Some devices answer only one connection at a time. The audit pauses your project's devices but
+  not plugins, so disable a plugin that talks to the device.
 - Have someone at the device for the power and cable tests, if you run them.
 
 A device in your project that uses the same address is paused while the audit runs, and
@@ -29,7 +30,8 @@ Open the wizard from any of these:
 - **Audit this device** on a Discovery result.
 
 One audit runs at a time, and a Discovery scan cannot run during one. An audit left with no
-activity for 30 minutes ends on its own, and closing the page cancels it. Either way, what it
+activity for 30 minutes ends on its own, and closing the page cancels it unless the audit is
+open in another tab. Either way, what it
 found so far is saved under **Recent reports** on the first step.
 
 ## The Steps

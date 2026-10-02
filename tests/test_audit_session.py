@@ -251,6 +251,45 @@ async def test_a_device_that_is_not_running_is_not_paused(dm, core):
         await manager.finish(session.id)
 
 
+async def test_a_device_resumed_by_hand_is_let_go_not_paused_again(dm, core):
+    state, _ = core
+    _connected_widget(dm, core)
+    manager = AuditManager(dm, keepalive_seconds=0.05, idle_check_seconds=0.05)
+    session = await manager.start(TARGET, pause=[("widget1", "Lobby Widget")])
+    try:
+        await dm.resume_device("widget1")
+        await asyncio.sleep(0.2)
+        assert state.get("device.widget1.paused") is not True
+        assert session.paused == []
+        assert "Lobby Widget was resumed by hand, so the audit no longer pauses it." in [
+            e.text for e in session.timeline
+        ]
+    finally:
+        await manager.finish(session.id)
+
+
+async def test_a_scan_is_refused_while_an_audit_is_starting(dm, core, monkeypatch):
+    """The pauses take a moment; a Discovery scan asking then is refused."""
+    _connected_widget(dm, core)
+    manager = AuditManager(dm)
+    release = asyncio.Event()
+    real = dm.pause_device
+
+    async def slow_pause(device_id, ttl=None):
+        await release.wait()
+        await real(device_id, ttl=ttl)
+
+    monkeypatch.setattr(dm, "pause_device", slow_pause)
+    starting = asyncio.create_task(manager.start(TARGET, pause=[("widget1", "Lobby Widget")]))
+    await asyncio.sleep(0.05)
+    assert manager.current() is None and manager.scan_blocked_reason() is not None
+    release.set()
+    session = await starting
+    assert manager.scan_blocked_reason() is not None
+    await manager.finish(session.id)
+    assert manager.scan_blocked_reason() is None
+
+
 async def test_the_session_keeps_its_pauses_alive(dm, core):
     """The device manager resumes a pause nobody refreshes; the session
     refreshes the ones it holds for as long as it lives."""

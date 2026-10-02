@@ -85,12 +85,13 @@ export function DeviceAuditWizard() {
     };
   }, [followId]);
 
-  // A closed page cancels the audit so paused project devices come back.
+  // A closed page cancels the audit so paused project devices come back,
+  // unless another page still follows it (a second tab, or this one reloaded).
   useEffect(() => {
     if (!sessionId) return;
     const onPageHide = () => {
       try {
-        fetch(`${BASE}/audit/sessions/${encodeURIComponent(sessionId)}?cancel=true`, {
+        fetch(`${BASE}/audit/sessions/${encodeURIComponent(sessionId)}?cancel=true&when_alone=true`, {
           method: "DELETE",
           keepalive: true,
         }).catch(() => {});

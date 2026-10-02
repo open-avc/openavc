@@ -313,6 +313,10 @@ class AuditSession:
 
         return unsubscribe
 
+    def followers(self) -> int:
+        """How many pages follow this session right now."""
+        return len(self._subscribers)
+
     def publish(self, message: dict[str, Any]) -> None:
         """Send ``message`` to every subscriber, tagged with this session."""
         self.seq += 1
@@ -414,6 +418,9 @@ class AuditManager:
         self._keepalive = keepalive_seconds
         self._clock = clock
         self._current: AuditSession | None = None
+        # True while a session is starting (its pauses being taken): a
+        # Discovery scan is refused then too.
+        self._starting = False
         self._lock = asyncio.Lock()
         # Called with a session as it ends, after its pauses are released and
         # the end is in its timeline (so a report saved then is the whole story).
@@ -442,7 +449,7 @@ class AuditManager:
 
     def scan_blocked_reason(self) -> str | None:
         """Why a Discovery scan cannot start now, or None when it can."""
-        return SCAN_BLOCKED if self.current() is not None else None
+        return SCAN_BLOCKED if self._starting or self.current() is not None else None
 
     def add_end_hook(self, hook: Callable[[AuditSession], Awaitable[None]]) -> None:
         """Await ``hook(session)`` whenever a session ends, however it ends."""
@@ -475,11 +482,14 @@ class AuditManager:
                 clock=self._clock,
             )
             session.origin = dict(origin) if origin else None
+            self._starting = True
             try:
                 await self._pause_all(session, pause or [])
             except Exception:
                 await self._resume_owned(session)
                 raise
+            finally:
+                self._starting = False
             self._current = session
             logging.getLogger().addHandler(session.log)
             session.enter_step("target")
@@ -564,10 +574,20 @@ class AuditManager:
             )
 
     async def _rearm_pauses(self, session: AuditSession) -> None:
-        """Reset each held pause's backstop. A removed device is let go."""
+        """Reset each held pause's backstop. A removed device is let go, and
+        so is one the person resumed by hand (the check before connecting
+        then says it is running)."""
         if self._devices is None:
             return
         for held in list(session.paused):
+            if not self._devices.is_paused(held.device_id):
+                session.paused.remove(held)
+                session.add_timeline(
+                    "device.resumed",
+                    f"{held.name} was resumed by hand, so the audit no longer pauses it.",
+                    device_id=held.device_id,
+                )
+                continue
             try:
                 await self._devices.pause_device(held.device_id, ttl=self._pause_ttl)
             except Exception as exc:

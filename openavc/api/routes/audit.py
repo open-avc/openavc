@@ -51,6 +51,7 @@ the subscribing client only.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
@@ -252,12 +253,34 @@ async def current_session() -> dict[str, Any]:
     return {"session": session.to_dict() if session is not None else None}
 
 
+# A page closing asks with ``when_alone``: the audit is cancelled after this
+# long only if no other page follows it (a second tab, or this one reloaded).
+CLOSE_GRACE_SECONDS = 3.0
+CHECK_RUNNING = "Wait for the network check to finish."
+
+
 @router.delete("/sessions/{session_id}")
-async def end_session(session_id: str, cancel: bool = False) -> dict[str, Any]:
-    """Finish (or cancel) the audit: stop it, reconnect what it paused."""
+async def end_session(
+    session_id: str, cancel: bool = False, when_alone: bool = False,
+) -> dict[str, Any]:
+    """Finish (or cancel) the audit: stop it, reconnect what it paused.
+
+    ``when_alone`` (a page closing): cancel it a moment later, and only when
+    no page follows it any more."""
     session = _session(session_id)
+    if when_alone:
+        session.track_task(asyncio.create_task(_cancel_when_alone(session.id)))
+        return {"session": session.to_dict()}
     await _get_manager().finish(session.id, CANCELLED if cancel else FINISHED)
     return {"session": session.to_dict()}
+
+
+async def _cancel_when_alone(session_id: str) -> None:
+    await asyncio.sleep(CLOSE_GRACE_SECONDS)
+    manager = _get_manager()
+    session = manager.current()
+    if session is not None and session.id == session_id and session.followers() == 0:
+        await manager.finish(session_id, CANCELLED)
 
 
 @router.post("/sessions/{session_id}/network-check")
@@ -290,6 +313,8 @@ async def set_driver(session_id: str, body: AuditDriverRequest) -> dict[str, Any
     session = _session(session_id)
     if session.check is None or session.check.status == "idle":
         raise HTTPException(status_code=409, detail="Run the network check first.")
+    if session.check.status == "running":
+        raise HTTPException(status_code=409, detail=CHECK_RUNNING)
     try:
         choose_driver(
             session, body.driver_id,
@@ -346,6 +371,8 @@ async def connect_and_listen(session_id: str) -> dict[str, Any]:
     """Connect the chosen driver and listen; progress arrives over
     ``audit.subscribe``."""
     session = _session(session_id)
+    if session.check is not None and session.check.status == "running":
+        raise HTTPException(status_code=409, detail=CHECK_RUNNING)
     run = current_run(session)
     if run is None:
         raise HTTPException(status_code=409, detail="Choose the driver to test first.")
