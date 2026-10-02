@@ -450,6 +450,44 @@ async def test_the_declared_effect_is_checked_against_what_the_device_reports(dr
     assert "4. Set Input (source hdmi2), again" in summary
 
 
+async def test_a_refusal_of_the_drivers_own_request_is_not_the_commands(driver):
+    """A poll or a follow-up query the driver sends inside a command's window
+    and the device refuses: said apart, with what the driver had just sent,
+    and never as the command refused. Also when the refusal is the same text
+    as before, so the driver's write changes nothing a subscriber hears."""
+    server, port = await _fake_device()
+    session, run, _ = await _connected(port)
+    sandbox = run.listen.sandbox
+    try:
+        commands = commands_for(
+            session, run, window_seconds=1.0, query_window_seconds=0.2, flush_seconds=0.05,
+        )
+        # A command the device refuses: last_error reads "refused".
+        refused = await _sent(commands, "set_code", {"pin": "tulip-7391"})
+        assert refused.refusals["last_error"] == "refused"
+
+        for _ in range(2):  # a new refusal, then the same text written again
+            trial = await commands.send("power_on")
+            await _until(lambda: trial.status == "watching")
+            # The driver asks something on its own (a poll would) and is refused.
+            await sandbox.manager.send_command(sandbox.device_id, "set_code", {"pin": "0000"})
+            await _until(lambda: trial.status == DONE)
+            assert trial.refusals["device_errors"] == 0
+            assert trial.refusals["last_error"] is None
+            assert trial.refusals["last_error_writes"] == 0
+            [later] = trial.refusals["later"]
+            assert later["error"] == "refused" and later["count"] == 1
+            assert later["request"] == '"CODE 0000\\r"'
+            sentence = trial_sentence(commands._trial_view(trial, every_entry=True))
+            assert "the device refused it" not in sentence
+            assert "the device refused a request the driver sent on its own" in sentence
+            assert sentence.endswith('("CODE 0000\\r"): refused.')
+            assert trial.effects[0]["outcome"] in ("confirmed", "already")
+    finally:
+        await run.stop()
+        server.close()
+
+
 async def test_a_refusal_is_caught(driver):
     server, port = await _fake_device()
     session, run, _ = await _connected(port)

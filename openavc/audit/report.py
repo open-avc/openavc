@@ -113,14 +113,20 @@
     ("Stop watching"), ``changes`` (every status value that moved:
     ``t``, ``key``, ``old``, ``new``), ``already_moving`` (the values that
     were already changing when it was sent), ``device_errors`` (errors the driver
-    published for the device), ``effects`` (each declared ``sets`` entry:
+    published for the device, ``t`` and ``error``), ``error_writes`` (every
+    ``last_error`` the driver wrote, ``t`` and ``error``, a rewrite of the same
+    text included), ``effects`` (each declared ``sets`` entry:
     ``state``, ``state_key``, ``label``, ``expected``, ``has_value``, ``value`` and
     ``outcome``, one of ``confirmed``, ``already``, ``different``,
     ``unchanged``, ``not_reported``, ``no_value``), ``query`` (a status
     query's ``state``, ``state_key``, ``label``, ``value``, ``changed`` and
     ``outcome``: ``reported``, ``not_reported`` or ``no_reply``),
-    ``refusals`` (``device_errors``, ``last_error``, ``last_error_writes``,
-    ``unmatched`` and ``unmatched_examples``), ``sent_nothing`` (true when
+    ``refusals``: the signs of a refusal inside the command's own exchange
+    (``device_errors`` and ``last_error_writes`` counted, ``last_error`` the
+    text), ``later`` (each refusal of a request the driver sent on its own
+    after it, once per text: ``error``, ``after`` seconds from the send,
+    ``count``, ``request`` as the timeline writes it), ``unmatched`` and
+    ``unmatched_examples``; ``sent_nothing`` (true when
     the driver returned success while nothing left for the device; null when
     its traffic is not captured at all), ``restart``, for a command that
     declares ``restarts_device_for`` (``declared_seconds``,

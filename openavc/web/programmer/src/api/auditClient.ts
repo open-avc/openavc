@@ -353,6 +353,8 @@ export interface AuditCommandTrial {
   /** Each value its window saw change, once (from every change, not the newest 20). */
   moved: AuditMovedValue[];
   device_errors: { t: number; error: string }[];
+  /** Every last_error the driver wrote while it was watched. */
+  error_writes: { t: number; error: unknown }[];
   effects: AuditCommandEffect[];
   query: {
     state: string;
@@ -365,6 +367,8 @@ export interface AuditCommandTrial {
     device_errors?: number;
     last_error?: string | null;
     last_error_writes?: number;
+    /** Refusals of requests the driver sent on its own after the command, once per text. */
+    later?: { error: unknown; after: number; count: number; request: string }[];
     unmatched?: number;
     unmatched_examples?: string[];
   };

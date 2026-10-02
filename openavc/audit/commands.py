@@ -370,6 +370,8 @@ class CommandTrial:
     already_moving: list[str] = field(default_factory=list)
     # Errors the driver published for the device while it was watched.
     device_errors: list[dict[str, Any]] = field(default_factory=list)
+    # Every last_error the driver wrote while it was watched: {"t", "error"}.
+    error_writes: list[dict[str, Any]] = field(default_factory=list)
     # When OpenAVC saw the device go and the driver come back (a restart).
     went_away_at: float | None = None
     back_at: float | None = None
@@ -445,6 +447,7 @@ class CommandTrial:
             "changes": list(self.changes),
             "already_moving": list(self.already_moving),
             "device_errors": list(self.device_errors),
+            "error_writes": list(self.error_writes),
             "effects": list(self.effects),
             "query": self.query,
             "refusals": dict(self.refusals),
@@ -764,8 +767,8 @@ class CommandPass:
     async def _send_and_watch(self, trial: CommandTrial, *, window: float | None = None) -> None:
         sandbox = self.run.listen.sandbox
         handles = self._watch(trial, sandbox)
-        driver = sandbox.driver
-        errors_before = getattr(driver, "_last_error_writes", 0)
+        error_writes = getattr(sandbox.state, "error_writes", [])
+        errors_from = len(error_writes)
         trial.mark(sandbox.observer, trial.marks)
         try:
             try:
@@ -800,9 +803,13 @@ class CommandPass:
                 )
                 self._publish(trial)
         finally:
-            trial.refusals["last_error_writes"] = max(
-                0, getattr(driver, "_last_error_writes", 0) - errors_before,
-            )
+            # Every last_error the driver wrote while it was watched, with
+            # when, a rewrite of the same text included.
+            own_key = f"device.{sandbox.device_id}.last_error"
+            trial.error_writes = [
+                {"t": t, "error": _shown(value)}
+                for t, key, value in error_writes[errors_from:] if key == own_key
+            ]
             self._unwatch(sandbox, handles)
             self._finish(trial)
 
@@ -889,12 +896,8 @@ class CommandPass:
                 e for e in trial.events_in(attempt.sandbox.observer)
                 if e.kind == "unmatched_response"
             ]
-        last_error_changes = [c for c in trial.changes if c["key"] == "last_error" and c["new"]]
+        trial.refusals.update(self._refusals(trial, traffic))
         trial.refusals.update({
-            "device_errors": len(trial.device_errors),
-            "last_error": last_error_changes[-1]["new"] if last_error_changes else (
-                state.get("last_error") if trial.refusals.get("last_error_writes") else None
-            ),
             "unmatched": len(events),
             "unmatched_examples": [str(e.detail.get("text", ""))[:200] for e in events[:5]],
         })
@@ -930,6 +933,63 @@ class CommandPass:
                 "away_for": round(back - went, 1) if went and back else None,
                 "within_declared": (back - trial.sent_at) <= declared if back else None,
             }
+
+    def _refusals(self, trial: CommandTrial, traffic: list[Any]) -> dict[str, Any]:
+        """Which signs of a refusal (an error the driver published, a
+        ``last_error`` it wrote) answer the command, and which a request the
+        driver sent on its own after it (a poll, a follow-up query).
+
+        The command's own exchange runs from the send until its reply could
+        still be on the way, ``REPLY_WINDOW_SECONDS`` after the call returned,
+        and ends early at the driver's next request: what is refused after
+        that answers that request, so it is kept apart, with what the driver
+        had just sent, and never put on the command."""
+        from openavc.audit.report import _traffic_text
+
+        returned = trial.returned_at or trial.sent_at
+        sent = [e for e in traffic if e.direction == TX]
+        after = [e for e in sent if e.t > returned]
+        if after and not any(e.t <= returned for e in sent):
+            after = after[1:]  # sent once the call had returned: the command's own
+        own_end = returned + REPLY_WINDOW_SECONDS
+        if after:
+            own_end = min(own_end, after[0].t)
+
+        own_errors = [e for e in trial.device_errors if e["t"] <= own_end]
+        own_writes = [w for w in trial.error_writes if w["t"] <= own_end and w.get("error")]
+        said = (
+            own_writes[-1]["error"] if own_writes
+            else next((e["error"] for e in reversed(own_errors) if e.get("error")), None)
+        )
+
+        later: dict[str, dict[str, Any]] = {}
+        redactor = self._redactor(trial) if self.run.listens else None
+        signs = sorted(
+            [(e["t"], e.get("error") or "") for e in trial.device_errors if e["t"] > own_end]
+            + [(w["t"], w["error"]) for w in trial.error_writes
+               if w["t"] > own_end and w.get("error")],
+            key=lambda s: s[0],
+        )
+        for t, text in signs:
+            if str(text) in later:
+                later[str(text)]["count"] += 1
+                continue
+            request = next((e for e in reversed(sent) if e.t <= t), None)
+            later[str(text)] = {
+                "error": text,
+                "after": round(t - trial.sent_at, 1),
+                "count": 1,
+                "request": (
+                    _traffic_text(serialize_entry(request, redactor), 80)
+                    if request is not None and redactor is not None else ""
+                ),
+            }
+        return {
+            "device_errors": len(own_errors),
+            "last_error_writes": len(own_writes),
+            "last_error": said,
+            "later": list(later.values()),
+        }
 
     def _params_of(self, command: str) -> dict[str, Any]:
         entry = next((c for c in self.catalog() if c["name"] == command), None)
@@ -1242,9 +1302,7 @@ def trial_sentence(trial: dict[str, Any]) -> str:
     parts = []
     refusals = trial.get("refusals") or {}
     if refusals.get("device_errors") or refusals.get("last_error"):
-        said = refusals.get("last_error") or next(
-            (e["error"] for e in trial.get("device_errors") or [] if e.get("error")), "",
-        )
+        said = refusals.get("last_error") or ""
         parts.append(f"the device refused it{': ' + str(said) if said else ''}")
     if trial.get("sent_nothing"):
         parts.append("the driver said it succeeded, but nothing was sent")
@@ -1288,6 +1346,8 @@ def trial_sentence(trial: dict[str, Any]) -> str:
             parts.append("the device went away and had not come back when the audit stopped watching")
         else:
             parts.append("the connection stayed up")
+    for later in refusals.get("later") or []:
+        parts.append(_later_refusal_text(later))
     if refusals.get("unmatched"):
         n = refusals["unmatched"]
         parts.append(
@@ -1309,6 +1369,19 @@ def trial_sentence(trial: dict[str, Any]) -> str:
             if received else f"{what}, and nothing came back"
         )
     return "; ".join(parts) + "."
+
+
+def _later_refusal_text(later: dict[str, Any]) -> str:
+    """A refusal of a request the driver sent on its own inside a command's
+    window, said apart from the command."""
+    count = later.get("count", 1)
+    when = (
+        f"{count} times, the first {later['after']} s later" if count > 1
+        else f"{later['after']} s later"
+    )
+    request = f" ({later['request']})" if later.get("request") else ""
+    said = f": {later['error']}" if later.get("error") else ""
+    return f"the device refused a request the driver sent on its own {when}{request}{said}"
 
 
 def _reads(value: Any) -> str:

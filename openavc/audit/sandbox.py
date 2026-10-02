@@ -65,6 +65,8 @@ from openavc.utils.logger import get_logger
 log = get_logger(__name__)
 
 AUDIT_DEVICE_PREFIX = "audit-"
+# ``last_error`` writes kept for the commands step to place in time.
+ERROR_WRITES_KEPT = 5000
 
 SERIAL_REFUSED = (
     "The audit tests devices on the network, and this connection is a serial port. "
@@ -75,20 +77,29 @@ NOT_INSTALLED = "The driver {driver} is not installed. Install it, then try agai
 
 class AuditStateStore(StateStore):
     """The sandbox's state store: production's, noting when each key was
-    last written, a write of the value it already had included."""
+    last written, a write of the value it already had included, and every
+    ``last_error`` write with its time (a poll that is refused again writes
+    the same text, which changes nothing a subscriber would hear)."""
 
     def __init__(self) -> None:
         super().__init__()
         self.written: dict[str, float] = {}
+        # (time, key, value), oldest first, at most ERROR_WRITES_KEPT.
+        self.error_writes: list[tuple[float, str, Any]] = []
+
+    def _note(self, key: str, value: Any, now: float) -> None:
+        self.written[key] = now
+        if key.endswith(".last_error") and len(self.error_writes) < ERROR_WRITES_KEPT:
+            self.error_writes.append((now, key, value))
 
     def set(self, key: str, value: Any, source: str = "system") -> None:
-        self.written[key] = time.time()
+        self._note(key, value, time.time())
         super().set(key, value, source)
 
     def set_batch(self, updates: dict[str, Any], source: str = "system") -> None:
         now = time.time()
-        for key in updates:
-            self.written[key] = now
+        for key, value in updates.items():
+            self._note(key, value, now)
         super().set_batch(updates, source)
 
 
