@@ -85,12 +85,23 @@ def _install_test_driver():
 # Per-test server subprocess
 # ---------------------------------------------------------------------------
 
+# Ports Chromium refuses to load a page from (net::ERR_UNSAFE_PORT), above
+# 1024: an OS can hand any of them out as a free port, and a server on one
+# fails its test before it runs.
+_CHROMIUM_UNSAFE_PORTS = frozenset({
+    1719, 1720, 1723, 2049, 3659, 4045, 4190, 5060, 5061, 6000, 6566,
+    6665, 6666, 6667, 6668, 6669, 6679, 6697, 10080,
+})
+
+
 def _pick_free_port() -> int:
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
+    while True:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+        s.close()
+        if port not in _CHROMIUM_UNSAFE_PORTS:
+            return port
 
 
 def _wait_for_ready(url: str, *, timeout: float = 30.0) -> None:
