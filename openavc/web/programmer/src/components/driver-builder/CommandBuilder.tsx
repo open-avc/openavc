@@ -473,7 +473,7 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                 />
 
                 <ParamEditor
-                  params={cmd.params}
+                  params={cmd.params ?? {}}
                   childTypes={Object.keys(draft.child_entity_types ?? {})}
                   stateKeys={Object.keys(draft.state_variables ?? {})}
                   onChange={(params) => updateCommand(name, { params })}
