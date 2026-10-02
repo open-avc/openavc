@@ -305,7 +305,11 @@ async def test_an_audit_that_ends_before_the_read_back_still_puts_it_back(driver
     assert trial.restore is not None and trial.restore["automatic"]
     summary = trial.to_dict()["summary"]
     assert "Wrote Boardroom to Device name: the audit ended before the device reported it" in summary
-    assert "Put Device name back to Lobby as the driver stopped" in summary
+    # The device never reported Boardroom, so Lobby still showing after the
+    # restore is not the device reporting it back.
+    assert ("Put Device name back to Lobby as the driver stopped: the device reported nothing "
+            "new, so OpenAVC still shows Lobby from before the write.") in summary
+    assert trial.restore["unchanged"]
 
 
 async def test_a_write_that_failed_after_sending_is_put_back(driver):

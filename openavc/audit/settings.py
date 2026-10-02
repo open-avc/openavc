@@ -308,6 +308,12 @@ class SettingsPass:
         it goes (the caller holds it before anything is sent)."""
         sandbox = self.run.listen.sandbox
         started = half["at"]
+        sdef = (self._definitions().get("device_settings") or {}).get(key) or {}
+        state_key = sdef.get("state_key", key) if isinstance(sdef, dict) else key
+        # Already showing the value written (a restore after a write the
+        # device never reported): the read-back passes at once and proves
+        # nothing unless the device reports again.
+        held = same_value(value, sandbox.device_state().get(state_key))
         try:
             await sandbox.manager.set_device_setting(sandbox.device_id, key, value)
         except asyncio.CancelledError:
@@ -331,6 +337,7 @@ class SettingsPass:
             "confirmed": confirmed,
             "value": _shown(actual),
             "after": round(time.time() - started, 1),
+            "unchanged": confirmed and held and state_key not in sandbox.written_since(started),
         })
         return half
 
@@ -506,6 +513,11 @@ def _may_have_landed(half: dict[str, Any]) -> bool:
 
 def _read_back(half: dict[str, Any]) -> str:
     """What the device said after one write."""
+    if half.get("unchanged"):
+        return (
+            f"the device reported nothing new, so OpenAVC still shows "
+            f"{_value_text(half['value'])} from before the write."
+        )
     if half.get("confirmed"):
         return f"the device reported it back after {half['after']} s."
     if half.get("interrupted"):

@@ -457,6 +457,8 @@ export interface AuditSettingHalf {
   sent?: boolean;
   /** The audit ended before the read-back did. */
   interrupted?: boolean;
+  /** It already showed this value and the device reported nothing after the write. */
+  unchanged?: boolean;
 }
 
 /** One setting written, read back and put back. */
