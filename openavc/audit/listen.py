@@ -230,15 +230,22 @@ class ListenPass:
         # run, and once it has started a different driver needs Test another
         # driver rather than a new choice.
         self.session.publish_state()
-        await sb.connect()
-        if self.connected_at is None:
-            self.status = NOT_CONNECTED
-            self.ends_at = self.started_at + self.min_seconds
-            self._note_offline()
-        self._dirty = True
+        # Watched from the start: a driver is connected (and listening) the
+        # moment it connects, while its connect() may still be running its
+        # start-up steps, and the wizard hears that then.
+        watch = asyncio.create_task(self._watch())
         try:
-            await self._watch()
+            await sb.connect()
+            if self.connected_at is None:
+                self.status = NOT_CONNECTED
+                self.ends_at = self.started_at + self.min_seconds
+                self._note_offline()
+            self._dirty = True
+            await watch
         finally:
+            if not watch.done():
+                watch.cancel()
+                await asyncio.gather(watch, return_exceptions=True)
             self._flush_now()
 
     async def _watch(self) -> None:

@@ -388,3 +388,35 @@ async def test_a_drop_after_listening_is_not_the_listen_attempts(driver):
     finally:
         await run.stop()
         server.close()
+
+
+async def test_the_wizard_hears_connected_while_the_drivers_start_up_is_still_running(driver):
+    """A driver that connects and then runs long start-up steps is connected
+    and listening from the moment it connects: the wizard hears that then,
+    not when the start-up steps finish (it read "Connecting." and 0 values
+    beside a timeline already saying "Connected")."""
+    base = create_configurable_driver_class(DRIVER)
+    done = asyncio.Event()
+
+    class AcmeSlowStart(base):
+        async def connect(self):
+            await super().connect()
+            await asyncio.sleep(2.0)  # start-up steps still going
+            done.set()
+
+    _DRIVER_REGISTRY["acme_listen"] = AcmeSlowStart
+    server, port = await _fake_device()
+    session, run, heard = _session_and_run(port)
+    try:
+        await start_listen(session, run, **FAST)
+
+        def listening_heard() -> bool:
+            return any(
+                m["type"] == "audit.listen" and m["listen"]["status"] == LISTENING for m in heard
+            )
+
+        await _until(listening_heard, timeout=1.8)
+        assert not done.is_set()
+    finally:
+        await run.stop()
+        server.close()
