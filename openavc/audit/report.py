@@ -866,12 +866,21 @@ TEST_REPORT_URL_MAX = 6000
 
 
 def _command_confirmed(trial: dict[str, Any]) -> bool:
-    """The person said the device did it, or every value the command
-    declares it sets read back as it should."""
+    """The person said the device did it, every value the command declares
+    it sets read back as it should, or, for a status query, the value it
+    asks for came back."""
     if (trial.get("answer") or {}).get("answer") == "yes":
         return True
     effects = trial.get("effects") or []
-    return bool(effects) and all(e.get("outcome") in ("confirmed", "already") for e in effects)
+    if effects and all(e.get("outcome") in ("confirmed", "already") for e in effects):
+        return True
+    return (trial.get("query") or {}).get("outcome") == "reported"
+
+
+def _says_what_it_sets(trial: dict[str, Any]) -> bool:
+    """The command declares a value it sets (or, a status query, the value
+    it asks for), so something besides a Yes can confirm it."""
+    return bool(trial.get("effects") or trial.get("query"))
 
 
 def suggested_confidence(section: dict[str, Any]) -> dict[str, Any]:
@@ -881,7 +890,8 @@ def suggested_confidence(section: dict[str, Any]) -> dict[str, Any]:
     confirmed, every setting written read back and put back), ``partial``
     (connected and at least one command confirmed) or null; ``reasons``, each
     ``{"held", "text"}``. A command is confirmed when the person said the
-    device did it, or every value it declares it sets read back."""
+    device did it, every value it declares it sets read back, or, a status
+    query, the value it asks for came back (:func:`_command_confirmed`)."""
     attempts = section.get("attempts") or []
     connected = [a for a in attempts if a.get("connected_at")]
     reasons: list[dict[str, Any]] = []
@@ -939,22 +949,39 @@ def suggested_confidence(section: dict[str, Any]) -> dict[str, Any]:
     )
     trials = (section.get("commands") or {}).get("trials") or []
     tried: dict[str, bool] = {}
+    silent_about: set[str] = set()  # declare no value they set
     for trial in trials:
-        if trial.get("error"):
-            tried.setdefault(trial.get("label") or trial.get("command"), False)
-            continue
         name = trial.get("label") or trial.get("command")
+        if trial.get("error"):
+            tried.setdefault(name, False)
+            continue
         tried[name] = tried.get(name, False) or _command_confirmed(trial)
+        if not _says_what_it_sets(trial):
+            silent_about.add(name)
     confirmed = [name for name, yes in tried.items() if yes]
     unconfirmed = [name for name, yes in tried.items() if not yes]
     if not tried:
         ok &= say(False, "No command was tried.")
     elif unconfirmed:
+        only_yes = [name for name in unconfirmed if name in silent_about]
+        why = ""
+        if only_yes:
+            one = len(only_yes) == 1
+            if len(only_yes) > 5:
+                named = ", ".join(only_yes[:5]) + " and more"
+            elif one:
+                named = only_yes[0]
+            else:
+                named = ", ".join(only_yes[:-1]) + " and " + only_yes[-1]
+            why = (
+                f" This driver does not say which value {named} {'sets' if one else 'set'}, "
+                f"so only a Yes can confirm {'it' if one else 'them'}."
+            )
         ok &= say(False, (
             f"{len(confirmed)} of {len(tried)} commands tried were confirmed. Not confirmed: "
             f"{', '.join(unconfirmed[:5])}{' and more' if len(unconfirmed) > 5 else ''}. "
-            "A command counts as confirmed when the person answered Yes, or the values it "
-            "should set read back."
+            "A command counts as confirmed when the person answered Yes, the values it "
+            "should set read back, or, for a status query, its value came back." + why
         ))
     else:
         say(True, f"Every command tried was confirmed ({len(tried)}).")

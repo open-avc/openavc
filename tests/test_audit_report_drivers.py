@@ -491,7 +491,8 @@ def test_partial_and_none_say_what_held_them_back():
     assert confidence["level"] == "partial"
     assert [r["text"] for r in confidence["reasons"] if not r["held"]] == [
         "1 of 2 commands tried were confirmed. Not confirmed: Set Volume. A command counts as "
-        "confirmed when the person answered Yes, or the values it should set read back."
+        "confirmed when the person answered Yes, the values it should set read back, or, for a "
+        "status query, its value came back."
     ]
     section["commands"]["trials"][0]["answer"] = {"answer": "cant_tell"}
     assert suggested_confidence(section)["level"] is None
@@ -608,3 +609,29 @@ def test_the_timeline_labels_each_driver_when_there_are_several():
     }
     lines = [line for line in render_timeline(report).splitlines() if " tcp " in line]
     assert [line.split("  ")[-1] for line in lines] == ['[Two] "C"', '[One] "A"']
+
+
+def test_an_answered_status_query_confirms_and_a_command_with_no_sets_says_why():
+    """A status query whose value came back is confirmed; a command the driver
+    says nothing about (no ``sets``) can be confirmed only by a Yes, and the
+    sentence says so rather than leave it as the device's failing."""
+    section = _run_section()
+    section["commands"]["trials"] = [
+        {"label": "Query Power", "command": "query_power", "answer": None,
+         "query": {"outcome": "reported"}},
+        {"label": "Mute", "command": "mute", "answer": {"answer": "cant_tell"}},
+        {"label": "Set Volume", "command": "set_volume", "answer": None,
+         "effects": [{"outcome": "unchanged"}]},
+    ]
+    reasons = [r["text"] for r in suggested_confidence(section)["reasons"]]
+    assert (
+        "1 of 3 commands tried were confirmed. Not confirmed: Mute, Set Volume. A command "
+        "counts as confirmed when the person answered Yes, the values it should set read "
+        "back, or, for a status query, its value came back. This driver does not say which "
+        "value Mute sets, so only a Yes can confirm it."
+    ) in reasons
+    # Answered by itself: every tried command confirmed.
+    section["commands"]["trials"] = section["commands"]["trials"][:1]
+    assert "Every command tried was confirmed (1)." in [
+        r["text"] for r in suggested_confidence(section)["reasons"]
+    ]

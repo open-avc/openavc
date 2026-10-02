@@ -676,12 +676,13 @@ export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
     const trials = d.commands?.trials ?? [];
     if (trials.length > 0) {
       const refused = trials.filter((t) => t.error).length;
+      const different = new Set(trials.map((t) => t.command)).size;
       lines.push({
         label: `Commands sent${suffix}`,
         value:
-          refused > 0
-            ? `${trials.length}, ${refused} not accepted`
-            : String(trials.length),
+          String(trials.length) +
+          (different < trials.length ? `, ${different} different` : "") +
+          (refused > 0 ? `, ${refused} not accepted` : ""),
       });
       const silent = [...new Set(trials.filter((t) => t.sent_nothing).map((t) => t.label))];
       if (silent.length > 0) {

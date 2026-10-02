@@ -256,7 +256,8 @@ describe("following the commands step", () => {
       }],
       commands: { trials: [trial(), trial({ number: 2, error: "No." })] },
     } as unknown as AuditReportDriver;
-    expect(driverLines([d]).at(-1)).toEqual({ label: "Commands sent", value: "2, 1 not accepted" });
+    // The same command twice: two sent, one command.
+    expect(driverLines([d]).at(-1)).toEqual({ label: "Commands sent", value: "2, 1 different, 1 not accepted" });
     const found = {
       ...d,
       commands: {
