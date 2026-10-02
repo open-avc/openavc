@@ -343,6 +343,8 @@ async def test_the_check_records_everything_the_device_says(discovery, bench):
     # Limits that always hold are said.
     ids = {limit.id for limit in fp.limits}
     assert {"udp_ports", "ipv6", "ports_standard"} <= ids
+    # The bench is this computer's loopback: no MAC to read, said as that.
+    assert "mac_loopback" in ids and "mac_other_segment" not in ids
 
     # Every activity finished, and the record is JSON all the way down.
     finished = {key for key, status in progress if status in (DONE, SKIPPED)}
@@ -620,6 +622,37 @@ async def test_a_page_that_misses_the_first_request_is_asked_again(monkeypatch, 
     assert check.activities["web"].message == (
         f"Pages: {listed}. No page from {dead_port} (no answer, asked twice)."
     )
+
+
+async def test_a_page_on_a_port_the_device_announced_counts_it_open(monkeypatch, discovery, bench):
+    """A web page on a port the device named in an announcement (an SSDP
+    location), outside the list the port check covers, is an open port: the
+    report lists it with the others and says where it came from."""
+    async def page(reader, writer):
+        try:
+            await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=5)
+            writer.write(b"HTTP/1.1 400 Bad Request\r\n\r\n")
+            await writer.drain()
+        except (asyncio.IncompleteReadError, asyncio.TimeoutError, ConnectionError):
+            pass
+        writer.close()
+
+    server, port = await _serve(page)
+    try:
+        check, _ = _check(
+            discovery, bench, port_list=[bench["web"]], web_ports={bench["web"]: "http"},
+        )
+        real = check._web_targets
+        # As if the device's SSDP location named this port.
+        monkeypatch.setattr(check, "_web_targets", lambda: ({**real()[0], port: "http"}, real()[1]))
+        fp = await check.run()
+    finally:
+        server.close()
+        await server.wait_closed()
+    assert fp.web[port].status == 400
+    assert port in fp.open_ports()
+    ports = fp.to_dict()["ports"]
+    assert port in ports["open"] and ports["from_announcements"] == [port]
 
 
 async def test_a_manufacturer_the_driver_supplies_is_not_what_the_device_reported(discovery, bench):

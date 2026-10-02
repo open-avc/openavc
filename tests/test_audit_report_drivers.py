@@ -221,9 +221,13 @@ async def test_a_driver_run_is_the_whole_story_and_no_secret_leaves(driver):
         assert name.startswith("openavc-device-audit-acme-w-100-")
         texts = _zip_texts(data)
         assert set(texts) == {
-            "summary.html", "report.json", "timeline.txt", "log.txt",
+            "summary.html", "report.json", "timeline.txt", "log.txt", "README.txt",
             "driver/acme_report.avcdriver",
         }
+        # The field guide names the terms a reader meets in report.json.
+        for term in ("strong", "signal_index_drivers", "ping.method", "traffic.count",
+                     "needs_input", "set_by_driver", "from_announcements"):
+            assert term in texts["README.txt"], term
         for secret in (PASSWORD, USERNAME):
             for form in (secret, secret.encode().hex(), secret.encode().hex().upper()):
                 for member, text in texts.items():
@@ -290,6 +294,8 @@ async def test_a_published_default_password_is_hidden_without_saying_so(driver):
             if e["direction"] == "tx" and not e.get("chunk")]
     assert b"***\r" in sent and not any(b"wattbox" in b for b in sent)
     for name, text in texts.items():
+        if name == "README.txt":  # the field guide names the marker; it is the same in every report
+            continue
         assert "published_secrets" not in text and "[redacted]" not in text, name
 
 
@@ -305,7 +311,9 @@ def test_a_secret_that_is_a_number_or_a_word_leaves_the_json_whole():
         texts = _zip_texts(data)
         assert json.loads(texts["report.json"])["port"] == 1515
         assert json.loads(texts["report.json"])["ok"] is True
-        assert texts["log.txt"] == "sent [redacted]\n"
+        first, _, rest = texts["log.txt"].partition("\n\n")
+        assert first.startswith("Times are this computer's local time, UTC")
+        assert rest == "sent [redacted]\n"
     assert json.loads(texts["report.json"])["note"] == "PIN 1515 sent"
 
 
@@ -635,3 +643,23 @@ def test_an_answered_status_query_confirms_and_a_command_with_no_sets_says_why()
     assert "Every command tried was confirmed (1)." in [
         r["text"] for r in suggested_confidence(section)["reasons"]
     ]
+
+
+def test_clock_times_say_their_time_zone_and_the_liveness_check_is_said():
+    import re
+
+    from openavc.audit.report import _render_driver, render_timeline, utc_offset
+
+    offset = utc_offset(1_700_000_000.0)
+    assert re.fullmatch(r"UTC[+-]\d\d:\d\d", offset)
+    text = render_timeline({
+        "session": {"started_at": 1_700_000_000.0},
+        "target": {"address": "10.0.0.50", "ip": "10.0.0.50"},
+    })
+    assert f"Times are this computer's local time, {offset}." in text.splitlines()[:4]
+
+    section = _run_section()
+    section["attempts"][0].update({"poll_interval": 15.0, "liveness_every": 30.0})
+    page = "".join(_render_driver(section))
+    assert "Liveness check" in page
+    assert "every 30.0 seconds, apart from the polls" in page

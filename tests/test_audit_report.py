@@ -117,7 +117,7 @@ async def test_a_typed_secret_is_in_no_file_in_any_form(monkeypatch):
     finally:
         await manager.shutdown()
     files = _files(data)
-    assert set(files) == {"summary.html", "report.json", "timeline.txt", "log.txt"}
+    assert set(files) == {"summary.html", "report.json", "timeline.txt", "log.txt", "README.txt"}
     assert REDACTED in files["log.txt"]
     for fname, text in files.items():
         for form in _forms(SECRET):
@@ -410,6 +410,10 @@ def test_the_summary_says_why_only_with_the_signals_that_point_somewhere():
                 {"source": "vendor_string:acme", "strong": False, "drivers": ["acme_widget"],
                  "evidence": {"data": {"kind": "vendor_string", "value": "acme",
                                        "source_probe_id": "greeting:23"}}},
+                # The driver's own probe named it: not something the device was seen to say.
+                {"source": "vendor_string:acme corp", "strong": False, "drivers": [],
+                 "evidence": {"data": {"kind": "vendor_string", "value": "acme corp",
+                                       "from_kind": "probe", "from_driver": True}}},
             ]},
         },
     }

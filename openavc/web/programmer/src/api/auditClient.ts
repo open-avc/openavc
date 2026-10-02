@@ -706,7 +706,11 @@ export interface AuditReport {
   footprint: {
     ping?: { result?: string };
     mac?: { address: string | null; source: string };
-    ports?: { checked: number; range: string; open: number[]; refused: number[]; filtered: number[] };
+    ports?: {
+      checked: number; range: string; open: number[]; refused: number[]; filtered: number[];
+      /** Open ports outside the list checked, found from the device's own announcement. */
+      from_announcements?: number[];
+    };
     web?: Record<string, { status_line: string; title: string | null; www_authenticate: string | null; error: string }>;
     mdns?: { services: { service_type: string | null }[] } | null;
     ssdp?: { device_types: string[] } | null;

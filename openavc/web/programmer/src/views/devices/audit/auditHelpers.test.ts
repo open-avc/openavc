@@ -212,6 +212,20 @@ describe("the on-screen summary", () => {
     ]);
   });
 
+  it("says which open ports the device named in its own announcement", () => {
+    const announced = {
+      ...report,
+      footprint: {
+        ...report.footprint,
+        ports: { ...report.footprint.ports!, open: [23, 80, 7676], from_announcements: [7676] },
+      },
+    } as AuditReport;
+    expect(summaryLines(announced).find((l) => l.label === "Open ports")).toEqual({
+      label: "Open ports",
+      value: "23, 80, 7676 (7676 named in the device's own announcement)",
+    });
+  });
+
   it("adds what each driver did, and names the driver when there are several", () => {
     const attempt = {
       status: "done", error: "", started_at: 100, connected_at: 100.5, declared: 7,

@@ -84,6 +84,7 @@ The download is one zip file, named for the device and the time:
 | `timeline.txt` | Every event in order, with the driver's traffic |
 | `log.txt` | OpenAVC's own log lines about the audit |
 | `driver/` | The exact driver files that ran |
+| `README.txt` | What the fields of `report.json` mean where the name does not say |
 
 For a driver from the community catalog, the Report step also offers **Open a driver test
 report on GitHub**. It opens the driver library's test report form with the results filled in.

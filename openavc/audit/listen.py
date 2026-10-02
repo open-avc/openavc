@@ -161,6 +161,7 @@ class ListenPass:
         self.ends_at: float | None = None
         self.finished_at: float | None = None
         self.poll_interval = 0.0
+        self.liveness_every = 0.0
         # Drops and reconnects while listening, and after the window closed
         # (in a command's window or a power test, which each say their own).
         self.reconnects = 0
@@ -208,6 +209,11 @@ class ListenPass:
         self._redactor = sb.observer.redactor()
         self.sources = response_sources(sb.driver)
         self.poll_interval = float(sb.resolved.get("config", {}).get("poll_interval", 0) or 0)
+        # The driver's liveness check, if it has one: how often it asks the
+        # device whether it is still there, apart from the polls.
+        health = getattr(sb.driver, "_health_enabled", None)
+        if callable(health) and health():
+            self.liveness_every = float(getattr(sb.driver, "HEALTH_INTERVAL_S", 0) or 0)
         sb.events.on(f"device.connected.{device_id}", self._on_connected)
         sb.events.on(f"device.disconnected.{device_id}", self._on_disconnected)
         sb.state.subscribe(f"device.{device_id}.*", self._on_state)
@@ -607,6 +613,7 @@ class ListenPass:
             "finished_at": self.finished_at,
             "max_ends_at": self.started_at + self.max_seconds,
             "poll_interval": self.poll_interval,
+            "liveness_every": self.liveness_every,
             "reconnects": self.reconnects,
             "drops": self.drops,
             "later_reconnects": self.later_reconnects,

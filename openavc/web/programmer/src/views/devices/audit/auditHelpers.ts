@@ -566,7 +566,13 @@ export function summaryLines(report: AuditReport): SummaryLine[] {
   if (ports) {
     lines.push({
       label: "Open ports",
-      value: ports.open.length > 0 ? ports.open.join(", ") : `None of the ${ports.checked} checked`,
+      value:
+        ports.open.length > 0
+          ? ports.open.join(", ") +
+            (ports.from_announcements?.length
+              ? ` (${ports.from_announcements.join(", ")} named in the device's own announcement)`
+              : "")
+          : `None of the ${ports.checked} checked`,
     });
   }
   const pages = Object.entries(fp.web ?? {}).map(([port, page]) => {

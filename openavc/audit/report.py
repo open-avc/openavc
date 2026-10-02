@@ -9,6 +9,8 @@
       driver/<files>   the exact driver file(s) that ran
       log.txt          OpenAVC's own log lines about the audit, INFO and up
                        (``session.SessionLog``)
+      README.txt       what report.json's fields mean where the name does
+                       not say (``FIELD_GUIDE``)
 
 ``report.json`` (``report_version`` 1) holds:
 
@@ -1141,6 +1143,14 @@ def report_filename(report: dict[str, Any], when: float | None = None) -> str:
     )
 
 
+def utc_offset(t: float | None = None) -> str:
+    """This computer's time zone at ``t`` as an offset, ``UTC-04:00``: every
+    clock time in the report is local to the computer that ran the audit."""
+    stamp = datetime.fromtimestamp(t if t is not None else time.time()).astimezone()
+    raw = stamp.strftime("%z") or "+0000"
+    return f"UTC{raw[:3]}:{raw[3:]}"
+
+
 def _clock(t: float | None) -> str:
     if not t:
         return "--:--:--.---"
@@ -1228,7 +1238,8 @@ def render_timeline(report: dict[str, Any]) -> str:
     header = [
         f"OpenAVC device audit of {target.get('address')} ({target.get('ip') or 'unresolved'})",
         f"Started {datetime.fromtimestamp(started).isoformat(timespec='seconds') if started else '?'}"
-        f", OpenAVC {report.get('generator', {}).get('openavc_version')}",
+        f" ({utc_offset(started)}), OpenAVC {report.get('generator', {}).get('openavc_version')}",
+        f"Times are this computer's local time, {utc_offset(started)}.",
         "Traffic lines are what the driver sent (tx) and handled (rx); report.json holds "
         "every byte, and the raw receive chunks before framing.",
         "",
@@ -1294,7 +1305,10 @@ def render_summary(report: dict[str, Any]) -> str:
     ]
     title = " ".join(str(b) for b in title_bits if b) or target.get("address") or "Device"
     started = session.get("started_at")
-    when = datetime.fromtimestamp(started).strftime("%Y-%m-%d %H:%M") if started else ""
+    when = (
+        datetime.fromtimestamp(started).strftime("%Y-%m-%d %H:%M") + f" {utc_offset(started)}"
+        if started else ""
+    )
     parts: list[str] = [
         "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">",
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
@@ -1313,7 +1327,12 @@ def render_summary(report: dict[str, Any]) -> str:
     signals = (verdict.get("explanation") or {}).get("signals", [])
     names = verdict.get("drivers", {})
     pointing = [sig for sig in signals if sig.get("drivers")]
-    unused = [sig for sig in signals if not sig.get("drivers")]
+    # A manufacturer the driver's own probe supplied is not something the
+    # device was seen to say.
+    unused = [
+        sig for sig in signals
+        if not sig.get("drivers") and not ((sig.get("evidence") or {}).get("data") or {}).get("from_driver")
+    ]
     if pointing:
         items = []
         for sig in pointing:
@@ -1371,8 +1390,13 @@ def render_summary(report: dict[str, Any]) -> str:
     parts.append(_row(
         f"TCP ports ({ports.get('checked', 0)} checked, {ports.get('range', '')})",
         _e(
-            f"open: {_join([str(p) for p in ports.get('open', [])])}; "
-            f"refused: {len(ports.get('refused', []))}; "
+            f"open: {_join([str(p) for p in ports.get('open', [])])}"
+            + (
+                f" ({_join([str(p) for p in ports['from_announcements']])} named in the device's "
+                "own announcement, outside the list checked)"
+                if ports.get("from_announcements") else ""
+            )
+            + f"; refused: {len(ports.get('refused', []))}; "
             f"no answer: {len(ports.get('filtered', []))}"
         ),
     ))
@@ -1403,7 +1427,7 @@ def render_summary(report: dict[str, Any]) -> str:
                 bits.append(f"asks for sign-in: {page['www_authenticate']}")
             if page.get("location"):
                 bits.append(f"redirects to {page['location']}")
-            if str(port) not in {str(p) for p in ports.get("open", [])}:
+            if str(port) in {str(p) for p in ports.get("from_announcements", [])}:
                 bits.append("a port the device named in an announcement, not one the port check covers")
             parts.append(_row(f"Port {port} ({page.get('url', '')})", _e("; ".join(bits))))
         parts.append("</table>")
@@ -1667,6 +1691,11 @@ def _render_driver(section: dict[str, Any]) -> list[str]:
         parts.append(_row("First reply", _e(_seconds_after(attempt.get("first_rx_at"), started))))
         if attempt.get("poll_interval"):
             parts.append(_row("Polls every", _e(f"{attempt['poll_interval']} seconds")))
+        if attempt.get("liveness_every"):
+            parts.append(_row("Liveness check", _e(
+                f"every {attempt['liveness_every']} seconds, apart from the polls: how the driver "
+                "notices a device that stopped answering"
+            )))
         for label, drops, again in (
             ("Dropped while listening", attempt.get("drops", 0), attempt.get("reconnects", 0)),
             ("Dropped after listening", attempt.get("later_drops", 0),
@@ -1998,6 +2027,69 @@ def _value_text(value: Any) -> str:
     return str(value)
 
 
+# README.txt in every report: what the fields of report.json mean where the
+# name does not say. The full schema is this module's docstring.
+FIELD_GUIDE = """\
+How to read this report
+
+summary.html is the report for a person. report.json is the complete record,
+and this file explains the fields in it that are not plain from their names.
+
+Times
+  A time in report.json is seconds since 1970-01-01 UTC. The clock times in
+  timeline.txt and log.txt are the local time of the computer that ran the
+  audit; their first lines give its offset from UTC.
+
+Bytes
+  Bytes are kept as {"hex", "text"}: hex is the bytes unspaced (aa0b01), text
+  the same bytes decoded as Latin-1, so every byte survives. A sentence writes
+  bytes as "hex aa 0b 01".
+
+Masked values
+  "***" is a credential or a secret parameter. "[redacted]" is a value typed
+  as a secret, wherever it appeared. "[serial number removed]" is a serial
+  number the person asked to leave out.
+
+The network check (footprint)
+  ping.method is how ping was sent: exec (the system ping program), dgram or
+  raw (an ICMP socket), or none (no way to send one). ping.result is alive,
+  timeout or error.
+  ports.open lists the open TCP ports. ports.from_announcements lists open
+  ports outside the list checked: the device named them in an announcement
+  and a web page answered there.
+  probes lists each driver's identification check sent to the device. A
+  driver's TCP check runs when its port is open, and every UDP check runs.
+  Each holds what was sent and the reply, and matched (the reply is what the
+  driver looks for) or miss (why not).
+
+The verdict
+  explanation.signals lists what the check saw that a driver's identification
+  rules use. strong is true for a signal that identifies a driver on its own
+  (a probe reply, an announcement type), false for one that only suggests it
+  (a MAC prefix, a manufacturer name). drivers lists the catalog drivers that
+  use the signal.
+  signal_index_drivers is how many catalog drivers declare any signal.
+  checks holds each named driver's declared signals, judged against the device.
+
+The driver test (drivers)
+  attempts[].traffic.count is the messages sent and received as the driver
+  handled them; entries also holds the raw receive chunks before framing
+  (chunk: true).
+  In attempts[].status_table, reported means the device said the value (it
+  was written at or after the device's first reply); set_by_driver means the
+  driver wrote it before the device replied.
+  commands.catalog describes each command as the driver declares it. query
+  marks a status query: query_for names the value it asks for, and polled
+  says the driver's polling runs it. needs_input means it takes a value
+  nobody has given yet. suggested marks a command the driver puts on a device
+  page, tried first. confirm is the driver's question before sending it.
+  commands.trials holds every command sent and what its window showed; each
+  summary says it in a sentence.
+  suggested_confidence is the catalog confidence these results support, with
+  every condition it rests on.
+"""
+
+
 def build_zip(
     report: dict[str, Any],
     redactor: Redactor | None = None,
@@ -2009,11 +2101,14 @@ def build_zip(
     the session's own log lines (``SessionLog``), the one file that is not;
     ``driver_files`` are placed already (``place_driver_files``)."""
     log_text = log_text or "OpenAVC wrote no log lines about this audit.\n"
+    started = (report.get("session") or {}).get("started_at")
+    log_text = f"Times are this computer's local time, {utc_offset(started)}.\n\n" + log_text
     files = {
         "summary.html": render_summary(report),
         "report.json": json.dumps(report, indent=2, ensure_ascii=False, default=str),
         "timeline.txt": render_timeline(report),
         "log.txt": redactor.text(log_text) if redactor is not None else log_text,
+        "README.txt": FIELD_GUIDE,
     }
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:

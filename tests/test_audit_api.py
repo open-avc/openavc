@@ -322,7 +322,7 @@ async def test_tester_report_and_recent_reports(wired):
     name = response.filename
     assert name.startswith("openavc-device-audit-")
     with zipfile.ZipFile(io.BytesIO(wired.store.path(name).read_bytes())) as zf:
-        assert set(zf.namelist()) == {"summary.html", "report.json", "timeline.txt", "log.txt"}
+        assert set(zf.namelist()) == {"summary.html", "report.json", "timeline.txt", "log.txt", "README.txt"}
 
     listed = await routes.list_reports()
     assert [r["name"] for r in listed["reports"]] == [name]

@@ -225,6 +225,9 @@ class Footprint:
     # How many GETs each web port took (a page that did not answer is asked
     # once more); a port asked once is not listed.
     web_tries: dict[int, int] = field(default_factory=dict)
+    # Open ports the port check's list does not cover, found by a web page
+    # answering on a port the device named in an announcement.
+    ports_from_announcements: set[int] = field(default_factory=set)
     certificates: dict[int, dict[str, Any]] = field(default_factory=dict)
     certificate_errors: dict[int, str] = field(default_factory=dict)
     mdns: dict[str, Any] | None = None
@@ -291,6 +294,7 @@ class Footprint:
                 "checked": len(self.port_list),
                 "range": "extended" if self.extended else "standard",
                 "open": [p for p, s in sorted(states.items()) if s == PORT_OPEN],
+                "from_announcements": sorted(self.ports_from_announcements),
                 "refused": [p for p, s in sorted(states.items()) if s == PORT_REFUSED],
                 "filtered": [p for p, s in sorted(states.items()) if s == PORT_FILTERED],
                 "other": {
@@ -320,6 +324,13 @@ class Footprint:
             "verdict": self.verdict,
             "limits": [limit.to_dict() for limit in self.limits],
         }
+
+
+def _is_loopback(ip: str | None) -> bool:
+    try:
+        return bool(ip) and ipaddress.ip_address(ip).is_loopback
+    except ValueError:
+        return False
 
 
 def _worth_asking_again(exchange: HttpExchange) -> bool:
@@ -764,6 +775,11 @@ class NetworkCheck:
                 if exchange is None:
                     return
                 fp.web[port] = exchange
+                if exchange.status is not None and fp.port_states.get(port) != PORT_OPEN:
+                    # It answered a web request, so it is open, whatever the
+                    # port check's list covered.
+                    fp.port_states[port] = PORT_OPEN
+                    fp.ports_from_announcements.add(port)
                 if exchange.certificate:
                     fp.certificates[port] = exchange.certificate
 
@@ -1048,7 +1064,13 @@ class NetworkCheck:
                 fp.mac = next(iter(macs.values()))
                 fp.mac_source = "snmp"
         if not fp.mac:
-            if fp.same_subnet is False:
+            if _is_loopback(fp.ip):
+                fp.add_limit(
+                    "mac_loopback",
+                    "The address is this computer's own, which has no network MAC address "
+                    "to record.",
+                )
+            elif fp.same_subnet is False:
                 fp.add_limit(
                     "mac_other_segment",
                     "The device is on another network segment, so its MAC address "
