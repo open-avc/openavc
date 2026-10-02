@@ -7,6 +7,7 @@ import type { CommunityDriver, DriverInfo, InstalledDriver } from "../../../../a
 import { useAuditStore } from "../../../../store/auditStore";
 import { useConnectionStore } from "../../../../store/connectionStore";
 import { useDriverBuilderStore } from "../../../../store/driverBuilderStore";
+import { useProjectStore } from "../../../../store/projectStore";
 import {
   buildDriverOptions,
   confidenceText,
@@ -19,7 +20,7 @@ import {
   returningPick,
   type DriverOption,
 } from "../driverPicker";
-import { currentRun } from "../auditHelpers";
+import { currentRun, updateNote } from "../auditHelpers";
 import { BackButton, ErrorLine } from "../auditParts";
 import {
   buttonStyle,
@@ -36,6 +37,7 @@ const NOT_LISTED = "__not_listed__";
 
 /** Step 3: the manufacturer, the model, and the driver to test. */
 export function DriverStep() {
+  const projectDevices = useProjectStore((s) => s.project?.devices);
   const session = useAuditStore((s) => s.session);
   const runningVersion = useConnectionStore((s) => String(s.liveState["system.version"] ?? ""));
   const [catalog, setCatalog] = useState<CommunityDriver[]>([]);
@@ -292,6 +294,7 @@ export function DriverStep() {
                       onSelect={() => setDriverId(d.id)}
                       onInstall={() => void install(d)}
                       installing={busy === "install" && d.id === driverId}
+                      projectUses={(projectDevices ?? []).filter((dev) => dev.driver === d.id).length}
                     />
                   ))}
                 </div>
@@ -366,6 +369,7 @@ function DriverRow({
   onSelect,
   onInstall,
   installing,
+  projectUses,
 }: {
   option: DriverOption;
   /** The chosen model's confidence, or the manufacturer's with no model chosen. */
@@ -374,6 +378,8 @@ function DriverRow({
   onSelect: () => void;
   onInstall: () => void;
   installing: boolean;
+  /** The project devices that run this driver (an update reloads them). */
+  projectUses: number;
 }) {
   const state = installState(option);
   const version = option.installed ? option.installedVersion : option.catalogVersion;
@@ -428,6 +434,9 @@ function DriverRow({
           {source && <span>{source}</span>}
           {option.deprecated && <span>No longer maintained</span>}
         </div>
+        {state === "update" && updateNote(projectUses) && (
+          <div style={{ ...hintStyle, marginTop: "var(--space-xs)" }}>{updateNote(projectUses)}</div>
+        )}
       </div>
       <div style={{ flexShrink: 0, fontSize: "var(--font-size-xs)" }}>
         {state === "installed" && (

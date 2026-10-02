@@ -17,6 +17,7 @@ import {
   parseCommunities,
   pauseNotice,
   publishedSecretNotices,
+  updateNote,
   appendTraffic,
   childCountText,
   currentRun,
@@ -404,5 +405,16 @@ describe("publishedSecretNotices", () => {
   it("says nothing otherwise", () => {
     expect(publishedSecretNotices([run([]), run(undefined)])).toEqual([]);
     expect(publishedSecretNotices(undefined)).toEqual([]);
+  });
+});
+
+describe("updateNote", () => {
+  it("says an update reaches the project's devices on the driver", () => {
+    expect(updateNote(0)).toBe("");
+    expect(updateNote(1)).toBe(
+      "Updating also updates the device in this project that uses this driver, and it " +
+        "reconnects with the new version.",
+    );
+    expect(updateNote(3)).toMatch(/^Updating also updates the 3 devices .* they reconnect/);
   });
 });

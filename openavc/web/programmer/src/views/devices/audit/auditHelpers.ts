@@ -171,6 +171,20 @@ export function mergeSettings(
   };
 }
 
+/**
+ * What "Update to X" on Which driver? also does: the installed driver is the
+ * one every project device on it runs, wherever it connects.
+ */
+export function updateNote(projectDevices: number): string {
+  if (projectDevices <= 0) return "";
+  const one = projectDevices === 1;
+  return (
+    `Updating also updates the ${one ? "device" : `${projectDevices} devices`} in this project ` +
+    `that ${one ? "uses" : "use"} this driver, and ${one ? "it reconnects" : "they reconnect"} ` +
+    `with the new version.`
+  );
+}
+
 function wordList(words: string[]): string {
   if (words.length < 2) return words[0] ?? "";
   return `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
