@@ -215,7 +215,9 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
         timeout=EXPECT_TIMEOUT,
     )
     dialog.get_by_role("button", name="Save and show what connecting sends").click()
-    expect(dialog.get_by_text("What connecting sends")).to_be_visible(timeout=EXPECT_TIMEOUT)
+    expect(dialog.get_by_text("What connecting sends", exact=True)).to_be_visible(
+        timeout=EXPECT_TIMEOUT,
+    )
     expect(dialog.get_by_text('"PWR?\\r"')).to_be_visible()
     dialog.get_by_role("button", name="Continue", exact=True).click()
 
