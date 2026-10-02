@@ -187,7 +187,9 @@
 ``public``, a driver credential) and every credential the driver's config
 registered is replaced in the record, string by string, in its plain, JSON,
 HTML and hex forms (unspaced and in pairs), before anything is written; a
-serial number the person asked to leave out is replaced the same way. The
+serial number the person asked to leave out is replaced the same way,
+every one the audit heard (``serial_numbers``: the network check's, and any
+value a driver reported under a name with "serial" in it). The
 record is redacted as a tree and never as JSON text, so a number, a ``true``
 or a key the secret happens to equal is left alone and ``report.json``
 always parses; ``summary.html`` and ``timeline.txt`` are drawn from the
@@ -395,10 +397,8 @@ def redactions_for(session: "AuditSession") -> list[Redaction]:
         if c and c != "public"
     ]
     tester = getattr(session, "tester", None) or {}
-    footprint = _footprint_of(session)
-    serial = footprint.device.serial_number if footprint and footprint.device else None
-    if tester.get("leave_out_serial") and serial:
-        out.append(Redaction(str(serial), SERIAL_REMOVED))
+    if tester.get("leave_out_serial"):
+        out.extend(Redaction(s, SERIAL_REMOVED) for s in sorted(serial_numbers(session)))
     # A driver run's credentials: what the person typed, and what the
     # driver registered as secret while it ran.
     values: set[str] = set()
@@ -408,6 +408,61 @@ def redactions_for(session: "AuditSession") -> list[Redaction]:
             values |= attempt.sandbox.observer.secrets
     out.extend(Redaction(v) for v in sorted(values) if isinstance(v, str) and v)
     return out
+
+
+_SERIAL = re.compile(r"serial", re.IGNORECASE)
+# Where a record holding a value names it (a status value, a change), and
+# the fields that hold the value itself.
+_NAMING_FIELDS = ("name", "key", "state", "state_key")
+_VALUE_FIELDS = ("value", "now", "before", "old", "new", "first", "last", "original")
+# ENTITY-MIB entPhysicalSerialNum, as an SNMP walk's rows name it.
+_SERIAL_OID = "1.3.6.1.2.1.47.1.1.1.1.11."
+
+
+def _serials_in(value: Any, out: set[str]) -> None:
+    if isinstance(value, dict):
+        named = any(
+            isinstance(value.get(k), str) and _SERIAL.search(value[k]) for k in _NAMING_FIELDS
+        )
+        # A TLS certificate's serial is the certificate's, not the device's.
+        certificate = "issuer" in value
+        oid = value.get("oid")
+        if isinstance(oid, str) and oid.startswith(_SERIAL_OID) and isinstance(value.get("value"), str):
+            out.add(value["value"])
+        for key, item in value.items():
+            plain = isinstance(item, (str, int)) and not isinstance(item, bool)
+            if plain and (
+                (isinstance(key, str) and _SERIAL.search(key) and not certificate)
+                or (named and key in _VALUE_FIELDS)
+            ):
+                out.add(str(item))
+            _serials_in(item, out)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            _serials_in(item, out)
+
+
+def serial_numbers(session: "AuditSession") -> set[str]:
+    """Every serial number the audit heard, from wherever it came: the
+    network check (SSDP, SNMP, mDNS, AMX DDP) and every value a driver
+    reported under a name with "serial" in it."""
+    out: set[str] = set()
+    footprint = _footprint_of(session)
+    if footprint is not None:
+        if footprint.device is not None and footprint.device.serial_number:
+            out.add(str(footprint.device.serial_number))
+        _serials_in(footprint.to_dict(), out)
+    for run in getattr(session, "runs", None) or []:
+        for attempt in getattr(run, "listens", None) or []:
+            live = attempt.to_dict()
+            _serials_in({k: v for k, v in live.items() if k != "traffic"}, out)
+            _serials_in(list(getattr(attempt, "changes", None) or []), out)
+        for part in (getattr(run, "commands", None), getattr(run, "settings", None)):
+            if part is not None:
+                _serials_in(part.to_dict(), out)
+    from openavc.audit.observe import MIN_SECRET_LENGTH
+
+    return {s for s in out if len(s.strip()) >= MIN_SECRET_LENGTH}
 
 
 def _strings_in(value: Any, out: set[str]) -> None:

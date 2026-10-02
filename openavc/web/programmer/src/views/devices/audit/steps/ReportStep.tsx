@@ -48,6 +48,26 @@ export function ReportStep() {
     });
   }, [sessionId, tester]);
 
+  // Sent at once, so the report saved when the audit ends (Cancel included)
+  // already leaves it out; the preview above is read again to match.
+  const setLeaveOutSerial = async (leaveOut: boolean) => {
+    const next = { ...tester, leave_out_serial: leaveOut };
+    setTester(next);
+    setError("");
+    try {
+      await audit.setAuditTester(sessionId, {
+        name: next.name ?? "",
+        company: next.company ?? "",
+        email: next.email ?? "",
+        notes: next.notes ?? "",
+        leave_out_serial: leaveOut,
+      });
+      setReport(await audit.getAuditReport(sessionId));
+    } catch (e) {
+      setError(parseApiError(e));
+    }
+  };
+
   const download = async () => {
     setError("");
     setBusy("download");
@@ -202,7 +222,7 @@ export function ReportStep() {
         <input
           type="checkbox"
           checked={!!tester.leave_out_serial}
-          onChange={(e) => setTester({ ...tester, leave_out_serial: e.target.checked })}
+          onChange={(e) => void setLeaveOutSerial(e.target.checked)}
         />
         Leave the serial number out of the report
       </label>

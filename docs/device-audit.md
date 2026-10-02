@@ -95,7 +95,9 @@ OpenAVC keeps the ten newest reports, listed under **Recent reports** on the fir
   replaced with `[redacted]` everywhere in the report (`***` in the traffic). A driver file
   that matches the catalog is included as the catalog publishes it. If a password you typed
   is the driver's published default, the Report step says so before you download.
-- **Leave the serial number out of the report** removes the device's serial number the same way.
+- **Leave the serial number out of the report** removes every serial number the audit heard,
+  from the network check and from the driver, the same way. It applies as soon as you tick it,
+  including to the report saved if you cancel.
 - The report never includes OpenAVC's own settings.
 - The audit listens for network announcements, but keeps only the ones from the device being
   audited.

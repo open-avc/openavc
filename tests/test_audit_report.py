@@ -203,6 +203,42 @@ async def test_the_serial_number_can_be_left_out_everywhere():
     assert "leave_out_serial" not in report["session"]["tester"]
 
 
+async def test_every_serial_number_heard_is_left_out():
+    """A driver's own serial value and a second one from SNMP go too, not
+    only the one the network check put on the device."""
+    from types import SimpleNamespace
+
+    from openavc.audit.report import redactions_for, serial_numbers
+
+    manager, session = await _session(leave_out_serial=True)
+    try:
+        session.footprint.snmp = {
+            "answered": True, "values": {"entPhysicalSerialNum": "SNMP-55501"},
+            "walk": [{"oid": "1.3.6.1.2.1.47.1.1.1.1.11.1", "value": "WALK-60001"}],
+        }
+        attempt = SimpleNamespace(
+            to_dict=lambda: {
+                "status_table": {"variables": [
+                    {"name": "serial_number", "label": "Serial", "value": "DRV-77102"},
+                    {"name": "power", "label": "Power", "value": True},
+                ]},
+                "traffic": {"entries": [{"text": "not walked"}]},
+            },
+            changes=[{"key": "display.1.serial", "old": None, "new": "CHD-30004"}],
+            sandbox=SimpleNamespace(observer=SimpleNamespace(secrets=set())),
+        )
+        session.runs.append(SimpleNamespace(listens=[attempt], commands=None, settings=None))
+        found = serial_numbers(session)
+        assert {SERIAL, "DRV-77102", "CHD-30004"} <= found
+        assert {"SNMP-55501", "WALK-60001"} <= found
+        assert {r.value for r in redactions_for(session)} >= {SERIAL, "DRV-77102", "CHD-30004"}
+        session.tester = {}
+        assert not {SERIAL, "DRV-77102"} & {r.value for r in redactions_for(session)}
+    finally:
+        session.runs.clear()
+        await manager.shutdown()
+
+
 async def test_the_serial_number_stays_unless_asked():
     manager, session = await _session()
     try:
