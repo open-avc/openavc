@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
   AuditReportDriver,
   AuditConflictDevice,
+  AuditDriverRun,
   AuditListen,
   AuditReport,
   AuditSessionState,
@@ -15,6 +16,7 @@ import {
   fileSize,
   parseCommunities,
   pauseNotice,
+  publishedSecretNotices,
   appendTraffic,
   childCountText,
   currentRun,
@@ -378,5 +380,29 @@ describe("connect and listen", () => {
     expect(statusValue(v)).toBe("Not reported");
     expect(statusValue({ ...v, reported: true, value: false })).toBe("false");
     expect(statusValue({ ...v, reported: true, value: 12 })).toBe("12");
+  });
+});
+
+describe("publishedSecretNotices", () => {
+  const run = (published?: string[]) =>
+    ({
+      index: 0,
+      choice: { driver_id: "acme_box", identity: { name: "Acme Box" } },
+      published_secrets: published,
+    }) as unknown as AuditDriverRun;
+
+  it("says which typed credential is the driver's published default", () => {
+    expect(publishedSecretNotices([run(["Password"])])).toEqual([
+      "The password you entered for Acme Box is the driver's published default. The report " +
+        "masks it where it was sent, but anyone can read the default in the driver.",
+    ]);
+    expect(publishedSecretNotices([run(["Username", "PSK"])])[0]).toMatch(
+      /^The username and PSK you entered for Acme Box are .* masks them where they were sent/,
+    );
+  });
+
+  it("says nothing otherwise", () => {
+    expect(publishedSecretNotices([run([]), run(undefined)])).toEqual([]);
+    expect(publishedSecretNotices(undefined)).toEqual([]);
   });
 });

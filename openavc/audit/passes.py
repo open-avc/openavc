@@ -72,6 +72,10 @@ class DriverRun:
     settings: Any = None
     # Power cycles and cable pulls (``audit/outage.py``), in order.
     outages: list[Any] = field(default_factory=list)
+    # The credential fields whose typed value is the driver's published
+    # default (or its name): the wizard says so before the download, and the
+    # report never does (``audit/report.py``, Redaction).
+    published_secrets: list[str] = field(default_factory=list)
     # State the later steps add to ``to_dict`` (name -> value or provider).
     extra: dict[str, Any] = field(default_factory=dict)
     # When each status value last changed while the audit was sending and
@@ -127,6 +131,7 @@ class DriverRun:
             "finished_at": self.finished_at,
             "active": self.active,
             "connection": self.connection,
+            "published_secrets": list(self.published_secrets),
         }
         for key, provider in self.extra.items():
             try:
@@ -265,6 +270,31 @@ def _secret_keys(config: dict[str, Any], schema: dict[str, Any]) -> set[str]:
     return {k for k in config if k in declared or is_secret_key(k)}
 
 
+def _published_secrets(
+    info: dict[str, Any], identity: dict[str, Any], config: dict[str, Any], secret_keys: set[str],
+) -> list[str]:
+    """The labels of the credential fields whose value the driver publishes:
+    a default it declares for any field, or the driver's own id, name or
+    manufacturer. Names only, never values."""
+    schema = info.get("config_schema") or {}
+    published = {
+        v for v in (info.get("default_config") or {}).values() if isinstance(v, str) and v
+    } | {
+        spec["default"] for spec in schema.values()
+        if isinstance(spec, dict) and isinstance(spec.get("default"), str) and spec["default"]
+    }
+    names = {
+        str(identity.get(k)).lower() for k in ("id", "name", "manufacturer") if identity.get(k)
+    }
+    out = []
+    for key in sorted(secret_keys):
+        value = config.get(key)
+        if isinstance(value, str) and value and (value in published or value.lower() in names):
+            spec = schema.get(key) if isinstance(schema.get(key), dict) else {}
+            out.append(str(spec.get("label") or key))
+    return out
+
+
 def _offered_devices(session: "AuditSession", project: Any) -> dict[str, str]:
     """The project devices whose saved settings this audit may use, by id:
     every device it paused at this address, and the device whose page started
@@ -366,6 +396,9 @@ async def set_connection(
         str(effective[k]) for k in secret_keys
         if isinstance(effective.get(k), str) and effective[k]
     }
+    run.published_secrets = _published_secrets(
+        info, run.choice.identity or {}, effective, secret_keys,
+    )
     preview = await _preview(session, run, effective)
     run.connection = {
         "config": _masked(effective, secret_keys),

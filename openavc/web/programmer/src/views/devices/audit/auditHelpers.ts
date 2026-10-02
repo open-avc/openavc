@@ -171,6 +171,32 @@ export function mergeSettings(
   };
 }
 
+function wordList(words: string[]): string {
+  if (words.length < 2) return words[0] ?? "";
+  return `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+
+/**
+ * What the Report step says before the download when a credential the person
+ * typed is the driver's published default: one sentence per driver run.
+ */
+export function publishedSecretNotices(runs: AuditDriverRun[] | undefined): string[] {
+  return (runs ?? [])
+    .filter((run) => (run.published_secrets ?? []).length > 0)
+    .map((run) => {
+      const labels = run.published_secrets!.map((label) =>
+        /^[A-Z][a-z ]*$/.test(label) ? label.toLowerCase() : label,
+      );
+      const many = labels.length > 1;
+      const driver = run.choice.identity?.name || run.choice.driver_id;
+      return (
+        `The ${wordList(labels)} you entered for ${driver} ${many ? "are" : "is"} the driver's ` +
+        `published default. The report masks ${many ? "them" : "it"} where ${many ? "they were" : "it was"} ` +
+        `sent, but anyone can read the default in the driver.`
+      );
+    });
+}
+
 /** The setting's last write, if it still needs putting back ("Put it back"). */
 export function needsPuttingBack(trial: AuditSettingTrial | undefined): boolean {
   if (!trial || trial.status !== "done") return false;

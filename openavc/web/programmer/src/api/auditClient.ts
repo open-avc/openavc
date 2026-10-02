@@ -539,6 +539,12 @@ export interface AuditDriverRun {
   /** True while its driver is connected to the device. */
   active: boolean;
   connection: AuditConnection | null;
+  /**
+   * The credential fields whose typed value is the driver's published
+   * default (or its name), by label. Shown before the download; never in
+   * the report.
+   */
+  published_secrets?: string[];
   listen?: AuditListen;
   commands?: AuditCommands;
   settings?: AuditSettings;

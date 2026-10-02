@@ -185,24 +185,39 @@
 
 **Redaction.** Every secret the person typed (a read community other than
 ``public``, a driver credential) and every credential the driver's config
-registered is replaced in every file, in its plain, JSON, HTML and hex forms
-(unspaced and in pairs),
-before anything is written, the driver files included (each copy says whether
-that changed it); a serial number the person asked to leave out is replaced
-the same way. Traffic is masked (``***``) as it is written out, so the hex of
-a masked entry still decodes. The report never reads the server's own
-configuration.
-A secret shorter than three characters is not searched for, since it would
-match ordinary text everywhere; the report never writes a typed secret into a
-field of its own, so such a value could only appear if the device repeated it.
-A secret made only of hex digits (a numeric PIN, say) is replaced in its
-plain forms only where it stands alone, never inside a longer run of hex
-digits or after a decimal point: otherwise a PIN would be cut out of a
-timestamp (breaking the JSON), a SHA-256 or a hex dump. Its hex forms are
+registered is replaced in the record, string by string, in its plain, JSON,
+HTML and hex forms (unspaced and in pairs), before anything is written; a
+serial number the person asked to leave out is replaced the same way. The
+record is redacted as a tree and never as JSON text, so a number, a ``true``
+or a key the secret happens to equal is left alone and ``report.json``
+always parses; ``summary.html`` and ``timeline.txt`` are drawn from the
+redacted record, and ``log.txt`` (the session's own log lines, not in the
+record) is the one file redacted as text. Traffic is masked (``***``) as it
+is written out, so the hex of a masked entry still decodes. The report never
+reads the server's own configuration.
+
+What is already public is left as it is: a driver file whose bytes match the
+catalog's is copied unredacted, and a string that is exactly one of the
+names the catalog and the drivers that ran publish (a driver's id, name and
+manufacturer, and every string a published driver declares: its labels,
+defaults, command and value names) is never changed, and the catalog's names
+are left as they are inside a longer string too ("Driver chosen: ..."). Otherwise a password
+that is the driver's published default, or a word a driver uses, would be
+cut out of the driver's own text and say what it was. The wizard tells the
+person before the download when a credential they typed is the driver's
+published default (``DriverRun.published_secrets``); the report says nothing
+of it. A driver file that does not match the catalog (imported, or changed
+here) is redacted, and its entry says whether that changed it.
+
+A secret shorter than ``observe.MIN_SECRET_LENGTH`` is not searched for,
+since it would match ordinary text everywhere; the report never writes a
+typed secret into a field of its own, so such a value could only appear if
+the device repeated it. A secret made only of hex digits (a numeric PIN,
+say) is replaced in its plain forms only where it stands alone, never inside
+a longer run of hex digits or after a decimal point: otherwise a PIN would
+be cut out of a timestamp, a SHA-256 or a hex dump. Its hex forms are
 replaced wherever they appear, since that is where its own bytes show in a
-hex dump. The cost: such a PIN, echoed glued to hex letters (``A7391``), stays
-in that text; the traffic was already masked byte by byte as it was
-serialized, before this pass.
+hex dump.
 
 **Recent reports** are kept in ``{data_dir}/audit_reports/``, the newest
 ``REPORTS_KEPT``, so closing a browser tab does not lose one.
@@ -232,7 +247,6 @@ REPORT_VERSION = 1
 REPORTS_KEPT = 10
 REDACTED = "[redacted]"
 SERIAL_REMOVED = "[serial number removed]"
-_MIN_SECRET_LENGTH = 3
 _NAME_RE = re.compile(r"^openavc-device-audit-[a-z0-9-]+\.zip$")
 
 
@@ -279,12 +293,24 @@ def _forms(redaction: Redaction) -> list[tuple[str, str, bool]]:
 
 
 class Redactor:
-    """Replaces each secret in a text, whatever form it was written in."""
+    """Replaces each secret in a text, whatever form it was written in.
 
-    def __init__(self, redactions: list[Redaction]) -> None:
+    ``public``: strings published already (the catalog's and the drivers'
+    own), left as they are wherever a whole string is one of them. ``names``:
+    the catalog's names (driver ids, names, manufacturers, file names), left
+    as they are inside a longer string too.
+    """
+
+    def __init__(
+        self, redactions: list[Redaction], public: Any = (), names: Any = (),
+    ) -> None:
+        from openavc.audit.observe import MIN_SECRET_LENGTH
+
+        self._public = frozenset(public) | frozenset(names)
+        self._shield: re.Pattern[str] | None = None
         self._pairs: list[tuple[str, str, re.Pattern[str] | None]] = []
         for redaction in redactions:
-            if len(redaction.value) < _MIN_SECRET_LENGTH:
+            if len(redaction.value) < MIN_SECRET_LENGTH:
                 continue
             for form, replacement, bounded in _forms(redaction):
                 pattern = (
@@ -293,8 +319,24 @@ class Redactor:
                 )
                 self._pairs.append((form, replacement, pattern))
         self._pairs.sort(key=lambda triple: -len(triple[0]))
+        # Only a name a secret would cut into needs shielding.
+        shielded = sorted(
+            {n for n in names if n and any(form in n for form, _, _ in self._pairs)},
+            key=len, reverse=True,
+        )
+        if shielded:
+            self._shield = re.compile("(" + "|".join(re.escape(n) for n in shielded) + ")")
 
     def text(self, value: str) -> str:
+        if self._shield is not None and self._shield.search(value):
+            parts = self._shield.split(value)
+            # Odd parts are the names the split kept.
+            return "".join(
+                part if i % 2 else self._replace(part) for i, part in enumerate(parts)
+            )
+        return self._replace(value)
+
+    def _replace(self, value: str) -> str:
         for form, replacement, pattern in self._pairs:
             if form in value:
                 value = (
@@ -304,9 +346,10 @@ class Redactor:
         return value
 
     def tree(self, value: Any) -> Any:
-        """``value`` with every string in it redacted (dict keys included)."""
+        """``value`` with every string in it redacted (dict keys included),
+        except a string that is exactly a published one."""
         if isinstance(value, str):
-            return self.text(value)
+            return value if value in self._public else self.text(value)
         if isinstance(value, dict):
             return {self.tree(k) if isinstance(k, str) else k: self.tree(v)
                     for k, v in value.items()}
@@ -335,6 +378,75 @@ def redactions_for(session: "AuditSession") -> list[Redaction]:
             values |= attempt.sandbox.observer.secrets
     out.extend(Redaction(v) for v in sorted(values) if isinstance(v, str) and v)
     return out
+
+
+def _strings_in(value: Any, out: set[str]) -> None:
+    if isinstance(value, str):
+        out.add(value)
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            if isinstance(key, str):
+                out.add(key)
+            _strings_in(item, out)
+    elif isinstance(value, (list, tuple, set, frozenset)):
+        for item in value:
+            _strings_in(item, out)
+
+
+def _catalog_names(value: Any, out: set[str]) -> None:
+    """The driver ids, names and manufacturers anything in ``value`` names."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in ("driver_id", "driver_name", "manufacturer") and isinstance(item, str):
+                out.add(item)
+            elif key == "drivers" and isinstance(item, list):
+                out.update(d for d in item if isinstance(d, str))
+            _catalog_names(item, out)
+    elif isinstance(value, list):
+        for item in value:
+            _catalog_names(item, out)
+
+
+def catalog_names(session: "AuditSession") -> set[str]:
+    """The names the catalog publishes for the drivers this audit met: each
+    tested driver's id, name, manufacturer and file names (and where the zip
+    puts them), and every driver the verdict names."""
+    out: set[str] = set()
+    for run in getattr(session, "runs", None) or []:
+        identity = run.choice.identity or {}
+        for key in ("id", "name", "manufacturer"):
+            if isinstance(identity.get(key), str):
+                out.add(identity[key])
+        for f in identity.get("files") or []:
+            name = f.get("name")
+            if isinstance(name, str) and name:
+                out |= {name, f"driver/{name}", f"driver/run-{run.index + 1}/{name}"}
+    footprint = _footprint_of(session)
+    if footprint is not None:
+        verdict = (footprint.to_dict() or {}).get("verdict") or {}
+        _catalog_names({k: v for k, v in verdict.items() if k != "catalog"}, out)
+    out.discard("")
+    return out
+
+
+def public_strings(session: "AuditSession") -> set[str]:
+    """Every string a published driver that ran declares (see the module
+    docstring): never redacted where a whole string is one of them."""
+    from openavc.drivers.registry import get_driver_class
+
+    out: set[str] = set()
+    for run in getattr(session, "runs", None) or []:
+        files = (run.choice.identity or {}).get("files") or []
+        if files and all(f.get("matches_catalog") is True for f in files):
+            cls = get_driver_class(run.choice.driver_id)
+            _strings_in(getattr(cls, "DRIVER_INFO", None) or {}, out)
+    out.discard("")
+    return out
+
+
+def session_redactor(session: "AuditSession") -> "Redactor":
+    """The redactor for ``session``'s report."""
+    return Redactor(redactions_for(session), public_strings(session), catalog_names(session))
 
 
 # ---------------------------------------------------------------------------
@@ -366,6 +478,7 @@ class PlacedFile:
 
 
 def _redact_file(raw: bytes, redactor: "Redactor") -> tuple[bytes, bool]:
+    """A driver file the catalog does not publish, redacted as text."""
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
@@ -387,8 +500,13 @@ def place_driver_files(session: "AuditSession", redactor: "Redactor") -> list[Pl
     for run in getattr(session, "runs", None) or []:
         if not getattr(run, "listens", None):
             continue
+        published = {
+            f.get("name") for f in (getattr(run.choice, "identity", None) or {}).get("files") or []
+            if f.get("matches_catalog") is True
+        }
         for name, raw in sorted(run.choice.file_contents.items()):
-            data, redacted = _redact_file(raw, redactor)
+            # The catalog's own bytes are public: never changed.
+            data, redacted = (raw, False) if name in published else _redact_file(raw, redactor)
             path = f"driver/{name}"
             if path in used and used[path] != data:
                 path = f"driver/run-{run.index + 1}/{name}"
@@ -569,7 +687,7 @@ def generator_info() -> dict[str, Any]:
 
 def build_report(session: "AuditSession") -> dict[str, Any]:
     """The whole record for ``session``, redacted."""
-    redactor = Redactor(redactions_for(session))
+    redactor = session_redactor(session)
     placed = place_driver_files(session, redactor)
     footprint = _footprint_of(session)
     fp = footprint.to_dict() if footprint is not None else {}
@@ -1673,20 +1791,20 @@ def build_zip(
     driver_files: list[PlacedFile] | None = None,
     log_text: str = "",
 ) -> bytes:
-    """The report zip. ``redactor`` runs once more over every file's text;
-    ``driver_files`` are already redacted (``place_driver_files``);
-    ``log_text`` is the session's own log lines (``SessionLog``)."""
+    """The report zip. ``report`` is redacted already (``build_report``), and
+    the other files are drawn from it; ``redactor`` runs over ``log_text``,
+    the session's own log lines (``SessionLog``), the one file that is not;
+    ``driver_files`` are placed already (``place_driver_files``)."""
+    log_text = log_text or "OpenAVC wrote no log lines about this audit.\n"
     files = {
         "summary.html": render_summary(report),
         "report.json": json.dumps(report, indent=2, ensure_ascii=False, default=str),
         "timeline.txt": render_timeline(report),
+        "log.txt": redactor.text(log_text) if redactor is not None else log_text,
     }
-    files["log.txt"] = log_text or "OpenAVC wrote no log lines about this audit.\n"
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for name, text in files.items():
-            if redactor is not None:
-                text = redactor.text(text)
             zf.writestr(name, text.encode("utf-8"))
         written: set[str] = set()
         for placed in driver_files or []:
@@ -1700,7 +1818,7 @@ def report_zip(session: "AuditSession") -> tuple[str, bytes]:
     """(file name, zip bytes) for ``session`` as it stands now."""
     report = build_report(session)
     name = report_filename(report)
-    redactor = Redactor(redactions_for(session))
+    redactor = session_redactor(session)
     log_lines = getattr(session, "log", None)
     return name, build_zip(
         report, redactor, place_driver_files(session, redactor),

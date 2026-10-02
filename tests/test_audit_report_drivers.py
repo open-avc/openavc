@@ -241,6 +241,74 @@ async def test_a_driver_run_is_the_whole_story_and_no_secret_leaves(driver):
         server.close()
 
 
+async def test_a_published_default_password_is_hidden_without_saying_so(driver):
+    """The password typed is the driver's published default and its name:
+    the traffic masks it, the driver's own file and names are left as the
+    catalog publishes them, the wizard is told, and the report says nothing
+    of it."""
+    published = {
+        **DRIVER, "id": "wattbox", "name": "wattbox",
+        "default_config": {**DRIVER["default_config"], "username": "admin", "password": "wattbox"},
+    }
+    _DRIVER_REGISTRY["wattbox"] = create_configurable_driver_class(published)
+    raw = b"id: wattbox\nname: wattbox\ndefault_config: {username: admin, password: wattbox}\n"
+    choice = _choice()
+    choice.driver_id = "wattbox"
+    choice.identity = {
+        **choice.identity, "id": "wattbox", "name": "wattbox", "source": "catalog",
+        "files": [{
+            "name": "wattbox.avcdriver", "sha256": hashlib.sha256(raw).hexdigest(),
+            "catalog_sha256": hashlib.sha256(raw).hexdigest(), "matches_catalog": True,
+        }],
+        "_contents": {"wattbox.avcdriver": raw},
+    }
+    server, port = await _fake_device()
+    session = _session()
+    session.runs[0] = run = DriverRun(index=0, choice=choice)
+    try:
+        await set_connection(session, {
+            "host": "127.0.0.1", "port": port, "username": USERNAME, "password": "wattbox",
+        })
+        assert run.to_dict()["published_secrets"] == ["password"]
+        listen = await start_listen(session, run, **FAST)
+        await _until(lambda: listen.status == DONE)
+        await run.stop()
+        _, data = report_zip(session)
+    finally:
+        _DRIVER_REGISTRY.pop("wattbox", None)
+        await run.stop()
+        server.close()
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        assert zf.read("driver/wattbox.avcdriver") == raw
+        texts = {n: zf.read(n).decode("utf-8") for n in zf.namelist() if not n.startswith("driver/")}
+    report = json.loads(texts["report.json"])
+    (section,) = report["drivers"]
+    assert section["driver"]["id"] == "wattbox" and section["driver"]["name"] == "wattbox"
+    assert section["driver"]["files"][0]["redacted_in_report"] is False
+    assert section["connection"]["config"]["password"] == "***"
+    sent = [bytes.fromhex(e["hex"]) for e in section["attempts"][0]["traffic"]["entries"]
+            if e["direction"] == "tx" and not e.get("chunk")]
+    assert b"***\r" in sent and not any(b"wattbox" in b for b in sent)
+    for name, text in texts.items():
+        assert "published_secrets" not in text and "[redacted]" not in text, name
+
+
+def test_a_secret_that_is_a_number_or_a_word_leaves_the_json_whole():
+    """Redacted as a tree, never as JSON text: a PIN that is also a port, or a
+    password of "true", cannot cut a number or a literal out of report.json."""
+    from openavc.audit.report import Redaction, build_zip
+
+    record = {"port": 1515, "ok": True, "note": "PIN 1515 sent"}
+    for secret in ("1515", "true"):
+        redactor = Redactor([Redaction(secret)])
+        data = build_zip(redactor.tree(record), redactor, log_text=f"sent {secret}\n")
+        texts = _zip_texts(data)
+        assert json.loads(texts["report.json"])["port"] == 1515
+        assert json.loads(texts["report.json"])["ok"] is True
+        assert texts["log.txt"] == "sent [redacted]\n"
+    assert json.loads(texts["report.json"])["note"] == "PIN 1515 sent"
+
+
 def test_no_driver_said_so_and_nothing_tested():
     session = AuditSession("rpt2", AuditTarget("10.0.0.5", "10.0.0.5"), AuditOptions())
     session.no_driver = True

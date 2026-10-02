@@ -48,6 +48,9 @@ from openavc.utils.log_redaction import get_secret_registry
 
 # Payload bytes an audit keeps (raw chunks included).
 TRAFFIC_CAP_BYTES = 20 * 1024 * 1024
+# The shortest secret an audit masks, in the traffic and in the report alike
+# (the server log's own floor is higher: ``log_redaction.MIN_SECRET_LEN``).
+MIN_SECRET_LENGTH = 3
 # Contract events kept in full per kind; beyond it they are only counted.
 EVENT_DETAIL_KEPT = 50
 # How long after a request a reply still counts as its answer.
@@ -165,7 +168,7 @@ class AuditObserver:
 
     def redactor(self) -> TrafficRedactor:
         self.snapshot_secrets()
-        return TrafficRedactor(self._secrets)
+        return TrafficRedactor(self._secrets, min_length=MIN_SECRET_LENGTH)
 
     # -- reading ----------------------------------------------------------------
 

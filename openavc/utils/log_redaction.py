@@ -146,17 +146,22 @@ def _variants(secret: str) -> list[tuple[str, bool]]:
     return forms
 
 
-def compile_secret_pattern(secrets: Iterable[str]) -> re.Pattern[str] | None:
+def compile_secret_pattern(
+    secrets: Iterable[str], *, min_length: int | None = None,
+) -> re.Pattern[str] | None:
     """Compile one alternation matching every form of every secret.
 
     One compiled pattern rather than a substitution per secret: the log filter
     runs on every record the server emits, and a per-secret pass over a fleet's
     worth of credentials would be paid on every line. Longest form first so a
-    secret that is a substring of another is masked whole.
+    secret that is a substring of another is masked whole. ``min_length``
+    lowers the floor for a caller that masks shorter secrets too (a device
+    audit's report).
     """
+    floor = MIN_SECRET_LEN if min_length is None else min_length
     forms: list[tuple[str, bool]] = []
     for secret in secrets:
-        if not isinstance(secret, str) or len(secret) < MIN_SECRET_LEN:
+        if not isinstance(secret, str) or len(secret) < floor:
             continue
         forms.extend(_variants(secret))
     if not forms:
@@ -171,7 +176,7 @@ def compile_secret_pattern(secrets: Iterable[str]) -> re.Pattern[str] | None:
 
 
 def compile_secret_bytes_pattern(
-    secrets: Iterable[str],
+    secrets: Iterable[str], *, min_length: int | None = None,
 ) -> re.Pattern[bytes] | None:
     """The byte form of :func:`compile_secret_pattern`, for raw wire bytes.
 
@@ -182,9 +187,10 @@ def compile_secret_bytes_pattern(
     would leave an odd-length string no reader can decode. Same forms and the
     same edge rule as the text pattern, matched against the UTF-8 encoding.
     """
+    floor = MIN_SECRET_LEN if min_length is None else min_length
     forms: list[tuple[bytes, bool]] = []
     for secret in secrets:
-        if not isinstance(secret, str) or len(secret) < MIN_SECRET_LEN:
+        if not isinstance(secret, str) or len(secret) < floor:
             continue
         for text, bounded in _variants(secret):
             forms.append((text.encode("utf-8"), bounded))

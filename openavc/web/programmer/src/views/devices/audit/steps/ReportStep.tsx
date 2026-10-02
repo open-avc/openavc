@@ -3,7 +3,7 @@ import { Check, Download, Loader2 } from "lucide-react";
 import * as audit from "../../../../api/auditClient";
 import { parseApiError } from "../../../../api/errors";
 import { useAuditStore } from "../../../../store/auditStore";
-import { summaryLines } from "../auditHelpers";
+import { publishedSecretNotices, summaryLines } from "../auditHelpers";
 import { BackButton, ErrorLine } from "../auditParts";
 import {
   buttonStyle,
@@ -206,6 +206,12 @@ export function ReportStep() {
         />
         Leave the serial number out of the report
       </label>
+
+      {publishedSecretNotices(session.runs).map((text) => (
+        <p key={text} role="note" style={{ ...hintStyle, marginTop: "var(--space-md)" }}>
+          {text}
+        </p>
+      ))}
 
       {error && (
         <div style={{ marginTop: "var(--space-md)" }}>
