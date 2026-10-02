@@ -217,6 +217,7 @@ export function preselect(
   verdictDriver: string | null,
   candidates: string[],
   reported: { manufacturer?: string | null; model?: string | null },
+  replies: string[] = [],
 ): Preselection | null {
   const driverId = verdictDriver || candidates[0] || "";
   if (!driverId) return null;
@@ -227,7 +228,35 @@ export function preselect(
     entries.find((o) => maker && same(o.brand, maker)) ??
     entries.find((o) => !o.isVia) ??
     entries[0];
-  return { brand: entry.brand, model: matchModel(entry.models, reported.model ?? ""), driverId };
+  const model =
+    matchModel(entry.models, reported.model ?? "") ?? modelNamedIn(entry.models, replies);
+  return { brand: entry.brand, model, driverId };
+}
+
+function words(text: string): string[] {
+  return text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+/**
+ * The listed model a device's reply names: every word of the model, in order,
+ * among the reply's words ("Connect Series 352D" in "Connect Series Model 352D",
+ * never "Connect Series 352", whose 352 is not a word there). The model with
+ * the most words wins; two that tie name nothing.
+ */
+export function modelNamedIn(models: string[], replies: string[]): string | null {
+  const said = replies.map(words);
+  const inOrder = (want: string[], have: string[]) => {
+    let at = 0;
+    for (const w of have) if (w === want[at]) at++;
+    return at === want.length;
+  };
+  const found = models
+    .map((m) => ({ m, w: words(m) }))
+    .filter(({ w }) => w.length > 0 && said.some((have) => inOrder(w, have)))
+    .sort((a, b) => b.w.length - a.w.length);
+  if (found.length === 0) return null;
+  if (found.length > 1 && found[1].w.length === found[0].w.length) return null;
+  return found[0].m;
 }
 
 /**

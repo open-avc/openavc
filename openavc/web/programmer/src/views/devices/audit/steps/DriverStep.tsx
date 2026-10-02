@@ -123,11 +123,19 @@ export function DriverStep() {
       return;
     }
     // From a device page, the driver that device uses; otherwise the verdict's.
+    const picked = session.origin?.driver || result?.verdict.identification.driver_id || null;
+    // What the picked driver's own identification check heard back: a
+    // reply often names the model when nothing else reported it.
+    const replies = (result?.verdict.explanation.signals ?? [])
+      .filter((s) => !picked || s.drivers.includes(picked))
+      .map((s) => (s.evidence?.data as { response?: { text?: unknown } } | undefined)?.response?.text)
+      .filter((t): t is string => typeof t === "string");
     const pick = preselect(
       options,
-      session.origin?.driver || result?.verdict.identification.driver_id || null,
+      picked,
       result?.verdict.identification.candidates ?? [],
       { manufacturer: result?.device?.manufacturer, model: result?.device?.model },
+      replies,
     );
     if (pick) {
       setBrand(pick.brand);

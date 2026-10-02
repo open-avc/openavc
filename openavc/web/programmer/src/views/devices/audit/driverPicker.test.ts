@@ -6,6 +6,7 @@ import {
   installState,
   manufacturers,
   matchModel,
+  modelNamedIn,
   modelsFor,
   optionConfidence,
   preselect,
@@ -125,6 +126,21 @@ describe("the first selection", () => {
     expect(matchModel(["W-100"], "w-100")).toBe("W-100");
     expect(matchModel(["W-100"], "W-1000")).toBeNull();
     expect(matchModel(["W-100"], "")).toBeNull();
+  });
+
+  it("picks the model the identification reply names when nothing reported one", () => {
+    const models = ["Widget Series 352", "Widget Series 352D", "Widget Series 704D"];
+    expect(modelNamedIn(models, ['/acme/modelID "Widget Series Model 352D"\n'])).toBe(
+      "Widget Series 352D",
+    );
+    // 352 is not a word of that reply, so the analog model is not named.
+    expect(modelNamedIn(["Widget Series 352"], ["Widget Series Model 352D"])).toBeNull();
+    // Two models named as specifically: neither is picked.
+    expect(modelNamedIn(["W-100", "W-200"], ["W 100 W 200"])).toBeNull();
+    expect(modelNamedIn(models, [])).toBeNull();
+    expect(
+      preselect(options, "generic_visca", [], { manufacturer: "Acme" }, ["Acme W-100 ready"]),
+    ).toEqual({ brand: "Acme", model: "W-100", driverId: "generic_visca" });
   });
 });
 
