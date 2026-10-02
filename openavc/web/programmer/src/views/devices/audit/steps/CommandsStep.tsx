@@ -37,6 +37,7 @@ import {
   movedText,
   movingText,
   notTried,
+  nowReading,
   paramsText,
   sendWarning,
   trialOutcome,
@@ -157,6 +158,9 @@ export function CommandsStep() {
             onChange={(name, v) => setValues((prev) => ({ ...prev, [name]: v }))}
             pickers={pickers}
           />
+        )}
+        {nowReading(c, values, run.listen?.status_table) && (
+          <div style={hintStyle}>{nowReading(c, values, run.listen?.status_table)}</div>
         )}
         <div style={{ marginTop: "var(--space-sm)" }}>
           <button

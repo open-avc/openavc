@@ -3,6 +3,7 @@ import type {
   AuditCommandInfo,
   AuditCommandTrial,
   AuditCommands,
+  AuditListen,
   AuditReportDriver,
   AuditSessionState,
 } from "../../../api/auditClient";
@@ -21,6 +22,7 @@ import {
   movedText,
   movingText,
   notTried,
+  nowReading,
   paramsText,
   sendWarning,
   stepFor,
@@ -329,5 +331,22 @@ describe("what changed", () => {
     };
     expect(mergeCommands(before, { current: 1 }).changed).toBe(changed);
     expect(mergeCommands(before, { changed: [] }).changed).toEqual([]);
+  });
+});
+
+describe("what a command sets reads now", () => {
+  const table = {
+    variables: [{ name: "volume", label: "Volume", value: 20, reported: true }],
+    children: { output: { "01": { mute: true } } },
+    child_labels: {},
+    settings: [],
+  } as unknown as AuditListen["status_table"];
+  const cmd = (sets: Record<string, unknown>) => ({ sets } as unknown as AuditCommandInfo);
+
+  it("says the value to put back", () => {
+    expect(nowReading(cmd({ volume: "{level}" }), {}, table)).toBe("Now: Volume 20");
+    expect(nowReading(cmd({ mute: true }), { child_id: "1" }, table)).toBe("Now: output 01 mute true");
+    expect(nowReading(cmd({}), {}, table)).toBe("");
+    expect(nowReading(cmd({ input: "{source}" }), {}, table)).toBe("");
   });
 });

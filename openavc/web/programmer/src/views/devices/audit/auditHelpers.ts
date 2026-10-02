@@ -437,6 +437,40 @@ export function secondsLeft(listen: AuditListen | undefined, now: number): numbe
   return Math.max(0, Math.ceil(listen.ends_at - now));
 }
 
+/**
+ * What the values a command sets read now ("Now: Volume 20"), so a person
+ * knows the value to put back after trying it. The device's own values, and
+ * a channel's or zone's when the command addresses one by its child_id.
+ */
+export function nowReading(
+  command: AuditCommandInfo,
+  values: Record<string, string>,
+  table: AuditListen["status_table"] | null | undefined,
+): string {
+  const vars = new Map((table?.variables ?? []).map((v) => [v.name, v]));
+  const child = (values.child_id ?? "").trim();
+  const shown = (v: unknown) =>
+    typeof v === "boolean" ? (v ? "true" : "false") : String(v);
+  const parts: string[] = [];
+  for (const state of Object.keys(command.sets ?? {})) {
+    const v = vars.get(state);
+    if (v && v.value !== null && v.value !== undefined) {
+      parts.push(`${v.label} ${shown(v.value)}`);
+      continue;
+    }
+    if (!child) continue;
+    for (const [ctype, kids] of Object.entries(table?.children ?? {})) {
+      const id = Object.keys(kids).find((k) => k === child || Number(k) === Number(child));
+      const value = id !== undefined ? kids[id]?.[state] : undefined;
+      if (value !== null && value !== undefined) {
+        parts.push(`${ctype} ${id} ${state} ${shown(value)}`);
+        break;
+      }
+    }
+  }
+  return parts.length > 0 ? `Now: ${parts.join(", ")}` : "";
+}
+
 /** A status value as the table shows it. */
 export function statusValue(v: AuditStatusVariable): string {
   if ((!v.reported && !v.set_by_driver) || v.value === null || v.value === undefined) {
