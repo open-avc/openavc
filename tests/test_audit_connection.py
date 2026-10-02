@@ -190,18 +190,49 @@ async def test_saved_settings_stay_on_the_server(wired, drivers):  # noqa: F811
     await wired.manager.shutdown()
 
 
-async def test_a_simulated_serial_port_is_refused_before_connecting(wired):  # noqa: F811
+async def test_a_serial_connection_is_refused_before_connecting(wired):  # noqa: F811
     serial = dict(TCP_DRIVER, id="acme_serial_x", transport="serial", auth=None)
     _DRIVER_REGISTRY["acme_serial_x"] = create_configurable_driver_class(serial)
     try:
         session_id = await _session_with_driver(wired, "acme_serial_x")
         with pytest.raises(HTTPException) as exc:
             await routes.set_session_connection(session_id, AuditConnectionRequest(
-                config={"port": "SIM:bench"},
+                config={"port": "COM3"},
             ))
-        assert exc.value.status_code == 409 and "simulated port" in exc.value.detail
+        assert exc.value.status_code == 409 and "devices on the network" in exc.value.detail
     finally:
         _DRIVER_REGISTRY.pop("acme_serial_x", None)
+        await wired.manager.shutdown()
+
+
+async def test_the_driver_connects_to_the_audited_device_only(wired, drivers, monkeypatch):  # noqa: F811
+    """Another host is refused before anything stops or connects; no host is
+    the audited address; a name for that address is accepted."""
+    from openavc.audit import footprint as fpmod
+
+    real = fpmod.resolve_address
+
+    async def resolve(address):
+        return "127.0.0.1" if address == "amp.lab" else await real(address)
+
+    monkeypatch.setattr(fpmod, "resolve_address", resolve)
+    session_id = await _session_with_driver(wired, "acme_login_tcp")
+    try:
+        with pytest.raises(HTTPException) as exc:
+            await routes.set_session_connection(session_id, AuditConnectionRequest(
+                config={"host": "10.9.9.9", "port": 2323},
+            ))
+        assert exc.value.status_code == 409
+        assert "connects there, not to 10.9.9.9" in exc.value.detail
+        result = await routes.set_session_connection(session_id, AuditConnectionRequest(
+            config={"port": 2323},
+        ))
+        assert result["session"]["runs"][-1]["connection"]["config"]["host"] == "127.0.0.1"
+        result = await routes.set_session_connection(session_id, AuditConnectionRequest(
+            config={"host": "amp.lab", "port": 2323},
+        ))
+        assert result["session"]["runs"][-1]["connection"]["config"]["host"] == "amp.lab"
+    finally:
         await wired.manager.shutdown()
 
 

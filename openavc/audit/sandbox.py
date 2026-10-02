@@ -37,8 +37,7 @@ sandbox's own, so production's is untouched.
 
 **Nothing is written on connect**: the device carries no pending settings.
 
-**A serial port that would simulate is refused** (a ``SIM:`` path, or serial
-support missing), since a report about a simulated port describes nothing.
+**Network devices only**: a connection over a serial port is refused.
 
 **Strict state is left off**, although the plan asked for it. Strict mode
 raises on a write to undeclared state before the write happens, so the value
@@ -67,13 +66,9 @@ log = get_logger(__name__)
 
 AUDIT_DEVICE_PREFIX = "audit-"
 
-SIMULATED_PORT = (
-    "The serial port {port} is a simulated port (its name starts with SIM:). "
-    "Choose the port the device is plugged into."
-)
-NO_SERIAL_SUPPORT = (
-    "This copy of OpenAVC cannot open serial ports, because its serial support "
-    "is not installed. Reinstall OpenAVC, then run the audit again."
+SERIAL_REFUSED = (
+    "The audit tests devices on the network, and this connection is a serial port. "
+    "Choose a driver that connects over the network."
 )
 NOT_INSTALLED = "The driver {driver} is not installed. Install it, then try again."
 
@@ -110,18 +105,6 @@ class AuditProjectView:
 
     connections: dict[str, dict[str, Any]] = field(default_factory=dict)
     devices: list[Any] = field(default_factory=list)
-
-
-def serial_refusal(config: dict[str, Any]) -> str | None:
-    """Why a serial connection with this config would not be the real port."""
-    from openavc.transport import serial_transport
-
-    port = str(config.get("port") or "")
-    if port.upper().startswith("SIM:"):
-        return SIMULATED_PORT.format(port=port)
-    if not serial_transport.HAS_SERIAL:
-        return NO_SERIAL_SUPPORT
-    return None
 
 
 async def target_names(project: Any, address: str, ip: str) -> list[str]:
@@ -223,9 +206,7 @@ class DriverSandbox:
             resolved["config"].get("transport") or get_driver_transport(self.driver_id) or "tcp"
         )
         if transport == "serial":
-            refusal = serial_refusal(resolved["config"])
-            if refusal:
-                raise AuditError(refusal)
+            raise AuditError(SERIAL_REFUSED)
         self.resolved = resolved
         self.transport = transport
         return resolved

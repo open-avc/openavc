@@ -47,7 +47,8 @@ the one before.
    be installed here. If there is no driver for the device yet, choose **No driver yet: skip
    to the report**, and the report covers the network check.
 4. **Connection.** The driver's connection settings, filled in from the driver's defaults or
-   the paused device's saved settings. **Save and show what connecting sends** lists what the
+   the paused device's saved settings. The driver always connects to the audited address over
+   the network. **Save and show what connecting sends** lists what the
    driver will send when it connects, before anything is sent.
 5. **Connect and listen.** Connects the way adding the device to a space does, sends none of
    the driver's commands, and listens for 45 seconds or three of the driver's status polls,

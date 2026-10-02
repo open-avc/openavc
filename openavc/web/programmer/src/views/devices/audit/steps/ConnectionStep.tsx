@@ -7,9 +7,8 @@ import type { DriverInfo } from "../../../../api/types";
 import { useAuditStore } from "../../../../store/auditStore";
 import {
   ConfigFieldInputs,
-  ConnectionModePicker,
   driverSerialCapable,
-  hiddenRawConfigKeys,
+  primaryNetworkTransport as networkTransport,
 } from "../../DeviceDialogs";
 import { coerceConfigValue } from "../../deviceConfigCoerce";
 import {
@@ -23,16 +22,37 @@ import { currentRun, displayBytes, previewStageLabel } from "../auditHelpers";
 import { BackButton, ErrorLine } from "../auditParts";
 import { buttonStyle, headingStyle, hintStyle, labelStyle, panelStyle, spinStyle } from "../auditStyles";
 
+/** The connection fields the audit sets itself: the driver connects to the
+ *  audited address over the network, never a serial port or a bridge. */
+const NOT_ASKED = new Set([
+  "host", "transport", "bridge", "bridge_port", "usb_serial", "baudrate", "bytesize", "parity",
+  "stopbits", "flow_control", "ir_codes",
+]);
+
 /** The config values a form starts from: the driver's defaults, then the
- *  audited address. Every value is a string, as the shared fields expect. */
+ *  audited address, on the driver's network transport. Every value is a
+ *  string, as the shared fields expect. */
 function startingValues(driver: DriverInfo | undefined, address: string): Record<string, string> {
   const values: Record<string, string> = {};
   for (const [key, value] of Object.entries(driver?.default_config ?? {})) {
     if (value == null) continue;
     values[key] = typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
   }
-  if (address) values.host = address;
-  return values;
+  return networkValues(values, driver, address);
+}
+
+function networkValues(
+  values: Record<string, string>,
+  driver: DriverInfo | undefined,
+  address: string,
+): Record<string, string> {
+  const next: Record<string, string> = { ...values, host: address };
+  if (driverSerialCapable(driver)) {
+    next.transport = networkTransport(driver);
+    // A serial port name is no network port.
+    if (next.port && /[A-Za-z]/.test(next.port)) next.port = "";
+  }
+  return next;
 }
 
 /** The driver's table fields (a list of objects, a chain of units), each with
@@ -111,19 +131,18 @@ export function ConnectionStep() {
 
   const driverInfo = useMemo(() => drivers.find((d) => d.id === driverId), [drivers, driverId]);
   const schema = (driverInfo?.config_schema ?? {}) as Record<string, Record<string, unknown>>;
-  const serialCapable = driverSerialCapable(driverInfo);
   const tableSpecs = tableFields(driverInfo);
-  const fieldKeys = Object.keys(schema).filter(
-    (k) => !hiddenRawConfigKeys(driverInfo).has(k) && !(k in tableSpecs),
-  );
+  const fieldKeys = Object.keys(schema).filter((k) => !NOT_ASKED.has(k) && !(k in tableSpecs));
   const savedDevice = saved.find((s) => s.device_id === useSaved);
 
   function applySaved(device: audit.AuditSavedSettings, info: DriverInfo | undefined) {
-    const next = startingValues(info, address);
+    let next = startingValues(info, address);
     for (const [key, value] of Object.entries(device.config)) {
       if (value == null) continue;
       next[key] = typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
     }
+    // Its saved host may be a name for this address; the audit's is the one used.
+    next = networkValues(next, info, address);
     setValues(next);
     setTables(startingTables(info, next));
     setUseSaved(device.device_id);
@@ -218,16 +237,6 @@ export function ConnectionStep() {
         </div>
       ) : (
         <div style={{ fontSize: "var(--font-size-sm)" }}>
-          {serialCapable && (
-            <ConnectionModePicker
-              driverInfo={driverInfo}
-              configValues={values}
-              setConfigValues={setValues}
-              devices={[]}
-              drivers={drivers}
-              allowBridge={false}
-            />
-          )}
           <ConfigFieldInputs
             configKeys={fieldKeys}
             driverInfo={driverInfo}

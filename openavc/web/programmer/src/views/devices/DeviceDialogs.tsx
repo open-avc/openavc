@@ -278,7 +278,7 @@ function driverNetworkCapable(d: DriverInfo | undefined): boolean {
   return NETWORK_TRANSPORTS.includes(t) || ts.some((x) => NETWORK_TRANSPORTS.includes(x));
 }
 
-function primaryNetworkTransport(d: DriverInfo | undefined): string {
+export function primaryNetworkTransport(d: DriverInfo | undefined): string {
   const t = (d?.transport || "").toLowerCase();
   if (NETWORK_TRANSPORTS.includes(t)) return t;
   const ts = (d?.transports || []).map((x) => String(x).toLowerCase());

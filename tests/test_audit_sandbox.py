@@ -17,11 +17,10 @@ import pytest
 from fastapi import FastAPI
 
 from openavc.audit.sandbox import (
-    NO_SERIAL_SUPPORT,
+    SERIAL_REFUSED,
     AuditProjectView,
     DriverSandbox,
     audit_device_id,
-    serial_refusal,
     unpaused_devices_at,
 )
 from openavc.audit.session import AuditError
@@ -196,23 +195,17 @@ async def test_the_push_route_reaches_an_audit_device(driver_class):
         server.close()
 
 
-def test_a_serial_port_that_would_simulate_is_refused(monkeypatch):
-    from openavc.transport import serial_transport
-
-    assert "SIM:lab" in serial_refusal({"port": "SIM:lab"})
-    monkeypatch.setattr(serial_transport, "HAS_SERIAL", False)
-    assert serial_refusal({"port": "COM3"}) == NO_SERIAL_SUPPORT
-    monkeypatch.setattr(serial_transport, "HAS_SERIAL", True)
-    assert serial_refusal({"port": "COM3"}) is None
-
-
-def test_a_serial_driver_on_a_simulated_port_does_not_start():
+@pytest.mark.parametrize("port", ["COM3", "SIM:lab"])
+def test_a_serial_connection_does_not_start(port):
+    """The audit tests network devices: a serial port is refused, a real
+    one or a simulated one."""
     cls = create_configurable_driver_class(_definition(id="acme_sandbox_serial", transport="serial"))
     _DRIVER_REGISTRY["acme_sandbox_serial"] = cls
     try:
-        sandbox = DriverSandbox("audit-s5", "acme_sandbox_serial", {"port": "SIM:lab"})
-        with pytest.raises(AuditError, match="simulated port"):
+        sandbox = DriverSandbox("audit-s5", "acme_sandbox_serial", {"port": port})
+        with pytest.raises(AuditError) as refused:
             sandbox.prepare()
+        assert str(refused.value) == SERIAL_REFUSED
     finally:
         _DRIVER_REGISTRY.pop("acme_sandbox_serial", None)
 

@@ -39,6 +39,10 @@ RUN_IN_PROGRESS = (
     "{driver} is still connected to the device. Choose Test another driver to "
     "finish with it first."
 )
+OTHER_HOST = (
+    "This audit tests the device at {address}, so the driver connects there, not to "
+    "{host}. To test {host}, finish this audit and start one for it."
+)
 NO_DRIVER_CHOSEN = "Choose the driver to test first."
 NOT_SAVED_HERE = "That device's saved settings are not available to this audit."
 # The latest changes kept per status value while nothing was being watched.
@@ -270,6 +274,18 @@ def _secret_keys(config: dict[str, Any], schema: dict[str, Any]) -> set[str]:
     return {k for k in config if k in declared or is_secret_key(k)}
 
 
+async def _is_target(session: "AuditSession", host: str) -> bool:
+    """Whether ``host`` names the audited device (its address as typed, its
+    IP, or a name that resolves to that IP)."""
+    from openavc.audit.footprint import resolve_address
+
+    target = session.target
+    same = host.rstrip(".").lower()
+    if same in {target.address.strip().rstrip(".").lower(), (target.ip or "").lower()}:
+        return True
+    return bool(target.ip) and await resolve_address(host) == target.ip
+
+
 def _published_secrets(
     info: dict[str, Any], identity: dict[str, Any], config: dict[str, Any], secret_keys: set[str],
 ) -> list[str]:
@@ -375,8 +391,6 @@ async def set_connection(
     run = current_run(session)
     if run is None or not run.choice.driver_id:
         raise AuditError(NO_DRIVER_CHOSEN)
-    # New settings end a connection made with the old ones.
-    await run.end_attempt()
     entered = {k: v for k, v in config.items() if v not in (None, "")}
     base: dict[str, Any] = {}
     saved_name = ""
@@ -384,6 +398,15 @@ async def set_connection(
         base = _saved_config(session, project, use_saved)
         saved_name = next((p.name for p in session.paused if p.device_id == use_saved), use_saved)
     merged = {**base, **entered}
+    # The driver connects to the audited device and nothing else: what was
+    # paused, checked and given saved secrets is that device.
+    host = str(merged.get("host") or "").strip()
+    if not host:
+        merged["host"] = session.target.address
+    elif not await _is_target(session, host):
+        raise AuditError(OTHER_HOST.format(host=host, address=session.target.address))
+    # New settings end a connection made with the old ones.
+    await run.end_attempt()
 
     info = _driver_info(run.choice.driver_id)
     sandbox = DriverSandbox(audit_device_id(session.id), run.choice.driver_id, merged)
