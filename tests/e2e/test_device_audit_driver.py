@@ -266,6 +266,8 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     expect(dialog.get_by_text(
         re.compile(r"^Input is now hdmi2, as the driver says it should be"),
     )).to_be_visible(timeout=EXPECT_TIMEOUT)
+    # Under the form, what the value it sets reads now: the one to put back.
+    expect(dialog.get_by_text("Now: Input hdmi2", exact=True)).to_be_visible(timeout=EXPECT_TIMEOUT)
     answers = dialog.get_by_role("group", name="Did Set Input happen?")
     answers.get_by_role("button", name="Yes").click()
     expect(answers.get_by_role("button", name="Yes")).to_have_attribute(
