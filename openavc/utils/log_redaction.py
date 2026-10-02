@@ -48,11 +48,15 @@ from typing import Any, Iterable
 from urllib.parse import quote, quote_plus
 
 # Config field names whose values are credentials. Matched case-insensitively:
-# exact names for ambiguous words (so a benign `user_label` isn't caught),
-# substrings for the unambiguous secret markers. Mirrors the auth fields
-# BaseDriver.connect reads (username/password/token/api_key) plus common
-# variants.
-SECRET_KEY_EXACT = frozenset({"username", "user", "bearer"})
+# exact names for ambiguous words (so a benign `user_label` isn't caught, nor a
+# command's `send_key` or a setting's `state_key`), substrings for the
+# unambiguous secret markers. Mirrors the auth fields BaseDriver.connect reads
+# (username/password/token/api_key) plus common variants: a pre-shared key, a
+# PIN, and the keys a device hands out or a stream signs in with.
+SECRET_KEY_EXACT = frozenset({
+    "username", "user", "bearer", "psk", "pin", "key", "app_key", "client_key",
+    "session_key", "stream_key", "access_key", "pre_shared_key",
+})
 SECRET_KEY_SUBSTRINGS = (
     "password", "passwd", "passphrase", "secret",
     "token", "api_key", "apikey", "credential", "private",

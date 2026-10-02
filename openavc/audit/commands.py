@@ -99,6 +99,7 @@ from openavc.core.device_traffic import RX, TX, serialize_entry
 from openavc.core.state_store import is_flat_primitive
 from openavc.drivers.base import missing_required_params
 from openavc.drivers.compiled_protocol import coerce_bool_token, is_bool_token
+from openavc.utils.log_redaction import is_secret_key
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -655,11 +656,14 @@ class CommandPass:
 
     def _open_trial(self, entry: dict[str, Any], params: dict[str, Any], *, batch: bool) -> CommandTrial:
         name = entry["name"]
-        # A value typed into a secret parameter (a password a command sets)
-        # is masked in every record, the traffic included.
+        # A value typed into a secret parameter (a password a command sets,
+        # or one named like a credential) is masked in every record, the
+        # traffic included.
         secret_names = {
             k for k, pdef in (entry.get("params") or {}).items()
-            if isinstance(pdef, dict) and (pdef.get("secret") or pdef.get("type") == "password")
+            if isinstance(pdef, dict) and (
+                pdef.get("secret") or pdef.get("type") == "password" or is_secret_key(k)
+            )
         }
         secret = {str(params[k]) for k in secret_names if params.get(k) not in (None, "")}
         if secret:

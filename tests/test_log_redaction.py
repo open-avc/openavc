@@ -157,15 +157,32 @@ def test_the_longer_of_two_overlapping_credentials_wins(clean_registry):
 
 
 @pytest.mark.parametrize(
-    "key", ["password", "Password", "api_key", "passphrase", "token", "username"]
+    "key", ["password", "Password", "api_key", "passphrase", "token", "username",
+            "psk", "PSK", "pin", "key", "app_key", "client_key", "stream_key"]
 )
 def test_conventional_credential_names_are_recognised(key):
     assert is_secret_key(key) is True
 
 
-@pytest.mark.parametrize("key", ["host", "port", "user_label", "poll_interval"])
+@pytest.mark.parametrize(
+    "key", ["host", "port", "user_label", "poll_interval", "send_key", "remote_key",
+            "state_key", "registry_key", "pin_number"],
+)
 def test_ordinary_config_names_are_not_credentials(key):
     assert is_secret_key(key) is False
+
+
+def test_a_header_carrying_a_known_credential_is_masked(clean_registry):
+    """A pre-shared key in a custom header (X-Auth-PSK) is masked in the
+    recorded traffic once its config field is known to be a credential."""
+    from openavc.core.device_traffic import TrafficRedactor, header_pairs
+
+    secrets = collect_secret_values({"host": "10.0.0.5", "psk": "sekrit99"})
+    assert secrets == {"sekrit99"}
+    pairs = header_pairs({"X-Auth-PSK": "sekrit99", "Accept": "application/json"})
+    assert TrafficRedactor(secrets).value({"headers": pairs}) == {
+        "headers": [["X-Auth-PSK", "***"], ["Accept", "application/json"]],
+    }
 
 
 def test_a_declared_secret_field_is_collected_whatever_it_is_called():

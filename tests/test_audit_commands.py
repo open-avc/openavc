@@ -75,6 +75,12 @@ DRIVER = {
             "send": "CODE {pin}\\r",
             "params": {"pin": {"type": "string", "secret": True, "required": True}},
         },
+        "set_psk": {
+            "label": "Set PSK",
+            "send": "PSK {psk}\\r",
+            # Not marked secret: its name says it is a credential.
+            "params": {"psk": {"type": "string", "required": True}},
+        },
         "set_input": {
             "label": "Set Input",
             "send": "INP {source}\\r",
@@ -192,7 +198,8 @@ def test_the_command_list_is_the_drivers_own(driver):
 
     catalog = {c["name"]: c for c in command_catalog(_DRIVER_REGISTRY["acme_commands"])}
     assert list(catalog) == [
-        "power_on", "set_volume", "query_power", "query_volume", "set_code", "set_input", "reboot",
+        "power_on", "set_volume", "query_power", "query_volume", "set_code", "set_psk", "set_input",
+        "reboot",
         "blip",
     ]
     assert catalog["query_power"]["query"] and catalog["query_power"]["query_for"] == "power"
@@ -268,22 +275,23 @@ async def test_the_status_queries_run_together(driver):
         server.close()
 
 
-async def test_a_secret_parameter_stays_out_of_every_record(driver):
+@pytest.mark.parametrize("command,param", [("set_code", "pin"), ("set_psk", "psk")])
+async def test_a_secret_parameter_stays_out_of_every_record(driver, command, param):
     server, port = await _fake_device()
     session, run, _ = await _connected(port)
     try:
         commands = commands_for(session, run, **WINDOW)
-        trial = await commands.send("set_code", {"pin": "tulip-7391"})
+        trial = await commands.send(command, {param: "tulip-7391"})
         await _until(lambda: trial.status == DONE)
         view = commands.to_dict()["trials"][0]
-        assert view["params"] == {"pin": "***"}
+        assert view["params"] == {param: "***"}
         assert "tulip-7391" not in str(view)
         assert all("tulip-7391" not in e.text for e in session.timeline)
     finally:
         await run.stop()
         server.close()
     report = build_report(session)
-    assert report["drivers"][0]["commands"]["trials"][0]["command"] == "set_code"
+    assert report["drivers"][0]["commands"]["trials"][0]["command"] == command
     assert "tulip-7391" not in str(report)
 
 
