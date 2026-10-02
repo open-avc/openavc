@@ -253,6 +253,10 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     )).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )
+    # The device settings sit below the commands; the top of the step goes there.
+    expect(dialog.get_by_role(
+        "button", name=re.compile(r"^Go to the device settings \(\d+\), below the commands$"),
+    )).to_be_visible()
     dialog.get_by_role("button", name="Set Input (suggested): Not tried yet").click()
     dialog.get_by_role("button", name="Select...", exact=True).click()
     page.get_by_role("option", name=re.compile("^hdmi2")).click()

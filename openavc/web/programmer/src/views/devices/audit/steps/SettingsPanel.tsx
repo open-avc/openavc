@@ -9,6 +9,9 @@ import { needsPuttingBack, settingsCount, suggestedSetting } from "../auditHelpe
 import { ErrorLine } from "../auditParts";
 import { buttonStyle, hintStyle, labelStyle, panelStyle, spinStyle } from "../auditStyles";
 
+/** Where "Go to the device settings" on the Commands step scrolls to. */
+export const SETTINGS_ANCHOR = "audit-device-settings";
+
 function valueText(value: unknown): string {
   if (value === null || value === undefined) return "not reported";
   if (typeof value === "boolean") return value ? "true" : "false";
@@ -57,7 +60,7 @@ export function SettingsPanel({
     ? [...settings.catalog.filter((s) => s.key === first), ...settings.catalog.filter((s) => s.key !== first)]
     : settings.catalog;
   return (
-    <div style={{ marginTop: "var(--space-lg)" }}>
+    <div id={SETTINGS_ANCHOR} style={{ marginTop: "var(--space-lg)", scrollMarginTop: "var(--space-md)" }}>
       <div style={labelStyle}>Device settings</div>
       <p style={{ fontSize: "var(--font-size-sm)", margin: "0 0 var(--space-sm)" }}>
         This checks that a setting OpenAVC writes takes effect on the device. Enter a new value and

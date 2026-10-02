@@ -320,7 +320,8 @@ function PreviewPanel({ connection }: { connection: audit.AuditConnection }) {
       )}
       {!preview.available ? (
         <div style={{ fontSize: "var(--font-size-sm)" }}>
-          {preview.reason} The report records everything it sends.
+          {preview.reason} Connect and listen shows every byte it sends as it happens, and the
+          report keeps them all.
         </div>
       ) : preview.steps.length === 0 ? (
         <div style={{ fontSize: "var(--font-size-sm)" }}>

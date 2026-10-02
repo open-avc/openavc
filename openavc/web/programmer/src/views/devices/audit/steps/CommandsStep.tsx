@@ -43,7 +43,7 @@ import {
   type CommandStatusKey,
 } from "../auditHelpers";
 import { BackButton, ErrorLine } from "../auditParts";
-import { SettingsPanel } from "./SettingsPanel";
+import { SETTINGS_ANCHOR, SettingsPanel } from "./SettingsPanel";
 import {
   buttonStyle,
   headingStyle,
@@ -247,6 +247,20 @@ export function CommandsStep() {
       {catalog.length > 0 && (
         <div role="status" style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, marginBottom: "var(--space-md)" }}>
           {commandProgress(catalog, trials)}
+        </div>
+      )}
+
+      {connected && (run.settings?.catalog.length ?? 0) > 0 && catalog.length > 0 && (
+        <div style={{ marginBottom: "var(--space-md)" }}>
+          <button
+            type="button"
+            onClick={() =>
+              document.getElementById(SETTINGS_ANCHOR)?.scrollIntoView({ behavior: "smooth", block: "start" })
+            }
+            style={buttonStyle("muted")}
+          >
+            Go to the device settings ({run.settings?.catalog.length}), below the commands
+          </button>
         </div>
       )}
 
