@@ -1642,7 +1642,7 @@ def _seconds_after(t: float | None, start: float | None) -> str:
 
 # Status values that hold the device's own model and firmware.
 _READ_IDENTITY = (
-    ("model", "Model", ("model", "model_name")),
+    ("model", "Model", ("model", "model_name", "model_id")),
     ("firmware", "Firmware", ("firmware", "firmware_version")),
 )
 
@@ -1667,14 +1667,22 @@ def _driver_read_identity(section: dict[str, Any]) -> list[tuple[str, str, str]]
 
 
 def _same_name(a: Any, b: Any) -> bool:
-    """Two ways of writing one model or version: equal, or one holds the
-    other, ignoring case, spaces and punctuation ("352D" in "Connect Series
-    Model 352D")."""
-    def squash(value: Any) -> str:
-        return "".join(ch for ch in str(value).lower() if ch.isalnum())
+    """Two ways of writing one model or version: every word of one appears,
+    in order, among the other's, ignoring case and punctuation ("Connect
+    Series 352D" in "Connect Series Model 352D"; "352" is not "352D"). The
+    rule Which driver? names a model by (``modelNamedIn``)."""
+    def words(value: Any) -> list[str]:
+        return [w for w in re.split(r"[^a-z0-9]+", str(value).lower()) if w]
 
-    x, y = squash(a), squash(b)
-    return bool(x and y) and (x in y or y in x)
+    def in_order(want: list[str], have: list[str]) -> bool:
+        at = 0
+        for w in have:
+            if at < len(want) and w == want[at]:
+                at += 1
+        return at == len(want)
+
+    x, y = words(a), words(b)
+    return bool(x and y) and (in_order(x, y) or in_order(y, x))
 
 
 def _attempt_sentence(attempt: dict[str, Any]) -> str:

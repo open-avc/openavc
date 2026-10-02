@@ -694,6 +694,12 @@ def test_the_report_says_what_the_driver_read_and_what_was_not_run():
     assert "Model, as the driver read it</th><td>W-200 (not the model entered, W-100)" in page
     assert "Firmware, as the driver read it</th><td>2.1.0</td>" in page
     assert "Front-panel check</th><td>not run" in page
+    # A model written two ways is not called different; one whose number differs is.
+    from openavc.audit.report import _same_name
+
+    assert _same_name("Connect Series 352D", "Connect Series Model 352D")
+    assert not _same_name("Connect Series 352", "Connect Series Model 352D")
+    assert _same_name("2.1", "2.1")
     assert "The power cycle and cable pull tests were not run." in "".join(_render_outages([]))
 
 
