@@ -420,3 +420,24 @@ async def test_the_wizard_hears_connected_while_the_drivers_start_up_is_still_ru
     finally:
         await run.stop()
         server.close()
+
+
+async def test_the_front_panel_check_can_be_answered_could_not_try(driver):
+    from openavc.audit.report import _render_driver
+
+    assert AuditFrontPanelRequest(answer="could_not_try").answer == "could_not_try"
+    server, port = await _fake_device()
+    session, run, _ = _session_and_run(port)
+    try:
+        listen = await start_listen(session, run, **FAST)
+        await _until(lambda: listen.connected_at is not None)
+        listen.answer_front_panel("could_not_try")
+        assert listen.front_panel["answer"] == "could_not_try"
+        assert session.timeline[-1].text == (
+            "The person could not change anything on the device to try it."
+        )
+        page = "".join(_render_driver({"driver": {}, "attempts": [listen.to_dict()]}))
+        assert "Front-panel check</th><td>not tried: nothing could be changed on the device" in page
+    finally:
+        await run.stop()
+        server.close()

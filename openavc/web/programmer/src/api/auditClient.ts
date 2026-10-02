@@ -286,7 +286,7 @@ export interface AuditListen {
     settings: { key: string; label: string; state_key: string; value: unknown; populated: boolean }[];
   };
   front_panel: {
-    answer: "showed" | "did_not";
+    answer: "showed" | "did_not" | "could_not_try";
     note: string;
     at: number;
     changes: { t: number; key: string; old: unknown; new: unknown }[];
@@ -801,7 +801,7 @@ export function keepListening(sessionId: string): Promise<{ session: AuditSessio
 
 export function answerFrontPanel(
   sessionId: string,
-  answer: "showed" | "did_not",
+  answer: "showed" | "did_not" | "could_not_try",
   note = "",
 ): Promise<{ session: AuditSessionState }> {
   return request(`/audit/sessions/${encodeURIComponent(sessionId)}/front-panel`, {

@@ -1832,8 +1832,10 @@ def _render_driver(section: dict[str, Any]) -> list[str]:
             )))
         front = attempt.get("front_panel")
         if front:
-            answer = "OpenAVC showed the change" if front.get("answer") == "showed" \
-                else "OpenAVC did not show the change"
+            answer = {
+                "showed": "OpenAVC showed the change",
+                "could_not_try": "not tried: nothing could be changed on the device",
+            }.get(front.get("answer"), "OpenAVC did not show the change")
             parts.append(_row("Front-panel check", _e(
                 answer + (f" ({front['note']})" if front.get("note") else "")
             )))

@@ -448,7 +448,7 @@ class AuditFrontPanelRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    answer: Literal["showed", "did_not"]
+    answer: Literal["showed", "did_not", "could_not_try"]
     note: str = Field(default="", max_length=2000)
 
 

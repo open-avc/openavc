@@ -81,6 +81,13 @@ STOPPED = "stopped"
 
 NO_CONNECTION_SET = "Enter the connection settings first."
 
+# The front-panel check's answers, as the timeline says them.
+FRONT_PANEL_TEXT = {
+    "showed": "The person changed something on the device, and OpenAVC showed it.",
+    "did_not": "The person changed something on the device, and OpenAVC did not show it.",
+    "could_not_try": "The person could not change anything on the device to try it.",
+}
+
 
 def _shown(value: Any) -> Any:
     """A state value as a record keeps it: as is when the store could hold
@@ -332,9 +339,7 @@ class ListenPass:
         self.front_panel = {"answer": answer, "note": note, "at": time.time(), "changes": seen}
         self._timeline(
             "listen.front_panel",
-            "The person changed something on the device, and OpenAVC showed it."
-            if answer == "showed"
-            else "The person changed something on the device, and OpenAVC did not show it.",
+            FRONT_PANEL_TEXT.get(answer, FRONT_PANEL_TEXT["did_not"]),
             answer=answer,
         )
         self._dirty = True

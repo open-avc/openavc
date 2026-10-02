@@ -29,7 +29,7 @@ export function ListenStep() {
   const traffic = useAuditStore((s) => s.traffic);
   const run = currentRun(session);
   const listen = run?.listen;
-  const [busy, setBusy] = useState<"" | "connect" | "extend" | "showed" | "did_not">("");
+  const [busy, setBusy] = useState<"" | "connect" | "extend" | "showed" | "did_not" | "could_not_try">("");
   const [error, setError] = useState("");
   const [now, setNow] = useState(() => Date.now() / 1000);
   const running = listen?.status === "listening" || listen?.status === "not_connected" || listen?.status === "connecting";
@@ -44,7 +44,7 @@ export function ListenStep() {
   const sessionId = session.session_id;
 
   const act = async (
-    kind: "connect" | "extend" | "showed" | "did_not",
+    kind: "connect" | "extend" | "showed" | "did_not" | "could_not_try",
     call: () => Promise<{ session: audit.AuditSessionState }>,
   ) => {
     setError("");
@@ -73,7 +73,8 @@ export function ListenStep() {
       <p style={{ fontSize: "var(--font-size-sm)", margin: "0 0 var(--space-md)" }}>
         This does what adding the device to a space does: it connects, signs in if needed, runs
         the driver's start-up steps and asks the device for its status. It sends none of the
-        driver's commands.
+        driver's commands. Once connected it listens for about a minute (at least 45 seconds
+        and three status polls); Keep listening adds more, up to five minutes in all.
       </p>
 
       {!listen ? (
@@ -99,6 +100,14 @@ export function ListenStep() {
         <>
           <StatusBanner listen={listen} left={left} />
           <div style={{ display: "flex", gap: "var(--space-sm)", flexWrap: "wrap", marginTop: "var(--space-sm)" }}>
+            <button
+              type="button"
+              onClick={() => useAuditStore.getState().setStep("commands")}
+              disabled={listen.status === "connecting"}
+              style={buttonStyle("primary", listen.status === "connecting")}
+            >
+              Continue
+            </button>
             {(listen.status === "listening" || listen.status === "done" || listen.status === "not_connected" || listen.status === "failed") && (
               <button
                 type="button"
@@ -146,7 +155,13 @@ export function ListenStep() {
               </div>
               {listen.front_panel ? (
                 <div style={{ ...hintStyle, fontSize: "var(--font-size-sm)" }}>
-                  Recorded: {listen.front_panel.answer === "showed" ? "it showed" : "it did not"}.
+                  Recorded:{" "}
+                  {listen.front_panel.answer === "showed"
+                    ? "it showed"
+                    : listen.front_panel.answer === "could_not_try"
+                      ? "you could not try it"
+                      : "it did not"}
+                  .
                 </div>
               ) : null}
               <div style={{ display: "flex", gap: "var(--space-sm)", marginTop: "var(--space-sm)" }}>
@@ -166,6 +181,14 @@ export function ListenStep() {
                 >
                   It did not
                 </button>
+                <button
+                  type="button"
+                  onClick={() => void act("could_not_try", () => audit.answerFrontPanel(sessionId, "could_not_try"))}
+                  disabled={busy !== ""}
+                  style={buttonStyle("muted", busy !== "")}
+                >
+                  I could not try it
+                </button>
               </div>
             </div>
           )}
@@ -178,19 +201,6 @@ export function ListenStep() {
       {error && (
         <div style={{ marginTop: "var(--space-md)" }}>
           <ErrorLine text={error} />
-        </div>
-      )}
-
-      {listen && (
-        <div style={{ marginTop: "var(--space-lg)" }}>
-          <button
-            type="button"
-            onClick={() => useAuditStore.getState().setStep("commands")}
-            disabled={listen.status === "connecting"}
-            style={buttonStyle("primary", listen.status === "connecting")}
-          >
-            Continue
-          </button>
         </div>
       )}
     </div>
