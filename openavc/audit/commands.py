@@ -1215,7 +1215,7 @@ def changed_values(run: Any) -> list[dict[str, Any]]:
     window saw the value move last (``{"number", "label"}``), or null when it
     moved while nothing was being watched (at the device itself, say).
     ``on_its_own`` is true for a value that was already changing when that
-    command was sent, or that changed while nothing was being watched after
+    command, or any other, was sent, or that changed while nothing was being watched after
     it (a meter, a clock), or only then: the audit did not leave it that way. A value the device has stopped reporting is
     left out: there is nothing to compare.
     """
@@ -1247,6 +1247,13 @@ def changed_values(run: Any) -> list[dict[str, Any]]:
             moved_by[change["key"]] = {"number": trial.number, "label": trial.label}
             sent_at[change["key"]] = trial.sent_at
             moving_then[change["key"]] = change["key"] in trial.already_moving
+    # A value any command found already changing when it went out moves on
+    # its own (a meter), even when the last window that saw it move did not
+    # catch it moving first.
+    moves_anyway = {
+        key for trial in (commands.trials if commands is not None else [])
+        for key in trial.already_moving
+    }
     unwatched = getattr(run, "unwatched", None) or {}
     out = []
     for key in sorted(now):
@@ -1261,7 +1268,7 @@ def changed_values(run: Any) -> list[dict[str, Any]]:
         # command that moved it was sent, or it changed unwatched after that
         # command (or it moved only unwatched).
         latest = unwatched.get(key)
-        on_its_own = moving_then.get(key, False) or (
+        on_its_own = moving_then.get(key, False) or key in moves_anyway or (
             bool(latest) and latest[-1] > sent_at.get(key, 0.0)
         )
         out.append({

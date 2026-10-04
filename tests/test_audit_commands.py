@@ -838,6 +838,33 @@ def test_a_value_already_changing_is_not_left_changed_by_the_command():
     assert changed["uptime"]["on_its_own"]
 
 
+def test_a_value_seen_changing_on_its_own_in_any_window_is_not_left_changed():
+    """A meter already moving when the first Mute went out, that moved again
+    in the last Mute's window and not since: it still changes without the
+    audit. Seen on the bench: an amplifier's other channel's output voltage
+    listed as left changed by the last Mute, to be set back by hand."""
+    from types import SimpleNamespace as NS
+
+    first = NS(
+        number=1, label="Mute Channel", sent_at=100.0, before={"volts": 0.019},
+        changes=[{"key": "volts"}], already_moving=["volts"],
+    )
+    last = NS(
+        number=5, label="Mute Channel", sent_at=200.0, before={"volts": 0.0190},
+        changes=[{"key": "volts"}], already_moving=[],
+    )
+    listen = NS(sandbox=NS(
+        started=True, driver=NS(DRIVER_INFO={}), device_state=lambda: {"volts": 0.0184},
+    ))
+    run = NS(
+        commands=NS(trials=[first, last]), settings=None, listen=listen,
+        unwatched={}, choice=NS(driver_id="acme"),
+    )
+    (volts,) = changed_values(run)
+    assert volts["on_its_own"]
+    assert volts["by"]["number"] == 5
+
+
 def test_a_value_the_device_spells_its_own_way_still_counts():
     assert same_value(True, "on") and same_value(True, 1) and not same_value(True, "off")
     assert same_value(40, "40") and same_value("hdmi1", "HDMI1")
