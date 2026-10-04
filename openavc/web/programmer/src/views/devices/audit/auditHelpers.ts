@@ -440,7 +440,8 @@ export function secondsLeft(listen: AuditListen | undefined, now: number): numbe
 /**
  * What the values a command sets read now ("Now: Volume 20"), so a person
  * knows the value to put back after trying it. The device's own values, and
- * a channel's or zone's when the command addresses one by its child_id.
+ * a channel's or zone's when the command addresses one through its one
+ * child_id parameter, whatever that parameter is called.
  */
 export function nowReading(
   command: AuditCommandInfo,
@@ -448,7 +449,12 @@ export function nowReading(
   table: AuditListen["status_table"] | null | undefined,
 ): string {
   const vars = new Map((table?.variables ?? []).map((v) => [v.name, v]));
-  const child = (values.child_id ?? "").trim();
+  const childParams = Object.entries(command.params ?? {}).filter(
+    ([, p]) => p?.type === "child_id",
+  );
+  const [childParam, childDef] = childParams.length === 1 ? childParams[0] : ["", undefined];
+  const child = childParam ? String(values[childParam] ?? "").trim() : "";
+  const childType = childDef?.child_type;
   const shown = (v: unknown) =>
     typeof v === "boolean" ? (v ? "true" : "false") : String(v);
   const parts: string[] = [];
@@ -460,6 +466,7 @@ export function nowReading(
     }
     if (!child) continue;
     for (const [ctype, kids] of Object.entries(table?.children ?? {})) {
+      if (childType && ctype !== childType) continue;
       const id = Object.keys(kids).find((k) => k === child || Number(k) === Number(child));
       const value = id !== undefined ? kids[id]?.[state] : undefined;
       if (value !== null && value !== undefined) {

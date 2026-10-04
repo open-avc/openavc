@@ -341,12 +341,30 @@ describe("what a command sets reads now", () => {
     child_labels: {},
     settings: [],
   } as unknown as AuditListen["status_table"];
-  const cmd = (sets: Record<string, unknown>) => ({ sets } as unknown as AuditCommandInfo);
+  const cmd = (sets: Record<string, unknown>, params: Record<string, unknown> = {}) =>
+    ({ sets, params } as unknown as AuditCommandInfo);
+  const output = { child_id: { type: "child_id", child_type: "output" } };
 
   it("says the value to put back", () => {
     expect(nowReading(cmd({ volume: "{level}" }), {}, table)).toBe("Now: Volume 20");
-    expect(nowReading(cmd({ mute: true }), { child_id: "1" }, table)).toBe("Now: output 01 mute true");
+    expect(nowReading(cmd({ mute: true }, output), { child_id: "1" }, table)).toBe(
+      "Now: output 01 mute true",
+    );
     expect(nowReading(cmd({}), {}, table)).toBe("");
     expect(nowReading(cmd({ input: "{source}" }), {}, table)).toBe("");
+  });
+
+  it("reads the channel from whichever parameter picks it", () => {
+    // An amplifier names its child parameter "channel", not "child_id", and
+    // has an input 01 beside its channel 01 (seen on the bench: no Now: line).
+    const amp = {
+      ...table,
+      children: { input: { "01": { mute: false } }, channel: { "01": { mute: true } } },
+    } as unknown as AuditListen["status_table"];
+    const mute = cmd({ mute: true }, {
+      channel: { type: "child_id", child_type: "channel", label: "Channel" },
+    });
+    expect(nowReading(mute, { channel: "1" }, amp)).toBe("Now: channel 01 mute true");
+    expect(nowReading(mute, {}, amp)).toBe("");
   });
 });
