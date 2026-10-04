@@ -240,8 +240,9 @@ function words(text: string): string[] {
 /**
  * The listed model a device's reply names: every word of the model, in order,
  * among the reply's words ("Connect Series 352D" in "Connect Series Model 352D",
- * never "Connect Series 352", whose 352 is not a word there). The model with
- * the most words wins; two that tie name nothing.
+ * never "Connect Series 352", whose 352 is not a word there), or every word of
+ * the part number in its parentheses. The model with the most words matched
+ * wins; two that tie name nothing.
  */
 export function modelNamedIn(models: string[], replies: string[]): string | null {
   const said = replies.map(words);
@@ -250,9 +251,20 @@ export function modelNamedIn(models: string[], replies: string[]): string | null
     for (const w of have) if (w === want[at]) at++;
     return at === want.length;
   };
+  // A listing may carry its part number in parentheses ("Control Pro
+  // (TAV-CHAZY-CLTPRO)"), and a greeting may name only that.
+  const forms = (m: string) => {
+    const part = /\(([^()]+)\)\s*$/.exec(m)?.[1];
+    return part ? [words(m), words(part)] : [words(m)];
+  };
   const found = models
-    .map((m) => ({ m, w: words(m) }))
-    .filter(({ w }) => w.length > 0 && said.some((have) => inOrder(w, have)))
+    .map((m) => ({
+      m,
+      w: forms(m)
+        .filter((w) => w.length > 0 && said.some((have) => inOrder(w, have)))
+        .sort((a, b) => b.length - a.length)[0] ?? [],
+    }))
+    .filter(({ w }) => w.length > 0)
     .sort((a, b) => b.w.length - a.w.length);
   if (found.length === 0) return null;
   if (found.length > 1 && found[1].w.length === found[0].w.length) return null;

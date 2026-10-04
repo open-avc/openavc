@@ -138,6 +138,13 @@ describe("the first selection", () => {
     // Two models named as specifically: neither is picked.
     expect(modelNamedIn(["W-100", "W-200"], ["W 100 W 200"])).toBeNull();
     expect(modelNamedIn(models, [])).toBeNull();
+    // A greeting that names only the part number in a listing's parentheses
+    // (seen on the bench: a controller's "Welcome To TAV-...-CLTPRO").
+    const listed = ["Widget Control Pro (ACM-WDG-CTLPRO)", "Widget Control (ACM-WDG-CTL)"];
+    expect(modelNamedIn(listed, ["\r\n====\r\nWelcome To ACM-WDG-CTLPRO Terminal\r\n"])).toBe(
+      "Widget Control Pro (ACM-WDG-CTLPRO)",
+    );
+    expect(modelNamedIn(listed, ["Welcome To ACM-WDG Terminal"])).toBeNull();
     expect(
       preselect(options, "generic_visca", [], { manufacturer: "Acme" }, ["Acme W-100 ready"]),
     ).toEqual({ brand: "Acme", model: "W-100", driverId: "generic_visca" });
