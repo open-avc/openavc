@@ -450,6 +450,53 @@ async def test_the_declared_effect_is_checked_against_what_the_device_reports(dr
     assert "4. Set Input (source hdmi2), again" in summary
 
 
+def test_a_childs_declared_effect_is_read_from_the_childs_padded_key():
+    """The form sends a channel as text ("1"); the channel's state lives under
+    its padded id (channel.01). Seen on the bench: an amplifier's Unmute read
+    "the device has not reported Channel 1 Mute; Channel 01 Mute went from
+    true to false", because the read-back watched channel.1.mute."""
+    from openavc.audit.commands import declared_effects
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
+    from openavc.drivers.base import BaseDriver
+
+    class AcmeAmp(BaseDriver):
+        DRIVER_INFO = {
+            "id": "acme_amp", "name": "Acme Amp", "transport": "tcp",
+            "child_entity_types": {
+                "channel": {
+                    "label": "Channel",
+                    "id_format": {"type": "integer", "min": 1, "max": 8, "pad_width": 2},
+                    "state_variables": {"mute": {"type": "boolean"}},
+                },
+                "input": {
+                    "label": "Input", "id_format": {"type": "string"},
+                    "state_variables": {"gain": {"type": "number"}},
+                },
+            },
+            "commands": {},
+        }
+
+        async def send_command(self, command, params=None):
+            return None
+
+    amp = AcmeAmp("amp1", {}, StateStore(), EventBus())
+    mute = {"sets": {"mute": True}, "params": {
+        "channel": {"type": "child_id", "child_type": "channel", "required": True},
+    }}
+    for given in ("1", " 1 ", 1):
+        assert [e["state_key"] for e in declared_effects(mute, {"channel": given}, amp)] == [
+            "channel.01.mute",
+        ]
+    gain = {"sets": {"gain": "{level}"}, "params": {
+        "name": {"type": "child_id", "child_type": "input", "required": True},
+        "level": {"type": "number"},
+    }}
+    assert declared_effects(gain, {"name": "mic_a", "level": 3}, amp)[0]["state_key"] == (
+        "input.mic_a.gain"
+    )
+
+
 async def test_a_refusal_of_the_drivers_own_request_is_not_the_commands(driver):
     """A poll or a follow-up query the driver sends inside a command's window
     and the device refuses: said apart, with what the driver had just sent,

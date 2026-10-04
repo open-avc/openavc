@@ -100,6 +100,7 @@ from openavc.audit.session import AuditError
 from openavc.core.device_traffic import RX, TX, serialize_entry
 from openavc.core.state_store import is_flat_primitive
 from openavc.drivers.base import missing_required_params
+from openavc.drivers.child_ids import coerce_child_local_id
 from openavc.drivers.compiled_protocol import coerce_bool_token, is_bool_token
 from openavc.utils.log_redaction import is_secret_key
 from openavc.utils.logger import get_logger
@@ -330,7 +331,11 @@ def _addressed_child(
     entry: dict[str, Any], params: dict[str, Any], driver: Any,
 ) -> tuple[str, str, set[str]] | None:
     """(child type, its id as state keys spell it, its variables) for a
-    command with exactly one ``child_id`` parameter that was given a value."""
+    command with exactly one ``child_id`` parameter that was given a value.
+
+    The value arrives as the form sent it ("1"); it is coerced to the kind
+    the child type declares before it is padded, as every door that takes a
+    child id does."""
     pdefs = entry.get("params") or {}
     child_params = [
         n for n, p in pdefs.items() if isinstance(p, dict) and p.get("type") == "child_id"
@@ -343,8 +348,9 @@ def _addressed_child(
     local = params.get(name)
     if not isinstance(ctype, str) or ctype not in types or local in (None, ""):
         return None
+    typed = coerce_child_local_id(types[ctype], local)
     try:
-        padded = str(driver.format_child_id(ctype, local))
+        padded = str(driver.format_child_id(ctype, local if typed is None else typed))
     except Exception:
         padded = str(local)
     variables = set((types[ctype] or {}).get("state_variables") or {})
