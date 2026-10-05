@@ -349,6 +349,28 @@ def is_multicast_group(value: str) -> bool:
 
 ANY: dict = {"any": True}
 
+# Value conversion between the number a device sends and the real value.
+# Shared by device and child state variables and by command
+# params; the runtime applies it in compiled_protocol (reading_from_wire /
+# value_to_wire). YAML drivers only: a Python driver converts in code.
+VALUE_SCALE: dict = {
+    'type': 'number',
+    'doc': "YAML drivers, numeric types only. What one step of the device's own number is worth in real units: the real value is raw × scale + offset (e.g. 0.01 for a fader the device reports in hundredths of a dB). Default 1. On a command parameter it converts the other way before sending: raw = (value - offset) / scale, rounded to a whole number.",
+    'since': '0.37.0',
+}
+VALUE_OFFSET: dict = {
+    'type': 'number',
+    'doc': "YAML drivers, numeric types only. Added after scale: the real value is raw × scale + offset (e.g. -18 for gain the device sends as 000-060 meaning -18 to +42 dB). Default 0. Declare the same scale and offset on the state variable that holds the value and on the command parameter that sets it; a device setting converts through its state variable.",
+    'since': '0.37.0',
+}
+VALUE_UNKNOWN: dict = {
+    'type': 'array',
+    'min_items': 1,
+    'items': {'type': ['integer', 'number', 'string']},
+    'doc': "YAML drivers, numeric types only. Values the device sends to mean it has no reading (e.g. [255] for an unknown battery temperature): the state variable is set to empty instead. A number matches by value (255 matches 0255); a string matches exactly. A response rule's map: is applied first.",
+    'since': '0.37.0',
+}
+
 # Column types for a table config field: the scalar config types (a table
 # inside a table cell is not a thing).
 _COLUMN_TYPES: tuple[str, ...] = tuple(t for t in CONFIG_FIELD_TYPES if t != "table")
@@ -825,6 +847,9 @@ DEFS = {
                 'type': 'string',
                 'enum': CLOUD_PRIORITIES,
             },
+            'scale': VALUE_SCALE,
+            'offset': VALUE_OFFSET,
+            'unknown': VALUE_UNKNOWN,
         },
         'required': ('label',),
         'extra': False,
@@ -869,6 +894,9 @@ DEFS = {
                 'type': 'string',
                 'enum': CLOUD_PRIORITIES,
             },
+            'scale': VALUE_SCALE,
+            'offset': VALUE_OFFSET,
+            'unknown': VALUE_UNKNOWN,
         },
         'extra': False,
     },
@@ -1245,6 +1273,8 @@ DEFS = {
                 'doc': 'Render the input masked when the command is run, for a param that carries a password, PIN or key. Presentation only: the value still goes on the wire as typed, and nothing is stored. The same key on a config_schema field means the same thing — set it wherever a credential would otherwise sit on screen in plain text.',
             },
             'default': ANY,
+            'scale': VALUE_SCALE,
+            'offset': VALUE_OFFSET,
             'map': {
                 'type': 'object',
                 'min_props': 1,

@@ -26,6 +26,9 @@
  "action_not_mapping": [
   "actions[0]: must be a mapping"
  ],
+ "action_param_offset": [
+  "Action 'noop' param 'x': put scale and offset on the command's own parameter; an action's parameters are not converted"
+ ],
  "action_param_pattern_redos": [
   "actions[0] param 'level': pattern: regex '(a+)+$' has a nested quantifier; this can cause catastrophic backtracking against hostile input"
  ],
@@ -159,6 +162,9 @@
  "child_state_variable_not_mapping": [
   "child_entity_types.zone.state_variables.level: must be a mapping"
  ],
+ "child_state_variable_offset_not_numeric": [
+  "child_entity_types.zone.state_variables.level: the type must be integer, number or float to use offset"
+ ],
  "child_state_variable_unit_not_string": [
   "child_entity_types.zone.state_variables.level: unit must be a string (got 5)"
  ],
@@ -198,6 +204,9 @@
  ],
  "command_osc_args_not_list": [
   "Command 'beep': args must be a list"
+ ],
+ "command_param_offset_not_numeric": [
+  "Command 'noop' param 'x': the type must be integer, number or float to use offset"
  ],
  "command_prefix_not_string": [
   "command_prefix: must be a string"
@@ -810,6 +819,12 @@
  ],
  "state_variable_not_dict": [
   "State variable 'power': must be a dict"
+ ],
+ "state_variable_scale_not_numeric": [
+  "State variable 'power': the type must be integer, number or float to use scale"
+ ],
+ "state_variable_scale_zero": [
+  "State variable 'power': scale cannot be 0"
  ],
  "state_variable_unit_not_string": [
   "State variable 'power': unit must be a string (got 5)"

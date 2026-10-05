@@ -1449,7 +1449,9 @@ class ConfigurableDriver(BaseDriver):
     def _apply_param_wire_maps(
         param_defs: dict[str, Any], params: dict[str, Any]
     ) -> dict[str, Any]:
-        """Translate param values through their declared ``map:`` lookup.
+        """Translate param values to what goes on the wire: through their
+        declared ``map:`` lookup, else through their ``scale`` / ``offset``
+        (the real value back to the device's own number).
 
         Match is on ``str(value)`` so a coerced ``child_id`` int hits its
         string key, and map keys are string-normalized so an unquoted YAML
@@ -1462,15 +1464,19 @@ class ConfigurableDriver(BaseDriver):
             if not isinstance(pdef, dict) or name not in params:
                 continue
             value_map = pdef.get("map")
-            if not isinstance(value_map, dict) or not value_map:
-                continue
-            mapped = {str(k): v for k, v in value_map.items()}.get(
-                str(params[name])
-            )
+            mapped = None
+            if isinstance(value_map, dict) and value_map:
+                mapped = {str(k): v for k, v in value_map.items()}.get(
+                    str(params[name])
+                )
             if mapped is not None:
                 if out is params:
                     out = dict(params)
                 out[name] = str(mapped)
+            elif pdef.get("scale") is not None or pdef.get("offset") is not None:
+                if out is params:
+                    out = dict(params)
+                out[name] = compiled_protocol.value_to_wire(params[name], pdef)
         return out
 
     def _is_osc_command(self, cmd_def: dict[str, Any]) -> bool:
@@ -1940,7 +1946,9 @@ class ConfigurableDriver(BaseDriver):
                     if value_map and raw_value in value_map:
                         coerced = self._convert_value(str(value_map[raw_value]), value_type)
                     else:
-                        coerced = self._convert_value(raw_value, value_type)
+                        coerced = self._read_converted(
+                            raw_value, value_type, mapping, self._convert_value
+                        )
 
                     self.set_state(state_key, coerced)
 
@@ -2016,9 +2024,26 @@ class ConfigurableDriver(BaseDriver):
                         str(value_map[raw_value]), value_type
                     )
                 else:
-                    updates[pm["prop"]] = self._convert_value(raw_value, value_type)
+                    updates[pm["prop"]] = self._read_converted(
+                        raw_value, value_type, pm, self._convert_value
+                    )
             if updates:
                 self.set_child_state_batch(ctype, local_id, updates)
+
+    def _read_converted(
+        self, raw: Any, value_type: str, mapping: dict[str, Any], coerce: Any
+    ) -> Any:
+        """``coerce(raw, value_type)``, unless the mapping carries its state
+        variable's conversion (``convert``: scale / offset / unknown, attached
+        at compile time) and that decides the value."""
+        conversion = mapping.get("convert")
+        if conversion:
+            handled, value = compiled_protocol.reading_from_wire(
+                raw, conversion, value_type
+            )
+            if handled:
+                return value
+        return coerce(raw, value_type)
 
     async def _handle_osc_response(self, data: bytes) -> None:
         """Decode incoming OSC data and match against address-based responses."""
@@ -2077,16 +2102,14 @@ class ConfigurableDriver(BaseDriver):
                             continue
                         raw_value = extracted
 
-                    if value_map:
-                        str_val = str(raw_value)
-                        if str_val in value_map:
-                            coerced = self._convert_value(
-                                str(value_map[str_val]), value_type
-                            )
-                        else:
-                            coerced = self._convert_osc_value(raw_value, value_type)
+                    if value_map and str(raw_value) in value_map:
+                        coerced = self._convert_value(
+                            str(value_map[str(raw_value)]), value_type
+                        )
                     else:
-                        coerced = self._convert_osc_value(raw_value, value_type)
+                        coerced = self._read_converted(
+                            raw_value, value_type, mapping, self._convert_osc_value
+                        )
 
                     self.set_state(state_key, coerced)
 
@@ -2163,8 +2186,8 @@ class ConfigurableDriver(BaseDriver):
                         str(value_map[str(raw_value)]), value_type
                     )
                 else:
-                    updates[pm["prop"]] = self._convert_osc_value(
-                        raw_value, value_type
+                    updates[pm["prop"]] = self._read_converted(
+                        raw_value, value_type, pm, self._convert_osc_value
                     )
             if updates:
                 self.set_child_state_batch(ctype, local_id, updates)
@@ -2310,7 +2333,10 @@ class ConfigurableDriver(BaseDriver):
                         str(value_map[str(value)]), mapping.get("type", "string")
                     )
                 else:
-                    coerced = self._convert_json_value(value, mapping.get("type", "string"))
+                    coerced = self._read_converted(
+                        value, mapping.get("type", "string"), mapping,
+                        self._convert_json_value,
+                    )
                 self.set_state(mapping["state"], coerced)
                 applied = True
             for ctype, local_id, updates in child_writes:
@@ -2371,8 +2397,8 @@ class ConfigurableDriver(BaseDriver):
                         str(value_map[str(value)]), value_type
                     )
                 else:
-                    updates[pm["prop"]] = self._convert_json_value(
-                        value, value_type
+                    updates[pm["prop"]] = self._read_converted(
+                        value, value_type, pm, self._convert_json_value
                     )
             if updates:
                 writes.append((ctype, local_id, updates))
@@ -2438,7 +2464,15 @@ class ConfigurableDriver(BaseDriver):
                 f"Device setting '{key}' has no write definition"
             )
 
-        all_params = {**self.config, "value": value}
+        # A setting writes its state variable's real value: the variable's
+        # scale / offset turn it back into the device's own number.
+        state_var = self._definition.get("state_variables", {}).get(
+            setting_def.get("state_key") or key
+        )
+        all_params = {
+            **self.config,
+            "value": compiled_protocol.value_to_wire(value, state_var),
+        }
 
         # OSC write
         if "address" in write_def:

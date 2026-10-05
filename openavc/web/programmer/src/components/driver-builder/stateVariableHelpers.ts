@@ -15,7 +15,26 @@ export function nextStateVariableName(existing: string[]): string {
   return name;
 }
 
-const NUMERIC_ONLY_FIELDS = ["min", "max", "step", "unit"] as const;
+const NUMERIC_ONLY_FIELDS = ["min", "max", "step", "unit", "scale", "offset", "unknown"] as const;
+
+/**
+ * The comma-separated "no reading" values a person types, as the `unknown`
+ * list a driver stores: a number where the text is one (255), the text
+ * otherwise (N/A). Empty text clears the field.
+ */
+export function parseUnknownCodes(text: string): Array<number | string> | undefined {
+  const codes = text
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => (/^-?\d+(\.\d+)?$/.test(s) ? Number(s) : s));
+  return codes.length ? codes : undefined;
+}
+
+/** An `unknown` list as the text the editor shows. */
+export function formatUnknownCodes(codes: unknown): string {
+  return Array.isArray(codes) ? codes.join(", ") : "";
+}
 
 /**
  * Compute the updated state-var def when its `type` changes, as a SINGLE

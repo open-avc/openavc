@@ -568,7 +568,7 @@ device_settings:
 | `type` | Yes | `string`, `integer`, `number`, `float`, `boolean`, or `enum`. |
 | `label` | Yes | Human-readable label shown in the Programmer IDE. |
 | `help` | Yes | Inline help text explaining what the setting does. |
-| `state_key` | No | Which state variable provides the current value. Defaults to the setting key. |
+| `state_key` | No | Which state variable provides the current value. Defaults to the setting key. When that variable declares `scale` / `offset`, the setting's `{value}` is converted back to the device's own number before it is written. |
 | `default` | Yes | Default value for new devices. |
 | `setup` | No | If `true`, the setting is prompted during add-to-project. Default: `false`. |
 | `unique` | No | If `true`, the system generates a non-clashing default (appends device ID). Default: `false`. |
@@ -649,6 +649,29 @@ Numeric variables can declare their real range and resolution:
 - `min` / `max` — the value range the device reports. The UI Builder offers to match a bound slider, fader, gauge, or meter to this range, and the simulator UI renders a matching slider.
 - `step` — the device's value resolution (e.g. `0.5` for a fader that moves in half-dB increments). Fills the matched control's Step.
 - `unit` — the unit as text (e.g. `dB`, `Hz`, `%`). Fills the matched control's Unit. Without it, the UI falls back to parsing a trailing "(dB)" from the label.
+
+**Converting the device's own numbers (platform 0.37.0+, YAML drivers).** Many devices send a value as their own number rather than the real one: gain as `000`–`060` meaning -18 to +42 dB, a level in hundredths of a dB, `255` for "no reading". Declare the conversion on the numeric variable and the variable holds the real value:
+
+- `scale` and `offset` — the real value is the device's number × `scale` + `offset` (defaults 1 and 0). Gain sent as `000`–`060` for -18 to +42 dB is `offset: -18`; a level in hundredths of a dB is `scale: 0.01`.
+- `unknown` — the values the device sends when it has nothing to report. The variable is left empty instead. A number matches by value (`255` matches `0255`), text exactly.
+
+```yaml
+state_variables:
+  gain:
+    type: integer
+    label: Gain
+    unit: dB
+    min: -18
+    max: 42
+    offset: -18
+  battery_temp:
+    type: integer
+    label: Battery Temperature
+    offset: -40
+    unknown: [255]
+```
+
+Every response rule that writes the variable is converted, in text, JSON and OSC rules alike, except a value that comes out of a rule's `map:`, which is used as written. `min`, `max`, `step` and `default` are in real units. A command parameter that sets the value declares the same `scale` and `offset` (see [`commands` entry](#commands-entry)), and a device setting converts through its state variable. A Python driver converts in its own code, so these keys are refused there.
 
 Any variable can also declare:
 
@@ -986,6 +1009,18 @@ set_input_level:
       required: true
       map: { "1": "0", "2": "1", "3": "2", "4": "3", "5": "4", "6": "5" }
     level: { type: integer, required: true, min: 0, max: 511 }
+```
+
+**Device numbers (platform 0.37.0+, YAML drivers).** A numeric parameter may declare the same `scale` and `offset` as the state variable it sets (see [`state_variables` entry](#state_variables-entry)). The operator enters the real value, `min` and `max` are checked against it, and the device is sent (value − `offset`) ÷ `scale`, rounded to a whole number. A matching `map:` entry wins over the conversion.
+
+```yaml
+set_gain:
+  label: Set Gain
+  send: "< SET {channel} AUDIO_GAIN {gain:03d} >"
+  params:
+    channel: { type: child_id, child_type: channel, required: true }
+    # -6 dB goes out as 012.
+    gain: { type: integer, required: true, min: -18, max: 42, offset: -18 }
 ```
 
 **Enum labels.** An `enum` parameter's `values` entries may be plain strings or `{value, label}` pairs. The **label** is what the operator picks in the dropdown and reads in a macro; the **value** is what goes on the wire — so you label a code set once instead of defining one command per code. A caller may pass either the label or the wire value (picker, macro `$var`, or the REST/cloud API); the runtime normalizes to the value. Plain-string lists behave exactly as before.

@@ -195,6 +195,34 @@
   },
   "transport": "tcp"
  },
+ "action_param_offset": {
+  "actions": [
+   {
+    "id": "noop",
+    "kind": "command",
+    "params": {
+     "x": {
+      "offset": 1,
+      "type": "integer"
+     }
+    }
+   }
+  ],
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "action_param_pattern_redos": {
   "actions": [
    {
@@ -1662,6 +1690,32 @@
   },
   "transport": "tcp"
  },
+ "child_state_variable_offset_not_numeric": {
+  "child_entity_types": {
+   "zone": {
+    "state_variables": {
+     "level": {
+      "offset": 1,
+      "type": "boolean"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "child_state_variable_unit_not_string": {
   "child_entity_types": {
    "zone": {
@@ -1915,6 +1969,28 @@
    }
   },
   "transport": "osc"
+ },
+ "command_param_offset_not_numeric": {
+  "commands": {
+   "noop": {
+    "params": {
+     "x": {
+      "offset": 1,
+      "type": "string"
+     }
+    },
+    "send": "NOOP {x}\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
  },
  "command_prefix_not_string": {
   "command_prefix": 2,
@@ -7322,6 +7398,40 @@
   "name": "Acme Widget",
   "state_variables": {
    "power": "string"
+  },
+  "transport": "tcp"
+ },
+ "state_variable_scale_not_numeric": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "scale": 2,
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "state_variable_scale_zero": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "scale": 0,
+    "type": "integer"
+   }
   },
   "transport": "tcp"
  },

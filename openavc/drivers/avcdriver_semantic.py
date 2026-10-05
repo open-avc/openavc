@@ -2013,6 +2013,11 @@ def validate_driver_definition(
                 f"default cadence"
             )
 
+    # scale / offset / unknown on state variables, child state variables and
+    # command params: the shared rule (python_info runs it with python=True).
+    errors.ctx = "state_variables"
+    errors.extend(value_conversion_errors(driver_def))
+
     # Validate the optional frame_parser block (binary protocols). The runtime
     # LengthPrefixFrameParser only accepts header_size in {1, 2, 4} and
     # FixedLengthFrameParser needs a positive length; an out-of-range value
@@ -2841,6 +2846,75 @@ def command_confirm_errors(where: str, cmd_def: dict[str, Any]) -> list[str]:
     if confirm is None or isinstance(confirm, (bool, str)):
         return []
     return [f"{where}: 'confirm' must be a boolean or a message string"]
+
+
+_CONVERTIBLE_TYPES = ("integer", "number", "float")
+
+
+def value_conversion_errors(
+    driver_def: dict[str, Any], *, python: bool = False
+) -> list[str]:
+    """Where ``scale`` / ``offset`` / ``unknown`` may appear, and on what.
+
+    The platform converts a YAML driver's values; a Python driver converts in
+    its own code, so on the Python surface (``python=True``) every one is
+    refused rather than silently doing nothing. On a YAML driver all three
+    need a numeric type, a scale of 0 cannot be converted back, and an
+    action's params are never converted (the command's own params are).
+    """
+    errors: list[str] = []
+
+    def check(where: str, decl: Any, *, in_action: bool = False) -> None:
+        if not isinstance(decl, dict):
+            return
+        present = [k for k in ("scale", "offset", "unknown") if k in decl]
+        if not present:
+            return
+        if python:
+            names = ", ".join(present)
+            errors.append(
+                f"{where}: remove {names}; the platform converts values only "
+                f"for YAML drivers, and a Python driver converts in its own code"
+            )
+            return
+        if in_action:
+            errors.append(
+                f"{where}: put scale and offset on the command's own "
+                f"parameter; an action's parameters are not converted"
+            )
+            return
+        if decl.get("type", "string") not in _CONVERTIBLE_TYPES:
+            errors.append(
+                f"{where}: the type must be integer, number or float to use "
+                f"{', '.join(present)}"
+            )
+        scale = decl.get("scale")
+        if isinstance(scale, (int, float)) and not isinstance(scale, bool) and scale == 0:
+            errors.append(f"{where}: scale cannot be 0")
+
+    def entries(block: Any) -> list[tuple[Any, Any]]:
+        return list(block.items()) if isinstance(block, dict) else []
+
+    for name, decl in entries(driver_def.get("state_variables")):
+        check(f"State variable '{name}'", decl)
+    for ctype, type_def in entries(driver_def.get("child_entity_types")):
+        if isinstance(type_def, dict):
+            for name, decl in entries(type_def.get("state_variables")):
+                check(f"child_entity_types.{ctype}.state_variables.{name}", decl)
+    for cmd_name, cmd_def in entries(driver_def.get("commands")):
+        if isinstance(cmd_def, dict):
+            for pname, pdef in entries(cmd_def.get("params")):
+                check(f"Command '{cmd_name}' param '{pname}'", pdef)
+    actions = driver_def.get("actions")
+    for action in actions if isinstance(actions, list) else []:
+        if isinstance(action, dict):
+            for pname, pdef in entries(action.get("params")):
+                check(
+                    f"Action '{action.get('id')}' param '{pname}'",
+                    pdef,
+                    in_action=True,
+                )
+    return errors
 
 
 def device_setting_state_key_errors(

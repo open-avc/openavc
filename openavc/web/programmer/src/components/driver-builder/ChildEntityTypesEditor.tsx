@@ -15,6 +15,7 @@ import {
   sanitizeTypeId,
 } from "./childEntityTypesHelpers";
 import { IdRenameInput, type RenameResult } from "./IdRenameInput";
+import { ValueConversionFields } from "./ValueConversionFields";
 
 interface ChildEntityTypesEditorProps {
   draft: DriverDefinition;
@@ -1084,6 +1085,15 @@ function StateVarsSection({
                   </div>
                 )}
               </div>
+            )}
+
+            {isNumeric && (
+              <ValueConversionFields
+                scale={v.scale}
+                offset={v.offset}
+                unknown={v.unknown}
+                onChange={(field, value) => updateVar(name, field, value)}
+              />
             )}
 
             <div

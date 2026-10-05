@@ -8,6 +8,7 @@ import type {
 } from "../../api/types";
 import { EnumValuesEditor } from "../shared/EnumValuesEditor";
 import { IdRenameInput, type RenameResult } from "./IdRenameInput";
+import { ValueConversionFields } from "./ValueConversionFields";
 import { OscArgsEditor } from "./OscArgsEditor";
 
 interface CommandBuilderProps {
@@ -1572,6 +1573,8 @@ function ParamRow({
               if (t !== "integer" && t !== "number") {
                 partial.min = undefined;
                 partial.max = undefined;
+                partial.scale = undefined;
+                partial.offset = undefined;
               }
               if (t !== "number") {
                 partial.decimals = undefined;
@@ -1767,6 +1770,17 @@ function ParamRow({
           </div>
         )}
       </div>
+
+      {isNumeric && (
+        <ValueConversionFields
+          forParam
+          scale={def.scale}
+          offset={def.offset}
+          onChange={(field, value) =>
+            onUpdate({ [field]: value } as Partial<DriverParamDef>)
+          }
+        />
+      )}
 
       {/* Free-text aids. Shown for string params, where the runtime applies
           them — and for any param that already carries one, so a value set by

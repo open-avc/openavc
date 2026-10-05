@@ -118,14 +118,14 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   __root__: new Set(["actions", "auth", "author", "bridge", "category", "child_entity_types", "command_prefix", "command_suffix", "commands", "compatible_models", "config_derived", "config_schema", "default_config", "delimiter", "deprecated", "description", "device_settings", "discovery", "frame_parser", "help", "id", "inline_protocol", "ir_codes", "liveness", "manufacturer", "min_platform_version", "name", "on_connect", "polling", "ports", "protocols", "push", "quick_actions", "replacement_id", "responses", "routing", "send_frame", "simulated", "simulator", "source_url", "state_variables", "tags", "transport", "transports", "verified", "version", "web_ui"]),
   helpBlock: new Set(["connection", "overview", "setup"]),
   compatibleModelsEntry: new Set(["confidence", "manufacturer", "models", "notes"]),
-  stateVariableEntry: new Set(["cloud_priority", "control", "default", "help", "label", "max", "min", "step", "type", "unit", "values"]),
-  childStateVariableEntry: new Set(["cloud_priority", "control", "default", "help", "label", "max", "min", "step", "type", "unit", "values"]),
+  stateVariableEntry: new Set(["cloud_priority", "control", "default", "help", "label", "max", "min", "offset", "scale", "step", "type", "unit", "unknown", "values"]),
+  childStateVariableEntry: new Set(["cloud_priority", "control", "default", "help", "label", "max", "min", "offset", "scale", "step", "type", "unit", "unknown", "values"]),
   childEntityType: new Set(["dynamic", "id_format", "instances", "label", "label_field", "label_plural", "state_variables", "summary_fields"]),
   childInstances: new Set(["count", "count_from", "count_from_state", "ids", "ids_from", "label", "presence"]),
   childSetEntry: new Set(["id", "state", "type"]),
   eachChildQuery: new Set(["each_child", "query_for", "send", "when"]),
   queryEntry: new Set(["query_for", "send", "when"]),
-  paramEntry: new Set(["child_type", "decimals", "default", "description", "help", "label", "map", "max", "min", "options_from", "options_state", "pattern", "required", "secret", "trim", "type", "type_from", "unit", "values"]),
+  paramEntry: new Set(["child_type", "decimals", "default", "description", "help", "label", "map", "max", "min", "offset", "options_from", "options_state", "pattern", "required", "scale", "secret", "trim", "type", "type_from", "unit", "values"]),
   oscArg: new Set(["type", "value"]),
   udpSendEntry: new Set(["broadcast", "host", "magic_packet", "payload", "port"]),
   commandEntry: new Set(["address", "args", "available_offline", "body", "confirm", "headers", "help", "label", "method", "params", "path", "query_for", "query_params", "raw", "restarts_device_for", "send", "sets", "udp"]),
@@ -311,6 +311,23 @@ export interface DriverParamDef {
    */
   secret?: boolean;
   default?: unknown;
+  /**
+   * YAML drivers, numeric types only. What one step of the device's own number
+   * is worth in real units: the real value is raw × scale + offset (e.g. 0.01
+   * for a fader the device reports in hundredths of a dB). Default 1. On a
+   * command parameter it converts the other way before sending: raw = (value -
+   * offset) / scale, rounded to a whole number. Requires platform 0.37.0.
+   */
+  scale?: number;
+  /**
+   * YAML drivers, numeric types only. Added after scale: the real value is raw
+   * × scale + offset (e.g. -18 for gain the device sends as 000-060 meaning
+   * -18 to +42 dB). Default 0. Declare the same scale and offset on the state
+   * variable that holds the value and on the command parameter that sets it; a
+   * device setting converts through its state variable. Requires platform
+   * 0.37.0.
+   */
+  offset?: number;
   /**
    * Wire-value translation applied after validation, before substitution: the
    * validated value (string-keyed) is replaced by the mapped wire value.
@@ -921,6 +938,31 @@ export interface DriverStateVarDef {
   control?: boolean;
   default?: unknown;
   cloud_priority?: "low" | "high";
+  /**
+   * YAML drivers, numeric types only. What one step of the device's own number
+   * is worth in real units: the real value is raw × scale + offset (e.g. 0.01
+   * for a fader the device reports in hundredths of a dB). Default 1. On a
+   * command parameter it converts the other way before sending: raw = (value -
+   * offset) / scale, rounded to a whole number. Requires platform 0.37.0.
+   */
+  scale?: number;
+  /**
+   * YAML drivers, numeric types only. Added after scale: the real value is raw
+   * × scale + offset (e.g. -18 for gain the device sends as 000-060 meaning
+   * -18 to +42 dB). Default 0. Declare the same scale and offset on the state
+   * variable that holds the value and on the command parameter that sets it; a
+   * device setting converts through its state variable. Requires platform
+   * 0.37.0.
+   */
+  offset?: number;
+  /**
+   * YAML drivers, numeric types only. Values the device sends to mean it has
+   * no reading (e.g. [255] for an unknown battery temperature): the state
+   * variable is set to empty instead. A number matches by value (255 matches
+   * 0255); a string matches exactly. A response rule's map: is applied first.
+   * Requires platform 0.37.0.
+   */
+  unknown?: (number | string)[];
 }
 
 /**
@@ -955,6 +997,31 @@ export interface DriverChildStateVarDef {
   control?: boolean;
   default?: unknown;
   cloud_priority?: "low" | "high";
+  /**
+   * YAML drivers, numeric types only. What one step of the device's own number
+   * is worth in real units: the real value is raw × scale + offset (e.g. 0.01
+   * for a fader the device reports in hundredths of a dB). Default 1. On a
+   * command parameter it converts the other way before sending: raw = (value -
+   * offset) / scale, rounded to a whole number. Requires platform 0.37.0.
+   */
+  scale?: number;
+  /**
+   * YAML drivers, numeric types only. Added after scale: the real value is raw
+   * × scale + offset (e.g. -18 for gain the device sends as 000-060 meaning
+   * -18 to +42 dB). Default 0. Declare the same scale and offset on the state
+   * variable that holds the value and on the command parameter that sets it; a
+   * device setting converts through its state variable. Requires platform
+   * 0.37.0.
+   */
+  offset?: number;
+  /**
+   * YAML drivers, numeric types only. Values the device sends to mean it has
+   * no reading (e.g. [255] for an unknown battery temperature): the state
+   * variable is set to empty instead. A number matches by value (255 matches
+   * 0255); a string matches exactly. A response rule's map: is applied first.
+   * Requires platform 0.37.0.
+   */
+  unknown?: (number | string)[];
 }
 
 export interface DriverChildIdFormat {

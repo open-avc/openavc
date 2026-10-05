@@ -36,11 +36,13 @@ import yaml
 from openavc.drivers.compiled_protocol import (
     apply_send_frame,
     build_send_frame,
+    conversion_of,
     decode_delimiter,
     emit_literal,
     emit_template,
     emit_template_multi,
     infer_state_var,
+    reading_from_wire,
     safe_substitute,
     send_param_groups,
     send_param_specs,
@@ -48,6 +50,7 @@ from openavc.drivers.compiled_protocol import (
     spec_int_base,
     split_send_frames,
     state_var_default,
+    value_to_wire,
 )
 from openavc.drivers.child_ids import coerce_child_local_id
 from openavc.drivers.inline_protocol import (
@@ -1044,10 +1047,11 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                     if state_key and arg_idx < len(args):
                         _, value = args[arg_idx]
                         value_map = mapping.get("map")
-                        if value_map:
-                            mapped = value_map.get(str(value))
-                            if mapped is not None:
-                                value = mapped
+                        mapped = value_map.get(str(value)) if value_map else None
+                        if mapped is not None:
+                            value = mapped
+                        else:
+                            value = self._from_wire(state_key, value)
                         self.set_state(state_key, self._coerce_value(state_key, value))
                 # Echo the message back (standard OSC feedback pattern)
                 return [(address, args)]
@@ -1062,12 +1066,15 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                         tag = _type_to_osc_tag(value_type)
                         # Apply reverse value map (e.g., mute false → OSC 1)
                         reverse_info = self._osc_state_to_address.get(state_key)
+                        raw = None
                         if reverse_info:
                             _, _, _, reverse_map = reverse_info
                             if reverse_map:
                                 raw = reverse_map.get(str(value).lower())
                                 if raw is not None:
                                     value = int(raw) if tag == "i" else float(raw) if tag == "f" else raw
+                        if raw is None:
+                            value = self._to_wire(state_key, value)
                         resp_args.append((tag, value))
                 if resp_args:
                     return [(address, resp_args)]
@@ -1351,6 +1358,12 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                         value = int(value, base)
                     except ValueError:
                         pass
+                conversion = handler.group_conversions.get(source)
+                if conversion:
+                    var_type = self._var_def_for_key(target_key).get("type", "string")
+                    handled, real = reading_from_wire(value, conversion, var_type)
+                    if handled:
+                        value = real
                 value = self._coerce_value(target_key, value)
             else:
                 # Literal value (heuristic booleans arrive bare)
@@ -1517,7 +1530,9 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 )
 
                 if state_key not in self._state_responses:
-                    self._state_responses[state_key] = StateResponse(state_key)
+                    self._state_responses[state_key] = StateResponse(
+                        state_key, conversion_of(self._var_def_for_key(state_key))
+                    )
 
                 sr = self._state_responses[state_key]
 
@@ -1648,6 +1663,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             child_id_group = 0
             specs = send_param_specs(send_template, params)
             group_bases: dict[int, int] = {}
+            group_conversions: dict[int, dict] = {}
 
             declared_sets = cmd_def.get("sets")
             declared_query_for = cmd_def.get("query_for")
@@ -1669,6 +1685,9 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                         base = spec_int_base(specs.get(param_name, ""))
                         if base and param_name in param_groups:
                             group_bases[param_groups[param_name]] = base
+                    conversion = conversion_of(param_def)
+                    if conversion and param_name in param_groups:
+                        group_conversions[param_groups[param_name]] = conversion
                 if isinstance(declared_sets, dict):
                     for var_name, set_value in declared_sets.items():
                         # On a child-addressed command the child type's own
@@ -1717,6 +1736,9 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                         base = spec_int_base(specs.get(param_name, ""))
                         if base:
                             group_bases[group_idx] = base
+                    conversion = conversion_of(param_def)
+                    if conversion:
+                        group_conversions[group_idx] = conversion
                     if param_name == child_param_name:
                         child_id_group = group_idx
                     elif child_ctype and param_name in child_vars:
@@ -1792,6 +1814,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 state_changes=state_changes,
                 response_var=response_var,
                 group_bases=group_bases,
+                group_conversions=group_conversions,
                 child_type=child_ctype if child_state_keys or response_is_child else None,
                 child_id_group=child_id_group,
                 child_wire_map=child_wire_map,
@@ -1915,6 +1938,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             base = spec_int_base(send_param_specs(template, params).get("value", ""))
             if base:
                 group_bases[1] = base
+            conversion = conversion_of(self._var_def_for_key(state_key))
 
             self._command_handlers.append(CommandHandler(
                 name=f"setting:{name}",
@@ -1922,6 +1946,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 state_changes={state_key: 1},
                 response_var=state_key,
                 group_bases=group_bases,
+                group_conversions={1: conversion} if conversion else None,
             ))
             built += 1
 
@@ -2268,7 +2293,9 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         value becomes a whole-reply value_map entry."""
         key = (ctype, prop)
         if key not in self._child_state_responses:
-            self._child_state_responses[key] = ChildStateResponse(ctype, prop)
+            self._child_state_responses[key] = ChildStateResponse(
+                ctype, prop, conversion_of(self._child_vars(ctype).get(prop))
+            )
         sr = self._child_state_responses[key]
 
         def norm(value: Any) -> str:
@@ -2413,6 +2440,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                     value: Any = m.group(int(src[1:]))
                 except (ValueError, IndexError):
                     continue
+                value = self._from_wire(state_key, value)
             else:
                 value = src
             self.set_state(state_key, self._coerce_value(state_key, value))
@@ -2656,7 +2684,9 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         if not template:
             return
 
-        self._deliver_notification(self._render_notification(template, key, value))
+        self._deliver_notification(
+            self._render_notification(template, key, self._to_wire(key, value))
+        )
 
     def _deliver_notification(self, msg: str) -> None:
         """Send one unsolicited message the way this device pushes.
@@ -2756,6 +2786,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             else:
                 osc_value = raw
         else:
+            value = self._to_wire(key, value)
             if tag == "f":
                 osc_value = float(value)
             elif tag == "i":
@@ -2804,6 +2835,20 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 return var_def
         var_def = self._driver_def.get("state_variables", {}).get(state_key)
         return var_def if isinstance(var_def, dict) else {}
+
+    def _from_wire(self, state_key: str, value: Any) -> Any:
+        """The device's own number as the real value the state variable
+        holds, through its scale / offset / unknown. Unchanged when it
+        declares none."""
+        var_def = self._var_def_for_key(state_key)
+        handled, real = reading_from_wire(
+            value, conversion_of(var_def), var_def.get("type", "string")
+        )
+        return real if handled else value
+
+    def _to_wire(self, state_key: str, value: Any) -> Any:
+        """The real value back to the device's own number (see _from_wire)."""
+        return value_to_wire(value, conversion_of(self._var_def_for_key(state_key)))
 
     def _numeric_state_var(self, state_key: str) -> bool:
         """True when the state variable's declared type is numeric."""
@@ -2993,6 +3038,7 @@ class CommandHandler:
         group_bases: dict[int, int] | None = None,
         child_type: str | None = None,
         child_id_group: int = 0,
+        group_conversions: dict[int, dict] | None = None,
         child_wire_map: dict[str, str] | None = None,
         child_state_keys: set[str] | None = None,
         response_is_child: bool = False,
@@ -3004,6 +3050,9 @@ class CommandHandler:
         # Capture groups whose wire form is non-decimal ({level:02X}),
         # mapped to the int base that decodes them.
         self.group_bases = group_bases or {}
+        # Capture groups carrying a param (or setting) with scale / offset:
+        # the device's number, converted back to the real value it stores.
+        self.group_conversions = group_conversions or {}
         # Child-addressed command (exactly one child_id param): the capture
         # group holding the child id, the wire->local id translation from the
         # param's map:, and which state_changes keys are the child's own
@@ -3043,9 +3092,12 @@ class ChildStateResponse:
     {child_id} slot alongside {value}; value_map entries carry {child_id}
     inside each mapped reply."""
 
-    def __init__(self, child_type: str, var: str):
+    def __init__(self, child_type: str, var: str, conversion: dict | None = None):
         self.child_type = child_type
         self.var = var
+        # The variable's scale / offset / unknown: the reply carries the
+        # device's own number, not the real value the simulator holds.
+        self.conversion = conversion
         self.template: str | None = None     # e.g. "Out{child_id} In{value} Vid"
         self.value_map: dict[str, str] = {}  # e.g. {"true": "Vmt{child_id}*1"}
         # local id -> wire id, from the child_set rule's id map: reversed —
@@ -3066,7 +3118,7 @@ class ChildStateResponse:
             return (
                 self.template
                 .replace("{child_id}", str(wire_id))
-                .replace("{value}", str(value))
+                .replace("{value}", str(value_to_wire(value, self.conversion)))
             )
         return None
 
@@ -3110,8 +3162,10 @@ class _StateProxy(dict):
 
 class StateResponse:
     """Tracks how to format a response for a state variable."""
-    def __init__(self, state_key: str):
+    def __init__(self, state_key: str, conversion: dict | None = None):
         self.state_key = state_key
+        # The variable's scale / offset / unknown (see ChildStateResponse).
+        self.conversion = conversion
         self.template: str | None = None  # e.g., "In{value} All"
         self.value_map: dict[str, str] = {}  # e.g., {"true": "Amt1", "false": "Amt0"}
 
@@ -3123,12 +3177,14 @@ class StateResponse:
         if value_str in self.value_map:
             return self.value_map[value_str]
 
+        wire = value_to_wire(value, self.conversion)
+
         # Use template
         if self.template:
-            return self.template.replace("{value}", str(value))
+            return self.template.replace("{value}", str(wire))
 
         # Fallback
-        return str(value)
+        return str(wire)
 
 
 # ── Utility functions ──

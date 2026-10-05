@@ -61,7 +61,7 @@ export function nextChildTypeId(existing: string[]): string {
   return name;
 }
 
-const NUMERIC_ONLY_FIELDS = ["min", "max", "step", "unit"] as const;
+const NUMERIC_ONLY_FIELDS = ["min", "max", "step", "unit", "scale", "offset", "unknown"] as const;
 
 /**
  * Compute the updated child state-var def when its `type` changes, as a SINGLE

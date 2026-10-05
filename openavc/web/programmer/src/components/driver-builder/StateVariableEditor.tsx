@@ -1,6 +1,7 @@
 import { Plus, Trash2 } from "lucide-react";
 import type { DriverDefinition } from "../../api/types";
 import { IdRenameInput, type RenameResult } from "./IdRenameInput";
+import { ValueConversionFields } from "./ValueConversionFields";
 import {
   applyStateVarTypeChange,
   nextStateVariableName,
@@ -251,6 +252,15 @@ export function StateVariableEditor({
                   Builder&apos;s range matching, and the simulator UI.
                 </div>
               </div>
+            )}
+
+            {isNumeric && (
+              <ValueConversionFields
+                scale={v.scale}
+                offset={v.offset}
+                unknown={v.unknown}
+                onChange={(field, value) => updateVariable(name, field, value)}
+              />
             )}
 
             {v.type === "enum" && (

@@ -545,7 +545,7 @@ def test_child_id_param_captures_digits():
         "{out}*{inp}!",
         {"out": {"type": "child_id"}, "inp": {"type": "integer"}},
     )
-    assert rx == r"(\d+)\*(\d+)!"
+    assert rx == r"(\d+)\*(-?\d+)!"
 
 
 # ===========================================================================

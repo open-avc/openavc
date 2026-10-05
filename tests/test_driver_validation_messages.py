@@ -659,6 +659,10 @@ CASES: dict[str, Any] = {
     "state_variable_unit_not_string": _d(state_variables={"power": {"type": "string", "label": "Power", "unit": 5}}),
     "state_variable_control_not_bool": _d(state_variables={"power": {"type": "string", "label": "Power", "control": "yes"}}),
     "state_variable_bad_cloud_priority": _d(state_variables={"power": {"type": "string", "label": "Power", "cloud_priority": "urgent"}}),
+    "state_variable_scale_not_numeric": _d(state_variables={"power": {"type": "string", "label": "Power", "scale": 2}}),
+    "state_variable_scale_zero": _d(state_variables={"power": {"type": "integer", "label": "Power", "scale": 0}}),
+    "command_param_offset_not_numeric": _d(commands={"noop": {"send": "NOOP {x}\r", "params": {"x": {"type": "string", "offset": 1}}}}),
+    "action_param_offset": _d(actions=[{"id": "noop", "kind": "command", "params": {"x": {"type": "integer", "offset": 1}}}]),
     # --- frame_parser ---
     "frame_parser_not_mapping": _d(frame_parser="length_prefix"),
     "frame_parser_bad_header_size": _d(frame_parser={"type": "length_prefix", "header_size": 3}),
@@ -691,6 +695,7 @@ CASES: dict[str, Any] = {
     "child_state_variable_bad_cloud_priority": _child_type(state_variables={"level": {"type": "number", "cloud_priority": "urgent"}}),
     "child_state_variable_unit_not_string": _child_type(state_variables={"level": {"type": "number", "unit": 5}}),
     "child_state_variable_control_not_bool": _child_type(state_variables={"level": {"type": "number", "control": "yes"}}),
+    "child_state_variable_offset_not_numeric": _child_type(state_variables={"level": {"type": "boolean", "offset": 1}}),
     # --- child instances roster ---
     "instances_not_mapping": _instances([4]),
     "instances_count_from_state_not_string": _instances({"count": 4, "count_from_state": 5}),

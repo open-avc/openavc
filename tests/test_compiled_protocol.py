@@ -134,12 +134,16 @@ def test_split_send_frames_never_retains_more_than_max_buffer():
 
 
 def test_send_regex_bare_placeholders_and_escaping():
-    assert send_regex("{input}!", {"input": {"type": "integer"}}) == r"(\d+)!"
+    assert send_regex("{input}!", {"input": {"type": "integer"}}) == r"(-?\d+)!"
     assert send_regex(
         "{out}*{inp}!",
         {"out": {"type": "child_id"}, "inp": {"type": "integer"}},
-    ) == r"(\d+)\*(\d+)!"
+    ) == r"(\d+)\*(-?\d+)!"
     assert send_regex("1Z", {}) == "1Z"
+    # A level can be negative on the wire; a child id never is.
+    import re as _re
+    assert _re.fullmatch(send_regex("VOL {v}", {"v": {"type": "integer"}}), "VOL -12")
+    assert _re.fullmatch(send_regex("LVL {v}", {"v": {"type": "number"}}), "LVL -7.5")
 
 
 def test_send_regex_escapes_literal_parentheses():
@@ -161,7 +165,7 @@ def test_send_regex_handles_format_spec_placeholders():
     # {name:spec} tokens invert the same as bare ones. This pins the fix for
     # the sim's old private copy, which left them as literal text so the
     # command never matched.
-    assert send_regex("LVL{v:03d}", {"v": {"type": "integer"}}) == r"LVL(\d+)"
+    assert send_regex("LVL{v:03d}", {"v": {"type": "integer"}}) == r"LVL(-?\d+)"
     # A non-decimal spec narrows the capture to the digit set the sender
     # actually emits.
     assert (
@@ -173,7 +177,7 @@ def test_send_regex_handles_format_spec_placeholders():
 
 
 def test_send_regex_capture_classes_by_param_type():
-    assert send_regex("{f}", {"f": {"type": "number"}}) == r"([\d.]+)"
+    assert send_regex("{f}", {"f": {"type": "number"}}) == r"(-?[\d.]+)"
     assert send_regex("{b}", {"b": {"type": "boolean"}}) == r"(true|false|0|1)"
     assert send_regex("{s}", {"s": {"type": "string"}}) == r"(.+)"
 
@@ -181,11 +185,11 @@ def test_send_regex_capture_classes_by_param_type():
 def test_send_regex_drops_trailing_terminators():
     params = {"value": {"type": "integer"}}
     # Real control characters (double-quoted YAML scalar).
-    assert send_regex("#set {value:d}\r\n", params) == r"#set (\d+)"
+    assert send_regex("#set {value:d}\r\n", params) == r"#set (-?\d+)"
     # Literal backslash escapes (single-quoted YAML), trailing space too —
     # the consumers match against stripped lines, so a kept terminator
     # means the pattern can never match anything.
-    assert send_regex("s_link NC {value:d} \\r", params) == r"s_link NC (\d+)"
+    assert send_regex("s_link NC {value:d} \\r", params) == r"s_link NC (-?\d+)"
     # Mid-template escapes are left alone (they match a real CR, which is
     # correct if one survives line-splitting).
     assert send_regex("A\\rB", {}) == "A\\rB"

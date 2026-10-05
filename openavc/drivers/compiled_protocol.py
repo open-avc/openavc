@@ -148,9 +148,10 @@ def _capture_for(param_type: str, spec: str) -> str:
         # child_id values are integer child-entity IDs (optionally
         # zero-padded), so capture digits — not a greedy (.+) that
         # over-matches and breaks parity with the driver's send shape.
-        return r"(\d+)"
+        # An integer may be negative (a level in dB, a converted value).
+        return r"(\d+)" if param_type == "child_id" else r"(-?\d+)"
     if param_type == "number":
-        return r"([\d.]+)"
+        return r"(-?[\d.]+)"
     if param_type == "boolean":
         # A boolean carrying a numeric format spec goes on the wire as a
         # number: {flag:d} sends 1/0 and {flag:02d} sends 01/00, which is
@@ -733,6 +734,113 @@ def coerce_osc_value(value: Any, value_type: str) -> Any:
             return bool(value)
         return coerce_bool_token(value)
     return str(value) if value is not None else None
+
+
+# ── Value conversion (scale / offset / unknown) ──
+#
+# A device that packs a real value into its own number (gain sent as 000-060
+# for -18..+42 dB, a fader in hundredths of a dB) declares the conversion on
+# the state variable that holds the value and on the command parameter that
+# sets it: real = raw * scale + offset. ``unknown`` lists the raw values that
+# mean "no reading", stored as None. The runtime, the simulator and the
+# validator all convert through these two functions.
+
+CONVERSION_KEYS: tuple[str, ...] = ("scale", "offset", "unknown")
+
+
+def conversion_of(decl: Any) -> dict[str, Any] | None:
+    """The conversion keys a state variable or param declares, or None."""
+    if not isinstance(decl, dict):
+        return None
+    found = {k: decl[k] for k in CONVERSION_KEYS if decl.get(k) is not None}
+    return found or None
+
+
+def _finite(raw: Any) -> float | None:
+    """``raw`` as a finite float, or None. Booleans are not numbers here."""
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, (int, float)):
+        number = float(raw)
+    else:
+        try:
+            number = float(str(raw).strip())
+        except ValueError:
+            return None
+    return number if math.isfinite(number) else None
+
+
+def _whole(number: float) -> int:
+    """Nearest whole number, halves away from zero (not banker's rounding)."""
+    return int(math.floor(abs(number) + 0.5)) * (1 if number >= 0 else -1)
+
+
+def _scale_offset(decl: dict[str, Any]) -> tuple[float, float]:
+    scale = _finite(decl.get("scale"))
+    offset = _finite(decl.get("offset"))
+    return (1.0 if scale is None or scale == 0 else scale), (offset or 0.0)
+
+
+def is_unknown_reading(raw: Any, decl: Any) -> bool:
+    """True when ``raw`` is one of the declaration's ``unknown`` values. A
+    number matches by value (``255`` matches ``"0255"``); a string exactly."""
+    codes = decl.get("unknown") if isinstance(decl, dict) else None
+    if not isinstance(codes, list):
+        return False
+    text = str(raw).strip()
+    number = _finite(raw)
+    for code in codes:
+        if isinstance(code, str):
+            if text == code:
+                return True
+        elif number is not None and _finite(code) == number:
+            return True
+    return False
+
+
+def reading_from_wire(raw: Any, decl: Any, value_type: str) -> tuple[bool, Any]:
+    """What a state variable stores for the device's ``raw`` value.
+
+    ``(True, value)`` when the declaration decides it: None for an
+    ``unknown`` value, else raw * scale + offset typed by ``value_type``
+    (``integer`` rounds to a whole number). ``(False, None)`` when it
+    declares nothing for this value, or the value is not a number, and the
+    caller's own coercion applies unchanged.
+    """
+    if not isinstance(decl, dict):
+        return False, None
+    if is_unknown_reading(raw, decl):
+        return True, None
+    if decl.get("scale") is None and decl.get("offset") is None:
+        return False, None
+    number = _finite(raw)
+    if number is None:
+        return False, None
+    scale, offset = _scale_offset(decl)
+    # round(): 7760 * 0.01 is 77.60000000000001, and 77.6 is what was meant.
+    real = round(number * scale + offset, 9)
+    if value_type == "integer":
+        return True, _whole(real)
+    return True, real
+
+
+def value_to_wire(value: Any, decl: Any) -> Any:
+    """The device's raw number for a real ``value``: (value - offset) / scale,
+    rounded to a whole number. None goes out as the first ``unknown`` value
+    when one is declared. Anything the declaration does not convert (no
+    scale or offset, a value that is not a number) is returned unchanged."""
+    if not isinstance(decl, dict):
+        return value
+    if value is None:
+        codes = decl.get("unknown")
+        return codes[0] if isinstance(codes, list) and codes else None
+    if decl.get("scale") is None and decl.get("offset") is None:
+        return value
+    number = _finite(value)
+    if number is None:
+        return value
+    scale, offset = _scale_offset(decl)
+    return _whole(round((number - offset) / scale, 9))
 
 
 # ── Delimiter decoding ──
@@ -1468,4 +1576,44 @@ def compile_driver(
                 f"[{device_id}] Invalid response pattern "
                 f"'{resp.get('match', '')}': {e}"
             )
+    _attach_conversions(compiled, definition)
     return compiled
+
+
+def _attach_conversions(compiled: CompiledProtocol, definition: dict[str, Any]) -> None:
+    """Copy each state variable's scale / offset / unknown onto the compiled
+    mappings that write it, as ``convert``, so a response handler converts
+    without looking the variable up per message. Static ``value:`` entries
+    and ``contains`` checks are already final and get none. Entries are
+    replaced, never edited: the mapping dicts can be the driver definition's
+    own, shared by every device on the driver."""
+    state_vars = definition.get("state_variables") or {}
+    child_types = definition.get("child_entity_types") or {}
+    seen: set[int] = set()
+
+    def convert_list(entries: list[Any], key: str, declared: Any) -> None:
+        if id(entries) in seen or not isinstance(declared, dict):
+            return
+        seen.add(id(entries))
+        for index, entry in enumerate(entries):
+            if not isinstance(entry, dict) or "value" in entry or "contains" in entry:
+                continue
+            conversion = conversion_of(declared.get(entry.get(key)))
+            if conversion:
+                entries[index] = {**entry, "convert": conversion}
+
+    def convert_children(child_mappings: Any) -> None:
+        for cm in child_mappings or ():
+            type_def = child_types.get(cm.get("type")) if isinstance(cm, dict) else None
+            if isinstance(type_def, dict) and isinstance(cm.get("props"), list):
+                convert_list(cm["props"], "prop", type_def.get("state_variables"))
+
+    for _pattern, mappings, child_mappings, *_rest in compiled.responses:
+        convert_list(mappings, "state", state_vars)
+        convert_children(child_mappings)
+    for _address, mappings, child_mappings, *_rest in compiled.osc_responses:
+        convert_list(mappings, "state", state_vars)
+        convert_children(child_mappings)
+    for mappings, _throttle, _require, _condition, child_mappings in compiled.json_responses:
+        convert_list(mappings, "state", state_vars)
+        convert_children(child_mappings)
