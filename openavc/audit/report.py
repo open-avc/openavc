@@ -32,8 +32,8 @@
   ``device_name``, ``hostname``, ``mac``). An SSDP description's modelName is
   ``model`` and its modelNumber ``model_number``, never joined.
   ``reported_sources`` says where each of those came from, in words (the
-  UPnP description, reverse DNS, SNMP, this computer's ARP table), where the
-  raw observations show it.
+  UPnP description, mDNS, reverse DNS, SNMP, this computer's ARP table), where
+  the raw observations show it.
 - ``catalog``: where the driver catalog came from, when it was fetched
   (``fetched_at``, ``last_attempt``), the ``sha256`` of its ``index.json``, its
   ``driver_count``, whether it was ``reachable``, and ``used``: ``fresh``,
@@ -647,6 +647,8 @@ def identity_sources(fp: dict[str, Any], reported: dict[str, Any]) -> dict[str, 
     names = fp.get("names") or {}
     netbios = names.get("netbios") or {}
     snmp = (fp.get("snmp") or {}).get("values") or {}
+    mdns = fp.get("mdns") or {}
+    mdns_names = [(svc.get("instance_name"), "mDNS") for svc in mdns.get("services") or []]
     upnp = "the UPnP description"
     places: dict[str, list[tuple[Any, str]]] = {
         "manufacturer": [(ssdp.get("manufacturer"), upnp), (amx.get("make"), "the AMX DDP beacon"),
@@ -657,7 +659,8 @@ def identity_sources(fp: dict[str, Any], reported: dict[str, Any]) -> dict[str, 
         "serial_number": [(ssdp.get("serial_number"), upnp), (snmp.get("entPhysicalSerialNum"), "SNMP")],
         "firmware": [(snmp.get("entPhysicalFirmwareRev"), "SNMP")],
         "device_name": [(ssdp.get("friendly_name"), upnp), (snmp.get("sysName"), "SNMP"),
-                        (netbios.get("hostname"), "NetBIOS")],
+                        (netbios.get("hostname"), "NetBIOS"), *mdns_names,
+                        (mdns.get("address_name"), "mDNS")],
         "hostname": [(names.get("reverse_dns"), "reverse DNS"), (netbios.get("hostname"), "NetBIOS")],
     }
     out: dict[str, str] = {}
@@ -1388,14 +1391,27 @@ def render_summary(report: dict[str, Any]) -> str:
 
     # Identity.
     parts.append("<h2>What the device reported</h2><table>")
+    # The device's own name as the driver read it beats a name the network
+    # check heard, which can be an id (an mDNS instance name).
+    read_name = next((
+        value for section in report.get("drivers") or []
+        for key, _, value in _driver_read_identity(section) if key == "device_name"
+    ), None)
     for key, label in (
         ("manufacturer", "Manufacturer"), ("model", "Model"), ("model_number", "Model number"),
         ("firmware", "Firmware"),
         ("serial_number", "Serial number"), ("device_name", "Name"), ("hostname", "Host name"),
         ("mac", "MAC address"),
     ):
-        if reported.get(key):
-            where = (report.get("device") or {}).get("reported_sources", {}).get(key)
+        where = (report.get("device") or {}).get("reported_sources", {}).get(key)
+        if key == "device_name" and read_name:
+            heard = reported.get(key)
+            also = (
+                f"; {heard}" + (f" from {where}" if where else "")
+                if heard and str(heard).strip().lower() != read_name.strip().lower() else ""
+            )
+            parts.append(_row(label, _e(f"{read_name} (as the driver read it{also})")))
+        elif reported.get(key):
             parts.append(_row(label, _e(reported[key]) + (f" (from {_e(where)})" if where else "")))
     parts.append("</table>")
 
@@ -1617,16 +1633,17 @@ def _seconds_after(t: float | None, start: float | None) -> str:
     return f"{max(0.0, t - start):.1f} s after starting"
 
 
-# Status values that hold the device's own model and firmware.
+# Status values that hold the device's own model, firmware and name.
 _READ_IDENTITY = (
     ("model", "Model", ("model", "model_name", "model_id")),
     ("firmware", "Firmware", ("firmware", "firmware_version")),
+    ("device_name", "Name", ("device_name", "speaker_name", "system_name")),
 )
 
 
 def _driver_read_identity(section: dict[str, Any]) -> list[tuple[str, str, str]]:
-    """(key, label, value) for the model and firmware the device reported to
-    the driver, from the last attempt that connected."""
+    """(key, label, value) for the model, firmware and name the device
+    reported to the driver, from the last attempt that connected."""
     attempts = [a for a in section.get("attempts") or [] if a.get("connected_at")]
     if not attempts:
         return []

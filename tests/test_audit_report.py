@@ -348,6 +348,41 @@ def test_a_manufacturer_the_driver_supplies_reads_as_the_drivers():
     )
 
 
+def test_the_name_row_is_the_devices_own_name_when_the_driver_read_one():
+    """An mDNS instance name can be an id (acmeAW3_0042) where the device's own
+    name, as the driver read it, is what a person calls it: the Name row leads
+    with that, and says where the other one came from."""
+    import html
+
+    from openavc.audit.report import identity_sources
+
+    fp = {"mdns": {"hostname": "widget.local", "address_name": None, "services": [
+        {"service_type": "_acmewidget._tcp.local.", "instance_name": "acmeAW3_0042",
+         "port": 1400, "target": "widget.local.", "txt": {}},
+    ], "enumerated_types": []}}
+    reported = {"device_name": "acmeAW3_0042"}
+    assert identity_sources(fp, reported).get("device_name") == "mDNS"
+
+    attempt = {"connected_at": 1_700_000_001.0, "status_table": {"variables": [
+        {"name": "device_name", "label": "Device Name", "value": "Lobby", "reported": True},
+    ]}}
+    report = {
+        "generator": {}, "session": {"started_at": 1_700_000_000.0, "tester": {}},
+        "target": {"address": "widget.local"}, "catalog": {"used": "none"},
+        "complete": True, "limits": [], "footprint": fp,
+        "device": {"reported": reported, "reported_sources": {"device_name": "mDNS"}},
+        "verdict": {"sentence": "OpenAVC recognizes this device: Acme Widget."},
+        "drivers": [{"driver": {"name": "Acme Widget"}, "attempts": [attempt]}],
+    }
+    page = html.unescape(render_summary(report))
+    assert "<th>Name</th><td>Lobby (as the driver read it; acmeAW3_0042 from mDNS)</td>" in page
+    assert "<th>Name, as the driver read it</th><td>Lobby</td>" in page
+    # The same name both ways is said once.
+    attempt["status_table"]["variables"][0]["value"] = "acmeAW3_0042"
+    page = html.unescape(render_summary(report))
+    assert "<th>Name</th><td>acmeAW3_0042 (as the driver read it)</td>" in page
+
+
 def test_a_manufacturer_one_drivers_probe_supplies_names_that_driver():
     """The line lists every driver the manufacturer points at, so "the driver"
     would read as all of them: it names the one whose probe supplied it."""
