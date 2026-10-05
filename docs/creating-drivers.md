@@ -673,6 +673,8 @@ state_variables:
 
 Every response rule that writes the variable is converted, in text, JSON and OSC rules alike, except a value that comes out of a rule's `map:`, which is used as written. `min`, `max`, `step` and `default` are in real units. A command parameter that sets the value declares the same `scale` and `offset` (see [`commands` entry](#commands-entry)), and a device setting converts through its state variable. A Python driver converts in its own code, so these keys are refused there.
 
+The auto-generated simulator holds the real value and answers in the device's own form: the number converted back, empty sent as the first `unknown` value, and as many digits as the rule reads, so a rule reading `(\d{3})` is answered `030`, not `30`.
+
 Any variable can also declare:
 
 - `control: true` — marks a variable an integrator would bind a panel control to (a fader level, a mute, a source selection), as opposed to a read-out or metadata. The UI Builder's value picker lists flagged variables first. Ordering only — unflagged variables always remain pickable.
