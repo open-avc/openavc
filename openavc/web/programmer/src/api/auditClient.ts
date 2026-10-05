@@ -671,6 +671,8 @@ export interface AuditReportAttempt {
   later_drops?: number;
   later_reconnects?: number;
   traffic: { count: number; sent: number; received: number; not_captured: boolean };
+  /** The status values as the attempt ended. */
+  status_table?: { variables: AuditStatusVariable[] };
 }
 
 /** One driver run in the report. */
@@ -706,6 +708,8 @@ export interface AuditReport {
       hostname: string | null;
       mac: string | null;
     };
+    /** Where each reported value came from, in words ("mDNS", "SNMP"). */
+    reported_sources?: Partial<Record<string, string>>;
   };
   catalog: AuditCatalog;
   footprint: {

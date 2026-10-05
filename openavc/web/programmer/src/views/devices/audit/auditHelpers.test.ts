@@ -237,6 +237,44 @@ describe("the on-screen summary", () => {
     });
   });
 
+  it("names the device by the name it gave the driver, with the one the network check heard beside it", () => {
+    // A name heard over mDNS can be an id; the driver reads the device's own.
+    const heard = {
+      ...report,
+      device: {
+        ...report.device,
+        reported: { ...report.device.reported, device_name: "acmeW100_0A1B2C" },
+        reported_sources: { device_name: "mDNS" },
+      },
+    } as AuditReport;
+    const value = (name: string, v: unknown, reported = true) => ({ name, value: v, reported });
+    const ran = (variables: object[], connected_at: number | null = 100.5) =>
+      ({ run: 0, driver: { id: "acme", name: "Acme", version: "1.0.0", modified: false },
+        attempts: [{
+          status: "done", error: "", started_at: 100, connected_at, declared: 3, reported: 1,
+          offline: null, contract: { counts: {} }, unprompted_replies: { count: 0 }, drops: 0,
+          reconnects: 0, traffic: { count: 2, sent: 1, received: 1, not_captured: false },
+          status_table: { variables },
+        }] }) as unknown as AuditReportDriver;
+    const name = (r: AuditReport) => summaryLines(r).find((l) => l.label === "Name")?.value;
+
+    expect(name(heard)).toBe("acmeW100_0A1B2C");
+    expect(name({ ...heard, drivers: [ran([value("speaker_name", "Lobby")])] })).toBe(
+      "Lobby (as the driver read it; acmeW100_0A1B2C from mDNS)",
+    );
+    // The same name either way is said once.
+    expect(name({ ...heard, drivers: [ran([value("device_name", "ACMEW100_0a1b2c")])] })).toBe(
+      "ACMEW100_0a1b2c (as the driver read it)",
+    );
+    // Only a value the device reported, on an attempt that connected, counts.
+    expect(name({ ...heard, drivers: [ran([value("system_name", "Lobby", false)])] })).toBe("acmeW100_0A1B2C");
+    expect(name({ ...heard, drivers: [ran([value("system_name", "Lobby")], null)] })).toBe("acmeW100_0A1B2C");
+    // Nothing heard on the network: the driver's name stands alone.
+    expect(name({ ...report, drivers: [ran([value("system_name", "Lobby")])] })).toBe(
+      "Lobby (as the driver read it)",
+    );
+  });
+
   it("adds what each driver did, and names the driver when there are several", () => {
     const attempt = {
       status: "done", error: "", started_at: 100, connected_at: 100.5, declared: 7,

@@ -585,6 +585,28 @@ export interface SummaryLine {
   value: string;
 }
 
+// Status values that hold the device's own name (report.py _READ_IDENTITY).
+const READ_NAME_KEYS = ["device_name", "speaker_name", "system_name"];
+
+/** The name the device gave the first driver that read one, from that run's
+ *  last attempt that connected (report.py _driver_read_identity), or null. */
+function driverReadName(drivers: AuditReportDriver[]): string | null {
+  for (const section of drivers) {
+    const connected = (section.attempts ?? []).filter((a) => a.connected_at);
+    const last = connected[connected.length - 1];
+    if (!last) continue;
+    const values = new Map<string, unknown>();
+    for (const v of last.status_table?.variables ?? []) {
+      if (v.reported && v.value !== null && v.value !== undefined && v.value !== "") {
+        values.set(v.name, v.value);
+      }
+    }
+    const key = READ_NAME_KEYS.find((k) => values.has(k));
+    if (key) return String(values.get(key));
+  }
+  return null;
+}
+
 /**
  * The on-screen summary of a report, in the order the report reads: what the
  * device is, how it answered, what it announced. Lines with nothing to say
@@ -601,7 +623,21 @@ export function summaryLines(report: AuditReport): SummaryLine[] {
   if (identity) lines.push({ label: "Device", value: identity });
   const firmware = entered?.firmware || reported.firmware;
   if (firmware) lines.push({ label: "Firmware", value: firmware });
-  if (reported.device_name) lines.push({ label: "Name", value: reported.device_name });
+  // The device's own name as the driver read it beats a name the network
+  // check heard, which can be an id (an mDNS instance name). summary.html's
+  // Name row says the same (report.py render_summary).
+  const readName = driverReadName(report.drivers ?? []);
+  if (readName) {
+    const heard = reported.device_name;
+    const where = report.device.reported_sources?.device_name;
+    const also =
+      heard && heard.trim().toLowerCase() !== readName.trim().toLowerCase()
+        ? `; ${heard}${where ? ` from ${where}` : ""}`
+        : "";
+    lines.push({ label: "Name", value: `${readName} (as the driver read it${also})` });
+  } else if (reported.device_name) {
+    lines.push({ label: "Name", value: reported.device_name });
+  }
 
   const target = report.target;
   lines.push({
