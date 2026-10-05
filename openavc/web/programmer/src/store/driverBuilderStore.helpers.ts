@@ -45,6 +45,17 @@ export function parseDriverDefinition(text: string): DriverDefinition {
 }
 
 /**
+ * How a driver definition is written out as YAML: the live preview and
+ * Export. A string YAML 1.1 reads as a boolean (ON, off, yes) is quoted,
+ * because the platform and the driver catalog read a driver file as YAML 1.1
+ * and would otherwise load a device word like ON as true.
+ */
+export const DRIVER_YAML_DUMP_OPTIONS: yaml.DumpOptions = {
+  lineWidth: 120,
+  quotingType: '"',
+};
+
+/**
  * Collections `DriverDefinition` declares as always-present and the editors
  * therefore index without a guard (`draft.default_config[key]`,
  * `Object.keys(draft.commands)`).

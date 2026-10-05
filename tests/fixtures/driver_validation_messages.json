@@ -280,6 +280,18 @@
  "commands_not_mapping": [
   "commands: must be a mapping"
  ],
+ "device_setting_map_boolean_key_not_boolean": [
+  "Device setting 'knob': map key 'maybe' is not a value a boolean setting takes; use \"true\" and \"false\""
+ ],
+ "device_setting_map_empty": [
+  "Device setting 'knob': map must be a non-empty mapping of setting value -> device word"
+ ],
+ "device_setting_map_entry_not_scalar": [
+  "Device setting 'knob': map entries must be setting value -> device word pairs of text or numbers"
+ ],
+ "device_setting_map_enum_key_not_declared": [
+  "Device setting 'knob': map key 'mid' is not one of the setting's values (low, high)"
+ ],
  "device_setting_min_greater_than_max": [
   "Device setting 'knob': min (10) is greater than max (1)"
  ],

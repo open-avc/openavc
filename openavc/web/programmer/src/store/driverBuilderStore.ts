@@ -3,7 +3,13 @@ import yaml from "js-yaml";
 import type { DriverDefinition, DriverInfo, CommunityDriver, InstalledDriver } from "../api/types";
 import * as api from "../api/restClient";
 import { parseApiError } from "../api/errors";
-import { reconcileAfterSave, makeLatestWins, importBlockers, cloneDraft } from "./driverBuilderStore.helpers";
+import {
+  reconcileAfterSave,
+  makeLatestWins,
+  importBlockers,
+  cloneDraft,
+  DRIVER_YAML_DUMP_OPTIONS,
+} from "./driverBuilderStore.helpers";
 import { secretFieldsInConfig } from "../components/driver-builder/transportPickerHelpers";
 
 const EMPTY_DEFINITION: DriverDefinition = {
@@ -268,11 +274,7 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
         if (!ok) return;
       }
       // Export as YAML to match community driver format
-      const content = yaml.dump(def, {
-        lineWidth: 120,
-        noCompatMode: true,
-        quotingType: '"',
-      });
+      const content = yaml.dump(def, DRIVER_YAML_DUMP_OPTIONS);
       const blob = new Blob([content], { type: "application/x-avcdriver" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

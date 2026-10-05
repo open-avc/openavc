@@ -13,6 +13,7 @@ import yaml from "js-yaml";
 import type { DriverDefinition } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
 import { useDriverBuilderStore } from "../../store/driverBuilderStore";
+import { DRIVER_YAML_DUMP_OPTIONS } from "../../store/driverBuilderStore.helpers";
 import { DRIVER_CATEGORIES } from "./driverCategories";
 import { TransportPicker } from "./TransportPicker";
 import { BridgePortsEditor } from "./BridgePortsEditor";
@@ -182,12 +183,7 @@ export function DriverEditor({
 
   const yamlPreview = useMemo(() => {
     try {
-      return yaml.dump(draft, {
-        lineWidth: 120,
-        noCompatMode: true,
-        quotingType: '"',
-        skipInvalid: true,
-      });
+      return yaml.dump(draft, { ...DRIVER_YAML_DUMP_OPTIONS, skipInvalid: true });
     } catch (e) {
       return `# YAML serialization failed: ${e instanceof Error ? e.message : String(e)}`;
     }

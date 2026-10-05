@@ -7,12 +7,16 @@ import { normalizeOptionList } from "../shared/paramOptions";
 import {
   checkSettingRename,
   nextSettingKey,
+  normalizeSettingMap,
   normalizeWriteForTransport,
   oscWriteOmitsValue,
   sanitizeSettingKey,
+  setSettingMapWord,
+  settingMapRows,
   writeHasForeignKeys,
   OSC_VALUELESS_TAGS,
 } from "./deviceSettingsHelpers";
+import { FixedWireValueMapEditor, WireValueMapEditor } from "./WireValueMapEditor";
 
 interface DeviceSettingsEditorProps {
   draft: DriverDefinition;
@@ -134,6 +138,7 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
           >
             <button
               onClick={() => setExpanded(isOpen ? null : key)}
+              data-testid={`device-setting-${key}`}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -530,6 +535,10 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
                       </div>
                     </>
                   )}
+                  <SettingWireValueMap
+                    setting={setting}
+                    onChange={(map) => updateSetting(key, { map })}
+                  />
                 </div>
 
                 <div style={{ display: "flex", gap: "var(--space-lg)" }}>
@@ -590,6 +599,41 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
         <Plus size={14} /> Add Device Setting
       </button>
     </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Wire value map — the word sent in place of {value} for a value (ON for
+// true). A boolean or enum setting gets one row per value it takes; any
+// other type edits the map row by row, like a command parameter's.
+// ──────────────────────────────────────────────────────────────────────────
+const SETTING_MAP_TITLE = "Send a different word for a value, e.g. ON instead of true";
+
+function SettingWireValueMap({
+  setting,
+  onChange,
+}: {
+  setting: DriverDeviceSettingDef;
+  onChange: (map: DriverDeviceSettingDef["map"]) => void;
+}) {
+  const rows = settingMapRows(setting);
+  if (rows === null) {
+    return (
+      <WireValueMapEditor
+        map={setting.map}
+        onChange={onChange}
+        addTitle={SETTING_MAP_TITLE}
+      />
+    );
+  }
+  const map = normalizeSettingMap(setting.map, setting.type);
+  return (
+    <FixedWireValueMapEditor
+      map={map}
+      rows={rows}
+      onSetWord={(k, word) => onChange(setSettingMapWord(map, k, word))}
+      addTitle={SETTING_MAP_TITLE}
+    />
   );
 }
 

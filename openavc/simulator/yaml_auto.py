@@ -49,6 +49,7 @@ from openavc.drivers.compiled_protocol import (
     send_param_groups,
     send_param_specs,
     send_regex,
+    setting_value_for_word,
     spec_int_base,
     split_send_frames,
     state_var_default,
@@ -1349,23 +1350,32 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             elif isinstance(source, int) and not isinstance(source, bool):
                 # Capture group index
                 value = m.group(source)
-                base = handler.group_bases.get(source)
-                if base and self._numeric_state_var(target_key):
-                    # The wire value was formatted with a non-decimal spec —
-                    # decode it back before coercion, or an integer var would
-                    # end up holding the raw hex string. String-typed vars
-                    # keep the wire form: hex-code protocols (eISCP) declare
-                    # the code itself as the state value.
-                    try:
-                        value = int(value, base)
-                    except ValueError:
-                        pass
-                conversion = handler.group_conversions.get(source)
-                if conversion:
-                    var_type = self._var_def_for_key(target_key).get("type", "string")
-                    handled, real = reading_from_wire(value, conversion, var_type)
-                    if handled:
-                        value = real
+                found, setting_value = setting_value_for_word(
+                    value, handler.group_value_maps.get(source)
+                )
+                if found:
+                    # A device setting's own word (ON) stands for a setting
+                    # value (true), which no base or conversion applies to.
+                    # A word the map does not name is read as it is, below.
+                    value = setting_value
+                else:
+                    base = handler.group_bases.get(source)
+                    if base and self._numeric_state_var(target_key):
+                        # The wire value was formatted with a non-decimal spec —
+                        # decode it back before coercion, or an integer var would
+                        # end up holding the raw hex string. String-typed vars
+                        # keep the wire form: hex-code protocols (eISCP) declare
+                        # the code itself as the state value.
+                        try:
+                            value = int(value, base)
+                        except ValueError:
+                            pass
+                    conversion = handler.group_conversions.get(source)
+                    if conversion:
+                        var_type = self._var_def_for_key(target_key).get("type", "string")
+                        handled, real = reading_from_wire(value, conversion, var_type)
+                        if handled:
+                            value = real
                 value = self._coerce_value(target_key, value)
             else:
                 # Literal value (heuristic booleans arrive bare)
@@ -1933,8 +1943,17 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             # the runtime substitutes -- typed from the setting so the capture
             # matches what went on the wire. `enum` and `float` are settings
             # types with no param equivalent: an enum's members are wire
-            # tokens of any shape, and a float captures like a number.
-            param_type = _SETTING_PARAM_TYPE.get(str(entry.get("type", "")), "string")
+            # tokens of any shape, and a float captures like a number. A
+            # setting with a `map` writes the device's own words (ON for
+            # true), which the type's capture would not match, so it captures
+            # like a string and the word is mapped back below.
+            value_map = entry.get("map")
+            if not (isinstance(value_map, dict) and value_map):
+                value_map = None
+            param_type = (
+                "string" if value_map
+                else _SETTING_PARAM_TYPE.get(str(entry.get("type", "")), "string")
+            )
             params = {"value": {"type": param_type}}
 
             pattern_str = send_regex(template, params)
@@ -1960,6 +1979,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 response_var=state_key,
                 group_bases=group_bases,
                 group_conversions={1: conversion} if conversion else None,
+                group_value_maps={1: value_map} if value_map else None,
             ))
             built += 1
 
@@ -3065,6 +3085,7 @@ class CommandHandler:
         child_wire_map: dict[str, str] | None = None,
         child_state_keys: set[str] | None = None,
         response_is_child: bool = False,
+        group_value_maps: dict[int, dict] | None = None,
     ):
         self.name = name
         self.pattern = pattern
@@ -3076,6 +3097,9 @@ class CommandHandler:
         # Capture groups carrying a param (or setting) with scale / offset:
         # the device's number, converted back to the real value it stores.
         self.group_conversions = group_conversions or {}
+        # Capture groups carrying a device setting with a map: the setting
+        # value -> device word table, read in reverse.
+        self.group_value_maps = group_value_maps or {}
         # Child-addressed command (exactly one child_id param): the capture
         # group holding the child id, the wire->local id translation from the
         # param's map:, and which state_changes keys are the child's own

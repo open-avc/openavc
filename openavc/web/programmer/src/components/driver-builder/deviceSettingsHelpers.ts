@@ -2,6 +2,7 @@
 // be unit tested without React (see test_device_settings_helpers.py). Keep this
 // file free of React/DOM imports.
 import type { DriverDeviceSettingDef } from "../../api/types";
+import { normalizeOptionList } from "../shared/paramOptions";
 
 export interface RenameResult {
   ok: boolean;
@@ -149,4 +150,72 @@ export function validateSettingValue(
     }
   }
   return { ok: true };
+}
+
+// ── Wire value map (a setting's `map`) ──
+
+type SettingMap = Record<string, string | number>;
+
+export interface SettingMapRow {
+  /** The map key: a value the setting takes. */
+  key: string;
+  /** What the row is called on screen. */
+  label: string;
+}
+
+/**
+ * The values a setting's map is keyed by, one row each: On and Off for a
+ * boolean, the declared values for an enum (shown by their labels). Null for
+ * a type whose values are typed freely, which edits the map row by row.
+ */
+export function settingMapRows(
+  def: Pick<DriverDeviceSettingDef, "type" | "values">,
+): SettingMapRow[] | null {
+  if (def.type === "boolean") {
+    return [
+      { key: "true", label: "On" },
+      { key: "false", label: "Off" },
+    ];
+  }
+  if (def.type === "enum") {
+    return normalizeOptionList(def.values ?? []).map((o) => ({
+      key: o.value,
+      label: o.label,
+    }));
+  }
+  return null;
+}
+
+/**
+ * A setting's map as the editor shows it. On a boolean setting every spelling
+ * of a true / false key ("True", "TRUE") is read as "true" / "false", the way
+ * the platform matches them, so the On and Off rows find their words.
+ */
+export function normalizeSettingMap(
+  map: SettingMap | undefined,
+  type: string | undefined,
+): SettingMap | undefined {
+  if (!map || type !== "boolean") return map;
+  const out: SettingMap = {};
+  for (const [k, v] of Object.entries(map)) {
+    const folded = k.trim().toLowerCase();
+    out[folded === "true" || folded === "false" ? folded : k] = v;
+  }
+  return out;
+}
+
+/**
+ * Set the word sent for one value, or remove the entry when the word is
+ * blank. Undefined when no entry is left, so an empty map is dropped from
+ * the driver rather than saved as {}.
+ */
+export function setSettingMapWord(
+  map: SettingMap | undefined,
+  key: string,
+  word: string,
+): SettingMap | undefined {
+  const next: SettingMap = { ...(map ?? {}) };
+  if (word === "") delete next[key];
+  else next[key] = word;
+  return Object.keys(next).length > 0 ? next : undefined;
 }

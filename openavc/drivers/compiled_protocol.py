@@ -925,6 +925,54 @@ def value_to_wire(value: Any, decl: Any) -> Any:
     return _whole(round((number - offset) / scale, 9))
 
 
+# ── A device setting's own words (map) ──
+#
+# A device setting may declare ``map``: the device's own word for each value
+# the setting takes (``{"true": "ON", "false": "OFF"}``). The runtime writes
+# the word in place of the value; the simulator reads the word back to the
+# value. Both go through these two functions so they match keys the same way.
+
+
+def _map_key_matches(key: Any, value: Any) -> bool:
+    """Does a map key name ``value``? A boolean value matches the key true /
+    True / "true" alike (a YAML bare key, a quoted one, the IDE's JSON bool);
+    anything else matches on its text, so an unquoted integer key matches."""
+    if isinstance(value, bool):
+        return str(key).strip().lower() == ("true" if value else "false")
+    return str(key) == str(value)
+
+
+def setting_word(value: Any, value_map: Any) -> str | None:
+    """The device's word for a setting ``value`` from its ``map``, as text,
+    or None when the map has no entry for it (the caller writes the value
+    as it is)."""
+    if not isinstance(value_map, dict):
+        return None
+    for key, word in value_map.items():
+        if _map_key_matches(key, value):
+            return str(word)
+    return None
+
+
+def setting_value_for_word(word: Any, value_map: Any) -> tuple[bool, Any]:
+    """The setting value a device ``word`` stands for: the inverse of
+    :func:`setting_word`. An exact match wins, then one ignoring case.
+    ``(True, key)`` when found (the key as declared; the caller coerces it to
+    the state variable's type), ``(False, None)`` when the map has no such
+    word."""
+    if not isinstance(value_map, dict):
+        return False, None
+    text = str(word).strip()
+    for key, mapped in value_map.items():
+        if str(mapped) == text:
+            return True, key
+    folded = text.lower()
+    for key, mapped in value_map.items():
+        if str(mapped).lower() == folded:
+            return True, key
+    return False, None
+
+
 # ── Delimiter decoding ──
 
 

@@ -1483,6 +1483,7 @@ def validate_driver_definition(
                 # OSC writes share the command arg encoder — validate their
                 # arg types too so a bad tag fails at load, not write time.
                 _validate_osc_args(f"{where} write", write.get("args"), errors)
+            errors.extend(device_setting_map_errors(where, setting_def))
 
     # Validate the Phase 6 ``discovery:`` block. Templates (generic_*)
     # are exempt — they don't participate in discovery. Phase 8 dropped
@@ -2858,7 +2859,8 @@ def value_conversion_errors(
 
     The platform converts a YAML driver's values; a Python driver converts in
     its own code, so on the Python surface (``python=True``) every one is
-    refused rather than silently doing nothing. On a YAML driver all three
+    refused rather than silently doing nothing, and so is a device setting's
+    ``map``, which only the YAML write applies. On a YAML driver all three
     need a numeric type, a scale of 0 cannot be converted back, and an
     action's params are never converted (the command's own params are).
     """
@@ -2914,6 +2916,17 @@ def value_conversion_errors(
                     pdef,
                     in_action=True,
                 )
+    # A device setting's map is applied by the YAML runtime's write; a Python
+    # driver writes its settings in code (on YAML the key is checked with the
+    # rest of the setting, device_setting_map_errors).
+    if python:
+        for name, sdef in entries(driver_def.get("device_settings")):
+            if isinstance(sdef, dict) and "map" in sdef:
+                errors.append(
+                    f"Device setting '{name}': remove map; the platform maps "
+                    f"a setting's value only for YAML drivers, and a Python "
+                    f"driver writes its settings in its own code"
+                )
     return errors
 
 
@@ -2949,6 +2962,70 @@ def device_setting_state_key_errors(
         f"{where}: state_key '{state_key}' is not a declared "
         f"state variable — the setting would never read back"
     ]
+
+
+def device_setting_map_errors(where: str, setting_def: dict[str, Any]) -> list[str]:
+    """A device setting's ``map``: the device's own word for each value.
+
+    The keys are values the setting can take, so a key the editor can never
+    write is a word that is never sent: on a ``boolean`` setting only true and
+    false, on an ``enum`` only its declared values. Other types take any key.
+
+    A bare YAML ``true`` / ``on`` / ``yes`` (key or word) loads as a boolean,
+    which the published schema refuses, so it is refused here with the remedy
+    rather than left to fail in catalog CI. Same shape rule as a command
+    param's ``map``.
+    """
+    value_map = setting_def.get("map")
+    if value_map is None:
+        return []
+    if not isinstance(value_map, dict) or not value_map:
+        return [
+            f"{where}: map must be a non-empty mapping of setting value -> "
+            f"device word"
+        ]
+    errors: list[str] = []
+    stype = setting_def.get("type", "string")
+    allowed: list[str] | None = None
+    if stype == "enum" and isinstance(setting_def.get("values"), list):
+        allowed = [
+            str(v.get("value")) if isinstance(v, dict) else str(v)
+            for v in setting_def["values"]
+            if not isinstance(v, dict) or "value" in v
+        ]
+    for key, word in value_map.items():
+        if isinstance(key, bool):
+            errors.append(
+                f"{where}: map key '{key}' is not text; YAML reads a bare "
+                f"true, false, on, off, yes or no as a boolean. Put it in quotes."
+            )
+            continue
+        if isinstance(word, bool):
+            errors.append(
+                f"{where}: map word for '{key}' is not text; YAML reads a bare "
+                f"ON, OFF, YES or NO as a boolean. Put it in quotes."
+            )
+            continue
+        if not (
+            isinstance(key, (str, int, float))
+            and isinstance(word, (str, int, float))
+        ):
+            errors.append(
+                f"{where}: map entries must be setting value -> device word "
+                f"pairs of text or numbers"
+            )
+            continue
+        if stype == "boolean" and str(key).strip().lower() not in ("true", "false"):
+            errors.append(
+                f"{where}: map key '{key}' is not a value a boolean setting "
+                f"takes; use \"true\" and \"false\""
+            )
+        elif allowed is not None and str(key) not in allowed:
+            errors.append(
+                f"{where}: map key '{key}' is not one of the setting's values "
+                f"({', '.join(allowed)})"
+            )
+    return errors
 
 
 def undeclared_child_type_reason(

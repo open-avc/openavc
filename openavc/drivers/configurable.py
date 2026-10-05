@@ -2467,15 +2467,19 @@ class ConfigurableDriver(BaseDriver):
                 f"Device setting '{key}' has no write definition"
             )
 
-        # A setting writes its state variable's real value: the variable's
-        # scale / offset turn it back into the device's own number.
-        state_var = self._definition.get("state_variables", {}).get(
-            setting_def.get("state_key") or key
-        )
-        all_params = {
-            **self.config,
-            "value": compiled_protocol.value_to_wire(value, state_var),
-        }
+        # A setting's map names the device's own word for the value (ON for
+        # true) and is written as declared. Otherwise the setting writes its
+        # state variable's real value: the variable's scale / offset turn it
+        # back into the device's own number.
+        word = compiled_protocol.setting_word(value, setting_def.get("map"))
+        if word is None:
+            state_var = self._definition.get("state_variables", {}).get(
+                setting_def.get("state_key") or key
+            )
+            wire_value = compiled_protocol.value_to_wire(value, state_var)
+        else:
+            wire_value = word
+        all_params = {**self.config, "value": wire_value}
 
         # OSC write
         if "address" in write_def:

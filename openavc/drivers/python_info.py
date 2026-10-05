@@ -328,8 +328,9 @@ def python_driver_info_issues(
     reference_errors, _ = child_param_reference_errors(info)
     issues.extend(reference_errors)
 
-    # scale / offset / unknown are converted by the YAML runtime only; on a
-    # Python driver they would silently do nothing, so they are refused.
+    # scale / offset / unknown, and a device setting's map, are applied by
+    # the YAML runtime only; on a Python driver they would silently do
+    # nothing, so they are refused.
     issues.extend(value_conversion_errors(info, python=True))
 
     return issues

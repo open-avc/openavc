@@ -575,6 +575,7 @@ device_settings:
 | `values` | No | For `enum` type: array of allowed values. Each entry is a plain wire value or a `{value, label}` pair (the editor shows the label, the wire value is written). Unlike a command picker, a setting write that resolves to nothing in the list is rejected — it is persisted device config, not forgiving free text. |
 | `min` / `max` | No | For `integer` / `number` types: value range. |
 | `regex` | No | Optional regex for string validation. |
+| `map` | No | The device's own word for each value, written in place of `{value}` (YAML drivers, platform 0.37.0+, see below). |
 | `write` | No | How to write the setting to the device (YAML drivers only, see below). |
 
 **Write definitions (YAML drivers):**
@@ -601,6 +602,22 @@ A `boolean` setting arrives as a real true/false, and `integer` / `number` as a 
 
 - **Boolean flag byte** (`1` / `0`): `{value:d}` — for example `send: 'TALLY{value:d}\r'` or `path: /cgi?cmd=TAE{value:d}`. Plain `{value}` on a boolean would send `True` / `False`, which most devices reject.
 - **Zero-padded number**: `{value:03d}` sends `63` as `063` for fixed-width fields.
+
+**The device's own words (platform 0.37.0+, YAML drivers).** When a device writes a value as a word of its own, such as `ON` / `OFF` for a flag or `AUTO` for a mode, declare the words in `map` and keep the setting's real type. The device page still offers Yes / No or the enum's choices, and the word is sent in place of `{value}`:
+
+```yaml
+device_settings:
+  high_density:
+    type: boolean
+    label: High Density
+    state_key: high_density      # a boolean state variable; its response rule maps "ON" / "OFF" to true / false
+    default: false
+    map: { "true": "ON", "false": "OFF" }
+    write:
+      send: 'SET HIGH_DENSITY {value}\r'
+```
+
+The keys are values the setting takes: `"true"` and `"false"` on a boolean setting, the declared `values` on an enum. A value not in the map is written as it is. Quote every key and word: YAML reads a bare `true`, `ON`, `off` or `yes` as a boolean, and the driver is refused. The simulator reads the word back to the setting value.
 
 Every device setting needs a `state_key` that polling actually populates. That polled value is the read-back shown in the editor, and it is what the platform waits for before clearing a setting that was queued while the device was offline: the queued write is sent on connect and held until the device reports the new value back. If a setting can be written but never read, leave it as a command instead, so the UI never shows a stale value.
 

@@ -2499,6 +2499,125 @@
   },
   "transport": "tcp"
  },
+ "device_setting_map_boolean_key_not_boolean": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "device_settings": {
+   "knob": {
+    "map": {
+     "maybe": "MAYBE"
+    },
+    "state_key": "power",
+    "type": "boolean",
+    "write": {
+     "send": "SET {value}\r"
+    }
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "device_setting_map_empty": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "device_settings": {
+   "knob": {
+    "map": {},
+    "state_key": "power",
+    "type": "integer",
+    "write": {
+     "send": "SET {value}\r"
+    }
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "device_setting_map_entry_not_scalar": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "device_settings": {
+   "knob": {
+    "map": {
+     "1": [
+      "ONE"
+     ]
+    },
+    "state_key": "power",
+    "type": "integer",
+    "write": {
+     "send": "SET {value}\r"
+    }
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "device_setting_map_enum_key_not_declared": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "device_settings": {
+   "knob": {
+    "map": {
+     "mid": "MID"
+    },
+    "state_key": "power",
+    "type": "enum",
+    "values": [
+     "low",
+     {
+      "label": "High",
+      "value": "high"
+     }
+    ],
+    "write": {
+     "send": "SET {value}\r"
+    }
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "device_setting_min_greater_than_max": {
   "commands": {
    "noop": {

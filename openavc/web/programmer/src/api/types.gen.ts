@@ -140,7 +140,7 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   frameParser: new Set(["header_extra", "header_offset", "header_reserve", "header_size", "include_header", "length", "length_adjust", "length_endian", "length_offset", "length_size", "mid_reserve", "trailer_reserve", "type"]),
   sendFrame: new Set(["after_length", "header", "length_endian", "length_size", "type"]),
   configSchemaEntry: new Set(["advanced", "columns", "default", "description", "help", "label", "max", "min", "regex", "required", "row_label", "secret", "type", "values"]),
-  deviceSettingEntry: new Set(["default", "help", "label", "max", "min", "regex", "setup", "state_key", "type", "unique", "values", "write"]),
+  deviceSettingEntry: new Set(["default", "help", "label", "map", "max", "min", "regex", "setup", "state_key", "type", "unique", "values", "write"]),
   deviceSettingWrite: new Set(["address", "args", "body", "headers", "method", "path", "send"]),
   simulatorSection: new Set(["command_handlers", "controls", "delays", "error_modes", "initial_state", "notifications", "push_state", "state_machines"]),
   routingBlock: new Set(["command", "destination_child_type", "destination_param", "params", "planes", "source_child_type", "source_param"]),
@@ -887,6 +887,18 @@ export interface DriverDeviceSettingDef {
   min?: number;
   max?: number;
   regex?: string;
+  /**
+   * YAML drivers. The device's own word for each setting value, e.g. {"true":
+   * "ON", "false": "OFF"} for a device that writes a flag as ON / OFF. The
+   * value chosen in the editor is replaced by its mapped word before it is
+   * substituted as {value}; a value not in the map is written as it is,
+   * through its state variable's conversion. Keys are setting values: true and
+   * false on a boolean setting, the declared values on an enum. Quote every
+   * key and word, since YAML reads a bare true, on or yes as a boolean. The
+   * simulator maps the word back to the setting value. Requires platform
+   * 0.37.0.
+   */
+  map?: Record<string, string | number>;
   write?: DriverDeviceSettingWrite;
 }
 

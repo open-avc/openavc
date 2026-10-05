@@ -498,6 +498,12 @@ CASES: dict[str, Any] = {
             "write": {"address": "/knob", "args": [{"type": "z"}]},
         }},
     ),
+    "device_setting_map_empty": _setting(map={}),
+    "device_setting_map_entry_not_scalar": _setting(map={"1": ["ONE"]}),
+    "device_setting_map_boolean_key_not_boolean": _setting(type="boolean", map={"maybe": "MAYBE"}),
+    "device_setting_map_enum_key_not_declared": _setting(
+        type="enum", values=["low", {"value": "high", "label": "High"}], map={"mid": "MID"},
+    ),
     # --- discovery (validated through the hints parser) ---
     "discovery_invalid_block": _d(discovery={"tcp_probe": {"port": "not-a-port"}}),
     # --- json contains ---

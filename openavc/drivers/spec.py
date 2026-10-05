@@ -2153,6 +2153,27 @@ DEFS = {
             'regex': {
                 'type': 'string',
             },
+            'map': {
+                'type': 'object',
+                'min_props': 1,
+                'doc': "YAML drivers. The device's own word for each setting value, e.g. {\"true\": \"ON\", \"false\": \"OFF\"} for a device that writes a flag as ON / OFF. The value chosen in the editor is replaced by its mapped word before it is substituted as {value}; a value not in the map is written as it is, through its state variable's conversion. Keys are setting values: true and false on a boolean setting, the declared values on an enum. Quote every key and word, since YAML reads a bare true, on or yes as a boolean. The simulator maps the word back to the setting value.",
+                'since': '0.37.0',
+                'extra': {
+                    # any_of, not one_of: an integer wire value is also a
+                    # number, and one_of refused every integer map value.
+                    'any_of': (
+                        {
+                            'type': 'string',
+                        },
+                        {
+                            'type': 'integer',
+                        },
+                        {
+                            'type': 'number',
+                        },
+                    ),
+                },
+            },
             'write': {
                 'ref': 'deviceSettingWrite',
             },
