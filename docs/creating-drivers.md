@@ -1014,7 +1014,7 @@ route_decoder:
     encoder_id: { type: child_id, child_type: encoder, required: true }
 ```
 
-**Wire value maps.** Any parameter may declare a `map:` translating the validated value to what the protocol wants on the wire — most useful when a `child_id`'s local ID differs from the protocol's channel number (0-based channels, letter codes). The map is applied after validation, so `min`/`max`/`enum` checks see the value the operator picked; values the map doesn't cover pass through unchanged:
+**Wire value maps.** Any parameter may declare a `map:` translating the validated value to what the protocol wants on the wire — most useful when a `child_id`'s local ID differs from the protocol's channel number (0-based channels, letter codes). The map is applied after validation, so `min`/`max`/`enum` checks see the value the operator picked; values the map doesn't cover pass through unchanged. A `boolean` parameter maps with the keys `"true"` and `"false"`, for a device that wants `ON` / `OFF` or `1` / `0` rather than `True` (platform 0.37.0+; earlier platforms match only `"True"` and `"False"`):
 
 ```yaml
 set_input_level:

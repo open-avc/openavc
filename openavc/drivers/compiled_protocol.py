@@ -925,12 +925,13 @@ def value_to_wire(value: Any, decl: Any) -> Any:
     return _whole(round((number - offset) / scale, 9))
 
 
-# ── A device setting's own words (map) ──
+# ── A value's own word on the wire (map) ──
 #
-# A device setting may declare ``map``: the device's own word for each value
-# the setting takes (``{"true": "ON", "false": "OFF"}``). The runtime writes
-# the word in place of the value; the simulator reads the word back to the
-# value. Both go through these two functions so they match keys the same way.
+# A device setting or a command parameter may declare ``map``: the word the
+# device expects for each value (``{"true": "ON", "false": "OFF"}``). The
+# runtime writes the word in place of the value; the simulator reads a
+# setting's word back to the value. All of them go through these functions so
+# a key matches the same way everywhere.
 
 
 def _map_key_matches(key: Any, value: Any) -> bool:
@@ -942,10 +943,10 @@ def _map_key_matches(key: Any, value: Any) -> bool:
     return str(key) == str(value)
 
 
-def setting_word(value: Any, value_map: Any) -> str | None:
-    """The device's word for a setting ``value`` from its ``map``, as text,
-    or None when the map has no entry for it (the caller writes the value
-    as it is)."""
+def map_word(value: Any, value_map: Any) -> str | None:
+    """The device's word for ``value`` from a setting's or parameter's
+    ``map``, as text, or None when the map has no entry for it (the caller
+    writes the value as it is)."""
     if not isinstance(value_map, dict):
         return None
     for key, word in value_map.items():
@@ -954,9 +955,9 @@ def setting_word(value: Any, value_map: Any) -> str | None:
     return None
 
 
-def setting_value_for_word(word: Any, value_map: Any) -> tuple[bool, Any]:
+def value_for_map_word(word: Any, value_map: Any) -> tuple[bool, Any]:
     """The setting value a device ``word`` stands for: the inverse of
-    :func:`setting_word`. An exact match wins, then one ignoring case.
+    :func:`map_word`. An exact match wins, then one ignoring case.
     ``(True, key)`` when found (the key as declared; the caller coerces it to
     the state variable's type), ``(False, None)`` when the map has no such
     word."""

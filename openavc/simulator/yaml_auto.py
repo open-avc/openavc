@@ -49,7 +49,7 @@ from openavc.drivers.compiled_protocol import (
     send_param_groups,
     send_param_specs,
     send_regex,
-    setting_value_for_word,
+    value_for_map_word,
     spec_int_base,
     split_send_frames,
     state_var_default,
@@ -1350,7 +1350,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             elif isinstance(source, int) and not isinstance(source, bool):
                 # Capture group index
                 value = m.group(source)
-                found, setting_value = setting_value_for_word(
+                found, setting_value = value_for_map_word(
                     value, handler.group_value_maps.get(source)
                 )
                 if found:

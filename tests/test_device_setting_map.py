@@ -20,7 +20,7 @@ from openavc.core import device_manager
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
-from openavc.drivers.compiled_protocol import setting_value_for_word, setting_word
+from openavc.drivers.compiled_protocol import value_for_map_word, map_word
 from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.drivers.driver_loader import validate_driver_definition
 from openavc.drivers.python_info import python_driver_info_issues
@@ -126,37 +126,37 @@ def _sim(definition: dict[str, Any] = WIDGET) -> YAMLAutoSimulator:
 
 @pytest.mark.parametrize("key", [True, "true", "True", "TRUE"])
 def test_a_boolean_value_matches_its_key_however_it_is_spelled(key):
-    assert setting_word(True, {key: "ON"}) == "ON"
-    assert setting_word(False, {key: "ON"}) is None
+    assert map_word(True, {key: "ON"}) == "ON"
+    assert map_word(False, {key: "ON"}) is None
 
 
 def test_a_boolean_value_never_matches_a_number_key():
-    assert setting_word(True, {"1": "ON"}) is None
-    assert setting_word(False, {0: "OFF"}) is None
+    assert map_word(True, {"1": "ON"}) is None
+    assert map_word(False, {0: "OFF"}) is None
 
 
 def test_other_values_match_on_their_text():
-    assert setting_word("auto", {"auto": "AUTO"}) == "AUTO"
-    assert setting_word(3, {3: "THREE"}) == "THREE"
-    assert setting_word(3, {"3": "THREE"}) == "THREE"
-    assert setting_word("3", {3: "THREE"}) == "THREE"
-    assert setting_word("Auto", {"auto": "AUTO"}) is None
+    assert map_word("auto", {"auto": "AUTO"}) == "AUTO"
+    assert map_word(3, {3: "THREE"}) == "THREE"
+    assert map_word(3, {"3": "THREE"}) == "THREE"
+    assert map_word("3", {3: "THREE"}) == "THREE"
+    assert map_word("Auto", {"auto": "AUTO"}) is None
 
 
 def test_the_word_is_text_and_no_map_maps_nothing():
-    assert setting_word("low", {"low": 5}) == "5"
-    assert setting_word("low", None) is None
-    assert setting_word("low", {}) is None
+    assert map_word("low", {"low": 5}) == "5"
+    assert map_word("low", None) is None
+    assert map_word("low", {}) is None
 
 
 def test_a_word_reads_back_exactly_first_then_ignoring_case():
     value_map = {"a": "On", "b": "ON"}
-    assert setting_value_for_word("ON", value_map) == (True, "b")
-    assert setting_value_for_word("on", value_map) == (True, "a")
-    assert setting_value_for_word(" ON ", {"true": "ON"}) == (True, "true")
-    assert setting_value_for_word("5", {"low": 5}) == (True, "low")
-    assert setting_value_for_word("MAYBE", {"true": "ON"}) == (False, None)
-    assert setting_value_for_word("ON", None) == (False, None)
+    assert value_for_map_word("ON", value_map) == (True, "b")
+    assert value_for_map_word("on", value_map) == (True, "a")
+    assert value_for_map_word(" ON ", {"true": "ON"}) == (True, "true")
+    assert value_for_map_word("5", {"low": 5}) == (True, "low")
+    assert value_for_map_word("MAYBE", {"true": "ON"}) == (False, None)
+    assert value_for_map_word("ON", None) == (False, None)
 
 
 # ── The runtime writes the device's word ──
@@ -197,6 +197,24 @@ async def test_a_value_not_in_the_map_converts_through_its_state_variable():
     # -6 dB is not in the map: the gain variable's offset makes it 12.
     await driver.set_device_setting("gain", -6)
     assert driver.transport.sent[-1] == b"SET GAIN 12\r"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("on_key, off_key", [("true", "false"), ("True", "False"), (True, False)])
+async def test_a_boolean_command_parameter_maps_the_way_a_setting_does(on_key, off_key):
+    # The panel, a macro and Send Command all pass a real boolean. A map keyed
+    # "true" / "false" used to miss it and send "True" to the device.
+    definition = copy.deepcopy(WIDGET)
+    definition["commands"] = {
+        "set_mute": {
+            "send": "SET MUTE {mute}\r",
+            "params": {"mute": {"type": "boolean", "map": {on_key: "1", off_key: "0"}}},
+        },
+    }
+    driver = _driver(definition)
+    await driver.send_command("set_mute", {"mute": True})
+    await driver.send_command("set_mute", {"mute": False})
+    assert driver.transport.sent == [b"SET MUTE 1\r", b"SET MUTE 0\r"]
 
 
 class _RecordingHTTP(HTTPClientTransport):

@@ -1278,7 +1278,7 @@ DEFS = {
             'map': {
                 'type': 'object',
                 'min_props': 1,
-                'doc': "Wire-value translation applied after validation, before substitution: the validated value (string-keyed) is replaced by the mapped wire value. Values not in the map pass through unchanged. Most useful on child_id params whose local ids differ from the protocol's channel numbers.",
+                'doc': "Wire-value translation applied after validation, before substitution: the validated value (string-keyed) is replaced by the mapped wire value. Values not in the map pass through unchanged. A boolean param matches the keys \"true\" and \"false\" in any case. Most useful on child_id params whose local ids differ from the protocol's channel numbers, and on a boolean the device spells as a word (ON / OFF) or a digit.",
                 'extra': {
                     # any_of, not one_of: an integer wire value is also a
                     # number, and one_of refused every integer map value.

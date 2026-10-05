@@ -1453,26 +1453,23 @@ class ConfigurableDriver(BaseDriver):
         declared ``map:`` lookup, else through their ``scale`` / ``offset``
         (the real value back to the device's own number).
 
-        Match is on ``str(value)`` so a coerced ``child_id`` int hits its
-        string key, and map keys are string-normalized so an unquoted YAML
-        integer key still matches. The mapped value substitutes as a string
-        (it is a wire token, not a number to re-coerce)."""
+        Keys match through ``compiled_protocol.map_word``, the rule a device
+        setting's map uses: a coerced ``child_id`` int hits its string key, an
+        unquoted YAML integer key still matches, and a boolean matches a true /
+        false key in any case (``"true"``, ``True``). The mapped value
+        substitutes as a string (it is a wire token, not a number to
+        re-coerce)."""
         if not isinstance(param_defs, dict) or not params:
             return params
         out = params
         for name, pdef in param_defs.items():
             if not isinstance(pdef, dict) or name not in params:
                 continue
-            value_map = pdef.get("map")
-            mapped = None
-            if isinstance(value_map, dict) and value_map:
-                mapped = {str(k): v for k, v in value_map.items()}.get(
-                    str(params[name])
-                )
+            mapped = compiled_protocol.map_word(params[name], pdef.get("map"))
             if mapped is not None:
                 if out is params:
                     out = dict(params)
-                out[name] = str(mapped)
+                out[name] = mapped
             elif pdef.get("scale") is not None or pdef.get("offset") is not None:
                 if out is params:
                     out = dict(params)
@@ -2471,7 +2468,7 @@ class ConfigurableDriver(BaseDriver):
         # true) and is written as declared. Otherwise the setting writes its
         # state variable's real value: the variable's scale / offset turn it
         # back into the device's own number.
-        word = compiled_protocol.setting_word(value, setting_def.get("map"))
+        word = compiled_protocol.map_word(value, setting_def.get("map"))
         if word is None:
             state_var = self._definition.get("state_variables", {}).get(
                 setting_def.get("state_key") or key
