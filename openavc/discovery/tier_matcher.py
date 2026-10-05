@@ -965,6 +965,7 @@ def evidence_broadcast(
     port: int | None = None,
     matched_pattern: str | None = None,
     driver_supplied: list[str] | None = None,
+    supplied_by: str | None = None,
 ) -> Evidence:
     """Build an Evidence record for a broadcast probe response.
 
@@ -980,7 +981,8 @@ def evidence_broadcast(
     response satisfied (e.g. ``"regex:<vendor-pattern>"``,
     ``"hex de ad be ef"``). Both feed the scan-results "Why?" reveal.
     ``driver_supplied`` names the ``txt`` fields the driver's own rule set
-    to a literal (``extract_manufacturer``), not read from the reply.
+    to a literal (``extract_manufacturer``), not read from the reply, and
+    ``supplied_by`` the driver whose rule it was.
     """
     data: dict[str, Any] = {
         "kind": KIND_BROADCAST,
@@ -995,6 +997,8 @@ def evidence_broadcast(
         data["matched_pattern"] = matched_pattern
     if driver_supplied:
         data["driver_supplied"] = list(driver_supplied)
+        if supplied_by:
+            data["supplied_by"] = supplied_by
     return Evidence(
         tier=SignalTier.BROADCAST_PROBE,
         source=f"broadcast:{probe_id}",
@@ -1009,6 +1013,7 @@ def evidence_active_probe(
     port: int | None = None,
     matched_pattern: str | None = None,
     driver_supplied: list[str] | None = None,
+    supplied_by: str | None = None,
 ) -> Evidence:
     """Build an Evidence record for an active-probe response.
 
@@ -1022,7 +1027,7 @@ def evidence_active_probe(
     <port> matched <pattern>" for binary protocols whose response
     excerpt would be gibberish. ``driver_supplied`` names the ``response``
     fields the driver's own rule set to a literal (``extract_manufacturer``),
-    not read from the reply.
+    not read from the reply, and ``supplied_by`` the driver whose rule it was.
     """
     data: dict[str, Any] = {
         "kind": KIND_ACTIVE_PROBE,
@@ -1035,6 +1040,8 @@ def evidence_active_probe(
         data["matched_pattern"] = matched_pattern
     if driver_supplied:
         data["driver_supplied"] = list(driver_supplied)
+        if supplied_by:
+            data["supplied_by"] = supplied_by
     return Evidence(
         tier=SignalTier.ACTIVE_PROBE,
         source=f"probe:{probe_id}",
@@ -1113,8 +1120,9 @@ def extract_vendor_strings(evidence_log: list[Evidence]) -> list[Evidence]:
     ``probe``, ``ssdp``, ...), so a line can say where without naming a
     probe's internal id. A value the driver's own rule supplied
     (``extract_manufacturer``, listed in the probe's ``driver_supplied``) is
-    marked ``from_driver``: it still counts for matching, but the device did
-    not say it.
+    marked ``from_driver``, with the probe's ``supplied_by``: it still counts
+    for matching, for every driver that declares the alias, but the device did
+    not say it, and only the supplying driver's probe matched.
 
     Looks at:
     - ``data["response"]["manufacturer"]`` and ``["make"]`` (broadcast / active probes)
@@ -1131,13 +1139,17 @@ def extract_vendor_strings(evidence_log: list[Evidence]) -> list[Evidence]:
     extracted: list[Evidence] = []
 
     def _record(
-        value: object, source_probe_id: str, kind: object, from_driver: bool = False,
+        value: object, source_probe_id: str, kind: object,
+        from_driver: bool = False, supplied_by: object = None,
     ) -> None:
         if not isinstance(value, str):
             return
         normalized = value.strip().lower()
         if not normalized:
             return
+        by = supplied_by if from_driver and isinstance(supplied_by, str) else None
+        # Two matching probes that both supply the name keep the first: one
+        # line per string, and it names a driver whose probe did match.
         key = (normalized, kind if isinstance(kind, str) else source_probe_id, from_driver)
         if key in seen:
             return
@@ -1147,6 +1159,8 @@ def extract_vendor_strings(evidence_log: list[Evidence]) -> list[Evidence]:
             ev.data["from_kind"] = kind
         if from_driver:
             ev.data["from_driver"] = True
+            if by:
+                ev.data["supplied_by"] = by
         extracted.append(ev)
 
     for ev in evidence_log:
@@ -1162,7 +1176,8 @@ def extract_vendor_strings(evidence_log: list[Evidence]) -> list[Evidence]:
         for fields in (ev.data.get("response"), ev.data.get("txt")):
             if isinstance(fields, dict):
                 for name in ("manufacturer", "make"):
-                    _record(fields.get(name), probe_label, kind, name in supplied)
+                    _record(fields.get(name), probe_label, kind, name in supplied,
+                            ev.data.get("supplied_by"))
 
         # Top-level manufacturer/make. SSDP/UPnP puts the rootDesc.xml
         # <manufacturer> here — and a UPnP switch/AP often advertises only

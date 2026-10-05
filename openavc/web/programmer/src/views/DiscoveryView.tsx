@@ -1169,7 +1169,10 @@ function DeviceCard({
               <HelpCircle size={12} /> {showWhy ? "Hide evidence" : "Why this match?"}
             </button>
             {showWhy && (
-              <EvidenceList evidence={device.evidence_log} />
+              <EvidenceList
+                evidence={device.evidence_log}
+                driverName={(id) => driverNameLookup.get(id)?.name}
+              />
             )}
           </div>
 

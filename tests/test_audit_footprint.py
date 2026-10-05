@@ -774,3 +774,39 @@ async def test_a_port_that_said_nothing_still_gets_the_probe_s_own_connection(
     assert probe.matched and not probe.from_greeting
     assert seen["listening"] == 2
     assert fp.verdict["identification"]["driver_id"] == "acme_widget"
+
+
+async def test_a_manufacturer_one_drivers_probe_supplies_is_named_as_its_under_another(
+    monkeypatch, bench,
+):
+    """Two drivers share a manufacturer alias and only acme_widget's probe
+    matched (and named the manufacturer): acme_gadget's check says whose probe
+    it was, not "the driver's"."""
+    def entry(driver_id, name, discovery):
+        return {
+            "id": driver_id, "name": name, "manufacturer": "Acme", "category": "utility",
+            "transport": "tcp", "version": "1.0.0", "discovery": discovery,
+        }
+
+    raw = json.dumps({"drivers": [
+        entry("acme_widget", "Acme Widget", {"tcp_probe": {
+            "port": bench["banner"], "expect_regex": "ACME-WIDGET",
+            "extract_manufacturer": "Acme Corp",
+        }}),
+        entry("acme_gadget", "Acme Gadget", {"manufacturer_alias": ["acme corp"]}),
+    ]}).encode()
+
+    async def fetch(_path):
+        return raw, ""
+
+    monkeypatch.setattr(ci, "_fetch_raw_with_retry", fetch)
+    engine = DiscoveryEngine()
+    engine.load_driver_hints_from_registry([])
+    check, _ = _check(engine, bench)
+    fp = await check.run()
+    [named] = [ev for ev in fp.evidence if ev.data.get("kind") == "vendor_string"
+               and ev.data.get("from_driver")]
+    assert named.data["supplied_by"] == "acme_widget"
+    [gadget] = [c for c in fp.verdict["checks"]["acme_gadget"] if c["kind"] == "vendor_string"]
+    assert gadget["status"] == "matched"
+    assert gadget["detail"].startswith("The Acme Widget driver's probe names the manufacturer")

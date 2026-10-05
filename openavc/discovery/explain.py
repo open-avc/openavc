@@ -24,7 +24,7 @@ can disagree with a scan about what matches.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 from openavc.discovery.hints import (
     CustomProbeSpec,
@@ -248,12 +248,17 @@ class SignalCheck:
 
 
 def evaluate_driver_signals(
-    hint: DiscoveryHint, observed: DeviceObservations,
+    hint: DiscoveryHint,
+    observed: DeviceObservations,
+    *,
+    driver_names: Mapping[str, str] | None = None,
 ) -> list[SignalCheck]:
     """Judge each signal ``hint`` declares against what one device showed.
 
     One ``SignalCheck`` per declaration, in ``hints.signal_rules`` order; a
-    Python companion's two probe IDs are one check.
+    Python companion's two probe IDs are one check. ``driver_names`` (id to
+    display name) lets a manufacturer another driver's probe supplied say
+    which driver.
     """
     evidence = _with_derived_evidence(observed)
     checks: list[SignalCheck] = []
@@ -276,7 +281,7 @@ def evaluate_driver_signals(
         elif rule.kind == KIND_OPEN_PORT:
             checks.append(_check_open_port(rule, single, evidence, observed))
         else:
-            checks.append(_check_soft(rule, single, evidence))
+            checks.append(_check_soft(rule, single, evidence, driver_names or {}))
     return checks
 
 
@@ -599,6 +604,7 @@ def _observed_soft(ev: Evidence, rule: SignalRule | None = None) -> str:
 
 def _check_soft(
     rule: SignalRule, single: SignalIndex, evidence: list[Evidence],
+    driver_names: Mapping[str, str],
 ) -> SignalCheck:
     declared = _SOFT_DECLARED[rule.kind].format(rule.source_id)
     same_kind = [ev for ev in evidence if ev.data.get("kind") == rule.kind]
@@ -615,11 +621,19 @@ def _check_soft(
     shown = list(dict.fromkeys(_observed_soft(ev, rule) for ev in (hits or same_kind)))
     noun = _SOFT_NOUN[rule.kind]
     if hits and hits[0].data.get("from_driver"):
-        # extract_manufacturer: the driver's word when its probe matched.
+        # extract_manufacturer: a driver's word when its probe matched. Every
+        # driver declaring the alias counts it; only the supplier's probe matched.
+        supplier = hits[0].data.get("supplied_by")
+        if not supplier or supplier == rule.driver_id:
+            whose = "The driver's probe"
+        elif driver_names.get(supplier):
+            whose = f"The {driver_names[supplier]} driver's probe"
+        else:
+            whose = "Another driver's probe"
         return _check(
             rule, declared=declared, status=MATCHED, observed=shown,
             detail=(
-                f"The driver's probe names the manufacturer {shown[0]} when it matches; "
+                f"{whose} names the manufacturer {shown[0]} when it matches; "
                 "it is not read from the device's reply."
             ),
         )

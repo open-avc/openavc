@@ -1197,8 +1197,15 @@ class NetworkCheck:
         named = [d for d in [match.driver_id, *match.candidates, *match.alternatives] if d]
         named.extend(d for d in explanation.drivers() if d not in named)
         hints = {h.driver_id: h for h in self.discovery.discovery_hints}
+        drivers = self._driver_names(named)
+        names = {driver_id: d["name"] for driver_id, d in drivers.items()}
         checks = {
-            driver_id: [c.to_dict() for c in evaluate_driver_signals(hints[driver_id], fp.observations())]
+            driver_id: [
+                c.to_dict()
+                for c in evaluate_driver_signals(
+                    hints[driver_id], fp.observations(), driver_names=names,
+                )
+            ]
             for driver_id in named if driver_id in hints
         }
 
@@ -1221,7 +1228,6 @@ class NetworkCheck:
             else "cached" if identity.get("sha256")
             else "none"
         )
-        drivers = self._driver_names(named)
         fp.verdict = {
             "state": state,
             "sentence": verdict_sentence(state, match.driver_id, match.candidates, drivers),

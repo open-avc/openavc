@@ -490,6 +490,7 @@ async def observe_udp_probe(
                 port=spec.port,
                 matched_pattern=describe_response_match(spec.response_match) or None,
                 driver_supplied=_driver_supplied(spec.extract),
+                supplied_by=spec.driver_id,
             )
             matched_from.add(sender_ip)
             if obs is None:
@@ -892,5 +893,6 @@ def _judge(
         port=spec.port,
         matched_pattern=matched_pattern,
         driver_supplied=_driver_supplied(spec.extract),
+        supplied_by=spec.driver_id,
     )
     return obs

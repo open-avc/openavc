@@ -110,6 +110,7 @@ export function NetworkCheckStep() {
             <EvidenceList
               evidence={result.evidence}
               pointsAt={(ev) => signalDrivers(result.verdict, ev)}
+              driverName={(id) => result.verdict.drivers[id]?.name}
             />
           )}
         </div>
@@ -157,7 +158,9 @@ function DriverList({ result }: { result: audit.AuditCheckResult }) {
           <li key={d.id}>
             {d.name}
             <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-secondary)", overflowWrap: "anywhere" }}>
-              {d.signals.map((ev) => describeEvidence(ev).headline).join("; ")}
+              {d.signals
+                .map((ev) => describeEvidence(ev, (id) => result.verdict.drivers[id]?.name).headline)
+                .join("; ")}
             </div>
           </li>
         ))}

@@ -714,9 +714,11 @@ class TestVendorStringIntegration:
             and d.data.get("value") == "fakevendor"
             for d in derived
         )
-        # The literal is the driver's word, not the reply's.
+        # The literal is the driver's word, not the reply's, and says whose.
         assert ev.data["driver_supplied"] == ["manufacturer"]
+        assert ev.data["supplied_by"] == "vendor_test"
         assert all(d.data.get("from_driver") is True for d in derived)
+        assert all(d.data.get("supplied_by") == "vendor_test" for d in derived)
 
     @pytest.mark.asyncio
     async def test_a_literal_manufacturer_is_the_drivers_and_a_captured_one_the_devices(self):
@@ -730,9 +732,11 @@ class TestVendorStringIntegration:
         )
         assert ev is not None
         assert ev.data["driver_supplied"] == ["manufacturer"]
+        assert ev.data["supplied_by"] == "acme_widget"
         [named] = extract_vendor_strings([ev])
         assert named.data["value"] == "acme corp"
         assert named.data["from_driver"] is True
+        assert named.data["supplied_by"] == "acme_widget"
 
         port = _tcp_responder(b"ACME-WIDGET Vendor=Acme\n")
         captured = _make_hint("acme_gadget", tcp_probe={
@@ -743,10 +747,10 @@ class TestVendorStringIntegration:
             captured.tcp_probe, target="127.0.0.1", source_ip="127.0.0.1", stagger_ms=0,
         )
         assert ev is not None
-        assert "driver_supplied" not in ev.data
+        assert "driver_supplied" not in ev.data and "supplied_by" not in ev.data
         [named] = extract_vendor_strings([ev])
         assert named.data["value"] == "acme"
-        assert "from_driver" not in named.data
+        assert "from_driver" not in named.data and "supplied_by" not in named.data
 
 
 class TestBestDriverFirstIntegration:

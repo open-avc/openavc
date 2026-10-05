@@ -14,7 +14,13 @@ import { cleanBannerText, readsAsText } from "./discoveryViewHelpers";
 // spec §11; the strings below are the natural-English versions of
 // those.
 
-export function describeEvidence(ev: DiscoveryEvidence): { headline: string; detail: string | null } {
+/** ``driverName`` maps a driver id to its name, so a manufacturer a driver's
+ *  probe supplied can say which driver: a line listed under several drivers
+ *  would otherwise read "the driver" as each of them. */
+export function describeEvidence(
+  ev: DiscoveryEvidence,
+  driverName?: (id: string) => string | undefined,
+): { headline: string; detail: string | null } {
   const data = ev.data as Record<string, unknown>;
   const kind = typeof data.kind === "string" ? (data.kind as string) : null;
   const sourceId = typeof data.source_id === "string" ? (data.source_id as string) : null;
@@ -149,9 +155,12 @@ export function describeEvidence(ev: DiscoveryEvidence): { headline: string; det
         ? (data.raw as string) : null;
       const from = typeof data.source_probe_id === "string" ? (data.source_probe_id as string) : "";
       const kind = typeof data.from_kind === "string" ? (data.from_kind as string) : "";
-      const where = data.from_driver === true
-        ? "by the driver when its probe matched"
-        : vendorStringWhere(from, kind);
+      const supplier = typeof data.supplied_by === "string" ? driverName?.(data.supplied_by) : undefined;
+      const where = data.from_driver !== true
+        ? vendorStringWhere(from, kind)
+        : supplier
+          ? `by the ${supplier} driver when its probe matched`
+          : "by the driver when its probe matched";
       return {
         headline: `Manufacturer "${value}" named ${where}`,
         detail: raw ? `"${raw}"` : null,
@@ -184,14 +193,17 @@ function vendorStringWhere(from: string, kind: string): string {
 
 /**
  * The evidence, one line each. ``pointsAt`` (the device audit's) names the
- * drivers each signal points at, or returns null to say nothing for it.
+ * drivers each signal points at, or returns null to say nothing for it;
+ * ``driverName`` is passed to ``describeEvidence``.
  */
 export function EvidenceList({
   evidence,
   pointsAt,
+  driverName,
 }: {
   evidence: DiscoveryEvidence[];
   pointsAt?: (ev: DiscoveryEvidence) => string[] | null;
+  driverName?: (id: string) => string | undefined;
 }) {
   if (evidence.length === 0) {
     return (
@@ -207,7 +219,7 @@ export function EvidenceList({
       fontSize: "var(--font-size-xs)", color: "var(--text-muted)",
     }}>
       {evidence.map((e, i) => {
-        const { headline, detail } = describeEvidence(e);
+        const { headline, detail } = describeEvidence(e, driverName);
         const drivers = pointsAt ? pointsAt(e) : null;
         return (
           <div key={i} style={{ marginBottom: 4 }}>

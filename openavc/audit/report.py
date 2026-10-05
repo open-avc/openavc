@@ -1399,13 +1399,13 @@ def render_summary(report: dict[str, Any]) -> str:
         for sig in pointing:
             drivers = [str(names.get(d, {}).get("name") or d) for d in sig["drivers"]]
             verb = "identifies" if sig.get("strong") else "suggests"
-            items.append(f"<li>{_e(_signal_text(sig))} {verb} {_e(_join(drivers))}</li>")
+            items.append(f"<li>{_e(_signal_text(sig, names))} {verb} {_e(_join(drivers))}</li>")
         parts.append("<h3>Why</h3><ul>" + "".join(items) + "</ul>")
     if unused:
         parts.append(
             "<p class=\"meta\">Also seen, and no catalog driver uses "
             f"{'it' if len(unused) == 1 else 'them'}: "
-            + "; ".join(_e(_signal_text(sig)) for sig in unused) + ".</p>"
+            + "; ".join(_e(_signal_text(sig, names)) for sig in unused) + ".</p>"
         )
     parts.append(
         f"<p class=\"meta\">Checked against {_e(catalog.get('driver_count'))} catalog drivers"
@@ -1908,9 +1908,11 @@ _SIGNAL_PREFIXES = {
 }
 
 
-def _signal_text(sig: dict[str, Any]) -> str:
+def _signal_text(sig: dict[str, Any], names: dict[str, Any] | None = None) -> str:
     """A signal as the wizard's evidence lines say it (``describeEvidence`` in
-    the IDE): what was seen, never a probe's own id."""
+    the IDE): what was seen, never a probe's own id. ``names`` is the
+    verdict's ``drivers``, for naming the driver whose probe supplied a
+    manufacturer."""
     data = (sig.get("evidence") or {}).get("data") or {}
     kind = data.get("kind")
     sid = data.get("source_id")
@@ -1950,7 +1952,7 @@ def _signal_text(sig: dict[str, Any]) -> str:
     if kind == "snmp_pen":
         return f"SNMP enterprise number {value}"
     if kind == "vendor_string":
-        return f'Manufacturer "{value}" named {_vendor_where(data)}'
+        return f'Manufacturer "{value}" named {_vendor_where(data, names)}'
     if kind == "open_port":
         return f"Port {value} is open"
     source = str(sig.get("source") or "")
@@ -2002,11 +2004,15 @@ def _clean_banner(raw: str) -> tuple[str, int]:
 DRIVER_NAMED = "by the driver when its probe matched"
 
 
-def _vendor_where(data: dict[str, Any]) -> str:
+def _vendor_where(data: dict[str, Any], names: dict[str, Any] | None = None) -> str:
     """Where a manufacturer string came from (``vendorStringWhere`` in the
-    IDE). A probe's own id is internal and never shown."""
+    IDE). A probe's own id is internal and never shown. One a driver's probe
+    supplied names that driver when its name is known: the line lists every
+    driver the manufacturer points at, and only that one's probe matched."""
     if data.get("from_driver"):
-        return DRIVER_NAMED
+        entry = (names or {}).get(str(data.get("supplied_by") or ""))
+        name = entry.get("name") if isinstance(entry, dict) else None
+        return f"by the {name} driver when its probe matched" if name else DRIVER_NAMED
     source = str(data.get("source_probe_id") or "")
     kind = str(data.get("from_kind") or "")
     what, _, port = source.partition(":")

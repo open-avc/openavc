@@ -326,6 +326,43 @@ class TestProbes:
                          "vendor_string")
         assert check.detail == "The device's manufacturer name is Acme Corp."
 
+    def test_a_manufacturer_another_drivers_probe_supplies_names_that_driver(self):
+        """Two drivers share a manufacturer alias and only acme_widget's probe
+        matched: under acme_gadget the line says whose probe named it."""
+        gadget = _hint("acme_gadget", manufacturer_alias=["Acme Corp"])
+        ev = evidence_active_probe(
+            "custom_acme_widget_tcp", {"text": "ACME 3000", "manufacturer": "Acme Corp"},
+            port=5000, driver_supplied=["manufacturer"],
+        )
+        ev.data["supplied_by"] = "acme_widget"
+        observed = DeviceObservations(evidence=[ev])
+        check = _by_kind(evaluate_driver_signals(gadget, observed), "vendor_string")
+        assert check.status == MATCHED
+        assert check.detail == (
+            "Another driver's probe names the manufacturer Acme Corp when it matches; "
+            "it is not read from the device's reply."
+        )
+        check = _by_kind(
+            evaluate_driver_signals(gadget, observed, driver_names={"acme_widget": "Acme Widget"}),
+            "vendor_string",
+        )
+        assert check.detail == (
+            "The Acme Widget driver's probe names the manufacturer Acme Corp when it matches; "
+            "it is not read from the device's reply."
+        )
+        # Under the driver whose probe it was, it is that driver's own.
+        widget = _hint(
+            "acme_widget",
+            tcp_probe={"port": 5000, "send_ascii": "ID?\r", "expect": "ACME",
+                       "extract_manufacturer": "Acme Corp"},
+            manufacturer_alias=["Acme Corp"],
+        )
+        check = _by_kind(
+            evaluate_driver_signals(widget, observed, driver_names={"acme_widget": "Acme Widget"}),
+            "vendor_string",
+        )
+        assert check.detail.startswith("The driver's probe names the manufacturer Acme Corp")
+
     def test_a_probe_writes_its_bytes_as_hex_pairs(self):
         hint = _hint("acme_widget", tcp_probe={
             "port": 5000, "send_hex": "AA0B01000C", "expect_hex": "AAFF",

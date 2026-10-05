@@ -348,6 +348,34 @@ def test_a_manufacturer_the_driver_supplies_reads_as_the_drivers():
     )
 
 
+def test_a_manufacturer_one_drivers_probe_supplies_names_that_driver():
+    """The line lists every driver the manufacturer points at, so "the driver"
+    would read as all of them: it names the one whose probe supplied it."""
+    import html
+
+    report = {
+        "generator": {}, "session": {"started_at": 1_700_000_000.0, "tester": {}},
+        "target": {"address": "widget.local"}, "device": {"reported": {}},
+        "catalog": {"used": "none"}, "complete": True, "limits": [],
+        "footprint": {},
+        "verdict": {
+            "sentence": "OpenAVC recognizes this device: Acme Widget.",
+            "drivers": {"acme_widget": {"name": "Acme Widget"},
+                        "acme_gadget": {"name": "Acme Gadget"}},
+            "explanation": {"signals": [
+                {"source": "vendor_string:acme corp", "strong": False,
+                 "drivers": ["acme_gadget", "acme_widget"],
+                 "evidence": {"data": {"kind": "vendor_string", "value": "acme corp",
+                                       "from_kind": "probe", "from_driver": True,
+                                       "supplied_by": "acme_widget"}}},
+            ]},
+        },
+    }
+    page = html.unescape(render_summary(report))
+    assert 'Manufacturer "acme corp" named by the Acme Widget driver when its probe matched' in page
+    assert "named by the driver when" not in page
+
+
 async def test_a_report_taken_mid_check_says_so():
     manager = AuditManager(None)
     session = await manager.start(AuditTarget(address="10.0.0.50", ip="10.0.0.50"))

@@ -72,5 +72,13 @@ describe("the evidence lines", () => {
       kind: "vendor_string", value: "acme", raw: "Acme", source_probe_id: "custom_acme_widget_tcp",
       from_kind: "probe", from_driver: true,
     })).headline).toBe('Manufacturer "acme" named by the driver when its probe matched');
+    // Listed under several drivers, it names the one whose probe supplied it.
+    const names: Record<string, string> = { acme_widget: "Acme Widget" };
+    expect(describeEvidence(ev({
+      kind: "vendor_string", value: "acme", raw: "Acme", source_probe_id: "custom_acme_widget_tcp",
+      from_kind: "probe", from_driver: true, supplied_by: "acme_widget",
+    }), (id) => names[id]).headline).toBe(
+      'Manufacturer "acme" named by the Acme Widget driver when its probe matched',
+    );
   });
 });
