@@ -1707,13 +1707,16 @@ class ConfigurableDriver(BaseDriver):
         the send path can settle, since here the params are known.
 
         Warned once per template and token: polls run on a timer, and a warning
-        that repeats every few seconds is one nobody reads.
+        that repeats every few seconds is one nobody reads. Only the template's
+        own tokens count: a protocol that wraps a value in braces of its own
+        (``{{name}}`` sends ``{Lead Vox}``) put that text there on purpose.
         """
         out = self._safe_substitute(template, params)
         if "{" not in out:
             return out
+        own = set(_WIRE_PLACEHOLDER.findall(template))
         for name in _WIRE_PLACEHOLDER.findall(out):
-            if (where, name) in self._warned_unresolved:
+            if name not in own or (where, name) in self._warned_unresolved:
                 continue
             self._warned_unresolved.add((where, name))
             log.warning(

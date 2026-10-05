@@ -869,3 +869,24 @@ def test_literal_json_braces_are_not_mistaken_for_a_placeholder(caplog):
         asyncio.run(drv.send_command("set_input", {"value": 7}))
     assert drv.transport.sent == [b'{"input": 7}']
     assert "not substituted" not in caplog.text
+
+
+def test_a_value_inside_the_protocols_own_braces_is_not_a_placeholder(caplog):
+    """A protocol that brace-wraps a string value ({{name}} sends {Rack A})
+    put those braces there itself; the value is not a token left over."""
+    definition = _sub_definition()
+    definition["commands"]["set_name"] = {
+        "label": "Set Name",
+        "send": "NAME {{name}}\r\n",
+        "params": {"name": {"type": "string", "label": "Name"}},
+    }
+    definition["polling"] = {"queries": []}
+    drv = _make_driver(definition, {"host": "h", "port": 1})
+    drv.transport = _RecordingTCP()
+    drv._connected = True
+    with caplog.at_level("WARNING"):
+        asyncio.run(drv.send_command("set_name", {"name": "RackA"}))
+        asyncio.run(drv.send_command("set_name", {}))
+    assert drv.transport.sent == [b"NAME {RackA}\r\n", b"NAME {{name}}\r\n"]
+    assert "{RackA}" not in caplog.text
+    assert "'{name}' was not substituted" in caplog.text
