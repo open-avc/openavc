@@ -723,3 +723,38 @@ def test_undeclared_bare_poll_query_still_errors(tmp_path):
     """)
     msgs = _messages(r, "poll_coverage", "error")
     assert any("'I'" in m for m in msgs), msgs
+
+
+# ── command_coverage: send templates ──
+
+
+def test_a_value_inside_the_protocols_own_braces_is_sampled(tmp_path):
+    # {{name}} sends the value inside literal braces ({Lead Vox}); the
+    # sample's {test} is the value, not a placeholder left unresolved.
+    result = _validate(tmp_path, r"""
+        id: acme_widget
+        name: Acme Widget
+        manufacturer: Acme
+        category: audio
+        version: 1.0.0
+        transport: tcp
+        delimiter: "\r"
+        state_variables:
+          name: { type: string, label: Name }
+        commands:
+          set_name:
+            label: Set Name
+            send: "SET NAME {{name}}\r"
+            sets: { name: "{name}" }
+            params:
+              name: { type: string, required: true }
+          raw_command:
+            label: Raw
+            send: "{command}\r"
+            params:
+              command: { type: string, required: true }
+        responses:
+          - match: '^REP NAME \{(.*)\}$'
+            set: { name: "$1" }
+    """)
+    assert _messages(result, "command_coverage") == []

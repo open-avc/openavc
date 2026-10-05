@@ -70,6 +70,7 @@ from openavc.drivers.check import check_driver_file, iter_driver_files
 from openavc.drivers.compiled_protocol import (
     decode_delimiter,
     derive_config,
+    is_passthrough_send,
     safe_substitute,
     send_regex,
     state_var_default,
@@ -464,6 +465,11 @@ def _check_command_coverage(
             send_template = prefix + send_template
 
         params = cmd_def.get("params", {})
+
+        # A raw passthrough sends whatever the caller typed; there is no
+        # command shape to simulate, and the simulator builds no handler.
+        if is_passthrough_send(send_template, params):
+            continue
 
         # Generate a sample command string with test values
         sample = _generate_sample_command(send_template, params, driver_def)
@@ -1984,9 +1990,12 @@ def _generate_sample_command(
     result = result.replace("\\n", "").replace("\\r", "")
     result = result.rstrip("\r\n").strip()
 
-    # Check for unresolved placeholders (config vars that weren't substituted)
-    if re.search(r"\{[a-z_]+\}", result):
-        return None
+    # Check for unresolved placeholders: a token of the template still in
+    # braces (a config field with no default). The protocol's own braces
+    # around a substituted value ({{name}} sends {test}) are not one.
+    for token in re.finditer(r"\{([a-z_]+)(?::[^{}]*)?\}", template):
+        if re.search(r"\{" + token.group(1) + r"(?::[^{}]*)?\}", result):
+            return None
 
     return result
 

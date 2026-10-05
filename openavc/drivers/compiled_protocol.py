@@ -203,6 +203,18 @@ def send_regex(template: str, params: dict[str, Any]) -> str:
     return "".join(out)
 
 
+def is_passthrough_send(template: str, params: dict[str, Any]) -> bool:
+    """True when a send template is one declared parameter and nothing else
+    (``"{command}\\r"``): a raw passthrough that puts whatever the caller
+    typed on the wire. It describes no protocol, so there is nothing to
+    recognize an incoming line by; inverted, it would match every line."""
+    text = template.strip()
+    while text.endswith(("\\r", "\\n")):
+        text = text[:-2].rstrip()
+    m = _ANY_PLACEHOLDER.fullmatch(text)
+    return bool(m and m.group(1) in params)
+
+
 #: Any {name} / {name:spec} token, declared or not.
 _ANY_PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)(?::([^{}]*))?\}")
 
@@ -407,14 +419,37 @@ def _parse_group(src: str, i: int, ctx: dict) -> tuple[str | None, int]:
     if capturing:
         ctx["n"] += 1
         this_no = ctx["n"]
+    body_start = j
     emission, j = _parse_branches(src, j, ctx, depth=1)
     if j >= len(src) or src[j] != ")":
         raise _Unsupported
+    body = src[body_start:j]
     j += 1
     if capturing and this_no in ctx["targets"]:
         ctx["found"].add(this_no)
+        width = _fixed_digit_width(body)
+        if width:
+            ctx["widths"][this_no] = width
         return ctx["targets"][this_no], j
     return emission, j
+
+
+_DIGIT_RUN_RE = re.compile(r"(?:\\d|\[0-9\]|[0-9])(?:\{(\d+)\})?")
+
+
+def _fixed_digit_width(body: str) -> int | None:
+    """N when a capture group's body is exactly N decimal digits (``\\d{3}``,
+    ``[0-9]{2}``, ``\\d\\d``, a literal ``00000``), else None. A device that always sends three
+    digits sends ``030``, never ``30``, and a driver reading it with
+    ``(\\d{3})`` rejects the shorter form."""
+    pos = width = 0
+    while pos < len(body):
+        m = _DIGIT_RUN_RE.match(body, pos)
+        if not m:
+            return None
+        width += int(m.group(1)) if m.group(1) else 1
+        pos = m.end()
+    return width if width > 1 else None
 
 
 def _parse_quantifier(src: str, i: int) -> tuple[int, int] | None:
@@ -504,8 +539,12 @@ def emit_template_multi(pattern: str, placeholders: dict[int, str]) -> str | Non
     (``'Out(\\d+) In(\\d+) Vid'`` with ``{1: '{child_id}', 2: '{value}'}`` →
     ``'Out{child_id} In{value} Vid'``). Every targeted group must survive
     into the final emission; returns None when the pattern can't be modeled.
+
+    A ``{name}`` placeholder whose group is a fixed run of digits carries the
+    width as a zero-pad spec (``'Gain(\\d{3})'`` → ``'Gain{value:03d}'``);
+    ``fill_template`` renders it.
     """
-    ctx = {"n": 0, "targets": dict(placeholders), "found": set()}
+    ctx = {"n": 0, "targets": dict(placeholders), "found": set(), "widths": {}}
     try:
         emission, i = _parse_branches(pattern, 0, ctx, depth=0)
     except _Unsupported:
@@ -516,7 +555,50 @@ def emit_template_multi(pattern: str, placeholders: dict[int, str]) -> str | Non
         return None
     if any(ph not in emission for ph in placeholders.values()):
         return None
+    for group, width in ctx["widths"].items():
+        ph = placeholders[group]
+        if _SLOT_NAME_RE.fullmatch(ph):
+            emission = emission.replace(ph, f"{ph[:-1]}:0{width}d}}")
     return emission
+
+
+_SLOT_NAME_RE = re.compile(r"\{\w+\}")
+_SLOT_RE = re.compile(r"\{(\w+)(?::0(\d+)d)?\}")
+
+
+def fill_template(template: str, values: dict[str, Any]) -> str:
+    """Substitute ``{name}`` and ``{name:0Nd}`` slots in an emitted template.
+
+    A width slot zero-pads a whole number (or a string of digits) to N; any
+    other value goes in as ``str()``. Braces that are not a slot named in
+    ``values`` stay as they are, so a protocol's own literal braces
+    (``{Lead Vox}``) survive."""
+
+    def repl(m: re.Match) -> str:
+        name = m.group(1)
+        if name not in values:
+            return m.group(0)
+        value = values[name]
+        if m.group(2):
+            return _zero_pad(value, int(m.group(2)))
+        return str(value)
+
+    return _SLOT_RE.sub(repl, template)
+
+
+def _zero_pad(value: Any, width: int) -> str:
+    """``value`` as a whole number zero-padded to ``width``; anything that is
+    not a whole number goes in as ``str()``."""
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    if isinstance(value, int):
+        return f"{value:0{width}d}"
+    text = str(value)
+    if re.fullmatch(r"-?\d+", text):
+        return f"{int(text):0{width}d}"
+    return text
 
 
 def emit_template(pattern: str, group: int = 1) -> str | None:

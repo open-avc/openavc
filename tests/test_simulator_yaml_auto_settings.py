@@ -303,3 +303,30 @@ def test_a_setting_with_no_write_builds_nothing():
 def test_a_driver_with_no_settings_at_all_is_untouched():
     sim = _sim(_tcp_def(device_settings={}))
     assert not [h for h in sim._command_handlers if h.name.startswith("setting:")]
+
+
+# ──── A raw passthrough command ────
+
+
+def test_a_raw_passthrough_does_not_swallow_the_lines_after_it():
+    """A command that sends one parameter verbatim ("{command}\\r") would, as
+    a handler, match every line and answer none of them: the settings write
+    handlers come after every command, and so do the commands declared below
+    it. It describes no protocol, so it gets no handler at all."""
+    definition = _tcp_def(commands={
+        "raw_command": {
+            "send": "{command}\\r",
+            "params": {"command": {"type": "string", "required": True}},
+        },
+        "set_label": {
+            "send": "LABEL={label}\\r",
+            "params": {"label": {"type": "string"}},
+            "sets": {"label": "{label}"},
+        },
+    })
+    sim = _sim(definition)
+    assert sim.handle_command(b"GAIN=7") is not None
+    assert sim._state.get("gain") == 7
+    assert sim.handle_command(b"LABEL=Rack") is not None
+    assert sim._state.get("label") == "Rack"
+    assert sim.handle_command(b"NOTHING") is None

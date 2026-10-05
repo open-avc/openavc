@@ -41,6 +41,8 @@ from openavc.drivers.compiled_protocol import (
     emit_literal,
     emit_template,
     emit_template_multi,
+    fill_template,
+    is_passthrough_send,
     infer_state_var,
     reading_from_wire,
     safe_substitute,
@@ -1433,9 +1435,10 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         """Execute a script handler (match: + handler: with inline Python).
 
         Scripts get: match (regex match), state (proxy dict that notifies on
-        writes), config (device config), respond(text) (send response) and
+        writes), config (device config), respond(text) (send response),
         notify(text) (send an unsolicited message on the device's push
-        channel — see _deliver_notification).
+        channel — see _deliver_notification) and reply(key) (the device's
+        own report of a state key — see _script_reply).
         """
         response_data: list[str] = []
 
@@ -1455,6 +1458,9 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             # answers the request; notify() is everything else the device
             # says because of it.
             "notify": self._deliver_notification,
+            # The text the device sends to report a state key, in its own
+            # numbers: what a "report everything" handler strings together.
+            "reply": self._script_reply,
             # http_listener push: a handler matching the device's
             # registration command records where to deliver notifications
             # (e.g. the ServerUrl a codec's feedback registration carries).
@@ -1587,7 +1593,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                         else str(friendly)
                     )
                     sr.value_map.setdefault(
-                        key, template.replace("{value}", str(raw))
+                        key, fill_template(template, {"value": raw})
                     )
 
     def _build_command_handlers(self) -> None:
@@ -1620,6 +1626,13 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 send_template = prefix + send_template
 
             params = cmd_def.get("params", {})
+
+            # A raw passthrough ("{command}\r") would match every line, and
+            # setting nothing it would answer every line meant for a handler
+            # after it with silence: the device settings' write handlers, and
+            # any command declared below it.
+            if is_passthrough_send(send_template, params):
+                continue
 
             # Convert send template to regex — the shared inversion of the
             # same placeholder shapes the runtime substitutes on send.
@@ -2800,6 +2813,16 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         self._udp_transport.sendto(data, self._last_client_addr)
         self.log_protocol("out", data)
 
+    def _script_reply(self, key: str) -> str | None:
+        """A script handler's ``reply(key)``: the text this device sends to
+        report ``key``'s current value, the same text a query or a push of it
+        carries (the device's own number, padded the way its response rule
+        reads it), without the delimiter. None when no response rule
+        describes the key. State holds real values; this is how a handler
+        answering several keys at once speaks the device's numbers without
+        repeating every conversion."""
+        return self._format_state_reply(key, self._state.get(key))
+
     def _format_state_reply(self, key: str, value: Any) -> str | None:
         """Reply/push text for a state key — flat keys through their
         StateResponse, dotted child keys through the (type, prop) child
@@ -3113,13 +3136,12 @@ class ChildStateResponse:
             wire_id = self.id_wire_map.get(str(child_id), str(child_id))
         value_str = str(value).lower() if isinstance(value, bool) else str(value)
         if value_str in self.value_map:
-            return self.value_map[value_str].replace("{child_id}", str(wire_id))
+            return fill_template(self.value_map[value_str], {"child_id": wire_id})
         if self.template:
-            return (
-                self.template
-                .replace("{child_id}", str(wire_id))
-                .replace("{value}", str(value_to_wire(value, self.conversion)))
-            )
+            return fill_template(self.template, {
+                "child_id": wire_id,
+                "value": value_to_wire(value, self.conversion),
+            })
         return None
 
 
@@ -3181,7 +3203,7 @@ class StateResponse:
 
         # Use template
         if self.template:
-            return self.template.replace("{value}", str(wire))
+            return fill_template(self.template, {"value": wire})
 
         # Fallback
         return str(wire)

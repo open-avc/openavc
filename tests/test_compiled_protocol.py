@@ -15,6 +15,8 @@ from openavc.drivers.compiled_protocol import (
     decode_delimiter,
     emit_literal,
     emit_template,
+    emit_template_multi,
+    fill_template,
     send_param_specs,
     send_regex,
     spec_int_base,
@@ -263,6 +265,36 @@ def test_emit_template_returns_none_when_unmodelable():
     # ...but a negated class INSIDE the target group is fine — the group
     # becomes {value} and its content never needs a representative.
     assert emit_template(r'val="([^"]*)"') == 'val="{value}"'
+
+
+def test_emit_template_carries_a_fixed_digit_width():
+    # A capture that is always N digits keeps N, so the reply pads the way
+    # the device does; a variable-length one stays a bare slot.
+    assert emit_template(r"GAIN (\d{3})") == "GAIN {value:03d}"
+    assert emit_template(r"MINS ([0-9]{5})") == "MINS {value:05d}"
+    assert emit_template(r"CH (\d\d)") == "CH {value:02d}"
+    # A rule that captures one literal value (a rate of 00000 meaning off)
+    # still fixes the width of every value that reply carries.
+    assert emit_template(r"RATE (00000)") == "RATE {value:05d}"
+    assert emit_template(r"GAIN (\d+)") == "GAIN {value}"
+    assert emit_template(r"GAIN (\d{1,3})") == "GAIN {value}"
+    assert emit_template(r"GAIN (-?\d{3})") == "GAIN {value}"
+    assert (
+        emit_template_multi(r"REP (\d{2}) GAIN (\d{3})", {1: "{child_id}", 2: "{value}"})
+        == "REP {child_id:02d} GAIN {value:03d}"
+    )
+    # A literal token in place of the group is never given a width.
+    assert emit_template_multi(r"MUTE (\d{2})", {1: "1"}) == "MUTE 1"
+
+
+def test_fill_template_pads_whole_numbers_and_leaves_braces_alone():
+    assert fill_template("GAIN {value:03d}", {"value": 30}) == "GAIN 030"
+    assert fill_template("GAIN {value:03d}", {"value": 30.0}) == "GAIN 030"
+    assert fill_template("GAIN {value:03d}", {"value": "7"}) == "GAIN 007"
+    assert fill_template("GAIN {value:03d}", {"value": "ON"}) == "GAIN ON"
+    assert fill_template("MINS {value:05d}", {"value": 65535}) == "MINS 65535"
+    assert fill_template("NAME {{value}}", {"value": "Lead Vox"}) == "NAME {Lead Vox}"
+    assert fill_template("NAME {other}", {"value": 1}) == "NAME {other}"
 
 
 def test_emit_literal_reconstructs_fixed_replies():

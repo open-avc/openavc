@@ -341,6 +341,54 @@ def test_the_simulator_child_reply_carries_the_device_number():
     assert reply is not None and b"REP 2 GAIN 30" in reply
 
 
+def test_the_simulator_pads_a_fixed_width_reply_like_the_device():
+    # A device that always sends three digits sends 030, never 30, and a
+    # driver reading it with (\d{3}) rejects the shorter form.
+    definition = copy.deepcopy(RECEIVER)
+    definition["responses"][0]["match"] = r"^REP GAIN (\d{3})$"
+    definition["responses"][3]["match"] = r"^REP BATT_MINS (\d{5})$"
+    definition["responses"][5]["match"] = r"^REP (\d) GAIN (\d{3})$"
+    sim = _sim(definition)
+    reply = sim.handle_command(b"SET GAIN 12")
+    assert reply is not None and b"REP GAIN 012" in reply
+    assert sim._state.get("gain") == -6
+    assert sim._format_state_reply("battery_minutes", 125) == "REP BATT_MINS 00125"
+    assert sim._format_state_reply("battery_minutes", None) == "REP BATT_MINS 65533"
+    reply = sim.handle_command(b"SET 2 GAIN 4")
+    assert reply is not None and b"REP 2 GAIN 004" in reply
+    assert sim._state.get("channel.2.gain") == -14
+
+
+def test_a_script_handler_reports_state_in_the_device_numbers():
+    # A "report everything" request answered by a handler: reply(key) is the
+    # text a query of that key gets, converted and padded, so the handler
+    # never repeats a conversion.
+    definition = copy.deepcopy(RECEIVER)
+    definition["responses"][0]["match"] = r"^REP GAIN (\d{3})$"
+    definition["responses"][5]["match"] = r"^REP (\d) GAIN (\d{3})$"
+    definition["simulator"] = {
+        "initial_state": {"gain": -6, "channel.1.gain": 0, "battery_temp": None},
+        "command_handlers": [{
+            "match": "GET ALL",
+            "handler": (
+                "keys = ['gain', 'channel.1.gain', 'battery_temp', 'nothing']\n"
+                "respond(''.join(reply(k) + '\\r' for k in keys if reply(k)))\n"
+            ),
+        }],
+    }
+    sim = _sim(definition)
+    assert sim.handle_command(b"GET ALL") == b"REP GAIN 012\rREP 1 GAIN 018\rREP BATT_TEMP 255\r"
+
+
+async def test_the_driver_reads_the_padded_reply_it_is_answered_with():
+    definition = copy.deepcopy(RECEIVER)
+    definition["responses"][0]["match"] = r"^REP GAIN (\d{3})$"
+    sim = _sim(definition)
+    driver = _driver(definition)
+    await driver.on_data_received(sim.handle_command(b"SET GAIN 30").rstrip(b"\r"))
+    assert driver.get_state("gain") == 12
+
+
 # ── Validation ──
 
 
