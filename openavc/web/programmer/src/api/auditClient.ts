@@ -291,6 +291,9 @@ export interface AuditListen {
     at: number;
     changes: { t: number; key: string; old: unknown; new: unknown }[];
   } | null;
+  /** Where the driver asked the device to send its events, whether any came,
+   *  and the sentence to show when none has ("" when there is nothing to say). */
+  push: { callbacks: string[]; heard: boolean; text: string };
 }
 
 /** One of the driver's commands, as the live driver declares it. */

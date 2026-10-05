@@ -712,6 +712,7 @@ def _driver_section(run: Any, placed: list[PlacedFile]) -> dict[str, Any]:
 
 def _driver_limits(session: "AuditSession") -> list[dict[str, Any]]:
     """What the driver test could not see, per run."""
+    from openavc.audit.listen import push_heard, push_unheard_text
     from openavc.audit.observe import EVENT_DETAIL_KEPT, TRAFFIC_CAP_BYTES
 
     runs = list(getattr(session, "runs", None) or [])
@@ -756,14 +757,10 @@ def _driver_limits(session: "AuditSession") -> list[dict[str, Any]]:
             })
         for attempt in run.listens:
             urls = attempt.sandbox.push_callbacks()
-            heard = any(
-                e.channel == "http_listener" and e.direction == "rx"
-                for e in attempt.sandbox.observer.traffic
-            )
-            if urls and not heard:
+            if urls and not push_heard(attempt.sandbox):
                 limits.append({
                     "id": "push_never_arrived", "run": run.index, "callbacks": urls,
-                    "text": _push_never_arrived(name, urls),
+                    "text": push_unheard_text(name, urls),
                 })
                 break
         if any(
@@ -785,30 +782,6 @@ def _driver_limits(session: "AuditSession") -> list[dict[str, Any]]:
                     f"log.txt keeps the first {log_lines.keep}.",
         })
     return limits
-
-
-def _push_never_arrived(name: str, urls: list[str]) -> str:
-    """The limit for a driver that asked the device to send its events to
-    OpenAVC and heard none: where it asked, and the likeliest reason."""
-    from openavc import config
-
-    where = urls[0] if len(urls) == 1 else f"{urls[0]} and {len(urls) - 1} more"
-    text = (
-        f"{name} asked the device to send its events to {where}, and none arrived while "
-        "the audit ran, so the driver saw only what it asked for itself."
-    )
-    if config.loopback_only():
-        text += (
-            f" OpenAVC is listening on {config.BIND_ADDRESS} only, so the device cannot "
-            "reach it: set the Bind address in Settings > Network to 0.0.0.0, restart, "
-            "and run the audit again."
-        )
-    else:
-        text += (
-            " A firewall on this computer, or between it and the device, may be blocking "
-            "the device's connection."
-        )
-    return text
 
 
 def generator_info() -> dict[str, Any]:

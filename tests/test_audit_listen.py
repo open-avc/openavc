@@ -441,3 +441,39 @@ async def test_the_front_panel_check_can_be_answered_could_not_try(driver):
     finally:
         await run.stop()
         server.close()
+
+
+async def test_events_the_device_has_not_sent_are_said_on_the_listen_step(driver, monkeypatch):
+    """The driver asked the device to send its events to OpenAVC and none has
+    come: the listen step says so, with the report's reason, rather than
+    leaving the tester at a count of status values until the Report step."""
+    from openavc import config
+
+    url = "http://192.168.1.20:8080/api/push/audit-x"
+    server, port = await _fake_device()
+    session, run, _ = _session_and_run(port)
+    try:
+        listen = await start_listen(session, run, **FAST)
+        monkeypatch.setattr(listen.sandbox, "push_callbacks", lambda: [url])
+        # Bound to this machine only, the device can never reach it: said at once.
+        monkeypatch.setattr(config, "BIND_ADDRESS", "127.0.0.1")
+        push = listen.to_dict().get("push") or {}
+        assert push.get("callbacks") == [url] and push.get("heard") is False
+        assert push.get("text", "").startswith(
+            f"Acme Listen asked the device to send its events to {url}, and none has arrived"
+        )
+        assert "listening on 127.0.0.1 only" in push["text"]
+        # Reachable, nothing is said until the window ends with none heard.
+        monkeypatch.setattr(config, "BIND_ADDRESS", "0.0.0.0")
+        if listen.status == LISTENING:
+            assert listen.to_dict()["push"]["text"] == ""
+        await _until(lambda: listen.status == DONE)
+        text = listen.to_dict()["push"]["text"]
+        assert text.startswith(
+            f"Acme Listen asked the device to send its events to {url}, and none arrived "
+            "while the audit ran"
+        )
+        assert "firewall" in text
+    finally:
+        await run.stop()
+        server.close()

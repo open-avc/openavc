@@ -248,6 +248,20 @@ function StatusBanner({ listen, left }: { listen: audit.AuditListen; left: numbe
           This driver manages its own connection, so its traffic was not captured.
         </div>
       )}
+      {listen.push?.text && (
+        <div
+          style={{
+            marginTop: "var(--space-xs)",
+            display: "flex",
+            gap: "var(--space-sm)",
+            alignItems: "flex-start",
+            color: "var(--color-warning)",
+          }}
+        >
+          <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span style={{ color: "var(--text)" }}>{listen.push.text}</span>
+        </div>
+      )}
     </div>
   );
 }

@@ -56,6 +56,8 @@ the one before.
    the driver's commands, and listens for 45 seconds or three of the driver's status polls,
    whichever is longer (**Keep listening** adds a minute at a time, up to five minutes).
    You see each status value as the device reports it, a timeline, and the traffic both ways.
+   When the driver asked the device to send its events to OpenAVC and none arrive, the step
+   says so, and what to change.
    The optional front-panel check asks you to change something on the device itself and say
    whether OpenAVC showed it, or that nothing on the device could be changed to try it.
 6. **Commands.** Open a command, press **Send**, then watch or listen to the device and say

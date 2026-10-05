@@ -136,6 +136,47 @@ TRANSPORT_NAMES = {
 }
 
 
+def push_heard(sandbox: Any) -> bool:
+    """Whether the device sent anything to a callback the driver registered
+    with OpenAVC's HTTP listener, in this attempt."""
+    return any(
+        e.channel == "http_listener" and e.direction == "rx"
+        for e in sandbox.observer.traffic
+    )
+
+
+def push_unheard_text(name: str, urls: list[str], *, listening: bool = False) -> str:
+    """What to say when a driver asked the device to send its events to
+    OpenAVC and none came: where it asked, and the likeliest reason. The
+    report says it of the whole audit; the listen step says it while still
+    listening, when OpenAVC is bound to this machine and none can come."""
+    from openavc import config
+
+    where = urls[0] if len(urls) == 1 else f"{urls[0]} and {len(urls) - 1} more"
+    if listening:
+        text = (
+            f"{name} asked the device to send its events to {where}, and none has arrived, "
+            "so the driver sees only what it asks for itself."
+        )
+    else:
+        text = (
+            f"{name} asked the device to send its events to {where}, and none arrived while "
+            "the audit ran, so the driver saw only what it asked for itself."
+        )
+    if config.loopback_only():
+        text += (
+            f" OpenAVC is listening on {config.BIND_ADDRESS} only, so the device cannot "
+            "reach it: set the Bind address in Settings > Network to 0.0.0.0, restart, "
+            "and run the audit again."
+        )
+    else:
+        text += (
+            " A firewall on this computer, or between it and the device, may be blocking "
+            "the device's connection."
+        )
+    return text
+
+
 def transport_name(transport: str) -> str:
     return TRANSPORT_NAMES.get(transport, transport.upper())
 
@@ -523,6 +564,23 @@ class ListenPass:
     def _declared(self) -> list[str]:
         return list((self._driver_info().get("state_variables") or {}).keys())
 
+    def push_status(self) -> dict[str, Any]:
+        """The callbacks the driver asked the device to send its events to,
+        whether any came, and what the step says when none has: at once when
+        OpenAVC listens on this machine only (none can come), otherwise when
+        the window ends with none heard, as the report does."""
+        from openavc import config
+
+        urls = self.sandbox.push_callbacks()
+        heard = push_heard(self.sandbox)
+        text = ""
+        if urls and not heard:
+            listening = self.status in (CONNECTING, LISTENING, NOT_CONNECTED)
+            if not listening or config.loopback_only():
+                name = self.run.choice.identity.get("name") or self.run.choice.driver_id
+                text = push_unheard_text(name, urls, listening=listening)
+        return {"callbacks": urls, "heard": heard, "text": text}
+
     def from_device(self, prop: str) -> bool:
         """The device reported ``prop``: it has a value written at or after the
         device's first reply. A value the driver wrote before any reply (its
@@ -649,6 +707,7 @@ class ListenPass:
             },
             "status_table": self.status_table(),
             "front_panel": self.front_panel,
+            "push": self.push_status(),
         }
 
 
@@ -663,7 +722,9 @@ class ListenPass:
         frames = observer.frames()
         unprompted = replies_to_nobody(frames)
         return {
-            **{k: v for k, v in live.items() if k not in ("contract", "traffic")},
+            # ``push`` is the step's live sentence; the report keeps the
+            # callbacks below and says it as a limit.
+            **{k: v for k, v in live.items() if k not in ("contract", "traffic", "push")},
             "contract": {
                 "counts": dict(observer.event_counts),
                 "events": [
