@@ -451,3 +451,32 @@ def test_two_cross_vendor_probes_both_trail_a_vendor_peer() -> None:
     result = matcher.match([open_protocol, camera_protocol])
     assert result.driver_id == "acme_camera_protocol"
     assert result.alternatives == ["acme_open_protocol"]
+
+
+def test_anchor_named_twice_by_the_narrowest_hint_keeps_the_anchor() -> None:
+    """The cross-vendor driver declares two hostname patterns and both match,
+    so the narrowest hint names it twice and nothing else. That still
+    corroborates it: a broader MAC prefix shared with a peer does not demote
+    it.
+    """
+    idx = SignalIndex()
+    idx.add_rule(SignalRule.for_broadcast(
+        "anchor_driver", "shared_probe", generic=True,
+    ))
+    idx.add_rule(SignalRule.for_hostname("anchor_driver", "^ACME-"))
+    idx.add_rule(SignalRule.for_hostname("anchor_driver", "-CP3$"))
+    idx.add_rule(SignalRule.for_oui("anchor_driver", "00:10:7f"))
+    idx.add_rule(SignalRule.for_oui("peer_driver", "00:10:7f"))
+    matcher = TierMatcher(idx)
+
+    result = matcher.match([
+        evidence_broadcast("shared_probe", {"endpoint": "10.0.0.5"}),
+        evidence_hostname("ACME-CP3", matched_pattern="^ACME-"),
+        evidence_hostname("ACME-CP3", matched_pattern="-CP3$"),
+        evidence_oui("00:10:7f:11:22:33"),
+    ])
+
+    assert result.state == DeviceState.IDENTIFIED
+    assert result.driver_id == "anchor_driver"
+    assert result.alternatives == []
+    assert result.source == "broadcast:shared_probe"
