@@ -1010,8 +1010,10 @@ async def test_the_count_goes_back_down_when_a_load_unwinds(
     # platform call, which is where it unwinds. With a 5 ms loop that window
     # was narrower than the scheduler's jitter on the Windows runner, and the
     # thread reached its next call before the assertion ran (CI 2026-09-05).
-    # A 0.3 s gap makes the window a fact: the timeout lands at 0.2 s while
-    # the thread is asleep, the unwind comes at its 0.3 s call, and the 0.4 s
+    # A 0.3 s gap was still too narrow on the macOS runner, whose 0.2 s
+    # timeout fired in the same millisecond as the 0.3 s call (2026-10-05).
+    # A 1 s gap makes the window a fact: the timeout lands at 0.2 s while
+    # the thread is asleep, the unwind comes at its 1 s call, and the 1.5 s
     # wait below is after both.
     _write_script(script_dir, "unwinds2.py", """\
         import time
@@ -1019,12 +1021,12 @@ async def test_the_count_goes_back_down_when_a_load_unwinds(
 
         while True:
             state.set("var.y", 1)
-            time.sleep(0.3)
+            time.sleep(1.0)
     """)
     engine.load_scripts([{"id": "unwinds2", "file": "unwinds2.py", "enabled": True}])
     assert state.get("system.abandoned_script_loads") == 1
 
-    await asyncio.sleep(0.4)
+    await asyncio.sleep(1.5)
     assert state.get("system.abandoned_script_loads") == 0
 
 
