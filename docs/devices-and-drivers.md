@@ -304,9 +304,9 @@ The scan runs through several phases: ping sweep, port scanning, device probes (
 
 Each discovered device lands in one of three states:
 
-- **Identified** — a fingerprint matched a driver. The device card shows the driver and a one-line evidence string (e.g. "mDNS announcement on `_pjlink._tcp.local.`"). Click **Add to Project** to add it with a pre-filled config. When more than one driver fits the same device (a cross-vendor probe matched alongside a vendor-specific peer), the card offers the alternatives in a dropdown — the best fit comes first.
-- **Possible** — hints (MAC address prefix, hostname pattern, open port, manufacturer alias) narrowed the device to a candidate list, but no fingerprint identified it outright. Confirm the right driver and add.
-- **Unknown** — the device is on the network but no driver matched. The card shows what we know (IP, MAC, OUI vendor, open ports). Pick a driver manually or hide the device.
+- **Identified**: a fingerprint matched a driver. The device card shows the driver and a one-line evidence string (e.g. "mDNS announcement on `_pjlink._tcp.local.`"). Click **Add to Project** to add it with a pre-filled config. When more than one driver fits the same device (two drivers' fingerprints both matched, or a cross-vendor probe matched alongside a vendor-specific driver), the card offers each of them in a dropdown, the best fit first.
+- **Possible**: hints (MAC address prefix, hostname pattern, open port, manufacturer alias) narrowed the device to a candidate list, but no fingerprint identified it outright. Confirm the right driver and add.
+- **Unknown**: the device is on the network but no driver matched. The card shows what we know (IP, MAC, OUI vendor, open ports). Pick a driver manually or hide the device.
 
 Each card also shows IP / hostname, manufacturer, category (the identifying driver's category, or the one its MAC address prefix suggests), open ports, model and firmware (when the device reports them), and an optional **Why?** reveal that lists every signal observed during the scan (mDNS announcement, SSDP announcement, TCP/UDP probe response, MAC address prefix, hostname match, SNMP enterprise number, manufacturer name, open port) — useful for debugging. **Audit this device** on a result opens a [device audit](device-audit.md) of it.
 

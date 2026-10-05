@@ -1,13 +1,14 @@
 """Which drivers a device's signals point at, and how one driver's
 ``discovery:`` block fares against what a device showed.
 
-``TierMatcher.match`` gives one answer per device: the first strong match,
-or the soft candidates. Two questions it does not answer are answered here.
+``TierMatcher.match`` gives one answer per device: the drivers the deciding
+strong tier identifies, or the soft candidates. Two questions it does not
+answer are answered here.
 
 - ``explain_matches(evidence, index)`` lists, for every signal a device
-  produced, every driver that signal points at, strong and soft. It picks no
-  winner; the matcher does that. A device two drivers both fingerprint shows
-  both here, whichever the matcher offered.
+  produced, every driver that signal points at, strong and soft, including
+  the tiers the matcher did not need. It picks no winner; the matcher does
+  that.
 - ``evaluate_driver_signals(hint, observed)`` turns it around. Given one
   driver's declared signals and what one device showed, it says of each
   declaration whether the device matched it, did not (and what the device

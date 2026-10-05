@@ -110,12 +110,13 @@ class IdentificationMatch:
 
     Fields by state:
     - ``identified``: ``driver_id`` is set; ``candidates`` is empty.
-      ``source`` references the fingerprint signal that matched.
-      ``alternatives`` may list additional driver_ids the user can
-      switch to — populated when a fingerprint marked
-      ``cross_vendor: true`` won the fingerprint race but a
-      vendor-specific peer driver also matched on an enrichment
-      signal. Empty in the common vendor-specific case.
+      ``source`` references the signal that put ``driver_id`` first.
+      ``alternatives`` lists the other driver_ids the user can switch
+      to: every other driver a fingerprint of the deciding tier
+      identified (two drivers whose probes both answered, two filters
+      on one shared announcement), and the ``cross_vendor: true``
+      driver when an enrichment signal put a vendor-specific peer
+      ahead of it. Empty when one driver alone matched.
     - ``possible``: ``driver_id`` is None; ``candidates`` has 1+ ids;
       ``source`` references the enrichment signal with the fewest
       candidates (``oui:00:11:22``, ``snmp_pen:17049``). ``alternatives``
@@ -124,8 +125,10 @@ class IdentificationMatch:
       ``reason`` explains why nothing matched.
 
     ``evidence`` is the part of the device's log that fed this result:
-    the matching record for ``identified`` (plus the enrichment records
-    when a cross-vendor match was demoted), the enrichment records for
+    the fingerprint records that matched for ``identified``, the best
+    match's first (plus the enrichment records when a cross-vendor match
+    was demoted), the
+    enrichment records for
     ``possible``, and the whole log for ``unknown``. The full audit trail
     the "Why?" UI link reveals is ``DiscoveredDevice.evidence_log``;
     ``discovery/explain.py`` lists every driver each of its records

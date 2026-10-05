@@ -85,9 +85,9 @@ async def _tcp_server(replies: list[bytes]):
 
 class TestExplainMatches:
     def test_two_drivers_fingerprinting_one_device_are_both_listed(self):
-        # Two drivers whose TCP probes both matched the same device: the
-        # matcher offers the first in the log; explain lists both, in either
-        # log order.
+        # Two drivers whose TCP probes both matched the same device: explain
+        # lists both, and the matcher offers both, the same way in either log
+        # order.
         index = build_signal_index([
             _hint("acme_widget", tcp_probe={"port": 5000, "send_ascii": "ID?\r", "expect": "ACME"}),
             _hint("bolt_panel", tcp_probe={"port": 5000, "send_ascii": "ID?\r", "expect": "ACME"}),
@@ -95,12 +95,14 @@ class TestExplainMatches:
         a = evidence_active_probe("custom_acme_widget_tcp", {"text": "ACME 3000"}, port=5000)
         b = evidence_active_probe("custom_bolt_panel_tcp", {"text": "ACME 3000"}, port=5000)
         matcher = TierMatcher(index=index)
+        offers = set()
         for log in ([a, b], [b, a]):
             verdict = matcher.match(log)
             explained = explain_matches(log, index)
             assert set(explained.strong_drivers()) == {"acme_widget", "bolt_panel"}
-            # The matcher's pick is the first driver explain lists.
-            assert verdict.driver_id == explained.strong_drivers()[0]
+            assert {verdict.driver_id, *verdict.alternatives} == set(explained.strong_drivers())
+            offers.add((verdict.driver_id, tuple(verdict.alternatives)))
+        assert len(offers) == 1
 
     def test_a_shared_service_two_filters_both_satisfied(self):
         index = SignalIndex()
@@ -111,7 +113,7 @@ class TestExplainMatches:
         ev = evidence_mdns("_http._tcp", {"model": "W3000", "vendor": "acme"})
         rules = index.find_strong_all("mdns", "_http._tcp.", ev.data["txt"])
         assert [r.driver_id for r in rules] == ["acme_widget_pro", "acme_widget"]
-        # find_strong keeps returning the most specific, as the matcher uses it.
+        # find_strong keeps returning the most specific, which the matcher puts first.
         assert index.find_strong("mdns", "_http._tcp.", ev.data["txt"]).driver_id == "acme_widget_pro"
         explained = explain_matches([ev], index)
         assert explained.signals[0].drivers == ["acme_widget_pro", "acme_widget"]

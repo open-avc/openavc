@@ -388,3 +388,66 @@ def test_multi_vendor_oui_orders_by_specificity() -> None:
     # vendor_a (broader OUI hit) follows, generic pjlink trails.
     assert result.alternatives == ["vendor_a_projector", "pjlink_class1"]
     assert result.source == "snmp_pen:12345"
+
+
+def test_vendor_specific_probe_outranks_a_cross_vendor_probe_at_the_same_tier() -> None:
+    """A cross-vendor probe and a vendor-specific probe both match one device.
+
+    The vendor-specific driver is the identification and the cross-vendor
+    one trails as the alternative, whichever reply came first. A soft
+    signal pointing at a third driver does not get a say: two fingerprints
+    already matched, and a MAC prefix is weaker evidence than either.
+    """
+    idx = SignalIndex()
+    idx.add_rule(SignalRule.for_active_probe(
+        "acme_open_protocol", "custom_acme_open_protocol_tcp", generic=True,
+    ))
+    idx.add_rule(SignalRule.for_active_probe(
+        "acme_projector", "custom_acme_projector_tcp",
+    ))
+    idx.add_rule(SignalRule.for_oui("other_projector", "00:30:13"))
+    matcher = TierMatcher(idx)
+
+    generic = evidence_active_probe(
+        "custom_acme_open_protocol_tcp", {"manufacturer": "Acme"},
+    )
+    specific = evidence_active_probe("custom_acme_projector_tcp", {"raw": "ACME"})
+    oui = evidence_oui("00:30:13:11:22:33")
+
+    for log in ([generic, specific, oui], [specific, generic, oui], [oui, generic, specific]):
+        result = matcher.match(log)
+        assert result.state == DeviceState.IDENTIFIED
+        assert result.driver_id == "acme_projector"
+        assert result.alternatives == ["acme_open_protocol"]
+        assert result.source == "probe:custom_acme_projector_tcp"
+
+
+def test_two_cross_vendor_probes_both_trail_a_vendor_peer() -> None:
+    """Two cross-vendor probes match and a hint names a vendor-specific
+    driver: the vendor driver leads, and both cross-vendor drivers stay on
+    offer behind it.
+    """
+    idx = SignalIndex()
+    idx.add_rule(SignalRule.for_active_probe(
+        "acme_open_protocol", "custom_acme_open_protocol_tcp", generic=True,
+    ))
+    idx.add_rule(SignalRule.for_active_probe(
+        "acme_camera_protocol", "custom_acme_camera_protocol_tcp", generic=True,
+    ))
+    idx.add_rule(SignalRule.for_oui("acme_camera", "00:30:13"))
+    matcher = TierMatcher(idx)
+
+    open_protocol = evidence_active_probe("custom_acme_open_protocol_tcp")
+    camera_protocol = evidence_active_probe("custom_acme_camera_protocol_tcp")
+    oui = evidence_oui("00:30:13:11:22:33")
+
+    for log in ([open_protocol, camera_protocol, oui], [camera_protocol, open_protocol, oui]):
+        result = matcher.match(log)
+        assert result.driver_id == "acme_camera"
+        assert result.alternatives == ["acme_camera_protocol", "acme_open_protocol"]
+        assert result.source == "oui:00:30:13"
+
+    # Without the hint, the first cross-vendor driver by id leads.
+    result = matcher.match([open_protocol, camera_protocol])
+    assert result.driver_id == "acme_camera_protocol"
+    assert result.alternatives == ["acme_open_protocol"]

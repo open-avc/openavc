@@ -126,16 +126,16 @@ function stateTone(state: DeviceState): { bg: string; fg: string; label: string 
 }
 
 /** Plain-English one-liner describing the deterministic signal that produced a match. */
-// When a cross-vendor anchor driver matches (a fingerprint declared
-// `cross_vendor: true`, e.g. PJLink) and a vendor-specific peer
-// driver also matches via a hint, the matcher returns the
-// vendor-specific driver as the primary identification with the
-// cross-vendor anchor demoted to `alternatives`. The UI surfaces a
-// short "(probe also matches ...)" parenthetical next to the likely
-// vendor so users understand why a second driver is offered. The
-// label is the first alternative's display name from the loaded /
-// community-catalog driver lookup, so new cross-vendor anchors land
-// in the UI without per-driver code changes.
+// An identified device carries `alternatives` when more than one driver
+// fits it: two drivers' fingerprints both matched (two probes answered
+// on one port, two filters on one shared announcement), or a
+// cross-vendor anchor (a fingerprint declared `cross_vendor: true`,
+// e.g. PJLink) matched and a hint put a vendor-specific peer ahead of
+// it. The UI surfaces a short "(also matches ...)" parenthetical next
+// to the likely vendor so users understand why a second driver is
+// offered. The label is the first alternative's display name from the
+// loaded / community-catalog driver lookup, so new drivers land in the
+// UI without per-driver code changes.
 
 // Generic fallbacks keyed by the kind prefix of an `ident.source`. Used
 // only when the device's evidence_log doesn't carry a record matching
@@ -1254,10 +1254,9 @@ function IdentificationSection({
   if (state === "identified" && ident?.driver_id) {
     const alts = ident.alternatives ?? [];
     if (alts.length > 0) {
-      // Cross-vendor anchor matched (e.g. PJLink) and a vendor-specific
-      // peer matched via a hint — render the same dropdown as
-      // possible-state, with the vendor driver pre-selected and the
-      // cross-vendor anchor as the trailing alternative.
+      // More than one driver fits: render the same dropdown as
+      // possible-state, with the best fit pre-selected and the rest
+      // (any cross-vendor anchor last) behind it.
       return (
         <DriverChoiceCard
           device={device}
@@ -1494,14 +1493,14 @@ function DriverAddRow({
 //   1. possible state — candidates narrowed by hint matches (OUI,
 //      hostname, manufacturer alias, etc.) without a fingerprint
 //      strong enough to identify on its own.
-//   2. identified state with alternatives — a cross-vendor anchor
-//      matched (e.g. PJLink) and one or more vendor-specific peers
-//      also matched via hints, so the matcher returns the vendor as
-//      the primary "best fit" and the cross-vendor anchor as a
-//      trailing alternative.
+//   2. identified state with alternatives — more than one driver's
+//      fingerprint matched, or a cross-vendor anchor matched (e.g.
+//      PJLink) and one or more vendor-specific peers also matched via
+//      hints, so the matcher returns the best fit first and the rest
+//      (any cross-vendor anchor last) as alternatives.
 // In both cases the user picks from the dropdown and adds. An optional
-// extraNote surfaces a short parenthetical (e.g. "(probe also matches
-// PJLink Class 1 Projector)") next to the likely-vendor line so users
+// extraNote surfaces a short parenthetical (e.g. "(also matches PJLink
+// Class 1 Projector)") next to the likely-vendor line so users
 // understand why a second driver appears.
 
 function DriverChoiceCard({
@@ -1624,8 +1623,8 @@ function DriverChoiceCard({
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       {likelyVendor && (
         <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
-          Likely <strong style={{ color: "var(--text)" }}>{likelyVendor}</strong> &mdash; {sourceLabel}
-          {extraNote ? ` (probe also matches ${extraNote})` : ""}
+          Likely <strong style={{ color: "var(--text)" }}>{likelyVendor}</strong>: {sourceLabel}
+          {extraNote ? ` (also matches ${extraNote})` : ""}
         </div>
       )}
       <DriverAddRow

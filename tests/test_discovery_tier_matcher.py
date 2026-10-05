@@ -435,6 +435,121 @@ class TestTierMatcherSignalOrdering:
         assert result.state == DeviceState.IDENTIFIED
 
 
+class TestTierMatcherPeerMatches:
+    """Two drivers whose fingerprints both match one device are both offered.
+
+    The evidence log is in the order probes answered and announcements
+    arrived, so neither which drivers are offered nor which comes first may
+    depend on it.
+    """
+
+    @staticmethod
+    def _two_probes():
+        idx = SignalIndex()
+        idx.add_rule(SignalRule.for_active_probe("acme_projector", "custom_acme_projector_tcp"))
+        idx.add_rule(SignalRule.for_active_probe("acme_display", "custom_acme_display_tcp"))
+        projector = evidence_active_probe(
+            "custom_acme_projector_tcp", {"raw": "ACMECONTROL 1"}, port=1024,
+        )
+        display = evidence_active_probe(
+            "custom_acme_display_tcp", {"raw": "ACMECONTROL 1"}, port=1024,
+        )
+        return TierMatcher(idx), projector, display
+
+    def test_two_probes_matching_one_device_offer_both(self):
+        m, projector, display = self._two_probes()
+
+        result = m.match([projector, display])
+
+        assert result.state == DeviceState.IDENTIFIED
+        # Nothing separates them, so it is a tie broken by driver id.
+        assert result.driver_id == "acme_display"
+        assert result.alternatives == ["acme_projector"]
+        assert result.source == "probe:custom_acme_display_tcp"
+
+    def test_answer_does_not_depend_on_the_order_the_probes_answered(self):
+        m, projector, display = self._two_probes()
+
+        first = m.match([projector, display])
+        second = m.match([display, projector])
+
+        assert (first.driver_id, first.alternatives, first.source) == (
+            second.driver_id, second.alternatives, second.source,
+        )
+
+    def test_a_driver_matched_twice_is_offered_once(self):
+        m, projector, display = self._two_probes()
+
+        result = m.match([projector, display, projector])
+
+        assert [result.driver_id, *result.alternatives].count("acme_projector") == 1
+
+    def test_every_matching_record_is_kept_as_evidence(self):
+        m, projector, display = self._two_probes()
+
+        result = m.match([projector, display])
+
+        assert [ev.source for ev in result.evidence] == [
+            "probe:custom_acme_display_tcp", "probe:custom_acme_projector_tcp",
+        ]
+
+    def test_one_announcement_two_filtered_rules_offer_both(self):
+        # Two drivers share a service type, each filtering on a different
+        # field; one announcement carrying both fields satisfies both.
+        idx = SignalIndex()
+        idx.add_rule(SignalRule.for_mdns("acme_widget", "_acme._tcp", {"model": "W1"}))
+        idx.add_rule(SignalRule.for_mdns("acme_family", "_acme._tcp", {"manufacturer": "Acme"}))
+
+        result = TierMatcher(idx).match([
+            evidence_mdns("_acme._tcp", {"model": "W1", "manufacturer": "Acme"}),
+        ])
+
+        assert result.state == DeviceState.IDENTIFIED
+        assert result.driver_id == "acme_family"
+        assert result.alternatives == ["acme_widget"]
+
+    def test_shared_announcement_answer_does_not_depend_on_registration_order(self):
+        # Registration order is catalog order: adding or renaming a driver
+        # must not change which one a scan puts first.
+        def matched(rules):
+            idx = SignalIndex()
+            idx.add_rules(rules)
+            result = TierMatcher(idx).match([
+                evidence_mdns("_acme._tcp", {"model": "W1", "manufacturer": "Acme"}),
+            ])
+            return result.driver_id, result.alternatives
+
+        widget = SignalRule.for_mdns("acme_widget", "_acme._tcp", {"model": "W1"})
+        family = SignalRule.for_mdns("acme_family", "_acme._tcp", {"manufacturer": "Acme"})
+
+        assert matched([widget, family]) == matched([family, widget])
+
+    def test_more_specific_rule_on_a_shared_announcement_leads(self):
+        idx = SignalIndex()
+        idx.add_rule(SignalRule.for_mdns("acme_family", "_acme._tcp", {"manufacturer": "Acme"}))
+        idx.add_rule(SignalRule.for_mdns(
+            "acme_widget", "_acme._tcp", {"model": "W1", "manufacturer": "Acme"},
+        ))
+
+        result = TierMatcher(idx).match([
+            evidence_mdns("_acme._tcp", {"model": "W1", "manufacturer": "Acme"}),
+        ])
+
+        assert result.driver_id == "acme_widget"
+        assert result.alternatives == ["acme_family"]
+
+    def test_two_beacon_patterns_matching_one_beacon_offer_both(self):
+        idx = SignalIndex()
+        idx.add_rule(SignalRule.for_amx_ddp("acme_mixer", "Acme", "MixerC*"))
+        idx.add_rule(SignalRule.for_amx_ddp("acme_any", "Acme", "*"))
+
+        result = TierMatcher(idx).match([evidence_amx_ddp("Acme", "MixerC16")])
+
+        # The pattern with more literal characters is the closer fit.
+        assert result.driver_id == "acme_mixer"
+        assert result.alternatives == ["acme_any"]
+
+
 class TestTierMatcherPossible:
     def test_oui_only_yields_possible(self):
         idx = SignalIndex()

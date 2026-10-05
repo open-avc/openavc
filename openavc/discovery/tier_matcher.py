@@ -9,7 +9,10 @@ Design contract
 - A device is ``identified`` if and only if a strong signal
   (``passive_listener`` / ``broadcast_probe`` / ``active_probe``)
   matches a deterministic SignalRule. There is no scoring; the rule
-  either matches or it does not.
+  either matches or it does not. When rules for more than one driver
+  match at the deciding tier, every one of them is offered (the rest as
+  ``alternatives``), in an order that does not depend on the order the
+  signals arrived in.
 - A device is ``possible`` only via ``enrichment`` soft signals
   (OUI / SNMP PEN / hostname pattern), and only when the soft signal
   narrows the candidate set down to something useful.
@@ -452,9 +455,10 @@ class SignalIndex:
         normalized_source = self._normalize_source_for_kind(kind, source_id)
         bucket = self._rules.get((kind, normalized_source), [])
         # Filter rules: keep the ones whose txt_match (if any) is satisfied,
-        # the most-specific filter (longest dict) first.
+        # the most-specific filter (longest dict) first. Equally specific
+        # rules go by driver id, not by the order the catalog registered them.
         matching = [r for r in bucket if _txt_match_satisfied(r.txt_match, observed)]
-        matching.sort(key=lambda r: -len(r.txt_match))
+        matching.sort(key=lambda r: (-len(r.txt_match), r.driver_id))
         return matching
 
     def _find_amx_ddp_globs(
@@ -467,7 +471,7 @@ class SignalIndex:
         while rules register a glob (``Polycom/SoundStructureC*``), so this
         can't be an exact dict lookup. When several patterns match, the most
         specific one (most literal characters, then most TXT constraints)
-        comes first.
+        comes first; equally specific ones go by driver id.
         """
         observed = source_id.strip().lower()
         matching = [
@@ -484,6 +488,8 @@ class SignalIndex:
             wildcards = pat.count("*") + pat.count("?") + pat.count("[")
             return (len(pat) - wildcards, len(rule.txt_match), pat)
 
+        # The driver-id pass first: a reversed sort keeps equal keys in order.
+        matching.sort(key=lambda r: r.driver_id)
         matching.sort(key=_rank, reverse=True)
         return matching
 
@@ -611,15 +617,26 @@ def _txt_match_satisfied(
 # ---------------------------------------------------------------------------
 
 
+# The strong tiers in the order they are trusted: a match from an earlier
+# tier decides, and a later tier is not consulted.
+_STRONG_TIERS = (
+    SignalTier.PASSIVE_LISTENER,
+    SignalTier.BROADCAST_PROBE,
+    SignalTier.ACTIVE_PROBE,
+)
+
+
 @dataclass
 class TierMatcher:
     """Deterministic identification dispatcher.
 
     Given the full ``evidence_log`` of a device, returns one
-    ``IdentificationMatch``. First strong-tier match wins, in order
-    passive_listener -> broadcast_probe -> active_probe. Soft signals
-    (enrichment) only contribute to ``possible`` state when no strong
-    tier matched.
+    ``IdentificationMatch``. The first strong tier with a match decides, in
+    order passive_listener -> broadcast_probe -> active_probe, and every
+    driver a signal of that tier identifies is offered: one as
+    ``driver_id``, the rest as ``alternatives``. Soft signals (enrichment)
+    only contribute to ``possible`` state when no strong tier matched, and
+    to cross-vendor demotion when only cross-vendor rules did.
     """
 
     index: SignalIndex
@@ -629,29 +646,10 @@ class TierMatcher:
 
     def match(self, evidence_log: list[Evidence]) -> IdentificationMatch:
         """Run the deterministic dispatch."""
-        # passive_listener tier
-        for ev in evidence_log:
-            if ev.tier != SignalTier.PASSIVE_LISTENER:
-                continue
-            rule = self._lookup_strong(ev)
-            if rule:
-                return self._finalize_strong_match(rule, ev, evidence_log)
-
-        # broadcast_probe tier
-        for ev in evidence_log:
-            if ev.tier != SignalTier.BROADCAST_PROBE:
-                continue
-            rule = self._lookup_strong(ev)
-            if rule:
-                return self._finalize_strong_match(rule, ev, evidence_log)
-
-        # active_probe tier
-        for ev in evidence_log:
-            if ev.tier != SignalTier.ACTIVE_PROBE:
-                continue
-            rule = self._lookup_strong(ev)
-            if rule:
-                return self._finalize_strong_match(rule, ev, evidence_log)
+        for tier in _STRONG_TIERS:
+            hits = self._strong_hits(evidence_log, tier)
+            if hits:
+                return self._finalize_strong_match(hits, evidence_log)
 
         # enrichment soft signals -> possible state if any narrows the candidate set
         candidates, source = self._gather_soft_candidates(evidence_log)
@@ -671,59 +669,90 @@ class TierMatcher:
             evidence=list(evidence_log),
         )
 
+    def _strong_hits(
+        self, evidence_log: list[Evidence], tier: SignalTier,
+    ) -> list[tuple[SignalRule, Evidence]]:
+        """Every driver a strong signal of ``tier`` identifies, best first, once each.
+
+        Vendor-specific rules come before cross-vendor ones. One record's
+        rules keep the index's order (most specific first). Between records
+        nothing says which driver fits better, so the tie goes by driver id:
+        the log is in the order probes answered and announcements arrived,
+        and the answer must not depend on that. A driver a vendor-specific
+        rule identifies counts as vendor-specific even if a cross-vendor rule
+        names it too.
+        """
+        ranked: list[tuple[bool, int, str, str, SignalRule, Evidence]] = []
+        for ev in evidence_log:
+            if ev.tier != tier:
+                continue
+            for position, rule in enumerate(strong_rules(ev, self.index)):
+                ranked.append((rule.generic, position, rule.driver_id, ev.source, rule, ev))
+        ranked.sort(key=lambda hit: hit[:4])
+
+        hits: list[tuple[SignalRule, Evidence]] = []
+        seen: set[str] = set()
+        for *_, rule, ev in ranked:
+            if rule.driver_id not in seen:
+                seen.add(rule.driver_id)
+                hits.append((rule, ev))
+        return hits
+
     def _finalize_strong_match(
         self,
-        rule: SignalRule,
-        ev: Evidence,
+        hits: list[tuple[SignalRule, Evidence]],
         evidence_log: list[Evidence],
     ) -> IdentificationMatch:
-        """Build the IdentificationMatch for a winning strong-tier rule.
+        """Build the IdentificationMatch for the strong tier that decided.
 
-        Vendor-specific rules stand alone — enrichment signals are
-        ignored. Generic rules (``cross_vendor: true``) are
-        protocol-class winners; if an enrichment signal also produced a
-        vendor-specific candidate, that vendor driver becomes the
-        primary "best fit" and the generic driver demotes to the
-        trailing alternative.
+        ``hits`` is ``_strong_hits``: every driver the tier identifies, best
+        first. When a vendor-specific rule matched, its driver is the
+        identification and every other hit is an alternative; enrichment
+        signals are not consulted, since a fingerprint already said which
+        driver. When only cross-vendor rules (``cross_vendor: true``)
+        matched, they identify a protocol class: if an enrichment signal
+        produced a vendor-specific candidate, that vendor driver becomes the
+        primary "best fit" and the cross-vendor drivers trail as
+        alternatives.
         """
-        if not rule.generic:
+        strong_evidence = _distinct_records([ev for _, ev in hits])
+        best = hits[0][0]
+        best_source = f"{best.kind}:{best.source_id}"
+        matched = [rule.driver_id for rule, _ in hits]
+
+        if not best.generic:
             return IdentificationMatch.identified(
-                driver_id=rule.driver_id,
-                source=f"{rule.kind}:{rule.source_id}",
-                evidence=[ev],
+                driver_id=best.driver_id,
+                source=best_source,
+                alternatives=matched[1:],
+                evidence=strong_evidence,
             )
 
         peers, soft_source = self._pick_demotion_target(
-            evidence_log, anchor=rule.driver_id,
+            evidence_log, anchors=set(matched),
         )
         if not peers:
             # No vendor-specific peer corroborated by a soft signal — or
-            # the narrowest signal uniquely points at the anchor itself,
-            # which is positive evidence the anchor is the right driver
-            # rather than ambiguous "generic protocol observed". Fall
-            # back to the same shape as a vendor-specific identify.
+            # the narrowest signal points only at the cross-vendor drivers
+            # themselves, which is positive evidence one of them is right
+            # rather than ambiguous "generic protocol observed". Fall back
+            # to the same shape as a vendor-specific identify.
             return IdentificationMatch.identified(
-                driver_id=rule.driver_id,
-                source=f"{rule.kind}:{rule.source_id}",
-                evidence=[ev],
+                driver_id=best.driver_id,
+                source=best_source,
+                alternatives=matched[1:],
+                evidence=strong_evidence,
             )
 
-        primary = peers[0]
-        alternatives = peers[1:] + [rule.driver_id]
         soft_evidence = [
             e for e in evidence_log if e.tier == SignalTier.ENRICHMENT
         ]
         return IdentificationMatch.identified(
-            driver_id=primary,
-            source=soft_source or f"{rule.kind}:{rule.source_id}",
-            alternatives=alternatives,
-            evidence=[ev, *soft_evidence],
+            driver_id=peers[0],
+            source=soft_source or best_source,
+            alternatives=peers[1:] + matched,
+            evidence=[*strong_evidence, *soft_evidence],
         )
-
-    def _lookup_strong(self, ev: Evidence) -> SignalRule | None:
-        """Find a strong-tier rule for an evidence record."""
-        rules = strong_rules(ev, self.index)
-        return rules[0] if rules else None
 
     def _collect_soft_signal_results(
         self, evidence_log: list[Evidence],
@@ -747,29 +776,29 @@ class TierMatcher:
         return results
 
     def _pick_demotion_target(
-        self, evidence_log: list[Evidence], *, anchor: str,
+        self, evidence_log: list[Evidence], *, anchors: set[str],
     ) -> tuple[list[str], str]:
-        """Choose vendor-specific peers to promote ahead of a cross-vendor anchor.
+        """Choose vendor-specific peers to promote ahead of the cross-vendor anchors.
 
-        Walks soft signals in narrowness order (smallest hit count first;
-        source label as the deterministic tiebreak). The first signal
-        that produces a non-anchor peer is the demotion source — that
-        signal's peers come first, then any peer surfaced by broader
-        signals as alternatives.
+        ``anchors`` are the drivers whose cross-vendor rules matched. Walks
+        soft signals in narrowness order (smallest hit count first; source
+        label as the deterministic tiebreak). The narrowest signal decides:
+        if it names a driver that is not an anchor, it is the demotion
+        source — that signal's peers come first, then any peer surfaced by
+        broader signals as alternatives.
 
-        Returns ``([], "")`` to signal "no demotion, anchor wins" in two
+        Returns ``([], "")`` to signal "no demotion, an anchor wins" in two
         cases:
 
-        - The narrowest signal's hit set is exactly ``[anchor]``. That
-          signal specifically corroborates the anchor (a hostname pattern
-          declared only by the anchor matched, etc.), so the anchor is
-          the right driver and the broader signals' peer overlap is not
-          enough to override it. Without this guard, a device whose
-          hostname pattern narrows uniquely to the cross-vendor anchor
-          but whose OUI / manufacturer alias also overlaps a peer driver
-          (a vendor-specific sibling under the same OUI block) would be
+        - The narrowest signal names only anchors. That signal
+          specifically corroborates them (a hostname pattern declared only
+          by an anchor matched, etc.), so the broader signals' peer overlap
+          is not enough to override it. Without this guard, a device whose
+          hostname pattern narrows uniquely to the cross-vendor anchor but
+          whose OUI / manufacturer alias also overlaps a peer driver (a
+          vendor-specific sibling under the same OUI block) would be
           misidentified as the peer.
-        - No signal yields a non-anchor peer at all.
+        - No soft signal names any driver at all.
         """
         results = self._collect_soft_signal_results(evidence_log)
         if not results:
@@ -777,33 +806,22 @@ class TierMatcher:
 
         # Tightest signal first; deterministic tiebreak by source label.
         results.sort(key=lambda r: (len(r[1]), r[0]))
+        source, hits = results[0]
+        peers = [d for d in hits if d not in anchors]
+        if not peers:
+            return [], ""
 
-        for source, hits in results:
-            peers = [d for d in hits if d != anchor]
-            if not peers:
-                # This signal narrows to the anchor (or to nothing useful).
-                # If it's the narrowest signal — i.e. the very first one
-                # iterated — its specificity outweighs any broader
-                # peer-overlap signal.
-                if hits == [anchor]:
-                    return [], ""
-                continue
-
-            # Build the promotion order: this signal's peers first
-            # (narrowness), then any peer surfaced by broader signals
-            # (deduped, original-order).
-            ordered: list[str] = list(dict.fromkeys(peers))
-            seen = set(ordered)
-            for src2, hits2 in results:
-                if src2 == source:
-                    continue
-                for d in hits2:
-                    if d != anchor and d not in seen:
-                        seen.add(d)
-                        ordered.append(d)
-            return ordered, source
-
-        return [], ""
+        # Build the promotion order: this signal's peers first
+        # (narrowness), then any peer surfaced by broader signals
+        # (deduped, original-order).
+        ordered: list[str] = list(dict.fromkeys(peers))
+        seen = set(ordered)
+        for _src, hits2 in results[1:]:
+            for d in hits2:
+                if d not in anchors and d not in seen:
+                    seen.add(d)
+                    ordered.append(d)
+        return ordered, source
 
     def _gather_soft_candidates(
         self, evidence_log: list[Evidence],
@@ -837,10 +855,21 @@ class TierMatcher:
         return first + rest, source
 
 
+def _distinct_records(records: list[Evidence]) -> list[Evidence]:
+    """``records`` with repeats of the same record dropped, order kept."""
+    seen: set[int] = set()
+    out: list[Evidence] = []
+    for ev in records:
+        if id(ev) not in seen:
+            seen.add(id(ev))
+            out.append(ev)
+    return out
+
+
 def strong_rules(ev: Evidence, index: SignalIndex) -> list[SignalRule]:
     """Every strong-signal rule one evidence record satisfies, most specific first.
 
-    The matcher takes the first; ``discovery/explain.py`` reports them all.
+    The matcher and ``discovery/explain.py`` both read the whole list.
     Empty for a record that is not a strong signal or that no rule claims.
     """
     kind = ev.data.get("kind")
