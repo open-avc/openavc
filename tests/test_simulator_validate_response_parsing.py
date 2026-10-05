@@ -245,3 +245,47 @@ def test_code_the_simulator_would_refuse_reads_as_unreadable():
     literals, unreadable = _extract_respond_calls("return respond('X')\n")
     assert literals == []
     assert unreadable is True
+
+
+# --- a protocol framed on its own terminator --------------------------------
+
+
+def _angle_driver(**over) -> dict:
+    """A driver whose frames end at ">" (no line ending), the way the frame
+    parser delivers them: without the terminator, one message per frame."""
+    return _driver(
+        delimiter=">",
+        responses=[{"match": r"^< REP PWR (\d)$", "set": {"power": "$1"}}],
+        polling={"queries": ["< GET PWR >"]},
+        **over,
+    )
+
+
+def test_a_reply_is_split_on_the_drivers_own_terminator():
+    """Two frames in one reply, each read without its ">", parse; nothing is
+    reported as unreadable."""
+    result = _run(
+        _angle_driver(
+            simulator={
+                "command_handlers": [
+                    {"match": "< GET PWR >", "handler": 'respond("< REP PWR 1 >< REP PWR 1 >")'},
+                ]
+            },
+        )
+    )
+    assert not result.warnings, [i.message for i in result.warnings]
+    assert not any("match no driver response rule" in i.message for i in result.infos)
+
+
+def test_an_unreadable_reply_still_warns_on_a_terminator_framed_driver():
+    """Splitting on the terminator must not hide a reply nothing parses."""
+    result = _run(
+        _angle_driver(
+            simulator={
+                "command_handlers": [
+                    {"match": "< GET PWR >", "handler": 'respond("< REP POWER ON >")'},
+                ]
+            },
+        )
+    )
+    assert result.warnings, "a polled query answered by nothing readable must warn"

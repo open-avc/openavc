@@ -551,6 +551,7 @@ def _check_response_parsing(
     # Compile response patterns (with config variable substitution)
     response_patterns = _compile_response_patterns(responses, driver_def)
     json_keys = _json_rule_keys(responses)
+    delimiter = _frame_delimiter(driver_def)
     answering = _query_answering_handlers(sim_handlers, driver_def)
     acknowledgements: list[str] = []
 
@@ -587,7 +588,7 @@ def _check_response_parsing(
             ):
                 any_unresolvable = True
                 continue
-            for line in _response_lines(response_text):
+            for line in _response_lines(response_text, delimiter):
                 if _matches_a_response_rule(
                     line, response_patterns, json_keys
                 ):
@@ -632,7 +633,7 @@ def _check_response_parsing(
         )
 
 
-def _response_lines(response_text: str) -> list[str]:
+def _response_lines(response_text: str, delimiter: str | None = None) -> list[str]:
     """One reply, split the way the driver's frame parser will split it.
 
     A handler answering with several lines sends the driver several messages,
@@ -640,14 +641,29 @@ def _response_lines(response_text: str) -> list[str]:
     concatenation instead finds nothing and reports a driver that is fine.
     The terminator arrives either as a real newline (a Python literal in
     script code) or as the two characters ``\\r`` (a YAML respond: template);
-    both mean the same thing here.
+    both mean the same thing here. A driver framed on a terminator of its own
+    (``>``, ``#``) is split on it too, and the driver never sees it: its
+    rules are written without it.
     """
     text = (
         response_text.replace("\\r\\n", "\n")
         .replace("\\r", "\n")
         .replace("\\n", "\n")
     )
+    if delimiter and delimiter.strip("\r\n"):
+        text = text.replace(delimiter, "\n")
     return [line for line in (raw.strip() for raw in text.splitlines()) if line]
+
+
+def _frame_delimiter(driver_def: dict) -> str | None:
+    """The terminator the driver's frame parser splits replies on, decoded,
+    or None for a transport that is not delimiter-framed."""
+    if driver_def.get("transport", "tcp") not in _DELIMITED_TRANSPORTS:
+        return None
+    raw = driver_def.get("delimiter")
+    if not isinstance(raw, str) or not raw:
+        return None
+    return decode_delimiter(raw) or None
 
 
 def _matches_a_response_rule(
@@ -1421,6 +1437,7 @@ def _check_notifications(
 
     response_patterns = _compile_response_patterns(responses, driver_def)
     json_keys = _json_rule_keys(responses)
+    delimiter = _frame_delimiter(driver_def)
 
     for key, value_map in notifications.items():
         if known_keys and key not in known_keys:
@@ -1501,14 +1518,11 @@ def _check_notifications(
             if re.search(r"\{[a-zA-Z_]\w*(:[^}]*)?\}", message):
                 continue
             # Mirror runtime dispatch: pushed data is split on line endings
-            # (driver delimiter) and stripped before matching, so a template
-            # wrapped in CR/LF (dial-back containers embed the payload as
-            # "\r\n<response>\r\n") still round-trips.
-            candidates = [message.strip()] + [
-                part.strip()
-                for part in re.split(r"[\r\n]+", message)
-                if part.strip()
-            ]
+            # and the driver's own delimiter, and stripped before matching, so
+            # a template wrapped in CR/LF (dial-back containers embed the
+            # payload as "\r\n<response>\r\n") or ending in ">" still
+            # round-trips.
+            candidates = [message.strip()] + _response_lines(message, delimiter)
             if not any(
                 p.search(c) for c in candidates for p in response_patterns
             ) and not _matches_json_rules(message, json_keys):
