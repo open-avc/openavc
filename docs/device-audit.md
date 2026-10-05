@@ -125,7 +125,9 @@ the multicast queries, and the driver catalog.
   ends.
 - Each catalog driver's identification check: TCP probes on the device's open ports, and UDP
   probes sent to the device's address. Each sends that driver's own query, so one port (Telnet
-  23, say) can receive several drivers' queries, some of them typed at a login prompt.
+  23, say) can receive several drivers' queries, some of them typed at a login prompt. A plain
+  TCP check that sends nothing and only reads what the port says is matched against what the port
+  said on the listening connection above, and connects again only if the port said nothing.
 - The identification checks of installed drivers that come with their own discovery code. One
   of those can send its own multicast query, which reaches every device of that kind on the
   network segment (a camera driver's WS-Discovery, for instance).

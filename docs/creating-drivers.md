@@ -1808,7 +1808,7 @@ itself positively before the absence means anything.
 Enforced at driver-load time and mirrored at catalog-build time by `openavc-drivers/scripts/build_index.py`:
 
 1. **`port_open` rejects generic web/SSH ports `{22, 80, 443, 8000, 8080, 8443, 8888}`** — they would match every web/SSH device. Other ports are accepted.
-2. **`tcp_probe` and `udp_probe` accept exactly one of `send_ascii` / `send_hex`.** Both is an error; omitting both is allowed for TCP connect-only banner reads.
+2. **`tcp_probe` and `udp_probe` accept exactly one of `send_ascii` / `send_hex`.** Both is an error; omitting both is allowed for TCP connect-only banner reads. A device audit has already listened to every open port by the time it runs the identification checks, so a plain-TCP probe that sends nothing and has no `then:` step is matched against what the port said then, with no connection of its own; it connects only when the port said nothing.
 3. **Probes declare exactly one of `expect` / `expect_regex` / `expect_hex`.** Required for both `tcp_probe` and `udp_probe`. Regex patterns are compiled at load time — invalid patterns fail validation.
 4. **`timeout_ms` ≤ 10 000.** Hard cap.
 5. **`extract_manufacturer:` is sugar for the manufacturer-alias enrichment path.** The probe runner lifts the value into the evidence response so the matcher can pick a vendor-specific peer when this driver carries `cross_vendor: true`. The value is the driver's, not the device's: a scan's **Why?** list and a device audit say the driver named that manufacturer when its probe matched.

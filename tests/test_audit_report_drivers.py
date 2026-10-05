@@ -719,3 +719,22 @@ def test_the_timeline_names_a_probe_by_its_driver_and_the_words_read_plainly():
     assert "acme_widget identification check, TCP port 23" in text
     assert "custom_acme_widget_tcp" not in text
     assert ANSWERS["cant_tell"] == "The person said they could not tell."
+
+
+def test_the_timeline_says_a_probe_was_judged_on_the_port_s_greeting():
+    from openavc.audit.report import render_timeline
+
+    text = render_timeline({
+        "session": {"started_at": 1_700_000_000.0},
+        "target": {"address": "10.0.0.50", "ip": "10.0.0.50"},
+        "footprint": {"probes": [{
+            "probe_id": "custom_acme_widget_tcp", "kind": "tcp", "port": 23,
+            "sent": {"hex": "", "text": ""},
+            "reply": {"hex": "41434d45", "text": "ACME"},
+            "matched": True, "miss": "", "from_greeting": True,
+            "started_at": 1_700_000_001.0,
+        }]},
+    })
+    [line] = [line for line in text.splitlines() if "TCP port 23" in line]
+    assert "the port's greeting" in line and "no connection of its own" in line
+    assert "sent" not in line and "(matched)" in line

@@ -682,3 +682,95 @@ async def test_a_manufacturer_the_driver_supplies_is_not_what_the_device_reporte
     assert check.footprint.device.manufacturer is None
     [named] = [ev for ev in check.footprint.evidence if ev.data.get("kind") == "vendor_string"]
     assert named.data["value"] == "acme corp" and named.data["from_driver"] is True
+
+
+# ---------------------------------------------------------------------------
+# A probe that only listens: the greeting already read answers it
+# ---------------------------------------------------------------------------
+
+
+def _greets_some_sessions(greets):
+    """A telnet-style port that greets only the listening connections
+    ``greets(n)`` picks, counting them from 1. A connection that closes at
+    once (the port scan's) is not counted."""
+    seen = {"listening": 0}
+
+    async def handler(reader, writer):
+        try:
+            first = await asyncio.wait_for(reader.read(1), timeout=0.05)
+        except asyncio.TimeoutError:
+            first = None
+        except (ConnectionError, OSError):
+            first = b""
+        if first == b"":
+            writer.close()
+            return
+        seen["listening"] += 1
+        if greets(seen["listening"]):
+            writer.write(BANNER)
+            await writer.drain()
+        try:
+            await reader.read(1024)
+        except (ConnectionError, OSError):
+            pass
+        writer.close()
+
+    return handler, seen
+
+
+async def _check_listen_only_probe(monkeypatch, bench, greets):
+    """The check against one such port, with one catalog driver whose probe
+    sends nothing and looks for the greeting."""
+    handler, seen = _greets_some_sessions(greets)
+    server, port = await _serve(handler)
+    raw = json.dumps({"drivers": [{
+        "id": "acme_widget", "name": "Acme Widget", "manufacturer": "Acme",
+        "category": "utility", "transport": "tcp", "version": "1.0.0",
+        "discovery": {"tcp_probe": {"port": port, "expect_regex": "ACME-WIDGET"}},
+    }]}).encode()
+
+    async def fetch(_path):
+        return raw, ""
+
+    monkeypatch.setattr(ci, "_fetch_raw_with_retry", fetch)
+    engine = DiscoveryEngine()
+    engine.load_driver_hints_from_registry([])
+    check, _ = _check(
+        engine, bench, port_list=[port], web_ports={},
+        listeners=_heard_listeners(bench, device_heard=False),
+    )
+    try:
+        fp = await check.run()
+    finally:
+        server.close()
+        await server.wait_closed()
+    return fp, seen, port
+
+
+async def test_a_probe_that_only_listens_is_answered_by_the_greeting_already_read(
+    monkeypatch, bench,
+):
+    """A device that greets one session and stays silent on the next: the
+    probe is judged on the greeting the check read and opens no connection of
+    its own, so the device is identified however it treats a second session."""
+    fp, seen, port = await _check_listen_only_probe(monkeypatch, bench, lambda n: n == 1)
+    [probe] = [o for o in fp.probes if o.probe_id == "custom_acme_widget_tcp"]
+    assert probe.matched and probe.from_greeting
+    assert probe.sent == b"" and probe.reply == fp.greetings[port].data
+    assert seen["listening"] == 1
+    assert fp.verdict["state"] == "identified"
+    assert fp.verdict["identification"]["driver_id"] == "acme_widget"
+    [recorded] = fp.to_dict()["probes"]
+    assert recorded["from_greeting"] is True
+
+
+async def test_a_port_that_said_nothing_still_gets_the_probe_s_own_connection(
+    monkeypatch, bench,
+):
+    """No greeting to judge it on, so the probe connects and listens itself."""
+    fp, seen, port = await _check_listen_only_probe(monkeypatch, bench, lambda n: n > 1)
+    assert fp.greetings[port].data == b""
+    [probe] = [o for o in fp.probes if o.probe_id == "custom_acme_widget_tcp"]
+    assert probe.matched and not probe.from_greeting
+    assert seen["listening"] == 2
+    assert fp.verdict["identification"]["driver_id"] == "acme_widget"

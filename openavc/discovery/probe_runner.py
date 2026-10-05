@@ -30,6 +30,8 @@ matched or not: the bytes sent and received, the certificate subject, the
 single-device check needs the misses as much as the matches (a probe that
 nearly matched is how a driver's fingerprint gets corrected). The ``run_*``
 runners the scan calls are thin wrappers that return only the evidence.
+``observe_tcp_probe_on_greeting`` judges a probe that only listens on a
+greeting the check already read, without connecting again.
 """
 
 from __future__ import annotations
@@ -157,6 +159,9 @@ class ProbeObservation:
     matched: bool = False
     miss: str = ""
     evidence: Evidence | None = None
+    # Judged on a greeting already read from the port, with no connection of
+    # its own (``observe_tcp_probe_on_greeting``).
+    from_greeting: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -176,6 +181,8 @@ class ProbeObservation:
         }
         if self.sent_to:
             out["sent_to"] = list(self.sent_to)
+        if self.from_greeting:
+            out["from_greeting"] = True
         if self.tls:
             out["tls"] = True
             out["cert_subject"] = self.cert_subject
@@ -772,7 +779,61 @@ async def observe_tcp_active_probe(
     obs.reply = payload
     obs.follow_up_ok = follow_up_ok
     obs.elapsed_ms = _ms_since_start()
+    return _judge(spec, obs, payload, cert_subject_str, follow_up_ok, target)
 
+
+def answered_by_greeting(spec: CustomProbeSpec) -> bool:
+    """Whether a greeting already read from the port can stand in for this probe.
+
+    A plain-TCP probe that sends nothing and has no second exchange reads
+    exactly what a connect-and-listen read of the port reads: what the device
+    says when it is connected to. A TLS probe, one that sends, and one with a
+    ``then:`` step all need a connection of their own.
+    """
+    return (
+        spec.kind == "tcp" and not spec.send and not spec.tls and spec.follow_up is None
+    )
+
+
+def observe_tcp_probe_on_greeting(
+    spec: CustomProbeSpec,
+    *,
+    target: str,
+    greeting: bytes,
+    first_byte_ms: float | None = None,
+) -> ProbeObservation:
+    """Judge a probe that only listens on what the port already said.
+
+    A single-device check reads every open port's greeting before it runs
+    the driver probes. A device that takes one session at a time does not
+    always greet the next connection (a telnet port went silent on some of a
+    run of back-to-back connections), so the probe is matched against the
+    greeting read instead of opening one more. The observation says so
+    (``from_greeting``), sent nothing, and has no connect time. Only for a
+    probe ``answered_by_greeting`` accepts; an empty greeting is the caller's
+    cue to run the probe on its own connection instead.
+    """
+    if not answered_by_greeting(spec):
+        raise ValueError(f"{spec.probe_id} needs a connection of its own")
+    obs = ProbeObservation(
+        probe_id=spec.probe_id, kind="tcp", port=spec.port, target=target,
+        from_greeting=True,
+    )
+    payload = bytes(greeting[:_MAX_RESPONSE_BYTES])
+    obs.reply = payload
+    obs.first_reply_ms = first_byte_ms
+    return _judge(spec, obs, payload, "", None, target)
+
+
+def _judge(
+    spec: CustomProbeSpec,
+    obs: ProbeObservation,
+    payload: bytes,
+    cert_subject_str: str,
+    follow_up_ok: bool | None,
+    target: str,
+) -> ProbeObservation:
+    """Match a TCP probe's reply and, on a match, build its evidence."""
     # Cert gate: a declared cert_subject must match, and stands in for the
     # payload requirement (a matched cert is signal enough on its own).
     if spec.cert_subject is not None:

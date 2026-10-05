@@ -29,7 +29,10 @@ handshake on web ports only, plus connect-and-listen reads that send no bytes:
 7. **SNMP** v2c: ``public``, then the communities the person gave.
 8. **Driver probes**: every catalog ``tcp_probe`` whose port is open, every
    ``udp_probe`` sent unicast, and the installed Python companions, every
-   exchange kept, matched or not.
+   exchange kept, matched or not. A ``tcp_probe`` that only listens is judged
+   on what its port said in step 4 and connects again only if the port said
+   nothing: a device that takes one session at a time does not always greet
+   the next one.
 
 Then the verdict: the evidence a scan would have built, ``TierMatcher.match``
 on it, and ``explain_matches`` for every driver each signal points at.
@@ -96,7 +99,9 @@ from openavc.discovery.port_scanner import (
 from openavc.discovery.probe_runner import (
     ProbeObservation,
     RateLimiter,
+    answered_by_greeting,
     observe_tcp_active_probe,
+    observe_tcp_probe_on_greeting,
     observe_udp_probe,
 )
 from openavc.discovery.result import (
@@ -988,12 +993,22 @@ class NetworkCheck:
 
         udp_task = asyncio.gather(*(udp(s) for s in udp_specs), return_exceptions=True)
         # TCP probes one port at a time: a single-session device must not
-        # see two of them at once.
+        # see two of them at once. A probe that only listens is judged on the
+        # greeting already read from its port, so a device that does not greet
+        # every connection is not asked again; it connects for itself only
+        # when the port said nothing.
         by_port: dict[int, list] = {}
         for spec in tcp_specs:
             by_port.setdefault(spec.port, []).append(spec)
         for port in sorted(by_port):
+            greeting = fp.greetings.get(port)
             for spec in by_port[port]:
+                if greeting is not None and greeting.data and answered_by_greeting(spec):
+                    fp.probes.append(observe_tcp_probe_on_greeting(
+                        spec, target=fp.ip, greeting=greeting.data,
+                        first_byte_ms=greeting.first_byte_ms,
+                    ))
+                    continue
                 try:
                     fp.probes.append(await observe_tcp_active_probe(
                         spec, target=fp.ip, source_ip=self._source_ip, rate_limiter=limiter,

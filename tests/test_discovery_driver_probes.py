@@ -1565,3 +1565,80 @@ class TestProbeFollowUpRunner:
         assert ev is not None
         assert ev.data["kind"] == "probe"
         assert ev.data["source_id"] == "custom_acme_console_tcp"
+
+
+# ---------------------------------------------------------------------------
+# A probe that only listens, judged on a greeting already read
+# ---------------------------------------------------------------------------
+
+class TestProbeOnGreeting:
+    """A TCP probe that sends nothing reads what the port says when it is
+    connected to. A single-device check has already read that greeting, so the
+    probe is judged on it instead of opening a connection the device may not
+    greet a second time."""
+
+    GREETING = b"\xff\xfb\x01Acme Console (v2)\r\nUser-name: "
+
+    def _listen_only(self, **extra):
+        block = {"port": 23, "expect": "Acme Console", **extra}
+        return _make_hint("acme_console", tcp_probe=block).tcp_probe
+
+    def test_a_probe_that_sends_nothing_can_be_answered_by_the_greeting(self):
+        assert probe_runner_mod.answered_by_greeting(self._listen_only())
+        # A connect-only probe (no pattern) reads the same first words.
+        connect_only = _make_hint("acme_console", tcp_probe={"port": 23}).tcp_probe
+        assert probe_runner_mod.answered_by_greeting(connect_only)
+
+    def test_a_probe_that_sends_or_needs_its_own_connection_cannot(self):
+        sends = self._listen_only(send_ascii="GET STATUS\r")
+        tls = _make_hint("acme_console", tcp_probe={
+            "port": 443, "tls": True, "expect": "Acme",
+        }).tcp_probe
+        follow_up = self._listen_only(then={
+            "send_ascii": "VER\r", "expect": "Console", "timeout_ms": 500,
+        })
+        for spec in (sends, tls, follow_up):
+            assert not probe_runner_mod.answered_by_greeting(spec)
+
+    def test_a_matching_greeting_matches_and_says_where_the_reply_came_from(self):
+        spec = self._listen_only(extract={"manufacturer": "Acme"})
+        obs = probe_runner_mod.observe_tcp_probe_on_greeting(
+            spec, target="10.0.0.5", greeting=self.GREETING, first_byte_ms=14.0,
+        )
+        assert obs.matched and obs.miss == ""
+        assert obs.from_greeting is True
+        assert obs.sent == b"" and obs.reply == self.GREETING
+        assert obs.connect_ms is None and obs.first_reply_ms == 14.0
+        assert obs.evidence is not None
+        assert obs.evidence.data["port"] == 23
+        assert obs.evidence.data["response"]["manufacturer"] == "Acme"
+        assert obs.to_dict()["from_greeting"] is True
+
+    def test_a_greeting_that_does_not_match_is_a_miss_on_the_reply(self):
+        obs = probe_runner_mod.observe_tcp_probe_on_greeting(
+            self._listen_only(), target="10.0.0.5", greeting=b"Other Box\r\nlogin: ",
+        )
+        assert not obs.matched and obs.evidence is None
+        assert obs.miss == probe_runner_mod.MISS_REPLY
+
+    @pytest.mark.asyncio
+    async def test_a_probe_run_on_its_own_connection_says_so(self):
+        """``from_greeting`` is false, and left out of the report, on a probe
+        that connected for itself."""
+        async def greet(reader, writer):
+            writer.write(self.GREETING)
+            await writer.drain()
+            await reader.read(1024)
+            writer.close()
+
+        server = await asyncio.start_server(greet, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        try:
+            obs = await probe_runner_mod.observe_tcp_active_probe(
+                self._listen_only(port=port), target="127.0.0.1", source_ip="127.0.0.1",
+            )
+        finally:
+            server.close()
+            await server.wait_closed()
+        assert obs.matched and obs.from_greeting is False
+        assert "from_greeting" not in obs.to_dict()
