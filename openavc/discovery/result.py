@@ -112,11 +112,12 @@ class IdentificationMatch:
     - ``identified``: ``driver_id`` is set; ``candidates`` is empty.
       ``source`` references the signal that put ``driver_id`` first.
       ``alternatives`` lists the other driver_ids the user can switch
-      to: every other driver a fingerprint of the deciding tier
-      identified (two drivers whose probes both answered, two filters
-      on one shared announcement), and the ``cross_vendor: true``
-      driver when an enrichment signal put a vendor-specific peer
-      ahead of it. Empty when one driver alone matched.
+      to: every other driver a fingerprint identified (two drivers
+      whose probes both answered, two filters on one shared
+      announcement, an announcement and a probe naming different
+      drivers), and the ``cross_vendor: true`` drivers when an
+      enrichment signal put a vendor-specific peer ahead of them.
+      Empty when one driver alone matched.
     - ``possible``: ``driver_id`` is None; ``candidates`` has 1+ ids;
       ``source`` references the enrichment signal with the fewest
       candidates (``oui:00:11:22``, ``snmp_pen:17049``). ``alternatives``

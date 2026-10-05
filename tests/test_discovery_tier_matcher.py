@@ -550,6 +550,60 @@ class TestTierMatcherPeerMatches:
         assert result.alternatives == ["acme_any"]
 
 
+class TestTierMatcherAcrossTiers:
+    """Drivers identified by different kinds of signal are all offered.
+
+    Among vendor-specific matches the trusted order still ranks them:
+    announcements, then broadcast probes, then per-host probes.
+    """
+
+    def test_a_driver_a_probe_identifies_is_offered_beside_an_announcement(self):
+        idx = SignalIndex()
+        idx.add_rule(SignalRule.for_mdns("acme_widget", "_acme._tcp.local."))
+        idx.add_rule(SignalRule.for_active_probe("acme_panel", "custom_acme_panel_tcp"))
+        m = TierMatcher(idx)
+
+        result = m.match([
+            evidence_active_probe("custom_acme_panel_tcp", port=5000),
+            evidence_mdns("_acme._tcp.local."),
+        ])
+
+        assert result.driver_id == "acme_widget"
+        assert result.alternatives == ["acme_panel"]
+        assert result.source == "mdns:_acme._tcp.local."
+
+    def test_tier_order_ranks_vendor_specific_matches_of_every_kind(self):
+        idx = SignalIndex()
+        idx.add_rule(SignalRule.for_active_probe("acme_alpha", "custom_acme_alpha_tcp"))
+        idx.add_rule(SignalRule.for_broadcast("acme_beta", "custom_acme_beta_udp"))
+        idx.add_rule(SignalRule.for_mdns("acme_gamma", "_acme._tcp.local."))
+        m = TierMatcher(idx)
+        records = [
+            evidence_active_probe("custom_acme_alpha_tcp"),
+            evidence_broadcast("custom_acme_beta_udp"),
+            evidence_mdns("_acme._tcp.local."),
+        ]
+
+        for log in (records, records[::-1]):
+            result = m.match(log)
+            assert result.driver_id == "acme_gamma"
+            assert result.alternatives == ["acme_beta", "acme_alpha"]
+
+    def test_every_tier_s_matching_record_is_kept_as_evidence(self):
+        idx = SignalIndex()
+        idx.add_rule(SignalRule.for_mdns("acme_widget", "_acme._tcp.local."))
+        idx.add_rule(SignalRule.for_active_probe("acme_panel", "custom_acme_panel_tcp"))
+
+        result = TierMatcher(idx).match([
+            evidence_active_probe("custom_acme_panel_tcp"),
+            evidence_mdns("_acme._tcp.local."),
+        ])
+
+        assert [ev.source for ev in result.evidence] == [
+            "mdns:_acme._tcp.local.", "probe:custom_acme_panel_tcp",
+        ]
+
+
 class TestTierMatcherPossible:
     def test_oui_only_yields_possible(self):
         idx = SignalIndex()

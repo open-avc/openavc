@@ -10,9 +10,9 @@ Design contract
   (``passive_listener`` / ``broadcast_probe`` / ``active_probe``)
   matches a deterministic SignalRule. There is no scoring; the rule
   either matches or it does not. When rules for more than one driver
-  match at the deciding tier, every one of them is offered (the rest as
-  ``alternatives``), in an order that does not depend on the order the
-  signals arrived in.
+  match, every one of them is offered (the rest as ``alternatives``),
+  vendor-specific before cross-vendor, in an order that does not depend
+  on the order the signals arrived in.
 - A device is ``possible`` only via ``enrichment`` soft signals
   (OUI / SNMP PEN / hostname pattern), and only when the soft signal
   narrows the candidate set down to something useful.
@@ -617,8 +617,9 @@ def _txt_match_satisfied(
 # ---------------------------------------------------------------------------
 
 
-# The strong tiers in the order they are trusted: a match from an earlier
-# tier decides, and a later tier is not consulted.
+# The strong tiers in the order they are trusted. A match from an earlier
+# tier ranks ahead of one from a later tier of the same kind (vendor-specific
+# or cross-vendor); every tier is read.
 _STRONG_TIERS = (
     SignalTier.PASSIVE_LISTENER,
     SignalTier.BROADCAST_PROBE,
@@ -631,12 +632,13 @@ class TierMatcher:
     """Deterministic identification dispatcher.
 
     Given the full ``evidence_log`` of a device, returns one
-    ``IdentificationMatch``. The first strong tier with a match decides, in
-    order passive_listener -> broadcast_probe -> active_probe, and every
-    driver a signal of that tier identifies is offered: one as
-    ``driver_id``, the rest as ``alternatives``. Soft signals (enrichment)
-    only contribute to ``possible`` state when no strong tier matched, and
-    to cross-vendor demotion when only cross-vendor rules did.
+    ``IdentificationMatch``. Every driver a strong signal identifies is
+    offered: one as ``driver_id``, the rest as ``alternatives``.
+    Vendor-specific matches rank ahead of cross-vendor ones whatever tier
+    they came from, and within each, tiers rank in order passive_listener
+    -> broadcast_probe -> active_probe. Soft signals (enrichment) only
+    contribute to ``possible`` state when no strong tier matched, and to
+    cross-vendor demotion when only cross-vendor rules did.
     """
 
     index: SignalIndex
@@ -646,10 +648,9 @@ class TierMatcher:
 
     def match(self, evidence_log: list[Evidence]) -> IdentificationMatch:
         """Run the deterministic dispatch."""
-        for tier in _STRONG_TIERS:
-            hits = self._strong_hits(evidence_log, tier)
-            if hits:
-                return self._finalize_strong_match(hits, evidence_log)
+        hits = self._strong_hits(evidence_log)
+        if hits:
+            return self._finalize_strong_match(hits, evidence_log)
 
         # enrichment soft signals -> possible state if any narrows the candidate set
         candidates, source = self._gather_soft_candidates(evidence_log)
@@ -670,25 +671,30 @@ class TierMatcher:
         )
 
     def _strong_hits(
-        self, evidence_log: list[Evidence], tier: SignalTier,
+        self, evidence_log: list[Evidence],
     ) -> list[tuple[SignalRule, Evidence]]:
-        """Every driver a strong signal of ``tier`` identifies, best first, once each.
+        """Every driver a strong signal identifies, best first, once each.
 
-        Vendor-specific rules come before cross-vendor ones. One record's
-        rules keep the index's order (most specific first). Between records
-        nothing says which driver fits better, so the tie goes by driver id:
-        the log is in the order probes answered and announcements arrived,
-        and the answer must not depend on that. A driver a vendor-specific
-        rule identifies counts as vendor-specific even if a cross-vendor rule
-        names it too.
+        Vendor-specific rules come before cross-vendor ones, whatever tier
+        each came from: a cross-vendor rule names a protocol, not the
+        driver, however trusted the signal that carried it. Within each,
+        the earlier tier first. One record's rules keep the index's order
+        (most specific first). Between records of one tier nothing says which
+        driver fits better, so the tie goes by driver id: the log is in the
+        order probes answered and announcements arrived, and the answer must
+        not depend on that. A driver a vendor-specific rule identifies counts
+        as vendor-specific even if a cross-vendor rule names it too.
         """
-        ranked: list[tuple[bool, int, str, str, SignalRule, Evidence]] = []
+        ranked: list[tuple[bool, int, int, str, str, SignalRule, Evidence]] = []
         for ev in evidence_log:
-            if ev.tier != tier:
+            if ev.tier not in _STRONG_TIERS:
                 continue
+            tier = _STRONG_TIERS.index(ev.tier)
             for position, rule in enumerate(strong_rules(ev, self.index)):
-                ranked.append((rule.generic, position, rule.driver_id, ev.source, rule, ev))
-        ranked.sort(key=lambda hit: hit[:4])
+                ranked.append(
+                    (rule.generic, tier, position, rule.driver_id, ev.source, rule, ev),
+                )
+        ranked.sort(key=lambda hit: hit[:5])
 
         hits: list[tuple[SignalRule, Evidence]] = []
         seen: set[str] = set()
@@ -703,10 +709,11 @@ class TierMatcher:
         hits: list[tuple[SignalRule, Evidence]],
         evidence_log: list[Evidence],
     ) -> IdentificationMatch:
-        """Build the IdentificationMatch for the strong tier that decided.
+        """Build the IdentificationMatch from the strong matches.
 
-        ``hits`` is ``_strong_hits``: every driver the tier identifies, best
-        first. When a vendor-specific rule matched, its driver is the
+        ``hits`` is ``_strong_hits``: every driver a strong signal
+        identifies, best first. When a vendor-specific rule matched, its
+        driver is the
         identification and every other hit is an alternative; enrichment
         signals are not consulted, since a fingerprint already said which
         driver. When only cross-vendor rules (``cross_vendor: true``)

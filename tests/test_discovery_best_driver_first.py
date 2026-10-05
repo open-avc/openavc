@@ -480,3 +480,65 @@ def test_anchor_named_twice_by_the_narrowest_hint_keeps_the_anchor() -> None:
     assert result.driver_id == "anchor_driver"
     assert result.alternatives == []
     assert result.source == "broadcast:shared_probe"
+
+
+def test_vendor_specific_probe_outranks_a_cross_vendor_broadcast_above_it() -> None:
+    """A cross-vendor broadcast probe and a vendor-specific per-host probe
+    both match. The broadcast is the more trusted kind of signal, but it
+    only names a protocol, so the vendor-specific driver leads and the
+    cross-vendor one trails. A manufacturer hint naming a third driver does
+    not get a say: a fingerprint already named the driver.
+
+    The shape of a projector that answers a multi-vendor protocol's
+    network search and also its own manufacturer's control-port greeting.
+    """
+    idx = SignalIndex()
+    idx.add_rule(SignalRule.for_broadcast(
+        "acme_open_protocol", "custom_acme_open_protocol_companion_udp", generic=True,
+    ))
+    idx.add_rule(SignalRule.for_active_probe(
+        "acme_projector", "custom_acme_projector_tcp",
+    ))
+    idx.add_rule(SignalRule.for_vendor_string("acme_display", "Acme"))
+    matcher = TierMatcher(idx)
+
+    search = evidence_broadcast("custom_acme_open_protocol_companion_udp")
+    greeting = evidence_active_probe("custom_acme_projector_tcp", {"raw": "ACMECONTROL 1"})
+    alias = evidence_vendor_string("Acme", source_probe_id="custom_acme_open_protocol_companion_udp")
+
+    for log in ([search, greeting, alias], [alias, greeting, search]):
+        result = matcher.match(log)
+        assert result.state == DeviceState.IDENTIFIED
+        assert result.driver_id == "acme_projector"
+        assert result.alternatives == ["acme_open_protocol"]
+        assert result.source == "probe:custom_acme_projector_tcp"
+
+
+def test_cross_vendor_matches_of_every_kind_are_all_demoted_by_a_hint() -> None:
+    """Only cross-vendor rules matched, at two different tiers. A hint
+    naming a vendor-specific driver puts it first; both cross-vendor
+    drivers follow, the more trusted kind of signal first. Without the
+    hint, that one leads.
+    """
+    idx = SignalIndex()
+    idx.add_rule(SignalRule.for_active_probe(
+        "acme_camera_protocol", "custom_acme_camera_protocol_tcp", generic=True,
+    ))
+    idx.add_rule(SignalRule.for_broadcast(
+        "acme_search_protocol", "custom_acme_search_protocol_udp", generic=True,
+    ))
+    idx.add_rule(SignalRule.for_oui("acme_camera", "00:30:13"))
+    matcher = TierMatcher(idx)
+
+    probe = evidence_active_probe("custom_acme_camera_protocol_tcp")
+    search = evidence_broadcast("custom_acme_search_protocol_udp")
+    oui = evidence_oui("00:30:13:11:22:33")
+
+    result = matcher.match([probe, search, oui])
+    assert result.driver_id == "acme_camera"
+    assert result.alternatives == ["acme_search_protocol", "acme_camera_protocol"]
+    assert result.source == "oui:00:30:13"
+
+    result = matcher.match([probe, search])
+    assert result.driver_id == "acme_search_protocol"
+    assert result.alternatives == ["acme_camera_protocol"]
