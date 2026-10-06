@@ -4,6 +4,8 @@
  * the plugin log filter.
  */
 
+import { booleanWord } from "../shared/booleanWords";
+
 // Convert a glob-style pattern to an anchored RegExp.
 //
 // Replaces every `*` with `.*` (multi-segment, matches across `.`) and
@@ -41,9 +43,9 @@ export function formatMetric(value: unknown, format: string): string {
   if (format === "boolean") {
     if (typeof value === "string") {
       const lowered = value.trim().toLowerCase();
-      return lowered === "false" || lowered === "0" || lowered === "" ? "No" : "Yes";
+      return booleanWord(!(lowered === "false" || lowered === "0" || lowered === ""));
     }
-    return value ? "Yes" : "No";
+    return booleanWord(Boolean(value));
   }
   return String(value);
 }

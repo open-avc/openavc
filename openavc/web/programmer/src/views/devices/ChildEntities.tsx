@@ -28,6 +28,7 @@ import type {
   ChildEntityTypeSchema,
   MonitorConfig,
 } from "../../api/types";
+import { valueText } from "../../components/shared/booleanWords";
 
 const ROW_HEIGHT = 36;
 // Initial estimate for an expanded row before it's measured: the collapsed
@@ -1313,10 +1314,7 @@ function PresenceDot({ state }: { state: Record<string, unknown> }) {
 
 
 function formatStateValue(v: unknown): string {
-  if (v === true) return "true";
-  if (v === false) return "false";
-  if (v === null || v === undefined) return "";
-  return String(v);
+  return valueText(v);
 }
 
 

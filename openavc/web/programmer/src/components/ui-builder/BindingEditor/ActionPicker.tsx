@@ -14,6 +14,7 @@ import {
 } from "../../shared/pickerOptions";
 import { connectedDot } from "../../shared/ConnectedDot";
 import * as api from "../../../api/restClient";
+import { valueText } from "../../shared/booleanWords";
 
 interface ActionPickerProps {
   value: Record<string, unknown> | null;
@@ -284,7 +285,7 @@ function DeviceCommandConfig({
                   )}
                   {paramDefault !== undefined && (
                     <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                      default: {String(paramDefault)}
+                      default: {valueText(paramDefault)}
                     </span>
                   )}
                 </div>
@@ -735,7 +736,7 @@ function ScriptCallConfig({
                 )}
                 {param.default !== undefined && (
                   <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                    default: {String(param.default)}
+                    default: {valueText(param.default)}
                   </span>
                 )}
               </div>

@@ -258,6 +258,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from openavc.utils.boolean_words import value_text
+
 if TYPE_CHECKING:
     from openavc.audit.session import AuditSession
 
@@ -1723,8 +1725,7 @@ def _status_rows(table: dict[str, Any]) -> list[str]:
     for var in table.get("variables", []):
         if (var.get("reported") or var.get("set_by_driver")) and var.get("value") is not None:
             value = var["value"]
-            shown = ("true" if value else "false") if isinstance(value, bool) else str(value)
-            cell = f"<code>{_e(shown)}</code>"
+            cell = f"<code>{_e(value_text(value))}</code>"
             if not var.get("reported"):
                 cell += " set by the driver, not reported by the device"
         else:
@@ -2139,11 +2140,7 @@ def _render_commands(commands: dict[str, Any] | None) -> list[str]:
 
 
 def _value_text(value: Any) -> str:
-    if value is None:
-        return "not reported"
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    return str(value)
+    return value_text(value, "not reported")
 
 
 # README.txt in every report: what the fields of report.json mean where the

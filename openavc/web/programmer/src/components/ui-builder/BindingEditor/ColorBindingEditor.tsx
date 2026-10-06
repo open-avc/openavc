@@ -3,6 +3,7 @@ import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
 import { useConnectionStore } from "../../../store/connectionStore";
 import { hasReading } from "../../../api/stateClient";
+import { valueText } from "../../shared/booleanWords";
 
 interface ColorBindingEditorProps {
   value: Record<string, unknown> | null;
@@ -92,7 +93,7 @@ export function ColorBindingEditor({
       {stateKey && hasReading(liveValue) && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", background: "var(--bg-surface)", borderRadius: 4, fontSize: 11 }}>
           <span style={{ color: "var(--text-muted)" }}>Current value:</span>
-          <span style={{ fontWeight: 500 }}>{String(liveValue)}</span>
+          <span style={{ fontWeight: 500 }}>{valueText(liveValue)}</span>
           {matchedColor && (
             <>
               <span style={{ color: "var(--text-muted)" }}>→</span>

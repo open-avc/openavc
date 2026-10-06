@@ -53,6 +53,7 @@ from openavc.audit.session import AuditError
 from openavc.core.connection_fault import is_permanent_fault
 from openavc.core.device_traffic import RX, TX, TrafficEntry, serialize_entry
 from openavc.core.state_store import is_flat_primitive
+from openavc.utils.boolean_words import value_text
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -495,7 +496,7 @@ class ListenPass:
         ):
             self.first_reported[prop] = now
             if prop in self._declared():
-                shown = ("true" if new else "false") if isinstance(new, bool) else str(new)[:80]
+                shown = value_text(new)[:80]
                 shown = shown or "an empty value"
                 if self.first_rx_at is not None:
                     text = f"{self._label(prop)} reported: {shown}"

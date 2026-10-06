@@ -27,6 +27,7 @@ import type {
   TestPanelConflict,
 } from "../../api/driverClient";
 import { commandShapeMismatch } from "./liveTestHelpers";
+import { valueText } from "../shared/booleanWords";
 
 // Re-pause cadence while devices stay paused. The server expires a pause
 // after its TTL (device_manager.PAUSE_TTL, 10 min) so an abandoned pause
@@ -965,7 +966,7 @@ function ResultRow({ entry, isLast }: { entry: ResultEntry; isLast: boolean }) {
           <span style={{ color: "var(--text-muted)" }}>State changes:</span>{" "}
           {Object.entries(entry.state_changes).map(([k, v], i, arr) => (
             <span key={k}>
-              <span style={{ color: "var(--accent)" }}>{k}</span>={String(v)}
+              <span style={{ color: "var(--accent)" }}>{k}</span>={valueText(v, "null")}
               {i < arr.length - 1 ? ", " : ""}
             </span>
           ))}

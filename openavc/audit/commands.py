@@ -103,6 +103,7 @@ from openavc.drivers.base import missing_required_params
 from openavc.drivers.child_ids import coerce_child_local_id
 from openavc.drivers.compiled_protocol import coerce_bool_token, is_bool_token
 from openavc.drivers.param_labels import param_label
+from openavc.utils.boolean_words import value_text
 from openavc.utils.log_redaction import is_secret_key
 from openavc.utils.logger import get_logger
 
@@ -1303,9 +1304,7 @@ def _duration(seconds: float) -> str:
 
 
 def _value_text(value: Any) -> str:
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    return str(value)
+    return value_text(value)
 
 
 EFFECT_TEXT = {
@@ -1447,7 +1446,7 @@ def params_text(params: dict[str, Any], defs: Any = None) -> str:
     if not params:
         return ""
     defs = defs if isinstance(defs, dict) else {}
-    return " (" + ", ".join(f"{param_label(k, defs.get(k))} {v}" for k, v in params.items()) + ")"
+    return " (" + ", ".join(f"{param_label(k, defs.get(k))} {value_text(v)}" for k, v in params.items()) + ")"
 
 
 def commands_for(session: "AuditSession", run: "DriverRun", **timings: Any) -> CommandPass:

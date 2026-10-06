@@ -37,6 +37,7 @@ import type {
   PluginMacroActionParam,
 } from "./pluginMacroActions";
 import * as api from "../../api/restClient";
+import { BooleanOptions } from "../shared/BooleanOptions";
 
 interface StepEditorProps {
   step: MacroStep;
@@ -577,8 +578,7 @@ function StateSetEditor({
                 style={inputStyle}
               >
                 <option value="">Select...</option>
-                <option value="true">true</option>
-                <option value="false">false</option>
+                <BooleanOptions />
               </select>
             ) : selectedVar ? (
               // Declared variable: the variable's type decides how the text
@@ -656,7 +656,7 @@ function TypedValueInput({
       >
         <option value="text">Text</option>
         <option value="number">Number</option>
-        <option value="boolean">True/False</option>
+        <option value="boolean">Boolean</option>
       </select>
       {kind === "boolean" ? (
         <select
@@ -664,8 +664,7 @@ function TypedValueInput({
           onChange={(e) => onChange(e.target.value === "true")}
           style={inputStyle}
         >
-          <option value="true">true</option>
-          <option value="false">false</option>
+          <BooleanOptions />
         </select>
       ) : (
         <input

@@ -18,6 +18,7 @@ import { AssetPicker } from "../AssetPicker";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
 import { hasReading } from "../../../api/stateClient";
 import { fetchDeclaredValues } from "./declaredValues";
+import { booleanWord, valueText } from "../../shared/booleanWords";
 
 interface FeedbackBindingEditorProps {
   value: Record<string, unknown> | null;
@@ -383,7 +384,7 @@ export function FeedbackBindingEditor({
             <option value="">Select state key...</option>
             {categoryKeys.map((k) => (
               <option key={k.key} value={k.key}>
-                {k.label}{hasReading(k.value) ? ` (${String(k.value)})` : ""}
+                {k.label}{hasReading(k.value) ? ` (${valueText(k.value)})` : ""}
               </option>
             ))}
           </select>
@@ -399,7 +400,7 @@ export function FeedbackBindingEditor({
         }}>
           <span style={{ color: "var(--text-muted)" }}>Current value:</span>
           <span style={{ fontWeight: 600, fontFamily: "var(--font-mono, monospace)" }}>
-            {String(liveValue)}
+            {valueText(liveValue)}
           </span>
           {conditionMet !== null && (
             <span style={{
@@ -649,7 +650,7 @@ export function FeedbackBindingEditor({
                     border: "1px solid " + (String(condition.equals) === v ? "var(--accent)" : "var(--border-color)"),
                   }}
                 >
-                  {v === "true" ? "ON / True" : "OFF / False"}
+                  {booleanWord(v === "true")}
                 </button>
               ))}
             </div>
@@ -668,7 +669,9 @@ export function FeedbackBindingEditor({
             >
               <option value="">Select value...</option>
               {observedValues.map((v) => (
-                <option key={v} value={v}>{v}</option>
+                <option key={v} value={v}>
+                  {v === "true" || v === "false" ? booleanWord(v === "true") : v}
+                </option>
               ))}
             </select>
           ) : (

@@ -5,6 +5,7 @@ import type { DriverInfo } from "../../api/types";
 import { validateSettingValue } from "../driver-builder/deviceSettingsHelpers";
 import { Modal } from "./Modal";
 import { normalizeOptionList } from "./paramOptions";
+import { BooleanOptions } from "./BooleanOptions";
 
 /** Generate a non-clashing default value for a unique device setting. */
 function generateUniqueDefault(
@@ -208,8 +209,7 @@ export function DeviceSettingsSetupDialog({
                   onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.value }))}
                   style={{ width: "100%" }}
                 >
-                  <option value="true">Yes</option>
-                  <option value="false">No</option>
+                  <BooleanOptions />
                 </select>
               ) : fieldType === "enum" && enumValues ? (
                 <select

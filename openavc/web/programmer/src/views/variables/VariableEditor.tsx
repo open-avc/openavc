@@ -22,6 +22,8 @@ import {
   detailLabel, detailInput, sectionTitle,
 } from "./variablesShared";
 import { stepParamsResolveVars } from "./variablesShared.helpers";
+import { BooleanOptions } from "../../components/shared/BooleanOptions";
+import { quotedValueText, valueText } from "../../components/shared/booleanWords";
 
 /**
  * Coerce an existing default to a concrete boolean using the same true-set as
@@ -475,9 +477,8 @@ export function VariablesSubTab() {
               <div style={{ width: 90 }}>
                 <label style={miniLabel}>Default</label>
                 {newType === "boolean" ? (
-                  <select style={fieldInput} value={newDefault} onChange={(e) => setNewDefault(e.target.value)}>
-                    <option value="false">false</option>
-                    <option value="true">true</option>
+                  <select style={fieldInput} value={newDefault === "true" ? "true" : "false"} onChange={(e) => setNewDefault(e.target.value)}>
+                    <BooleanOptions />
                   </select>
                 ) : (
                   <input
@@ -565,7 +566,7 @@ export function VariablesSubTab() {
                       {v.persist && <span title="Persisted across restarts"><HardDrive size={12} style={{ color: "var(--text-muted)" }} /></span>}
                     </div>
                     <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
-                      {v.label}{live !== undefined ? ` = ${JSON.stringify(live)}` : ""}
+                      {v.label}{live !== undefined ? ` = ${quotedValueText(live)}` : ""}
                     </div>
                     {v.description && (
                       <div style={{ fontSize: 10, color: "var(--text-muted)", opacity: 0.7, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -653,8 +654,7 @@ export function VariablesSubTab() {
                 <label style={detailLabel}>Default Value</label>
                 {selectedVar.type === "boolean" ? (
                   <select style={detailInput} value={String(selectedVar.default ?? false)} onChange={(e) => handleUpdate(selectedVar.id, { default: e.target.value === "true" })}>
-                    <option value="false">false</option>
-                    <option value="true">true</option>
+                    <BooleanOptions />
                   </select>
                 ) : (
                   <input
@@ -674,7 +674,7 @@ export function VariablesSubTab() {
                 <label style={detailLabel}>Current Value</label>
                 <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
                   <span style={{ fontSize: "var(--font-size-sm)", color: selectedLiveValue !== undefined ? "var(--text-primary)" : "var(--text-muted)", fontWeight: 500 }}>
-                    {selectedLiveValue !== undefined ? JSON.stringify(selectedLiveValue) : "not set"}
+                    {selectedLiveValue !== undefined ? quotedValueText(selectedLiveValue) : "not set"}
                   </span>
                   {selectedLiveValue !== undefined && (
                     <button
@@ -1112,9 +1112,9 @@ function SourceBindingEditor({
               <span style={{ color: "var(--text-muted)" }}>Source: </span>
               <span style={{ color: "var(--text-primary)" }}>{variable.source_key}</span>
               <span style={{ color: "var(--text-muted)" }}> = </span>
-              <span style={{ color: "var(--text-primary)" }}>{String(sourceValue)}</span>
+              <span style={{ color: "var(--text-primary)" }}>{valueText(sourceValue)}</span>
               <span style={{ color: "var(--text-muted)" }}> &rarr; Variable: </span>
-              <span style={{ color: "var(--accent)", fontWeight: 600 }}>{String(mappedValue)}</span>
+              <span style={{ color: "var(--accent)", fontWeight: 600 }}>{valueText(mappedValue)}</span>
             </div>
           )}
         </div>

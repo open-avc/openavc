@@ -19,6 +19,8 @@ import {
   dropdownTypeBadgeStyle,
   dropdownEmptyHintStyle,
 } from "./SearchableDropdown";
+import { BooleanOptions } from "./BooleanOptions";
+import { valueText } from "./booleanWords";
 
 /** Session cache of device state-variable labels (deviceId -> suffix ->
  *  friendly label), filled lazily the first time a picker opens. Display-only:
@@ -398,7 +400,7 @@ export function VariableKeyPicker({
           {displayText}
           {liveValue !== undefined && (
             <span style={{ color: "var(--text-muted)", marginLeft: 8 }}>
-              = {String(liveValue)}
+              = {valueText(liveValue)}
             </span>
           )}
         </>
@@ -449,9 +451,8 @@ export function VariableKeyPicker({
               <div style={{ width: 90 }}>
                 <label style={miniLabel}>Default</label>
                 {newType === "boolean" ? (
-                  <select style={fieldStyle} value={newDefault} onChange={(e) => setNewDefault(e.target.value)}>
-                    <option value="false">false</option>
-                    <option value="true">true</option>
+                  <select style={fieldStyle} value={newDefault === "true" ? "true" : "false"} onChange={(e) => setNewDefault(e.target.value)}>
+                    <BooleanOptions />
                   </select>
                 ) : (
                   <input
@@ -576,9 +577,9 @@ export function VariableKeyPicker({
                         maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         fontFamily: "var(--font-mono)",
                       }}
-                        title={String(entryLive)}
+                        title={valueText(entryLive)}
                       >
-                        {String(entryLive)}
+                        {valueText(entryLive)}
                       </span>
                     )}
                     <CopyButton value={entry.key} title="Copy state key" />

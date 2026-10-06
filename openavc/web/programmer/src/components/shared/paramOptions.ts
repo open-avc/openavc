@@ -1,5 +1,6 @@
 import type { ChildEntityEntry, ChildEntityStateVarDef } from "../../api/types";
 import { CHILD_RESERVED_PROPS } from "../../api/types";
+import { booleanWordFor, valueText } from "./booleanWords";
 
 /** One dropdown option: the value sent to the runtime + a human label. */
 export interface ParamOption {
@@ -74,12 +75,12 @@ export function normalizeOptionList(parsed: unknown[]): ParamOption[] {
   const out: ParamOption[] = [];
   for (const item of parsed) {
     if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
-      out.push({ value: String(item), label: String(item) });
+      out.push({ value: String(item), label: valueText(item) });
     } else if (item && typeof item === "object" && "value" in item) {
       const v = (item as { value: unknown }).value;
       const l = (item as { label?: unknown }).label;
       if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
-        out.push({ value: String(v), label: typeof l === "string" ? l : String(v) });
+        out.push({ value: String(v), label: typeof l === "string" ? l : valueText(v) });
       }
     }
   }
@@ -102,6 +103,22 @@ export function optionLabel(
     (o) => o.value === wireValue,
   );
   return match ? match.label : wireValue;
+}
+
+/**
+ * A device setting's value as the device page shows it: a boolean as Yes / No,
+ * an enum by its label, anything else as its text. The current value and a
+ * pending one read the same way.
+ */
+export function settingValueText(
+  def: { type?: string; values?: readonly unknown[] } | undefined,
+  value: unknown,
+): string {
+  if (String(def?.type ?? "string") === "boolean") {
+    const word = booleanWordFor(value);
+    if (word) return word;
+  }
+  return optionLabel(def?.values, String(value));
 }
 
 export function parseStateOptionList(raw: unknown): ParamOption[] {

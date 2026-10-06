@@ -193,7 +193,7 @@ describe("before a command is sent", () => {
   it("writes a change the way a line reads it", () => {
     const mute = { key: "mute", label: "Mute", first: false, last: true, times: 1, already_moving: false };
     const level = { key: "level", label: "Level", first: 3, last: 9, times: 7, already_moving: true };
-    expect(movedText(mute)).toBe("Mute: false to true");
+    expect(movedText(mute)).toBe("Mute: No to Yes");
     expect(movedText({ ...mute, first: null, last: "hdmi1" })).toBe("Mute: not reported to hdmi1");
     expect(movingText(level)).toBe("Level (7 times)");
     expect(movingText({ ...level, times: 1 })).toBe("Level");
@@ -305,7 +305,7 @@ describe("what changed", () => {
     })).toBe("Input: not reported before, hdmi2 now (after 3. Set Input)");
     expect(changedText({
       key: "power", label: "Power", before: false, now: true, by: null, on_its_own: false,
-    })).toBe("Power: false before, true now");
+    })).toBe("Power: No before, Yes now");
   });
 
   it("leaves what changes without the audit out of the report's count", () => {
@@ -351,7 +351,7 @@ describe("what a command sets reads now", () => {
   it("says the value to put back", () => {
     expect(nowReading(cmd({ volume: "{level}" }), {}, table)).toBe("Now: Volume 20");
     expect(nowReading(cmd({ mute: true }, output), { child_id: "1" }, table)).toBe(
-      "Now: output 01 mute true",
+      "Now: output 01 mute Yes",
     );
     expect(nowReading(cmd({}), {}, table)).toBe("");
     expect(nowReading(cmd({ input: "{source}" }), {}, table)).toBe("");
@@ -367,7 +367,7 @@ describe("what a command sets reads now", () => {
     const mute = cmd({ mute: true }, {
       channel: { type: "child_id", child_type: "channel", label: "Channel" },
     });
-    expect(nowReading(mute, { channel: "1" }, amp)).toBe("Now: channel 01 mute true");
+    expect(nowReading(mute, { channel: "1" }, amp)).toBe("Now: channel 01 mute Yes");
     expect(nowReading(mute, {}, amp)).toBe("");
   });
 });

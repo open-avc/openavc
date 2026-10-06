@@ -26,6 +26,7 @@ import {
   filterPluginLog,
   sameLogTail,
 } from "./pluginExtensionHelpers";
+import { valueText } from "../shared/booleanWords";
 
 // ──── State Table Renderer ────
 // Shows a read-only table of state keys matching a glob pattern with live updates.
@@ -146,9 +147,7 @@ export function StateTableRenderer({
 }
 
 function formatValue(value: unknown): string {
-  if (value === null || value === undefined) return "—";
-  if (typeof value === "boolean") return value ? "true" : "false";
-  return String(value);
+  return valueText(value, "—");
 }
 
 // ──── Plugin Log Renderer ────

@@ -17,6 +17,7 @@ import {
   OSC_VALUELESS_TAGS,
 } from "./deviceSettingsHelpers";
 import { FixedWireValueMapEditor, WireValueMapEditor } from "./WireValueMapEditor";
+import { BooleanOptions } from "../shared/BooleanOptions";
 
 interface DeviceSettingsEditorProps {
   draft: DriverDefinition;
@@ -295,8 +296,7 @@ export function DeviceSettingsEditor({ draft, onUpdate }: DeviceSettingsEditorPr
                         style={{ width: "100%" }}
                       >
                         <option value="">(none)</option>
-                        <option value="true">true</option>
-                        <option value="false">false</option>
+                        <BooleanOptions />
                       </select>
                     ) : setting.type === "enum" ? (
                       <select

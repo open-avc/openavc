@@ -26,9 +26,11 @@ import type { MonitorConfig } from "../../api/types";
 import { scanChildTrouble, troubleSummary } from "./childPresence";
 import type { ChildTypeInfo } from "./childPresence";
 import { DEVICE_STALE_TITLE, LastHeard, staleValueStyle } from "./staleReading";
-import { normalizeOptionList, optionLabel, parseStateOptionList } from "../../components/shared/paramOptions";
+import { normalizeOptionList, parseStateOptionList, settingValueText } from "../../components/shared/paramOptions";
 import { DevicePanelSlot, ContextActionRenderer } from "../../components/plugins/PluginExtensions";
 import { findDeviceReferences, validateSettingValue } from "./deviceUtils";
+import { BooleanOptions } from "../../components/shared/BooleanOptions";
+import { valueText } from "../../components/shared/booleanWords";
 import { ChildEntities } from "./ChildEntities";
 import { QuickActions } from "./QuickActions";
 import { InlineProtocolEditor } from "./InlineProtocolEditor";
@@ -216,7 +218,7 @@ export function DeviceDetail({
         continue;
       }
     }
-    const valueStr = String(value ?? "");
+    const valueStr = valueText(value);
     if (
       stateTerm &&
       !rest.toLowerCase().includes(stateTerm) &&
@@ -1330,8 +1332,7 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                         onChange={(e) => setEditValue(e.target.value)}
                         style={{ fontSize: "var(--font-size-sm)", padding: "2px 6px" }}
                       >
-                        <option value="true">Yes</option>
-                        <option value="false">No</option>
+                        <BooleanOptions />
                       </select>
                     ) : fieldType === "enum" && values ? (
                       <select
@@ -1409,7 +1410,7 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                       }}
                     >
                       {currentValue != null
-                        ? optionLabel(values, String(currentValue))
+                        ? settingValueText(def, currentValue)
                         : "(not set)"}
                     </span>
                     {isPending && (
@@ -1423,8 +1424,8 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
                         }}
                         title={
                           connected
-                            ? `Pending: ${String(pendingSettings[key])}. Sent, but the device has not reported it back yet. It will be sent again on the next connection.`
-                            : `Pending: ${String(pendingSettings[key])}, will be applied when device connects`
+                            ? `Pending: ${settingValueText(def, pendingSettings[key])}. Sent, but the device has not reported it back yet. It will be sent again on the next connection.`
+                            : `Pending: ${settingValueText(def, pendingSettings[key])}, will be applied when device connects`
                         }
                       >
                         pending
@@ -1684,8 +1685,7 @@ function DeviceStateLog({ deviceId }: { deviceId: string }) {
     // every variable until it does, and the word belongs to a debugger rather
     // than to somebody commissioning a room. Same mark the Dashboard tile and
     // the panel use for the same thing.
-    if (v === null || v === undefined) return "—";
-    return String(v);
+    return valueText(v, "—");
   };
 
   return (

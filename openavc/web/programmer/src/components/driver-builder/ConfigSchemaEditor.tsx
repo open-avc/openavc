@@ -9,6 +9,7 @@ import {
   applyConfigSecretToggle,
   coerceConfigDefault,
 } from "./configSchemaHelpers";
+import { BooleanOptions } from "../shared/BooleanOptions";
 
 const sanitizeFieldName = (raw: string) =>
   raw.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase();
@@ -271,8 +272,7 @@ export function ConfigSchemaEditor({ draft, onUpdate }: ConfigSchemaEditorProps)
                         style={{ width: "100%" }}
                       >
                         <option value="">(none)</option>
-                        <option value="true">true</option>
-                        <option value="false">false</option>
+                        <BooleanOptions />
                       </select>
                     ) : field.type === "enum" ? (
                       <select

@@ -23,6 +23,7 @@ import { ActionListEditor, ActionTestButton } from "./ActionListEditor";
 import { useConnectionStore } from "../../store/connectionStore";
 import { pressActionFields, pressAfterActionEdit } from "./buttonBindingHelpers";
 import { macroLabel } from "../macros/macroHelpers";
+import { booleanWord, valueText } from "./booleanWords";
 
 export interface ButtonBindings {
   press?: Record<string, unknown>[] | null;
@@ -339,7 +340,7 @@ export function ButtonBindingEditor({
                           border: "1px solid " + (String(toggleValue) === String(v) ? "var(--accent)" : "var(--border-color)"),
                         }}
                       >
-                        {v ? "ON / True" : "OFF / False"}
+                        {booleanWord(v)}
                       </button>
                     ))}
                   </div>
@@ -387,7 +388,7 @@ export function ButtonBindingEditor({
                 background: "var(--bg-hover)", fontSize: 11,
               }}>
                 <span style={{ color: "var(--text-muted)" }}>Current:</span>
-                <span style={{ fontWeight: 600 }}>{String(toggleLiveValue)}</span>
+                <span style={{ fontWeight: 600 }}>{valueText(toggleLiveValue)}</span>
                 <span style={{
                   marginLeft: "auto", fontWeight: 500,
                   color: toggleIsActive ? "var(--color-success, #4caf50)" : "var(--text-muted)",

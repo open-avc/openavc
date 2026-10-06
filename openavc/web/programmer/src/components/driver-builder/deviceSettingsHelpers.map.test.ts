@@ -14,10 +14,10 @@ import {
 } from "./deviceSettingsHelpers";
 
 describe("the rows a setting's wire value map is edited in", () => {
-  it("gives a boolean setting an On row and an Off row", () => {
+  it("gives a boolean setting a Yes row and a No row", () => {
     expect(settingMapRows({ type: "boolean" })).toEqual([
-      { key: "true", label: "On" },
-      { key: "false", label: "Off" },
+      { key: "true", label: "Yes" },
+      { key: "false", label: "No" },
     ]);
   });
 

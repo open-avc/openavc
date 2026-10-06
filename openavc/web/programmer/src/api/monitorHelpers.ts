@@ -17,6 +17,7 @@
  */
 
 import type { MonitorConfig, MonitorStateEntry } from "./types";
+import { NO, YES } from "../components/shared/booleanWords";
 
 export const UNSET = "unset";
 export const NO_VALUE = "no_value";
@@ -30,7 +31,7 @@ export type MonitorStatus =
   | typeof ABNORMAL;
 
 /** What a bare boolean reads as when the author wrote no words for it. */
-const BOOLEAN_WORDS: Record<string, string> = { true: "Yes", false: "No" };
+const BOOLEAN_WORDS: Record<string, string> = { true: YES, false: NO };
 
 /** A value as the string both sides of a comparison agree on.
  *  Booleans are the reason: the live value is `true`, the project spells it

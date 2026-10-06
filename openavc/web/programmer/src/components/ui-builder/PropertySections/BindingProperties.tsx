@@ -16,6 +16,7 @@ import { ConditionGroupEditor, type ConditionGroup } from "../../shared/Conditio
 import { useConnectionStore } from "../../../store/connectionStore";
 import { STATE_ICON_TYPES, STATE_LABEL_TYPES } from "../../../api/uiBindingReach.gen";
 import { hasReading } from "../../../api/stateClient";
+import { valueText } from "../../shared/booleanWords";
 
 interface BindingPropertiesProps {
   element: UIElement;
@@ -465,7 +466,7 @@ function ValueSourceEditor({
       {key && hasReading(liveValue) && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", background: "var(--bg-surface)", borderRadius: 4, fontSize: 11 }}>
           <span style={{ color: "var(--text-muted)" }}>Current value:</span>
-          <span style={{ fontWeight: 500 }}>{String(liveValue)}</span>
+          <span style={{ fontWeight: 500 }}>{valueText(liveValue)}</span>
         </div>
       )}
 

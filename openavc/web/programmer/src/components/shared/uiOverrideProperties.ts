@@ -30,7 +30,7 @@ export const UI_OVERRIDE_PROPERTIES: readonly UiOverrideProperty[] = [
     name: "visible",
     label: "Visible",
     type: "boolean",
-    hint: "Show or hide the control. false hides it.",
+    hint: "Show or hide the control. No hides it.",
   },
   {
     name: "bg_color",

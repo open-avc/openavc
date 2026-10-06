@@ -12,6 +12,7 @@ import type {
   DriverInfo,
   InstalledDriver,
 } from "../../api/types";
+import { booleanWord, valueText } from "../shared/booleanWords";
 
 const GENERIC_IDS = new Set(["generic_tcp", "generic_serial", "generic_http"]);
 
@@ -614,10 +615,10 @@ export function DriverDetailPanel({
                       {(s.type as string) || "string"}
                     </td>
                     <td style={{ padding: "4px 8px", color: "var(--text-muted)" }}>
-                      {s.default !== undefined ? String(s.default) : "\u2014"}
+                      {valueText(s.default, "\u2014")}
                     </td>
                     <td style={{ padding: "4px 8px", color: "var(--text-muted)" }}>
-                      {s.required ? "Yes" : "No"}
+                      {booleanWord(Boolean(s.required))}
                     </td>
                   </tr>
                 );

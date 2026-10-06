@@ -1,4 +1,5 @@
 import type { MacroStep, MacroConfig, DeviceConfig, DeviceGroup } from "../../api/types";
+import { quotedValueText } from "../shared/booleanWords";
 
 export interface StepTypeInfo {
   action: string;
@@ -68,7 +69,7 @@ export const STEP_TYPES: StepTypeInfo[] = [
     label: "Set Variable or Control",
     description: "Set a project variable, or change a control's label, colour or visibility",
     color: "#10b981",
-    summary: (step) => `${step.key ?? "?"} = ${JSON.stringify(step.value ?? "")}`,
+    summary: (step) => `${step.key ?? "?"} = ${quotedValueText(step.value ?? "")}`,
     defaults: () => ({ action: "state.set", key: "", value: "" }),
   },
   {
@@ -96,7 +97,7 @@ export const STEP_TYPES: StepTypeInfo[] = [
       const cond = step.condition;
       if (!cond) return "No condition set";
       const op = cond.operator ?? "eq";
-      const val = cond.value != null ? JSON.stringify(cond.value) : "?";
+      const val = cond.value != null ? quotedValueText(cond.value) : "?";
       if (op === "truthy") return `${cond.key} is truthy`;
       if (op === "falsy") return `${cond.key} is falsy`;
       return `${cond.key} ${op} ${val}`;
@@ -138,7 +139,7 @@ export const STEP_TYPES: StepTypeInfo[] = [
       const cond = step.condition;
       if (!cond?.key) return "No condition set";
       const op = cond.operator ?? "eq";
-      const val = cond.value != null ? JSON.stringify(cond.value) : "?";
+      const val = cond.value != null ? quotedValueText(cond.value) : "?";
       const condStr =
         op === "truthy"
           ? `${cond.key} is truthy`

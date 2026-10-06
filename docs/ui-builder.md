@@ -732,7 +732,7 @@ Add a **Set Variable or Control** step to a macro, pick the control from the
 | Property | Value | Effect |
 |----------|-------|--------|
 | **Label** | text | The words on the control, replacing the one it was given |
-| **Visible** | true / false | Show or hide the control |
+| **Visible** | Yes / No | Show or hide the control |
 | **Background colour** | a colour, e.g. `#e67e22` | Fills the control |
 | **Text colour** | a colour, e.g. `#ffffff` | Colours its words |
 | **Opacity** | 0 to 1 | Below 1 fades it |

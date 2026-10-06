@@ -8,6 +8,7 @@ import { Modal } from "../../components/shared/Modal";
 import { normalizeOptionList } from "../../components/shared/paramOptions";
 import { coerceConfigValue, configFieldKind, splitConnectionFields, SERIAL_PICKER_FIELDS, IR_PICKER_FIELDS, prefillConfigValues } from "./deviceConfigCoerce";
 import { parseApiError } from "../../api/errors";
+import { booleanWord } from "../../components/shared/booleanWords";
 
 // --- Typed Config Fields ---
 
@@ -109,7 +110,7 @@ export function ConfigFieldInputs({
                   fontSize: "var(--font-size-sm)",
                 }}
               >
-                {configValues[key] === "true" ? "Yes" : "No"}
+                {booleanWord(configValues[key] === "true")}
               </button>
             ) : kind === "password" ? (
               <input

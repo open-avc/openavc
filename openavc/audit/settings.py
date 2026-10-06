@@ -49,6 +49,7 @@ from openavc.audit.observe import command_sent_nothing
 from openavc.audit.session import AuditError
 from openavc.core.state_store import is_flat_primitive
 from openavc.drivers.base import validate_device_setting_value
+from openavc.utils.boolean_words import value_text
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -90,11 +91,7 @@ def _shown(value: Any) -> Any:
 
 
 def _value_text(value: Any) -> str:
-    if value is None:
-        return "nothing"
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    return str(value)
+    return value_text(value, "nothing")
 
 
 @dataclass

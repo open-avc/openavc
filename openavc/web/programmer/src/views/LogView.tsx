@@ -6,6 +6,7 @@ import { useLogStore } from "../store/logStore";
 import * as api from "../api/restClient";
 import { useProjectStore } from "../store/projectStore";
 import { deviceFilterPredicate, formatLogsForExport, logExportFilename } from "./logViewHelpers";
+import { valueText } from "../components/shared/booleanWords";
 
 type TabId = "log" | "state";
 
@@ -352,10 +353,7 @@ function StateChangeTab() {
     return d.toLocaleTimeString(undefined, { hour12: false });
   };
 
-  const formatValue = (v: unknown) => {
-    if (v === null || v === undefined) return "null";
-    return String(v);
-  };
+  const formatValue = (v: unknown) => valueText(v, "null");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: "var(--space-sm)" }}>

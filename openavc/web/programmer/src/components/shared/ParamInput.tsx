@@ -21,6 +21,7 @@ import type { ParamOption } from "./paramOptions";
 import { paramLabel } from "./paramLabel";
 import { validateParam } from "./paramValidation";
 import { VariableKeyPicker } from "./VariableKeyPicker";
+import { BooleanOptions } from "./BooleanOptions";
 
 /** The widget for a single command/action parameter — the part that varies by
  *  the param's declared type. One shared control so every authoring surface
@@ -353,8 +354,7 @@ export function ParamInput({
             Select...
           </option>
         )}
-        <option value="true">Yes</option>
-        <option value="false">No</option>
+        <BooleanOptions />
       </select>
     );
   } else if (ownChildType && live) {

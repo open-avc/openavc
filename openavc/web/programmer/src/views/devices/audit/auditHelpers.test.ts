@@ -442,7 +442,7 @@ describe("connect and listen", () => {
     const v = { name: "power", label: "Power", type: "boolean", value: null, reported: false,
       first_reported_at: null, problem: "", sources: [] };
     expect(statusValue(v)).toBe("Not reported");
-    expect(statusValue({ ...v, reported: true, value: false })).toBe("false");
+    expect(statusValue({ ...v, reported: true, value: false })).toBe("No");
     expect(statusValue({ ...v, reported: true, value: 12 })).toBe("12");
   });
 });

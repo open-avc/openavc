@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { getStateHistory } from "../../api/restClient";
 import type { StateHistoryEntry } from "../../api/types";
 import { HelpBanner } from "./variablesShared";
+import { valueText } from "../../components/shared/booleanWords";
 
 export function ActivitySubTab() {
   const [entries, setEntries] = useState<StateHistoryEntry[]>([]);
@@ -129,13 +130,13 @@ export function ActivitySubTab() {
                 {entry.key}
               </code>
               <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
-                {entry.old_value !== null && entry.old_value !== undefined ? String(entry.old_value) : "null"}
+                {valueText(entry.old_value, "null")}
               </span>
               <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
                 &rarr;
               </span>
               <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-primary)", fontWeight: 500, flexShrink: 0 }}>
-                {entry.new_value !== null && entry.new_value !== undefined ? String(entry.new_value) : "null"}
+                {valueText(entry.new_value, "null")}
               </span>
               <span style={{
                 fontSize: 10, padding: "0 6px", borderRadius: 8, flexShrink: 0,

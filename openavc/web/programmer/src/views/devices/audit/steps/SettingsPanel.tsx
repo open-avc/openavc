@@ -8,14 +8,13 @@ import { ParamInput } from "../../../../components/shared/ParamInput";
 import { needsPuttingBack, settingsCount, suggestedSetting } from "../auditHelpers";
 import { ErrorLine } from "../auditParts";
 import { buttonStyle, hintStyle, labelStyle, panelStyle, spinStyle } from "../auditStyles";
+import { valueText } from "../../../../components/shared/booleanWords";
 
 /** Where "Go to the device settings" on the Commands step scrolls to. */
 export const SETTINGS_ANCHOR = "audit-device-settings";
 
-function valueText(value: unknown): string {
-  if (value === null || value === undefined) return "not reported";
-  if (typeof value === "boolean") return value ? "true" : "false";
-  return String(value);
+function settingText(value: unknown): string {
+  return valueText(value, "not reported");
 }
 
 /**
@@ -87,7 +86,7 @@ export function SettingsPanel({
             <div style={{ fontWeight: 600 }}>
               {s.label}{" "}
               <span style={{ fontWeight: 400, color: "var(--text-secondary)" }}>
-                now {valueText(s.value)}
+                now {settingText(s.value)}
               </span>
               {s.key === first && (
                 <span
@@ -137,8 +136,8 @@ export function SettingsPanel({
                   <span style={{ display: "inline-flex", gap: "var(--space-xs)", alignItems: "center" }}>
                     <Loader2 size={12} style={spinStyle} />
                     {last.status === "writing"
-                      ? `Writing ${valueText(last.value)} and waiting for the device to report it.`
-                      : `Putting ${valueText(last.original)} back.`}
+                      ? `Writing ${settingText(last.value)} and waiting for the device to report it.`
+                      : `Putting ${settingText(last.original)} back.`}
                   </span>
                 ) : (
                   last.summary

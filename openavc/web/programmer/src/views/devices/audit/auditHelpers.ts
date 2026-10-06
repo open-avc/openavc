@@ -30,6 +30,7 @@ import type {
 import type { DiscoveryEvidence } from "../../../api/discoveryClient";
 import type { DriverParamDef } from "../../../api/types";
 import { paramLabel } from "../../../components/shared/paramLabel";
+import { valueText } from "../../../components/shared/booleanWords";
 
 export type AuditStep =
   | "target"
@@ -251,8 +252,7 @@ export function mergeCommands(
 /** A changed value as a line reads it: "Input: not reported before, hdmi2
  *  now (after 3. Set Input)". */
 export function changedText(item: AuditChangedValue): string {
-  const show = (v: unknown) =>
-    v === null || v === undefined ? "not reported" : typeof v === "boolean" ? (v ? "true" : "false") : String(v);
+  const show = (v: unknown) => valueText(v, "not reported");
   const by = item.by ? ` (after ${item.by.number}. ${item.by.label})` : "";
   return `${item.label}: ${show(item.before)} before, ${show(item.now)} now${by}`;
 }
@@ -377,7 +377,7 @@ export function paramsText(
   defs?: Record<string, Partial<DriverParamDef>>,
 ): string {
   return Object.entries(params)
-    .map(([k, v]) => `${paramLabel(k, defs?.[k])} ${String(v)}`)
+    .map(([k, v]) => `${paramLabel(k, defs?.[k])} ${valueText(v, "null")}`)
     .join(", ");
 }
 
@@ -462,8 +462,7 @@ export function nowReading(
   const [childParam, childDef] = childParams.length === 1 ? childParams[0] : ["", undefined];
   const child = childParam ? String(values[childParam] ?? "").trim() : "";
   const childType = childDef?.child_type;
-  const shown = (v: unknown) =>
-    typeof v === "boolean" ? (v ? "true" : "false") : String(v);
+  const shown = (v: unknown) => valueText(v);
   const parts: string[] = [];
   for (const state of Object.keys(command.sets ?? {})) {
     const v = vars.get(state);
@@ -490,7 +489,7 @@ export function statusValue(v: AuditStatusVariable): string {
   if ((!v.reported && !v.set_by_driver) || v.value === null || v.value === undefined) {
     return "Not reported";
   }
-  const shown = typeof v.value === "boolean" ? (v.value ? "true" : "false") : String(v.value);
+  const shown = valueText(v.value);
   return v.reported ? shown : `${shown} (set by the driver, not reported by the device)`;
 }
 
@@ -902,10 +901,9 @@ export function movedParts(trial: AuditCommandTrial): {
   };
 }
 
-/** A value a command moved, as a line reads it: "Mute: false to true". */
+/** A value a command moved, as a line reads it: "Mute: No to Yes". */
 export function movedText(m: AuditMovedValue): string {
-  const show = (v: unknown) =>
-    v === null || v === undefined ? "not reported" : typeof v === "boolean" ? (v ? "true" : "false") : String(v);
+  const show = (v: unknown) => valueText(v, "not reported");
   return `${m.label}: ${show(m.first)} to ${show(m.last)}`;
 }
 

@@ -1,4 +1,5 @@
 import type { TriggerConfig, DeviceConfig, MacroConfig } from "../../api/types";
+import { quotedValueText } from "../shared/booleanWords";
 
 export interface TriggerTypeInfo {
   type: string;
@@ -44,7 +45,7 @@ export const TRIGGER_TYPES: TriggerTypeInfo[] = [
       if (op === "any") return `${key} changes`;
       if (op === "truthy") return `${key} becomes truthy`;
       if (op === "falsy") return `${key} becomes falsy`;
-      return `${key} ${OPERATOR_LABELS[op] ?? op} ${JSON.stringify(t.state_value ?? "")}`;
+      return `${key} ${OPERATOR_LABELS[op] ?? op} ${quotedValueText(t.state_value ?? "")}`;
     },
     defaults: () => ({
       type: "state_change",

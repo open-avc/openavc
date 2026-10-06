@@ -12,6 +12,7 @@ import {
 } from "../auditHelpers";
 import { ErrorLine } from "../auditParts";
 import { buttonStyle, headingStyle, hintStyle, labelStyle, panelStyle, spinStyle } from "../auditStyles";
+import { valueText } from "../../../../components/shared/booleanWords";
 
 const CONTRACT_LABELS: Record<string, string> = {
   unmatched_response: "Replies that matched none of the driver's rules",
@@ -314,7 +315,7 @@ function StatusTable({ listen }: { listen: audit.AuditListen }) {
                 )}
               </td>
               <td style={cell}>Setting: {s.label}</td>
-              <td style={cell}>{s.populated ? String(s.value) : "Not read back"}</td>
+              <td style={cell}>{s.populated ? valueText(s.value, "null") : "Not read back"}</td>
             </tr>
           ))}
         </tbody>

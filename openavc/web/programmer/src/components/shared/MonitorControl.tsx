@@ -24,6 +24,7 @@ import { useState } from "react";
 import { Activity, ChevronDown, ChevronRight } from "lucide-react";
 import type { MonitorConfig, MonitorStateEntry } from "../../api/types";
 import { monitorStatus, hasLimits, normalValues, ABNORMAL } from "../../api/monitorHelpers";
+import { booleanWord } from "./booleanWords";
 
 /** What the driver or the variable already says about this reading. Everything
  *  here is pre-filled and stays editable — a driver's 0–10000 lamp-hour range
@@ -90,8 +91,7 @@ function candidateValues(monitor: MonitorConfig, declared?: DeclaredReading): st
 function wordFor(monitor: MonitorConfig, value: string): string {
   const entry = monitor.states?.[value];
   if (entry?.label) return entry.label;
-  if (value === "true") return "Yes";
-  if (value === "false") return "No";
+  if (value === "true" || value === "false") return booleanWord(value === "true");
   return value;
 }
 

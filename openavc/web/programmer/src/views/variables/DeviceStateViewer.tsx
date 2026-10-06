@@ -14,6 +14,7 @@ import { childReadingDeclarations } from "../../api/childStateVars";
 import { useSettled } from "../../components/shared/useSettled";
 import { MonitorControl } from "../../components/shared/MonitorControl";
 import { HelpBanner, UsageRow, buildStateUsageMap, typeBadgeStyle, sectionTitle } from "./variablesShared";
+import { valueText } from "../../components/shared/booleanWords";
 
 /** What the driver says about one reading — the shape both the row badge and
  *  the Monitor form read. Device-level and child readings share it. */
@@ -350,7 +351,7 @@ export function DeviceStatesSubTab() {
                         </div>
                         {/* Live value */}
                         <span style={{ fontSize: "var(--font-size-sm)", color: entry.value !== undefined ? "var(--text-secondary)" : "var(--text-muted)", fontFamily: "var(--font-mono)", flexShrink: 0, fontStyle: entry.value !== undefined ? "normal" : "italic", minWidth: 80, textAlign: "right" }}>
-                          {entry.value !== undefined ? String(entry.value) : "—"}
+                          {valueText(entry.value, "—")}
                         </span>
                         <CopyButton value={entry.key} size={14} title="Copy state key" />
                       </div>

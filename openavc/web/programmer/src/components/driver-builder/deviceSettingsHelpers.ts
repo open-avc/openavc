@@ -3,6 +3,7 @@
 // file free of React/DOM imports.
 import type { DriverDeviceSettingDef } from "../../api/types";
 import { normalizeOptionList } from "../shared/paramOptions";
+import { BOOLEAN_OPTIONS } from "../shared/booleanWords";
 
 export interface RenameResult {
   ok: boolean;
@@ -164,7 +165,7 @@ export interface SettingMapRow {
 }
 
 /**
- * The values a setting's map is keyed by, one row each: On and Off for a
+ * The values a setting's map is keyed by, one row each: Yes and No for a
  * boolean, the declared values for an enum (shown by their labels). Null for
  * a type whose values are typed freely, which edits the map row by row.
  */
@@ -172,10 +173,7 @@ export function settingMapRows(
   def: Pick<DriverDeviceSettingDef, "type" | "values">,
 ): SettingMapRow[] | null {
   if (def.type === "boolean") {
-    return [
-      { key: "true", label: "On" },
-      { key: "false", label: "Off" },
-    ];
+    return BOOLEAN_OPTIONS.map((o) => ({ key: o.value, label: o.label }));
   }
   if (def.type === "enum") {
     return normalizeOptionList(def.values ?? []).map((o) => ({
@@ -189,7 +187,7 @@ export function settingMapRows(
 /**
  * A setting's map as the editor shows it. On a boolean setting every spelling
  * of a true / false key ("True", "TRUE") is read as "true" / "false", the way
- * the platform matches them, so the On and Off rows find their words.
+ * the platform matches them, so the Yes and No rows find their words.
  */
 export function normalizeSettingMap(
   map: SettingMap | undefined,

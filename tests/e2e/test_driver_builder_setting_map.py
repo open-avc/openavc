@@ -2,7 +2,7 @@
 
 A boolean setting whose device writes ON / OFF declares the words in ``map``.
 The driver is created through the API, opened in the Driver Builder, and the
-On and Off rows must show the words from the file; an edited word must reach
+Yes and No rows must show the words from the file; an edited word must reach
 the .avcdriver on disk, still a quoted string the platform reads back.
 
 Boots a real ``openavc.main`` subprocess (the ``openavc_server`` fixture in
@@ -87,8 +87,8 @@ def test_a_boolean_setting_map_is_edited_by_value_and_saved(
 
     _open_driver(page, handle.base_url)
 
-    on_word = page.get_by_label("What is sent for On")
-    off_word = page.get_by_label("What is sent for Off")
+    on_word = page.get_by_label("What is sent for Yes")
+    off_word = page.get_by_label("What is sent for No")
     expect(on_word).to_have_value("ON", timeout=EXPECT_TIMEOUT)
     expect(off_word).to_have_value("OFF", timeout=EXPECT_TIMEOUT)
 

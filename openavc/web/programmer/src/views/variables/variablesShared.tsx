@@ -4,6 +4,7 @@ import { useNavigationStore, type FocusTarget } from "../../store/navigationStor
 import type { ProjectConfig, ScriptReference } from "../../api/types";
 import type { ViewId } from "../../components/layout/Sidebar";
 import { scanBindingForVars, scanBindingForAllKeys, collectWildcardMatches, hasGlobChars, stepParamsResolveVars } from "./variablesShared.helpers";
+import { quotedValueText } from "../../components/shared/booleanWords";
 
 // ==========================================================================
 // Shared types
@@ -91,7 +92,7 @@ function scanStepsForVarUsages(
     if (step.action === "state.set" && step.key?.startsWith("var.")) {
       addUsage(step.key.slice(4), {
         type: "macro", icon: Zap, label: macroName,
-        detail: `Set Variable step → ${JSON.stringify(step.value)}`,
+        detail: `Set Variable step → ${quotedValueText(step.value)}`,
         nav: macroNav,
       });
     }
@@ -227,7 +228,7 @@ function scanStepsForAllKeyUsages(
     if (step.action === "state.set" && step.key) {
       addUsage(step.key, {
         type: "macro", icon: Zap, label: macroName,
-        detail: `Set Variable step → ${JSON.stringify(step.value)}`,
+        detail: `Set Variable step → ${quotedValueText(step.value)}`,
         nav: macroNav,
       });
     }

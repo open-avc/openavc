@@ -50,7 +50,7 @@ def test_test_button_runs_the_edit_before_autosave_delay(server_factory, page):
     })
     page.goto(f"{server.base_url}/programmer/#macros")
     page.get_by_text("Set Session", exact=True).click(timeout=15_000)
-    page.get_by_text("var.session = false", exact=True).click()
+    page.get_by_text("var.session = No", exact=True).click()
     page.get_by_role("combobox").last.select_option("true")
     page.get_by_role("button", name="Test", exact=True).click()
     expect(page.get_by_text("Last run: Completed", exact=True)).to_be_visible(timeout=10_000)

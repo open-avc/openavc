@@ -4,6 +4,8 @@ import type { StepCondition } from "../../api/types";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useProjectStore } from "../../store/projectStore";
 import { VariableKeyPicker } from "../shared/VariableKeyPicker";
+import { BooleanOptions } from "../shared/BooleanOptions";
+import { valueText } from "../shared/booleanWords";
 
 const OPERATORS = [
   { value: "eq", label: "equals", hint: "Matches the value (text ignores case)" },
@@ -69,8 +71,7 @@ export function ConditionEditor({ condition, onChange, showTriggerContext = fals
               style={{ ...selectStyle, flex: 1, minWidth: 80 }}
             >
               <option value="">Select...</option>
-              <option value="true">true</option>
-              <option value="false">false</option>
+              <BooleanOptions />
             </select>
           ) : (
             <input
@@ -101,7 +102,7 @@ export function ConditionEditor({ condition, onChange, showTriggerContext = fals
           {selectedOp.hint}
           {condition.key && liveValue !== undefined && (
             <span style={{ marginLeft: 8, color: "var(--text-secondary)" }}>
-              Current value: <strong>{String(liveValue)}</strong>
+              Current value: <strong>{valueText(liveValue)}</strong>
             </span>
           )}
         </div>

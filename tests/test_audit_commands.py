@@ -449,7 +449,7 @@ async def test_the_declared_effect_is_checked_against_what_the_device_reports(dr
         server.close()
     # The summary says what the timeline says.
     summary = render_summary(build_report(session))
-    assert "Power is now true, as the driver says it should be." in summary
+    assert "Power is now Yes, as the driver says it should be." in summary
     assert "4. Set Input (Source hdmi2), again" in summary
 
 
@@ -779,7 +779,7 @@ async def test_what_a_command_moved_is_told_from_what_moves_anyway():
             "already_moving": False, "went_back": False,
         }
         assert moved["level"]["already_moving"] and moved["level"]["times"] > 1
-        assert view["summary"] == "Mute went from false to true."
+        assert view["summary"] == "Mute went from No to Yes."
         # After the window the meter keeps going: it changed without the audit.
         await _until(lambda: any(
             c["key"] == "level" and c["on_its_own"] for c in changed_values(run)
@@ -1011,7 +1011,7 @@ async def test_what_changed_lists_each_value_with_what_it_was(driver):
     assert [c["key"] for c in record["changed"]] == ["input", "power", "volume"]
     summary = render_summary(build_report(session))
     assert "What the audit changed" in summary
-    assert "not reported before, true now (after 1. Power On)" in summary
+    assert "not reported before, Yes now (after 1. Power On)" in summary
     assert "Also different now, but changing without the audit: Volume" in summary
 
 

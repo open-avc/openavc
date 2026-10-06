@@ -31,9 +31,9 @@ The **Device Command** step uses smart dropdowns: after selecting a device, the 
 
 The **Group Command** step works the same way but targets a device group instead of a single device. All devices in the group receive the command concurrently. Only commands shared by every device in the group are shown, and its parameters use the same smart inputs as a single-device command: a Yes/No selector for boolean parameters, a dropdown for enumerated values, and the **$** toggle for dynamic values. You pick from the driver's choices instead of typing raw values. Offline devices are skipped automatically. Create and manage device groups from the **Groups** tab in the Devices view.
 
-The **Emit Event** step can attach optional payload fields that travel with the event. Each field has a name and a typed value (text, number, or true/false), and a value starting with `$` is resolved when the step runs, so `$var.current_source` travels as that variable's value rather than as the text. Scripts read a field with `event.get("<field>")` inside an `@on_event` handler, and a macro triggered by the event can read each field with `$trigger.<field>`. The same step is available directly on a button or other control, in the UI Builder's **Does** bucket.
+The **Emit Event** step can attach optional payload fields that travel with the event. Each field has a name and a typed value (text, number, or a Yes / No boolean), and a value starting with `$` is resolved when the step runs, so `$var.current_source` travels as that variable's value rather than as the text. Scripts read a field with `event.get("<field>")` inside an `@on_event` handler, and a macro triggered by the event can read each field with `$trigger.<field>`. The same step is available directly on a button or other control, in the UI Builder's **Does** bucket.
 
-The **Set Variable or Control** step stores values with the variable's declared type: a string variable keeps text like `0` or `true` exactly as typed. When the target is a device or system state key instead of a variable, a type selector chooses whether the value is stored as text, a number, or true/false. It also reaches the panel directly: see [Changing a Control from a Macro](#changing-a-control-from-a-macro) below.
+The **Set Variable or Control** step stores values with the variable's declared type: a string variable keeps text like `0` or `true` exactly as typed. When the target is a device or system state key instead of a variable, a type selector chooses whether the value is stored as text, a number, or a Yes / No boolean. It also reaches the panel directly: see [Changing a Control from a Macro](#changing-a-control-from-a-macro) below.
 
 A step that will not run as built is marked while you edit it, both inline and on the macro's row in the list. That includes a step that has not been finished (a delay with no seconds, a command step with no device chosen) and a command whose parameters are not filled in: some commands take a parameter they cannot run without, marked **required** in red beside the field, and leaving one empty means the device refuses the step every time with a message like `'set_fader': 'channel' is required`. The mark uses those same words. A step aimed at a device whose driver is not installed yet is left alone, so a macro written ahead of the equipment stays quiet. Nothing here blocks a save: a half-built macro is a normal thing to leave overnight.
 
@@ -82,7 +82,7 @@ A conditional step checks a state value and runs one set of steps if the conditi
 3. Add steps to the **Then** block (runs when condition is true)
 4. Optionally add steps to the **Else** block (runs when condition is false)
 
-The value field adapts to the key you chose: pick a boolean variable and you get a **true / false** dropdown instead of a text box, so there is no guessing at how to spell the value. This same condition editor is used by **Skip If** guards, **Wait Until** steps, and trigger guard conditions, so the true/false dropdown appears in all of them.
+The value field adapts to the key you chose: pick a boolean variable and you get a **Yes / No** dropdown instead of a text box, so there is no guessing at how to spell the value. This same condition editor is used by **Skip If** guards, **Wait Until** steps, and trigger guard conditions, so the Yes / No dropdown appears in all of them.
 
 Comparisons automatically handle type differences between device state and your condition value. A device that reports volume as `"-12.5"` (text) will correctly compare against a numeric threshold like `-20`. Similarly, `"true"` (text) matches `true` (boolean). Text equality also ignores case, so a condition value of `On` matches a device that reports `on`. You don't need to worry about the internal type or exact casing — just enter the value you expect.
 
@@ -293,7 +293,7 @@ still run; it does not make the failure stop being one.
 
 ## Variables in Macros
 
-The **Set Variable or Control** step picks its target from the Variable Picker (a searchable dropdown that shows every variable with its current value, and a **Create New Variable** option inline) rather than a free-text key, so there is nothing to misspell. Its value field then matches the variable's type: a boolean variable gets a **true / false** dropdown, and the **$** toggle lets you copy another variable, device state, or system value in. Variables let macros share state. For example, the `system_on` macro sets `var.room_active` to `true`, and UI buttons use that variable for feedback.
+The **Set Variable or Control** step picks its target from the Variable Picker (a searchable dropdown that shows every variable with its current value, and a **Create New Variable** option inline) rather than a free-text key, so there is nothing to misspell. Its value field then matches the variable's type: a boolean variable gets a **Yes / No** dropdown, and the **$** toggle lets you copy another variable, device state, or system value in. Variables let macros share state. For example, the `system_on` macro sets `var.room_active` to `true`, and UI buttons use that variable for feedback.
 
 ## Changing a Control from a Macro
 
@@ -305,7 +305,7 @@ control updates immediately.
 | Property | Value | Effect |
 |----------|-------|--------|
 | **Label** | text | The words on the control, replacing the one it was given |
-| **Visible** | true / false | Show or hide the control |
+| **Visible** | Yes / No | Show or hide the control |
 | **Background colour** | a colour, e.g. `#e67e22` | Fills the control |
 | **Text colour** | a colour, e.g. `#ffffff` | Colours its words |
 | **Opacity** | 0 to 1 | Below 1 fades it |

@@ -19,6 +19,8 @@ import {
   cronWithDays,
   detectEventCategory,
 } from "./triggerHelpers";
+import { BooleanOptions } from "../shared/BooleanOptions";
+import { quotedValueText } from "../shared/booleanWords";
 
 interface TriggerEditorProps {
   trigger: TriggerConfig;
@@ -430,8 +432,7 @@ function StateChangeEditor({
               style={inputStyle}
             >
               <option value="">Select...</option>
-              <option value="true">true</option>
-              <option value="false">false</option>
+              <BooleanOptions />
             </select>
           ) : (
             <input
@@ -744,8 +745,7 @@ function ConditionsEditor({
                   style={{ ...inputStyle, flex: "none", width: 80 }}
                 >
                   <option value="">...</option>
-                  <option value="true">true</option>
-                  <option value="false">false</option>
+                  <BooleanOptions />
                 </select>
               ) : (
                 <input
@@ -863,7 +863,7 @@ function ConditionPreview({ conditions }: { conditions: TriggerCondition[] }) {
               {cond.key}
             </code>
             <span style={{ color: "var(--text-muted)" }}>
-              = {actual === undefined ? <em>undefined</em> : JSON.stringify(actual)}
+              = {actual === undefined ? <em>undefined</em> : quotedValueText(actual)}
             </span>
           </div>
         );
