@@ -136,9 +136,11 @@ end;
 // The rule is program-scoped with NO port list: inbound traffic is allowed
 // only while openavc-server.exe itself is listening on a port. That way
 // every port the server can be configured to use — HTTP (8080 or custom),
-// HTTPS (8443 or custom), the optional port-80 Short URLs listener, plugin
-// media ports — works the moment the feature is enabled in Settings, with
-// no firewall edits and nothing left open that the server isn't serving.
+// HTTPS (8443 or custom), the optional port-80 Short URLs listener — works
+// the moment the feature is enabled in Settings, with no firewall edits and
+// nothing left open that the server isn't serving. A port a plugin's own
+// helper program listens on is not covered: that is a different executable,
+// so the server opens it as a rule of its own (RemovePluginFirewallRules).
 // The delete-first keeps upgrades from stacking rules and replaces the old
 // TCP-8080-only rule shipped by earlier installers.
 
@@ -161,6 +163,44 @@ begin
   Exec('netsh.exe',
     'advfirewall firewall delete rule name="OpenAVC"',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+// The server opens a port a plugin asks for as a rule of its own, named
+// "OpenAVC plugin <PROTOCOL> <port>" (openavc/system/firewall.py). Those rules
+// are scoped by port, not by program, so one left behind keeps that port open
+// for any program on this computer. They are found in the firewall's own rule
+// store, whose field names are the same in every language; netsh's listing is
+// printed in the language Windows is installed in. Deleting by name removes
+// every rule that carries it, so a name found twice is harmless.
+const
+  FirewallRulesKey = 'SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules';
+  PluginRuleMarker = '|Name=OpenAVC plugin ';
+
+procedure RemovePluginFirewallRules();
+var
+  ValueNames: TArrayOfString;
+  RuleString, RuleName: String;
+  I, NameStart, NameEnd, ResultCode: Integer;
+begin
+  if not RegGetValueNames(HKLM, FirewallRulesKey, ValueNames) then
+    Exit;
+  for I := 0 to GetArrayLength(ValueNames) - 1 do
+  begin
+    if RegQueryStringValue(HKLM, FirewallRulesKey, ValueNames[I], RuleString) then
+    begin
+      NameStart := Pos(PluginRuleMarker, RuleString);
+      if NameStart > 0 then
+      begin
+        RuleName := Copy(RuleString, NameStart + Length('|Name='), Length(RuleString));
+        NameEnd := Pos('|', RuleName);
+        if NameEnd > 0 then
+          RuleName := Copy(RuleName, 1, NameEnd - 1);
+        Exec('netsh.exe',
+          'advfirewall firewall delete rule name="' + RuleName + '"',
+          '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      end;
+    end;
+  end;
 end;
 
 // Seed default project to data directory if not already present
@@ -221,6 +261,7 @@ begin
   if CurUninstallStep = usUninstall then
   begin
     RemoveFirewallRule();
+    RemovePluginFirewallRules();
   end;
   if CurUninstallStep = usPostUninstall then
   begin

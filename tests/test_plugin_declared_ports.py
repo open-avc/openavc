@@ -12,7 +12,10 @@ and is exercised separately by its own shell dry-run.
 """
 
 import json
+import subprocess
 import sys
+from contextlib import nullcontext
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -172,29 +175,35 @@ def test_the_file_says_what_it_is_for(tmp_path):
 # layer first. It changes the host firewall, and it succeeds whenever the test
 # runner happens to be elevated -- which a developer's shell usually is not and
 # CI usually is. That asymmetry is exactly how the first version of this file
-# passed here and then opened UDP 8189 on a GitHub runner.
+# passed here and then opened UDP 8189 on a GitHub runner. The rule store is
+# stubbed too, so what a test sees does not depend on the runner's own rules.
 
 
 @pytest.fixture
-def fake_netsh(monkeypatch):
-    """Record what would be run, and let the test say what netsh replies.
+def fake_firewall(monkeypatch):
+    """Record what would be run, and let the test say what netsh replies and
+    which rules the store holds.
 
     Also the only way to reach the success path at all: it needs elevation,
     so on an ordinary developer machine the real thing can only ever fail.
     """
     from openavc.system import firewall
 
-    calls = []
-    replies = {"show": (True, ""), "add": (True, ""), "delete": (True, "")}
+    fake = SimpleNamespace(
+        calls=[],
+        replies={"show": (True, ""), "add": (True, ""), "delete": (True, "")},
+        store=set(),
+    )
 
     def _fake(args):
-        calls.append(args)
+        fake.calls.append(args)
         verb = next((a for a in args if a in ("show", "add", "delete")), "")
-        return replies.get(verb, (True, ""))
+        return fake.replies.get(verb, (True, ""))
 
     monkeypatch.setattr(firewall, "_netsh", _fake)
+    monkeypatch.setattr(firewall, "_existing_rule_names", lambda: set(fake.store))
     monkeypatch.setattr(firewall.sys, "platform", "win32")
-    return calls, replies
+    return fake
 
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="tests the non-Windows branch")
@@ -207,55 +216,98 @@ def test_off_windows_nothing_is_touched():
     assert report["opened"] == [] and report["closed"] == []
 
 
-def test_a_declared_port_is_added(fake_netsh):
+def test_a_declared_port_is_added(fake_firewall):
     from openavc.system import firewall
 
-    calls, _ = fake_netsh
     report = firewall.sync([{"port": 8189, "protocol": "udp"}])
     assert report["opened"] == ["8189/udp"]
-    add = next(c for c in calls if "add" in c)
+    add = next(c for c in fake_firewall.calls if "add" in c)
     assert "protocol=UDP" in add and "localport=8189" in add
     assert f"name={firewall.rule_name(8189, 'udp')}" in add
 
 
-def test_a_port_nobody_asks_for_any_more_is_removed(fake_netsh):
+def test_a_port_nobody_asks_for_any_more_is_removed(fake_firewall):
     """The half that makes the declaration honest."""
     from openavc.system import firewall
 
-    calls, replies = fake_netsh
-    replies["show"] = (True, f"Rule Name:  {firewall.rule_name(8189, 'udp')}\n")
+    fake_firewall.store.add(firewall.rule_name(8189, "udp"))
     report = firewall.sync([])
     assert report["closed"] == ["8189/udp"]
-    assert any("delete" in c for c in calls)
+    assert any("delete" in c for c in fake_firewall.calls)
 
 
-def test_a_rule_already_present_is_not_added_twice(fake_netsh):
+def test_a_rule_already_present_is_not_added_twice(fake_firewall):
     from openavc.system import firewall
 
-    calls, replies = fake_netsh
-    replies["show"] = (True, f"Rule Name:  {firewall.rule_name(8189, 'udp')}\n")
+    fake_firewall.store.add(firewall.rule_name(8189, "udp"))
     report = firewall.sync([{"port": 8189, "protocol": "udp"}])
     assert report["opened"] == [] and report["closed"] == []
-    assert not any("add" in c for c in calls)
+    assert not any("add" in c for c in fake_firewall.calls)
 
 
-def test_rules_that_are_not_ours_are_left_alone(fake_netsh):
+def test_rules_that_are_not_ours_are_left_alone(fake_firewall):
     """An administrator's own rule for the same port must never be removed."""
     from openavc.system import firewall
 
-    calls, replies = fake_netsh
-    replies["show"] = (True, "Rule Name:  Some other thing UDP 8189\n")
+    fake_firewall.store.update({"Some other thing UDP 8189", "OpenAVC"})
     firewall.sync([])
-    assert not any("delete" in c for c in calls)
+    assert not any("delete" in c for c in fake_firewall.calls)
 
 
-def test_a_refusal_is_reported_rather_than_raised(fake_netsh):
+# netsh prints its listing in the language Windows is installed in. Reading it
+# for "Rule Name:" found nothing on this install, so every sync added the rule
+# again and none was ever closed. These put that listing where the old code
+# looked, and the rule in the store, to pin that the answer no longer depends
+# on netsh's language.
+_GERMAN_SHOW_RULE = (
+    "\n"
+    "Regelname:                            OpenAVC plugin UDP 8189\n"
+    "----------------------------------------------------------------------\n"
+    "Aktiviert:                            Ja\n"
+    "Richtung:                             Eingehend\n"
+    "Protokoll:                            UDP\n"
+    "Lokaler Port:                         8189\n"
+    "Aktion:                               Zulassen\n"
+    "Ok.\n"
+)
+
+
+def test_a_german_windows_closes_a_port_nobody_asks_for(fake_firewall):
+    from openavc.system import firewall
+
+    fake_firewall.replies["show"] = (True, _GERMAN_SHOW_RULE)
+    fake_firewall.store.add(firewall.rule_name(8189, "udp"))
+    report = firewall.sync([])
+    assert report["closed"] == ["8189/udp"]
+
+
+def test_a_german_windows_does_not_add_a_rule_it_already_has(fake_firewall):
+    from openavc.system import firewall
+
+    fake_firewall.replies["show"] = (True, _GERMAN_SHOW_RULE)
+    fake_firewall.store.add(firewall.rule_name(8189, "udp"))
+    report = firewall.sync([{"port": 8189, "protocol": "udp"}])
+    assert report["opened"] == []
+    assert not any("add" in c for c in fake_firewall.calls)
+
+
+def test_nothing_reads_netshs_listing(fake_firewall):
+    """The listing is translated; netsh is asked only to add and delete,
+    which answer by exit code."""
+    from openavc.system import firewall
+
+    fake_firewall.store.add(firewall.rule_name(9000, "tcp"))
+    firewall.sync([{"port": 8189, "protocol": "udp"}])
+    assert fake_firewall.calls
+    assert not any("show" in c for c in fake_firewall.calls)
+
+
+def test_a_refusal_is_reported_rather_than_raised(fake_firewall):
     """Running unelevated is the normal developer case and must not look like
     a crash -- the caller degrades, it does not fail."""
     from openavc.system import firewall
 
-    _, replies = fake_netsh
-    replies["add"] = (False, "The requested operation requires elevation")
+    fake_firewall.replies["add"] = (False, "The requested operation requires elevation")
     report = firewall.sync([{"port": 8189, "protocol": "udp"}])
     assert report["refused"] == ["8189/udp"]
     assert report["opened"] == []
@@ -275,6 +327,158 @@ def test_rule_names_carry_a_prefix_so_nothing_else_is_touched():
     name = firewall.rule_name(8189, "udp")
     assert name.startswith(firewall.RULE_PREFIX)
     assert name.endswith("8189")
+
+
+# ── Reading the rule store ───────────────────────────────────────────────────
+#
+# Each value under the store's key is one rule, a `|`-separated string whose
+# field names do not change with the language Windows is installed in. These
+# are shaped like what a German install holds.
+
+_STORE = {
+    "{1A2B}": "v2.30|Action=Allow|Active=TRUE|Dir=In|Protocol=17|LPort=8189"
+              "|Name=OpenAVC plugin UDP 8189|",
+    # A rule an administrator disabled is still there.
+    "{3C4D}": "v2.30|Action=Allow|Active=FALSE|Dir=In|Protocol=6|LPort=9000"
+              "|Name=OpenAVC plugin TCP 9000|",
+    # The installer's own rule, scoped to the program.
+    "{5E6F}": "v2.30|Action=Allow|Active=TRUE|Dir=In"
+              "|App=C:\\Program Files\\OpenAVC\\openavc-server.exe|Name=OpenAVC|",
+    # A built-in rule names itself by resource string.
+    "WINRM-HTTP-In-TCP": "v2.30|Action=Allow|Active=FALSE|Dir=In|Protocol=6"
+                         "|LPort=5985|App=System|Name=@FirewallAPI.dll,-35001"
+                         "|Desc=@FirewallAPI.dll,-35002|EmbedCtxt=@FirewallAPI.dll,-35000|",
+    # Somebody else's rule whose description happens to read like ours.
+    "{7A8B}": "v2.30|Action=Allow|Active=TRUE|Dir=In|Protocol=17|LPort=8189"
+              "|Name=Übertragungsdienst|Desc=OpenAVC plugin UDP 8189 (nicht von OpenAVC)|",
+}
+
+
+def test_a_rule_string_gives_its_name_and_nothing_else():
+    from openavc.system import firewall
+
+    names = {firewall._rule_string_name(v) for v in _STORE.values()}
+    assert names == {
+        "OpenAVC plugin UDP 8189",
+        "OpenAVC plugin TCP 9000",
+        "OpenAVC",
+        "@FirewallAPI.dll,-35001",
+        "Übertragungsdienst",
+    }
+    assert firewall._rule_string_name("v2.30|Action=Allow|Dir=In|") is None
+
+
+def test_only_our_names_become_rules_to_reconcile(fake_firewall):
+    """A description that reads like one of our names is not one of our rules."""
+    from openavc.system import firewall
+
+    fake_firewall.store.update(firewall._rule_string_name(v) for v in _STORE.values())
+    report = firewall.sync([{"port": 8189, "protocol": "udp"}])
+    assert report["opened"] == []
+    assert report["closed"] == ["9000/tcp"]
+    deleted = [c for c in fake_firewall.calls if "delete" in c]
+    assert deleted == [[
+        "advfirewall", "firewall", "delete", "rule",
+        f"name={firewall.rule_name(9000, 'tcp')}",
+    ]]
+
+
+class _FakeWinreg(ModuleType):
+    """Just enough of `winreg` to walk one key's values, on any platform."""
+
+    HKEY_LOCAL_MACHINE = object()
+    REG_SZ = 1
+    REG_DWORD = 4
+
+    def __init__(self, values=None, open_error=None):
+        super().__init__("winreg")
+        self.values = values or []
+        self.open_error = open_error
+        self.opened = []
+
+    def OpenKey(self, hive, path):  # noqa: N802 -- winreg's own name
+        if self.open_error is not None:
+            raise self.open_error
+        self.opened.append((hive, path))
+        return nullcontext(self)
+
+    def EnumValue(self, key, index):  # noqa: N802 -- winreg's own name
+        if index >= len(self.values):
+            raise OSError(259, "No more data is available")
+        return self.values[index]
+
+
+def test_the_store_is_read_whole_from_the_local_rule_key(monkeypatch):
+    from openavc.system import firewall
+
+    fake = _FakeWinreg(
+        [(k, v, _FakeWinreg.REG_SZ) for k, v in _STORE.items()]
+        + [("NotARule", 7, _FakeWinreg.REG_DWORD)]
+    )
+    monkeypatch.setitem(sys.modules, "winreg", fake)
+    names = firewall._existing_rule_names()
+    assert names == {firewall._rule_string_name(v) for v in _STORE.values()}
+    assert fake.opened == [(_FakeWinreg.HKEY_LOCAL_MACHINE, firewall._RULES_KEY)]
+    assert firewall._RULES_KEY.endswith(r"\FirewallPolicy\FirewallRules")
+
+
+@pytest.mark.skipif(not sys.platform.startswith("win"), reason="reads the real rule store")
+def test_the_real_store_holds_rule_strings_with_names():
+    """Read-only. A Windows install ships hundreds of built-in rules, named by
+    resource string, so an empty answer here means the key or the field is wrong
+    and the module would see none of its own rules either."""
+    from openavc.system import firewall
+
+    names = firewall._existing_rule_names()
+    assert names, f"no rules read from HKLM\\{firewall._RULES_KEY}"
+    assert any(n.startswith("@") for n in names)
+
+
+@pytest.mark.parametrize("error", [PermissionError(5, "Access is denied"),
+                                   FileNotFoundError(2, "not found")])
+def test_a_store_that_cannot_be_read_is_empty_not_an_error(monkeypatch, error):
+    from openavc.system import firewall
+
+    monkeypatch.setitem(sys.modules, "winreg", _FakeWinreg(open_error=error))
+    assert firewall._existing_rule_names() == set()
+
+
+def test_netsh_output_in_another_code_page_does_not_abort_a_sync(monkeypatch):
+    """netsh writes the OEM code page. A byte that is not a character in the
+    code page Python would read it in must reach the log, not raise."""
+    from openavc.system import firewall
+
+    real_run = subprocess.run
+    script = (
+        "import sys; sys.stdout.buffer.write(b'Regel \\x81\\xfe abgelehnt\\n'); "
+        "sys.exit(1)"
+    )
+
+    def _run(argv, **kwargs):
+        assert argv[0] == "netsh"
+        return real_run([sys.executable, "-c", script], **kwargs)
+
+    monkeypatch.setattr(firewall.subprocess, "run", _run)
+    ok, out = firewall._netsh(["advfirewall", "firewall", "add", "rule"])
+    assert ok is False
+    assert out.startswith("Regel ") and out.endswith(" abgelehnt")
+
+
+def test_the_uninstaller_removes_the_rules_the_server_opens():
+    """Each plugin rule is scoped by port, not by program, so one the uninstaller
+    leaves behind keeps that port open for anything on the computer. It reads
+    the same store for the same names; this pins the two together."""
+    from pathlib import Path
+
+    from openavc.system import firewall
+
+    iss = (Path(__file__).resolve().parents[1] / "installer" / "setup.iss").read_text(
+        encoding="utf-8"
+    )
+    assert f"FirewallRulesKey = '{firewall._RULES_KEY}';" in iss
+    assert f"PluginRuleMarker = '|Name={firewall.RULE_PREFIX} ';" in iss
+    uninstall = iss.split("if CurUninstallStep = usUninstall then", 1)[1].split("end;", 1)[0]
+    assert "RemovePluginFirewallRules();" in uninstall
 
 
 # ── What survives a shutdown ─────────────────────────────────────────────────
