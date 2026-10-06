@@ -28,7 +28,10 @@ jobs:
     # not run those tests. Everything behind these is OS-independent, so
     # covering it once is enough. Symlinks are the exception, promised on
     # both legs: how a symlink is refused is the part that differs on
-    # Windows, and the runner may make one. See tests/gates.py.
+    # Windows, and the runner may make one. The host firewall is promised on
+    # the Windows leg only: those tests add and remove real Windows Firewall
+    # rules and run the uninstaller's code, which only a disposable elevated
+    # Windows machine may do. See tests/gates.py.
     env:
       OPENAVC_REQUIRE_NODE: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
       OPENAVC_REQUIRE_DRIVER_CORPUS: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
@@ -36,6 +39,7 @@ jobs:
       OPENAVC_REQUIRE_OPENSSL: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
       OPENAVC_REQUIRE_GIT: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
       OPENAVC_REQUIRE_SYMLINKS: "1"
+      OPENAVC_REQUIRE_HOST_FIREWALL: ${{ matrix.os == 'windows-latest' && '1' || '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -74,6 +78,13 @@ jobs:
       - name: Clone the community driver library
         if: matrix.os == 'ubuntu-latest'
         run: git clone --depth 1 https://github.com/open-avc/openavc-drivers.git "$RUNNER_TEMP/openavc-drivers"
+
+      # The uninstaller's [Code] is compiled and run against real firewall
+      # rules by tests/test_windows_firewall_live.py; release.yml installs the
+      # same compiler to build the installer.
+      - name: Install Inno Setup
+        if: matrix.os == 'windows-latest'
+        run: choco install innosetup -y --no-progress
 
       - name: Lint with ruff
         run: ruff check openavc/ tests/

@@ -71,6 +71,12 @@ E2E = "OPENAVC_REQUIRE_E2E"
 # Windows grants it with Developer Mode or admin rights; CI's runner has them.
 SYMLINKS = "OPENAVC_REQUIRE_SYMLINKS"
 
+# A disposable elevated Windows machine with Inno Setup, for the tests that add
+# and remove real Windows Firewall rules. Unlike every other gate, an unset
+# variable SKIPS these even when everything is present: an elevated shell on a
+# developer's own computer is not consent to change its firewall.
+HOST_FIREWALL = "OPENAVC_REQUIRE_HOST_FIREWALL"
+
 _TRUE = {"1", "true", "yes", "on"}
 
 
