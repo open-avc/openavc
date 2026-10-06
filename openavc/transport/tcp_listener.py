@@ -10,8 +10,9 @@ driver types — can share one inbound port, so listeners are shared:
 - One TCP server per **port**, opened by the first subscriber and closed by
   the last (refcounted). Bound to all interfaces so the device can reach it
   on whichever address it recorded at registration. Port ``0`` binds an
-  OS-assigned ephemeral port (never shared — each such subscription gets its
-  own listener); the subscription's ``port`` reports the actual bound port.
+  OS-assigned ephemeral port on IPv4 (never shared — each such subscription
+  gets its own listener); the subscription's ``port`` reports the actual
+  bound port.
 - Incoming connections are demultiplexed by **source IP**: a subscription
   names its device's host and only receives data from connections that host
   opened, so two cameras dialing the same port each feed their own driver
@@ -124,8 +125,15 @@ class _PortListener:
         self._bg_tasks: set[asyncio.Task] = set()
 
     async def open(self) -> None:
+        # A fixed port is bound on every address family. Port 0 binds IPv4
+        # only: the wildcard host opens one socket per family, each family
+        # draws its own ephemeral port, and the sockets come back in no fixed
+        # order, so the port read back below could be the IPv6 socket's and an
+        # IPv4 device told to dial it would be refused. Nothing is lost by
+        # leaving IPv6 out: resolve_source_ips resolves a device host as IPv4.
+        host = "" if self.port else "0.0.0.0"
         self.server = await asyncio.start_server(
-            self._handle_connection, "", self.port
+            self._handle_connection, host, self.port
         )
         if self.server.sockets:
             # Resolve an ephemeral bind (port 0) to the OS-assigned port.

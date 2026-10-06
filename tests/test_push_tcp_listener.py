@@ -272,6 +272,25 @@ async def test_registry_ephemeral_port_zero_gets_own_listener():
 
 
 @pytest.mark.asyncio
+async def test_ephemeral_listener_answers_on_the_port_it_reports():
+    """Port 0 must report the port an IPv4 device will actually reach.
+
+    The wildcard host opens one socket per address family, each family draws
+    its own ephemeral port, and asyncio hands the sockets back in an order that
+    varies from one process to the next. Reading the first socket's port told
+    the device the IPv6 socket's number about half the time, and its IPv4
+    dial-back was refused.
+    """
+    got: list[bytes] = []
+    sub = await tl.subscribe(0, "127.0.0.1", lambda d, a: got.append(d), "cam")
+    bound = {s.getsockname()[1] for s in sub._listener.server.sockets}
+    assert bound == {sub.port}
+    await _dial(sub.port, b"hello")
+    await _wait_for(lambda: got == [b"hello"])
+    await sub.close()
+
+
+@pytest.mark.asyncio
 async def test_frames_delivered_from_matching_source():
     port = _free_tcp_port()
     got: list[bytes] = []

@@ -416,15 +416,9 @@ async def test_push_channels_record_what_arrives():
     assert [(e.channel, e.data) for e in _entries("acme_mc")] == [("multicast", b"EVENT 1")]
 
     got: list[bytes] = []
-    # A fixed free port: an ephemeral bind on "" gets a different port per
-    # address family on some systems.
-    probe = socket.socket()
-    probe.bind(("127.0.0.1", 0))
-    port = probe.getsockname()[1]
-    probe.close()
-    tsub = await tcp_listener.subscribe(port, "127.0.0.1", lambda f, a: got.append(f), "acme_tl")
+    tsub = await tcp_listener.subscribe(0, "127.0.0.1", lambda f, a: got.append(f), "acme_tl")
     try:
-        _r, w = await asyncio.open_connection("127.0.0.1", port)
+        _r, w = await asyncio.open_connection("127.0.0.1", tsub.port)
         w.write(b"NOTIFY")
         await w.drain()
         for _ in range(100):
