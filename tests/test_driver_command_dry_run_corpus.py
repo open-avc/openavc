@@ -26,6 +26,7 @@ import yaml
 
 from openavc.api.models import TestCommandRequest
 from openavc.api.routes.driver_test import _dry_run_command
+from openavc.drivers import compiled_protocol
 from tests import gates
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
@@ -244,6 +245,19 @@ def _format_spec_commands(path: Path) -> list[tuple[str, dict, str, str]]:
     return found
 
 
+def _on_the_wire(value: Any, pdef: Any) -> Any:
+    """The value a parameter puts on the wire before its format spec: the
+    device's word from its `map`, else the value through its `scale` /
+    `offset` (unchanged when it declares neither). The same two shared
+    functions the runtime's send calls, in the same order."""
+    if not isinstance(pdef, dict):
+        return value
+    word = compiled_protocol.map_word(value, pdef.get("map"))
+    if word is not None:
+        return word
+    return compiled_protocol.value_to_wire(value, pdef)
+
+
 def _drivers_using_format_specs() -> list[Path]:
     return [p for p in DRIVER_FILES if _format_spec_commands(p)]
 
@@ -263,7 +277,9 @@ async def test_format_specs_render_formatted_not_verbatim(driver_path: Path):
 
     `{level:02X}` has to reach the preview as the runtime formats it. The
     oracle is Python's own format(), which is what the substituter calls —
-    not a second parser of the spec grammar.
+    not a second parser of the spec grammar. It formats the value the
+    parameter puts on the wire, as the send does: a gain of -18 dB declared
+    with `offset: -18` and sent as `{gain:03d}` goes out as `000`.
 
     The driver list is derived from the corpus at collection time, so a new
     driver using a format spec is covered the day it lands.
@@ -283,7 +299,9 @@ async def test_format_specs_render_formatted_not_verbatim(driver_path: Path):
             if part
         )
         try:
-            expected = format(params[param], spec)
+            expected = format(
+                _on_the_wire(params[param], (cmd.get("params") or {}).get(param)), spec
+            )
         except (ValueError, TypeError):
             continue  # the driver's own spec/type pairing, not our business
         if expected not in shown:
