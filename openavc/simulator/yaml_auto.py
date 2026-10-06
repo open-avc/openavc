@@ -870,9 +870,12 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         else:
             await super().start(port)
         if self._side_receiver:
-            await self.start_datagram_server(port)
+            # The stream server's port, read back after start(0) resolved it:
+            # side-sends go to the number the driver connects to, and binding
+            # the argument again would put them on a second ephemeral port.
+            await self.start_datagram_server(self.port)
             logger.info(
-                "%s also receives UDP side-sends on port %d", self.name, port
+                "%s also receives UDP side-sends on port %d", self.name, self.port
             )
 
     async def stop(self) -> None:

@@ -265,12 +265,6 @@ def test_a_payload_placeholder_outside_the_params_is_flagged():
 # ── The simulator ──────────────────────────────────────────────────────────
 
 
-def _free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 async def _until(condition, timeout: float = 10.0) -> bool:
     """Wait for what the simulator should have received. A loaded machine can
     take far longer than an idle one, so the bound is generous; the caller's
@@ -286,9 +280,10 @@ async def _until(condition, timeout: float = 10.0) -> bool:
 
 def test_a_tcp_device_with_udp_commands_receives_datagrams_on_its_port():
     async def scenario():
-        port = _free_port()
         sim = YAMLAutoSimulator("d1", {}, driver_def=_definition())
-        await sim.start(port)
+        # Port 0: both servers have to land on the one number it reports.
+        await sim.start(0)
+        port = sim.port
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             try:
