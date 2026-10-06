@@ -94,32 +94,115 @@ _CHROMIUM_UNSAFE_PORTS = frozenset({
 })
 
 
-def _pick_free_port() -> int:
+def _pick_free_port(bind: str = "127.0.0.1") -> int:
+    """A port free on ``bind`` right now, and only right now.
+
+    The server is another process, and a bound socket cannot be handed to one
+    on every platform, so the number is let go of here and bound there a
+    moment later. Anything can take it in between; ``_start_server`` notices
+    and starts again on another one.
+    """
     while True:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.bind(("127.0.0.1", 0))
+        s.bind((bind, 0))
         port = s.getsockname()[1]
         s.close()
         if port not in _CHROMIUM_UNSAFE_PORTS:
             return port
 
 
-def _wait_for_ready(url: str, *, timeout: float = 30.0) -> None:
+# How many times one server is started before the harness gives up on finding
+# it a port. Losing one is rare; losing three in a row is not a race.
+_PORT_ATTEMPTS = 3
+
+
+class _PortLost(Exception):
+    """The port given to a server was taken before the server could bind it."""
+
+
+def _lost_the_port(data_dir: Path, log_path: Path, bind: str, port: int) -> bool:
+    """Whether a server that exited did so because its port was taken.
+
+    There are two gaps to lose it in. The start-up check binds the port,
+    finds it in use and records ``port_in_use``. Or the check passes and
+    releases it, the engine starts, and the web server's own bind fails, which
+    records nothing and is only in the log, as asyncio's message naming the
+    address and port.
+    """
+    try:
+        record = json.loads(
+            (data_dir / "startup-error.json").read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        record = None
+    if isinstance(record, dict) and record.get("error") == "port_in_use":
+        return True
+    try:
+        log = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return f"error while attempting to bind on address ({bind!r}, {port})" in log
+
+
+def _is_this_server(base_url: str, project_path: Path) -> bool:
+    """Whether the server answering at ``base_url`` is the one started for
+    ``project_path``.
+
+    Every OpenAVC server answers ``/api/startup-status`` the same way, so a
+    ready answer alone could come from another one that holds the port. Its
+    instance id cannot: ``/api/status`` gives it to any caller, and a server
+    keeps its id in ``.instance_id`` beside its project, which is in this
+    launch's own directory.
+    """
+    try:
+        with urlopen(f"{base_url}/api/status", timeout=5.0) as resp:
+            answered = json.loads(resp.read().decode("utf-8")).get("instance_id")
+        ours = (project_path.parent / ".instance_id").read_text(encoding="utf-8").strip()
+    except (OSError, ValueError):
+        return False
+    return bool(answered) and answered == ours
+
+
+def _wait_for_own_server(
+    proc: subprocess.Popen,
+    base_url: str,
+    *,
+    bind: str,
+    port: int,
+    data_dir: Path,
+    log_path: Path,
+    project_path: Path,
+    timeout: float = 30.0,
+) -> None:
+    """Wait until this server is up on its port.
+
+    Raises ``_PortLost`` when another socket took the port first, and
+    ``RuntimeError`` for any other failure: as soon as the process exits, not
+    at the timeout.
+    """
     deadline = time.monotonic() + timeout
     last_err: str = ""
     while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            if _lost_the_port(data_dir, log_path, bind, port):
+                raise _PortLost(f"port {port} was taken before the server bound it")
+            raise RuntimeError(f"the server exited with code {proc.returncode}")
         try:
-            with urlopen(url, timeout=1.0) as resp:
+            with urlopen(f"{base_url}/api/startup-status", timeout=1.0) as resp:
                 body = json.loads(resp.read().decode("utf-8"))
-                if body.get("ready"):
-                    return
-                if body.get("error"):
-                    raise RuntimeError(f"Engine startup error: {body['error']}")
         except Exception as exc:  # noqa: BLE001
             last_err = repr(exc)
+            time.sleep(0.25)
+            continue
+        if body.get("error"):
+            raise RuntimeError(f"Engine startup error: {body['error']}")
+        if body.get("ready"):
+            if not _is_this_server(base_url, project_path):
+                raise _PortLost(f"another server is answering on port {port}")
+            return
         time.sleep(0.25)
     raise RuntimeError(
-        f"Server at {url} did not become ready within {timeout}s "
+        f"Server at {base_url} did not become ready within {timeout}s "
         f"(last={last_err})"
     )
 
@@ -279,12 +362,64 @@ def _start_server(
     Panel access default reads. ``drivers`` maps file names to driver source
     written into the server's ``driver_repo/`` before it boots, so a project
     device can use one from the start."""
-    tmp_root.mkdir(parents=True, exist_ok=True)
-    data_dir = tmp_root / "data"
+    lost = ""
+    for attempt in range(_PORT_ATTEMPTS):
+        # A start that lost its port may have run its engine first, and the
+        # engine writes beside the project (the instance id among it, which
+        # makes the next server there read as one that already existed), so
+        # each new start gets an empty directory of its own.
+        root = tmp_root if attempt == 0 else tmp_root / f"port-retry-{attempt}"
+        try:
+            handle, log = _launch(
+                root,
+                initial_children=initial_children,
+                project_overrides=project_overrides,
+                bind=bind,
+                env=env,
+                existing_system=existing_system,
+                drivers=drivers,
+            )
+            break
+        except _PortLost as exc:
+            lost = str(exc)
+    else:
+        raise RuntimeError(
+            f"Server lost its port {_PORT_ATTEMPTS} times in a row. "
+            f"Last start:\n{lost}"
+        )
+
+    try:
+        yield handle
+    finally:
+        proc = handle.process
+        proc.terminate()
+        try:
+            proc.wait(timeout=10.0)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5.0)
+        log.close()
+
+
+def _launch(
+    root: Path,
+    *,
+    initial_children: int,
+    project_overrides: dict[str, Any] | None,
+    bind: str,
+    env: dict[str, str] | None,
+    existing_system: bool,
+    drivers: dict[str, str] | None,
+):
+    """One start of one server in ``root``. Returns its handle and open log;
+    raises ``_PortLost`` or ``RuntimeError`` with the log tail, having stopped
+    the process."""
+    root.mkdir(parents=True, exist_ok=True)
+    data_dir = root / "data"
     data_dir.mkdir(exist_ok=True)
     if existing_system:
         # Beside project.avc, where core/isc.get_or_create_instance_id keeps it.
-        (tmp_root / ".instance_id").write_text(str(uuid.uuid4()), encoding="utf-8")
+        (root / ".instance_id").write_text(str(uuid.uuid4()), encoding="utf-8")
 
     # Install the synthetic controller driver into THIS server's own
     # driver_repo (which is where DRIVER_REPO_DIR resolves under the temp
@@ -297,7 +432,7 @@ def _start_server(
     for filename, source in (drivers or {}).items():
         (driver_repo / filename).write_bytes(source.encode("utf-8"))
 
-    project_path = tmp_root / "project.avc"
+    project_path = root / "project.avc"
     project_path.write_text(
         json.dumps(
             _build_project(
@@ -309,12 +444,12 @@ def _start_server(
         encoding="utf-8",
     )
 
-    control_file = tmp_root / "control.json"
+    control_file = root / "control.json"
     control_file.write_text(
         json.dumps({"seq": 1, "operations": []}), encoding="utf-8",
     )
 
-    port = _pick_free_port()
+    port = _pick_free_port(bind)
     base_url = f"http://{bind}:{port}"
 
     env = {
@@ -335,7 +470,7 @@ def _start_server(
     # PowerShell-launched parents sometimes leave OPENAVC_DATA_DIR pointed at
     # a session-scoped temp from the in-process test suite; force ours through.
 
-    log_path = tmp_root / "server.log"
+    log_path = root / "server.log"
     log = open(log_path, "wb")
     proc = subprocess.Popen(
         [sys.executable, "-m", "openavc.main"],
@@ -346,19 +481,27 @@ def _start_server(
     )
 
     try:
-        _wait_for_ready(f"{base_url}/api/startup-status", timeout=30.0)
-    except Exception:
+        _wait_for_own_server(
+            proc, base_url, bind=bind, port=port, data_dir=data_dir,
+            log_path=log_path, project_path=project_path,
+        )
+    except Exception as exc:
         proc.terminate()
         try:
             proc.wait(timeout=5.0)
         except subprocess.TimeoutExpired:
             proc.kill()
+            proc.wait(timeout=5.0)
         log.close()
         try:
             tail = log_path.read_text(encoding="utf-8", errors="replace")[-3000:]
         except OSError:
             tail = "<log unreadable>"
-        raise RuntimeError(f"Server failed to start. Log tail:\n{tail}")
+        if isinstance(exc, _PortLost):
+            raise _PortLost(f"{exc}. Log tail:\n{tail}") from None
+        raise RuntimeError(
+            f"Server failed to start ({exc}). Log tail:\n{tail}"
+        ) from None
 
     handle = _ServerHandle(
         base_url=base_url,
@@ -368,17 +511,7 @@ def _start_server(
         project_path=project_path,
         process=proc,
     )
-
-    try:
-        yield handle
-    finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=10.0)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=5.0)
-        log.close()
+    return handle, log
 
 
 # ---------------------------------------------------------------------------
