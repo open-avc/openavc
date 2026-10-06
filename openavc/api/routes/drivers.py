@@ -1612,10 +1612,12 @@ async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest
     # is always possible.
     _enforce_declared_floor(driver_def.get("min_platform_version"))
 
-    # Delete old and save new
-    delete_driver_definition(driver_id, dirs)
+    # Save the new file first (it replaces a same-named old one in place),
+    # then remove any other copy of the old id, so the driver is never
+    # absent from disk.
     save_dir = dirs[1]  # driver_repo/
-    save_driver_definition(driver_def, save_dir)
+    saved = save_driver_definition(driver_def, save_dir)
+    delete_driver_definition(driver_id, dirs, keep=saved)
 
     # Re-register, then reconnect live devices so they pick up the new class
     # without a full project reload (mirrors the Python hot-reload path).
@@ -1701,10 +1703,10 @@ async def patch_driver_definition(driver_id: str, body: dict) -> dict:
     # floor (or clearing it) merges first and passes, which is the way out.
     _enforce_declared_floor(merged.get("min_platform_version"))
 
-    # Delete old and save merged
-    delete_driver_definition(driver_id, dirs)
+    # Save first, then remove any other copy of the id (as replace does).
     save_dir = dirs[1]  # driver_repo/
-    save_driver_definition(merged, save_dir)
+    saved = save_driver_definition(merged, save_dir)
+    delete_driver_definition(driver_id, dirs, keep=saved)
 
     # Re-register, then reconnect live devices so they pick up the new class
     # without a full project reload (mirrors the Python hot-reload path).

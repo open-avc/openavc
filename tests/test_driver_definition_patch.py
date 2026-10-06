@@ -204,3 +204,75 @@ async def test_patch_accepts_a_definition_carrying_listing_metadata(driver_dirs)
 
     saved = yaml.safe_load((repo_dir / "acme_widget.avcdriver").read_text())
     assert "source" not in saved
+
+
+# --- a save never leaves the driver absent from disk ------------------------
+#
+# A save used to delete every file carrying the driver's id and then write the
+# new one. Between the two the driver was on disk nowhere: a reader in that gap
+# found no file, and a crash in it lost the driver. The new file now goes in
+# first (an atomic replace of the old one when the name is the same), and only
+# OTHER files carrying the id are removed after it.
+
+
+@pytest.fixture()
+def unlinked(monkeypatch) -> list[Path]:
+    seen: list[Path] = []
+    real_unlink = Path.unlink
+
+    def _record(self: Path, *args, **kwargs):
+        seen.append(Path(self))
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", _record)
+    return seen
+
+
+async def test_replace_never_removes_the_file_it_saves(driver_dirs, unlinked):
+    _, repo_dir = driver_dirs
+    save_driver_definition(dict(DEFINITION), repo_dir)
+
+    await update_driver_definition(
+        "acme_widget", DriverDefinitionRequest(**{**DEFINITION, "name": "Acme II"})
+    )
+
+    target = repo_dir / "acme_widget.avcdriver"
+    assert target not in unlinked
+    assert yaml.safe_load(target.read_text())["name"] == "Acme II"
+
+
+async def test_patch_never_removes_the_file_it_saves(driver_dirs, unlinked):
+    _, repo_dir = driver_dirs
+    save_driver_definition(dict(DEFINITION), repo_dir)
+
+    await patch_driver_definition("acme_widget", {"name": "Acme III"})
+
+    target = repo_dir / "acme_widget.avcdriver"
+    assert target not in unlinked
+    assert yaml.safe_load(target.read_text())["name"] == "Acme III"
+
+
+async def test_a_renamed_driver_leaves_no_file_under_its_old_id(driver_dirs):
+    _, repo_dir = driver_dirs
+    save_driver_definition(dict(DEFINITION), repo_dir)
+
+    await update_driver_definition(
+        "acme_widget", DriverDefinitionRequest(**{**DEFINITION, "id": "acme_gadget"})
+    )
+
+    assert not (repo_dir / "acme_widget.avcdriver").exists()
+    assert yaml.safe_load((repo_dir / "acme_gadget.avcdriver").read_text())["id"] == "acme_gadget"
+
+
+async def test_a_copy_of_the_id_under_another_filename_is_still_removed(driver_dirs):
+    _, repo_dir = driver_dirs
+    (repo_dir / "imported widget.avcdriver").write_text(
+        yaml.dump(dict(DEFINITION)), encoding="utf-8",
+    )
+
+    await update_driver_definition(
+        "acme_widget", DriverDefinitionRequest(**{**DEFINITION, "name": "Acme IV"})
+    )
+
+    assert not (repo_dir / "imported widget.avcdriver").exists()
+    assert yaml.safe_load((repo_dir / "acme_widget.avcdriver").read_text())["name"] == "Acme IV"

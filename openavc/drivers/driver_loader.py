@@ -671,6 +671,8 @@ def restore_driver_registration(
 def delete_driver_definition(
     driver_id: str,
     directories: Sequence[Path | str],
+    *,
+    keep: Path | str | None = None,
 ) -> bool:
     """
     Delete a driver definition file by driver ID.
@@ -681,7 +683,13 @@ def delete_driver_definition(
     tree): a single API call with a built-in id would otherwise permanently
     remove a platform driver from the install tree with no recovery. A
     same-id user copy in ``driver_repo`` is still deleted.
+
+    ``keep`` is a file left in place although it carries the id. A save
+    writes the new file first and passes it here, so the driver is on disk
+    throughout: deleting first left a gap where a reader found no file and a
+    crash lost the driver.
     """
+    kept = Path(keep).resolve() if keep is not None else None
     for dir_path in directories:
         dir_path = Path(dir_path)
         if not dir_path.exists():
@@ -690,6 +698,8 @@ def delete_driver_definition(
             try:
                 data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
                 if isinstance(data, dict) and data.get("id") == driver_id:
+                    if kept is not None and filepath.resolve() == kept:
+                        continue
                     if is_builtin_definition_path(filepath):
                         log.warning(
                             f"Refusing to delete built-in driver definition: {filepath}"
