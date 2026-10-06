@@ -506,6 +506,50 @@ def test_the_file_name_is_manufacturer_model_and_time():
     assert report_filename(report).startswith("openavc-device-audit-10-0-0-50-unidentified-")
 
 
+def test_a_recognized_device_is_named_for_the_driver_that_recognized_it():
+    """A report taken before "Which driver?" of a device that said nothing
+    about itself is named for what the network check recognized it as, in the
+    file name and summary.html's title alike, never "unidentified"."""
+    report = {
+        "generator": {}, "session": {"started_at": 1_700_000_000.0, "tester": {}},
+        "target": {"address": "10.0.0.50", "ip": "10.0.0.50"},
+        "device": {"entered": {}, "reported": {}},
+        "catalog": {"used": "none"}, "complete": True, "limits": [], "footprint": {},
+        "verdict": {
+            "state": "identified",
+            "sentence": "OpenAVC recognizes this device: Acme Widget Controller.",
+            "identification": {"state": "identified", "driver_id": "acme_widget"},
+            "drivers": {"acme_widget": {"name": "Acme Widget Controller",
+                                        "manufacturer": "Acme Corp"}},
+        },
+    }
+    # The driver's name already starts with its maker, so it is not said twice.
+    assert report_filename(report).startswith("openavc-device-audit-acme-widget-controller-2")
+    assert "<title>Device audit: Acme Widget Controller</title>" in render_summary(report)
+
+    # A driver name that does not start with its maker is led by it.
+    report["verdict"]["drivers"]["acme_widget"] = {"name": "Glow Bridge", "manufacturer": "Lumen"}
+    assert report_filename(report).startswith("openavc-device-audit-lumen-glow-bridge-2")
+    assert "<title>Device audit: Lumen Glow Bridge</title>" in render_summary(report)
+
+    # What the device said comes first; the driver fills only what it left out.
+    report["device"]["reported"] = {"model": "GB-3000"}
+    assert report_filename(report).startswith("openavc-device-audit-lumen-gb-3000-")
+    report["device"]["reported"] = {"manufacturer": "Lumen Lighting Ltd"}
+    assert report_filename(report).startswith("openavc-device-audit-lumen-lighting-ltd-glow-bridge-")
+    report["device"]["reported"] = {"manufacturer": "Lumen", "model": "GB-3000"}
+    report["device"]["entered"] = {"manufacturer": "Lumen", "model": "GB-3100"}
+    assert report_filename(report).startswith("openavc-device-audit-lumen-gb-3100-")
+
+    # A driver that only might fit names nothing.
+    report["device"] = {"entered": {}, "reported": {}}
+    report["verdict"]["state"] = "possible"
+    report["verdict"]["identification"] = {"state": "possible", "driver_id": None,
+                                           "candidates": ["acme_widget"]}
+    assert report_filename(report).startswith("openavc-device-audit-10-0-0-50-unidentified-")
+    assert "<title>Device audit: 10.0.0.50</title>" in render_summary(report)
+
+
 # ---------------------------------------------------------------------------
 # Recent reports
 # ---------------------------------------------------------------------------

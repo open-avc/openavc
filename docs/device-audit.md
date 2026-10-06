@@ -78,7 +78,11 @@ the one before.
 ## The Report
 
 The download is one zip file, named for the device and the time:
-`openavc-device-audit-<manufacturer>-<model>-<date>.zip`.
+`openavc-device-audit-<manufacturer>-<model>-<date>.zip`. The manufacturer and model are the ones
+you enter on **Which driver?**, else the ones the device reported about itself, else the driver
+the network check recognized it as (`openavc-device-audit-samsung-mdc-display-<date>.zip`). When
+none of these names the device, the file is named for its address and `unidentified`. A report
+keeps the name it was first saved under for the rest of the audit.
 
 | File | What it holds |
 |------|---------------|

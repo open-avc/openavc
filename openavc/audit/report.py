@@ -3,6 +3,7 @@
 ::
 
     openavc-device-audit-<manufacturer>-<model>-<YYYYMMDD-HHMM>.zip
+      (device_name_parts: entered, else reported, else the recognized driver)
       summary.html     readable summary, self-contained, no scripts
       report.json      the complete record
       timeline.txt     every event in order, the driver's traffic included
@@ -1150,22 +1151,54 @@ def _slug(value: Any, fallback: str) -> str:
     return (text[:40].strip("-")) or fallback
 
 
-def report_filename(report: dict[str, Any], when: float | None = None) -> str:
-    """``openavc-device-audit-<manufacturer>-<model>-<YYYYMMDD-HHMM>.zip``."""
-    entered = report.get("device", {}).get("entered", {})
-    reported = report.get("device", {}).get("reported", {})
+def _recognized_as(report: dict[str, Any]) -> tuple[str, str]:
+    """(manufacturer, name) of the driver the network check recognized the
+    device as, or empty strings. A driver that only might fit is not one."""
+    verdict = report.get("verdict") or {}
+    driver_id = (verdict.get("identification") or {}).get("driver_id")
+    if verdict.get("state") != "identified" or not driver_id:
+        return "", ""
+    driver = (verdict.get("drivers") or {}).get(driver_id) or {}
+    return str(driver.get("manufacturer") or ""), str(driver.get("name") or driver_id)
+
+
+def device_name_parts(report: dict[str, Any]) -> list[str | None]:
+    """What a report is named for, the file name and summary.html's title:
+    ``[manufacturer, model]``, each part what the person entered on "Which
+    driver?", else what the device reported about itself. A part both leave
+    out comes from the driver the network check recognized the device as: its
+    manufacturer, and its name for the model. That name stands alone when it
+    already starts with the manufacturer's first word ("Acme Widget
+    Controller" from Acme Corp). A missing part is None; nothing to name the
+    device by is ``[]``."""
+    entered = report.get("device", {}).get("entered") or {}
+    reported = report.get("device", {}).get("reported") or {}
     manufacturer = entered.get("manufacturer") or reported.get("manufacturer")
     model = entered.get("model") or reported.get("model")
+    maker, name = _recognized_as(report)
+    if name and not model:
+        words = str(manufacturer or maker).split()
+        if words and name.lower().split()[0] == words[0].lower():
+            return [name]
+        return [manufacturer or maker or None, name]
     if not manufacturer and not model:
-        manufacturer = report.get("target", {}).get("ip") or report.get("target", {}).get("address")
-        model = "unidentified"
+        return []
+    return [manufacturer or maker or None, model]
+
+
+def report_filename(report: dict[str, Any], when: float | None = None) -> str:
+    """``openavc-device-audit-<manufacturer>-<model>-<YYYYMMDD-HHMM>.zip``
+    (``device_name_parts``), the address and ``unidentified`` when nothing
+    names the device."""
+    parts = device_name_parts(report) or [
+        report.get("target", {}).get("ip") or report.get("target", {}).get("address"),
+        "unidentified",
+    ]
     stamp = datetime.fromtimestamp(when or report["session"]["started_at"]).strftime(
         "%Y%m%d-%H%M"
     )
-    return (
-        f"openavc-device-audit-{_slug(manufacturer, 'unknown')}-"
-        f"{_slug(model, 'unknown')}-{stamp}.zip"
-    )
+    name = "-".join(_slug(part, "unknown") for part in parts)
+    return f"openavc-device-audit-{name}-{stamp}.zip"
 
 
 def utc_offset(t: float | None = None) -> str:
@@ -1337,12 +1370,10 @@ def render_summary(report: dict[str, Any]) -> str:
     catalog = report.get("catalog", {})
     generator = report.get("generator", {})
 
-    entered = report.get("device", {}).get("entered", {})
-    title_bits = [
-        entered.get("manufacturer") or reported.get("manufacturer"),
-        entered.get("model") or reported.get("model"),
-    ]
-    title = " ".join(str(b) for b in title_bits if b) or target.get("address") or "Device"
+    title = (
+        " ".join(str(b) for b in device_name_parts(report) if b)
+        or target.get("address") or "Device"
+    )
     started = session.get("started_at")
     when = (
         datetime.fromtimestamp(started).strftime("%Y-%m-%d %H:%M") + f" {utc_offset(started)}"
