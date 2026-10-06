@@ -99,15 +99,19 @@ const LIVE = {
   };
 }
 
-// --- The refusal messages name the param and say what to do ---
+// --- The refusal messages name the param as its form does and say what to do ---
 {
   const event = H.testBlockedMessage({ ok: false, param: "level", token: "$value", reason: "event" });
-  const noValue = H.testBlockedMessage({ ok: false, param: "v", token: "$var.gone", reason: "no_value" });
+  const noValue = H.testBlockedMessage({ ok: false, param: "input_id", token: "$var.gone", reason: "no_value" });
+  const labelled = H.testBlockedMessage(
+    { ok: false, param: "lvl", token: "$value", reason: "event" }, "Volume",
+  );
   results.blocked_messages_name_param_and_token = {
     pass:
-      event.includes('"level"') && event.includes("$value") && event.includes("fixed value") &&
-      noValue.includes('"v"') && noValue.includes("$var.gone") && noValue.includes("no current value"),
-    detail: { event, noValue },
+      event.includes('"Level"') && event.includes("$value") && event.includes("fixed value") &&
+      noValue.includes('"Input ID"') && noValue.includes("$var.gone") &&
+      noValue.includes("no current value") && labelled.includes('"Volume"'),
+    detail: { event, noValue, labelled },
   };
 }
 
