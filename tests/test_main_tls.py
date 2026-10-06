@@ -42,11 +42,19 @@ from tests.helpers import make_cloud_cert_pem
 # ---------------------------------------------------------------------------
 
 
-def _free_port() -> int:
-    """Ask the OS for a free TCP port on loopback."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+def _bound_socket() -> tuple[socket.socket, int]:
+    """A loopback TCP socket on a port the OS picked, and that port.
+
+    The test keeps it and uvicorn serves on it (``_running_server``), so the
+    port is held from the moment it is chosen until the server stops.
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    return sock, sock.getsockname()[1]
+
+
+# A port the redirect only names in its Location header; nothing serves it.
+_UNSERVED_TLS_PORT = 8443
 
 
 def _make_test_app() -> Starlette:
@@ -67,9 +75,11 @@ def _make_test_app() -> Starlette:
 
 
 @contextlib.asynccontextmanager
-async def _running_server(server: uvicorn.Server):
-    """Start a uvicorn.Server as a background task; ensure it stops on exit.
+async def _running_server(server: uvicorn.Server, sock: socket.socket):
+    """Start a uvicorn.Server on ``sock`` as a background task; ensure it stops on exit.
 
+    uvicorn serves on the socket the test already holds instead of binding
+    the configured port itself, so nothing can take the port in between.
     Replaces ``capture_signals`` with a no-op so the test process keeps its
     own SIGINT/SIGTERM handlers (pytest needs these for clean cancellation).
     """
@@ -78,7 +88,7 @@ async def _running_server(server: uvicorn.Server):
         yield
 
     server.capture_signals = _no_signals
-    task = asyncio.create_task(server.serve())
+    task = asyncio.create_task(server.serve(sockets=[sock]))
     # Wait for the server to flip "started" before yielding — otherwise the
     # client may race the bind() and fail with ConnectionRefusedError.
     for _ in range(200):  # ~10 s max
@@ -87,6 +97,7 @@ async def _running_server(server: uvicorn.Server):
         await asyncio.sleep(0.05)
     else:
         task.cancel()
+        sock.close()
         raise RuntimeError("uvicorn did not start within timeout")
     try:
         yield server
@@ -98,6 +109,7 @@ async def _running_server(server: uvicorn.Server):
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
+        sock.close()
 
 
 @pytest.fixture
@@ -129,7 +141,6 @@ def test_harden_tls_context_pins_1_2_floor_and_keeps_1_2_ciphers(cert_paths):
     cfg = uvicorn.Config(
         _make_test_app(),
         host="127.0.0.1",
-        port=_free_port(),
         ssl_certfile=str(cert_path),
         ssl_keyfile=str(key_path),
         log_level="warning",
@@ -148,7 +159,7 @@ def test_harden_tls_context_pins_1_2_floor_and_keeps_1_2_ciphers(cert_paths):
 async def test_https_serves_through_real_uvicorn(cert_paths):
     """A real uvicorn.Server with the generated cert serves HTTPS."""
     cert_path, key_path = cert_paths
-    tls_port = _free_port()
+    tls_sock, tls_port = _bound_socket()
     tls_server = uvicorn.Server(uvicorn.Config(
         _make_test_app(),
         host="127.0.0.1",
@@ -158,7 +169,7 @@ async def test_https_serves_through_real_uvicorn(cert_paths):
         log_level="warning",
     ))
 
-    async with _running_server(tls_server):
+    async with _running_server(tls_server, tls_sock):
         async with httpx.AsyncClient(verify=False) as client:
             resp = await client.get(f"https://127.0.0.1:{tls_port}/api/health")
             assert resp.status_code == 200
@@ -169,8 +180,8 @@ async def test_https_serves_through_real_uvicorn(cert_paths):
 async def test_http_redirect_to_https_get(cert_paths):
     """GET on the redirect listener returns 301 with the right Location."""
     cert_path, key_path = cert_paths
-    tls_port = _free_port()
-    redirect_port = _free_port()
+    tls_sock, tls_port = _bound_socket()
+    redirect_sock, redirect_port = _bound_socket()
 
     tls_server = uvicorn.Server(uvicorn.Config(
         _make_test_app(),
@@ -187,7 +198,7 @@ async def test_http_redirect_to_https_get(cert_paths):
         log_level="warning",
     ))
 
-    async with _running_server(tls_server), _running_server(redirect_server):
+    async with _running_server(tls_server, tls_sock), _running_server(redirect_server, redirect_sock):
         async with httpx.AsyncClient(verify=False, follow_redirects=False) as client:
             resp = await client.get(f"http://127.0.0.1:{redirect_port}/api/health")
             assert resp.status_code == 302
@@ -199,8 +210,8 @@ async def test_http_redirect_to_https_get(cert_paths):
 async def test_http_redirect_preserves_query_string(cert_paths):
     """Query string survives the redirect verbatim."""
     cert_path, key_path = cert_paths
-    tls_port = _free_port()
-    redirect_port = _free_port()
+    tls_port = _UNSERVED_TLS_PORT
+    redirect_sock, redirect_port = _bound_socket()
 
     redirect_server = uvicorn.Server(uvicorn.Config(
         _build_redirect_app(tls_port),
@@ -209,7 +220,7 @@ async def test_http_redirect_preserves_query_string(cert_paths):
         log_level="warning",
     ))
 
-    async with _running_server(redirect_server):
+    async with _running_server(redirect_server, redirect_sock):
         async with httpx.AsyncClient(verify=False, follow_redirects=False) as client:
             resp = await client.get(
                 f"http://127.0.0.1:{redirect_port}/api/devices?foo=bar&baz=1"
@@ -224,8 +235,8 @@ async def test_http_redirect_preserves_query_string(cert_paths):
 async def test_http_redirect_post_uses_307(cert_paths):
     """POST gets 307 (not 302) so the method is preserved on redirect."""
     cert_path, key_path = cert_paths
-    tls_port = _free_port()
-    redirect_port = _free_port()
+    tls_port = _UNSERVED_TLS_PORT
+    redirect_sock, redirect_port = _bound_socket()
 
     redirect_server = uvicorn.Server(uvicorn.Config(
         _build_redirect_app(tls_port),
@@ -234,7 +245,7 @@ async def test_http_redirect_post_uses_307(cert_paths):
         log_level="warning",
     ))
 
-    async with _running_server(redirect_server):
+    async with _running_server(redirect_server, redirect_sock):
         async with httpx.AsyncClient(verify=False, follow_redirects=False) as client:
             resp = await client.post(
                 f"http://127.0.0.1:{redirect_port}/api/echo",
@@ -250,8 +261,8 @@ async def test_http_redirect_post_uses_307(cert_paths):
 async def test_redirect_follows_through_to_https(cert_paths):
     """End-to-end: client following the 302 lands on the HTTPS server."""
     cert_path, key_path = cert_paths
-    tls_port = _free_port()
-    redirect_port = _free_port()
+    tls_sock, tls_port = _bound_socket()
+    redirect_sock, redirect_port = _bound_socket()
 
     tls_server = uvicorn.Server(uvicorn.Config(
         _make_test_app(),
@@ -268,7 +279,7 @@ async def test_redirect_follows_through_to_https(cert_paths):
         log_level="warning",
     ))
 
-    async with _running_server(tls_server), _running_server(redirect_server):
+    async with _running_server(tls_server, tls_sock), _running_server(redirect_server, redirect_sock):
         async with httpx.AsyncClient(verify=False, follow_redirects=True) as client:
             resp = await client.get(f"http://127.0.0.1:{redirect_port}/api/health")
             assert resp.status_code == 200
@@ -340,7 +351,7 @@ async def test_no_sni_handshake_presents_leaf_plus_ca(cert_paths):
     the pin byte-for-byte against the presented chain — a leaf-only chain
     gives it nothing to match, and HTTPS pairing fails."""
     cert_path, key_path = cert_paths
-    tls_port = _free_port()
+    tls_sock, tls_port = _bound_socket()
     server = uvicorn.Server(uvicorn.Config(
         _make_test_app(),
         host="127.0.0.1",
@@ -352,7 +363,7 @@ async def test_no_sni_handshake_presents_leaf_plus_ca(cert_paths):
     leaf_der = _pem_to_der(cert_path.read_bytes())
     ca_der = _pem_to_der((cert_path.parent / "ca.crt").read_bytes())
 
-    async with _running_server(server):
+    async with _running_server(server, tls_sock):
         chain = await _served_chain_der(tls_port)
 
     assert chain == [leaf_der, ca_der]
@@ -370,7 +381,7 @@ async def test_sni_dual_serve_and_hot_swap(cert_paths, tmp_path):
     tls.install_cloud_cert(tmp_path, cloud1_pem, cloud1_key)
 
     try:
-        tls_port = _free_port()
+        tls_sock, tls_port = _bound_socket()
         config = uvicorn.Config(
             _make_test_app(),
             host="127.0.0.1",
@@ -386,7 +397,7 @@ async def test_sni_dual_serve_and_hot_swap(cert_paths, tmp_path):
         self_signed_der = _pem_to_der(cert_path.read_bytes())
         cloud1_der = _pem_to_der(cloud1_pem)
 
-        async with _running_server(server):
+        async with _running_server(server, tls_sock):
             # Zone names (wildcard + bare label) get the cloud cert.
             assert await _served_cert_der(tls_port, f"192-168-1-20.{label}.{zone}") == cloud1_der
             assert await _served_cert_der(tls_port, f"{label}.{zone}") == cloud1_der

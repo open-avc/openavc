@@ -14,17 +14,10 @@ from openavc import config
 from openavc.main import _preflight_port
 
 
-def _free_port() -> int:
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        s.bind((config.BIND_ADDRESS, 0))
-        return s.getsockname()[1]
-    finally:
-        s.close()
-
-
 def test_free_port_passes():
-    assert _preflight_port(_free_port(), retries=1) is None
+    # Port 0 is any free port, so this bind cannot lose a race to another
+    # socket. What is under test is that a bind that succeeds passes.
+    assert _preflight_port(0, retries=1) is None
 
 
 def test_live_listener_is_still_detected():
@@ -47,7 +40,6 @@ def test_sets_reuseaddr_on_posix(monkeypatch):
     if os.name == "nt":
         pytest.skip("Windows SO_REUSEADDR has hijack semantics; gated off there")
 
-    port = _free_port()
     seen: list[tuple] = []
     real_socket = socket.socket
 
@@ -68,5 +60,6 @@ def test_sets_reuseaddr_on_posix(monkeypatch):
     # _preflight_port does `import socket as _sock; _sock.socket(...)`, so
     # patching the module attribute reaches it.
     monkeypatch.setattr(socket, "socket", Spy)
-    _preflight_port(port, retries=1)
+    # The option goes on before the bind is tried, so the port does not matter.
+    _preflight_port(0, retries=1)
     assert (socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) in seen

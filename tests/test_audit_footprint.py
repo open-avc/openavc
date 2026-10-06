@@ -41,6 +41,7 @@ from openavc.discovery.port_scanner import PORT_OPEN, PORT_REFUSED
 from openavc.discovery.ssdp_scanner import SSDPScanner
 from openavc.simulator.self_signed_tls import _generate_self_signed, remove_cert_files
 from openavc.simulator.snmp_simulator import SNMPSimulator
+from tests.helpers import refusing_tcp_port
 
 HOST = "127.0.0.1"
 VENDOR_TYPE = "_acmewidget._tcp.local."
@@ -137,21 +138,18 @@ async def bench(monkeypatch):
     monkeypatch.setattr(
         snmp_scanner, "SNMP_PORT", agent._udp_transport.get_extra_info("sockname")[1],
     )
-    closed = socket.socket()
-    closed.bind((HOST, 0))
-    closed_port = closed.getsockname()[1]
-    closed.close()
-    try:
-        yield {
-            "banner": banner_port, "web": web_port, "secure": secure_port,
-            "closed": closed_port,
-        }
-    finally:
-        for server in (banner, web, secure):
-            server.close()
-            await server.wait_closed()
-        await agent.stop()
-        remove_cert_files((cert, key))
+    with refusing_tcp_port() as closed_port:
+        try:
+            yield {
+                "banner": banner_port, "web": web_port, "secure": secure_port,
+                "closed": closed_port,
+            }
+        finally:
+            for server in (banner, web, secure):
+                server.close()
+                await server.wait_closed()
+            await agent.stop()
+            remove_cert_files((cert, key))
 
 
 # ---------------------------------------------------------------------------

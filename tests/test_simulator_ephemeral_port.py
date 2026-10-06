@@ -58,6 +58,12 @@ def _free_port(transport: str) -> int:
     Deliberately not a port a simulator has just released: macOS holds a
     datagram endpoint's port briefly after close, so reusing one is a race
     this test would lose on its own machine.
+
+    The throwaway socket is closed before the simulator binds the number, so
+    another socket could take it in between. That gap is left open here and
+    nowhere else in the suite: what this test checks is the explicit number
+    itself, and a simulator takes a number, never a socket it could be
+    handed already bound.
     """
     kind = (
         socket.SOCK_DGRAM if transport in ("udp", "osc", "snmp")

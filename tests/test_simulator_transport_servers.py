@@ -16,7 +16,6 @@ platform's simulator machinery under test, not any specific driver.
 from __future__ import annotations
 
 import asyncio
-import socket
 
 import httpx
 import pytest
@@ -111,24 +110,6 @@ def _http_def(ssl: bool = False) -> dict:
     }
 
 
-def _free_port(kind: int = socket.SOCK_STREAM) -> int:
-    """Ask the OS for a free port IN THE PROTOCOL THE CALLER WILL SERVE.
-
-    TCP and UDP have independent port spaces, so a port the kernel calls free
-    on one says nothing about the other. This asked UDP for every port and
-    then handed some of them to the HTTP tests below, which is a TCP bind — so
-    the HTTP simulator could be told to bind a TCP port that was already in
-    use. It fails as `[Errno 98] address already in use`, only on a runner busy
-    enough to have the collision, which is why it read as CI flake rather than
-    as the wrong question being asked (it turned main red on 2026-08-16).
-    """
-    s = socket.socket(socket.AF_INET, kind)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
-
-
 async def _wait_for(predicate, timeout: float = 3.0) -> None:
     deadline = asyncio.get_event_loop().time() + timeout
     while asyncio.get_event_loop().time() < deadline:
@@ -184,8 +165,8 @@ def test_response_corruption_has_one_home():
 
 async def test_udp_driver_round_trips_through_the_shared_datagram_server():
     sim = YAMLAutoSimulator("dev1", config={}, driver_def=_udp_def())
-    port = _free_port(socket.SOCK_DGRAM)
-    await sim.start(port)
+    await sim.start(0)
+    port = sim.port
     try:
         loop = asyncio.get_running_loop()
         recv: asyncio.Queue = asyncio.Queue()
@@ -214,8 +195,8 @@ async def test_udp_driver_round_trips_through_the_shared_datagram_server():
 
 async def test_osc_driver_round_trips_through_the_shared_datagram_server():
     sim = YAMLAutoSimulator("dev1", config={}, driver_def=_osc_def())
-    port = _free_port(socket.SOCK_DGRAM)
-    await sim.start(port)
+    await sim.start(0)
+    port = sim.port
     try:
         loop = asyncio.get_running_loop()
         recv: asyncio.Queue = asyncio.Queue()
@@ -243,8 +224,8 @@ async def test_osc_driver_round_trips_through_the_shared_datagram_server():
 
 async def test_http_driver_round_trips_through_the_shared_web_server():
     sim = YAMLAutoSimulator("dev1", config={}, driver_def=_http_def())
-    port = _free_port()
-    await sim.start(port)
+    await sim.start(0)
+    port = sim.port
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(f"http://127.0.0.1:{port}/api/power")
@@ -288,8 +269,8 @@ async def test_https_yaml_driver_is_served_over_tls():
     """The end an HTTPS-only device's driver actually sees: its own scheme,
     answered by the generated simulator."""
     sim = YAMLAutoSimulator("dev1", config={}, driver_def=_http_def(ssl=True))
-    port = _free_port()
-    await sim.start(port)
+    await sim.start(0)
+    port = sim.port
     try:
         # The posture such a driver runs with: TLS on, verification off.
         async with httpx.AsyncClient(verify=False) as client:
@@ -309,8 +290,8 @@ async def test_https_yaml_driver_is_served_over_tls():
 async def test_no_response_error_mode_silences_every_datagram_transport(definition):
     sim = YAMLAutoSimulator("dev1", config={}, driver_def=definition)
     sim._error_modes["dead"] = {"behavior": "no_response", "description": "dead"}
-    port = _free_port(socket.SOCK_DGRAM)
-    await sim.start(port)
+    await sim.start(0)
+    port = sim.port
     try:
         sim.inject_error("dead")
         loop = asyncio.get_running_loop()
@@ -356,8 +337,7 @@ async def test_stopping_a_datagram_simulator_cancels_its_state_machine_timers():
         },
     }
     sim = YAMLAutoSimulator("dev1", config={}, driver_def=definition)
-    port = _free_port(socket.SOCK_DGRAM)
-    await sim.start(port)
+    await sim.start(0)
     machine = sim._state_machines["power"]
     try:
         sim.transition("power", "on")

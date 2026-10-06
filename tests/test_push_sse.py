@@ -397,16 +397,6 @@ async def test_driver_unresolved_path_template_is_nonfatal(sse_server):
 # ===========================================================================
 
 
-def _free_tcp_port() -> int:
-    import socket
-
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
-
-
 def _sim_def() -> dict:
     d = _streamer_def()
     d["simulator"] = {
@@ -451,8 +441,8 @@ async def test_sim_serves_event_stream_and_normal_requests():
     from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="s1", config={}, driver_def=_sim_def())
-    port = _free_tcp_port()
-    await sim.start(port)
+    await sim.start(0)
+    port = sim.port
     received: list[str] = []
 
     async def consume():
@@ -495,8 +485,8 @@ async def test_sim_stop_completes_with_open_subscription():
     from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="s1", config={}, driver_def=_sim_def())
-    port = _free_tcp_port()
-    await sim.start(port)
+    await sim.start(0)
+    port = sim.port
 
     async def consume():
         async with httpx.AsyncClient() as client:
@@ -528,8 +518,8 @@ async def test_e2e_driver_state_follows_sim_changes():
     from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="s1", config={}, driver_def=_sim_def())
-    port = _free_tcp_port()
-    await sim.start(port)
+    await sim.start(0)
+    port = sim.port
     drv = _make_driver(
         _sim_def(),
         {"host": "127.0.0.1", "port": port, "ssl": False,
@@ -1096,8 +1086,8 @@ async def test_sim_names_session_in_header_and_opening_event():
     from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="s1", config={}, driver_def=_session_sim_def())
-    port = _free_tcp_port()
-    await sim.start(port)
+    await sim.start(0)
+    port = sim.port
     seen: dict = {}
 
     async def consume():
@@ -1140,8 +1130,8 @@ async def test_e2e_session_driver_registers_and_syncs_from_auto_sim():
 
     d = _session_sim_def()
     sim = YAMLAutoSimulator(device_id="s1", config={}, driver_def=d)
-    port = _free_tcp_port()
-    await sim.start(port)
+    await sim.start(0)
+    port = sim.port
     drv = _make_driver(
         d, {"host": "127.0.0.1", "port": port, "ssl": False,
             "poll_interval": 0},

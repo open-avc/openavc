@@ -10,7 +10,6 @@ front-panel check, and teardown.
 from __future__ import annotations
 
 import asyncio
-import socket
 
 import pytest
 from fastapi import HTTPException
@@ -38,6 +37,7 @@ from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.drivers.registry import _DRIVER_REGISTRY
 from openavc.utils.log_redaction import get_secret_registry
 from tests.test_audit_api import wired  # noqa: F401  (the fixture)
+from tests.helpers import refusing_tcp_port
 
 DRIVER = {
     "id": "acme_listen",
@@ -169,22 +169,19 @@ async def test_the_wizard_hears_that_the_run_has_started(driver):
 
 
 async def test_a_device_that_refuses_is_reported_with_its_reason(driver):
-    probe = socket.socket()
-    probe.bind(("127.0.0.1", 0))
-    port = probe.getsockname()[1]
-    probe.close()
-    session, run, _ = _session_and_run(port)
-    try:
-        listen = await start_listen(session, run, **FAST)
-        # A refusal takes a couple of seconds to arrive on some systems, longer
-        # than this shortened window, so the attempt ends as failed.
-        await _until(lambda: listen.status == FAILED)
-        assert listen.offline["code"] == "connection_refused"
-        assert listen.offline["next_step"].startswith("OpenAVC keeps trying")
-        assert "listen.failed" in [e.kind for e in session.timeline]
-        assert NOT_CONNECTED != FAILED
-    finally:
-        await run.stop()
+    with refusing_tcp_port() as port:
+        session, run, _ = _session_and_run(port)
+        try:
+            listen = await start_listen(session, run, **FAST)
+            # A refusal takes a couple of seconds to arrive on some systems, longer
+            # than this shortened window, so the attempt ends as failed.
+            await _until(lambda: listen.status == FAILED)
+            assert listen.offline["code"] == "connection_refused"
+            assert listen.offline["next_step"].startswith("OpenAVC keeps trying")
+            assert "listen.failed" in [e.kind for e in session.timeline]
+            assert NOT_CONNECTED != FAILED
+        finally:
+            await run.stop()
 
 
 def test_a_setting_problem_is_fixed_on_the_connection_step():

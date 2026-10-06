@@ -16,6 +16,7 @@ from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.drivers.driver_loader import validate_driver_definition
+from openavc.discovery.multicast import set_shared_port_reuse
 from openavc.transport import multicast_listener as ml
 
 
@@ -27,12 +28,31 @@ def _make_driver(definition: dict, config: dict | None = None, device_id: str = 
     return cls(device_id, config or {}, state, events)
 
 
-def _free_udp_port() -> int:
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
+class _HeldUdpPort:
+    """A UDP port held until the listener under test shares it.
+
+    The number is picked on the wildcard address with no reuse flags set, so
+    no other socket holds it on any address. The flags the listener binds with
+    go on afterwards, so its bind shares the number instead of colliding.
+    ``release()`` lets go once the listener holds the port and before anything
+    is sent to it, so the listener is the only socket receiving there.
+    """
+
+    def __init__(self) -> None:
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._sock.bind(("", 0))
+        set_shared_port_reuse(self._sock)
+        self.port = self._sock.getsockname()[1]
+
+    def release(self) -> None:
+        self._sock.close()
+
+
+@pytest.fixture
+def held_port():
+    held = _HeldUdpPort()
+    yield held
+    held.release()
 
 
 def _mixer_def(**overrides) -> dict:
@@ -153,8 +173,8 @@ def test_factory_copies_push_into_driver_info():
 
 
 @pytest.mark.asyncio
-async def test_registry_shares_socket_and_refcounts():
-    port = _free_udp_port()
+async def test_registry_shares_socket_and_refcounts(held_port):
+    port = held_port.port
     got_a: list[bytes] = []
     got_b: list[bytes] = []
     sub_a = await ml.subscribe("239.10.10.10", port, "10.0.0.1", lambda d, a: got_a.append(d), "a")
@@ -173,8 +193,8 @@ async def test_registry_shares_socket_and_refcounts():
 
 
 @pytest.mark.asyncio
-async def test_registry_demuxes_by_source_ip():
-    port = _free_udp_port()
+async def test_registry_demuxes_by_source_ip(held_port):
+    port = held_port.port
     got_a: list[bytes] = []
     got_b: list[bytes] = []
     sub_a = await ml.subscribe("239.10.10.10", port, "10.0.0.1", lambda d, a: got_a.append(d), "a")
@@ -192,10 +212,10 @@ async def test_registry_demuxes_by_source_ip():
 
 
 @pytest.mark.asyncio
-async def test_loopback_subscription_matches_local_sources():
+async def test_loopback_subscription_matches_local_sources(held_port):
     """A simulated device (host rewritten to 127.0.0.1) accepts frames from
     any local address — the simulator's sender socket uses a real interface."""
-    port = _free_udp_port()
+    port = held_port.port
     got: list[bytes] = []
     sub = await ml.subscribe("239.10.10.10", port, "127.0.0.1", lambda d, a: got.append(d), "sim")
     listener = ml._registry._listeners[port]
@@ -259,10 +279,10 @@ async def test_resolution_of_a_hostless_device_stays_deny_all(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_unknown_source_set_denies_every_frame():
+async def test_unknown_source_set_denies_every_frame(held_port):
     """Defensive: a subscription carrying no accepted source set drops frames
     rather than accepting the whole segment."""
-    port = _free_udp_port()
+    port = held_port.port
     got: list[bytes] = []
     sub = await ml.subscribe(
         "239.10.10.11", port, "127.0.0.1", lambda d, a: got.append(d), "sim"
@@ -277,10 +297,10 @@ async def test_unknown_source_set_denies_every_frame():
 
 
 @pytest.mark.asyncio
-async def test_same_source_feeds_all_matching_subscriptions():
+async def test_same_source_feeds_all_matching_subscriptions(held_port):
     """Two device entries for one host (e.g. two ports on one chassis) both
     receive the host's frames."""
-    port = _free_udp_port()
+    port = held_port.port
     got_a: list[bytes] = []
     got_b: list[bytes] = []
     sub_a = await ml.subscribe("239.10.10.10", port, "10.0.0.1", lambda d, a: got_a.append(d), "a")
@@ -306,14 +326,15 @@ async def _wait_for(predicate, timeout: float = 2.0) -> None:
 
 
 @pytest.mark.asyncio
-async def test_push_datagram_reaches_driver_state():
-    port = _free_udp_port()
+async def test_push_datagram_reaches_driver_state(held_port):
+    port = held_port.port
     drv = _make_driver(
         _mixer_def(),
         {"host": "127.0.0.1", "notify_group": "239.10.10.10", "notify_port": port},
     )
     await drv._start_push()
     assert drv._push_subscription is not None
+    held_port.release()
     try:
         tx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         tx.sendto(b"NOTIFY MUTE 1 \r", ("127.0.0.1", port))
@@ -326,13 +347,14 @@ async def test_push_datagram_reaches_driver_state():
 
 
 @pytest.mark.asyncio
-async def test_push_datagram_splits_on_delimiter():
-    port = _free_udp_port()
+async def test_push_datagram_splits_on_delimiter(held_port):
+    port = held_port.port
     drv = _make_driver(
         _mixer_def(),
         {"host": "127.0.0.1", "notify_group": "239.10.10.10", "notify_port": port},
     )
     await drv._start_push()
+    held_port.release()
     try:
         tx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         tx.sendto(b"NOTIFY MUTE 1 \rNOTIFY LEVEL 42 \r", ("127.0.0.1", port))
@@ -364,8 +386,8 @@ async def test_start_push_unresolved_template_is_nonfatal():
 
 
 @pytest.mark.asyncio
-async def test_stop_push_is_idempotent():
-    port = _free_udp_port()
+async def test_stop_push_is_idempotent(held_port):
+    port = held_port.port
     drv = _make_driver(
         _mixer_def(),
         {"host": "127.0.0.1", "notify_group": "239.10.10.10", "notify_port": port},

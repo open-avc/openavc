@@ -10,7 +10,6 @@ driver's fingerprint. UDP reply bytes are kept, even on a match.
 from __future__ import annotations
 
 import asyncio
-import socket
 import ssl
 
 from openavc.discovery.hints import parse_driver_discovery
@@ -24,6 +23,7 @@ from openavc.discovery.probe_runner import (
     observe_udp_probe,
     run_tcp_active_probe,
 )
+from tests.helpers import refusing_tcp_port
 
 
 def _spec(kind: str, **block):
@@ -53,14 +53,6 @@ async def _server(replies: list[bytes], ssl_ctx=None):
 
     server = await asyncio.start_server(handle, "127.0.0.1", 0, ssl=ssl_ctx)
     return server, server.sockets[0].getsockname()[1]
-
-
-def _free_port() -> int:
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
 
 
 class TestTcpObservations:
@@ -97,8 +89,9 @@ class TestTcpObservations:
     async def test_refused_is_named(self):
         # Windows retries a SYN to a closed loopback port for about 2 s before
         # it reports the refusal, so this probe gets a longer timeout.
-        spec = _spec("tcp", port=_free_port(), expect_regex="^ACME", timeout_ms=5000)
-        obs = await observe_tcp_active_probe(spec, target="127.0.0.1", source_ip="")
+        with refusing_tcp_port() as port:
+            spec = _spec("tcp", port=port, expect_regex="^ACME", timeout_ms=5000)
+            obs = await observe_tcp_active_probe(spec, target="127.0.0.1", source_ip="")
         assert obs.error == "refused" and obs.miss == MISS_CONNECT
         assert obs.reply == b"" and obs.connect_ms is None
 

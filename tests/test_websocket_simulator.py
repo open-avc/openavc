@@ -9,7 +9,6 @@ non-WebSocket GET fallback. No real device or driver is named.
 from __future__ import annotations
 
 import asyncio
-import socket
 
 import websockets
 
@@ -33,17 +32,9 @@ class _EchoWSSimulator(WebSocketSimulator):
         await self.broadcast(f"push:{self.get_state('count')}")
 
 
-def _free_port() -> int:
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
-
-
 async def _started_sim():
     sim = _EchoWSSimulator("dev1")
-    await sim.start(_free_port())
+    await sim.start(0)
     return sim
 
 

@@ -6,7 +6,9 @@ with condition-based waiting, improving test reliability on slow systems.
 """
 
 import asyncio
-from typing import Any, Callable
+import contextlib
+import socket
+from typing import Any, Callable, Iterator
 
 
 async def wait_for_state(
@@ -190,3 +192,33 @@ def sign_csr_like_cloud(csr_pem: str, *, lifetime_days: int = 90) -> bytes:
         .sign(ca_key, hashes.SHA256())
     )
     return cert.public_bytes(serialization.Encoding.PEM)
+
+
+@contextlib.contextmanager
+def refusing_tcp_port() -> Iterator[int]:
+    """A loopback TCP port that refuses every connection for as long as it is held.
+
+    For a test that needs "nothing is listening here". Binding a port, reading
+    the number and letting go leaves it free for anything on the machine to
+    take before the test is done with it, and on Linux a connection to it can
+    even land on itself when the kernel picks that same number as the source
+    port. Holding a socket that is only bound does not do it either: macOS
+    drops a connection attempt to one instead of refusing it, so the refusal
+    under test turns into a timeout.
+
+    A socket connected to something else owns the number without listening on
+    it: a new connection is refused at once, and the kernel does not hand the
+    number out while it is held.
+    """
+    listener = socket.create_server(("127.0.0.1", 0))
+    holder = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        holder.connect(listener.getsockname())
+        peer, _ = listener.accept()
+        try:
+            yield holder.getsockname()[1]
+        finally:
+            peer.close()
+    finally:
+        holder.close()
+        listener.close()

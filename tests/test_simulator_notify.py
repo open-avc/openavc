@@ -13,7 +13,6 @@ simulator machinery under test, not any specific driver.
 from __future__ import annotations
 
 import asyncio
-import socket
 
 import pytest
 
@@ -74,12 +73,6 @@ def _definition(transport: str) -> dict:
     }
 
 
-def _free_port(kind: int) -> int:
-    with socket.socket(socket.AF_INET, kind) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 def test_notify_is_in_the_script_handler_namespace_and_answers_first():
     """A handler that acknowledges and then notifies still returns its
     acknowledgement — the notice travels on the push path, not the reply."""
@@ -95,8 +88,8 @@ async def test_udp_simulator_pushes_to_the_last_peer():
     ``notifications:`` template and a handler's ``notify()`` land on the
     last sender's socket."""
     sim = YAMLAutoSimulator("dev1", config={}, driver_def=_definition("udp"))
-    port = _free_port(socket.SOCK_DGRAM)
-    await sim.start(port)
+    await sim.start(0)
+    port = sim.port
     try:
         loop = asyncio.get_running_loop()
         recv: asyncio.Queue = asyncio.Queue()
@@ -129,8 +122,8 @@ async def test_udp_simulator_pushes_to_the_last_peer():
 @pytest.mark.asyncio
 async def test_tcp_simulator_notify_reaches_every_connected_client():
     sim = YAMLAutoSimulator("dev1", config={}, driver_def=_definition("tcp"))
-    port = _free_port(socket.SOCK_STREAM)
-    await sim.start(port)
+    await sim.start(0)
+    port = sim.port
     try:
         r1, w1 = await asyncio.open_connection("127.0.0.1", port)
         r2, w2 = await asyncio.open_connection("127.0.0.1", port)

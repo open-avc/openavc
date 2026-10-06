@@ -28,6 +28,7 @@ from openavc.discovery.tier_matcher import (
     evidence_open_port,
     vendor_strings_in_text,
 )
+from tests.helpers import refusing_tcp_port
 
 
 def _hint(driver_id, discovery):
@@ -142,13 +143,8 @@ def test_parse_head_keeps_order_and_repeats():
 
 
 async def test_http_get_reports_why_nothing_came_back():
-    import socket
-
-    sock = socket.socket()
-    sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    exchange = await http_get(f"http://127.0.0.1:{port}/", timeout=5.0)
+    with refusing_tcp_port() as port:
+        exchange = await http_get(f"http://127.0.0.1:{port}/", timeout=5.0)
     assert exchange is not None and exchange.error == "refused"
     assert await http_get("ftp://127.0.0.1/") is None
 

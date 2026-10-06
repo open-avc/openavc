@@ -31,6 +31,7 @@ from openavc.core.state_store import StateStore
 from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.drivers.registry import _DRIVER_REGISTRY
 from openavc.utils.log_redaction import get_secret_registry
+from tests.helpers import refusing_tcp_port
 
 DRIVER_ID = "acme_sandbox_tcp"
 
@@ -151,19 +152,16 @@ async def test_the_audit_device_reaches_nothing_else(driver_class):
 
 async def test_a_failed_connect_reports_the_offline_reason_and_keeps_retrying(driver_class):
     # Nothing listens on this port: refused, classified, retried.
-    probe = __import__("socket").socket()
-    probe.bind(("127.0.0.1", 0))
-    port = probe.getsockname()[1]
-    probe.close()
-    sandbox = DriverSandbox(audit_device_id("s3"), DRIVER_ID, {"host": "127.0.0.1", "port": port})
-    try:
-        await sandbox.start()
-        await sandbox.connect()
-        await _wait(lambda: sandbox.device_state().get("offline_reason"), timeout=15)
-        assert sandbox.device_state()["offline_reason"] == "connection_refused"
-        assert not sandbox.connected()
-    finally:
-        await sandbox.stop()
+    with refusing_tcp_port() as port:
+        sandbox = DriverSandbox(audit_device_id("s3"), DRIVER_ID, {"host": "127.0.0.1", "port": port})
+        try:
+            await sandbox.start()
+            await sandbox.connect()
+            await _wait(lambda: sandbox.device_state().get("offline_reason"), timeout=15)
+            assert sandbox.device_state()["offline_reason"] == "connection_refused"
+            assert not sandbox.connected()
+        finally:
+            await sandbox.stop()
 
 
 async def test_the_push_route_reaches_an_audit_device(driver_class):

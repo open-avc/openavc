@@ -19,6 +19,7 @@ from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.drivers.driver_loader import validate_driver_definition
 from openavc.transport import tcp_listener as tl
 from openavc.transport.frame_parsers import build_frame_parser
+from tests.helpers import refusing_tcp_port
 
 
 def _make_driver(definition: dict, config: dict | None = None, device_id: str = "cam1"):
@@ -27,25 +28,6 @@ def _make_driver(definition: dict, config: dict | None = None, device_id: str = 
     events = EventBus()
     state.set_event_bus(events)
     return cls(device_id, config or {}, state, events)
-
-
-def _free_tcp_port() -> int:
-    """A port that was free on the address the listener will actually bind.
-
-    The probe binds the wildcard because ``TcpListener.open`` does. Asking
-    loopback instead answered a different question: a port already held on
-    another interface came back "free", and the wildcard bind under test then
-    failed with an address-in-use that had nothing to do with the test.
-
-    It narrows the window rather than closing it — the socket is released
-    before the caller takes the port, so this reports what was free a moment
-    ago and never reserves it.
-    """
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
 
 
 _FRAME_CFG = {
@@ -245,8 +227,9 @@ async def _dial(port: int, data: bytes, chunks: int = 1) -> None:
 
 @pytest.mark.asyncio
 async def test_registry_shares_listener_and_refcounts():
-    port = _free_tcp_port()
-    sub_a = await tl.subscribe(port, "127.0.0.1", lambda d, a: None, "a")
+    sub_a = await tl.subscribe(0, "127.0.0.1", lambda d, a: None, "a")
+    port = sub_a.port
+    # Naming the port the first listener holds joins it rather than binding.
     sub_b = await tl.subscribe(port, "127.0.0.1", lambda d, a: None, "b")
 
     assert len(tl._registry._listeners) == 1
@@ -292,22 +275,20 @@ async def test_ephemeral_listener_answers_on_the_port_it_reports():
 
 @pytest.mark.asyncio
 async def test_frames_delivered_from_matching_source():
-    port = _free_tcp_port()
     got: list[bytes] = []
-    sub = await tl.subscribe(port, "127.0.0.1", lambda d, a: got.append(d), "cam")
-    await _dial(port, b"hello")
+    sub = await tl.subscribe(0, "127.0.0.1", lambda d, a: got.append(d), "cam")
+    await _dial(sub.port, b"hello")
     await _wait_for(lambda: got == [b"hello"])
     await sub.close()
 
 
 @pytest.mark.asyncio
 async def test_connection_from_unmatched_source_is_closed_undelivered():
-    port = _free_tcp_port()
     got: list[bytes] = []
-    sub = await tl.subscribe(port, "203.0.113.9", lambda d, a: got.append(d), "cam")
+    sub = await tl.subscribe(0, "203.0.113.9", lambda d, a: got.append(d), "cam")
     # Local connections don't match the remote-only source filter; the
     # listener closes them immediately (EOF, or a reset if data raced in).
-    reader, writer = await asyncio.open_connection("127.0.0.1", port)
+    reader, writer = await asyncio.open_connection("127.0.0.1", sub.port)
     writer.write(b"intruder")
     try:
         eof = await asyncio.wait_for(reader.read(), timeout=2.0)
@@ -333,8 +314,7 @@ async def test_loopback_subscription_with_failed_enumeration_still_gates(monkeyp
     monkeypatch.setattr(ns, "get_interface_ips", _boom)
     monkeypatch.setattr(ns, "get_default_route_ip", lambda: None)
 
-    port = _free_tcp_port()
-    sub = await tl.subscribe(port, "127.0.0.1", lambda d, a: None, "cam")
+    sub = await tl.subscribe(0, "127.0.0.1", lambda d, a: None, "cam")
 
     assert not sub.matches_source("203.0.113.7")
     assert sub.matches_source("127.0.0.1")
@@ -345,8 +325,7 @@ async def test_loopback_subscription_with_failed_enumeration_still_gates(monkeyp
 async def test_unknown_source_set_denies_every_connection():
     """Defensive: a subscription carrying no accepted source set matches
     nothing rather than every dialer."""
-    port = _free_tcp_port()
-    sub = await tl.subscribe(port, "127.0.0.1", lambda d, a: None, "cam")
+    sub = await tl.subscribe(0, "127.0.0.1", lambda d, a: None, "cam")
     sub._source_ips = None  # the sentinel that used to mean "match anything"
 
     assert not sub.matches_source("203.0.113.7")
@@ -356,15 +335,15 @@ async def test_unknown_source_set_denies_every_connection():
 
 @pytest.mark.asyncio
 async def test_struct_frames_parsed_per_connection():
-    port = _free_tcp_port()
     got: list[bytes] = []
     sub = await tl.subscribe(
-        port,
+        0,
         "127.0.0.1",
         lambda d, a: got.append(d),
         "cam",
         frame_parser_factory=lambda: build_frame_parser(_FRAME_CFG),
     )
+    port = sub.port
     # One frame split across writes, then two frames in one connection.
     await _dial(port, _wrap(b"\r\nNOTIFY POWER 1\r\n"), chunks=4)
     await _dial(port, _wrap(b"\r\nA\r\n") + _wrap(b"\r\nB\r\n"))
@@ -377,15 +356,15 @@ async def test_struct_frames_parsed_per_connection():
 async def test_fresh_parser_per_connection():
     """A connection that dies mid-frame must not poison the next connection's
     framing (real dial-back devices open one connection per notification)."""
-    port = _free_tcp_port()
     got: list[bytes] = []
     sub = await tl.subscribe(
-        port,
+        0,
         "127.0.0.1",
         lambda d, a: got.append(d),
         "cam",
         frame_parser_factory=lambda: build_frame_parser(_FRAME_CFG),
     )
+    port = sub.port
     # Half a frame, then the connection drops.
     await _dial(port, _wrap(b"\r\nTRUNCATED\r\n")[:9])
     await asyncio.sleep(0.05)
@@ -397,12 +376,11 @@ async def test_fresh_parser_per_connection():
 
 @pytest.mark.asyncio
 async def test_same_source_feeds_all_matching_subscriptions():
-    port = _free_tcp_port()
     got_a: list[bytes] = []
     got_b: list[bytes] = []
-    sub_a = await tl.subscribe(port, "127.0.0.1", lambda d, a: got_a.append(d), "a")
-    sub_b = await tl.subscribe(port, "127.0.0.1", lambda d, a: got_b.append(d), "b")
-    await _dial(port, b"frame")
+    sub_a = await tl.subscribe(0, "127.0.0.1", lambda d, a: got_a.append(d), "a")
+    sub_b = await tl.subscribe(sub_a.port, "127.0.0.1", lambda d, a: got_b.append(d), "b")
+    await _dial(sub_a.port, b"frame")
     await _wait_for(lambda: got_a == [b"frame"] and got_b == [b"frame"])
     await sub_a.close()
     await sub_b.close()
@@ -436,7 +414,12 @@ class _FakeTransport:
 
 @pytest.mark.asyncio
 async def test_start_push_subscribes_and_runs_register_command():
-    port = _free_tcp_port()
+    # The configured port has to be one nothing else can take before the
+    # driver binds it, so a first subscription holds it and the driver's
+    # joins that listener: what is under test is that the configured number
+    # is the one subscribed and handed to the device.
+    holder = await tl.subscribe(0, "127.0.0.1", lambda d, a: None, "holder")
+    port = holder.port
     drv = _make_driver(_cam_def(), {"host": "127.0.0.1", "notify_port": port})
     sent: list[str] = []
 
@@ -447,6 +430,7 @@ async def test_start_push_subscribes_and_runs_register_command():
     await drv._start_push()
     try:
         assert drv._push_subscription is not None
+        assert drv._push_subscription.port == port
         assert drv.config["listener_port"] == port
         assert sent == ["start_notifications"]
     finally:
@@ -457,8 +441,7 @@ async def test_start_push_subscribes_and_runs_register_command():
 async def test_listener_port_token_resolves_in_command_path():
     """The injected listener_port config value reaches HTTP path substitution
     — the actual wire-level registration a device would receive."""
-    port = _free_tcp_port()
-    drv = _make_driver(_cam_def(), {"host": "127.0.0.1", "notify_port": port})
+    drv = _make_driver(_cam_def(), {"host": "127.0.0.1", "notify_port": 0})
 
     async def fake_send(command, params=None):
         pass
@@ -466,6 +449,8 @@ async def test_listener_port_token_resolves_in_command_path():
     drv.send_command = fake_send
     await drv._start_push()
     try:
+        port = drv._push_subscription.port
+        assert port > 0
         raw = drv.DRIVER_INFO["commands"]["start_notifications"]["path"]
         resolved = drv._safe_substitute(raw, drv.config)
         assert f"my_port={port}" in resolved
@@ -491,8 +476,7 @@ async def test_ephemeral_port_resolves_to_bound_port():
 
 @pytest.mark.asyncio
 async def test_register_failure_keeps_subscription():
-    port = _free_tcp_port()
-    drv = _make_driver(_cam_def(), {"host": "127.0.0.1", "notify_port": port})
+    drv = _make_driver(_cam_def(), {"host": "127.0.0.1", "notify_port": 0})
 
     async def failing_send(command, params=None):
         raise ConnectionError("camera busy")
@@ -507,8 +491,7 @@ async def test_register_failure_keeps_subscription():
 
 @pytest.mark.asyncio
 async def test_stop_push_sends_unregister_when_connected():
-    port = _free_tcp_port()
-    drv = _make_driver(_cam_def(), {"host": "127.0.0.1", "notify_port": port})
+    drv = _make_driver(_cam_def(), {"host": "127.0.0.1", "notify_port": 0})
     sent: list[str] = []
 
     async def fake_send(command, params=None):
@@ -528,8 +511,7 @@ async def test_stop_push_sends_unregister_when_connected():
 async def test_stop_push_skips_unregister_when_not_connected():
     """The stale-subscription drop at reconnect (and transport-loss cleanup)
     must not fire commands at a device that isn't reachable."""
-    port = _free_tcp_port()
-    drv = _make_driver(_cam_def(), {"host": "127.0.0.1", "notify_port": port})
+    drv = _make_driver(_cam_def(), {"host": "127.0.0.1", "notify_port": 0})
     sent: list[str] = []
 
     async def fake_send(command, params=None):
@@ -558,8 +540,7 @@ async def test_start_push_unresolved_template_is_nonfatal():
 
 @pytest.mark.asyncio
 async def test_stop_push_is_idempotent():
-    port = _free_tcp_port()
-    drv = _make_driver(_cam_def(), {"host": "127.0.0.1", "notify_port": port})
+    drv = _make_driver(_cam_def(), {"host": "127.0.0.1", "notify_port": 0})
 
     async def fake_send(command, params=None):
         pass
@@ -578,8 +559,7 @@ async def test_stop_push_is_idempotent():
 
 @pytest.mark.asyncio
 async def test_pushed_frame_reaches_driver_state():
-    port = _free_tcp_port()
-    drv = _make_driver(_cam_def(), {"host": "127.0.0.1", "notify_port": port})
+    drv = _make_driver(_cam_def(), {"host": "127.0.0.1", "notify_port": 0})
 
     async def fake_send(command, params=None):
         pass
@@ -587,6 +567,7 @@ async def test_pushed_frame_reaches_driver_state():
     drv.send_command = fake_send
     await drv._start_push()
     try:
+        port = drv._push_subscription.port
         await _dial(port, _wrap(b"\r\nNOTIFY POWER 1\r\n"))
         await _wait_for(lambda: drv.state.get("device.cam1.power") == 1)
         # A second notification on a fresh connection (the dial-back pattern).
@@ -695,14 +676,14 @@ async def test_sim_prunes_unreachable_subscriber_after_three_failures():
     from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="cam1", config={}, driver_def=_sim_def())
-    dead_port = _free_tcp_port()  # nothing listening
-    sim.handle_command(f"GET /api/event?connect=start&my_port={dead_port}".encode())
-    target = ("127.0.0.1", dead_port)
-    assert target in sim._push_tcp_subscribers
-    for value in (0, 1, 0):
-        sim._emit_push_tcp(b"x")
-        await asyncio.gather(*sim._push_tcp_tasks, return_exceptions=True)
-    assert target not in sim._push_tcp_subscribers
+    with refusing_tcp_port() as dead_port:
+        sim.handle_command(f"GET /api/event?connect=start&my_port={dead_port}".encode())
+        target = ("127.0.0.1", dead_port)
+        assert target in sim._push_tcp_subscribers
+        for value in (0, 1, 0):
+            sim._emit_push_tcp(b"x")
+            await asyncio.gather(*sim._push_tcp_tasks, return_exceptions=True)
+        assert target not in sim._push_tcp_subscribers
 
 
 @pytest.mark.asyncio
@@ -713,8 +694,7 @@ async def test_sim_to_platform_end_to_end():
     from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
     sim = YAMLAutoSimulator(device_id="cam1", config={}, driver_def=_sim_def())
-    port = _free_tcp_port()
-    drv = _make_driver(_cam_def(), {"host": "127.0.0.1", "notify_port": port})
+    drv = _make_driver(_cam_def(), {"host": "127.0.0.1", "notify_port": 0})
 
     async def register_via_sim(command, params=None):
         # Stand-in for the HTTP hop: hand the resolved registration command
@@ -730,6 +710,7 @@ async def test_sim_to_platform_end_to_end():
     drv.transport = _FakeTransport()
     await drv._start_push()
     try:
+        port = drv._push_subscription.port
         assert ("127.0.0.1", port) in sim._push_tcp_subscribers
         sim.set_state("preset", 7)
         await _wait_for(lambda: drv.state.get("device.cam1.preset") == 7)
