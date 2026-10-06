@@ -2,11 +2,11 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import * as monaco from "monaco-editor";
 import { loader } from "@monaco-editor/react";
-import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
-import jsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
-import cssWorker from "monaco-editor/esm/vs/language/css/css.worker?worker";
-import htmlWorker from "monaco-editor/esm/vs/language/html/html.worker?worker";
-import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
+import editorWorker from "monaco-editor/editor/editor.worker?worker";
+import jsonWorker from "monaco-editor/languages/features/json/json.worker?worker";
+import cssWorker from "monaco-editor/languages/features/css/css.worker?worker";
+import htmlWorker from "monaco-editor/languages/features/html/html.worker?worker";
+import tsWorker from "monaco-editor/languages/features/typescript/ts.worker?worker";
 import App from "./App";
 import { installFetchAuth } from "./api/auth";
 import "./styles/global.css";
@@ -25,6 +25,8 @@ import "./styles/global.css";
 //      (editor.worker is used internally for diff/link/word-range computation
 //      even with Python only). Vite's `?worker` suffix builds each worker as
 //      a code-split chunk served from /assets/ alongside the main bundle.
+//      The imports use the package's exported paths; monaco-editor 0.56+
+//      no longer resolves `monaco-editor/esm/vs/...`.
 self.MonacoEnvironment = {
   getWorker(_workerId, label) {
     switch (label) {
