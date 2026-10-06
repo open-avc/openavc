@@ -102,6 +102,7 @@ from openavc.core.state_store import is_flat_primitive
 from openavc.drivers.base import missing_required_params
 from openavc.drivers.child_ids import coerce_child_local_id
 from openavc.drivers.compiled_protocol import coerce_bool_token, is_bool_token
+from openavc.drivers.param_labels import param_label
 from openavc.utils.log_redaction import is_secret_key
 from openavc.utils.logger import get_logger
 
@@ -723,7 +724,7 @@ class CommandPass:
         self.trials.append(trial)
         self.session.add_timeline(
             "command.sent",
-            f"Sent {trial.label}{_params_text(trial.to_dict()['params'])}.",
+            f"Sent {trial.label}{params_text(trial.to_dict()['params'], entry.get('params'))}.",
             run=self.run.index, trial=trial.number, command=name,
         )
         self._publish(trial)
@@ -1439,10 +1440,14 @@ def _reads(value: Any) -> str:
     return "not reported" if value is None else _value_text(value)
 
 
-def _params_text(params: dict[str, Any]) -> str:
+def params_text(params: dict[str, Any], defs: Any = None) -> str:
+    """A command's parameters as a line reads them, each named as its field
+    is (``param_labels.param_label``): " (Level 40, Input ID hdmi1)". The
+    wizard's ``paramsText`` writes the same line."""
     if not params:
         return ""
-    return " (" + ", ".join(f"{k} {v}" for k, v in params.items()) + ")"
+    defs = defs if isinstance(defs, dict) else {}
+    return " (" + ", ".join(f"{param_label(k, defs.get(k))} {v}" for k, v in params.items()) + ")"
 
 
 def commands_for(session: "AuditSession", run: "DriverRun", **timings: Any) -> CommandPass:

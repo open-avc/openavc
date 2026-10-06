@@ -142,6 +142,38 @@ describe("Script Function action", () => {
   });
 });
 
+describe("Device Command action", () => {
+  it("names each field by its label, else its key made readable", async () => {
+    vi.spyOn(api, "getDevice").mockResolvedValue({
+      id: "amp_1",
+      commands: {
+        set_gain: {
+          label: "Set Gain",
+          params: {
+            zone: { type: "integer", label: "Zone", required: true },
+            gain_db: { type: "number", help: "" },
+          },
+        },
+      },
+    } as never);
+    const withAmp = {
+      ...project, devices: [{ id: "amp_1", name: "Amp", driver: "acme_amp" }],
+    } as unknown as ProjectConfig;
+    render(
+      <ActionPicker
+        value={{ action: "device.command", device: "amp_1", command: "set_gain", params: {} }}
+        project={withAmp}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(await screen.findByText("Zone")).toBeTruthy();
+    expect(screen.getByText("Gain (dB)")).toBeTruthy();
+    expect(screen.queryByText("zone")).toBeNull();
+    expect(screen.queryByText("gain_db")).toBeNull();
+    expect(screen.getByPlaceholderText("Enter Gain (dB)...")).toBeTruthy();
+  });
+});
+
 describe("Emit Event action", () => {
   it("is offered as an action type", () => {
     render(<ActionPicker value={null} project={project} onChange={vi.fn()} />);

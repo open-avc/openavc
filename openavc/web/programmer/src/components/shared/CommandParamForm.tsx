@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import type { CommandParamDefs } from "./commandParams";
 import { ParamInput, type ParamPickers } from "./ParamInput";
+import { paramLabel } from "./paramLabel";
 
 /**
  * The parameters of one command, as every form that sends a command draws
@@ -13,8 +14,11 @@ import { ParamInput, type ParamPickers } from "./ParamInput";
  * helpers in `commandParams.ts`; the surfaces differ only in layout:
  *
  * - `stacked`: each label above its field (a device audit).
- * - `inline`: the parameter's own name beside its field (the device page).
+ * - `inline`: the name beside its field, the key a script sends on hover (the
+ *   device page).
  * - `grid`: tiles, several to a row (the Driver Builder's Test tab).
+ *
+ * A field is named by `paramLabel`: its label, else its key made readable.
  */
 export function CommandParamForm({
   params,
@@ -39,6 +43,7 @@ export function CommandParamForm({
   const field = (name: string) => {
     const def = params[name];
     const help = def.help ?? def.description;
+    const shown = paramLabel(name, def);
     const input = (
       <ParamInput
         def={def}
@@ -48,7 +53,7 @@ export function CommandParamForm({
         pickers={pickers}
         values={values}
         params={params}
-        placeholder={layout === "grid" ? undefined : name}
+        placeholder={layout === "grid" ? undefined : shown}
         style={layout === "inline" ? { flex: 1 } : { width: "100%" }}
       />
     );
@@ -56,8 +61,8 @@ export function CommandParamForm({
       return (
         <div key={name} style={{ marginBottom: "var(--space-sm)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-            <label style={{ width: 120, fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>
-              {name}
+            <label title={name} style={{ width: 120, fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>
+              {shown}
             </label>
             {input}
           </div>
@@ -65,7 +70,7 @@ export function CommandParamForm({
         </div>
       );
     }
-    const label = `${def.label || name}${def.required ? " *" : ""}`;
+    const label = `${shown}${def.required ? " *" : ""}`;
     if (layout === "grid") {
       return (
         <div key={name}>

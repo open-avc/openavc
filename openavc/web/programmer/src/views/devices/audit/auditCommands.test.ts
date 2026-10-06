@@ -168,8 +168,11 @@ describe("what a command did, in words", () => {
       .toBe("Not accepted: 'set_volume': 'level' must be at most 100, got 150");
   });
 
-  it("writes parameters the way a line reads them", () => {
-    expect(paramsText({ level: 40, input: "hdmi1" })).toBe("level 40, input hdmi1");
+  it("writes parameters the way a line reads them, each named as its field is", () => {
+    expect(paramsText({ level: 40, input_id: "hdmi1" })).toBe("Level 40, Input ID hdmi1");
+    expect(
+      paramsText({ lvl: 40, gain_db: -6 }, { lvl: { type: "integer", label: "Level" } }),
+    ).toBe("Level 40, Gain (dB) -6");
     expect(paramsText({})).toBe("");
   });
 });

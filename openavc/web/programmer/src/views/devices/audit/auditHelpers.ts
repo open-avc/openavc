@@ -28,6 +28,8 @@ import type {
   AuditVerdict,
 } from "../../../api/auditClient";
 import type { DiscoveryEvidence } from "../../../api/discoveryClient";
+import type { DriverParamDef } from "../../../api/types";
+import { paramLabel } from "../../../components/shared/paramLabel";
 
 export type AuditStep =
   | "target"
@@ -367,10 +369,15 @@ export function trialOutcome(trial: AuditCommandTrial): string {
   return `${went}; ${back}.`;
 }
 
-/** A command's parameters as a line reads them: "level 40, input hdmi1". */
-export function paramsText(params: Record<string, unknown>): string {
+/** A command's parameters as a line reads them, each named as its field is
+ *  (`paramLabel`): "Level 40, Input ID hdmi1". The report's `params_text`
+ *  writes the same line. */
+export function paramsText(
+  params: Record<string, unknown>,
+  defs?: Record<string, Partial<DriverParamDef>>,
+): string {
   return Object.entries(params)
-    .map(([k, v]) => `${k} ${String(v)}`)
+    .map(([k, v]) => `${paramLabel(k, defs?.[k])} ${String(v)}`)
     .join(", ");
 }
 

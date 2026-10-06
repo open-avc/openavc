@@ -12,6 +12,8 @@
 // (the runtime would send None) — with a message saying which param and
 // why.
 
+import { readableKey } from "../../shared/paramLabel";
+
 /** The interaction-scoped tokens resolve_ref takes from the UI event. */
 const EVENT_TOKENS = new Set(["$value", "$input", "$output", "$mute"]);
 
@@ -41,18 +43,21 @@ export function resolveTestParams(
   return { ok: true, params: resolved };
 }
 
-/** Human message for a refused test, naming the param and the fix. */
+/** Human message for a refused test, naming the param and the fix. `name` is
+ *  the param as its form shows it (`paramLabel`); without one, its key made
+ *  readable. */
 export function testBlockedMessage(
   blocked: Extract<TestParamsResult, { ok: false }>,
+  name: string = readableKey(blocked.param),
 ): string {
   if (blocked.reason === "event") {
     return (
-      `Can't test: "${blocked.param}" uses ${blocked.token}, which only has a ` +
+      `Can't test: "${name}" uses ${blocked.token}, which only has a ` +
       `value when the panel control fires. Enter a fixed value to test.`
     );
   }
   return (
-    `Can't test: "${blocked.param}" references ${blocked.token}, ` +
+    `Can't test: "${name}" references ${blocked.token}, ` +
     `which has no current value.`
   );
 }

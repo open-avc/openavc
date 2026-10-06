@@ -1,6 +1,7 @@
 import type { ActionParam, DriverParamDef } from "../../api/types";
 import { ParamInput } from "../../components/shared/ParamInput";
 import { normalizeOptionList } from "../../components/shared/paramOptions";
+import { paramLabel } from "../../components/shared/paramLabel";
 
 /** Default string value to seed a param field with. */
 export function defaultFor(def: ActionParam): string {
@@ -80,7 +81,7 @@ export function ActionParamFields({
     <>
       {Object.keys(params).map((name) => {
         const def = params[name];
-        const label = def.label || name;
+        const label = paramLabel(name, def as Partial<DriverParamDef>);
         const current = values[name] ?? "";
         return (
           <div key={name} style={{ marginBottom: "var(--space-md)" }}>
@@ -102,7 +103,7 @@ export function ActionParamFields({
               deviceId={deviceId}
               values={values}
               params={params as Record<string, Partial<DriverParamDef>>}
-              placeholder={name}
+              placeholder={label}
               style={{ width: "100%" }}
             />
             {def.help && (

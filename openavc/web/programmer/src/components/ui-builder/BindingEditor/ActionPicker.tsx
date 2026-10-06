@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Info, Plus, X } from "lucide-react";
 import type { ProjectConfig, DeviceInfo, DriverParamDef } from "../../../api/types";
 import { ParamInput, isDynamicParamValue } from "../../shared/ParamInput";
+import { paramLabel } from "../../shared/paramLabel";
 import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
 import { SearchableSelect } from "../../shared/SearchableSelect";
 import {
@@ -263,11 +264,12 @@ function DeviceCommandConfig({
             const paramHelp = paramDef.help as string | undefined;
             const paramRequired = paramDef.required as boolean | undefined;
             const paramDefault = paramDef.default;
+            const shown = paramLabel(param, paramDef as Partial<DriverParamDef>);
             return (
               <div key={param} style={{ marginBottom: 6 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
                   <span style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 500 }}>
-                    {param}
+                    {shown}
                   </span>
                   {paramType && (
                     <span style={{
@@ -303,7 +305,7 @@ function DeviceCommandConfig({
                     params={commandDef?.params as Record<string, Partial<DriverParamDef>> | undefined}
                     allowDynamic
                     eventContext={eventTokens}
-                    placeholder={paramHelp || `Enter ${param}...`}
+                    placeholder={paramHelp || `Enter ${shown}...`}
                     style={{ flex: 1 }}
                   />
                 </div>

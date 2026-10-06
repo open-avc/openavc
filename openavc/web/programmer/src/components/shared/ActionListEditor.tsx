@@ -16,11 +16,12 @@
  */
 import { Play } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
-import type { ProjectConfig } from "../../api/types";
+import type { DriverParamDef, ProjectConfig } from "../../api/types";
 import * as api from "../../api/restClient";
 import { parseApiError } from "../../api/errors";
 import { showSuccess, showError } from "../../store/toastStore";
 import { useConnectionStore } from "../../store/connectionStore";
+import { paramLabel } from "./paramLabel";
 import { ActionPicker } from "../ui-builder/BindingEditor/ActionPicker";
 import {
   resolveTestParams,
@@ -47,7 +48,12 @@ async function runTestAction(action: Record<string, unknown>) {
         useConnectionStore.getState().liveState,
       );
       if (!result.ok) {
-        showError(testBlockedMessage(result));
+        // Name the field as its form does, the driver's label included.
+        const info = await api.getDevice(String(action.device)).catch(() => null);
+        const command = info?.commands?.[String(action.command)] as
+          | { params?: Record<string, Partial<DriverParamDef>> }
+          | undefined;
+        showError(testBlockedMessage(result, paramLabel(result.param, command?.params?.[result.param])));
         return;
       }
       await api.sendCommand(String(action.device), String(action.command), result.params);

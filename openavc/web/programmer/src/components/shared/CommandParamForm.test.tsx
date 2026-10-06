@@ -66,7 +66,7 @@ describe("a command form's pickers", () => {
     await waitFor(() => expect(screen.getByRole("option", { name: "Lobby (2)" })).toBeTruthy());
     expect(pickers.loadChildren).toHaveBeenCalledWith("zone");
     // The preset field offers the list the device published.
-    fireEvent.focus(screen.getByPlaceholderText("preset"));
+    fireEvent.focus(screen.getByPlaceholderText("Preset"));
     expect([...document.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
       "Morning", "Evening",
     ]);
@@ -86,18 +86,59 @@ describe("a command form's pickers", () => {
     expect(required.options[required.selectedIndex].disabled).toBe(true);
   });
 
-  it("labels each field the device page's way when laid out inline", () => {
-    const onChange = vi.fn();
+  it("names each field by its label, else its key made readable, in every layout", () => {
+    const params = {
+      level: { type: "integer", label: "Level" },
+      input_id: { type: "string" },
+      gain_db: { type: "number", label: "  " },
+    } as const;
+    for (const layout of ["inline", "stacked", "grid"] as const) {
+      const onChange = vi.fn();
+      const { unmount } = render(
+        <CommandParamForm
+          layout={layout}
+          params={params}
+          values={{ level: "", input_id: "", gain_db: "" }}
+          onChange={onChange}
+        />,
+      );
+      expect(screen.getByText("Level")).toBeTruthy();
+      expect(screen.getByText("Input ID")).toBeTruthy();
+      expect(screen.getByText("Gain (dB)")).toBeTruthy();
+      expect(screen.queryByText("level")).toBeNull();
+      expect(screen.queryByText("input_id")).toBeNull();
+      if (layout !== "grid") {
+        fireEvent.change(screen.getByPlaceholderText("Level"), { target: { value: "7" } });
+        expect(onChange).toHaveBeenCalledWith("level", "7");
+      }
+      unmount();
+    }
+  });
+
+  it("names the field a cascade waits for the way that field is named", () => {
+    render(
+      <CommandParamForm
+        params={{
+          block_id: { type: "child_id", child_type: "block" },
+          control: { type: "string", options_from: { param: "block_id", source: "child_schema" } },
+        }}
+        values={{ block_id: "", control: "" }}
+        onChange={vi.fn()}
+        pickers={{ loadChildren: vi.fn(async () => []) }}
+      />,
+    );
+    expect(screen.getByText("Pick Block ID first to list its controls.")).toBeTruthy();
+  });
+
+  it("keeps the key a script sends on the device page's field name", () => {
     render(
       <CommandParamForm
         layout="inline"
-        params={{ level: { type: "integer", label: "Level" } }}
-        values={{ level: "" }}
-        onChange={onChange}
+        params={{ input_id: { type: "string" } }}
+        values={{ input_id: "" }}
+        onChange={vi.fn()}
       />,
     );
-    expect(screen.getByText("level")).toBeTruthy();
-    fireEvent.change(screen.getByPlaceholderText("level"), { target: { value: "7" } });
-    expect(onChange).toHaveBeenCalledWith("level", "7");
+    expect(screen.getByText("Input ID").getAttribute("title")).toBe("input_id");
   });
 });

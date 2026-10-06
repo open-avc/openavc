@@ -236,6 +236,9 @@ async def test_a_command_is_sent_through_the_production_door(driver):
         assert run.listen.sandbox.device_state()["volume"] == 40
         kinds = [e.kind for e in session.timeline]
         assert "command.sent" in kinds and "command.done" in kinds
+        # Each value is named as its field is: `level` declares no label.
+        sent = next(e for e in session.timeline if e.kind == "command.sent")
+        assert sent.text == "Sent Set Volume (Level 40)."
         assert any(m["type"] == "audit.commands" for m in heard)
         assert "commands" in session.steps
 
@@ -447,7 +450,7 @@ async def test_the_declared_effect_is_checked_against_what_the_device_reports(dr
     # The summary says what the timeline says.
     summary = render_summary(build_report(session))
     assert "Power is now true, as the driver says it should be." in summary
-    assert "4. Set Input (source hdmi2), again" in summary
+    assert "4. Set Input (Source hdmi2), again" in summary
 
 
 def test_a_childs_declared_effect_is_read_from_the_childs_padded_key():

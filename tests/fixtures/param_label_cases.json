@@ -1,0 +1,43 @@
+{
+  "_comment": [
+    "The name a person sees for a command parameter: its label when it has one,",
+    "else its key made readable. openavc/drivers/param_labels.py and",
+    "web/programmer/src/components/shared/paramLabel.ts both run every case here",
+    "(tests/test_param_label_parity.py, paramLabel.test.ts). 'label' absent means",
+    "the parameter declares none. Most keys are real ones from the driver catalog."
+  ],
+  "cases": [
+    {"name": "a plain word", "key": "value", "expected": "Value"},
+    {"name": "two words", "key": "pan_speed", "expected": "Pan Speed"},
+    {"name": "an id", "key": "player_id", "expected": "Player ID"},
+    {"name": "a list of ids", "key": "zone_ids", "expected": "Zone IDs"},
+    {"name": "an address", "key": "ip_address", "expected": "IP Address"},
+    {"name": "a url", "key": "target_url", "expected": "Target URL"},
+    {"name": "a uid", "key": "uid", "expected": "UID"},
+    {"name": "json", "key": "values_json", "expected": "Values JSON"},
+    {"name": "an acronym alone", "key": "gpio", "expected": "GPIO"},
+    {"name": "an acronym in capitals", "key": "HDMI", "expected": "HDMI"},
+    {"name": "a word in capitals", "key": "LEVEL", "expected": "Level"},
+    {"name": "milliseconds", "key": "timeout_ms", "expected": "Timeout (ms)"},
+    {"name": "decibels", "key": "gain_db", "expected": "Gain (dB)"},
+    {"name": "kilohertz", "key": "frequency_khz", "expected": "Frequency (kHz)"},
+    {"name": "seconds as the author wrote them", "key": "delay_sec", "expected": "Delay (sec)"},
+    {"name": "a percentage", "key": "level_percent", "expected": "Level (%)"},
+    {"name": "a unit with nothing before it", "key": "db", "expected": "dB"},
+    {"name": "a unit word that is not last", "key": "ms_offset", "expected": "Ms Offset"},
+    {"name": "camelCase", "key": "inputId", "expected": "Input ID"},
+    {"name": "camelCase into an acronym", "key": "playlistUUID", "expected": "Playlist UUID"},
+    {"name": "camelCase from an acronym", "key": "macAddress", "expected": "MAC Address"},
+    {"name": "dashes", "key": "pan-speed", "expected": "Pan Speed"},
+    {"name": "doubled and outer separators", "key": "_preset__number_", "expected": "Preset Number"},
+    {"name": "letters and digits stay together", "key": "output2", "expected": "Output2"},
+    {"name": "an empty key", "key": "", "expected": ""},
+    {"name": "a label wins", "key": "lvl", "label": "Level", "expected": "Level"},
+    {"name": "a label is shown as written", "key": "fader", "label": "fader level (dB)", "expected": "fader level (dB)"},
+    {"name": "a label's outer spaces go", "key": "lvl", "label": "  Level ", "expected": "Level"},
+    {"name": "a blank label counts as none", "key": "input_id", "label": "", "expected": "Input ID"},
+    {"name": "a label of spaces counts as none", "key": "input_id", "label": "   ", "expected": "Input ID"},
+    {"name": "a label that is not text counts as none", "key": "input_id", "label": 5, "expected": "Input ID"},
+    {"name": "a null label counts as none", "key": "rate_ms", "label": null, "expected": "Rate (ms)"}
+  ]
+}

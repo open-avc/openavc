@@ -18,6 +18,7 @@ import {
   parseStateOptionList,
 } from "./paramOptions";
 import type { ParamOption } from "./paramOptions";
+import { paramLabel } from "./paramLabel";
 import { validateParam } from "./paramValidation";
 import { VariableKeyPicker } from "./VariableKeyPicker";
 
@@ -257,7 +258,7 @@ export function ParamInput({
       const sv = siblingValue == null ? "" : String(siblingValue);
       if (!sv) {
         comboOptions = [];
-        comboHint = `Pick ${optionsFrom.param} first to list its controls.`;
+        comboHint = `Pick ${paramLabel(optionsFrom.param, params?.[optionsFrom.param])} first to list its controls.`;
       } else {
         const chosen = findChildByValue(children, sv);
         comboOptions = childSchemaOptions(chosen?.schema, optionsFrom);

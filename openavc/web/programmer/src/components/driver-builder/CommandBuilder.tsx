@@ -7,6 +7,7 @@ import type {
   DriverUdpSend,
 } from "../../api/types";
 import { EnumValuesEditor } from "../shared/EnumValuesEditor";
+import { readableKey } from "../shared/paramLabel";
 import { IdRenameInput, type RenameResult } from "./IdRenameInput";
 import { ValueConversionFields } from "./ValueConversionFields";
 import { OscArgsEditor } from "./OscArgsEditor";
@@ -1558,7 +1559,7 @@ function ParamRow({
             onChange={(e) =>
               onUpdate({ label: e.target.value || undefined })
             }
-            placeholder={name}
+            placeholder={readableKey(name)}
             style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
           />
         </div>

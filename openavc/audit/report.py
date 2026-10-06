@@ -2092,17 +2092,20 @@ def _trial_outcome(trial: dict[str, Any]) -> str:
 
 def _render_commands(commands: dict[str, Any] | None) -> list[str]:
     """The commands sent, and what they changed, for summary.html."""
-    from openavc.audit.commands import ANSWERS
+    from openavc.audit.commands import ANSWERS, params_text
 
     if not commands or not commands.get("trials"):
         return []
     changed = commands.get("changed") or []
     parts = ["<h3>Commands sent</h3><table>"]
+    # Each value named as its field is, from the command list the report keeps.
+    param_defs = {
+        c.get("name"): c.get("params") for c in commands.get("catalog") or [] if isinstance(c, dict)
+    }
     for trial in commands["trials"]:
         params = trial.get("params") or {}
         label = f"{trial.get('number')}. {trial.get('label')}"
-        if params:
-            label += " (" + ", ".join(f"{k} {v}" for k, v in params.items()) + ")"
+        label += params_text(params, param_defs.get(trial.get("command")))
         if trial.get("batch"):
             label += ", with the status queries"
         before = trial.get("since_previous")

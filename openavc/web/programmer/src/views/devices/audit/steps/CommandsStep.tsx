@@ -191,6 +191,7 @@ export function CommandsStep() {
               <TrialRow
                 key={t.number}
                 trial={t}
+                paramDefs={c.params}
                 help={c.help}
                 disabled={locked}
                 onAgain={() =>
@@ -542,6 +543,7 @@ function Warning({
 
 function TrialRow({
   trial,
+  paramDefs,
   help,
   disabled,
   onAgain,
@@ -550,6 +552,8 @@ function TrialRow({
   onAnswer,
 }: {
   trial: audit.AuditCommandTrial;
+  /** The command's parameters, so each value is named as its field is. */
+  paramDefs?: audit.AuditCommandInfo["params"];
   /** What the command should do, in the driver's words, for the question. */
   help: string;
   disabled: boolean;
@@ -567,7 +571,7 @@ function TrialRow({
     const timer = window.setInterval(() => setNow(Date.now() / 1000), 1000);
     return () => window.clearInterval(timer);
   }, [watching]);
-  const params = paramsText(trial.params);
+  const params = paramsText(trial.params, paramDefs);
   const { moved, moving, wentBack } = movedParts(trial);
   const running = trial.status !== "done";
   const left = watching && trial.ends_at ? Math.max(0, Math.ceil(trial.ends_at - now)) : null;

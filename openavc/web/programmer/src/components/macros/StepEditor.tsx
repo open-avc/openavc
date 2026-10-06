@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useId } from "react";
 import type { MacroStep, MacroConfig, DeviceConfig, DeviceInfo, DriverParamDef } from "../../api/types";
 import { ParamInput } from "../shared/ParamInput";
+import { paramLabel } from "../shared/paramLabel";
 import { useProjectStore } from "../../store/projectStore";
 import { SearchableSelect } from "../shared/SearchableSelect";
 import {
@@ -321,7 +322,7 @@ function DeviceCommandEditor({
               <div key={paramKey}>
                 <div style={rowStyle}>
                 <label style={{ ...labelStyle, minWidth: 60 }}>
-                  {paramKey}
+                  {paramLabel(paramKey, paramDef)}
                   {paramDef?.required && <span style={{ color: "#ef4444" }}> *</span>}
                 </label>
                 <ParamInput
@@ -493,7 +494,7 @@ function GroupCommandEditor({
               <div key={paramKey}>
                 <div style={rowStyle}>
                   <label style={{ ...labelStyle, minWidth: 60 }}>
-                    {paramDef?.label ?? paramKey}
+                    {paramLabel(paramKey, paramDef)}
                     {paramDef?.required && <span style={{ color: "#ef4444" }}> *</span>}
                   </label>
                   <ParamInput
