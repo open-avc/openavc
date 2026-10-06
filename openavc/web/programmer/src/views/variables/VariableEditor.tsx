@@ -673,24 +673,42 @@ export function VariablesSubTab() {
               <div>
                 <label style={detailLabel}>Current Value</label>
                 <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
-                  <span style={{ fontSize: "var(--font-size-sm)", color: selectedLiveValue !== undefined ? "var(--text-primary)" : "var(--text-muted)", fontWeight: 500 }}>
-                    {selectedLiveValue !== undefined ? quotedValueText(selectedLiveValue) : "not set"}
-                  </span>
-                  {selectedLiveValue !== undefined && (
-                    <button
-                      onClick={() => {
-                        const val = prompt("Set value for var." + selectedVar.id + ":", String(selectedLiveValue ?? ""));
-                        if (val === null) return;
-                        let parsed: unknown = val;
-                        if (selectedVar.type === "boolean") parsed = val === "true";
-                        else if (isNumericVar(selectedVar.type)) parsed = Number(val) || 0;
-                        setStateValue(`var.${selectedVar.id}`, parsed).catch(() => showError("Failed to set value"));
-                      }}
-                      style={{ ...iconBtn, fontSize: 11, padding: "1px 6px", border: "1px solid var(--border-color)", borderRadius: "var(--border-radius)" }}
+                  {selectedLiveValue !== undefined && selectedVar.type === "boolean" ? (
+                    <select
+                      style={{ ...detailInput, width: "auto" }}
+                      value={typeof selectedLiveValue === "boolean" ? String(selectedLiveValue) : ""}
+                      onChange={(e) =>
+                        setStateValue(`var.${selectedVar.id}`, e.target.value === "true").catch(() => showError("Failed to set value"))
+                      }
+                      aria-label="Current value"
                       title="Set current value"
                     >
-                      Set
-                    </button>
+                      {typeof selectedLiveValue !== "boolean" && (
+                        <option value="" disabled>{quotedValueText(selectedLiveValue)}</option>
+                      )}
+                      <BooleanOptions />
+                    </select>
+                  ) : (
+                    <>
+                      <span style={{ fontSize: "var(--font-size-sm)", color: selectedLiveValue !== undefined ? "var(--text-primary)" : "var(--text-muted)", fontWeight: 500 }}>
+                        {selectedLiveValue !== undefined ? quotedValueText(selectedLiveValue) : "not set"}
+                      </span>
+                      {selectedLiveValue !== undefined && (
+                        <button
+                          onClick={() => {
+                            const val = prompt("Set value for var." + selectedVar.id + ":", String(selectedLiveValue ?? ""));
+                            if (val === null) return;
+                            let parsed: unknown = val;
+                            if (isNumericVar(selectedVar.type)) parsed = Number(val) || 0;
+                            setStateValue(`var.${selectedVar.id}`, parsed).catch(() => showError("Failed to set value"));
+                          }}
+                          style={{ ...iconBtn, fontSize: 11, padding: "1px 6px", border: "1px solid var(--border-color)", borderRadius: "var(--border-radius)" }}
+                          title="Set current value"
+                        >
+                          Set
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

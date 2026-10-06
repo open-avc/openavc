@@ -195,7 +195,7 @@ Now wire a slider to it:
 2. For the `level` parameter, click **$** and choose **value** under This control. The slider now hands the function its own position.
 3. Click **Preview** and drag the slider. The Console logs each level, and the Simulator's log shows the DSP receiving it as `PgmLvl set level 1 -24.0`. Click **Stop**.
 
-To see the ceiling, click **State**, select **Mic Live**, and under **Current Value** set it to true. Drag the slider to the top: the level stops at -20 dB.
+To see the ceiling, click **State**, select **Mic Live**, and under **Current Value** choose **Yes**. Drag the slider to the top: the level stops at -20 dB.
 
 ## Step 8: System Off
 
