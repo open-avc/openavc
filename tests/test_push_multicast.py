@@ -31,17 +31,18 @@ def _make_driver(definition: dict, config: dict | None = None, device_id: str = 
 class _HeldUdpPort:
     """A UDP port held until the listener under test shares it.
 
-    The number is picked on the wildcard address with no reuse flags set, so
-    no other socket holds it on any address. The flags the listener binds with
-    go on afterwards, so its bind shares the number instead of colliding.
+    The holder binds the wildcard address with the reuse flags the listener
+    binds with, so the listener's bind shares the number instead of colliding.
+    The flags go on before the bind: Windows refuses to share a port whose
+    first socket did not ask for sharing when it bound, even if it asks later.
     ``release()`` lets go once the listener holds the port and before anything
     is sent to it, so the listener is the only socket receiving there.
     """
 
     def __init__(self) -> None:
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._sock.bind(("", 0))
         set_shared_port_reuse(self._sock)
+        self._sock.bind(("", 0))
         self.port = self._sock.getsockname()[1]
 
     def release(self) -> None:
