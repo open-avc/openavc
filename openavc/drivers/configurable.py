@@ -1910,7 +1910,7 @@ class ConfigurableDriver(BaseDriver):
                     # Static value mapping (no regex group needed)
                     if "value" in mapping:
                         static = mapping["value"]
-                        coerced = self._convert_value(str(static), mapping.get("type", "string"))
+                        coerced = self._convert_declared(static, mapping.get("type", "string"))
                         self.set_state(state_key, coerced)
                         continue
 
@@ -1940,11 +1940,9 @@ class ConfigurableDriver(BaseDriver):
 
                     # Apply value map if defined. Coerce the mapped value too
                     # (parity with the OSC path): without this the same map+type
-                    # stores "5" on TCP but 5 on OSC, and str() collapses a
-                    # hostile list/dict map target to a flat primitive, keeping
-                    # the state store's flat-primitives invariant intact.
+                    # stores "5" on TCP but 5 on OSC.
                     if value_map and raw_value in value_map:
-                        coerced = self._convert_value(str(value_map[raw_value]), value_type)
+                        coerced = self._convert_declared(value_map[raw_value], value_type)
                     else:
                         coerced = self._read_converted(
                             raw_value, value_type, mapping, self._convert_value
@@ -2008,8 +2006,8 @@ class ConfigurableDriver(BaseDriver):
             for pm in cm["props"]:
                 value_type = pm.get("type", "string")
                 if "value" in pm:
-                    updates[pm["prop"]] = self._convert_value(
-                        str(pm["value"]), value_type
+                    updates[pm["prop"]] = self._convert_declared(
+                        pm["value"], value_type
                     )
                     continue
                 try:
@@ -2020,8 +2018,8 @@ class ConfigurableDriver(BaseDriver):
                     continue
                 value_map = pm.get("map")
                 if value_map and raw_value in value_map:
-                    updates[pm["prop"]] = self._convert_value(
-                        str(value_map[raw_value]), value_type
+                    updates[pm["prop"]] = self._convert_declared(
+                        value_map[raw_value], value_type
                     )
                 else:
                     updates[pm["prop"]] = self._read_converted(
@@ -2103,8 +2101,8 @@ class ConfigurableDriver(BaseDriver):
                         raw_value = extracted
 
                     if value_map and str(raw_value) in value_map:
-                        coerced = self._convert_value(
-                            str(value_map[str(raw_value)]), value_type
+                        coerced = self._convert_declared(
+                            value_map[str(raw_value)], value_type
                         )
                     else:
                         coerced = self._read_converted(
@@ -2172,8 +2170,8 @@ class ConfigurableDriver(BaseDriver):
             for pm in cm["props"]:
                 value_type = pm.get("type", "string")
                 if "value" in pm:
-                    updates[pm["prop"]] = self._convert_value(
-                        str(pm["value"]), value_type
+                    updates[pm["prop"]] = self._convert_declared(
+                        pm["value"], value_type
                     )
                     continue
                 arg_index = pm.get("arg", 0)
@@ -2182,8 +2180,8 @@ class ConfigurableDriver(BaseDriver):
                 _, raw_value = args[arg_index]
                 value_map = pm.get("map")
                 if value_map is not None and str(raw_value) in value_map:
-                    updates[pm["prop"]] = self._convert_value(
-                        str(value_map[str(raw_value)]), value_type
+                    updates[pm["prop"]] = self._convert_declared(
+                        value_map[str(raw_value)], value_type
                     )
                 else:
                     updates[pm["prop"]] = self._read_converted(
@@ -2329,8 +2327,8 @@ class ConfigurableDriver(BaseDriver):
             for mapping, value in resolved:
                 value_map = mapping.get("map")
                 if value_map and str(value) in value_map:
-                    coerced = self._convert_value(
-                        str(value_map[str(value)]), mapping.get("type", "string")
+                    coerced = self._convert_declared(
+                        value_map[str(value)], mapping.get("type", "string")
                     )
                 else:
                     coerced = self._read_converted(
@@ -2393,8 +2391,8 @@ class ConfigurableDriver(BaseDriver):
                 value_map = pm.get("map")
                 value_type = pm.get("type", "string")
                 if value_map and str(value) in value_map:
-                    updates[pm["prop"]] = self._convert_value(
-                        str(value_map[str(value)]), value_type
+                    updates[pm["prop"]] = self._convert_declared(
+                        value_map[str(value)], value_type
                     )
                 else:
                     updates[pm["prop"]] = self._read_converted(
@@ -2419,6 +2417,20 @@ class ConfigurableDriver(BaseDriver):
         if self.contract_observer is not None:
             self._note_coercion(raw, value_type, coerced)
         return coerced
+
+    def _convert_declared(self, literal: Any, value_type: str) -> Any:
+        """A value the definition wrote itself: a rule's ``value:`` (or a
+        ``set:`` literal) or a ``map:`` target, rather than one the device sent.
+
+        ``null`` there means no reading, so it is empty (None) whatever the
+        declared type; read as text it would be the string "None", or False
+        on a boolean. Anything else is read as text first, as a capture is,
+        which also collapses a list or dict target to one flat value before
+        it reaches the state store.
+        """
+        if literal is None:
+            return None
+        return self._convert_value(str(literal), value_type)
 
     def _convert_json_value(self, value: Any, value_type: str) -> Any:
         coerced = self._coerce_json_value(value, value_type)

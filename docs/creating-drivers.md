@@ -1256,7 +1256,7 @@ The shorthand `set` format is recommended (cleaner, matches community driver con
 ```
 
 - `match`: A regular expression. Use capture groups `()` to extract values.
-- `set`: Maps capture groups to state variables. `"$1"` refers to the first capture group, `"$2"` to the second, etc. Literal strings without `$` set a static value.
+- `set`: Maps capture groups to state variables. `"$1"` refers to the first capture group, `"$2"` to the second, etc. Literal strings without `$` set a static value. A literal `null` leaves the variable empty, the same as a device that has nothing to report (platform 0.37.0+).
 
 A `set:` value on a `match:` rule is always one of those two — a capture reference or a static. It is **not** the place for a value map, even though the `{ group, map }` shape is what you write inside `child_set:` and on a `json: true` rule. Put a value map on a `match:` rule in the verbose `mappings:` list below; writing one under `set:` is rejected when the driver is validated.
 
@@ -1271,7 +1271,7 @@ A `set:` value on a `match:` rule is always one of those two — a capture refer
 - `mappings[].group`: Which regex capture group (1-based).
 - `mappings[].state`: Which state variable to update.
 - `mappings[].type` (optional): How to convert the captured text: `string`, `integer`, `float`, `boolean`. Leave it out and the state variable's own declared type is used, which is normally what you want.
-- `mappings[].map` (optional): A lookup table. If the captured value is a key in this object, the mapped value is used instead. The mapped value is then converted with `type` just like an unmapped capture, so the stored state matches its declared type regardless of transport.
+- `mappings[].map` (optional): A lookup table. If the captured value is a key in this object, the mapped value is used instead. The mapped value is then converted with `type` just like an unmapped capture, so the stored state matches its declared type regardless of transport. A mapped value of `null` leaves the variable empty instead, whatever its type, so a device's "no reading" code can map straight to empty: `map: { "--": null }` (platform 0.37.0+). The same holds for a `map:` or a literal in `child_set:`, on a `json: true` rule and on an OSC rule.
 
 **One rule can use both forms.** When a response line has one field that needs a value map and several that don't, put the mapped field in `mappings:` and the plain ones in `set:` — both are applied. There is no need to rewrite the whole rule in the verbose form just because one field needs a map:
 
