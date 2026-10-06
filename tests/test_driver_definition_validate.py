@@ -245,6 +245,35 @@ SECTION_CASES: list[tuple[str, dict[str, Any], str]] = [
 ]
 
 
+# Sections only a warning tags: no error is filed at these paths, so the
+# error cases above cannot stand for them.
+WARNING_SECTION_CASES: list[tuple[str, dict[str, Any], str]] = [
+    (
+        "commands.*.params.* (no label)",
+        _d(commands={"go": {"send": "GO {n}\r", "params": {"n": {"type": "integer"}}}}),
+        "commands.go.params.n",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "label,definition,expected_path",
+    WARNING_SECTION_CASES,
+    ids=[case[0] for case in WARNING_SECTION_CASES],
+)
+def test_each_warning_section_tags_its_warnings_with_its_own_path(
+    label: str, definition: dict[str, Any], expected_path: str
+):
+    paths = {
+        issue["path"]
+        for issue in validate_driver_issues(definition, strict=True)
+        if issue["severity"] == "warning"
+    }
+    assert expected_path in paths, (
+        f"{label}: expected a warning at path {expected_path!r}, got {sorted(paths)}"
+    )
+
+
 @pytest.mark.parametrize(
     "label,definition,expected_path",
     SECTION_CASES,
@@ -297,11 +326,13 @@ def test_every_context_tag_has_a_section_case():
         """Every shape a concrete path could have been produced by."""
         forms = {path, re.sub(r"\[\d+\]", "[*]", path)}
         forms |= {re.sub(r"\.[^.]+$", ".*", form) for form in set(forms)}
+        # A name two levels down (commands.<cmd>.params.<param>).
+        forms |= {re.sub(r"^([^.\[]+)\.[^.]+\.", r"\1.*.", form) for form in set(forms)}
         forms |= {re.sub(r"^[^\[]+\[", "*[", form) for form in set(forms)}
         return forms
 
     covered: set[str] = set()
-    for _, _, path in SECTION_CASES:
+    for _, _, path in SECTION_CASES + WARNING_SECTION_CASES:
         covered |= variants(path)
 
     missing = sorted(shapes - covered)
@@ -424,6 +455,46 @@ def test_port_open_on_a_udp_only_driver_warns():
     definition = _d(transport="udp", discovery={"port_open": [6454]})
     issues = validate_driver_issues(definition, strict=True)
     assert any("can never fire" in i["message"] for i in issues)
+
+
+# --- a command parameter with no label ---------------------------------------
+#
+# Every form names a field by its label, else by its key made readable. The
+# key is often too terse to say what the field is, so the Builder asks for a
+# label, once per field, and never refuses one without.
+
+
+def test_a_parameter_with_no_label_warns_once_at_its_own_path():
+    definition = _d(commands={
+        "set_level": {
+            "send": "LVL {zone} {value}\r",
+            "params": {
+                "zone": {"type": "integer", "label": "Zone"},
+                "value": {"type": "integer"},
+            },
+        },
+    })
+    issues = validate_driver_issues(definition, strict=True)
+    assert [(i["severity"], i["path"]) for i in issues] == [
+        ("warning", "commands.set_level.params.value"),
+    ]
+    assert "'value'" in issues[0]["message"] and "label" in issues[0]["message"]
+    assert validate_driver_definition(definition, strict=True) == []
+
+
+def test_a_blank_label_counts_as_none():
+    definition = _d(commands={
+        "go": {"send": "GO {n}\r", "params": {"n": {"type": "integer", "label": "  "}}},
+    })
+    issues = validate_driver_issues(definition, strict=True)
+    assert [i["path"] for i in issues] == ["commands.go.params.n"]
+
+
+def test_labelled_parameters_say_nothing():
+    definition = _d(commands={
+        "go": {"send": "GO {n}\r", "params": {"n": {"type": "integer", "label": "Number"}}},
+    })
+    assert validate_driver_issues(definition, strict=True) == []
 
 
 def test_port_open_says_nothing_on_a_tcp_driver():

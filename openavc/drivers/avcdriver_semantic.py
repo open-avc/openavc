@@ -2796,6 +2796,29 @@ def validate_driver_warnings(driver_def: dict[str, Any]) -> list[str]:
                 f"Drop it, or add a transport that listens on TCP."
             )
 
+    # A command parameter with no label is named on every form by its key
+    # made readable (openavc/drivers/param_labels.py), which often says too
+    # little ("Value", "Src"). A nudge per field, never a refusal: the field
+    # works either way.
+    commands = driver_def.get("commands")
+    if isinstance(commands, dict):
+        for cmd_name, cmd_def in commands.items():
+            params = cmd_def.get("params") if isinstance(cmd_def, dict) else None
+            if not isinstance(params, dict):
+                continue
+            for param_name, param_def in params.items():
+                if not isinstance(param_def, dict):
+                    continue
+                label = param_def.get("label")
+                if isinstance(label, str) and label.strip():
+                    continue
+                warnings.ctx = f"commands.{cmd_name}.params.{param_name}"
+                warnings.append(
+                    f"Command '{cmd_name}' parameter '{param_name}' has no label, so "
+                    f"forms show its key made readable. Give it a label that says "
+                    f"what to enter."
+                )
+
     return warnings
 
 
