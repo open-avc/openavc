@@ -17,6 +17,7 @@ import {
   commandProgress,
   commandStatus,
   driverLines,
+  firstReportedText,
   mergeCommands,
   movedParts,
   movedText,
@@ -25,6 +26,7 @@ import {
   nowReading,
   paramsText,
   sendWarning,
+  splitChanged,
   stepFor,
   trafficRows,
   trialOutcome,
@@ -396,5 +398,34 @@ describe("a command's traffic as the step lists it", () => {
     ]);
     expect(trafficRows({ sent: 1, received: 41, left_out: 1, left_out_after: 20, entries: [] })[0])
       .toEqual({ kind: "gap", text: "1 more message in between; the report has every one." });
+  });
+});
+
+describe("values first reported during the audit", () => {
+  // A mixer's level meters had no reading until Meters On, and were listed
+  // among the values the audit changed, for the tester to set back by hand.
+  const mute = { key: "mute", label: "Mute", before: false, now: true, by: { number: 1, label: "Mute" }, on_its_own: false };
+  const meter = { key: "input.1.meter", label: "Input 1 Level Meter", before: null, now: 0, by: { number: 5, label: "Meters On" }, on_its_own: false };
+  const level = { key: "level", label: "Level", before: null, now: 9, by: null, on_its_own: true };
+
+  it("are said apart from what the audit changed and from what moves on its own", () => {
+    expect(splitChanged([mute, meter, level])).toEqual({ left: [mute], first: [meter], moving: [level] });
+    expect(firstReportedText(meter)).toBe("Input 1 Level Meter: 0 (after 5. Meters On)");
+    expect(firstReportedText({ ...meter, by: null })).toBe("Input 1 Level Meter: 0");
+  });
+
+  it("have their own line on the Report step", () => {
+    const d = {
+      run: 0, driver: { id: "acme", name: "Acme", version: "1.0.0", modified: false },
+      attempts: [{
+        status: "done", error: "", started_at: 1, connected_at: 1.5, declared: 2, reported: 2,
+        offline: null, contract: { counts: {} }, unprompted_replies: { count: 0 },
+        traffic: { count: 4, not_captured: false },
+      }],
+      commands: { trials: [trial()], changed: [mute, meter] },
+    } as unknown as AuditReportDriver;
+    const lines = driverLines([d]);
+    expect(lines.find((l) => l.label === "Values changed")?.value).toBe("Mute");
+    expect(lines.find((l) => l.label === "Values first reported")?.value).toBe("Input 1 Level Meter");
   });
 });

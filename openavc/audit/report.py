@@ -2151,8 +2151,15 @@ def _render_commands(commands: dict[str, Any] | None) -> list[str]:
                 outcome += f" ({said['note']})"
         parts.append(_row(label, _e(outcome)))
     parts.append("</table>")
-    left = [item for item in changed if not item.get("on_its_own")]
+    # A value with no reading before the first command is something the audit
+    # learned, not something it left changed: there is nothing to set back to.
     moving = [item for item in changed if item.get("on_its_own")]
+    first = [
+        item for item in changed if not item.get("on_its_own") and item.get("before") is None
+    ]
+    left = [
+        item for item in changed if not item.get("on_its_own") and item.get("before") is not None
+    ]
     if left:
         parts.append("<h3>What the audit changed</h3><table>")
         for item in left:
@@ -2162,6 +2169,18 @@ def _render_commands(commands: dict[str, Any] | None) -> list[str]:
                 + (f" (after {by['number']}. {by['label']})" if by else "")
             )))
         parts.append("</table>")
+    if first:
+        texts = []
+        for item in first:
+            by = item.get("by")
+            texts.append(
+                f"{item.get('label') or item.get('key')}: {_value_text(item.get('now'))}"
+                + (f" (after {by['number']}. {by['label']})" if by else "")
+            )
+        parts.append("<p>" + _e(
+            "First reported during the audit, with no earlier reading to compare: "
+            + "; ".join(texts) + "."
+        ) + "</p>")
     if moving:
         parts.append("<p>" + _e(
             "Also different now, but changing without the audit: "

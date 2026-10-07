@@ -32,6 +32,7 @@ import {
   commandStatus,
   currentRun,
   displayBytes,
+  firstReportedText,
   MOVED_IN_SENTENCE,
   movedParts,
   movedText,
@@ -40,6 +41,7 @@ import {
   nowReading,
   paramsText,
   sendWarning,
+  splitChanged,
   trafficRows,
   trialOutcome,
   type CommandStatusKey,
@@ -378,10 +380,10 @@ export function CommandsStep() {
 }
 
 /** What reads differently now from before the first command: what the audit
- *  left changed, and apart from it what changes without the audit. */
+ *  left changed, and apart from it what was first reported during the audit
+ *  and what changes without the audit. */
 function WhatChanged({ changed }: { changed: audit.AuditChangedValue[] }) {
-  const left = changed.filter((c) => !c.on_its_own);
-  const moving = changed.filter((c) => c.on_its_own);
+  const { left, first, moving } = splitChanged(changed);
   return (
     <div style={{ ...panelStyle, marginTop: "var(--space-lg)", fontSize: "var(--font-size-sm)" }}>
       <div style={labelStyle}>What changed</div>
@@ -400,6 +402,12 @@ function WhatChanged({ changed }: { changed: audit.AuditChangedValue[] }) {
             back on the device yourself if you need to.
           </div>
         </>
+      )}
+      {first.length > 0 && (
+        <div style={{ ...hintStyle, overflowWrap: "anywhere" }}>
+          First reported during the audit, with no earlier reading to compare:{" "}
+          {first.map(firstReportedText).join("; ")}.
+        </div>
       )}
       {moving.length > 0 && (
         <div style={{ ...hintStyle, overflowWrap: "anywhere" }}>

@@ -257,6 +257,29 @@ export function changedText(item: AuditChangedValue): string {
   return `${item.label}: ${show(item.before)} before, ${show(item.now)} now${by}`;
 }
 
+/** "What changed", said in three parts: what the audit left changed, what was
+ *  first reported during the audit (no reading before the first command, so
+ *  nothing to set back to), and what changes without the audit. */
+export function splitChanged(changed: AuditChangedValue[]): {
+  left: AuditChangedValue[];
+  first: AuditChangedValue[];
+  moving: AuditChangedValue[];
+} {
+  const own = changed.filter((c) => !c.on_its_own);
+  return {
+    left: own.filter((c) => c.before !== null && c.before !== undefined),
+    first: own.filter((c) => c.before === null || c.before === undefined),
+    moving: changed.filter((c) => c.on_its_own),
+  };
+}
+
+/** A value first reported during the audit: "Input 1 Level Meter: 0 (after
+ *  5. Meters On)". */
+export function firstReportedText(item: AuditChangedValue): string {
+  const by = item.by ? ` (after ${item.by.number}. ${item.by.label})` : "";
+  return `${item.label}: ${valueText(item.now, "not reported")}${by}`;
+}
+
 /** A command's traffic as the step lists it: each entry, and a line where the
  *  server left entries out of the live view (the report keeps every one). */
 export type TrafficRow =
@@ -812,11 +835,17 @@ export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
           value: `${silent.join(", ")}: the driver said it succeeded, but nothing was sent`,
         });
       }
-      const changed = (d.commands?.changed ?? []).filter((c) => !c.on_its_own);
-      if (changed.length > 0) {
+      const { left, first } = splitChanged(d.commands?.changed ?? []);
+      if (left.length > 0) {
         lines.push({
           label: `Values changed${suffix}`,
-          value: changed.map((c) => c.label).join(", "),
+          value: left.map((c) => c.label).join(", "),
+        });
+      }
+      if (first.length > 0) {
+        lines.push({
+          label: `Values first reported${suffix}`,
+          value: first.map((c) => c.label).join(", "),
         });
       }
       const answered = answerCounts(trials);

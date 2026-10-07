@@ -1098,9 +1098,37 @@ async def test_what_changed_lists_each_value_with_what_it_was(driver):
     record = build_report(session)["drivers"][0]["commands"]
     assert [c["key"] for c in record["changed"]] == ["input", "power", "volume"]
     summary = render_summary(build_report(session))
-    assert "What the audit changed" in summary
-    assert "not reported before, Yes now (after 1. Power On)" in summary
+    # Input and power had no reading before the first command: something the
+    # audit learned, with nothing to set back to, so said apart.
+    assert "What the audit changed" not in summary
+    assert (
+        "First reported during the audit, with no earlier reading to compare: "
+        "Input: hdmi1 (after 2. Set Input); Power: Yes (after 1. Power On)."
+    ) in summary
     assert "Also different now, but changing without the audit: Volume" in summary
+
+
+def test_a_value_first_reported_is_said_apart_from_what_the_audit_changed():
+    """A mixer's level meters, first reported after Meters On, were listed
+    among the values the audit changed, for the tester to set back by hand."""
+    from openavc.audit.report import _render_commands
+
+    commands = {
+        "trials": [{"number": 1, "label": "Mute", "params": {}, "status": "done"}],
+        "changed": [
+            {"key": "mute", "label": "Mute", "before": False, "now": True,
+             "by": {"number": 1, "label": "Mute"}, "on_its_own": False},
+            {"key": "input.1.meter", "label": "Input 1 Level Meter", "before": None, "now": 0,
+             "by": {"number": 5, "label": "Meters On"}, "on_its_own": False},
+        ],
+    }
+    html = "".join(_render_commands(commands))
+    table = html.split("<h3>What the audit changed</h3>", 1)[1].split("</table>", 1)[0]
+    assert "Mute" in table and "Meter" not in table
+    assert (
+        "First reported during the audit, with no earlier reading to compare: "
+        "Input 1 Level Meter: 0 (after 5. Meters On)."
+    ) in html
 
 
 async def test_a_later_refusal_on_the_same_clock_tick_is_still_not_the_commands(driver, monkeypatch):
