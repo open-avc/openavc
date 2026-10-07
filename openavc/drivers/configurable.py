@@ -333,11 +333,23 @@ class ConfigurableDriver(BaseDriver):
                 return all(results) if require_all else any(results)
         return self._condition_holds(condition)
 
-    @staticmethod
-    def _throttle_skip(tstate: dict[str, Any] | None, scope: str = "") -> bool:
-        """Check-and-stamp: True when the rule already fired for this scope
-        inside its throttle window (the caller skips this application);
-        otherwise records now as the scope's last-fire time and returns False.
+    def _throttle_hold(
+        self,
+        tstate: dict[str, Any] | None,
+        scope: str,
+        flat: list[tuple[str, Any]],
+        children: list[tuple[str, Any, dict[str, Any]]],
+    ) -> bool:
+        """The response throttle, trailing-edge. False when the rule may apply
+        its writes now (outside its window: now is stamped as the scope's
+        last fire). True when it fired inside the window: the writes are held
+        and the caller applies nothing.
+
+        A held write is not dropped. The newest one per scope is written when
+        the window lapses, so a value that stops changing inside a window (a
+        talker's final position, a fader that came to rest) still lands, and
+        the rate stays at one write per window. A drop-style throttle lost
+        exactly that last value until the next change.
 
         The scope is what keeps ONE rule serving MANY children honest. A
         per-channel meter is a single `child_set` rule matching every channel,
@@ -349,11 +361,106 @@ class ConfigurableDriver(BaseDriver):
         if not tstate:
             return False
         now = time.monotonic()
+        window = tstate["window"]
         last: dict[str, float] = tstate["last"]
-        if now - last.get(scope, float("-inf")) < tstate["window"]:
-            return True
-        last[scope] = now
-        return False
+        if now - last.get(scope, float("-inf")) >= window:
+            # A hold still waiting for its timer is older than this frame.
+            self._drop_held(tstate, scope)
+            last[scope] = now
+            return False
+        pending = tstate.setdefault("pending", {})
+        timers = tstate.setdefault("timers", {})
+        # What each key holds now, so a write that lands before the flush
+        # (a polled reply, another rule) is not overwritten by this older one.
+        flat_before = {key: self.get_state(key) for key, _ in flat}
+        child_before: dict[tuple[str, Any], dict[str, Any]] = {}
+        for ctype, local_id, updates in children:
+            current = self.get_child_state(ctype, local_id)
+            child_before[(ctype, local_id)] = {
+                prop: current.get(prop) for prop in updates
+            }
+        pending[scope] = (flat, children, flat_before, child_before)
+        if scope not in timers:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                # No loop to flush on (a synchronous caller): drop, as a
+                # throttle without a timer has to.
+                pending.pop(scope, None)
+                return True
+            delay = window - (now - last[scope])
+            timers[scope] = loop.call_later(
+                delay, self._flush_held, tstate, scope
+            )
+        return True
+
+    def _flush_held(self, tstate: dict[str, Any], scope: str) -> None:
+        """Write a scope's held update when its window lapses. The flush counts
+        as the scope's fire, so a frame inside the next window is held again.
+        A key something else wrote since the hold keeps that newer value."""
+        tstate.get("timers", {}).pop(scope, None)
+        held = tstate.get("pending", {}).pop(scope, None)
+        if held is None:
+            return
+        flat, children, flat_before, child_before = held
+        tstate["last"][scope] = time.monotonic()
+        try:
+            for key, value in flat:
+                if self.get_state(key) == flat_before.get(key):
+                    self.set_state(key, value)
+            for ctype, local_id, updates in children:
+                if not self.is_child_registered(ctype, local_id):
+                    continue
+                current = self.get_child_state(ctype, local_id)
+                before = child_before.get((ctype, local_id), {})
+                kept = {
+                    prop: value for prop, value in updates.items()
+                    if current.get(prop) == before.get(prop)
+                }
+                if kept:
+                    self.set_child_state_batch(ctype, local_id, kept)
+        except Exception:
+            log.exception(f"[{self.device_id}] Writing a throttled response failed")
+
+    @staticmethod
+    def _drop_held(tstate: dict[str, Any], scope: str) -> None:
+        timer = tstate.get("timers", {}).pop(scope, None)
+        if timer is not None:
+            timer.cancel()
+        tstate.get("pending", {}).pop(scope, None)
+
+    def _drop_all_held(self) -> None:
+        """Cancel every held throttled write: the connection they came in on
+        is going away, and a timer must not write into a device that may have
+        been removed."""
+        json_rules = getattr(self, "_json_responses", None) or []
+        tables = (
+            (getattr(self, "_compiled_responses", None) or [], 3),
+            (getattr(self, "_osc_responses", None) or [], 3),
+            (json_rules, 1),
+        )
+        for table, slot in tables:
+            for entry in table:
+                tstate = entry[slot]
+                if not tstate:
+                    continue
+                for scope in list(tstate.get("timers", {})):
+                    self._drop_held(tstate, scope)
+                tstate.get("pending", {}).clear()
+
+    def _apply_writes(
+        self,
+        flat: list[tuple[str, Any]],
+        children: list[tuple[str, Any, dict[str, Any]]],
+    ) -> None:
+        for key, value in flat:
+            self.set_state(key, value)
+        for ctype, local_id, updates in children:
+            self.set_child_state_batch(ctype, local_id, updates)
+
+    async def _close_session(self) -> None:
+        self._drop_all_held()
+        await super()._close_session()
 
     @staticmethod
     def _throttle_scope(
@@ -1891,17 +1998,7 @@ class ConfigurableDriver(BaseDriver):
                 # and a later rule may still want it.
                 if not self._rule_applies(condition):
                     continue
-                # A throttled rule consumes its frame without applying it —
-                # falling through would let a later rule match the same frame.
-                # Scoped per routed child so one rule can serve N children.
-                if self._throttle_skip(
-                    tstate, self._throttle_scope(child_mappings, match)
-                ):
-                    log.debug(
-                        f"[{self.device_id}] Response throttled: "
-                        f"{pattern.pattern}"
-                    )
-                    return
+                flat: list[tuple[str, Any]] = []
                 for mapping in mappings:
                     state_key = mapping.get("state")
                     if not state_key:
@@ -1911,7 +2008,7 @@ class ConfigurableDriver(BaseDriver):
                     if "value" in mapping:
                         static = mapping["value"]
                         coerced = self._convert_declared(static, mapping.get("type", "string"))
-                        self.set_state(state_key, coerced)
+                        flat.append((state_key, coerced))
                         continue
 
                     # Regex group mapping
@@ -1948,10 +2045,26 @@ class ConfigurableDriver(BaseDriver):
                             raw_value, value_type, mapping, self._convert_value
                         )
 
-                    self.set_state(state_key, coerced)
+                    flat.append((state_key, coerced))
 
-                if child_mappings:
-                    self._apply_child_mappings(match, child_mappings)
+                children = (
+                    self._resolve_child_mappings(match, child_mappings)
+                    if child_mappings else []
+                )
+                # A throttled rule consumes its frame either way — falling
+                # through would let a later rule match the same frame. Inside
+                # its window the writes are held, not applied. Scoped per
+                # routed child so one rule can serve N children.
+                if self._throttle_hold(
+                    tstate, self._throttle_scope(child_mappings, match),
+                    flat, children,
+                ):
+                    log.debug(
+                        f"[{self.device_id}] Response throttled: "
+                        f"{pattern.pattern}"
+                    )
+                    return
+                self._apply_writes(flat, children)
 
                 log.debug(
                     f"[{self.device_id}] Response matched: {pattern.pattern}"
@@ -1961,15 +2074,17 @@ class ConfigurableDriver(BaseDriver):
         log.debug(f"[{self.device_id}] Unmatched response: {text!r}")
         self._observe(UNMATCHED_RESPONSE, text=text)
 
-    def _apply_child_mappings(
+    def _resolve_child_mappings(
         self, match: re.Match[str], child_mappings: list[dict[str, Any]]
-    ) -> None:
-        """Route a matched response's captures into child-entity state
-        (``child_set:``). Each entry resolves its child id (capture ref or
-        literal), coerces each prop by the child schema's declared type, and
-        applies one ``set_child_state_batch`` per child. Unregistered ids are
-        skipped quietly — devices legitimately answer for ports beyond a
-        user-configured roster."""
+    ) -> list[tuple[str, Any, dict[str, Any]]]:
+        """Read a matched response's captures for child-entity state
+        (``child_set:``): one ``(child type, local id, updates)`` per child,
+        written by the caller with ``set_child_state_batch``. Each entry
+        resolves its child id (capture ref or literal) and coerces each prop by
+        the child schema's declared type. Unregistered ids are skipped quietly
+        — devices legitimately answer for ports beyond a user-configured
+        roster."""
+        writes: list[tuple[str, Any, dict[str, Any]]] = []
         for cm in child_mappings:
             ctype = cm["type"]
             id_kind, id_val = cm["id"]
@@ -2026,7 +2141,8 @@ class ConfigurableDriver(BaseDriver):
                         raw_value, value_type, pm, self._convert_value
                     )
             if updates:
-                self.set_child_state_batch(ctype, local_id, updates)
+                writes.append((ctype, local_id, updates))
+        return writes
 
     def _read_converted(
         self, raw: Any, value_type: str, mapping: dict[str, Any], coerce: Any
@@ -2065,17 +2181,7 @@ class ConfigurableDriver(BaseDriver):
                 if not self._rule_applies(condition):
                     continue
                 matched = True
-                # An OSC child_set rule matches a wildcard address pattern
-                # (/ch/*/mix/fader), so the concrete address IS the per-child
-                # scope — same reason as the regex path above.
-                if self._throttle_skip(
-                    tstate, address if child_mappings else ""
-                ):
-                    log.debug(
-                        f"[{self.device_id}] OSC response throttled: "
-                        f"{addr_pattern}"
-                    )
-                    break
+                flat: list[tuple[str, Any]] = []
                 for mapping in mappings:
                     state_key = mapping.get("state")
                     if not state_key:
@@ -2109,10 +2215,24 @@ class ConfigurableDriver(BaseDriver):
                             raw_value, value_type, mapping, self._convert_osc_value
                         )
 
-                    self.set_state(state_key, coerced)
+                    flat.append((state_key, coerced))
 
-                if child_mappings:
-                    self._apply_osc_child_mappings(address, args, child_mappings)
+                children = (
+                    self._resolve_osc_child_mappings(address, args, child_mappings)
+                    if child_mappings else []
+                )
+                # An OSC child_set rule matches a wildcard address pattern
+                # (/ch/*/mix/fader), so the concrete address IS the per-child
+                # scope — same reason as the regex path above.
+                if self._throttle_hold(
+                    tstate, address if child_mappings else "", flat, children,
+                ):
+                    log.debug(
+                        f"[{self.device_id}] OSC response throttled: "
+                        f"{addr_pattern}"
+                    )
+                    break
+                self._apply_writes(flat, children)
 
                 log.debug(f"[{self.device_id}] OSC matched: {addr_pattern}")
                 break
@@ -2125,18 +2245,19 @@ class ConfigurableDriver(BaseDriver):
                           for _tag, value in args],
                 )
 
-    def _apply_osc_child_mappings(
+    def _resolve_osc_child_mappings(
         self,
         address: str,
         args: list[tuple[str, Any]],
         child_mappings: list[dict[str, Any]],
-    ) -> None:
-        """Route an address-matched OSC message into child-entity state
-        (``child_set:``). The child id comes from an address segment or a
-        literal; prop values from positional args or literals. Coercion,
-        id-map unmapped-skip, and the unregistered-id guard mirror
-        ``_apply_child_mappings`` exactly."""
+    ) -> list[tuple[str, Any, dict[str, Any]]]:
+        """Read an address-matched OSC message for child-entity state
+        (``child_set:``): one ``(child type, local id, updates)`` per child.
+        The child id comes from an address segment or a literal; prop values
+        from positional args or literals. Coercion, id-map unmapped-skip, and
+        the unregistered-id guard mirror ``_resolve_child_mappings`` exactly."""
         segments = address.strip("/").split("/")
+        writes: list[tuple[str, Any, dict[str, Any]]] = []
         for cm in child_mappings:
             ctype = cm["type"]
             id_kind, id_val = cm["id"]
@@ -2188,7 +2309,8 @@ class ConfigurableDriver(BaseDriver):
                         raw_value, value_type, pm, self._convert_osc_value
                     )
             if updates:
-                self.set_child_state_batch(ctype, local_id, updates)
+                writes.append((ctype, local_id, updates))
+        return writes
 
     @staticmethod
     def _extract_json_path(raw_value: Any, path: Any, collapse: bool = True) -> Any:
@@ -2317,13 +2439,7 @@ class ConfigurableDriver(BaseDriver):
             child_writes = self._resolve_json_child_mappings(obj, child_mappings)
             if not resolved and not child_writes:
                 continue
-            if self._throttle_skip(
-                tstate, self._json_throttle_scope(child_mappings)
-            ):
-                # Matched but inside the throttle window: consume the body
-                # (return True below) without writing state.
-                throttled = True
-                continue
+            flat: list[tuple[str, Any]] = []
             for mapping, value in resolved:
                 value_map = mapping.get("map")
                 if value_map and str(value) in value_map:
@@ -2335,11 +2451,17 @@ class ConfigurableDriver(BaseDriver):
                         value, mapping.get("type", "string"), mapping,
                         self._convert_json_value,
                     )
-                self.set_state(mapping["state"], coerced)
-                applied = True
-            for ctype, local_id, updates in child_writes:
-                self.set_child_state_batch(ctype, local_id, updates)
-                applied = True
+                flat.append((mapping["state"], coerced))
+            if self._throttle_hold(
+                tstate, self._json_throttle_scope(child_mappings),
+                flat, child_writes,
+            ):
+                # Matched but inside the throttle window: consume the body
+                # (return True below); the writes are held for the window's end.
+                throttled = True
+                continue
+            self._apply_writes(flat, child_writes)
+            applied = True
         if applied:
             log.debug(
                 f"[{self.device_id}] JSON response applied "

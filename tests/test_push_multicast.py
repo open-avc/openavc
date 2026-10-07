@@ -462,6 +462,136 @@ async def test_throttle_on_osc_rule():
     assert drv.state.get("device.dev1.meter") == 10
 
 
+# A frame inside the window is held, not lost: the newest one is written when
+# the window lapses. A value that stops changing inside a window (a talker's
+# final position) still lands.
+
+
+def _short_window_def(window=0.05):
+    d = _mixer_def()
+    d["responses"] = [
+        {"match": r"^READ METER (\d+)", "set": {"meter": "$1"}},
+        {"match": r"^NOTIFY METER (\d+)", "set": {"meter": "$1"}, "throttle": window},
+    ]
+    return d
+
+
+@pytest.mark.asyncio
+async def test_throttle_writes_the_newest_held_value_when_the_window_lapses():
+    drv = _make_driver(_short_window_def(), {"host": "10.0.0.5"})
+    for value in (10, 20, 30, 99):
+        await drv.on_data_received(f"NOTIFY METER {value} \r".encode())
+    assert drv.state.get("device.dev1.meter") == 10  # held, not yet written
+    await asyncio.sleep(0.12)
+    assert drv.state.get("device.dev1.meter") == 99
+
+
+@pytest.mark.asyncio
+async def test_throttle_caps_a_continuous_stream_at_one_write_per_window():
+    window = 0.05
+    drv = _make_driver(_short_window_def(window), {"host": "10.0.0.5"})
+    writes: list[int] = []
+    drv.state.subscribe("device.dev1.meter", lambda key, old, new, source: writes.append(new))
+    loop = asyncio.get_running_loop()
+    start = loop.time()
+    value = 0
+    while loop.time() - start < 0.3:
+        value += 1
+        await drv.on_data_received(f"NOTIFY METER {value} \r".encode())
+        await asyncio.sleep(0.005)
+    elapsed = loop.time() - start
+    await asyncio.sleep(window * 2)
+    assert writes[-1] == value  # the last frame of the stream landed
+    assert len(writes) <= elapsed / window + 2  # and the rate held
+    assert len(writes) < value
+
+
+@pytest.mark.asyncio
+async def test_a_held_value_does_not_overwrite_a_newer_write():
+    drv = _make_driver(_short_window_def(), {"host": "10.0.0.5"})
+    await drv.on_data_received(b"NOTIFY METER 10 \r")
+    await drv.on_data_received(b"NOTIFY METER 20 \r")  # held
+    await drv.on_data_received(b"READ METER 50 \r")  # a newer reading
+    await asyncio.sleep(0.12)
+    assert drv.state.get("device.dev1.meter") == 50
+
+
+@pytest.mark.asyncio
+async def test_a_value_held_after_a_newer_write_still_lands():
+    drv = _make_driver(_short_window_def(), {"host": "10.0.0.5"})
+    await drv.on_data_received(b"NOTIFY METER 10 \r")
+    await drv.on_data_received(b"NOTIFY METER 20 \r")
+    await drv.on_data_received(b"READ METER 50 \r")
+    await drv.on_data_received(b"NOTIFY METER 30 \r")  # newer than the read
+    await asyncio.sleep(0.12)
+    assert drv.state.get("device.dev1.meter") == 30
+
+
+@pytest.mark.asyncio
+async def test_held_writes_are_dropped_when_the_session_closes():
+    drv = _make_driver(_short_window_def(), {"host": "10.0.0.5"})
+    await drv.on_data_received(b"NOTIFY METER 10 \r")
+    await drv.on_data_received(b"NOTIFY METER 20 \r")
+    await drv._close_session()
+    await asyncio.sleep(0.12)
+    assert drv.state.get("device.dev1.meter") == 10
+
+
+@pytest.mark.asyncio
+async def test_a_frame_after_the_window_is_written_at_once():
+    drv = _make_driver(_short_window_def(), {"host": "10.0.0.5"})
+    await drv.on_data_received(b"NOTIFY METER 10 \r")
+    await asyncio.sleep(0.07)
+    await drv.on_data_received(b"NOTIFY METER 99 \r")
+    assert drv.state.get("device.dev1.meter") == 99
+
+
+@pytest.mark.asyncio
+async def test_throttled_json_rule_writes_the_held_value():
+    d = _mixer_def()
+    d["responses"] = [
+        {"json": True, "set": {"level": "vol"}, "throttle": 0.05},
+    ]
+    drv = _make_driver(d, {"host": "10.0.0.5"})
+    await drv.on_data_received(b'{"vol": 10}')
+    await drv.on_data_received(b'{"vol": 99}')
+    assert drv.state.get("device.dev1.level") == 10
+    await asyncio.sleep(0.12)
+    assert drv.state.get("device.dev1.level") == 99
+
+
+@pytest.mark.asyncio
+async def test_throttled_osc_rule_writes_the_held_value():
+    from openavc.transport.osc_codec import osc_encode_message
+
+    d = _mixer_def()
+    d["transport"] = "osc"
+    d["responses"] = [
+        {
+            "address": "/acme/meter",
+            "mappings": [{"arg": 0, "state": "meter", "type": "integer"}],
+            "throttle": 0.05,
+        },
+    ]
+    drv = _make_driver(d, {"host": "10.0.0.5"})
+    await drv.on_data_received(osc_encode_message("/acme/meter", [("i", 10)]))
+    await drv.on_data_received(osc_encode_message("/acme/meter", [("i", 99)]))
+    assert drv.state.get("device.dev1.meter") == 10
+    await asyncio.sleep(0.12)
+    assert drv.state.get("device.dev1.meter") == 99
+
+
+def test_throttle_without_a_running_loop_drops_the_frame():
+    d = _mixer_def()
+    d["responses"] = [
+        {"json": True, "set": {"level": "vol"}, "throttle": 60},
+    ]
+    drv = _make_driver(d, {"host": "10.0.0.5"})
+    assert drv._apply_json_responses('{"vol": 10}')
+    assert drv._apply_json_responses('{"vol": 99}')  # consumed, nothing to flush on
+    assert drv.state.get("device.dev1.level") == 10
+
+
 # ===========================================================================
 # Simulator emission
 # ===========================================================================

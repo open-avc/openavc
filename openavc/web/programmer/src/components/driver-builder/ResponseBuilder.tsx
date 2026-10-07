@@ -693,8 +693,9 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
               style={{ width: 80, fontSize: "var(--font-size-sm)" }}
             />
             <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-              Drop re-matches of this rule for N seconds — for high-rate
-              telemetry frames (meters). Leave blank for normal responses.
+              Writes this rule at most once every N seconds; the newest
+              frame in each window is written when it ends. For high-rate
+              telemetry such as meters. Leave blank for normal responses.
             </span>
           </div>
           <OnlyWhenEditor

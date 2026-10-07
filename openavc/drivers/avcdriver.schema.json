@@ -1552,7 +1552,7 @@
         "throttle": {
           "type": "number",
           "exclusiveMinimum": 0,
-          "description": "Optional. After this rule matches and applies, further matches of the same rule are dropped for this many seconds (drop-style; each skipped frame is superseded by the next). For continuous push telemetry like audio level meters — do not throttle ordinary replies or state-change notices. Works on regex, json, and OSC rules. Requires platform 0.23.0."
+          "description": "Optional. Writes this rule at most once per this many seconds. The first matching frame applies at once; frames inside the window are held, and the newest one is written when the window lapses (unless something else changed that value first), so the last value of a burst always lands. For high-rate push telemetry such as level meters or a talker position; do not throttle ordinary replies or state-change notices. Works on regex, json, and OSC rules, with a window per routed child. Requires platform 0.23.0."
         },
         "only_when": {
           "$ref": "#/$defs/visibleWhen",

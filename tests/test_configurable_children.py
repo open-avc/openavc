@@ -433,6 +433,22 @@ async def test_throttled_child_rule_reopens_after_window():
     assert driver.state.get("device.dev1.zone.1.meter") == 99
 
 
+async def test_throttled_child_rule_writes_each_childs_held_value():
+    # Each child's window holds its own newest value; one child's hold does
+    # not stand in for another's.
+    driver = _throttled_meter_driver(window=0.05)
+    driver._register_declared_children()
+    await driver.on_data_received(b"Meter1 11")
+    await driver.on_data_received(b"Meter2 21")
+    await driver.on_data_received(b"Meter1 19")  # held for zone 1
+    await driver.on_data_received(b"Meter2 29")  # held for zone 2
+    assert driver.state.get("device.dev1.zone.1.meter") == 11
+    assert driver.state.get("device.dev1.zone.2.meter") == 21
+    await asyncio.sleep(0.12)
+    assert driver.state.get("device.dev1.zone.1.meter") == 19
+    assert driver.state.get("device.dev1.zone.2.meter") == 29
+
+
 # ---------------------------------------------------------------------------
 # Loader validation
 # ---------------------------------------------------------------------------

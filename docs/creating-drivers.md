@@ -1288,7 +1288,7 @@ If the same state variable appears in both, the `mappings:` entry wins.
 
 Responses are checked in order. The first matching pattern wins.
 
-**Throttling high-rate telemetry.** A response entry may declare `throttle: <seconds>`: after the rule matches and applies, further matches of the same rule are dropped until the window elapses. Use it on continuous telemetry streams — audio level meters, position feedback — where a device sends many frames per second and every dropped frame is superseded by the next one anyway:
+**Throttling high-rate telemetry.** A response entry may declare `throttle: <seconds>` to write the rule at most once per window. The first matching frame applies at once. Frames that arrive inside the window are held, and the newest one is written when the window ends, so the last value of a burst always lands: a talker who stops moving, or a meter that comes to rest, shows where it stopped. If something else writes the same value before then (a polled reply, another rule), the newer value stays. Use it on telemetry a device sends many times a second, such as audio level meters and talker or position feedback:
 
 ```yaml
 - match: 'METER (\d+),(\d+)'
@@ -1296,7 +1296,7 @@ Responses are checked in order. The first matching pattern wins.
   set: { meter_in: "$1", meter_out: "$2" }
 ```
 
-Don't throttle ordinary command replies or state-change notices — a dropped frame there means stale state until the next poll. Works on regex, `json: true`, and OSC address rules alike.
+Don't throttle ordinary command replies or state-change notices: they arrive rarely, and a throttle only delays them. Works on regex, `json: true`, and OSC address rules alike, and a rule that routes to child entities gets a window per child. Before platform 0.37.0 a frame inside the window was dropped rather than held, so the last value of a burst could stay unwritten until the next change.
 
 **Ignoring a reading the device's current mode isn't using.** Some devices keep reporting a table that only one of their modes actually acts on. An HDMI matrix with an extracted-audio matrix is the usual case: it answers `GET OUT1 AS IN` with a stored assignment whether or not the audio ports are taking from it, so when the frame is set to keep audio with the video, that number describes nothing anyone can hear. Publish it anyway and every reader believes it — the panel names a source, an alert fires on it, a script branches on it.
 
