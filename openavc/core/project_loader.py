@@ -1046,6 +1046,15 @@ import threading
 _project_save_lock = threading.Lock()
 
 
+def crash_copy_path(path: str | Path) -> Path:
+    """THE single rolling crash-protection copy ``save_project`` writes before
+    every save: ``project.avc.bak`` for ``project.avc``, ``main-hall.avc.bak``
+    for ``main-hall.avc``. One per project file, overwritten each time, so it is
+    not a backup anybody chose; ``backup_manager.list_backups`` asks this for the
+    name to leave out."""
+    return Path(path).with_suffix(".avc.bak")
+
+
 def save_project(path: str | Path, project: ProjectConfig) -> None:
     """
     Save a ProjectConfig back to a JSON file atomically.
@@ -1082,7 +1091,7 @@ def save_project(path: str | Path, project: ProjectConfig) -> None:
         # Crash-protection backup — single rolling copy before each write
         if path.exists():
             try:
-                shutil.copy2(path, path.with_suffix(".avc.bak"))
+                shutil.copy2(path, crash_copy_path(path))
             except OSError as e:
                 log.error(f"Cannot create crash-protection backup — aborting save: {e}")
                 from openavc.api.error_messages import friendly_save_error

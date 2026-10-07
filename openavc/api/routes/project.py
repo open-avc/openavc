@@ -641,7 +641,7 @@ async def open_from_library(data: LibraryOpenRequest) -> dict[str, Any]:
 
     # Back up current project (including scripts) before replacing
     import asyncio
-    await asyncio.to_thread(create_backup, engine.project_path.parent, f"Before opening '{data.project_name}'")
+    await asyncio.to_thread(create_backup, engine.project_path, f"Before opening '{data.project_name}'")
 
     try:
         _open(data.library_id, engine.project_path, scripts_dir,
@@ -687,7 +687,7 @@ async def create_blank(request: Request) -> dict[str, Any]:
 
     # Back up current project before replacing with blank
     import asyncio
-    await asyncio.to_thread(create_backup, engine.project_path.parent, "Before creating blank project")
+    await asyncio.to_thread(create_backup, engine.project_path, "Before creating blank project")
 
     project = create_blank_project(project_id, project_name)
 
@@ -730,8 +730,7 @@ async def list_backups_endpoint() -> dict[str, Any]:
     from openavc.core.backup_manager import list_backups
 
     engine = _get_engine()
-    project_dir = engine.project_path.parent
-    backups = list_backups(project_dir)
+    backups = list_backups(engine.project_path)
     return {"backups": [
         {
             "filename": b.filename,
@@ -756,7 +755,7 @@ async def create_backup_endpoint(request: Request) -> dict[str, Any]:
     reason = body.get("reason", "Manual backup")
 
     import asyncio
-    path = await asyncio.to_thread(create_backup, project_dir, reason)
+    path = await asyncio.to_thread(create_backup, engine.project_path, reason)
     if not path:
         raise HTTPException(status_code=404, detail="No project to back up")
     # The same name GET /backups lists and POST /backups/{filename}/restore
@@ -787,14 +786,14 @@ async def restore_backup(filename: str) -> dict[str, Any]:
 
     # Create a backup before restoring
     import asyncio
-    await asyncio.to_thread(create_backup, project_dir, "Before restore")
+    await asyncio.to_thread(create_backup, engine.project_path, "Before restore")
 
     # Stop the state persister first so its pending debounced flush (up to a 1s
     # window) can't overwrite the state.json we're about to restore.
     if engine.persister:
         engine.persister.stop()
 
-    restore_from_backup(backup_path, project_dir)
+    restore_from_backup(backup_path, engine.project_path)
     await engine.reload_project()
     # Re-apply the restored state.json to the store + restart the persister, so
     # the restore takes effect immediately and isn't written back over.

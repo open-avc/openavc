@@ -864,7 +864,7 @@ class AIToolHandler(
         if not self._ai_backup_created and self._project_path:
             try:
                 from openavc.core.backup_manager import create_backup
-                await asyncio.to_thread(create_backup, Path(self._project_path).parent, "Before AI changes")
+                await asyncio.to_thread(create_backup, Path(self._project_path), "Before AI changes")
             except Exception:
                 # Leave the flag unset so the next mutating tool retries the
                 # backup. Latching it True on failure would silently disable

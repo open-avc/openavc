@@ -2,7 +2,7 @@
 Project backup manager — creates, lists, restores, and rotates ZIP backups.
 
 Backups are ZIP files stored in {project_dir}/backups/ containing:
-  - project.avc          (the project file)
+  - project.avc          (the project file, whatever it is called on disk)
   - backup_meta.json     (reason, timestamp, project name, version)
   - scripts/             (all .py script files)
   - assets/              (uploaded images, folders intact)
@@ -12,6 +12,12 @@ Backups are ZIP files stored in {project_dir}/backups/ containing:
 
 Backups are created at meaningful boundaries (project replacement, AI changes,
 cloud pushes, manual request, periodic timer) — NOT on every save.
+
+Every door takes the project FILE, not its directory, because the file can be
+called anything (``OPENAVC_PROJECT`` is a path). The archive member keeps its
+one name, ``project.avc``, whatever the file is called: it is the archive's
+format, and every backup already on disk carries it, so a backup restores into
+the configured file however either was named.
 """
 
 from __future__ import annotations
@@ -34,6 +40,9 @@ from openavc.version import __version__
 log = get_logger(__name__)
 
 MAX_BACKUPS = 15
+
+# The project file's name inside a backup ZIP, whatever it is called on disk.
+ARCHIVE_PROJECT = "project.avc"
 
 
 def _atomic_write_bytes(target: Path, data: bytes) -> None:
@@ -191,18 +200,20 @@ def _reason_slug(reason: str) -> str:
 
 
 def create_backup(
-    project_dir: Path,
+    project_file: Path,
     reason: str,
     *,
     max_backups: int = MAX_BACKUPS,
 ) -> Path | None:
     """Create a ZIP backup of the current project state.
 
-    Returns the backup path, or None if there's nothing to back up.
+    ``project_file`` is the project file itself; the scripts, assets, ui/,
+    themes and state.json beside it go into the same archive. Returns the
+    backup path, or None if there's nothing to back up.
     """
-    project_file = project_dir / "project.avc"
+    project_dir = project_file.parent
     if not project_file.exists():
-        log.debug("No project.avc to back up")
+        log.debug(f"No project file to back up at {project_file}")
         return None
 
     from openavc.core.project_loader import _project_save_lock
@@ -234,7 +245,7 @@ def create_backup(
     tmp_path: Path | None = Path(tmp_name)
     try:
         with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.write(project_file, "project.avc")
+            zf.write(project_file, ARCHIVE_PROJECT)
             zf.writestr("backup_meta.json", json.dumps(meta, indent=2))
             scripts_dir = project_dir / "scripts"
             if scripts_dir.is_dir():
@@ -287,8 +298,12 @@ def create_backup(
                 pass
 
 
-def list_backups(project_dir: Path) -> list[BackupInfo]:
-    """List all backups (ZIP + legacy .avc.bak), newest first."""
+def list_backups(project_file: Path) -> list[BackupInfo]:
+    """List all backups (ZIP + legacy .avc.bak) of ``project_file``, newest first."""
+    from openavc.core.project_loader import crash_copy_path
+
+    project_dir = project_file.parent
+    crash_copy = crash_copy_path(project_file).name
     results: list[BackupInfo] = []
 
     # New ZIP backups
@@ -308,13 +323,17 @@ def list_backups(project_dir: Path) -> list[BackupInfo]:
             except (OSError, zipfile.BadZipFile):
                 continue
 
-    # Legacy timestamped .avc.bak files. Skip only the exact quick-restore copy
-    # (project.avc.bak) — the old `stem.endswith('.avc')` guard matched EVERY
-    # timestamped legacy file too (e.g. "project.20240315.avc.bak"), hiding them
-    # all. Pre-restore files match this glob as well but are listed below with a
-    # clearer reason, so exclude them here to keep the two passes disjoint.
+    # Legacy timestamped .avc.bak files. Skip only this file's crash copy, the
+    # one save_project rewrites before every save (``project.avc.bak`` for
+    # ``project.avc``, ``main-hall.avc.bak`` for ``main-hall.avc``) — the old
+    # `stem.endswith('.avc')` guard matched EVERY timestamped legacy file too
+    # (e.g. "project.20240315.avc.bak"), hiding them all, and a guard on the
+    # literal ``project.avc.bak`` listed any other file's crash copy as a backup
+    # for boot recovery to walk. Pre-restore files match this glob as well but
+    # are listed below with a clearer reason, so exclude them here to keep the
+    # two passes disjoint.
     for f in project_dir.glob("*.avc.bak"):
-        if f.name == "project.avc.bak":
+        if f.name == crash_copy:
             continue
         if ".pre_restore_" in f.name:
             continue
@@ -353,15 +372,15 @@ def list_backups(project_dir: Path) -> list[BackupInfo]:
     return results
 
 
-def restore_from_backup(backup_path: Path, project_dir: Path) -> None:
-    """Restore a project from a backup file.
+def restore_from_backup(backup_path: Path, project_file: Path) -> None:
+    """Restore a project from a backup file into ``project_file``.
 
-    ZIP backups: restores project.avc, scripts/, assets/, ui/, themes/ and state.json.
-    Legacy .avc.bak: restores project.avc only.
+    ZIP backups: restores the project file, scripts/, assets/, ui/, themes/ and
+    state.json. Legacy .avc.bak: restores the project file only.
 
     Every write is atomic (temp + os.replace for files, staged rename swap for
     directories) and the whole restore runs under the shared project-save lock,
-    so a crash mid-restore can't truncate project.avc or leave scripts/assets
+    so a crash mid-restore can't truncate the project file or leave scripts/assets
     half-cleared, and a concurrent save/backup can't read a partial state.
 
     NOTE: when a running StatePersister is watching state keys, the caller must
@@ -373,18 +392,18 @@ def restore_from_backup(backup_path: Path, project_dir: Path) -> None:
     if not backup_path.exists():
         raise FileNotFoundError(f"Backup not found: {backup_path}")
 
-    project_file = project_dir / "project.avc"
+    project_dir = project_file.parent
 
     with _project_save_lock:
         if backup_path.suffix == ".zip":
             with zipfile.ZipFile(backup_path, "r") as zf:
                 names = zf.namelist()
-                if "project.avc" not in names:
-                    raise ValueError("Backup ZIP does not contain project.avc")
+                if ARCHIVE_PROJECT not in names:
+                    raise ValueError(f"Backup ZIP does not contain {ARCHIVE_PROJECT}")
 
-                # project.avc — atomic write so a torn restore can't corrupt the
-                # room's single source of truth (the recovery path then loads it).
-                _atomic_write_bytes(project_file, zf.read("project.avc"))
+                # The project file — atomic write so a torn restore can't corrupt
+                # the room's single source of truth (the recovery path then loads it).
+                _atomic_write_bytes(project_file, zf.read(ARCHIVE_PROJECT))
 
                 # Every tree: staged extract + atomic swap (clears orphans
                 # without a half-cleared window). scripts/ is flat by design;

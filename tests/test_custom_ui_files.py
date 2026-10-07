@@ -663,7 +663,7 @@ def test_backup_carries_the_controls_and_restore_replaces_them(tmp_path):
     )
     _write_control(project_dir / "ui")
 
-    backup = create_backup(project_dir, reason="test")
+    backup = create_backup(project_file, reason="test")
     with zipfile.ZipFile(backup) as zf:
         assert "ui/room_map/index.html" in zf.namelist()
 
@@ -673,7 +673,7 @@ def test_backup_carries_the_controls_and_restore_replaces_them(tmp_path):
     _write_control(project_dir / "ui", name="added_later")
     (project_dir / "ui" / "room_map" / "index.html").write_text("edited", encoding="utf-8")
 
-    restore_from_backup(backup, project_dir)
+    restore_from_backup(backup, project_file)
     assert (project_dir / "ui" / "room_map" / "index.html").read_text() == "<h1>map</h1>"
     assert not (project_dir / "ui" / "added_later").exists()
 

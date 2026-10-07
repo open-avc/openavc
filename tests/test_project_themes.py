@@ -103,13 +103,12 @@ def test_seeded_bundle_keeps_custom_themes(room, tmp_path):
 
 def test_backup_restores_theme_and_removes_newer_themes(room):
     client, engine, theme = room
-    active = engine.project_path.parent
-    backup = backup_manager.create_backup(active, "Before theme edits")
+    backup = backup_manager.create_backup(engine.project_path, "Before theme edits")
     assert backup is not None
     changed = {**theme, "variables": {"bg_color": "#ffffff"}}
     assert client.put("/api/themes/studio-green", json=changed).status_code == 200
     assert client.post("/api/themes", json={**theme, "id": "later-theme"}).status_code == 200
-    backup_manager.restore_from_backup(backup, active)
+    backup_manager.restore_from_backup(backup, engine.project_path)
     assert client.get("/api/themes/studio-green").json() == {**theme, "_source": "custom"}
     assert client.get("/api/themes/later-theme").status_code == 404
 

@@ -1487,12 +1487,12 @@ class Engine:
             log.error(f"Project file failed to load: {e}")
 
         # Try restoring from backups, newest first
-        backups = list_backups(project_dir)
+        backups = list_backups(self.project_path)
         for backup in backups:
             backup_path = project_dir / backup.filename
             log.info(f"Attempting restore from backup: {backup.filename}")
             try:
-                restore_from_backup(backup_path, project_dir)
+                restore_from_backup(backup_path, self.project_path)
                 project = load_project(self.project_path)
                 log.info(f"Successfully restored project from backup: {backup.filename}")
                 project_recovery.record(
@@ -1830,7 +1830,7 @@ class Engine:
                     # state pushes, command dispatch, and cloud heartbeats for
                     # the whole compression on the event-loop thread.
                     await asyncio.to_thread(
-                        create_backup, self.project_path.parent, "Auto-backup"
+                        create_backup, self.project_path, "Auto-backup"
                     )
                     self._dirty_since_backup = False
                     self._last_backup_time = time.time()
@@ -1842,7 +1842,7 @@ class Engine:
     def create_backup(self, reason: str) -> None:
         """Convenience method to create a named backup of the current project."""
         from openavc.core.backup_manager import create_backup
-        result = create_backup(self.project_path.parent, reason)
+        result = create_backup(self.project_path, reason)
         if result:
             self._last_backup_time = time.time()
             self._dirty_since_backup = False

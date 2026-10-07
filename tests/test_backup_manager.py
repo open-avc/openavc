@@ -61,14 +61,14 @@ def empty_project_dir(tmp_path: Path) -> Path:
 
 class TestCreateBackup:
     def test_creates_zip(self, project_dir: Path):
-        result = create_backup(project_dir, "Manual backup")
+        result = create_backup(project_dir / "project.avc", "Manual backup")
         assert result is not None
         assert result.exists()
         assert result.suffix == ".zip"
         assert "manual_backup" in result.name
 
     def test_zip_contains_project_file(self, project_dir: Path):
-        result = create_backup(project_dir, "Test")
+        result = create_backup(project_dir / "project.avc", "Test")
         assert result is not None
         with zipfile.ZipFile(result, "r") as zf:
             assert "project.avc" in zf.namelist()
@@ -76,7 +76,7 @@ class TestCreateBackup:
             assert data["project"]["name"] == "Test Project"
 
     def test_zip_contains_metadata(self, project_dir: Path):
-        result = create_backup(project_dir, "My reason")
+        result = create_backup(project_dir / "project.avc", "My reason")
         assert result is not None
         with zipfile.ZipFile(result, "r") as zf:
             assert "backup_meta.json" in zf.namelist()
@@ -86,7 +86,7 @@ class TestCreateBackup:
             assert "timestamp" in meta
 
     def test_zip_contains_scripts(self, project_dir: Path):
-        result = create_backup(project_dir, "Test")
+        result = create_backup(project_dir / "project.avc", "Test")
         assert result is not None
         with zipfile.ZipFile(result, "r") as zf:
             names = zf.namelist()
@@ -94,7 +94,7 @@ class TestCreateBackup:
             assert "scripts/shutdown.py" in names
 
     def test_zip_contains_assets(self, project_dir: Path):
-        result = create_backup(project_dir, "Test")
+        result = create_backup(project_dir / "project.avc", "Test")
         assert result is not None
         with zipfile.ZipFile(result, "r") as zf:
             names = zf.namelist()
@@ -102,16 +102,16 @@ class TestCreateBackup:
             assert "assets/bg.jpg" in names
 
     def test_no_project_file_returns_none(self, empty_project_dir: Path):
-        result = create_backup(empty_project_dir, "Nothing to back up")
+        result = create_backup(empty_project_dir / "project.avc", "Nothing to back up")
         assert result is None
 
     def test_reason_slug_in_filename(self, project_dir: Path):
-        result = create_backup(project_dir, "AI configuration change")
+        result = create_backup(project_dir / "project.avc", "AI configuration change")
         assert result is not None
         assert "ai_configuration_change" in result.name
 
     def test_special_chars_in_reason(self, project_dir: Path):
-        result = create_backup(project_dir, "User's backup! @#$%")
+        result = create_backup(project_dir / "project.avc", "User's backup! @#$%")
         assert result is not None
         # Should create a valid filename
         assert result.exists()
@@ -123,19 +123,19 @@ class TestCreateBackup:
             import shutil
             shutil.rmtree(backups_dir)
 
-        result = create_backup(project_dir, "Test")
+        result = create_backup(project_dir / "project.avc", "Test")
         assert result is not None
         assert (project_dir / "backups").is_dir()
 
     def test_no_scripts_dir_ok(self, tmp_path: Path):
         project_data = {"project": {"id": "t", "name": "T"}}
         (tmp_path / "project.avc").write_text(json.dumps(project_data), encoding="utf-8")
-        result = create_backup(tmp_path, "Test")
+        result = create_backup(tmp_path / "project.avc", "Test")
         assert result is not None
 
     def test_corrupt_project_file_still_creates_backup(self, tmp_path: Path):
         (tmp_path / "project.avc").write_text("not valid json", encoding="utf-8")
-        result = create_backup(tmp_path, "Test")
+        result = create_backup(tmp_path / "project.avc", "Test")
         assert result is not None
         # project_name will be empty but backup still created
         with zipfile.ZipFile(result, "r") as zf:
@@ -149,30 +149,30 @@ class TestCreateBackup:
 
 class TestListBackups:
     def test_lists_zip_backups(self, project_dir: Path):
-        create_backup(project_dir, "First")
-        create_backup(project_dir, "Second")
+        create_backup(project_dir / "project.avc", "First")
+        create_backup(project_dir / "project.avc", "Second")
 
-        results = list_backups(project_dir)
+        results = list_backups(project_dir / "project.avc")
         assert len(results) == 2
         assert all(b.format == "zip" for b in results)
 
     def test_newest_first(self, project_dir: Path):
-        create_backup(project_dir, "Old")
-        create_backup(project_dir, "New")
+        create_backup(project_dir / "project.avc", "Old")
+        create_backup(project_dir / "project.avc", "New")
 
-        results = list_backups(project_dir)
+        results = list_backups(project_dir / "project.avc")
         assert len(results) >= 2
         # Newest should be first
         assert results[0].reason == "New"
         assert results[1].reason == "Old"
 
     def test_empty_dir(self, empty_project_dir: Path):
-        results = list_backups(empty_project_dir)
+        results = list_backups(empty_project_dir / "project.avc")
         assert results == []
 
     def test_includes_metadata(self, project_dir: Path):
-        create_backup(project_dir, "Test backup")
-        results = list_backups(project_dir)
+        create_backup(project_dir / "project.avc", "Test backup")
+        results = list_backups(project_dir / "project.avc")
         assert len(results) == 1
         b = results[0]
         assert b.reason == "Test backup"
@@ -182,12 +182,12 @@ class TestListBackups:
         assert b.filename.startswith("backups/")
 
     def test_ignores_corrupted_zips(self, project_dir: Path):
-        create_backup(project_dir, "Good")
+        create_backup(project_dir / "project.avc", "Good")
         # Create a corrupted zip
         bad_path = project_dir / "backups" / "backup_99999999_999999_bad.zip"
         bad_path.write_bytes(b"not a zip file")
 
-        results = list_backups(project_dir)
+        results = list_backups(project_dir / "project.avc")
         # Should only list the good backup
         assert len(results) == 1
         assert results[0].reason == "Good"
@@ -200,7 +200,7 @@ class TestListBackups:
 class TestRestoreFromBackup:
     def test_restore_project_file(self, project_dir: Path):
         # Create backup
-        backup_path = create_backup(project_dir, "Before changes")
+        backup_path = create_backup(project_dir / "project.avc", "Before changes")
         assert backup_path is not None
 
         # Modify the project
@@ -208,14 +208,14 @@ class TestRestoreFromBackup:
         (project_dir / "project.avc").write_text(json.dumps(new_data), encoding="utf-8")
 
         # Restore
-        restore_from_backup(backup_path, project_dir)
+        restore_from_backup(backup_path, project_dir / "project.avc")
 
         # Verify original project restored
         restored = json.loads((project_dir / "project.avc").read_text(encoding="utf-8"))
         assert restored["project"]["name"] == "Test Project"
 
     def test_restore_scripts(self, project_dir: Path):
-        backup_path = create_backup(project_dir, "Test")
+        backup_path = create_backup(project_dir / "project.avc", "Test")
         assert backup_path is not None
 
         # Delete a script and add a new one
@@ -223,7 +223,7 @@ class TestRestoreFromBackup:
         (project_dir / "scripts" / "new_script.py").write_text("new", encoding="utf-8")
 
         # Restore
-        restore_from_backup(backup_path, project_dir)
+        restore_from_backup(backup_path, project_dir / "project.avc")
 
         # Original scripts restored, new script removed
         scripts = list((project_dir / "scripts").glob("*.py"))
@@ -233,18 +233,18 @@ class TestRestoreFromBackup:
         assert "new_script.py" not in script_names
 
     def test_restore_assets(self, project_dir: Path):
-        backup_path = create_backup(project_dir, "Test")
+        backup_path = create_backup(project_dir / "project.avc", "Test")
         assert backup_path is not None
 
         # Verify assets exist after restore
-        restore_from_backup(backup_path, project_dir)
+        restore_from_backup(backup_path, project_dir / "project.avc")
         assert (project_dir / "assets" / "logo.png").exists()
         assert (project_dir / "assets" / "bg.jpg").exists()
 
     def test_missing_backup_raises(self, project_dir: Path):
         fake_path = project_dir / "backups" / "nonexistent.zip"
         with pytest.raises(FileNotFoundError):
-            restore_from_backup(fake_path, project_dir)
+            restore_from_backup(fake_path, project_dir / "project.avc")
 
     def test_zip_without_project_avc_raises(self, project_dir: Path):
         bad_zip = project_dir / "backups" / "bad_backup.zip"
@@ -253,13 +253,13 @@ class TestRestoreFromBackup:
             zf.writestr("random.txt", "no project file here")
 
         with pytest.raises(ValueError, match="does not contain project.avc"):
-            restore_from_backup(bad_zip, project_dir)
+            restore_from_backup(bad_zip, project_dir / "project.avc")
 
     def test_unrecognized_format_raises(self, project_dir: Path):
         bad_file = project_dir / "backup.tar.gz"
         bad_file.write_bytes(b"fake")
         with pytest.raises(ValueError, match="Unrecognized backup format"):
-            restore_from_backup(bad_file, project_dir)
+            restore_from_backup(bad_file, project_dir / "project.avc")
 
     def test_legacy_backup_restore(self, project_dir: Path):
         # Create a legacy .avc.bak file
@@ -267,7 +267,7 @@ class TestRestoreFromBackup:
         legacy_path = project_dir / "project.20240101_120000.avc.bak"
         legacy_path.write_text(json.dumps(legacy_data), encoding="utf-8")
 
-        restore_from_backup(legacy_path, project_dir)
+        restore_from_backup(legacy_path, project_dir / "project.avc")
         restored = json.loads((project_dir / "project.avc").read_text(encoding="utf-8"))
         assert restored["project"]["name"] == "Legacy"
 
@@ -313,7 +313,7 @@ class TestCleanupBackups:
     def test_auto_rotation_on_create(self, project_dir: Path):
         # Create more than max_backups
         for i in range(5):
-            create_backup(project_dir, f"Backup {i}", max_backups=3)
+            create_backup(project_dir / "project.avc", f"Backup {i}", max_backups=3)
 
         backups = list((project_dir / "backups").glob("backup_*.zip"))
         assert len(backups) == 3
@@ -339,13 +339,13 @@ class TestBackupHardening:
     def test_restore_clears_orphan_scripts_and_assets(self, project_dir: Path):
         """Restore replaces scripts/ + assets/ with the backup's content,
         removing orphans that aren't in the backup, with no staging leftovers."""
-        backup = create_backup(project_dir, "snapshot")
+        backup = create_backup(project_dir / "project.avc", "snapshot")
         assert backup is not None
         # Add files that the backup does NOT contain.
         (project_dir / "scripts" / "orphan.py").write_text("x=1", encoding="utf-8")
         (project_dir / "assets" / "orphan.png").write_bytes(b"junk")
 
-        restore_from_backup(backup, project_dir)
+        restore_from_backup(backup, project_dir / "project.avc")
 
         scripts = {p.name for p in (project_dir / "scripts").glob("*.py")}
         assets = {p.name for p in (project_dir / "assets").iterdir() if p.is_file()}
@@ -355,31 +355,31 @@ class TestBackupHardening:
 
     def test_restore_produces_no_temp_artifacts(self, project_dir: Path):
         """The atomic writes leave no temp files behind."""
-        backup = create_backup(project_dir, "snapshot")
+        backup = create_backup(project_dir / "project.avc", "snapshot")
         assert backup is not None
-        restore_from_backup(backup, project_dir)
+        restore_from_backup(backup, project_dir / "project.avc")
         assert _temp_artifacts(project_dir) == []
 
     def test_restore_clears_stale_state_when_backup_lacks_it(self, project_dir: Path):
         """Restoring a backup that predates persistence removes a newer
         state.json so the older project doesn't boot with newer values."""
-        backup = create_backup(project_dir, "no-state")  # project_dir has no state.json
+        backup = create_backup(project_dir / "project.avc", "no-state")  # project_dir has no state.json
         assert backup is not None
         # A newer persisted state appears after the backup was taken.
         (project_dir / "state.json").write_text('{"var.vol": 99}', encoding="utf-8")
 
-        restore_from_backup(backup, project_dir)
+        restore_from_backup(backup, project_dir / "project.avc")
 
         assert not (project_dir / "state.json").exists()
 
     def test_restore_keeps_state_json(self, project_dir: Path):
         """Positive: a backup that includes state.json restores it atomically."""
         (project_dir / "state.json").write_text('{"var.vol": 50}', encoding="utf-8")
-        backup = create_backup(project_dir, "with-state")
+        backup = create_backup(project_dir / "project.avc", "with-state")
         assert backup is not None
         (project_dir / "state.json").unlink()
 
-        restore_from_backup(backup, project_dir)
+        restore_from_backup(backup, project_dir / "project.avc")
 
         assert json.loads((project_dir / "state.json").read_text(encoding="utf-8")) == {"var.vol": 50}
 
@@ -389,8 +389,8 @@ class TestBackupHardening:
         fixed = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
         monkeypatch.setattr(backup_manager, "datetime", MagicMock(now=lambda tz=None: fixed))
 
-        b1 = create_backup(project_dir, "Periodic")
-        b2 = create_backup(project_dir, "Periodic")
+        b1 = create_backup(project_dir / "project.avc", "Periodic")
+        b2 = create_backup(project_dir / "project.avc", "Periodic")
         assert b1 is not None and b2 is not None
         assert b1 != b2
         assert b1.exists() and b2.exists()
@@ -403,7 +403,7 @@ class TestBackupHardening:
         (project_dir / "project.20240315_143022.avc.bak").write_bytes(b"{}")
         (project_dir / "project.avc.bak").write_bytes(b"{}")
 
-        names = {b.filename for b in list_backups(project_dir)}
+        names = {b.filename for b in list_backups(project_dir / "project.avc")}
         assert "project.20240315_143022.avc.bak" in names
         assert "project.avc.bak" not in names
 
@@ -411,7 +411,7 @@ class TestBackupHardening:
         """A pre_restore backup surfaces exactly once (no duplicate)."""
         (project_dir / "project.pre_restore_20240315.avc.bak").write_bytes(b"{}")
 
-        results = [b for b in list_backups(project_dir)
+        results = [b for b in list_backups(project_dir / "project.avc")
                    if b.filename == "project.pre_restore_20240315.avc.bak"]
         assert len(results) == 1
         assert results[0].reason == "Pre-restore backup"
@@ -473,7 +473,7 @@ class TestNestedAssets:
 
     def test_backup_carries_a_nested_asset(self, project_dir: Path):
         self._nest(project_dir)
-        backup_path = create_backup(project_dir, "Manual backup")
+        backup_path = create_backup(project_dir / "project.avc", "Manual backup")
         with zipfile.ZipFile(backup_path) as zf:
             names = set(zf.namelist())
             assert "assets/rooms/plan.png" in names
@@ -484,14 +484,14 @@ class TestNestedAssets:
 
     def test_restore_puts_a_nested_asset_back_where_it_was(self, project_dir: Path):
         self._nest(project_dir)
-        backup_path = create_backup(project_dir, "Manual backup")
+        backup_path = create_backup(project_dir / "project.avc", "Manual backup")
 
         # Wipe the tree, then restore it.
         (project_dir / "assets" / "rooms" / "plan.png").unlink()
         (project_dir / "assets" / "floors" / "plan.png").unlink()
         (project_dir / "assets" / "logo.png").unlink()
 
-        restore_from_backup(backup_path, project_dir)
+        restore_from_backup(backup_path, project_dir / "project.avc")
 
         assert (project_dir / "assets" / "rooms" / "plan.png").read_bytes() == b"rooms plan"
         assert (project_dir / "assets" / "floors" / "plan.png").read_bytes() == b"floors plan"
@@ -502,12 +502,12 @@ class TestNestedAssets:
     def test_restore_still_clears_what_the_backup_does_not_carry(self, project_dir: Path):
         # The replace-don't-merge promise the flat restore already made: an
         # asset added after the backup is gone once the backup is restored.
-        backup_path = create_backup(project_dir, "Manual backup")
+        backup_path = create_backup(project_dir / "project.avc", "Manual backup")
         later = project_dir / "assets" / "rooms" / "added-later.png"
         later.parent.mkdir(parents=True)
         later.write_bytes(b"later")
 
-        restore_from_backup(backup_path, project_dir)
+        restore_from_backup(backup_path, project_dir / "project.avc")
 
         assert not later.exists()
         assert (project_dir / "assets" / "logo.png").is_file()
@@ -515,11 +515,11 @@ class TestNestedAssets:
     def test_restore_skips_an_asset_that_would_escape_the_tree(self, project_dir: Path, tmp_path: Path):
         # A hand-crafted archive cannot write outside assets/. It is skipped
         # rather than fatal, matching how ui/ treats an archive it dislikes.
-        backup_path = create_backup(project_dir, "Manual backup")
+        backup_path = create_backup(project_dir / "project.avc", "Manual backup")
         with zipfile.ZipFile(backup_path, "a") as zf:
             zf.writestr("assets/../../escaped.png", b"nope")
 
-        restore_from_backup(backup_path, project_dir)
+        restore_from_backup(backup_path, project_dir / "project.avc")
 
         assert not (tmp_path.parent / "escaped.png").exists()
         assert not (project_dir / "escaped.png").exists()
@@ -527,11 +527,80 @@ class TestNestedAssets:
 
     def test_backup_skips_the_noise_a_file_manager_leaves(self, project_dir: Path):
         (project_dir / "assets" / ".DS_Store").write_bytes(b"junk")
-        backup_path = create_backup(project_dir, "Manual backup")
+        backup_path = create_backup(project_dir / "project.avc", "Manual backup")
         with zipfile.ZipFile(backup_path) as zf:
             written = [n for n in zf.namelist() if n.startswith("assets/")]
         # It rides along in the archive (the walk is not a filter), but restore
         # is where it must not land.
-        restore_from_backup(backup_path, project_dir)
+        restore_from_backup(backup_path, project_dir / "project.avc")
         assert not (project_dir / "assets" / ".DS_Store").exists()
         assert any(n.endswith("logo.png") for n in written)
+
+
+# ---------------------------------------------------------------------------
+# A project file with its own name
+# ---------------------------------------------------------------------------
+
+class TestAProjectFileWithItsOwnName:
+    """``OPENAVC_PROJECT`` is a path, and the file at the end of it can be
+    called anything. Every backup door used to look for ``project.avc`` beside
+    it instead, so a site pointing at ``main-hall.avc`` got no backup of any
+    kind, a restore that answered "restored" and changed nothing, and a boot
+    recovery with nothing to recover from."""
+
+    @pytest.fixture
+    def hall(self, tmp_path: Path) -> Path:
+        path = tmp_path / "main-hall.avc"
+        path.write_text(
+            json.dumps({"project": {"id": "hall", "name": "Main Hall"}, "openavc_version": "0.4.0"}),
+            encoding="utf-8",
+        )
+        return path
+
+    def test_it_is_backed_up(self, hall):
+        path = create_backup(hall, "Manual backup")
+        assert path is not None
+        with zipfile.ZipFile(path) as zf:
+            # The archive's member keeps its one name, whatever the file is
+            # called: every backup already on disk carries it.
+            assert json.loads(zf.read("project.avc"))["project"]["name"] == "Main Hall"
+
+    def test_its_backups_are_listed(self, hall):
+        create_backup(hall, "Manual backup")
+        assert [b.reason for b in list_backups(hall)] == ["Manual backup"]
+
+    def test_a_restore_writes_the_file_it_names(self, hall):
+        path = create_backup(hall, "Before changes")
+        hall.write_text('{"project": {"id": "hall", "name": "Changed"}}', encoding="utf-8")
+        restore_from_backup(path, hall)
+        assert json.loads(hall.read_text(encoding="utf-8"))["project"]["name"] == "Main Hall"
+        assert not (hall.parent / "project.avc").exists()
+
+    def test_a_backup_made_before_this_restores_into_it(self, hall):
+        archive = hall.parent / "backups" / "backup_20260101_000000_old.zip"
+        archive.parent.mkdir()
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr("project.avc", '{"project": {"id": "hall", "name": "From before"}}')
+            zf.writestr("backup_meta.json", json.dumps({"reason": "Old", "timestamp": "2026-01-01T00:00:00+00:00"}))
+        restore_from_backup(archive, hall)
+        assert json.loads(hall.read_text(encoding="utf-8"))["project"]["name"] == "From before"
+
+    def test_a_legacy_backup_restores_into_it(self, hall):
+        legacy = hall.parent / "main-hall.20240315.avc.bak"
+        legacy.write_text('{"project": {"id": "hall", "name": "Legacy"}}', encoding="utf-8")
+        restore_from_backup(legacy, hall)
+        assert json.loads(hall.read_text(encoding="utf-8"))["project"]["name"] == "Legacy"
+        assert not (hall.parent / "project.avc").exists()
+
+    def test_its_crash_copy_is_not_a_backup(self, hall):
+        """The rolling copy save_project writes before every save is not a
+        backup anybody chose, so it is not listed -- for this file's name, not
+        only for ``project.avc``'s."""
+        from openavc.core.project_loader import ProjectConfig, ProjectMeta, save_project
+
+        save_project(hall, ProjectConfig(project=ProjectMeta(id="hall", name="One")))
+        save_project(hall, ProjectConfig(project=ProjectMeta(id="hall", name="Two")))
+        assert any(p.name.endswith(".avc.bak") for p in hall.parent.iterdir()), (
+            "precondition: save_project wrote its crash copy"
+        )
+        assert list_backups(hall) == []

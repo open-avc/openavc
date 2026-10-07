@@ -147,7 +147,7 @@ def test_restore_from_backup_records_the_backup_and_the_cutoff(tmp_path):
     it is the line after which the integrator's own changes may be gone."""
     project_path = tmp_path / "projects" / "default" / "project.avc"
     _real_project(project_path)
-    backup = create_backup(project_path.parent, "Auto backup")
+    backup = create_backup(project_path, "Auto backup")
     assert backup is not None, "precondition: a backup to restore from"
     _corrupt(project_path)
 
@@ -194,7 +194,7 @@ def test_missing_project_with_a_backup_says_it_was_missing(tmp_path, monkeypatch
     monkeypatch.setattr("openavc.system_config.get_seed_project_path", lambda: None)
     project_path = tmp_path / "projects" / "default" / "project.avc"
     _real_project(project_path)
-    assert create_backup(project_path.parent, "Auto backup") is not None
+    assert create_backup(project_path, "Auto backup") is not None
     project_path.unlink()
 
     eng = Engine(str(project_path))
@@ -243,7 +243,7 @@ def test_the_record_outlives_the_boot_that_wrote_it(tmp_path):
     nightly must still be carrying the notice in the morning."""
     project_path = tmp_path / "projects" / "default" / "project.avc"
     _real_project(project_path)
-    assert create_backup(project_path.parent, "Auto backup") is not None
+    assert create_backup(project_path, "Auto backup") is not None
     _corrupt(project_path)
     Engine(str(project_path))._load_project_safe()
 
@@ -259,7 +259,7 @@ def test_dismissing_is_what_clears_it(tmp_path):
     left to clear, so a double-click cannot report a notice that was there."""
     project_path = tmp_path / "projects" / "default" / "project.avc"
     _real_project(project_path)
-    assert create_backup(project_path.parent, "Auto backup") is not None
+    assert create_backup(project_path, "Auto backup") is not None
     _corrupt(project_path)
     eng = Engine(str(project_path))
     eng._load_project_safe()
@@ -306,7 +306,7 @@ def test_the_dismiss_endpoint_clears_the_notice(tmp_path):
 
     project_path = tmp_path / "projects" / "default" / "project.avc"
     _real_project(project_path)
-    assert create_backup(project_path.parent, "Auto backup") is not None
+    assert create_backup(project_path, "Auto backup") is not None
     _corrupt(project_path)
     eng = Engine(str(project_path))
     eng.project = eng._load_project_safe()
@@ -327,3 +327,41 @@ def test_the_dismiss_endpoint_clears_the_notice(tmp_path):
         assert client.post("/api/project/recovery/dismiss").json()["cleared"] is False
     finally:
         rest.set_engine(None)
+
+
+# --- A project file with its own name ---
+
+
+def test_a_project_with_its_own_name_boots_from_its_backup(tmp_path):
+    """The whole recovery used to assume ``project.avc``: nothing was ever
+    backed up for any other name, so a corrupt ``main-hall.avc`` came up as an
+    empty Recovery Project however many saves had gone before."""
+    project_path = tmp_path / "projects" / "hall" / "main-hall.avc"
+    _real_project(project_path)
+    backup = create_backup(project_path, "Auto backup")
+    assert backup is not None, "precondition: a backup to restore from"
+    _corrupt(project_path)
+
+    project = Engine(str(project_path))._load_project_safe()
+
+    assert project.project.id == "live"
+    record = project_recovery.read(project_path.parent)
+    assert record["outcome"] == project_recovery.RESTORED
+    assert record["backup"] == f"backups/{backup.name}"
+    assert not (project_path.parent / "project.avc").exists()
+
+
+def test_a_project_with_its_own_name_is_never_recovered_into_another_file(tmp_path, monkeypatch):
+    """With no backup, recovery used to take the file's crash copy for a legacy
+    backup, write it to ``project.avc`` beside it and reload the still-corrupt
+    real file. Nothing may write a file the server does not load."""
+    monkeypatch.setattr("openavc.system_config.get_seed_project_path", lambda: None)
+    project_path = tmp_path / "main-hall.avc"
+    _real_project(project_path, name="First")
+    _real_project(project_path, name="Second")  # leaves the crash copy behind
+    _corrupt(project_path)
+
+    project = Engine(str(project_path))._load_project_safe()
+
+    assert project.project.id == "recovery"
+    assert not (tmp_path / "project.avc").exists()

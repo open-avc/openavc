@@ -210,7 +210,7 @@ class CommandHandler:
 
                     # Create backup before overwriting
                     import asyncio
-                    await asyncio.to_thread(create_backup, project_path.parent, "Before cloud config push")
+                    await asyncio.to_thread(create_backup, project_path, "Before cloud config push")
 
                     # A fleet push wins by design — no expected_revision — but
                     # it goes through the one seam: LOAD-origin apply persists

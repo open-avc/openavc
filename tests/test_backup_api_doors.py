@@ -96,3 +96,31 @@ def test_legacy_backup_is_named_and_restored_the_same_way(
     assert [b["filename"] for b in legacy] == ["project.20260406.avc.bak"]
 
     assert client.post(f"/api/backups/{legacy[0]['filename']}/restore").status_code == 200
+
+
+def test_the_doors_serve_a_project_file_with_its_own_name(tmp_path: Path):
+    """``OPENAVC_PROJECT`` can name any file. Create used to answer 404 "No
+    project to back up" for one not called ``project.avc``, and restore wrote
+    ``project.avc`` beside it and answered "restored" with nothing changed."""
+    hall = tmp_path / "main-hall.avc"
+    hall.write_text(json.dumps({"project": {"id": "hall", "name": "Main Hall"}}), encoding="utf-8")
+    engine = MagicMock()
+    engine.project_path = hall
+    engine.persister = None
+    engine.reload_project = AsyncMock()
+    engine.reload_persisted_state = MagicMock()
+    rest.set_engine(engine)
+    try:
+        client = TestClient(app)
+        created = client.post("/api/backups/create", json={"reason": "Manual backup"})
+        assert created.status_code == 200, created.json()
+        filename = created.json()["filename"]
+        assert filename in [b["filename"] for b in client.get("/api/backups").json()["backups"]]
+
+        hall.write_text(json.dumps({"project": {"id": "hall", "name": "Changed"}}), encoding="utf-8")
+        assert client.post(f"/api/backups/{filename}/restore").status_code == 200
+
+        assert json.loads(hall.read_text(encoding="utf-8"))["project"]["name"] == "Main Hall"
+        assert not (tmp_path / "project.avc").exists()
+    finally:
+        rest.set_engine(None)
