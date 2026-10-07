@@ -46,15 +46,21 @@ SERVICE_NAME = 'OpenAVC'
 DEFAULT_PORT = 8080
 POLL_INTERVAL = 5  # seconds
 DATA_DIR = Path(os.environ.get('PROGRAMDATA', 'C:\\ProgramData')) / 'OpenAVC'
-STARTUP_ERROR_FILE = DATA_DIR / 'startup-error.json'
+# The installer restricts the data folder to the service and administrators,
+# and the tray runs as the signed-in user, so the tray reads only status\, the
+# one folder every local account can read. The server writes both files there
+# (STATUS_DIR_NAME and the file names in openavc/main.py).
+STATUS_DIR = DATA_DIR / 'status'
+STARTUP_ERROR_FILE = STATUS_DIR / 'startup-error.json'
+SERVER_ADDRESS_FILE = STATUS_DIR / 'server.json'
 
 
 def _get_server_config() -> dict:
-    """Read the relevant subset of system.json at tray startup.
+    """Read the ports the server listens on, as it recorded them at its last start.
 
     Returns: {"http_port", "tls_enabled", "tls_port"}.
     Falls back to defaults on any read/parse failure — the tray must keep
-    running even if system.json is malformed.
+    running before the server has ever started, or if the file is malformed.
     """
     result = {
         "http_port": DEFAULT_PORT,
@@ -81,22 +87,19 @@ def _get_server_config() -> dict:
         except ValueError:
             pass
 
-    # The existence check is inside the try too: on a data folder an
-    # administrator has restricted to SYSTEM and Administrators, the tray (which
-    # runs as the signed-in user) is refused even a stat, and that must leave it
-    # on the defaults rather than stop it starting.
-    system_json = Path(os.environ.get('PROGRAMDATA', 'C:\\ProgramData')) / 'OpenAVC' / 'system.json'
+    # The existence check is inside the try too: if status\ is ever refused to
+    # the signed-in user, even a stat fails, and that must leave the tray on the
+    # defaults rather than stop it starting.
     try:
-        if system_json.exists():
-            data = json.loads(system_json.read_text(encoding='utf-8'))
+        if SERVER_ADDRESS_FILE.exists():
+            data = json.loads(SERVER_ADDRESS_FILE.read_text(encoding='utf-8'))
             if 'OPENAVC_PORT' not in os.environ:
-                result["http_port"] = data.get('network', {}).get('http_port', DEFAULT_PORT)
-            tls_section = data.get('tls', {}) if isinstance(data.get('tls'), dict) else {}
+                result["http_port"] = int(data.get('http_port', DEFAULT_PORT))
             if 'OPENAVC_TLS_ENABLED' not in os.environ:
-                result["tls_enabled"] = bool(tls_section.get('enabled', False))
+                result["tls_enabled"] = bool(data.get('tls_enabled', False))
             if 'OPENAVC_TLS_PORT' not in os.environ:
-                result["tls_port"] = int(tls_section.get('port', 8443))
-    except (json.JSONDecodeError, OSError, ValueError, TypeError):
+                result["tls_port"] = int(data.get('tls_port', 8443))
+    except (json.JSONDecodeError, OSError, ValueError, TypeError, AttributeError):
         pass
 
     return result

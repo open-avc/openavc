@@ -71,7 +71,7 @@ body:
       description: |
         Paste any relevant log output or error traceback. Server logs are in the Programmer IDE
         under Logs, and on disk in the data directory (Windows: `C:\ProgramData\OpenAVC`,
-        Linux: `/var/lib/openavc`).
+        which needs an administrator account; Linux: `/var/lib/openavc`).
       render: shell
     validations:
       required: false

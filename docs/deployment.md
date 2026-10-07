@@ -81,9 +81,15 @@ Override with the `OPENAVC_DATA_DIR` environment variable.
 ├── plugin_repo/       # Community and custom plugins (installed from the IDE)
 ├── backups/           # Automatic pre-update backups
 ├── logs/              # Log files (rotated)
+├── status/            # The ports the server listens on, and why it last failed to start
 ├── system.json        # System configuration
 └── update-cache/      # Downloaded update packages (temp)
 ```
+
+On Windows, the installer restricts the data directory to the service and
+administrators at every install and update, so other accounts signed in to the
+PC cannot read the project, `system.json` or the logs. `status/` is the one
+folder every account can read, for the tray app; nothing secret is written there.
 
 `driver_repo/` and `plugin_repo/` live under the data directory so the content
 you install from the Programmer IDE survives application upgrades. On Docker

@@ -697,14 +697,29 @@ def _spawn_replacement() -> None:
         log.exception("Failed to spawn replacement process; exiting without restart")
 
 
+# The data folder's status/ subfolder holds what the Windows tray app reads.
+# The tray runs as the signed-in user, and the installer leaves this one folder
+# readable (and only readable) by every local account, while the rest of the
+# data folder belongs to the service and administrators
+# (installer/secure-data-dir.bat). Nothing secret may be written here.
+# installer/tray.py names the same folder and files.
+STATUS_DIR_NAME = "status"
+STARTUP_ERROR_FILE_NAME = "startup-error.json"
+SERVER_ADDRESS_FILE_NAME = "server.json"
+
+
+def _status_dir():
+    from openavc.system_config import get_data_dir
+    return get_data_dir() / STATUS_DIR_NAME
+
+
 def _write_startup_error(error_type: str, message: str) -> None:
     """Write a startup error file so the tray app (or other monitors) can report it."""
-    from openavc.system_config import get_data_dir
     import json as _json
     try:
-        data_dir = get_data_dir()
-        data_dir.mkdir(parents=True, exist_ok=True)
-        error_file = data_dir / "startup-error.json"
+        status_dir = _status_dir()
+        status_dir.mkdir(parents=True, exist_ok=True)
+        error_file = status_dir / STARTUP_ERROR_FILE_NAME
         error_file.write_text(_json.dumps({
             "error": error_type,
             "message": message,
@@ -716,11 +731,32 @@ def _write_startup_error(error_type: str, message: str) -> None:
 
 def _clear_startup_error() -> None:
     """Remove the startup error file on successful start."""
-    from openavc.system_config import get_data_dir
     try:
-        error_file = get_data_dir() / "startup-error.json"
+        error_file = _status_dir() / STARTUP_ERROR_FILE_NAME
         if error_file.exists():
             error_file.unlink()
+    except OSError:
+        pass
+
+
+def _write_server_address() -> None:
+    """Record the ports this server listens on, for the tray app.
+
+    The tray cannot read system.json, and it cannot ask the server without
+    already knowing the port. These are the values the server binds,
+    environment overrides included, rewritten at every start, so a port
+    changed in Settings reaches the tray with the restart that applies it.
+    """
+    import json as _json
+    from openavc.utils.fileio import atomic_write_text
+    try:
+        status_dir = _status_dir()
+        status_dir.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(status_dir / SERVER_ADDRESS_FILE_NAME, _json.dumps({
+            "http_port": config.HTTP_PORT,
+            "tls_enabled": config.TLS_ENABLED,
+            "tls_port": config.TLS_PORT,
+        }))
     except OSError:
         pass
 
@@ -1271,6 +1307,7 @@ def main():
     os.environ.pop("OPENAVC_RESTARTING", None)
 
     _clear_startup_error()
+    _write_server_address()
 
     if config.TLS_ENABLED:
         asyncio.run(_run_tls())

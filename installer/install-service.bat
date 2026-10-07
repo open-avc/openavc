@@ -58,6 +58,11 @@ if not exist "%DATA_DIR%\projects\default\project.avc" (
     )
 )
 
+REM Restrict the data folder to the service and administrators, at every
+REM install and update, so an update also fixes a system installed before
+REM this step existed. Done while the service is stopped.
+call "%INSTALL_DIR%\secure-data-dir.bat" "%DATA_DIR%"
+
 REM Start the service
 "%INSTALL_DIR%\nssm.exe" start OpenAVC
 

@@ -131,7 +131,7 @@ def _lost_the_port(data_dir: Path, log_path: Path, bind: str, port: int) -> bool
     """
     try:
         record = json.loads(
-            (data_dir / "startup-error.json").read_text(encoding="utf-8")
+            (data_dir / "status" / "startup-error.json").read_text(encoding="utf-8")
         )
     except (OSError, ValueError):
         record = None

@@ -144,14 +144,14 @@ def test_a_bind_lost_after_the_engine_started_is_recognised(tmp_path):
 
 def test_any_other_start_up_error_is_not_mistaken_for_a_lost_port(tmp_path):
     data_dir = tmp_path / "data"
-    data_dir.mkdir()
+    (data_dir / "status").mkdir(parents=True)
     log_path = tmp_path / "server.log"
     log_path.write_text("Traceback (most recent call last):\n", encoding="utf-8")
-    (data_dir / "startup-error.json").write_text(
+    (data_dir / "status" / "startup-error.json").write_text(
         json.dumps({"error": "tls_error", "message": "x"}), encoding="utf-8",
     )
     assert not conftest._lost_the_port(data_dir, log_path, "127.0.0.1", 40123)
-    (data_dir / "startup-error.json").write_text(
+    (data_dir / "status" / "startup-error.json").write_text(
         json.dumps({"error": "port_in_use", "message": "x"}), encoding="utf-8",
     )
     assert conftest._lost_the_port(data_dir, log_path, "127.0.0.1", 40123)

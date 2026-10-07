@@ -241,11 +241,14 @@ The data folder holds the project file (with any device passwords it contains), 
   sudo chmod 750 /var/lib/openavc /var/log/openavc
   ```
 - **macOS:** the folder belongs to the system account the service runs as; no change is needed.
-- **Windows:** `C:\ProgramData\OpenAVC` takes its permissions from `C:\ProgramData`, which lets every local account read files there and create files in its folders. On a PC that other people sign in to (a lectern PC, for example), restrict it to the service and administrators, in an administrator prompt:
+- **Windows:** from OpenAVC 0.37.0, the installer restricts `C:\ProgramData\OpenAVC` to the service and administrators at every install and update, so no other local account can read its files or add new ones. The one exception is its `status` folder, which every local account can read but not change: it holds the ports the server listens on and the reason it last failed to start, for the OpenAVC tray app. To check, in a command prompt:
+  ```powershell
+  icacls "C:\ProgramData\OpenAVC"
+  ```
+  **Expected:** `NT AUTHORITY\SYSTEM` and `BUILTIN\Administrators`, each with full control `(F)`, and no other account. If `BUILTIN\Users` is listed, update OpenAVC. Until you can, an administrator prompt can apply the same restriction by hand, but on versions before 0.37.0 the tray app then fails to start:
   ```powershell
   icacls "C:\ProgramData\OpenAVC" /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F"
   ```
-  The OpenAVC tray app runs as the signed-in user and then cannot read the configured port: on a system whose HTTP port is not 8080, its menu opens the wrong address.
 
 ---
 

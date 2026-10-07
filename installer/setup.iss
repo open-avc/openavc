@@ -84,6 +84,7 @@ Source: "..\dist\openavc-tray\_internal\*"; DestDir: "{app}\_internal"; Flags: i
 ; them on silent upgrades when the registry Inno_SelectedComponents value is empty).
 Source: "nssm.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "install-service.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "secure-data-dir.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "uninstall-service.bat"; DestDir: "{app}"; Flags: ignoreversion
 ; Icon
 Source: "openavc.ico"; DestDir: "{app}"; Flags: ignoreversion

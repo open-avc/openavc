@@ -224,7 +224,8 @@ export function RestartProgressDialog({
                 refused the new configuration. Check the service status
                 (Windows tray, <code>systemctl status openavc</code>, or
                 <code>docker logs openavc</code>) and look for{" "}
-                <code>startup-error.json</code> in the data directory.
+                <code>startup-error.json</code> in the <code>status</code>{" "}
+                folder of the data directory.
               </span>
             </div>
             <div style={{ display: "flex", gap: "var(--space-sm)" }}>

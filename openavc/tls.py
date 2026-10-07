@@ -183,8 +183,9 @@ def _write_key(key: Any, path: Path) -> None:
         encryption_algorithm=serialization.NoEncryption(),
     )
     path.write_bytes(pem)
-    # POSIX: restrict to owner-only. Windows: ACL inherits from %PROGRAMDATA%
-    # (user-only by default), so chmod is unnecessary.
+    # POSIX: restrict to owner-only. Windows: the key inherits the data
+    # folder's ACL, which the installer restricts to SYSTEM and Administrators
+    # (installer/secure-data-dir.bat); chmod cannot change an ACL.
     if os.name == "posix":
         try:
             os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
