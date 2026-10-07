@@ -129,8 +129,12 @@ CHANGES_KEPT = 500
 # How often the wizard hears about a command being watched.
 FLUSH_SECONDS = 0.5
 # Traffic entries and state changes each command shows live (the report
-# keeps them all).
+# keeps them all). The traffic keeps its first LIVE_HEAD entries, which start
+# with what the command sent and what came straight back, and its newest:
+# a poll that lands in the window would otherwise push the command's own
+# exchange out of view.
 LIVE_ENTRIES = 40
+LIVE_HEAD = 20
 LIVE_CHANGES = 20
 # A value that changed, with nothing being watched, this long before a
 # command was sent was already moving (a meter, a clock): its changes in the
@@ -1072,13 +1076,21 @@ class CommandPass:
     def _trial_view(self, trial: CommandTrial, *, every_entry: bool) -> dict[str, Any]:
         traffic = self._window_traffic(trial) if self.run.listens else []
         redactor = self._redactor(trial) if self.run.listens else None
-        shown = traffic if every_entry else traffic[-LIVE_ENTRIES:]
+        left_out = 0 if every_entry else max(len(traffic) - LIVE_ENTRIES, 0)
+        shown = (
+            traffic[:LIVE_HEAD] + traffic[-(LIVE_ENTRIES - LIVE_HEAD):] if left_out else traffic
+        )
         out = trial.to_dict()
         out["traffic"] = {
             "sent": sum(1 for e in traffic if e.direction == TX),
             "received": sum(1 for e in traffic if e.direction == RX),
             "entries": [serialize_entry(e, redactor) for e in shown] if redactor else [],
         }
+        if left_out:
+            # The entries between the first LIVE_HEAD and the newest, which
+            # only the report carries.
+            out["traffic"]["left_out"] = left_out
+            out["traffic"]["left_out_after"] = LIVE_HEAD
         if redactor is not None:
             out["params"] = redactor.value(dict(out["params"]))
             out["changes"] = redactor.value(out["changes"])

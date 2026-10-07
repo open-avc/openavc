@@ -40,6 +40,7 @@ import {
   nowReading,
   paramsText,
   sendWarning,
+  trafficRows,
   trialOutcome,
   type CommandStatusKey,
 } from "../auditHelpers";
@@ -699,17 +700,27 @@ function TrialRow({
             fontSize: "var(--font-size-xs)",
           }}
         >
-          {trial.traffic.entries.map((e) => (
-            <div key={e.seq} style={{ display: "flex", gap: "var(--space-sm)" }}>
-              <span
-                style={{ flexShrink: 0, color: e.direction === "tx" ? "var(--accent)" : "var(--color-success)" }}
-                aria-label={e.direction === "tx" ? "Sent" : "Received"}
-              >
-                {e.direction === "tx" ? "→" : "←"}
-              </span>
-              <span style={{ overflowWrap: "anywhere" }}>{displayBytes(e.text, e.hex)}</span>
-            </div>
-          ))}
+          {trafficRows(trial.traffic).map((row) => {
+            if (row.kind === "gap") {
+              return (
+                <div key="gap" style={{ ...hintStyle, fontFamily: "inherit", margin: "var(--space-xs) 0" }}>
+                  {row.text}
+                </div>
+              );
+            }
+            const e = row.entry;
+            return (
+              <div key={e.seq} style={{ display: "flex", gap: "var(--space-sm)" }}>
+                <span
+                  style={{ flexShrink: 0, color: e.direction === "tx" ? "var(--accent)" : "var(--color-success)" }}
+                  aria-label={e.direction === "tx" ? "Sent" : "Received"}
+                >
+                  {e.direction === "tx" ? "→" : "←"}
+                </span>
+                <span style={{ overflowWrap: "anywhere" }}>{displayBytes(e.text, e.hex)}</span>
+              </div>
+            );
+          })}
         </div>
       )}
     </li>

@@ -352,7 +352,16 @@ export interface AuditCommandTrial {
   /** Why it was not accepted, in words ("" when it was). */
   error: string;
   error_type: string;
-  traffic: { sent: number; received: number; entries: AuditTrafficEntry[] };
+  traffic: {
+    sent: number;
+    received: number;
+    entries: AuditTrafficEntry[];
+    /** Live view only: how many entries were left out, and after how many of
+     *  the shown ones (the first are the command's own exchange, the rest the
+     *  newest; the report keeps every one). */
+    left_out?: number;
+    left_out_after?: number;
+  };
   /** The command sent before this one, and how long before. */
   since_previous: { number: number; command: string; label: string; seconds: number } | null;
   /** Seconds "Wait longer" added. */

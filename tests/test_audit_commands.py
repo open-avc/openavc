@@ -815,6 +815,44 @@ async def test_what_a_command_moved_is_told_from_what_moves_anyway():
     ) == []
 
 
+async def test_a_busy_window_still_shows_what_the_command_sent():
+    """The step's traffic under a command is cut to fit, and the cut keeps the
+    command's own exchange: on a mixer whose 31-query poll landed in Input
+    Mute Off's window, the step showed the poll's last 40 messages and not
+    the command it was under. The report keeps every one."""
+    _DRIVER_REGISTRY["acme_meter"] = create_configurable_driver_class(METER_DRIVER)
+    server, port = await _metering_device()
+    session = AuditSession("cmd10", AuditTarget("127.0.0.1", "127.0.0.1"), AuditOptions())
+    run = DriverRun(index=0, choice=DriverChoice(
+        driver_id="acme_meter", identity={"name": "Acme Meter", "version": "1.0.0"},
+    ))
+    run.config = {"host": "127.0.0.1", "port": port}
+    session.runs.append(run)
+    try:
+        await start_listen(session, run, **FAST)
+        await _until(lambda: len(run.unwatched.get("level") or ()) >= 3)
+        commands = commands_for(session, run, window_seconds=3.0, flush_seconds=0.05)
+        trial = await commands.send("mute_on")
+        await _until(lambda: trial.status == DONE, timeout=10.0)
+        view = commands.to_dict()["trials"][0]["traffic"]
+        every = commands.report_record()["trials"][0]["traffic"]
+        assert view["received"] == every["received"] > 40
+        assert len(every["entries"]) == view["sent"] + view["received"]
+        assert view["entries"][0]["text"] == "MUTE 1\r"
+        assert "MUTE=1" in [e["text"].strip() for e in view["entries"][:5]]
+        shown = len(view["entries"])
+        assert shown == 40 and view["left_out"] == len(every["entries"]) - shown
+        head = view["left_out_after"]
+        assert view["entries"][:head] == every["entries"][:head]
+        assert view["entries"][head:] == every["entries"][-(shown - head):]
+        assert "left_out" not in every
+    finally:
+        await run.stop()
+        server.close()
+        _DRIVER_REGISTRY.pop("acme_meter", None)
+        get_traffic_recorder().clear()
+
+
 MIXER_INFO = {"child_entity_types": {"input": {
     "label": "Input",
     "state_variables": {

@@ -26,6 +26,7 @@ import {
   paramsText,
   sendWarning,
   stepFor,
+  trafficRows,
   trialOutcome,
 } from "./auditHelpers";
 
@@ -369,5 +370,31 @@ describe("what a command sets reads now", () => {
     });
     expect(nowReading(mute, { channel: "1" }, amp)).toBe("Now: channel 01 mute Yes");
     expect(nowReading(mute, {}, amp)).toBe("");
+  });
+});
+
+describe("a command's traffic as the step lists it", () => {
+  const entry = (seq: number, text: string) => ({
+    seq, t: seq, direction: seq === 1 ? "tx" : "rx", channel: "tcp", hex: "", text,
+  }) as AuditCommandTrial["traffic"]["entries"][number];
+
+  it("lists every entry when nothing was left out", () => {
+    const rows = trafficRows({ sent: 1, received: 1, entries: [entry(1, "MUTE 1"), entry(2, "OK")] });
+    expect(rows.map((r) => (r.kind === "entry" ? r.entry.text : r.text))).toEqual(["MUTE 1", "OK"]);
+  });
+
+  it("says where the server left entries out, between the command's own and the newest", () => {
+    // A poll that landed in Input Mute Off's window pushed the command out of
+    // the newest 40; the step now keeps the first ones and says the rest are
+    // in the report.
+    const rows = trafficRows({
+      sent: 30, received: 37, left_out: 27, left_out_after: 2,
+      entries: [entry(1, "SICM 1,0"), entry(2, "SICM ACK"), entry(60, "GOCM 0,0")],
+    });
+    expect(rows.map((r) => (r.kind === "entry" ? r.entry.text : r.text))).toEqual([
+      "SICM 1,0", "SICM ACK", "27 more messages in between; the report has every one.", "GOCM 0,0",
+    ]);
+    expect(trafficRows({ sent: 1, received: 41, left_out: 1, left_out_after: 20, entries: [] })[0])
+      .toEqual({ kind: "gap", text: "1 more message in between; the report has every one." });
   });
 });

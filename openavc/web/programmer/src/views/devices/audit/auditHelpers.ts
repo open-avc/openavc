@@ -257,6 +257,23 @@ export function changedText(item: AuditChangedValue): string {
   return `${item.label}: ${show(item.before)} before, ${show(item.now)} now${by}`;
 }
 
+/** A command's traffic as the step lists it: each entry, and a line where the
+ *  server left entries out of the live view (the report keeps every one). */
+export type TrafficRow =
+  | { kind: "entry"; entry: AuditTrafficEntry }
+  | { kind: "gap"; text: string };
+
+export function trafficRows(traffic: AuditCommandTrial["traffic"]): TrafficRow[] {
+  const rows: TrafficRow[] = traffic.entries.map((entry) => ({ kind: "entry", entry }));
+  const count = traffic.left_out ?? 0;
+  if (count > 0) {
+    const at = Math.min(traffic.left_out_after ?? rows.length, rows.length);
+    const text = `${count} more ${count === 1 ? "message" : "messages"} in between; the report has every one.`;
+    rows.splice(at, 0, { kind: "gap", text });
+  }
+  return rows;
+}
+
 /** Every command in one list: the driver's key ones first (the ones it puts
  *  on a device page, as the server marks them ``suggested``), then the rest,
  *  each part in the driver's order. */
