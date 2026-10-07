@@ -2718,7 +2718,14 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             return
 
         self._deliver_notification(
-            self._render_notification(template, key, self._to_wire(key, value))
+            self._render_notification(
+                template, key, self._to_wire(key, value),
+                state={
+                    ref: self._to_wire(ref, self._state[ref])
+                    for ref in _NOTIFICATION_STATE_REF.findall(template)
+                    if ref in self._state
+                },
+            )
         )
 
     def _deliver_notification(self, msg: str) -> None:
@@ -2774,14 +2781,28 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             asyncio.ensure_future(self.push(data))
 
     @staticmethod
-    def _render_notification(template: str, key: str, value: Any) -> str:
+    def _render_notification(
+        template: str, key: str, value: Any, state: dict[str, Any] | None = None,
+    ) -> str:
         """Render a notification template. `{value}` / `{key}` substitute as
         before; an optional format spec (`{value:d}`, `{value:04X}`) formats
         the value — booleans coerce to int first so `{value:d}` renders a
-        protocol's 0/1 instead of 'True'/'False'."""
+        protocol's 0/1 instead of 'True'/'False'. `{state.<key>}` puts in
+        another state value from ``state`` (the device's own numbers), with
+        the same format specs, for a notice that reports several fields at
+        once; a key ``state`` does not hold is left as written."""
 
         def repl(m: re.Match) -> str:
-            val: Any = value if m.group(1) == "value" else key
+            name = m.group(1)
+            if name == "value":
+                val: Any = value
+            elif name == "key":
+                val = key
+            else:
+                ref = name[len("state."):]
+                if state is None or ref not in state:
+                    return m.group(0)
+                val = state[ref]
             spec = m.group(2)
             if not spec:
                 return str(val)
@@ -2799,7 +2820,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                             continue
                 return str(val)
 
-        return re.sub(r"\{(value|key)(?::([^{}]*))?\}", repl, template)
+        return re.sub(r"\{(value|key|state\.[\w.]+)(?::([^{}]*))?\}", repl, template)
 
     def _push_osc_state(self, key: str, value: Any) -> None:
         """Send an OSC message to the connected driver for a state change."""
@@ -3322,6 +3343,9 @@ def _first_read_back(lines: list[tuple[str, str, _ReadBack]]) -> str:
             return line
     return lines[0][0]
 
+
+# The state keys a notification template names as ``{state.<key>}``.
+_NOTIFICATION_STATE_REF = re.compile(r"\{state\.([\w.]+)(?::[^{}]*)?\}")
 
 # ── Utility functions ──
 

@@ -1510,12 +1510,12 @@ def _check_notifications(
             from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
             message = YAMLAutoSimulator._render_notification(
-                str(template), key, sample_value
+                str(template), key, sample_value, state=sim_initial
             )
             # Unresolved {placeholder} tokens can't be validated statically.
             # A brace followed by a quote is JSON, not a placeholder — a
             # rendered JSON notification must still round-trip below.
-            if re.search(r"\{[a-zA-Z_]\w*(:[^}]*)?\}", message):
+            if re.search(r"\{[a-zA-Z_][\w.]*(:[^}]*)?\}", message):
                 continue
             # Mirror runtime dispatch: pushed data is split on line endings
             # and the driver's own delimiter, and stripped before matching, so

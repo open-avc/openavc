@@ -644,6 +644,36 @@ def test_sim_render_notification_specs():
     assert render("H {value:04X}", "k", 255) == "H 00FF"
     assert render("K {key} {value}", "vol", 7) == "K vol 7"
     assert render("bad {value:zz}", "k", 7) == "bad 7"
+    # Another value's current setting, for a notice carrying several fields.
+    state = {"level": 300, "mute": True, "in.1.gain": 12}
+    assert render("C {state.level},{value:d}", "mute", True, state=state) == "C 300,1"
+    assert render("C {state.mute:d}", "level", 1, state=state) == "C 1"
+    assert render("C {state.in.1.gain:03d}", "x", 0, state=state) == "C 012"
+    assert render("C {state.absent}", "x", 0, state=state) == "C {state.absent}"
+    assert render("C {state.level}", "x", 0) == "C {state.level}"
+
+
+def test_sim_notification_carries_the_other_fields_from_state():
+    # One notice reports gain, level and mute together; changing any one of
+    # them sends the line with the other two as they are now.
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
+
+    d = _sim_def()
+    d["simulator"]["initial_state"]["gain"] = 20
+    d["simulator"]["notifications"] = {
+        "mute": {"*": "NOTIFY CH {state.gain},{state.level},{value:d} "},
+        "level": {"*": "NOTIFY CH {state.gain},{value},{state.mute:d} "},
+    }
+    sim = YAMLAutoSimulator(device_id="acme1", config={}, driver_def=d)
+    fake = _FakeSock()
+    sim._mcast_sock = fake
+
+    sim.set_state("mute", True)
+    sim.set_state("level", 250)
+    assert [data for data, _dest in fake.sent] == [
+        b"NOTIFY CH 20,100,1 \r",
+        b"NOTIFY CH 20,250,1 \r",
+    ]
 
 
 def test_sim_emits_notification_via_multicast_not_tcp():
