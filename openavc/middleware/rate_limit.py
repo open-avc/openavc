@@ -40,7 +40,11 @@ from starlette.responses import Response
 
 from openavc import config
 from openavc.utils.logger import get_logger
-from openavc.utils.request_origin import LOOPBACK_HOSTS, is_tunneled_request
+from openavc.utils.request_origin import (
+    LOOPBACK_HOSTS,
+    forwarded_client,
+    is_tunneled_request,
+)
 
 log = get_logger(__name__)
 
@@ -271,7 +275,12 @@ def _classify(method: str, path: str) -> str:
     return "standard"
 
 
-def _get_client_ip(request: Request) -> str:
+def _client_key(request: Request) -> tuple[str, bool]:
+    """The bucket this request is metered in, and whether it is exempt.
+
+    Exempt means the machine's own screen: a loopback peer that neither the
+    tunnel nor a proxy delivered.
+    """
     # Cloud-tunnel traffic first: it arrives from loopback, so without this it
     # would take the exemption below and get no limit and no brute-force
     # counter at all — an unthrottled channel for guessing the very password
@@ -283,19 +292,20 @@ def _get_client_ip(request: Request) -> str:
     # and control tiers a remote Programmer on the LAN already lives with, so
     # this is parity with direct remote access rather than a new ceiling.
     if is_tunneled_request(request):
-        return TUNNEL_BUCKET_KEY
-    # Only trust X-Forwarded-For when explicitly configured to sit behind a
-    # known reverse proxy. Otherwise a client could set the header to spoof its
-    # source IP — dodging per-IP limits AND the 127.0.0.1 rate-limit exemption
-    # below, which would defeat the 401 brute-force counter. Default to the
-    # real TCP peer.
-    if config.TRUST_FORWARDED_FOR:
-        forwarded = request.headers.get("x-forwarded-for")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
+        return TUNNEL_BUCKET_KEY, False
+    # The client a proxy names, believed only from a proxy the operator
+    # declared (network.trust_forwarded_for, network.trusted_proxies) and read
+    # from the right, so a client cannot write itself a new address per
+    # request or call itself 127.0.0.1. It keys the bucket and never earns the
+    # exemption: "127.0.0.1" from a proxy is the proxy's machine, and a
+    # forwarded request is not the console anywhere else either.
+    forwarded = forwarded_client(request)
+    if forwarded is not None:
+        return forwarded, False
     if request.client:
-        return request.client.host
-    return "unknown"
+        host = request.client.host
+        return host, host in LOOPBACK_HOSTS
+    return "unknown", False
 
 
 class _SlidingWindow:
@@ -405,12 +415,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         now = time.monotonic()
         _cleanup(now)
 
-        client_ip = _get_client_ip(request)
+        client_ip, exempt = _client_key(request)
 
-        # Exempt localhost from rate limiting — primary deployment is single-user
-        # local. Tunneled traffic never lands here: _get_client_ip has already
-        # given it its own key.
-        if client_ip in LOOPBACK_HOSTS:
+        # Exempt the machine's own screen — primary deployment is single-user
+        # local. Tunneled and forwarded traffic never is: _client_key has
+        # already given it a key of its own.
+        if exempt:
             return await call_next(request)
         buckets = _ip_buckets.get(client_ip)
         if buckets is None:

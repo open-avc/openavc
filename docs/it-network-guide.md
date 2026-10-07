@@ -125,7 +125,7 @@ The Raspberry Pi appliance image hardens the operating-system login as well as t
 
 This is Pi-image-specific. On a generic Linux `install.sh` host, OpenAVC does not touch the operating-system account or `sshd` — the server runs as an unprivileged service user and you manage OS login and SSH yourself.
 
-**Fronting OpenAVC with your own auth** (an SSO reverse proxy, for example): set `OPENAVC_ALLOW_ANONYMOUS=true` to opt back into open admin access, and restrict reachability at the proxy. If you do this behind a trusted proxy that sets `X-Forwarded-For`, also set `network.trust_forwarded_for: true` in `system.json` so per-client rate limiting sees the real client IP. With the proxy on the same machine this is required, not optional: without it every forwarded request arrives from the machine itself and is treated as the machine's own screen. The proxy also has to be the only way in. Both steps are in [Behind a reverse proxy](hardened-deployment.md#behind-a-reverse-proxy).
+**Fronting OpenAVC with your own auth** (an SSO reverse proxy, for example): set `OPENAVC_ALLOW_ANONYMOUS=true` to opt back into open admin access, and restrict reachability at the proxy. Have the proxy set `X-Forwarded-For`, and set `network.trust_forwarded_for: true` in `system.json` so per-client rate limiting sees the real client IP; a proxy on another machine also goes in `network.trusted_proxies`. Without the header, every request through a proxy on the same machine arrives from the machine itself and is treated as the machine's own screen. The proxy also has to be the only way in. The steps are in [Behind a reverse proxy](hardened-deployment.md#behind-a-reverse-proxy).
 
 ---
 
@@ -724,4 +724,4 @@ Yes. OpenAVC is MIT-licensed open source. The full source code, including the cl
 
 ---
 
-*Document version: 1.7. For the latest version, see [docs.openavc.com](https://docs.openavc.com).*
+*Document version: 1.8. For the latest version, see [docs.openavc.com](https://docs.openavc.com).*

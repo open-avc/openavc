@@ -129,6 +129,30 @@ def test_a_forwarded_request_behind_a_trusted_proxy_is_not_the_console(claimed_e
     assert claimed_engine.panel_devices.list_devices()["pending"][0]["address"] == "203.0.113.9"
 
 
+def test_a_client_that_reached_the_port_directly_is_named_by_its_own_address(claimed_engine, access_mode, monkeypatch):
+    """With a proxy declared, the header is still only a proxy's to write: a
+    LAN client that sends one is listed under the address it connected from."""
+    access_mode("approved")
+    monkeypatch.setattr(config, "TRUST_FORWARDED_FOR", True)
+    resp = lan_client().get("/api/panel/access", headers={"x-forwarded-for": "127.0.0.1"})
+    assert resp.json()["status"] == "pending"
+    assert claimed_engine.panel_devices.list_devices()["pending"][0]["address"] == "testclient"
+
+
+def test_a_new_header_per_request_does_not_get_past_the_per_address_cap(claimed_engine, access_mode, monkeypatch):
+    """The cap on waiting requests from one address is what stops one machine
+    filling the whole list. Believed from anyone, a header made every request
+    a new address."""
+    access_mode("approved")
+    monkeypatch.setattr(config, "TRUST_FORWARDED_FOR", True)
+    statuses = [
+        lan_client().get("/api/panel/access", headers={"x-forwarded-for": f"198.51.100.{n}"}).json()["status"]
+        for n in range(pd.MAX_PENDING_PER_ADDRESS + 2)
+    ]
+    assert statuses.count("pending") == pd.MAX_PENDING_PER_ADDRESS
+    assert len(claimed_engine.panel_devices.list_devices()["pending"]) == pd.MAX_PENDING_PER_ADDRESS
+
+
 def test_a_cloud_tunnel_is_approved_and_gets_no_cookie(claimed_engine, access_mode):
     access_mode("approved")
     resp = loopback_client().get("/api/panel/access", headers=TUNNEL_HEADERS)

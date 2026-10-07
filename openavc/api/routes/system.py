@@ -353,6 +353,25 @@ async def update_system_config(request: Request) -> dict[str, Any]:
                     "or 'open' (anyone on the network)."
                 ),
             )
+    # A trusted proxy that does not parse is dropped at runtime, so every
+    # client behind it is metered as the proxy with nothing said. Refused here
+    # instead, naming the entry.
+    if (
+        "network" in body and isinstance(body["network"], dict)
+        and "trusted_proxies" in body["network"]
+    ):
+        from openavc.utils.request_origin import parse_trusted_proxies
+        proxies = body["network"]["trusted_proxies"]
+        _, bad = parse_trusted_proxies(proxies)
+        if bad or not isinstance(proxies, list):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Trusted proxies is a list of addresses or ranges, such as "
+                    '["10.0.0.5", "10.0.1.0/24"].'
+                    + (f" Not an address or range: {', '.join(bad)}." if bad else "")
+                ),
+            )
     # The one-time notice flag is a switch the Programmer turns off (Dismiss);
     # anything but a bool would read as "due" forever or never.
     if (

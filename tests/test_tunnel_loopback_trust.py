@@ -363,9 +363,10 @@ async def test_marker_reaches_the_local_server_as_the_agent_sent_it(tunnel_handl
 # which is how this got shipped. So the peer is off limits by default and the
 # exceptions are named here, each with the reason it isn't a trust decision.
 _MAY_READ_THE_SOCKET_PEER = {
-    # The rate-limit bucket key. Never gates anything; a wrong answer costs a
-    # caller a shared budget, not access.
-    ("openavc/middleware/rate_limit.py", "_get_client_ip"),
+    # The rate-limit bucket key, and loopback's exemption from metering. Never
+    # gates access; a wrong answer costs a caller a shared budget or spares it
+    # one. Only reached once the tunnel and forwarded checks have said no.
+    ("openavc/middleware/rate_limit.py", "_client_key"),
     # Handed to the push listener as the value it compares against the
     # device's own addresses. The trust decision happens there, and this route
     # refuses tunneled requests before reaching it.

@@ -430,23 +430,64 @@ def _req_with_xff(peer_host: str, xff: str | None) -> Request:
     return Request(scope)
 
 
+def _behind_proxy(monkeypatch, proxies=()):
+    """network.trust_forwarded_for on, with these proxies on other machines."""
+    monkeypatch.setattr("openavc.config.TRUST_FORWARDED_FOR", True)
+    monkeypatch.setattr("openavc.config.TRUSTED_PROXIES", list(proxies), raising=False)
+
+
+def _from_peer(app, host: str) -> TestClient:
+    """A client whose socket peer is ``host`` (TestClient's own is "testclient")."""
+
+    async def _app(scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            scope = dict(scope)
+            scope["client"] = (host, 50000)
+        await app(scope, receive, send)
+
+    return TestClient(_app)
+
+
+def _second_hit(client: TestClient, xff: str | None) -> int:
+    """Status of the second standard-tier request with the limit at one."""
+    headers = {"X-Forwarded-For": xff} if xff is not None else {}
+    assert client.get("/api/devices", headers=headers).status_code == 200
+    return client.get("/api/devices", headers=headers).status_code
+
+
 def test_xff_ignored_by_default(monkeypatch):
     """Default posture: X-Forwarded-For is NOT trusted, so the real TCP peer is
     used and a client can't spoof its source IP."""
-    from openavc.middleware.rate_limit import _get_client_ip
+    from openavc.middleware.rate_limit import _client_key
 
     monkeypatch.setattr("openavc.config.TRUST_FORWARDED_FOR", False)
     req = _req_with_xff("203.0.113.9", "127.0.0.1")
-    assert _get_client_ip(req) == "203.0.113.9"
+    assert _client_key(req) == ("203.0.113.9", False)
 
 
-def test_xff_honored_when_trusted(monkeypatch):
-    """When explicitly behind a trusted proxy, the first XFF hop is used."""
-    from openavc.middleware.rate_limit import _get_client_ip
+def test_xff_honored_from_a_listed_proxy(monkeypatch):
+    """Behind a proxy on another machine that is listed, the client it names
+    is the key, read from the right past the proxy's own entry."""
+    from openavc.middleware.rate_limit import _client_key
 
-    monkeypatch.setattr("openavc.config.TRUST_FORWARDED_FOR", True)
+    _behind_proxy(monkeypatch, ["10.0.0.1"])
     req = _req_with_xff("10.0.0.1", "198.51.100.7, 10.0.0.1")
-    assert _get_client_ip(req) == "198.51.100.7"
+    assert _client_key(req) == ("198.51.100.7", False)
+
+
+def test_xff_ignored_from_an_unlisted_machine(monkeypatch):
+    from openavc.middleware.rate_limit import _client_key
+
+    _behind_proxy(monkeypatch)
+    req = _req_with_xff("10.0.0.1", "198.51.100.7")
+    assert _client_key(req) == ("10.0.0.1", False)
+
+
+def test_the_machine_s_own_screen_is_exempt(monkeypatch):
+    from openavc.middleware.rate_limit import _client_key
+
+    _behind_proxy(monkeypatch)
+    assert _client_key(_req_with_xff("127.0.0.1", None)) == ("127.0.0.1", True)
 
 
 def test_spoofed_xff_localhost_does_not_exempt(monkeypatch):
@@ -463,3 +504,63 @@ def test_spoofed_xff_localhost_does_not_exempt(monkeypatch):
         assert client.get("/api/devices", headers=spoof).status_code == 200
         # Second hit must still be throttled — the spoof did NOT exempt it.
         assert client.get("/api/devices", headers=spoof).status_code == 429
+
+
+def test_spoofed_xff_localhost_does_not_exempt_behind_a_proxy_either(monkeypatch):
+    """The same spoof with trust_forwarded_for ON, from a client that reached
+    the port without going through the proxy. The header was believed from
+    any peer, so the client was the machine itself and never throttled."""
+    _behind_proxy(monkeypatch)
+    with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
+        _reset_state()
+        client = _from_peer(_make_app(standard_limit=1), "192.168.4.20")
+        assert _second_hit(client, "127.0.0.1") == 429
+
+
+def test_an_appending_proxy_cannot_carry_a_spoof(monkeypatch):
+    """nginx's $proxy_add_x_forwarded_for keeps what the client sent and
+    appends the real address. Read from the left, a client that sent
+    127.0.0.1 through it was exempt."""
+    _behind_proxy(monkeypatch)
+    with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
+        _reset_state()
+        client = _from_peer(_make_app(standard_limit=1), "127.0.0.1")
+        assert _second_hit(client, "127.0.0.1, 198.51.100.9") == 429
+
+
+def test_a_forwarded_loopback_client_is_metered(monkeypatch):
+    """A proxy that says its client was 127.0.0.1 means its own machine, and a
+    forwarded request is not the console anywhere else either."""
+    _behind_proxy(monkeypatch)
+    with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
+        _reset_state()
+        client = _from_peer(_make_app(standard_limit=1), "127.0.0.1")
+        assert _second_hit(client, "127.0.0.1") == 429
+
+
+def test_the_machine_s_own_screen_is_still_never_throttled(monkeypatch):
+    _behind_proxy(monkeypatch)
+    with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
+        _reset_state()
+        client = _from_peer(_make_app(standard_limit=1), "127.0.0.1")
+        assert _second_hit(client, None) == 200
+
+
+def test_clients_behind_a_listed_proxy_get_their_own_buckets(monkeypatch):
+    _behind_proxy(monkeypatch, ["10.0.0.5"])
+    with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
+        _reset_state()
+        client = _from_peer(_make_app(standard_limit=1), "10.0.0.5")
+        assert _second_hit(client, "198.51.100.20") == 429
+        assert client.get("/api/devices", headers={"X-Forwarded-For": "198.51.100.21"}).status_code == 200
+
+
+def test_clients_behind_an_unlisted_proxy_share_its_bucket(monkeypatch):
+    """The announced cost: a proxy on another machine has to be listed, or
+    every client behind it is metered as the proxy."""
+    _behind_proxy(monkeypatch)
+    with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
+        _reset_state()
+        client = _from_peer(_make_app(standard_limit=1), "10.0.0.5")
+        assert client.get("/api/devices", headers={"X-Forwarded-For": "198.51.100.20"}).status_code == 200
+        assert client.get("/api/devices", headers={"X-Forwarded-For": "198.51.100.21"}).status_code == 429

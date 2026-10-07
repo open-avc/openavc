@@ -226,6 +226,11 @@ DEFAULTS: dict[str, Any] = {
         # known reverse proxy. Off by default so a client can't spoof its
         # source IP to dodge rate limits / the localhost exemption.
         "trust_forwarded_for": False,
+        # The proxies on OTHER machines whose X-Forwarded-For is believed
+        # while trust_forwarded_for is on: addresses or CIDR ranges. A proxy
+        # on this machine (loopback) always is; any other peer's header is
+        # ignored, so a client reaching the port directly cannot name itself.
+        "trusted_proxies": [],
         # Convenience redirect listener on port 80 so typed URLs can drop the
         # port (http://<ip>/panel just works). Pure redirect to the real
         # HTTP/HTTPS port — never serves content. Off by default: binding
@@ -358,6 +363,7 @@ ENV_OVERRIDES: dict[tuple[str, str], tuple[str, type]] = {
     ("network", "bind_address"): ("OPENAVC_BIND", str),
     ("network", "control_interface"): ("OPENAVC_CONTROL_INTERFACE", str),
     ("network", "trust_forwarded_for"): ("OPENAVC_TRUST_FORWARDED_FOR", bool),
+    ("network", "trusted_proxies"): ("OPENAVC_TRUSTED_PROXIES", list),
     ("network", "port80_redirect"): ("OPENAVC_PORT80_REDIRECT", bool),
     ("auth", "programmer_username"): ("OPENAVC_PROGRAMMER_USERNAME", str),
     ("auth", "programmer_password"): ("OPENAVC_PROGRAMMER_PASSWORD", str),
@@ -590,6 +596,9 @@ def _parse_env_value(raw: str, target_type: type) -> Any:
         except ValueError:
             log.warning("Invalid integer env var value: %r", raw)
             return None
+    if target_type is list:
+        # Comma-separated, the only way a variable can carry a list.
+        return [item.strip() for item in raw.split(",") if item.strip()]
     return raw
 
 

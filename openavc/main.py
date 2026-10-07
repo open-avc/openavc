@@ -74,6 +74,7 @@ from openavc.core.engine import Engine
 from openavc.discovery.engine import DiscoveryEngine
 from openavc.drivers.registry import list_registered_drivers
 from openavc.utils.logger import get_logger
+from openavc.utils.request_origin import UVICORN_FORWARDED_ALLOW_IPS
 from openavc.version import __version__
 
 log = get_logger(__name__)
@@ -87,6 +88,14 @@ log = get_logger(__name__)
 # with a 1009 close before buffering it). Applied to every listener that
 # serves openavc.main:app.
 _WS_MAX_SIZE = 1024 * 1024
+
+# The peers uvicorn takes X-Forwarded-For from, applied to every listener that
+# serves openavc.main:app. Passed explicitly because uvicorn otherwise reads
+# them from its own FORWARDED_ALLOW_IPS variable, and set to "*" there a LAN
+# client could write X-Forwarded-For: 127.0.0.1 and be taken for the machine's
+# own screen. The reasoning, and how this composes with trust_forwarded_for,
+# is in openavc/utils/request_origin.py.
+_FORWARDED_ALLOW_IPS = list(UVICORN_FORWARDED_ALLOW_IPS)
 
 # Set log level from config
 logging.getLogger().setLevel(getattr(logging, config.LOG_LEVEL.upper(), logging.INFO))
@@ -1062,6 +1071,7 @@ def _make_aux_redirect_server(app, port: int):
         # uvicorn's default is smaller and would cut a large frame off on
         # the box's own screen only.
         ws_max_size=_WS_MAX_SIZE,
+        forwarded_allow_ips=_FORWARDED_ALLOW_IPS,
     )
     server = uvicorn.Server(aux_config)
 
@@ -1136,6 +1146,7 @@ async def _run_tls() -> None:
         reload=False,
         log_level="info",
         ws_max_size=_WS_MAX_SIZE,
+        forwarded_allow_ips=_FORWARDED_ALLOW_IPS,
     )
     # uvicorn builds the SSLContext from the cert/key when the config loads;
     # load it here so we can harden the built context directly (Server.serve()
@@ -1211,6 +1222,7 @@ async def _run_http() -> None:
         reload=False,
         log_level="info",
         ws_max_size=_WS_MAX_SIZE,
+        forwarded_allow_ips=_FORWARDED_ALLOW_IPS,
     )
     main_server = uvicorn.Server(main_config)
     tasks: list[asyncio.Task] = [asyncio.create_task(main_server.serve())]
@@ -1274,6 +1286,7 @@ def main():
             reload=False,
             log_level="info",
             ws_max_size=_WS_MAX_SIZE,
+            forwarded_allow_ips=_FORWARDED_ALLOW_IPS,
         )
 
 if __name__ == "__main__":

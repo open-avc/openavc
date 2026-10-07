@@ -80,6 +80,10 @@ BIND_ADDRESS: str = _cfg.get("network", "bind_address")
 # proxy. Default False: use the real TCP peer so the client IP can't be
 # spoofed to bypass rate limiting or the localhost exemption.
 TRUST_FORWARDED_FOR: bool = _cfg.get("network", "trust_forwarded_for")
+# Proxies on other machines whose X-Forwarded-For is believed while
+# TRUST_FORWARDED_FOR is on (addresses or CIDR ranges; loopback always is).
+# Read by openavc/utils/request_origin.py, which owns the parsing.
+TRUSTED_PROXIES: list = _cfg.get("network", "trusted_proxies")
 # Port-80 convenience redirect (typed URLs drop the port). Best-effort bind.
 PORT80_REDIRECT: bool = _cfg.get("network", "port80_redirect")
 

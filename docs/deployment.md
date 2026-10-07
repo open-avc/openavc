@@ -103,6 +103,7 @@ System-level configuration controls the server itself: networking, authenticatio
         "bind_address": "127.0.0.1",
         "control_interface": "",
         "trust_forwarded_for": false,
+        "trusted_proxies": [],
         "backend_module": ""
     },
     "auth": {
@@ -160,7 +161,7 @@ A few keys deserve a note:
 - `auth.programmer_username` is optional. When empty, any username is accepted with the correct password. Set it to require a specific username at the login prompt.
 - `discovery.advertise` controls the mDNS advertisement that lets panel apps find this server on the network. Set to `false` to hide the server from discovery (devices then connect by IP address).
 - `panels.access` decides who can open the room panel. `approved`, the default, makes a new tablet or browser wait until it is approved once in the Programmer (or with the admin password typed on the panel); `open` admits anyone who can reach the port. The screen on the device itself, a panel opened through OpenAVC Cloud and the Programmer's own preview never need approval. The same setting is **Panel access** under Settings > Access, and a change applies at once.
-- `network.trust_forwarded_for` should be `true` only when OpenAVC runs behind a reverse proxy that sets `X-Forwarded-For`, so per-client rate limiting sees the real client address. With the proxy on the same machine it must be `true`, and the proxy must be the only way to reach OpenAVC: see [Behind a reverse proxy](hardened-deployment.md#behind-a-reverse-proxy).
+- `network.trust_forwarded_for` should be `true` only when OpenAVC runs behind a reverse proxy that sets `X-Forwarded-For`, so per-client rate limiting sees the real client address. A proxy on another machine also goes in `network.trusted_proxies` (addresses or ranges); OpenAVC reads the header from no other machine. The proxy has to set the header and be the only way to reach OpenAVC: see [Behind a reverse proxy](hardened-deployment.md#behind-a-reverse-proxy).
 - `network.backend_module` is reserved for specialized deployments that supply their own host-network configuration backend. Leave it empty.
 
 **Configuration priority:** Environment variables override system.json values. This lets Docker and CI environments inject config without modifying the file. Settings shows a field set this way locked, with the variable's name, and `PATCH /api/system/config` refuses a change to it.
@@ -171,6 +172,7 @@ A few keys deserve a note:
 | `network.bind_address` | `OPENAVC_BIND` | `127.0.0.1` |
 | `network.control_interface` | `OPENAVC_CONTROL_INTERFACE` | `""` |
 | `network.trust_forwarded_for` | `OPENAVC_TRUST_FORWARDED_FOR` | `false` |
+| `network.trusted_proxies` | `OPENAVC_TRUSTED_PROXIES` (comma-separated) | `[]` |
 | `auth.programmer_username` | `OPENAVC_PROGRAMMER_USERNAME` | `""` |
 | `auth.programmer_password` | `OPENAVC_PROGRAMMER_PASSWORD` | `""` |
 | `auth.api_key` | `OPENAVC_API_KEY` | `""` |

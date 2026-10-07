@@ -29,7 +29,8 @@ log = get_logger(__name__)
 # Forwarded headers describe the CLOUD's front door, and they must not survive
 # the last hop into the local server.
 #
-# uvicorn ships with proxy_headers on and forwarded_allow_ips="127.0.0.1", and
+# Every listener runs uvicorn's proxy_headers with forwarded_allow_ips pinned to
+# loopback (UVICORN_FORWARDED_ALLOW_IPS in openavc/utils/request_origin.py), and
 # this proxy connects to localhost -- so uvicorn trusts whatever arrives and
 # rewrites request.client.host to the address in X-Forwarded-For. That is the
 # public IP of whoever called the cloud. Every loopback check on a tunnelled

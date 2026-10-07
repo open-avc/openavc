@@ -48,18 +48,58 @@ assert: guessing it is guessing 256 bits, and the moment the authorization
 ends the cloud closes the tunnel and the secret is discarded. A bare name
 would have handed programmer access to any unprivileged local process that
 could reach ``localhost:8080``, which is a worse door than the one this opens.
+
+A reverse proxy also makes every caller arrive from the proxy, and two things
+read the ``X-Forwarded-For`` header it adds. uvicorn reads it first: every
+listener the server starts has uvicorn's ``proxy_headers`` on, and for a socket
+peer in ``UVICORN_FORWARDED_ALLOW_IPS`` uvicorn replaces ``request.client``
+with the rightmost address in the header it does not trust, before any code
+here runs. That is why a proxy on the same machine that sends the header is
+resolved to its real client even with ``trust_forwarded_for`` off. The value is
+pinned on every listener in ``openavc/main.py`` rather than left to uvicorn's
+own ``FORWARDED_ALLOW_IPS`` variable: set to ``*``, uvicorn takes the LEFTMOST
+entry from any peer, so a LAN client that sent ``127.0.0.1`` became the console.
+
+``forwarded_client`` is the second reader, and only when the operator has
+turned ``network.trust_forwarded_for`` on. It believes the header only from a
+peer that is a proxy (loopback, or an address in ``network.trusted_proxies``)
+and reads it the way uvicorn does, right to left, skipping proxies: the answer
+is the address the last trusted proxy saw, never whatever the client wrote at
+the front (a proxy that appends, nginx's ``$proxy_add_x_forwarded_for``, keeps
+the client's own value there). The two readers compose because this one's
+proxies include every peer uvicorn trusts: a peer uvicorn has already resolved
+is either a proxy, whose header is walked again by the same rule, or a client,
+whose header is ignored. ``tests/test_forwarded_client.py`` pins the inclusion.
+
+A forwarded answer is a label and a rate-limit key, never a grant. A request a
+proxy delivered is not the console (``is_local_console_request``), and it does
+not get loopback's rate-limit exemption even when the proxy says its client was
+``127.0.0.1``: that is the proxy's own machine, which need not be this one.
 """
 
 from __future__ import annotations
 
+import ipaddress
+from functools import lru_cache
 from typing import Any
 
 from starlette.requests import HTTPConnection
 
 from openavc import config
+from openavc.utils.logger import get_logger
+
+log = get_logger(__name__)
 
 # Socket peers that mean "this process, or something on this host".
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+
+# The socket peers uvicorn takes X-Forwarded-For from, passed explicitly to
+# every listener in openavc/main.py so the FORWARDED_ALLOW_IPS environment
+# variable cannot widen it (see the module docstring). Both loopback
+# addresses, because LOOPBACK_HOSTS treats both as the console: a proxy that
+# reaches the server over ::1 is resolved the same as one over 127.0.0.1,
+# rather than being taken for the machine's own screen.
+UVICORN_FORWARDED_ALLOW_IPS: tuple[str, ...] = ("127.0.0.1", "::1")
 
 # Stamped by the agent's tunnel handler on every proxied request and WebSocket
 # handshake. Lower-case because that is how Starlette normalizes header lookup.
@@ -126,20 +166,123 @@ def is_tunneled_request(request: HTTPConnection) -> bool:
     return socket_peer_is_loopback(request) and TUNNEL_HEADER in request.headers
 
 
+def parse_trusted_proxies(value: Any) -> tuple[tuple, list[str]]:
+    """``network.trusted_proxies`` as networks, plus the entries that are not one.
+
+    Takes what ``system.json`` or the environment holds: a list of addresses
+    or CIDR ranges, or one string of them separated by commas (the form the
+    ``OPENAVC_TRUSTED_PROXIES`` variable arrives in). A bare address is its
+    own one-address range. Returns ``(networks, bad)``; the config door refuses
+    a value with anything in ``bad``, and the runtime drops it with a warning.
+    """
+    if value is None or value == "":
+        entries: list[Any] = []
+    elif isinstance(value, str):
+        entries = value.split(",")
+    elif isinstance(value, (list, tuple)):
+        entries = list(value)
+    else:
+        entries = [value]
+    networks = []
+    bad: list[str] = []
+    for entry in entries:
+        # Text only: ipaddress reads a bare integer as an address, and 10 in a
+        # JSON list is a typo, not 0.0.0.10.
+        if not isinstance(entry, str):
+            bad.append(str(entry))
+            continue
+        if not entry.strip():
+            continue
+        try:
+            networks.append(ipaddress.ip_network(entry.strip(), strict=False))
+        except ValueError:
+            bad.append(entry)
+    return tuple(networks), bad
+
+
+@lru_cache(maxsize=8)
+def _proxy_networks_for(key: tuple) -> tuple:
+    networks, bad = parse_trusted_proxies(list(key))
+    if bad:
+        log.warning(
+            "network.trusted_proxies: ignoring %s (not an address or range)",
+            ", ".join(bad),
+        )
+    return networks
+
+
+def _proxy_networks() -> tuple:
+    """The parsed ``network.trusted_proxies``, cached on its current value."""
+    raw = config.TRUSTED_PROXIES
+    if isinstance(raw, str):
+        entries: list = raw.split(",")
+    elif isinstance(raw, (list, tuple)):
+        entries = list(raw)
+    else:
+        entries = [] if raw is None else [raw]
+    # A hand-edited file can hold anything, and the cache key must hash; a
+    # non-text entry becomes its repr, which no address parses, so it is
+    # dropped with the warning rather than raising on every request.
+    return _proxy_networks_for(
+        tuple(e if isinstance(e, str) else repr(e) for e in entries)
+    )
+
+
+def _is_proxy(host: str, networks: tuple) -> bool:
+    """Whether an address is one the operator has said is a proxy of theirs."""
+    if host in LOOPBACK_HOSTS:
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return any(address in network for network in networks)
+
+
+def forwarded_client(request: HTTPConnection) -> str | None:
+    """The client a trusted proxy says it forwarded this request for, else None.
+
+    None unless ``network.trust_forwarded_for`` is on, the peer is a proxy
+    (loopback, or inside ``network.trusted_proxies``) and it sent
+    ``X-Forwarded-For``. Then the header is read right to left and the first
+    address that is not a proxy is the answer: the one the last trusted proxy
+    saw, whatever the client wrote in front of it. When every entry is a
+    proxy, the leftmost is, as uvicorn does.
+
+    The peer here is ``request.client`` as uvicorn hands it over, which for a
+    loopback peer has already been through the same walk (module docstring).
+    """
+    if not config.TRUST_FORWARDED_FOR:
+        return None
+    header = request.headers.get("x-forwarded-for", "")
+    client = request.client
+    if not header or client is None:
+        return None
+    networks = _proxy_networks()
+    if not _is_proxy(client.host, networks):
+        return None
+    hops = [hop.strip() for hop in header.split(",") if hop.strip()]
+    if not hops:
+        return None
+    for hop in reversed(hops):
+        if not _is_proxy(hop, networks):
+            return hop
+    return hops[0]
+
+
 def peer_address(request: HTTPConnection) -> str:
     """The address to show a person for this connection, as data.
 
-    The forwarded address when the operator has said a reverse proxy sits in
-    front (every peer is loopback then), else the socket peer. Not a trust
-    decision: it names a waiting panel in the Programmer and bounds how many
-    pending requests one address may hold, and a spoofed value buys nothing
-    but a wrong label on its own request. Kept here so the socket peer is
-    still read in one module only.
+    The client a trusted proxy names (``forwarded_client``), else the socket
+    peer. It names a waiting panel in the Programmer and bounds how many
+    pending requests one address may hold, which is why the header is only
+    read from a proxy: believed from anyone, a client could take a new
+    address per request and walk past the bound. Kept here so the socket
+    peer is still read in one module only.
     """
-    if config.TRUST_FORWARDED_FOR:
-        forwarded = request.headers.get("x-forwarded-for", "")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
+    forwarded = forwarded_client(request)
+    if forwarded is not None:
+        return forwarded
     client = request.client
     return client.host if client is not None else ""
 
