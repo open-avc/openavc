@@ -279,6 +279,28 @@ API_KEY_ONLY_WHITESPACE = (
     "the key."
 )
 
+PASSWORD_MIN_LENGTH = 8
+
+PASSWORD_TOO_SHORT = f"Password must be at least {PASSWORD_MIN_LENGTH} characters."
+
+
+def password_too_short(password: str) -> bool:
+    """THE admin-password floor, asked by both doors that set one: first-run
+    setup (``claim_instance``) and the Settings save (``PATCH
+    /api/system/config``). Before it was shared, the same password was refused
+    on the first-run screen and accepted a minute later in Settings.
+
+    Pass the trimmed value, which is what gets stored. The empty string counts
+    as too short, so a door where empty means *clear the credential* (Settings)
+    asks only about a non-empty value.
+
+    A write-time rule only. A password already stored under the floor (set
+    before the rule reached Settings, or written into ``system.json`` or the
+    environment by hand) keeps signing in: refusing it at startup or at sign-in
+    would lock the room out rather than protect it.
+    """
+    return len(password) < PASSWORD_MIN_LENGTH
+
 
 def normalize_credential(raw: Any) -> str | None:
     """The typed form of a credential as it should be stored, or None when the
@@ -388,12 +410,13 @@ def claim_instance(password: str, username: str = "") -> None:
     """Set the initial admin credential on an unclaimed instance, and persist it.
 
     Raises ValueError("already_claimed") if a credential already exists, or
-    ValueError("weak_password") if the password is shorter than 8 characters.
+    ValueError("weak_password") if the password is under the floor
+    (``password_too_short``).
     """
     if is_claimed():
         raise ValueError("already_claimed")
     password = (password or "").strip()
-    if len(password) < 8:
+    if password_too_short(password):
         raise ValueError("weak_password")
     cfg = get_system_config()
     if username and username.strip():

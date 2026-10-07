@@ -19,6 +19,8 @@ anyone who tries the obvious. Neither outcome is what the person typing meant,
 so the door says so instead.
 """
 
+import re
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -202,3 +204,107 @@ class TestTheTwoDoorsAgree:
         resp = c.post("/api/auth/setup", json={"password": "        "})
         assert resp.status_code >= 400
         assert auth.is_claimed() is False
+
+
+class TestTheLengthFloor:
+    """One floor for the admin password, whichever door sets it.
+
+    First-run setup refused a password under 8 characters and Settings stored
+    any non-blank one, so a room could be claimed properly and then re-keyed to
+    `a` a minute later. The floor is a write-time rule: a password already
+    stored under it keeps working, because refusing it later would be a lockout.
+    """
+
+    def test_the_rule(self):
+        assert auth.PASSWORD_MIN_LENGTH == 8
+        assert auth.password_too_short("") is True
+        assert auth.password_too_short("abc1234") is True
+        assert auth.password_too_short("abc12345") is False
+
+    def test_a_short_password_is_refused_at_settings(self, client):
+        c, _cfg = client
+        resp = c.patch(
+            "/api/system/config", json={"auth": {"programmer_password": "a"}}
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == auth.PASSWORD_TOO_SHORT
+
+    def test_the_refused_password_is_not_stored(self, client):
+        c, _cfg = client
+        c.patch("/api/system/config", json={"auth": {"programmer_password": "a"}})
+        assert auth._get_password() == ""
+        assert auth.is_claimed() is False
+        assert auth._check_password("a") is False
+
+    def test_the_refusal_writes_nothing_else_either(self, client, tmp_path):
+        c, _cfg = client
+        c.patch(
+            "/api/system/config",
+            json={
+                "auth": {"programmer_password": "abc1234"},
+                "logging": {"level": "debug"},
+            },
+        )
+        from openavc.system_config import get_system_config
+
+        assert get_system_config().get("logging", "level") != "debug"
+        assert not (tmp_path / "system.json").exists()
+
+    def test_the_floor_counts_what_is_stored(self, client):
+        """Padding does not buy length: the value is trimmed before it is
+        measured, because the trimmed value is the credential."""
+        c, _cfg = client
+        resp = c.patch(
+            "/api/system/config",
+            json={"auth": {"programmer_password": "  abc1234  "}},
+        )
+        assert resp.status_code == 400
+        assert auth.is_claimed() is False
+
+    def test_eight_characters_is_enough(self, client):
+        c, _cfg = client
+        resp = c.patch(
+            "/api/system/config", json={"auth": {"programmer_password": "abc12345"}}
+        )
+        assert resp.status_code == 200
+        assert auth._check_password("abc12345") is True
+
+    def test_both_doors_say_the_same_sentence(self, client):
+        c, _cfg = client
+        setup = c.post("/api/auth/setup", json={"password": "abc1234"})
+        settings = c.patch(
+            "/api/system/config", json={"auth": {"programmer_password": "abc1234"}}
+        )
+        assert setup.status_code == settings.status_code == 400
+        assert setup.json()["detail"] == settings.json()["detail"]
+
+    def test_the_programmer_copy_matches(self):
+        """The IDE checks the same floor before it sends (`api/auth.ts`). The
+        server is the authority; a copy that drifted would block a password the
+        server takes, or wave through one it then refuses."""
+        ts = (
+            Path(__file__).resolve().parents[1]
+            / "openavc/web/programmer/src/api/auth.ts"
+        ).read_text(encoding="utf-8")
+        length = re.search(r"export const PASSWORD_MIN_LENGTH = (\d+);", ts)
+        assert length and int(length.group(1)) == auth.PASSWORD_MIN_LENGTH
+        sentence = re.search(r"export const PASSWORD_TOO_SHORT = `([^`]*)`;", ts)
+        assert sentence
+        assert sentence.group(1).replace(
+            "${PASSWORD_MIN_LENGTH}", str(auth.PASSWORD_MIN_LENGTH)
+        ) == auth.PASSWORD_TOO_SHORT
+
+    def test_a_short_password_already_stored_still_works(self, client):
+        """The rule is about writing one, never about holding one. A box that
+        took a short password before the floor reached Settings must still
+        sign in and still save an unrelated setting."""
+        c, cfg = client
+        auth.store_admin_password("abc")
+        cfg.save()
+        assert auth._check_password("abc") is True
+        resp = c.patch(
+            "/api/system/config",
+            json={"logging": {"level": "debug"}},
+            auth=("", "abc"),
+        )
+        assert resp.status_code == 200

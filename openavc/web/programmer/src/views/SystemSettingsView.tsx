@@ -9,7 +9,8 @@ import { useProjectStore } from "../store/projectStore";
 import { RestartProgressDialog } from "../components/shared/RestartProgressDialog";
 import { showError, showSuccess } from "../store/toastStore";
 import * as api from "../api/restClient";
-import { parseApiError } from "../api/errors";
+import { ApiError, parseApiError } from "../api/errors";
+import { PASSWORD_TOO_SHORT, passwordTooShortToSave } from "../api/auth";
 import type { SystemConfig, NetworkAdapter, TlsStatus, TlsUploadResult, SshStatus } from "../api/restClient";
 import type { ProjectConfig } from "../api/types";
 
@@ -591,8 +592,10 @@ export function SystemSettingsView() {
     const needsRestart = restartNeeded;
 
     setSaving(true);
+    let saved = false;
     try {
       await api.updateSystemConfig(payload as Partial<SystemConfig>);
+      saved = true;
       showSuccess("Settings saved" + (needsRestart ? ". Restart required for some changes to take effect." : "."));
       // Reload config + tls status to get fresh state
       const fresh = await api.getSystemConfig();
@@ -606,7 +609,18 @@ export function SystemSettingsView() {
         setShowRestartPrompt(true);
       }
     } catch (e) {
-      showError("Failed to save: " + parseApiError(e));
+      if (!saved) {
+        showError("Failed to save: " + parseApiError(e));
+      } else if (!(e instanceof ApiError && e.status === 401)) {
+        showError(
+          "Settings saved, but this page could not refresh (" + parseApiError(e) +
+            "). Reload the page to see the current values.",
+        );
+      }
+      // A 401 after the save went through is the save itself: a new password
+      // or username ends every session, this one included, and the sign-in
+      // screen has already taken over. "Failed to save" here told the person,
+      // once signed back in, that a password change which worked had not.
     } finally {
       setSaving(false);
     }
@@ -781,6 +795,14 @@ export function SystemSettingsView() {
   const credentialEdited =
     !!dirty.auth && ("api_key" in dirty.auth || "programmer_password" in dirty.auth);
   const apiKeySaveBlocked = apiKeyNeedsPassword && credentialEdited;
+  // The floor first-run setup applies; the server refuses the same save with
+  // the same sentence. Only a password typed in this edit: a stored one reads
+  // back as REDACTED, and an empty field removes the password.
+  const passwordTooShort =
+    !!dirty.auth &&
+    "programmer_password" in dirty.auth &&
+    auth.programmer_password !== REDACTED &&
+    passwordTooShortToSave(auth.programmer_password ?? "");
 
   // Validation for TLS fields. The cert mode is driven by tls.auto_generate
   // (true => auto self-sign, false => user-supplied paths), not by whether the
@@ -798,7 +820,7 @@ export function SystemSettingsView() {
     tls?.enabled &&
     (!tls?.cert_file?.trim() || !tls?.key_file?.trim());
   const saveBlocked =
-    !!(tls?.enabled && (tlsPortInvalid || tlsProvidedBlank)) || apiKeySaveBlocked;
+    !!(tls?.enabled && (tlsPortInvalid || tlsProvidedBlank)) || apiKeySaveBlocked || passwordTooShort;
 
   // Cross-protocol switch warning (page loaded over one scheme, switching to the other)
   const pageIsHttps = typeof window !== "undefined" && window.location.protocol === "https:";
@@ -1721,6 +1743,11 @@ export function SystemSettingsView() {
               Set this if anyone else on your network could open the Programmer IDE.
               {ssh?.supported && " On this controller it is also the SSH and console login for the openavc user."}
             </span>
+            {passwordTooShort && (
+              <span style={{ ...helpText, color: "rgb(244, 67, 54)" }}>
+                {PASSWORD_TOO_SHORT}
+              </span>
+            )}
           </div>
         </div>
 

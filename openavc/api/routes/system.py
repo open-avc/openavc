@@ -340,13 +340,16 @@ async def update_system_config(request: Request) -> dict[str, Any]:
     #
     # Both are trimmed, and whitespace-only is refused rather than trimmed into
     # a clear — the rule and both sentences live beside the credential, in
-    # `openavc/api/auth.py`.
+    # `openavc/api/auth.py`. A new password also meets the same length floor
+    # first-run setup applies; empty still clears it.
     from openavc.api.auth import (
         API_KEY_NEEDS_PASSWORD,
         API_KEY_ONLY_WHITESPACE,
         PASSWORD_ONLY_WHITESPACE,
+        PASSWORD_TOO_SHORT,
         api_key_would_be_sole_credential,
         normalize_credential,
+        password_too_short,
     )
 
     new_password: str | None = None
@@ -354,6 +357,8 @@ async def update_system_config(request: Request) -> dict[str, Any]:
         new_password = normalize_credential(body["auth"].pop("programmer_password"))
         if new_password is None:
             raise HTTPException(status_code=400, detail=PASSWORD_ONLY_WHITESPACE)
+        if new_password and password_too_short(new_password):
+            raise HTTPException(status_code=400, detail=PASSWORD_TOO_SHORT)
 
     # Same for the API key, for the same reason: it is a digest now, so the
     # typed value's only destination is the hash.

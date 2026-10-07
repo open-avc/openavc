@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { loginWithPassword } from "../api/auth";
+import { loginWithPassword, PASSWORD_MIN_LENGTH, PASSWORD_TOO_SHORT } from "../api/auth";
 import { getTunnelPrefix } from "../api/base";
 
 interface SetupProps {
@@ -29,9 +29,9 @@ export function Setup({ onComplete }: SetupProps) {
   // Empty username falls back to "admin" so the login screen's default always
   // matches a click-through setup. Set explicitly so it's never a mystery later.
   const username = user.trim() || "admin";
-  const tooShort = pass.length > 0 && pass.length < 8;
+  const tooShort = pass.length > 0 && pass.length < PASSWORD_MIN_LENGTH;
   const mismatch = confirm.length > 0 && pass !== confirm;
-  const canSubmit = pass.length >= 8 && pass === confirm && !busy;
+  const canSubmit = pass.length >= PASSWORD_MIN_LENGTH && pass === confirm && !busy;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +55,7 @@ export function Setup({ onComplete }: SetupProps) {
       if (res.status === 409) {
         setError("This controller was just set up by someone else. Reload to log in.");
       } else if (res.status === 400) {
-        setError("Password must be at least 8 characters.");
+        setError(PASSWORD_TOO_SHORT);
       } else {
         setError(`Setup failed (${res.status}).`);
       }
@@ -141,7 +141,7 @@ export function Setup({ onComplete }: SetupProps) {
         </label>
 
         {tooShort && (
-          <div style={{ fontSize: 12, opacity: 0.7 }}>Use at least 8 characters.</div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>Use at least {PASSWORD_MIN_LENGTH} characters.</div>
         )}
         {mismatch && (
           <div style={{ fontSize: 13, color: "#ef4444" }}>Passwords don't match.</div>

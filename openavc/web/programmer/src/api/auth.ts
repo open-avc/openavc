@@ -111,6 +111,25 @@ export async function logout(): Promise<void> {
 }
 
 /**
+ * The admin-password floor, mirrored from `password_too_short` in
+ * `openavc/api/auth.py`, which is the authority: first-run setup and the
+ * Settings save both refuse a shorter password with this sentence. The copy
+ * here only lets a form say so before it sends.
+ */
+export const PASSWORD_MIN_LENGTH = 8;
+export const PASSWORD_TOO_SHORT = `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
+
+/**
+ * Whether a password typed into Settings would be refused for length. Measured
+ * trimmed, because the trimmed value is what the server stores. Empty is not
+ * "too short" here: in Settings it removes the password.
+ */
+export function passwordTooShortToSave(typed: string): boolean {
+  const stored = typed.trim();
+  return stored.length > 0 && stored.length < PASSWORD_MIN_LENGTH;
+}
+
+/**
  * Fires when the server responds 401 to an authenticated request, telling
  * the App to clear state and show the login screen.
  */
