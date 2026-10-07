@@ -56,6 +56,10 @@ export function Setup({ onComplete }: SetupProps) {
         setError("This controller was just set up by someone else. Reload to log in.");
       } else if (res.status === 400) {
         setError(PASSWORD_TOO_SHORT);
+      } else if (res.status === 422) {
+        // The server's own sentence: the username is set by the environment.
+        const body = await res.json().catch(() => null);
+        setError(typeof body?.detail === "string" ? body.detail : `Setup failed (${res.status}).`);
       } else {
         setError(`Setup failed (${res.status}).`);
       }

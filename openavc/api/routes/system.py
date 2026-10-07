@@ -28,6 +28,9 @@ open_router = APIRouter()
 # SystemSettingsView.tsx, which strips these before saving.
 REDACTED = "***"
 
+# The key GET /api/system/config adds for the environment's overrides.
+ENVIRONMENT_KEY = "_environment"
+
 # Strong references to fire-and-forget tasks. asyncio only holds a weak
 # reference to a bare create_task(), so an unreferenced task can be garbage
 # collected mid-flight; keep it alive until it finishes.
@@ -258,7 +261,46 @@ async def get_system_config_endpoint() -> dict[str, Any]:
         data["auth"]["api_key"] = REDACTED
     if data.get("cloud", {}).get("system_key"):
         data["cloud"]["system_key"] = REDACTED
+    # Not a system.json section: which fields the service's environment holds,
+    # and how this server was installed, so Settings can lock those fields and
+    # say where they are set. PATCH ignores it if a client sends it back.
+    from openavc.updater.platform import detect_deployment_type
+    data[ENVIRONMENT_KEY] = {
+        "deployment_type": detect_deployment_type().value,
+        "overrides": cfg.env_overrides(),
+    }
     return data
+
+
+def _env_held_conflicts(cfg: Any, body: dict[str, Any]) -> list[str]:
+    """Refusal sentences for every field in ``body`` the environment holds.
+
+    A value equal to the one the server is running with is a client echoing
+    back what it read, so it is dropped from ``body`` instead: refusing it
+    would break a GET-then-PATCH round trip, and writing it would copy the
+    environment's value into system.json. The two credentials are stored as
+    digests, so a sent value cannot be compared and any change is refused.
+    """
+    conflicts: list[str] = []
+    for section_name, section_data in list(body.items()):
+        if not isinstance(section_data, dict):
+            continue
+        for key in list(section_data):
+            var = cfg.env_override(section_name, key)
+            if not var:
+                continue
+            credential = section_name == "auth" and key in ("programmer_password", "api_key")
+            if not credential and section_data[key] == cfg.get(section_name, key):
+                del section_data[key]
+                continue
+            conflicts.append(
+                f"{section_name}.{key} is set by {var} in this server's environment, "
+                f"so it can't be changed here. Change {var} where the server is "
+                f"started, then restart it."
+            )
+        if not section_data:
+            del body[section_name]
+    return conflicts
 
 
 @router.patch("/system/config")
@@ -331,6 +373,13 @@ async def update_system_config(request: Request) -> dict[str, Any]:
             body[section] = {
                 k: v for k, v in body[section].items() if v != REDACTED
             }
+
+    # A field the environment holds runs from the environment at every start,
+    # so a change saved here would read back as saved and never take effect.
+    # Refused before anything is written, naming the variable.
+    conflicts = _env_held_conflicts(cfg, body)
+    if conflicts:
+        raise HTTPException(status_code=409, detail=" ".join(conflicts))
 
     # The admin password never goes through the generic loop below: it is
     # stored as a digest, so the typed value has exactly two destinations —

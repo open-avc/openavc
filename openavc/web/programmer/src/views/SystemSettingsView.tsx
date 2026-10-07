@@ -4,6 +4,7 @@ import { ViewContainer } from "../components/layout/ViewContainer";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { copyToClipboard } from "../components/shared/clipboard";
 import { HostNetworkCard } from "../components/system/HostNetworkCard";
+import { EnvHeldNote, EnvLock } from "../components/system/EnvHeldNote";
 import { VariableKeyPicker } from "../components/shared/VariableKeyPicker";
 import { useProjectStore } from "../store/projectStore";
 import { RestartProgressDialog } from "../components/shared/RestartProgressDialog";
@@ -773,6 +774,16 @@ export function SystemSettingsView() {
   const upd = merged("updates");
   const kiosk = merged("kiosk");
   const tls = merged("tls");
+  // Fields the service's environment holds: the server runs with that value
+  // at every start whatever is saved here, so they are shown locked and the
+  // server refuses a change to one.
+  const heldBy = (section: string, key: string): string | undefined =>
+    config?._environment?.overrides?.[`${section}.${key}`];
+  const deploymentType = config?._environment?.deployment_type ?? "";
+  const tlsCertHeld = heldBy("tls", "auto_generate") ?? heldBy("tls", "cert_file") ?? heldBy("tls", "key_file");
+  // Getting a trusted certificate also turns HTTPS on, so a held HTTPS switch
+  // locks it too while HTTPS is off.
+  const cloudCertHeld = heldBy("tls", "cloud_cert") ?? (config?.tls?.enabled ? undefined : heldBy("tls", "enabled"));
   // Both read the way the server does: anything but the exact word "open" is
   // approved panels only, and an absent discovery section advertises.
   const panelAccess = merged("panels")?.access === "open" ? "open" : "approved";
@@ -932,25 +943,31 @@ export function SystemSettingsView() {
         <div style={cardStyle}>
           <div style={fieldRow}>
             <label style={labelStyle} htmlFor="cfg-bind-address">Bind address</label>
-            <input
-              id="cfg-bind-address"
-              style={inputStyle}
-              value={net.bind_address}
-              onChange={(e) => update("network", "bind_address", e.target.value)}
-            />
+            <EnvLock held={heldBy("network", "bind_address")}>
+              <input
+                id="cfg-bind-address"
+                style={inputStyle}
+                value={net.bind_address}
+                onChange={(e) => update("network", "bind_address", e.target.value)}
+              />
+            </EnvLock>
             <span style={helpText}>
               Controls whether other devices on the network can reach the server. Set to <code>0.0.0.0</code> to allow tablets, phones, and other computers to access the Panel UI. Use <code>127.0.0.1</code> to restrict access to this machine only.
             </span>
+            <EnvHeldNote variable={heldBy("network", "bind_address")} deploymentType={deploymentType} style={{ gridColumn: "2" }} />
           </div>
           <div style={fieldRow}>
             <label style={labelStyle} htmlFor="cfg-http-port">HTTP port</label>
-            <input
-              id="cfg-http-port"
-              type="number"
-              style={inputStyle}
-              value={net.http_port}
-              onChange={(e) => update("network", "http_port", parseInt(e.target.value) || 8080)}
-            />
+            <EnvLock held={heldBy("network", "http_port")}>
+              <input
+                id="cfg-http-port"
+                type="number"
+                style={inputStyle}
+                value={net.http_port}
+                onChange={(e) => update("network", "http_port", parseInt(e.target.value) || 8080)}
+              />
+            </EnvLock>
+            <EnvHeldNote variable={heldBy("network", "http_port")} deploymentType={deploymentType} style={{ gridColumn: "2" }} />
           </div>
           <div style={toggleRow}>
             <div>
@@ -961,11 +978,14 @@ export function SystemSettingsView() {
                 OpenAVC service also needs permission to bind it (fresh installs have this; see
                 the deployment guide).
               </div>
+              <EnvHeldNote variable={heldBy("network", "port80_redirect")} deploymentType={deploymentType} />
             </div>
-            <Toggle
-              checked={!!net.port80_redirect}
-              onChange={(v) => update("network", "port80_redirect", v)}
-            />
+            <EnvLock held={heldBy("network", "port80_redirect")} style={{ flexShrink: 0 }}>
+              <Toggle
+                checked={!!net.port80_redirect}
+                onChange={(v) => update("network", "port80_redirect", v)}
+              />
+            </EnvLock>
           </div>
           <div style={toggleRow}>
             <div>
@@ -974,16 +994,19 @@ export function SystemSettingsView() {
                 Lets the OpenAVC Panel app find this system in its list. Turning this off hides
                 the system from the list; devices can still connect by address.
               </div>
+              <EnvHeldNote variable={heldBy("discovery", "advertise")} deploymentType={deploymentType} />
             </div>
-            <Toggle
-              label="Advertise on the network"
-              checked={advertise}
-              onChange={(v) => update("discovery", "advertise", v)}
-            />
+            <EnvLock held={heldBy("discovery", "advertise")} style={{ flexShrink: 0 }}>
+              <Toggle
+                label="Advertise on the network"
+                checked={advertise}
+                onChange={(v) => update("discovery", "advertise", v)}
+              />
+            </EnvLock>
           </div>
           <div style={fieldRow}>
             <label style={labelStyle} htmlFor="cfg-control-interface">Control interface</label>
-            <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
+            <EnvLock held={heldBy("network", "control_interface")} style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
               <select
                 id="cfg-control-interface"
                 style={{ ...selectStyle, flex: 1 }}
@@ -1023,10 +1046,11 @@ export function SystemSettingsView() {
               >
                 <RefreshCw size={14} style={adaptersLoading ? { animation: "spin 1s linear infinite" } : undefined} />
               </button>
-            </div>
+            </EnvLock>
             <span style={helpText}>
               Which network adapter OpenAVC uses to communicate with AV devices and run discovery scans. Auto scans the network of every adapter that has a link, and reaches each device through whichever adapter the computer routes it to. Changes take effect on the next device connection or scan. Does not require a restart.
             </span>
+            <EnvHeldNote variable={heldBy("network", "control_interface")} deploymentType={deploymentType} style={{ gridColumn: "2" }} />
           </div>
         </div>
 
@@ -1043,11 +1067,14 @@ export function SystemSettingsView() {
               <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                 Encrypt traffic between this server and panels / browsers. Off by default.
               </div>
+              <EnvHeldNote variable={heldBy("tls", "enabled")} deploymentType={deploymentType} />
             </div>
-            <Toggle
-              checked={!!tls?.enabled}
-              onChange={(v) => update("tls", "enabled", v)}
-            />
+            <EnvLock held={heldBy("tls", "enabled")} style={{ flexShrink: 0 }}>
+              <Toggle
+                checked={!!tls?.enabled}
+                onChange={(v) => update("tls", "enabled", v)}
+              />
+            </EnvLock>
           </div>
 
           {/* URL preview always visible — shows the user where they'll reach the IDE */}
@@ -1085,7 +1112,7 @@ export function SystemSettingsView() {
               {/* Cert source */}
               <div style={{ ...fieldRow, gridTemplateColumns: "200px 1fr" }}>
                 <label style={labelStyle}>Certificate source</label>
-                <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+                <EnvLock held={tlsCertHeld} style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
                   <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", cursor: "pointer" }}>
                     <input
                       type="radio"
@@ -1108,7 +1135,8 @@ export function SystemSettingsView() {
                     />
                     <span>Use my own certificate</span>
                   </label>
-                </div>
+                </EnvLock>
+                <EnvHeldNote variable={tlsCertHeld} deploymentType={deploymentType} style={{ gridColumn: "2" }} />
               </div>
 
               {tlsCertMode === "auto" && (
@@ -1285,7 +1313,7 @@ export function SystemSettingsView() {
               )}
 
               {tlsCertMode === "provided" && (
-                <>
+                <EnvLock held={tlsCertHeld}>
                   {/* Active-cert card: shows either the just-uploaded result or
                       the previously-saved provided cert (from tls-status). */}
                   {(uploadResult || (tlsStatus?.enabled && tlsStatus.mode === "provided" && tlsStatus.cert)) && (
@@ -1463,23 +1491,26 @@ export function SystemSettingsView() {
                       Upload a certificate before saving.
                     </div>
                   )}
-                </>
+                </EnvLock>
               )}
 
               <div style={fieldRow}>
                 <label style={labelStyle} htmlFor="cfg-tls-port">HTTPS port</label>
-                <input
-                  id="cfg-tls-port"
-                  type="number"
-                  min={1}
-                  max={65535}
-                  style={{
-                    ...inputStyle,
-                    borderColor: tlsPortError ? "rgb(244, 67, 54)" : (inputStyle.borderColor as string),
-                  }}
-                  value={tls.port}
-                  onChange={(e) => update("tls", "port", parseInt(e.target.value) || 8443)}
-                />
+                <EnvLock held={heldBy("tls", "port")}>
+                  <input
+                    id="cfg-tls-port"
+                    type="number"
+                    min={1}
+                    max={65535}
+                    style={{
+                      ...inputStyle,
+                      borderColor: tlsPortError ? "rgb(244, 67, 54)" : (inputStyle.borderColor as string),
+                    }}
+                    value={tls.port}
+                    onChange={(e) => update("tls", "port", parseInt(e.target.value) || 8443)}
+                  />
+                </EnvLock>
+                <EnvHeldNote variable={heldBy("tls", "port")} deploymentType={deploymentType} style={{ gridColumn: "2" }} />
                 {tlsPortError && (
                   <span style={{ ...helpText, color: "rgb(244, 67, 54)" }}>
                     {tlsPortError}
@@ -1494,11 +1525,14 @@ export function SystemSettingsView() {
                     Old links to <code>http://&lt;server&gt;:{net.http_port}</code> redirect automatically. Turn off only
                     if a reverse proxy in front of OpenAVC handles HTTP.
                   </div>
+                  <EnvHeldNote variable={heldBy("tls", "redirect_http")} deploymentType={deploymentType} />
                 </div>
-                <Toggle
-                  checked={!!tls.redirect_http}
-                  onChange={(v) => update("tls", "redirect_http", v)}
-                />
+                <EnvLock held={heldBy("tls", "redirect_http")} style={{ flexShrink: 0 }}>
+                  <Toggle
+                    checked={!!tls.redirect_http}
+                    onChange={(v) => update("tls", "redirect_http", v)}
+                  />
+                </EnvLock>
               </div>
 
               {/* Status block — read-only, populated after restart */}
@@ -1580,11 +1614,16 @@ export function SystemSettingsView() {
                     installs automatically.
                   </div>
                 )}
+                <EnvHeldNote
+                  variable={cloudCertHeld}
+                  deploymentType={deploymentType}
+                  style={{ marginBottom: "var(--space-md)" }}
+                />
                 <button
                   type="button"
                   onClick={handleGetTrustedCert}
-                  disabled={cloudCertBusy}
-                  style={{ ...btnStyle, opacity: cloudCertBusy ? 0.5 : 1 }}
+                  disabled={cloudCertBusy || !!cloudCertHeld}
+                  style={{ ...btnStyle, opacity: cloudCertBusy || cloudCertHeld ? 0.5 : 1 }}
                 >
                   <ShieldCheck size={14} />
                   <span>
@@ -1680,16 +1719,21 @@ export function SystemSettingsView() {
                   </div>
                 )}
 
+                <EnvHeldNote
+                  variable={heldBy("tls", "cloud_cert")}
+                  deploymentType={deploymentType}
+                  style={{ marginBottom: "var(--space-sm)" }}
+                />
                 <button
                   type="button"
                   onClick={handleDisableTrustedCert}
-                  disabled={cloudCertBusy}
+                  disabled={cloudCertBusy || !!heldBy("tls", "cloud_cert")}
                   style={{
                     ...btnStyle,
                     background: "transparent",
                     border: "1px solid var(--border-color)",
                     color: "var(--text-primary)",
-                    opacity: cloudCertBusy ? 0.5 : 1,
+                    opacity: cloudCertBusy || heldBy("tls", "cloud_cert") ? 0.5 : 1,
                   }}
                 >
                   Turn off trusted certificate
@@ -1707,8 +1751,8 @@ export function SystemSettingsView() {
           marginBottom: "var(--space-md)",
           lineHeight: 1.5,
         }}>
-          Access controls are optional. When the server is only accessible locally (bind address <code>127.0.0.1</code>), no credentials are needed.
-          When the server is accessible on the network (<code>0.0.0.0</code>), set at least one of the options below to prevent unauthorized access.
+          A system installed from a package always asks for the admin password before the Programmer opens.
+          A system run from source opens without one until a password is set below.
           Who can open the panel is set below under Panel access.
         </div>
 
@@ -1719,30 +1763,36 @@ export function SystemSettingsView() {
           </div>
           <div style={fieldRow}>
             <label style={labelStyle}>Username</label>
-            <input
-              style={inputStyle}
-              type="text"
-              autoComplete="off"
-              spellCheck={false}
-              value={auth.programmer_username}
-              placeholder="No username set"
-              onChange={(e) => update("auth", "programmer_username", e.target.value)}
-            />
+            <EnvLock held={heldBy("auth", "programmer_username")}>
+              <input
+                style={inputStyle}
+                type="text"
+                autoComplete="off"
+                spellCheck={false}
+                value={auth.programmer_username}
+                placeholder="No username set"
+                onChange={(e) => update("auth", "programmer_username", e.target.value)}
+              />
+            </EnvLock>
             <span style={helpText}>
               Paired with the password on the Programmer sign-in screen. Defaults to admin; leave blank to accept any username.
             </span>
+            <EnvHeldNote variable={heldBy("auth", "programmer_username")} deploymentType={deploymentType} style={{ gridColumn: "2" }} />
           </div>
           <div style={fieldRow}>
             <label style={labelStyle}>Password</label>
-            <PasswordField
-              value={auth.programmer_password}
-              placeholder="No password set"
-              onChange={(v) => update("auth", "programmer_password", v)}
-            />
+            <EnvLock held={heldBy("auth", "programmer_password")}>
+              <PasswordField
+                value={auth.programmer_password}
+                placeholder="No password set"
+                onChange={(v) => update("auth", "programmer_password", v)}
+              />
+            </EnvLock>
             <span style={helpText}>
               Set this if anyone else on your network could open the Programmer IDE.
               {ssh?.supported && " On this controller it is also the SSH and console login for the openavc user."}
             </span>
+            <EnvHeldNote variable={heldBy("auth", "programmer_password")} deploymentType={deploymentType} style={{ gridColumn: "2" }} />
             {passwordTooShort && (
               <span style={{ ...helpText, color: "rgb(244, 67, 54)" }}>
                 {PASSWORD_TOO_SHORT}
@@ -1782,7 +1832,7 @@ export function SystemSettingsView() {
           </div>
           <div style={fieldRow}>
             <label style={labelStyle}>API key</label>
-            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+            <EnvLock held={heldBy("auth", "api_key")} style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <PasswordField
                   value={auth.api_key}
@@ -1807,11 +1857,12 @@ export function SystemSettingsView() {
               >
                 Generate
               </button>
-            </div>
+            </EnvLock>
             <span style={helpText}>
               Provide this to external systems via the <code>X-API-Key</code> header.
               Copy it before you save. It is not shown again afterwards.
             </span>
+            <EnvHeldNote variable={heldBy("auth", "api_key")} deploymentType={deploymentType} style={{ gridColumn: "2" }} />
             {apiKeyNeedsPassword && (
               <span style={{ ...helpText, color: "rgb(244, 67, 54)" }}>
                 An API key can't sign in to the Programmer. Set a Programmer
@@ -1827,6 +1878,8 @@ export function SystemSettingsView() {
           <div style={subCardDescription}>
             Who can open the panel from a tablet, a phone or a browser on the network. Applies as soon as it is saved.
           </div>
+          <EnvHeldNote variable={heldBy("panels", "access")} deploymentType={deploymentType} style={{ marginBottom: "var(--space-sm)" }} />
+          <EnvLock held={heldBy("panels", "access")}>
           <label style={radioRow}>
             <input
               type="radio"
@@ -1859,6 +1912,7 @@ export function SystemSettingsView() {
               </div>
             </div>
           </label>
+          </EnvLock>
         </div>
 
         {/* Logging */}
@@ -1866,17 +1920,20 @@ export function SystemSettingsView() {
         <div style={cardStyle}>
           <div style={fieldRow}>
             <label style={labelStyle} htmlFor="cfg-log-level">Log level</label>
-            <select
-              id="cfg-log-level"
-              style={selectStyle}
-              value={log.level}
-              onChange={(e) => update("logging", "level", e.target.value)}
-            >
-              <option value="debug">Debug</option>
-              <option value="info">Info</option>
-              <option value="warning">Warning</option>
-              <option value="error">Error</option>
-            </select>
+            <EnvLock held={heldBy("logging", "level")}>
+              <select
+                id="cfg-log-level"
+                style={selectStyle}
+                value={log.level}
+                onChange={(e) => update("logging", "level", e.target.value)}
+              >
+                <option value="debug">Debug</option>
+                <option value="info">Info</option>
+                <option value="warning">Warning</option>
+                <option value="error">Error</option>
+              </select>
+            </EnvLock>
+            <EnvHeldNote variable={heldBy("logging", "level")} deploymentType={deploymentType} style={{ gridColumn: "2" }} />
           </div>
           <div style={toggleRow}>
             <div>
@@ -1912,20 +1969,26 @@ export function SystemSettingsView() {
             <div>
               <div style={{ fontSize: "var(--font-size-sm)" }}>Check for updates</div>
               <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Periodically check GitHub for new releases.</div>
+              <EnvHeldNote variable={heldBy("updates", "check_enabled")} deploymentType={deploymentType} />
             </div>
-            <Toggle checked={upd.check_enabled} onChange={(v) => update("updates", "check_enabled", v)} />
+            <EnvLock held={heldBy("updates", "check_enabled")} style={{ flexShrink: 0 }}>
+              <Toggle checked={upd.check_enabled} onChange={(v) => update("updates", "check_enabled", v)} />
+            </EnvLock>
           </div>
           <div style={fieldRow}>
             <label style={labelStyle}>Channel</label>
-            <select
-              style={selectStyle}
-              value={upd.channel}
-              onChange={(e) => update("updates", "channel", e.target.value)}
-            >
-              <option value="stable">Stable</option>
-              <option value="beta">Beta</option>
-            </select>
+            <EnvLock held={heldBy("updates", "channel")}>
+              <select
+                style={selectStyle}
+                value={upd.channel}
+                onChange={(e) => update("updates", "channel", e.target.value)}
+              >
+                <option value="stable">Stable</option>
+                <option value="beta">Beta</option>
+              </select>
+            </EnvLock>
             <span style={helpText}>Beta includes pre-release versions.</span>
+            <EnvHeldNote variable={heldBy("updates", "channel")} deploymentType={deploymentType} style={{ gridColumn: "2" }} />
           </div>
           <div style={fieldRow}>
             <label style={labelStyle}>Check interval (hours)</label>

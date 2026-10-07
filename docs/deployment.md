@@ -163,7 +163,7 @@ A few keys deserve a note:
 - `network.trust_forwarded_for` should be `true` only when OpenAVC runs behind a reverse proxy that sets `X-Forwarded-For`, so per-client rate limiting sees the real client address. With the proxy on the same machine it must be `true`, and the proxy must be the only way to reach OpenAVC: see [Behind a reverse proxy](hardened-deployment.md#behind-a-reverse-proxy).
 - `network.backend_module` is reserved for specialized deployments that supply their own host-network configuration backend. Leave it empty.
 
-**Configuration priority:** Environment variables override system.json values. This lets Docker and CI environments inject config without modifying the file.
+**Configuration priority:** Environment variables override system.json values. This lets Docker and CI environments inject config without modifying the file. Settings shows a field set this way locked, with the variable's name, and `PATCH /api/system/config` refuses a change to it.
 
 | system.json path | Environment Variable | Default |
 |---|---|---|

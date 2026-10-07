@@ -409,9 +409,12 @@ def warn_if_api_key_is_sole_credential() -> bool:
 def claim_instance(password: str, username: str = "") -> None:
     """Set the initial admin credential on an unclaimed instance, and persist it.
 
-    Raises ValueError("already_claimed") if a credential already exists, or
+    Raises ValueError("already_claimed") if a credential already exists,
     ValueError("weak_password") if the password is under the floor
-    (``password_too_short``).
+    (``password_too_short``), or ValueError("username_held") for a username
+    other than the one ``OPENAVC_PROGRAMMER_USERNAME`` holds: the environment
+    wins at every start, so the typed one would stop signing in after the next
+    restart.
     """
     if is_claimed():
         raise ValueError("already_claimed")
@@ -419,8 +422,13 @@ def claim_instance(password: str, username: str = "") -> None:
     if password_too_short(password):
         raise ValueError("weak_password")
     cfg = get_system_config()
-    if username and username.strip():
-        cfg.set("auth", "programmer_username", username.strip())
+    username = (username or "").strip()
+    if username and cfg.env_override("auth", "programmer_username"):
+        if username != cfg.get("auth", "programmer_username"):
+            raise ValueError("username_held")
+        username = ""  # already what runs; not copied into system.json
+    if username:
+        cfg.set("auth", "programmer_username", username)
     store_admin_password(password)
     cfg.save()
     # On a Pi appliance, this same password is the OS login — sync it to the

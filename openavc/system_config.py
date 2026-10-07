@@ -608,6 +608,10 @@ class SystemConfig:
         # env-provided value — including secrets like OPENAVC_API_KEY or
         # OPENAVC_PROGRAMMER_PASSWORD — never gets baked into system.json.
         self._file_data: dict[str, Any] = {}
+        # (section, key) -> the variable that overrode it at load. Only the ones
+        # that actually took effect: an unparseable value is ignored by load(),
+        # so it holds nothing and is not reported as holding anything.
+        self._env_held: dict[tuple[str, str], str] = {}
         self._data_dir: Path = get_data_dir()
         self._log_dir: Path = get_log_dir()
         self._file_path: Path = self._data_dir / "system.json"
@@ -682,12 +686,14 @@ class SystemConfig:
         self._file_data = copy.deepcopy(self._data)
 
         # Layer: environment variable overrides (runtime view only)
+        self._env_held = {}
         for (section, key), (env_var, target_type) in ENV_OVERRIDES.items():
             raw = os.environ.get(env_var)
             if raw is not None:
                 parsed = _parse_env_value(raw, target_type)
                 if parsed is not None:
                     self._data[section][key] = parsed
+                    self._env_held[(section, key)] = env_var
 
         self._loaded = True
 
@@ -864,6 +870,19 @@ class SystemConfig:
             self._file_data[section] = {}
         self._file_data[section][key] = value
 
+    def env_override(self, section: str, key: str) -> str | None:
+        """The environment variable holding ``section.key``, or None.
+
+        A held value is what the server runs with whatever system.json says,
+        and it is read again at every start, so a change written to the file
+        for it never takes effect. Settings shows such a field locked, and
+        ``PATCH /api/system/config`` refuses to change it."""
+        return self._env_held.get((section, key))
+
+    def env_overrides(self) -> dict[str, str]:
+        """Every held field, as ``{"section.key": "OPENAVC_..."}``."""
+        return {f"{s}.{k}": var for (s, k), var in self._env_held.items()}
+
     def persisted_has(self, section: str, key: str) -> bool:
         """Whether system.json itself carried ``section.key`` when it was
         loaded. False for a value that only comes from DEFAULTS or the
@@ -892,8 +911,7 @@ class SystemConfig:
         if section not in self._raw_file:
             self._raw_file[section] = {}
         self._raw_file[section][key] = value
-        env_var = ENV_OVERRIDES.get((section, key), (None, None))[0]
-        if env_var and os.environ.get(env_var) is not None:
+        if self.env_override(section, key):
             return
         if section not in self._data:
             self._data[section] = {}

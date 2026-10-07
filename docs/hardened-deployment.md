@@ -81,7 +81,7 @@ Two more depend on the site:
 
 ### Setting values in the environment instead
 
-A value in the service's environment takes precedence over `system.json` and over Settings.
+A value in the service's environment takes precedence over `system.json` and over Settings. Settings shows a field set this way locked, with the variable's name.
 
 | Variable | Setting |
 |----------|---------|
@@ -103,7 +103,7 @@ A value in the service's environment takes precedence over `system.json` and ove
 - **Docker:** the `environment:` section of the compose file.
 - **Windows and macOS:** use `system.json`. The installer rewrites the service's environment each time it runs, and on Windows every update runs it.
 
-Every packaged install sets `OPENAVC_BIND=0.0.0.0` (listen on every adapter) and `OPENAVC_ALLOW_ANONYMOUS=false` in its service environment, so on those systems the **Bind address** field in Settings and `network.bind_address` in `system.json` have no effect. Change the bind address with `OPENAVC_BIND` on Linux and Docker; on Windows and macOS, restrict access with the firewall instead.
+Every packaged install sets `OPENAVC_BIND=0.0.0.0` (listen on every adapter) and `OPENAVC_ALLOW_ANONYMOUS=false` in its service environment, so on those systems **Bind address** in Settings is locked and `network.bind_address` in `system.json` has no effect. Change the bind address with `OPENAVC_BIND` on Linux and Docker; on Windows and macOS, restrict access with the firewall instead.
 
 ---
 

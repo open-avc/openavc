@@ -64,6 +64,14 @@ async def auth_setup(request: Request) -> dict[str, Any]:
                 status_code=409,
                 detail="This controller is already set up. Log in instead.",
             )
+        if reason == "username_held":
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "The username is set by OPENAVC_PROGRAMMER_USERNAME in this "
+                    "server's environment. Enter the username it holds."
+                ),
+            )
         raise HTTPException(status_code=400, detail=PASSWORD_TOO_SHORT)
     return {"status": "claimed", "state": auth_state()}
 

@@ -287,6 +287,11 @@ export interface SystemConfig {
   /** The mDNS advertisement the Panel app's list is built from. Applies as
    *  soon as it is saved. */
   discovery: { advertise: boolean };
+  /** Not a system.json section: how this server was installed, and which
+   *  fields its environment holds (`"network.bind_address": "OPENAVC_BIND"`).
+   *  The server runs with a held value whatever system.json says and refuses
+   *  a change to one. */
+  _environment?: { deployment_type: string; overrides: Record<string, string> };
 }
 
 export async function getSystemVersion(): Promise<{

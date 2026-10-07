@@ -254,7 +254,7 @@ Navigate to http://localhost:8080/panel in another tab. This is what end users s
 
 ## Environment Variables
 
-These environment variables override the corresponding `system.json` settings. Useful for Docker, systemd, and scripted deployments.
+These environment variables override the corresponding `system.json` settings, and the matching field in Settings shows locked. Useful for Docker, systemd, and scripted deployments.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
