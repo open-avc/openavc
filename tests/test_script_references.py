@@ -3,7 +3,7 @@
 ``check_references(type="script", ...)`` accepted `script` as a type, had no
 branch for it, and fell through to an empty result — so the assistant asked the
 question it is told to ask before a delete and was told, every time, that
-nothing referenced the script. That is the Q-168 failure one type over: an
+nothing referenced the script. That is the device-delete failure one type over: an
 empty impact reads as an all-clear rather than as an unanswered question.
 
 Two ways into a script and only two, both covered here: a control calls a

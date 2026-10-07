@@ -158,7 +158,7 @@ class ProbeContext:
         ``matched_pattern`` is a short description of the
         matcher that fired (e.g. ``"hex de ad be ef"`` /
         ``"regex:<vendor-pattern>"``). Both feed the scan-results "Why?"
-        reveal — pass them so the UI can render the full §10 phrasing.
+        reveal — pass them so the UI can render the full evidence phrasing.
         """
         ev = evidence_broadcast(
             probe_id or self.companion_broadcast_probe_id,
@@ -185,7 +185,7 @@ class ProbeContext:
         ``matched_pattern`` is a short description of the
         matcher that fired (e.g. ``"hex aa ff"`` /
         ``"regex:Lightware"``). Both feed the scan-results "Why?"
-        reveal — pass them so the UI can render the full §10 phrasing
+        reveal — pass them so the UI can render the full evidence phrasing
         ("TCP probe on port <p> returned <excerpt>" when the response
         is readable text, "TCP probe on port <p> matched <pattern>"
         for binary protocols).

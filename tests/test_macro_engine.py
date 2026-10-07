@@ -497,7 +497,7 @@ async def test_skip_if_honors_trigger_field(macro_engine, core):
     assert state.get("var.ran") is True  # step ran
 
 
-# --- What a failed step REPORTS (Q-104) ---
+# --- What a failed step REPORTS ---
 #
 # A macro that dies mid-run used to look, from a panel, exactly like one that
 # worked. These pin the two halves of the frame that fixes that: the sentence

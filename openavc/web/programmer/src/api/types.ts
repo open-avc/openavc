@@ -625,7 +625,7 @@ export interface DriverInfo {
 // --- Device Actions (Quick Action strip) ---
 
 /** One leaf condition in an action's visible_when. Same shape the panel and
- *  Stream Deck (§38) use. `key` may contain `$id`, replaced with the device id. */
+ *  Stream Deck use. `key` may contain `$id`, replaced with the device id. */
 export interface ActionCondition {
   key: string;
   operator?: string; // eq, ne, gt, lt, gte, lte, truthy, falsy

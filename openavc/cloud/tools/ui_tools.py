@@ -531,7 +531,7 @@ def _grant_echo(before: Any, after: Any) -> dict:
     a reply that changes one names what it was and what it is now.
 
     It matters more now than it did: the AI may set a grant, on create and on
-    update (Aaron, 2026-08-14), which is what makes the human review surface
+    update, which is what makes the human review surface
     -- the Builder's **Can reach** section -- the only other place this shows.
     """
     def shown(grant: Any) -> dict | None:

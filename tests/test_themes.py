@@ -173,7 +173,7 @@ async def test_export_theme(client):
     assert "variables" in theme
 
 
-# --- Import collision handling (Q-030 / backlog 91) ---
+# --- Import collision handling ---
 
 
 def _import(client, theme, overwrite=False):

@@ -108,8 +108,8 @@ def collect_local_identifiers(bind_address: str) -> tuple[list[str], list[str]]:
 
     The hostname used to go through ``mdns_advertiser._sanitize_hostname``,
     which sanitizes a single DNS *label* and therefore strips dots: on macOS
-    and on any FQDN-configured host that turned ``Aarons-MacBook-Air.local``
-    into the SAN entry ``Aarons-MacBook-Airlocal``, a name no lookup can ever
+    and on any FQDN-configured host that turned ``Sams-MacBook-Air.local``
+    into the SAN entry ``Sams-MacBook-Airlocal``, a name no lookup can ever
     return, so installing the CA still left the machine's own advertised name
     warning. Labels are now scrubbed individually and the dots kept.
 

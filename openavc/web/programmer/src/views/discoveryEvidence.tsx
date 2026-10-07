@@ -6,12 +6,12 @@ import { cleanBannerText, readsAsText } from "./discoveryViewHelpers";
 // Shared by the Discovery results and the device audit, so a signal reads
 // the same wherever it is shown.
 //
-// Renders each evidence record using the user-facing phrasing from the
-// Discovery spec §10 — dispatched on `data.kind` rather than the
+// Renders each evidence record using the user-facing phrasing below,
+// dispatched on `data.kind` rather than the
 // internal tier value. The raw `data.kind` strings (`mdns`, `ssdp`,
 // `amx_ddp`, `broadcast`, `probe`, `oui`, `snmp_pen`, `hostname`,
-// `open_port`, `vendor_string`) are stable per the API contract in
-// spec §11; the strings below are the natural-English versions of
+// `open_port`, `vendor_string`) are stable per the API contract;
+// the strings below are the natural-English versions of
 // those.
 
 /** ``driverName`` maps a driver id to its name, so a manufacturer a driver's
@@ -72,7 +72,7 @@ export function describeEvidence(
       const parts: string[] = [];
       if (ip) parts.push(`response from ${ip}`);
       if (txt && Object.keys(txt).length > 0) parts.push(txtExcerpt(txt));
-      // Spec §10 row: "UDP probe on port <port> matched <regex/hex pattern>"
+      // The sentence: "UDP probe on port <port> matched <regex/hex pattern>"
       const headline = port !== null && matchedPattern
         ? `UDP probe on port ${port} matched ${matchedPattern}`
         : port !== null
@@ -94,7 +94,7 @@ export function describeEvidence(
       // An excerpt that quotes something itself is set off with single quotes.
       const quoted = excerpt?.includes('"') ? `'${excerpt}'` : `"${excerpt}"`;
       const portLabel = port !== null ? `on port ${port}` : null;
-      // Spec §10 rows for active probes:
+      // The sentences for active probes:
       //   "TCP probe on port <port> returned <response excerpt>"   (readable text)
       //   "TCP probe on port <port> matched <regex/hex pattern>"   (binary match)
       //   "TCP probe on port <port> answered"                       (connect-only)
@@ -137,7 +137,7 @@ export function describeEvidence(
       const hostname = typeof data.value === "string" ? (data.value as string) : "(unknown hostname)";
       const matchedPattern = typeof data.matched_pattern === "string"
         ? (data.matched_pattern as string) : null;
-      // Spec §10 row: "Hostname pattern <regex> matched <hostname>"
+      // The sentence: "Hostname pattern <regex> matched <hostname>"
       const headline = matchedPattern
         ? `Hostname pattern ${matchedPattern} matched ${hostname}`
         : `Hostname ${hostname} observed`;

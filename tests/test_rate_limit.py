@@ -261,7 +261,7 @@ def test_auth_failure_throttles_every_tier_at_strict_rate():
         assert client.post("/api/cloud/pair").status_code == 429
         # ...the control tier too...
         assert client.post("/api/devices/d1/command").status_code == 429
-        # ...and so is the standard tier (the M-293 fix — brute-force protection
+        # ...and so is the standard tier (brute-force protection
         # is no longer confined to strict-tier endpoints).
         assert client.get("/api/devices").status_code == 429
 

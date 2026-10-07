@@ -270,7 +270,7 @@ class CommandHandler:
     ) -> None:
         """Handle a network diagnostic request from the cloud.
 
-        Implements the five action types from spec §13.12:
+        Implements the five diagnostic action types:
             ping, tcp_check, traceroute, dns_lookup, port_scan
         """
         action = payload.get("action", "")

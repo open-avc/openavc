@@ -4,12 +4,12 @@ Two questions get the same wrong answer when they are not separated: *what is
 this machine called* and *what may somebody type into a browser*. The OS
 hostname answers the first, and its shape depends entirely on the platform --
 bare on an appliance image and on most Linux boxes (``openavc``), already
-dotted on macOS (``Aarons-MacBook-Air.local``), and a full domain name on a
+dotted on macOS (``Sams-MacBook-Air.local``), and a full domain name on a
 managed host (``box.corp.example.com``).
 
 ``mdns_advertiser._sanitize_hostname`` sanitizes a single DNS *label*: it
 strips dots, because a label cannot contain one. Handing it a dotted hostname
-produced a name nothing on earth can resolve (``Aarons-MacBook-Airlocal``),
+produced a name nothing on earth can resolve (``Sams-MacBook-Airlocal``),
 and the certificate's SAN list was built on top of exactly that; the setup
 screen made the mirror-image mistake and appended ``.local`` to a name that
 already ended in it. So the suffix decision lives here, once, and the rule is
@@ -24,7 +24,7 @@ from __future__ import annotations
 import re
 
 # A DNS label is letters, digits and hyphens. Spaces become hyphens because a
-# machine named "Aaron's Pi 4" should still produce something typable.
+# machine named "Sam's Pi 4" should still produce something typable.
 _LABEL_BAD = re.compile(r"[^a-zA-Z0-9\-]")
 
 # RFC 1035: one label is at most 63 bytes.
@@ -62,7 +62,7 @@ def resolvable_hostname(name: str) -> str:
     """The name to print on a screen or put in a URL, or "" when there is none.
 
     ``.local`` is appended only to a bare name. A dotted one is already a
-    resolvable name -- ``Aarons-MacBook-Air.local`` is the mDNS name itself,
+    resolvable name -- ``Sams-MacBook-Air.local`` is the mDNS name itself,
     and ``box.corp.example.com`` is what the site's DNS answers -- so
     appending to either produces a name that resolves nowhere.
     """

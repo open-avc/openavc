@@ -8,10 +8,10 @@ Like the other frontend-logic suites it skips when the Node toolchain or esbuild
 isn't present rather than failing the Python-only CI gate.
 
 Covers the audit findings fixed in the DeviceSettingsEditor.tsx group:
-  H-119 oscWriteOmitsValue flags an OSC write that would send no value (the
-  editor now offers an args sub-editor + warning); H-120
+  oscWriteOmitsValue flags an OSC write that would send no value (the
+  editor now offers an args sub-editor + warning);
   normalizeWriteForTransport strips stale cross-transport write fields so a
-  transport switch can't mis-route the setting write; M-169 validateSettingValue
+  transport switch can't mis-route the setting write; validateSettingValue
   enforces the min/max/regex constraints the setup dialog now honors.
 """
 from __future__ import annotations

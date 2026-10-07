@@ -320,7 +320,7 @@ class TestCleanupBackups:
 
 
 # ---------------------------------------------------------------------------
-# Hardening regressions (audit group H-043..L-060)
+# Hardening regressions
 # ---------------------------------------------------------------------------
 
 def _temp_artifacts(project_dir: Path) -> list[str]:
@@ -337,7 +337,7 @@ def _temp_artifacts(project_dir: Path) -> list[str]:
 
 class TestBackupHardening:
     def test_restore_clears_orphan_scripts_and_assets(self, project_dir: Path):
-        """H-044: restore replaces scripts/ + assets/ with the backup's content,
+        """Restore replaces scripts/ + assets/ with the backup's content,
         removing orphans that aren't in the backup, with no staging leftovers."""
         backup = create_backup(project_dir, "snapshot")
         assert backup is not None
@@ -354,14 +354,14 @@ class TestBackupHardening:
         assert _temp_artifacts(project_dir) == []
 
     def test_restore_produces_no_temp_artifacts(self, project_dir: Path):
-        """H-043/L-058: the atomic writes leave no temp files behind."""
+        """The atomic writes leave no temp files behind."""
         backup = create_backup(project_dir, "snapshot")
         assert backup is not None
         restore_from_backup(backup, project_dir)
         assert _temp_artifacts(project_dir) == []
 
     def test_restore_clears_stale_state_when_backup_lacks_it(self, project_dir: Path):
-        """L-057: restoring a backup that predates persistence removes a newer
+        """Restoring a backup that predates persistence removes a newer
         state.json so the older project doesn't boot with newer values."""
         backup = create_backup(project_dir, "no-state")  # project_dir has no state.json
         assert backup is not None
@@ -384,7 +384,7 @@ class TestBackupHardening:
         assert json.loads((project_dir / "state.json").read_text(encoding="utf-8")) == {"var.vol": 50}
 
     def test_same_second_same_reason_backups_get_unique_names(self, project_dir: Path, monkeypatch):
-        """M-085: two backups stamped in the same second with the same reason get
+        """Two backups stamped in the same second with the same reason get
         distinct filenames instead of the second clobbering the first."""
         fixed = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
         monkeypatch.setattr(backup_manager, "datetime", MagicMock(now=lambda tz=None: fixed))
@@ -398,7 +398,7 @@ class TestBackupHardening:
         assert len(zips) == 2
 
     def test_list_backups_surfaces_legacy_timestamped(self, project_dir: Path):
-        """L-059: a timestamped legacy *.avc.bak is listed; the quick-restore
+        """A timestamped legacy *.avc.bak is listed; the quick-restore
         project.avc.bak stays hidden."""
         (project_dir / "project.20240315_143022.avc.bak").write_bytes(b"{}")
         (project_dir / "project.avc.bak").write_bytes(b"{}")
@@ -408,7 +408,7 @@ class TestBackupHardening:
         assert "project.avc.bak" not in names
 
     def test_list_backups_pre_restore_listed_once(self, project_dir: Path):
-        """L-060: a pre_restore backup surfaces exactly once (no duplicate)."""
+        """A pre_restore backup surfaces exactly once (no duplicate)."""
         (project_dir / "project.pre_restore_20240315.avc.bak").write_bytes(b"{}")
 
         results = [b for b in list_backups(project_dir)
@@ -418,7 +418,7 @@ class TestBackupHardening:
 
 
 def test_reload_persisted_state_applies_restore(tmp_path: Path):
-    """M-083: after a restore, reload_persisted_state re-loads state.json into the
+    """After a restore, reload_persisted_state re-loads state.json into the
     store (and falls back to a variable's default when the backup had no value),
     so the persister can't write stale pre-restore values back over the restore."""
     from openavc.core.engine import Engine

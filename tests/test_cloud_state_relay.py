@@ -751,7 +751,7 @@ class TestTierCacheEviction:
 
 
 class TestFlushLoopResilience:
-    """A single failed flush must not end a tier's relay loop (V-LC-009)."""
+    """A single failed flush must not end a tier's relay loop."""
 
     @pytest.mark.asyncio
     async def test_flush_bucket_loop_survives_flush_exception(self):

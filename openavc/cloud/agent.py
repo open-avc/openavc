@@ -95,7 +95,7 @@ DEFAULT_CAPABILITIES = [
 ]
 
 # Downstream messages that require a specific capability before the agent will
-# dispatch them. Per spec §13.8, the agent is a defense-in-depth gate: if the
+# dispatch them. The agent is a defense-in-depth gate: if the
 # cloud sends a tunnel_open while "tunnel" isn't in the negotiated
 # enabled_capabilities, the agent ignores the message instead of acting on it.
 # Keep this map in sync with the canonical capability vocabulary in
@@ -186,7 +186,7 @@ class CloudAgent:
             # Feature switchboard for the agent-initiated push subsystems.
             # Keys mirror the cloud's DEFAULT_AGENT_CONFIG["features"]
             # (openavc-cloud/api/ws/handler.py) — downstream request/response
-            # features are gated by capabilities (§13.8), not listed here.
+            # features are gated by capabilities, not listed here.
             "features": {
                 "state_forwarding": True,
                 "alerts": True,
@@ -887,7 +887,7 @@ class CloudAgent:
             self._session.check_rotation(seq)
 
         # Capability gating: refuse messages the cloud sent for features this
-        # session didn't negotiate. Spec §13.8 line 1216: "If `tunnel` is not
+        # session didn't negotiate. The protocol's rule: "If `tunnel` is not
         # enabled, the agent does not listen for `tunnel_open` messages." The
         # refusal answers with the request's typed failure result so the cloud
         # fails fast instead of burning its request timeout.
@@ -1031,7 +1031,7 @@ class CloudAgent:
         # Same immediacy rule for the feature switchboard: when the update
         # carries a `features` block, reconcile the push subsystems now —
         # otherwise a cloud-side "disable alerts" would keep firing until the
-        # next reconnect (spec §13.9: the agent adjusts behavior immediately).
+        # next reconnect (the agent adjusts behavior immediately).
         if isinstance(payload, dict) and isinstance(payload.get("features"), dict):
             await self._sync_feature_subsystems()
 

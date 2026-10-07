@@ -1,9 +1,9 @@
 "use strict";
 // Loads the Device Settings editor/setup helpers (deviceSettingsHelpers.ts —
 // React-free pure logic) bundled on the fly with the esbuild already in
-// openavc/web/programmer/node_modules, and checks the write-transport normalization
-// (H-120), the OSC empty-value detection (H-119), and the min/max/regex value
-// validation the setup dialog now enforces (M-169). Mirrors
+// openavc/web/programmer/node_modules, and checks the write-transport normalization,
+// the OSC empty-value detection, and the min/max/regex value
+// validation the setup dialog now enforces. Mirrors
 // driver_builder_store_harness.cjs. The Python wrapper skips when the Node
 // toolchain or esbuild is absent rather than failing the Python-only CI gate.
 const path = require("path");
@@ -28,7 +28,7 @@ const H = moduleObj.exports;
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const results = {};
 
-// --- H-120: normalizeWriteForTransport strips stale cross-transport fields ---
+// --- normalizeWriteForTransport strips stale cross-transport fields ---
 {
   const r = H.normalizeWriteForTransport(
     { address: "/x", args: [{ type: "f", value: "{value}" }], send: "X", method: "POST" },
@@ -73,7 +73,7 @@ const results = {};
   };
 }
 
-// --- H-119: oscWriteOmitsValue flags an OSC write that never sends the value ---
+// --- oscWriteOmitsValue flags an OSC write that never sends the value ---
 {
   results.h119_osc_address_only_omits_value = {
     pass: H.oscWriteOmitsValue({ address: "/x" }) === true,
@@ -126,7 +126,7 @@ const results = {};
   };
 }
 
-// --- M-169: validateSettingValue enforces min/max (numeric) + regex (string) ---
+// --- validateSettingValue enforces min/max (numeric) + regex (string) ---
 {
   const def = { type: "integer", min: 1, max: 10 };
   results.m169_int_in_range_ok = { pass: H.validateSettingValue("5", def).ok === true, detail: H.validateSettingValue("5", def) };
@@ -140,7 +140,7 @@ const results = {};
   results.m169_regex_mismatch = { pass: H.validateSettingValue("ABC!", def).ok === false, detail: H.validateSettingValue("ABC!", def) };
 }
 {
-  // L-169: an empty NUMERIC setting is rejected (it would silently coerce to 0
+  // an empty NUMERIC setting is rejected (it would silently coerce to 0
   // on push); an empty string/enum or a def-less value is still allowed blank.
   results.l169_empty_integer_rejected = {
     pass: H.validateSettingValue("", { type: "integer", min: 1 }).ok === false,

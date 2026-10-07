@@ -1,7 +1,7 @@
 """Reading a matrix out of what a driver declares, instead of typing it again.
 
-Every driver here is invented, and every SHAPE is one the shipped corpus forced
-(matrix plan §2.1a): parameters typed to a child and parameters that are plain
+Every driver here is invented, and every SHAPE is one the shipped corpus forced:
+parameters typed to a child and parameters that are plain
 integers, a routed-source property called ``input`` and one called ``source``,
 six routing planes on one child entity, a plane chosen by a command parameter
 rather than by a second command, sources that are an enum rather than a port

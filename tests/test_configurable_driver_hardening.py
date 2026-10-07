@@ -61,7 +61,7 @@ class _SpySend:
 
 
 # ===========================================================================
-# H-031 — poll() must propagate transport errors to the missed-poll watchdog
+# poll() must propagate transport errors to the missed-poll watchdog
 # ===========================================================================
 
 _HTTP_DEF = {
@@ -232,7 +232,7 @@ async def test_rejected_login_reaches_the_device_card_as_auth_failed():
 
 
 # ===========================================================================
-# M-060 — value-map result is coerced (type parity + flat-primitive guard)
+# value-map result is coerced (type parity + flat-primitive guard)
 # ===========================================================================
 
 
@@ -289,7 +289,7 @@ async def test_value_map_nested_target_flattened_to_primitive():
 
 
 # ===========================================================================
-# L-041 — non-numeric `set` shorthand reference is skipped, not group 0
+# non-numeric `set` shorthand reference is skipped, not group 0
 # ===========================================================================
 
 
@@ -317,7 +317,7 @@ def test_set_shorthand_skips_non_numeric_reference():
 
 
 # ===========================================================================
-# L-042 — per-instance mapping list, no mutation of the shared class definition
+# per-instance mapping list, no mutation of the shared class definition
 # ===========================================================================
 
 
@@ -352,7 +352,7 @@ def test_set_shorthand_does_not_mutate_shared_definition():
 
 
 # ===========================================================================
-# L-043 — OSC arg with a missing/non-numeric value fails with a clear error
+# OSC arg with a missing/non-numeric value fails with a clear error
 # ===========================================================================
 
 
@@ -378,7 +378,7 @@ def test_osc_arg_valid_numeric_value_builds():
 
 
 # ===========================================================================
-# M-063 — OSC send paths refuse to emit on a non-OSC transport
+# OSC send paths refuse to emit on a non-OSC transport
 # ===========================================================================
 
 _OSC_CMD_DEF = {
@@ -422,7 +422,7 @@ async def test_osc_setting_write_refused_on_non_osc_transport():
 
 
 # ===========================================================================
-# M-062 (runtime) — handshake gate refuses non-tcp/serial transports
+# Runtime: handshake gate refuses non-tcp/serial transports
 # ===========================================================================
 
 
@@ -466,7 +466,7 @@ def test_auth_should_run_true_on_tcp_transport():
 
 
 # ===========================================================================
-# L-040 — pre-auth buffer is bounded; overflow aborts the handshake
+# pre-auth buffer is bounded; overflow aborts the handshake
 # ===========================================================================
 
 
@@ -494,7 +494,7 @@ async def test_auth_buffer_overflow_aborts_handshake():
 
 
 # ===========================================================================
-# M-058 / M-059 / M-061 / M-062 — load-time validation gate
+# load-time validation gate
 # ===========================================================================
 
 
@@ -514,7 +514,7 @@ def _base_def(**extra) -> dict:
 
 
 def test_validator_rejects_redos_response_pattern():
-    """M-059: alternation-overlap patterns the old heuristic missed are now
+    """Alternation-overlap patterns the old heuristic missed are now
     rejected at load time."""
     for bad in (r"(a|a)+", r"(foo|foobar)*", r"(.+)+"):
         errs = validate_driver_definition(
@@ -532,7 +532,7 @@ def test_validator_accepts_safe_response_pattern():
 
 
 def test_validator_redos_checks_auth_patterns():
-    """M-058: auth prompt regexes are ReDoS-checked, not bypassed."""
+    """Auth prompt regexes are ReDoS-checked, not bypassed."""
     errs = validate_driver_definition(_base_def(auth={
         "type": "telnet_login",
         "username_prompt": r"(a|a)+",
@@ -542,7 +542,7 @@ def test_validator_redos_checks_auth_patterns():
 
 
 def test_validator_requires_both_auth_prompts():
-    """M-061: a declared handshake missing a prompt is a load-time error, not a
+    """A declared handshake missing a prompt is a load-time error, not a
     silent unauthenticated connect."""
     errs = validate_driver_definition(_base_def(auth={
         "type": "telnet_login",
@@ -553,7 +553,7 @@ def test_validator_requires_both_auth_prompts():
 
 
 def test_validator_rejects_auth_on_udp_transport():
-    """M-062: a login handshake on udp/http/osc is rejected at load time."""
+    """A login handshake on udp/http/osc is rejected at load time."""
     errs = validate_driver_definition(_base_def(transport="udp", auth={
         "type": "telnet_login",
         "username_prompt": "login: ",
@@ -574,7 +574,7 @@ def test_validator_accepts_valid_auth_block():
 
 
 # ===========================================================================
-# H-073 — {name:spec} placeholders honor the Python format-spec mini-language
+# {name:spec} placeholders honor the Python format-spec mini-language
 # ===========================================================================
 
 
@@ -635,7 +635,7 @@ async def test_command_send_applies_format_spec_end_to_end():
 
 
 # ===========================================================================
-# H-074 — OSC arg type tags are validated at load (blob/typos fail loudly)
+# OSC arg type tags are validated at load (blob/typos fail loudly)
 # ===========================================================================
 
 

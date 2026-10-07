@@ -669,7 +669,7 @@ async def test_send_ws_logs_unexpected_send_failure(caplog):
     assert any("send failed" in r.message.lower() for r in caplog.records)
 
 
-# ── Handshake ordering: register before snapshot (V-LC-005) ──
+# ── Handshake ordering: register before snapshot ──
 
 
 @pytest.mark.asyncio
@@ -719,7 +719,7 @@ async def test_ws_client_registered_before_snapshot(tmp_path):
     )
 
 
-# ── macro.execute must not head-of-line block the client loop (V-LC-006) ──
+# ── macro.execute must not head-of-line block the client loop ──
 
 
 @pytest.mark.asyncio
@@ -763,7 +763,7 @@ async def test_macro_execute_failure_still_reaches_client():
     assert "error" in types
 
 
-# ── The error frame is one shape from one producer (Q-052) ──
+# ── The error frame is one shape from one producer ──
 
 
 def test_send_ws_error_is_the_only_error_frame_producer():

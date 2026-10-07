@@ -1,6 +1,6 @@
 """Regression tests for the device-config coercion helper (deviceConfigCoerce.ts).
 
-H-061: the Add and Edit device dialogs share coerceConfigValue so they can't
+the Add and Edit device dialogs share coerceConfigValue so they can't
 drift — the Add dialog used to store an object-typed field (e.g. the generic_tcp
 `commands` map) as a raw string, which then broke command sending at runtime.
 

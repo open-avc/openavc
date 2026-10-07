@@ -20,7 +20,7 @@ const C = moduleObj.exports;
 const approx = (a, b, eps) => a != null && Math.abs(a - b) <= (eps == null ? 0.05 : eps);
 const results = {};
 
-// M-072: a valid 3-digit hex parses (the old 6-digit-only parser returned null,
+// a valid 3-digit hex parses (the old 6-digit-only parser returned null,
 // which made ColorPickerCell treat it as "not a color" and reset it to #000000).
 {
   const c = C.parseColor("#abc");
@@ -29,7 +29,7 @@ const results = {};
     detail: c,
   };
 }
-// M-072: a 3-digit hex normalizes to the 6-digit hex the native <input type=color>
+// a 3-digit hex normalizes to the 6-digit hex the native <input type=color>
 // accepts, so the picker shows it instead of forcing a destructive fallback.
 {
   const hex = C.parseColor("#abc") ? C.rgbToHex6(C.parseColor("#abc")) : null;
@@ -52,7 +52,7 @@ results.garbage_null = {
   detail: C.parseColor("not-a-color"),
 };
 
-// H-036: pure black/white contrast is exactly 21:1 — including via 3-digit hex,
+// pure black/white contrast is exactly 21:1 — including via 3-digit hex,
 // which the old parser couldn't read.
 results.h036_contrast_extreme = {
   pass: approx(C.contrastRatio("#000", "#fff"), 21, 0.01),
@@ -62,7 +62,7 @@ results.h036_contrast_sixdigit = {
   pass: approx(C.contrastRatio("#000000", "#ffffff"), 21, 0.01),
   detail: C.contrastRatio("#000000", "#ffffff"),
 };
-// H-036: an unparseable / transparent side yields a null ratio → "na", NOT the
+// an unparseable / transparent side yields a null ratio → "na", NOT the
 // red "fail" the old code conflated null into.
 {
   const ratio = C.contrastRatio("transparent", "#ffffff");
@@ -91,7 +91,7 @@ results.css_var_fallbacks = {
   detail: C.CSS_VAR_FALLBACKS.panel_bg,
 };
 
-// L-053: isLightColor classifies a theme's panel background by luminance, so the
+// isLightColor classifies a theme's panel background by luminance, so the
 // light/dark fallback mode is derived from the actual color, not the theme id.
 results.l053_is_light = {
   pass:

@@ -1,16 +1,16 @@
 """Regression tests for the cloud AI device/driver tool hardening.
 
 Covers the audit findings fixed in the openavc/cloud/tools/device_tools.py group:
-  H-040 update_driver_definition built-in guard + save-before-delete
-  H-041 install_community_driver GitHub host allowlist (SSRF)
-  H-042 update/delete bump the project revision + notify the IDE
-  M-079 install_community_driver min_platform_version gate
-  M-080 update_device splits connection fields into the connections table
-  M-081 update_device honors an `enabled` toggle
-  M-082 test_driver_command guards a malformed-escape delimiter
-  L-054 install_community_driver rejects an id that diverges from the file
-  L-055 set_device_setting rejects a non-primitive value
-  L-056 test_device_connection reports a missing port instead of probing :23
+  update_driver_definition built-in guard + save-before-delete
+  install_community_driver GitHub host allowlist (SSRF)
+  update/delete bump the project revision + notify the IDE
+  install_community_driver min_platform_version gate
+  update_device splits connection fields into the connections table
+  update_device honors an `enabled` toggle
+  test_driver_command guards a malformed-escape delimiter
+  install_community_driver rejects an id that diverges from the file
+  set_device_setting rejects a non-primitive value
+  test_device_connection reports a missing port instead of probing :23
   V-API-008 install_community_driver delegates to the canonical REST install
 """
 from __future__ import annotations
@@ -67,11 +67,11 @@ def _pure_handler() -> AIToolHandler:
 
 
 # ---------------------------------------------------------------------------
-# Pure tools (no engine, no filesystem) — H-041, M-079, M-082
+# Pure tools (no engine, no filesystem)
 # ---------------------------------------------------------------------------
 
 async def test_install_rejects_cloud_metadata_url() -> None:
-    """H-041: a link-local SSRF target is refused before any fetch."""
+    """A link-local SSRF target is refused before any fetch."""
     handler = _pure_handler()
     result = await handler._install_community_driver(
         {"driver_id": "acme", "file_url": "http://169.254.169.254/latest/meta-data/x.avcdriver"}
@@ -82,7 +82,7 @@ async def test_install_rejects_cloud_metadata_url() -> None:
 
 
 async def test_install_rejects_intranet_url() -> None:
-    """H-041: an arbitrary intranet host is refused."""
+    """An arbitrary intranet host is refused."""
     handler = _pure_handler()
     result = await handler._install_community_driver(
         {"driver_id": "acme", "file_url": "http://10.0.0.5/driver.py"}
@@ -91,7 +91,7 @@ async def test_install_rejects_intranet_url() -> None:
 
 
 async def test_install_min_platform_gate_request_field() -> None:
-    """M-079: a driver requiring a newer platform is blocked up front."""
+    """A driver requiring a newer platform is blocked up front."""
     handler = _pure_handler()
     result = await handler._install_community_driver(
         {"driver_id": "acme", "file_url": _GITHUB_URL, "min_platform_version": "99.0.0"}
@@ -100,7 +100,7 @@ async def test_install_min_platform_gate_request_field() -> None:
 
 
 async def test_test_driver_command_bad_delimiter() -> None:
-    """M-082: a truncated escape in the delimiter returns a clean error rather
+    """A truncated escape in the delimiter returns a clean error rather
     than crashing on an uncaught UnicodeDecodeError."""
     handler = _pure_handler()
     result = await handler._test_driver_command(
@@ -111,11 +111,11 @@ async def test_test_driver_command_bad_delimiter() -> None:
 
 
 # ---------------------------------------------------------------------------
-# install_community_driver id divergence — L-054 (mocked download)
+# install_community_driver id divergence (mocked download)
 # ---------------------------------------------------------------------------
 
 async def test_install_rejects_id_divergence(tmp_path, monkeypatch) -> None:
-    """L-054: a downloaded driver whose internal id differs from the requested
+    """A downloaded driver whose internal id differs from the requested
     id is rejected and the file is removed (not registered under a mismatched
     key that edit/delete can't later find)."""
     repo = tmp_path / "driver_repo"
@@ -227,11 +227,11 @@ async def test_ai_install_completes_via_rest_path(tmp_path, monkeypatch) -> None
 
 
 # ---------------------------------------------------------------------------
-# update_driver_definition built-in guard — H-040
+# update_driver_definition built-in guard
 # ---------------------------------------------------------------------------
 
 async def test_update_driver_definition_rejects_builtin(tmp_path, monkeypatch) -> None:
-    """H-040: a shipped built-in (read-only definitions dir) can't be edited or
+    """A shipped built-in (read-only definitions dir) can't be edited or
     deleted via the AI path; the file survives the rejected call."""
     builtin = tmp_path / "definitions"
     repo = tmp_path / "driver_repo"
@@ -254,7 +254,7 @@ async def test_update_driver_definition_rejects_builtin(tmp_path, monkeypatch) -
 
 
 # ---------------------------------------------------------------------------
-# Engine-backed tools — M-080, M-081, H-042, L-055, L-056
+# Engine-backed tools
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
@@ -268,7 +268,7 @@ async def device_engine(tmp_path):
         project=ProjectMeta(id="p", name="P"),
         devices=[
             DeviceConfig(id="dev1", driver="noop_tcp", name="Dev 1", config={"transport": "tcp"}),
-            # host-in-config, no port — the L-056 scenario.
+            # host-in-config, no port: the case that used to probe :23.
             DeviceConfig(id="dev_noport", driver="noop_tcp", name="No Port", config={"transport": "tcp", "host": "1.2.3.4"}),
         ],
         connections={"dev1": {"host": "10.0.0.5", "port": 4000}},
@@ -290,7 +290,7 @@ async def device_engine(tmp_path):
 
 
 async def test_update_device_splits_connection_fields(device_engine) -> None:
-    """M-080: host/port in the AI's config land in the connections table, not
+    """Host/port in the AI's config land in the connections table, not
     device.config."""
     handler, engine = device_engine
     result = await handler._update_device(
@@ -310,7 +310,7 @@ async def test_update_device_splits_connection_fields(device_engine) -> None:
 
 
 async def test_update_device_honors_enabled(device_engine) -> None:
-    """M-081: an `enabled` toggle from the AI is applied (not pinned)."""
+    """An `enabled` toggle from the AI is applied (not pinned)."""
     handler, engine = device_engine
     result = await handler._update_device({"device_id": "dev1", "enabled": False})
     assert result["status"] == "updated"
@@ -320,7 +320,7 @@ async def test_update_device_honors_enabled(device_engine) -> None:
 
 
 async def test_update_device_preserves_forward_compat_extra_fields(device_engine) -> None:
-    """M-160: the cloud AI device-update tool must preserve forward-compat
+    """The cloud AI device-update tool must preserve forward-compat
     top-level extra fields (extra='allow' / __pydantic_extra__) instead of
     dropping them by rebuilding a fresh DeviceConfig from known fields only.
     """
@@ -343,12 +343,12 @@ async def test_update_device_preserves_forward_compat_extra_fields(device_engine
     dev = next(d for d in reloaded.devices if d.id == "dev1")
     assert dev.name == "Renamed"
     assert dev.model_dump().get("future_field") == "keep-me", (
-        "cloud _update_device dropped a forward-compat top-level field — M-160"
+        "cloud _update_device dropped a forward-compat top-level field"
     )
 
 
 async def test_update_device_bumps_revision(device_engine) -> None:
-    """H-042: a device update advances the project revision so a stale IDE
+    """A device update advances the project revision so a stale IDE
     can't silently overwrite it."""
     handler, engine = device_engine
     before = engine._project_revision
@@ -357,7 +357,7 @@ async def test_update_device_bumps_revision(device_engine) -> None:
 
 
 async def test_delete_device_bumps_revision(device_engine) -> None:
-    """H-042: a device delete advances the project revision + notifies."""
+    """A device delete advances the project revision + notifies."""
     handler, engine = device_engine
     before = engine._project_revision
     result = await handler._delete_device({"device_id": "dev1"})
@@ -366,7 +366,7 @@ async def test_delete_device_bumps_revision(device_engine) -> None:
 
 
 async def test_set_device_setting_rejects_non_primitive(device_engine) -> None:
-    """L-055: a non-primitive setting value is rejected at the tool layer before
+    """A non-primitive setting value is rejected at the tool layer before
     it can reach the driver or the flat-primitive state store."""
     handler, _engine = device_engine
     result = await handler._set_device_setting(
@@ -377,7 +377,7 @@ async def test_set_device_setting_rejects_non_primitive(device_engine) -> None:
 
 
 async def test_test_device_connection_reports_missing_port(device_engine) -> None:
-    """L-056: a TCP device with no port reports the gap instead of probing :23."""
+    """A TCP device with no port reports the gap instead of probing :23."""
     handler, _engine = device_engine
     result = await handler._test_device_connection({"device_id": "dev_noport"})
     assert result["success"] is False

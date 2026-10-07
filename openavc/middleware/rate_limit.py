@@ -64,7 +64,7 @@ _SKIP_PREFIXES = ("/panel", "/programmer", "/docs", "/openapi.json", "/ws", "/is
 # same reason /api/push/ is: the budget is spent by a machine doing something
 # ordinary, and the 429 is silent.
 #
-# Measured on a real remote tablet (v1-readiness Q-101): a cold load of a
+# Measured on a real remote tablet: a cold load of a
 # realistic seven-page room panel — 46 distinct image assets, two custom
 # controls — spends 59 of the standard tier's 60/min, one request short of a
 # 429. Loopback is exempt, so a kiosk on the host never sees it and the dev box

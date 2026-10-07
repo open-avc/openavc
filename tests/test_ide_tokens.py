@@ -35,7 +35,7 @@ REFERENCE = re.compile(r"var\(\s*(--[a-zA-Z0-9-]+)")
 #: Names the IDE reads that ``tokens.css`` does not define -- and no longer a
 #: list of bugs.
 #:
-#: The 29 that used to sit here were repaired (backlog 150): each is now aliased
+#: The 29 that used to sit here were repaired: each is now aliased
 #: to a canonical token in tokens.css, so it follows the theme instead of
 #: painting a hardcoded fallback forever. What is left is the three that were
 #: never broken. The Dashboard's QR page carries its own ``:root`` inside a

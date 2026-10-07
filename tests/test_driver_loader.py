@@ -189,7 +189,7 @@ def test_validate_accepts_a_literal_id_json_child_set():
     assert validate_driver_definition(defn) == []
 
 
-# --- frame_parser validation (H-062: reject at load, not at connect) ---
+# --- frame_parser validation (reject at load, not at connect) ---
 
 
 def test_validate_frame_parser_valid_header_sizes():
@@ -405,7 +405,7 @@ def test_list_python_drivers_skips_companions(tmp_path):
     assert "helpers" not in listed_ids
 
 
-# --- H-050: malformed driver YAML must be reported, never crash the pass ---
+# --- malformed driver YAML must be reported, never crash the pass ---
 
 
 def test_validate_non_mapping_definition():
@@ -663,7 +663,7 @@ def test_bad_driver_file_does_not_abort_the_pass(tmp_path):
         unregister_driver("z_good")
 
 
-# --- H-051: built-in driver files must not be unlinked by the API ---
+# --- built-in driver files must not be unlinked by the API ---
 
 
 def test_is_builtin_driver_and_delete_guard(tmp_path, monkeypatch):
@@ -845,7 +845,7 @@ def test_list_driver_definitions_user_copy_overrides_builtin(tmp_path):
     assert entries[0]["_source_file"] == str(user / "d.avcdriver")
 
 
-# --- M-096: a failed Python-driver import leaves no module behind ---
+# --- a failed Python-driver import leaves no module behind ---
 
 
 def test_failed_python_import_clears_sys_modules(tmp_path):
@@ -860,7 +860,7 @@ def test_failed_python_import_clears_sys_modules(tmp_path):
     assert module_name not in sys.modules  # not left half-initialized
 
 
-# --- M-097 / L-064: reload Step-3 failure restores the old module + flag ---
+# --- reload Step-3 failure restores the old module + flag ---
 
 
 def test_reload_step3_failure_preserves_old_driver(tmp_path, monkeypatch):
@@ -896,7 +896,7 @@ def test_reload_step3_failure_preserves_old_driver(tmp_path, monkeypatch):
         sys.modules.pop(module_name, None)
 
 
-# --- L-062: list_python_drivers distinguishes unregistered from not-loaded ---
+# --- list_python_drivers distinguishes unregistered from not-loaded ---
 
 
 def test_list_python_drivers_reports_imported_but_unregistered(tmp_path, monkeypatch):
@@ -942,7 +942,7 @@ def test_list_python_drivers_reports_not_loaded(tmp_path, monkeypatch):
     assert entry["load_error"] == "Not loaded"
 
 
-# --- L-063: the empirical ReDoS probe is time-boxed ---
+# --- the empirical ReDoS probe is time-boxed ---
 
 
 class _SlowSearch:
@@ -1030,7 +1030,7 @@ def test_driver_id_from_file_returns_none_on_garbage(tmp_path):
     assert driver_id_from_file(no_info) is None
 
 
-# --- Param-picker option providers (§69 Phase 2) ---
+# --- Param-picker option providers ---
 #
 # A command/action param can declare where its dropdown options come from:
 # options_state (a state-key list) and options_from (cascade off a sibling
@@ -1260,7 +1260,7 @@ def test_type_from_sibling_must_be_child_schema_cascade():
                for e in errors)
 
 
-# --- Param free-text validators (§69 Phase 3) ---
+# --- Param free-text validators ---
 #
 # A free-text param can declare `pattern` (a regex the value must match) and
 # numeric min/max. validate_driver_definition compiles the pattern (rejecting a

@@ -1,6 +1,5 @@
 """
-Regression tests for the cloud-agent hardening pass (audit findings
-H-017..H-021, M-028..M-032, L-022, L-023).
+Regression tests for the cloud-agent hardening pass.
 
 These exercise CloudAgent in isolation (built via ``__new__`` with only the
 attributes each path touches) so the trust-boundary and lifecycle behaviors are
@@ -79,7 +78,7 @@ def _bare_agent() -> CloudAgent:
     return agent
 
 
-# === H-019 — TLS/wss enforcement =========================================
+# === TLS/wss enforcement =========================================
 
 
 def test_endpoint_encryption_classification():
@@ -101,7 +100,7 @@ def test_endpoint_encryption_classification():
 
 @pytest.mark.asyncio
 async def test_connect_refuses_cleartext_endpoint():
-    """H-019: connect() never starts the loop over a cleartext non-loopback endpoint."""
+    """connect() never starts the loop over a cleartext non-loopback endpoint."""
     agent = CloudAgent.__new__(CloudAgent)
     agent._endpoint = "ws://cloud.openavc.com/agent/v1"
     agent._system_key = b"key"
@@ -119,7 +118,7 @@ async def test_connect_refuses_cleartext_endpoint():
 
 @pytest.mark.asyncio
 async def test_connect_accepts_wss_endpoint():
-    """H-019: a wss endpoint starts the connection loop."""
+    """A wss endpoint starts the connection loop."""
     agent = CloudAgent.__new__(CloudAgent)
     agent._endpoint = "wss://cloud.openavc.com/agent/v1"
     agent._system_key = b"key"
@@ -147,12 +146,12 @@ async def test_connect_accepts_wss_endpoint():
         pass
 
 
-# === H-018 / M-029 / M-033 — shutdown cancels everything =================
+# === shutdown cancels everything =================
 
 
 @pytest.mark.asyncio
 async def test_stop_cancels_connection_loop_task():
-    """H-018: stop() cancels the orphaned connection loop so it can't resurrect."""
+    """stop() cancels the orphaned connection loop so it can't resurrect."""
     agent = _bare_agent()
 
     async def _forever():
@@ -169,7 +168,7 @@ async def test_stop_cancels_connection_loop_task():
 
 @pytest.mark.asyncio
 async def test_stop_cancels_pending_throttle_tasks():
-    """M-029: pending throttle-release tasks are cancelled at shutdown."""
+    """Pending throttle-release tasks are cancelled at shutdown."""
     agent = _bare_agent()
 
     async def _forever():
@@ -188,7 +187,7 @@ async def test_stop_cancels_pending_throttle_tasks():
 
 @pytest.mark.asyncio
 async def test_stop_shuts_down_ai_tool_handler():
-    """M-033: in-flight AI tool tasks are cancelled via handler.shutdown()."""
+    """In-flight AI tool tasks are cancelled via handler.shutdown()."""
     agent = _bare_agent()
     called: list = []
 
@@ -201,7 +200,7 @@ async def test_stop_shuts_down_ai_tool_handler():
     assert called == [True]
 
 
-# === H-020 — remote-control messages gated on remote_access ==============
+# === remote-control messages gated on remote_access ==============
 
 
 def test_remote_control_messages_gated_on_remote_access():
@@ -211,7 +210,7 @@ def test_remote_control_messages_gated_on_remote_access():
     assert "remote_access" in DEFAULT_CAPABILITIES
 
 
-# === H-021 — non-dict config can't crash the agent =======================
+# === non-dict config can't crash the agent =======================
 
 
 def test_apply_config_ignores_non_dict():
@@ -230,12 +229,12 @@ def test_apply_config_merges_valid_dict():
     assert agent._config["features"] == {"a": True, "b": False}
 
 
-# === H-017 / M-028 — update policy reaches the UpdateManager ==============
+# === update policy reaches the UpdateManager ==============
 
 
 @pytest.mark.asyncio
 async def test_config_update_reapplies_update_policy():
-    """H-017: a config_update carrying update_policy is pushed to the manager."""
+    """A config_update carrying update_policy is pushed to the manager."""
     agent = CloudAgent.__new__(CloudAgent)
     agent._config = {"features": {}}
     mgr = _RecordingMgr()
@@ -249,7 +248,7 @@ async def test_config_update_reapplies_update_policy():
 
 @pytest.mark.asyncio
 async def test_config_update_without_policy_does_not_touch_manager():
-    """H-017: a partial config_update without update_policy leaves the policy alone."""
+    """A partial config_update without update_policy leaves the policy alone."""
     agent = CloudAgent.__new__(CloudAgent)
     agent._config = {"features": {}}
     mgr = _RecordingMgr()
@@ -261,7 +260,7 @@ async def test_config_update_without_policy_does_not_touch_manager():
 
 @pytest.mark.asyncio
 async def test_session_start_absent_policy_resets_to_manual():
-    """M-028: session_start with no update_policy applies the manual default."""
+    """session_start with no update_policy applies the manual default."""
     agent = CloudAgent.__new__(CloudAgent)
     mgr = _RecordingMgr()
     agent._command_handler = _CmdHandler(mgr)
@@ -283,7 +282,7 @@ async def test_sync_update_policy_no_manager_is_noop():
     await agent._sync_update_policy({})
 
 
-# === M-032 — capability payloads are validated ===========================
+# === capability payloads are validated ===========================
 
 
 def test_normalize_capabilities():
@@ -315,7 +314,7 @@ def test_capabilities_update_filters_non_strings():
     assert agent._enabled_capabilities == ["remote_access", "tunnel"]
 
 
-# === M-031 — persistent signature failure tears down the session =========
+# === persistent signature failure tears down the session =========
 
 
 class _FailVerifySession:
@@ -361,7 +360,7 @@ async def test_sig_failure_count_resets_on_success():
     assert agent._sig_failure_count == 0
 
 
-# === M-030 — steady-state teardown cancels the surviving sibling =========
+# === steady-state teardown cancels the surviving sibling =========
 
 
 @pytest.mark.asyncio
@@ -395,7 +394,7 @@ async def test_await_steady_state_clean_return_no_raise():
     assert hb.cancelled()
 
 
-# === L-022 / M-029 — overlapping throttles release on the longest deadline
+# === overlapping throttles release on the longest deadline
 
 
 @pytest.mark.asyncio
@@ -454,7 +453,7 @@ async def test_throttle_retry_after_coerced_and_clamped():
             pass
 
 
-# === L-023 — replayed messages are retained until acked ==================
+# === replayed messages are retained until acked ==================
 
 
 @pytest.mark.asyncio

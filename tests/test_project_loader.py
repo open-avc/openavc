@@ -606,7 +606,7 @@ def test_list_element():
     assert len(el.items) == 2
 
 
-# --- Glob-metachar rejection in ids (L-083 / L-084) ---
+# --- Glob-metachar rejection in ids ---
 #
 # An id carrying an fnmatch metacharacter (* ? [) becomes part of a state key
 # and its per-key state.changed event; the fnmatch-based subscription dispatch

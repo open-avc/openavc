@@ -5,8 +5,7 @@ strong-tier race, the matcher consults enrichment soft signals for a
 vendor-specific driver. If found, the vendor driver becomes the primary
 identification and the generic driver demotes to a trailing alternative.
 
-These tests pin the contract from
-``OpenAVC-Discovery-Spec.md`` §6 (Cross-Vendor Demotion):
+These tests pin the cross-vendor demotion contract:
 
 - Generic + vendor soft candidate -> vendor primary, generic alternative.
 - Generic alone -> generic primary, no alternatives (regression guard).

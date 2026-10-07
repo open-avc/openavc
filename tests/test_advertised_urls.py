@@ -4,10 +4,10 @@ Three of them printed URLs the server does not serve. The startup banner and
 ``/api/setup/status`` both built ``http://<lan ip>:<port>/…`` from the
 detected local IP without ever consulting the bind address, so a
 loopback-bound instance — the default, and what a manual or checkout run gets
-— advertised addresses the kernel refuses (F-001, F-001a). The setup page
-then appended ``.local`` to a hostname that already carried a domain (F-003),
+— advertised addresses the kernel refuses. The setup page
+then appended ``.local`` to a hostname that already carried a domain,
 and the auto-generated certificate put a dot-stripped hostname in its SAN
-list (F-052), so the machine's own advertised name never matched even with
+list, so the machine's own advertised name never matched even with
 the CA installed.
 
 One rule each: the bind decides whether a LAN URL may be printed at all
@@ -63,7 +63,7 @@ class TestWhatCountsAsLocalOnly:
 
 
 # ===========================================================================
-# F-001: the startup banner
+# the startup banner
 # ===========================================================================
 
 
@@ -130,7 +130,7 @@ class TestTheStartupBannerConsultsTheBind:
 
 
 # ===========================================================================
-# F-001a + F-003: /api/setup/status
+# /api/setup/status
 # ===========================================================================
 
 
@@ -223,27 +223,27 @@ class TestTheSetupScreenAppendsTheSuffixOnce:
         assert net["hostname"] == "avc-1.local"
 
     async def test_a_dotted_hostname_keeps_the_one_it_has(self, claimed, monkeypatch):
-        """F-003: the screen used to print `Aarons-MacBook-Air.local.local`."""
+        """The screen used to print `Sams-MacBook-Air.local.local`."""
         net = await _network(
-            claimed, monkeypatch, bind="0.0.0.0", hostname="Aarons-MacBook-Air.local"
+            claimed, monkeypatch, bind="0.0.0.0", hostname="Sams-MacBook-Air.local"
         )
-        assert net["hostname"] == "Aarons-MacBook-Air.local"
+        assert net["hostname"] == "Sams-MacBook-Air.local"
 
     async def test_the_offline_fallback_url_is_not_doubled_either(
         self, claimed, monkeypatch
     ):
-        """The half F-003 missed: line 154 built the same doubled name into
+        """The half the doubled-.local fix missed: line 154 built the same doubled name into
         the URL the screen tells you to type."""
         net = await _network(
             claimed,
             monkeypatch,
             bind="0.0.0.0",
-            hostname="Aarons-MacBook-Air.local",
+            hostname="Sams-MacBook-Air.local",
             ips=[],
         )
         assert net["online"] is False
         assert net["programmer_url"] == (
-            "http://Aarons-MacBook-Air.local:8080/programmer"
+            "http://Sams-MacBook-Air.local:8080/programmer"
         )
 
     async def test_a_host_with_no_name_of_its_own_offers_none(self, claimed, monkeypatch):
@@ -251,11 +251,11 @@ class TestTheSetupScreenAppendsTheSuffixOnce:
         assert net["hostname"] is None
 
     def test_the_page_prints_the_name_it_is_given_and_decides_nothing(self):
-        """Where F-003 was actually visible.
+        """Where the doubled .local was actually visible.
 
         The payload always carried a correct name; the page appended the
         suffix itself, in the Hostname row and in the SSH line, so a macOS or
-        FQDN host read `Aarons-MacBook-Air.local.local`. There is no jsdom
+        FQDN host read `Sams-MacBook-Air.local.local`. There is no jsdom
         harness for this page, so the rule is pinned at its source: the suffix
         is not the page's to add.
         """
@@ -291,26 +291,26 @@ class TestTheSetupScreenAppendsTheSuffixOnce:
 
         assert not offenders, (
             "these build a `.local` name inline instead of asking "
-            "api/hostnames.ts, which is how `Aarons-MacBook-Air.local.local` "
+            "api/hostnames.ts, which is how `Sams-MacBook-Air.local.local` "
             "reached two screens:\n  " + "\n  ".join(offenders)
         )
 
 
 # ===========================================================================
-# F-052: the auto-generated certificate's SAN list
+# the auto-generated certificate's SAN list
 # ===========================================================================
 
 
 class TestTheCertificateCoversTheNameTheHostAdvertises:
     def test_a_dotted_hostname_survives_into_the_san_list(self, monkeypatch):
-        """It used to arrive as `Aarons-MacBook-Airlocal` — dots stripped by a
+        """It used to arrive as `Sams-MacBook-Airlocal` — dots stripped by a
         single-label sanitizer — so the CA install bought nothing."""
-        monkeypatch.setattr(socket, "gethostname", lambda: "Aarons-MacBook-Air.local")
+        monkeypatch.setattr(socket, "gethostname", lambda: "Sams-MacBook-Air.local")
 
         hostnames, _ = tls.collect_local_identifiers("127.0.0.1")
 
-        assert "Aarons-MacBook-Air.local" in hostnames
-        assert "Aarons-MacBook-Airlocal" not in hostnames
+        assert "Sams-MacBook-Air.local" in hostnames
+        assert "Sams-MacBook-Airlocal" not in hostnames
         assert "localhost" in hostnames
 
     def test_a_bare_hostname_gets_its_mdns_name_too(self, monkeypatch):
@@ -328,7 +328,7 @@ class TestTheCertificateCoversTheNameTheHostAdvertises:
         the trusted-URL promise is empty. Both ask the same rule."""
         from openavc.utils.hostnames import resolvable_hostname
 
-        for raw in ("openavc", "Aarons-MacBook-Air.local", "box.corp.example.com"):
+        for raw in ("openavc", "Sams-MacBook-Air.local", "box.corp.example.com"):
             monkeypatch.setattr(socket, "gethostname", lambda raw=raw: raw)
             hostnames, _ = tls.collect_local_identifiers("127.0.0.1")
             assert resolvable_hostname(raw) in hostnames, raw

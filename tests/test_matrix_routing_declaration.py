@@ -1,7 +1,6 @@
 """A driver saying where its own routing lives, instead of being guessed at.
 
-Every shape here is one the shipped corpus forced (matrix plan §2.1a and the
-Phase 5 sweep), and every case is a place the guess is WRONG rather than merely
+Every shape here is one the shipped corpus forced, and every case is a place the guess is WRONG rather than merely
 absent -- which is the bar for declaring anything at all:
 
 * a routing command needing a fixed extra parameter no property name supplies,

@@ -58,7 +58,7 @@ const results = {};
   };
 }
 
-// --- The H-136 bug: every name the All tab offers must be a real sprite id ---
+// --- every name the All tab offers must be a real sprite id ---
 {
   const missing = allIcons.filter((n) => !spriteIds.has(n));
   results.all_tab_within_sprite = {
@@ -89,7 +89,7 @@ const results = {};
   };
 }
 
-// --- The M-182 bug: every curated category entry must be a real sprite id ---
+// --- every curated category entry must be a real sprite id ---
 {
   const missing = [...new Set(curated.filter((n) => !spriteIds.has(n)))];
   results.curated_within_sprite = {

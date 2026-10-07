@@ -116,7 +116,7 @@ const near = (a, b, tol = 1e-4) => Math.abs(a - b) < tol;
   };
 }
 
-// --- H-038: pointerToPercent maps the pointer to the box it fell in ---
+// --- pointerToPercent maps the pointer to the box it fell in ---
 // The page carries no padding any more (the gutter died with the grid), so
 // this is the whole rect edge to edge and the drop lands under the pointer.
 {
@@ -144,7 +144,7 @@ const near = (a, b, tol = 1e-4) => Math.abs(a - b) < tol;
   results.h038_ptp_zero_rect = { pass: r === 0, detail: r };
 }
 
-// --- H-038: percentages are stored to 4 decimal places, at every write ---
+// --- percentages are stored to 4 decimal places, at every write ---
 {
   const r = H.roundPct(100 / 3);
   results.h038_round_precision = { pass: r === 33.3333, detail: r };
@@ -157,7 +157,7 @@ const near = (a, b, tol = 1e-4) => Math.abs(a - b) < tol;
   results.h038_round_stable_round_trip = { pass: once === twice, detail: { once, twice } };
 }
 
-// --- M-077: snapMove pulls a drag onto the nearest attractive line ---
+// --- snapMove pulls a drag onto the nearest attractive line ---
 {
   // Just past a snap increment (8.3333) -> pulled back onto it.
   const r = H.snapMove({ x: 9, y: 13, w: 25, h: 12.5 }, { snap: SNAP_ON });
@@ -259,7 +259,7 @@ const near = (a, b, tol = 1e-4) => Math.abs(a - b) < tol;
   };
 }
 
-// --- M-077: snapResize only attracts the edges the handle drags ---
+// --- snapResize only attracts the edges the handle drags ---
 {
   // An east drag must not pull the west edge along with it.
   const r = H.snapResize({ x: 3.1, y: 10, w: 30.2, h: 20 }, "e", { snap: SNAP_ON });
@@ -294,7 +294,7 @@ const near = (a, b, tol = 1e-4) => Math.abs(a - b) < tol;
   };
 }
 
-// --- L-051: auto-placement for the paths that have no pointer ---
+// --- auto-placement for the paths that have no pointer ---
 {
   // Click-to-add on an empty page lands at the origin, which is where the old
   // grid put it — so this whole change is invisible at the palette.
@@ -338,7 +338,7 @@ const near = (a, b, tol = 1e-4) => Math.abs(a - b) < tol;
   };
 }
 
-// --- L-051: a drop inside a container adopts into it ---
+// --- a drop inside a container adopts into it ---
 {
   const page = {
     id: "p1", name: "P1", snap: SNAP_ON,
@@ -379,7 +379,7 @@ const near = (a, b, tol = 1e-4) => Math.abs(a - b) < tol;
   results.l051_drop_innermost_container_wins = { pass: r.parentId === "inner", detail: r };
 }
 
-// --- L-051: the 44px touch minimum, as advice rather than a clamp ---
+// --- the 44px touch minimum, as advice rather than a clamp ---
 {
   // As a runtime clamp this used to override small percentage heights and
   // shove elements out of their boxes into overlap on every touch panel.
@@ -421,7 +421,7 @@ const near = (a, b, tol = 1e-4) => Math.abs(a - b) < tol;
   };
 }
 
-// --- H-039: duplicateElementInPage avoids reserved (master) ids ---
+// --- duplicateElementInPage avoids reserved (master) ids ---
 {
   const pages = [
     {
@@ -443,7 +443,7 @@ const near = (a, b, tol = 1e-4) => Math.abs(a - b) < tol;
   };
 }
 
-// --- L-052: renameElement preserves untouched-scope array identity ---
+// --- renameElement preserves untouched-scope array identity ---
 function makeProject(macroKey) {
   return {
     pages: [
@@ -542,7 +542,7 @@ function makeProject(macroKey) {
   };
 }
 
-// --- H-086: validateProject handles do.<interaction> action lists ---
+// --- validateProject handles do.<interaction> action lists ---
 function makeValidationProject(elements) {
   return {
     ui: {
@@ -633,7 +633,7 @@ function makeValidationProject(elements) {
   };
 }
 
-// --- H-086: removePage scrubs navigate actions in do action lists ---
+// --- removePage scrubs navigate actions in do action lists ---
 {
   const pages = [
     {
@@ -663,7 +663,7 @@ function makeValidationProject(elements) {
   };
 }
 
-// --- M-143: duplicate rewrites self-referencing ui.<id> bindings ---
+// --- duplicate rewrites self-referencing ui.<id> bindings ---
 {
   const pages = [
     {
@@ -722,7 +722,7 @@ function makeValidationProject(elements) {
   };
 }
 
-// --- M-144: promote/demote rename on ui.<id> namespace collision ---
+// --- promote/demote rename on ui.<id> namespace collision ---
 {
   // Demote onto a page that already has an element with the master's id.
   const masters = [
@@ -783,7 +783,7 @@ function makeValidationProject(elements) {
   };
 }
 
-// --- L-087: validateProject recurses into value_map per-option actions ---
+// --- validateProject recurses into value_map per-option actions ---
 {
   const proj = makeValidationProject([
     {
@@ -813,7 +813,7 @@ function makeValidationProject(elements) {
   };
 }
 
-// --- L-088: the review flags boxes hanging outside their parent ---
+// --- the review flags boxes hanging outside their parent ---
 {
   const page = {
     id: "p1", name: "P1", snap: SNAP,
@@ -915,7 +915,7 @@ function makeValidationProject(elements) {
   };
 }
 
-// --- M-231: changing the snap increment moves NOTHING ---
+// --- changing the snap increment moves NOTHING ---
 // The old clampElementsToGrid rewrote every element to fit a shrinking grid.
 // It has no successor, and this is the assertion that says so: the increment
 // is a ruler now, so it can change to anything -- or switch off -- and the
@@ -950,7 +950,7 @@ function makeValidationProject(elements) {
   };
 }
 
-// --- L-142: page-delete scrub returns the ORIGINAL arrays when untouched ---
+// --- page-delete scrub returns the ORIGINAL arrays when untouched ---
 {
   // Nothing references the deleted page -> both arrays come back by
   // identity, so the changed-only undo snapshot actually skips them (the
@@ -979,7 +979,7 @@ function makeValidationProject(elements) {
   };
 }
 
-// --- L-146 / L-147: Broken/Incomplete checks match what the runtime runs ---
+// --- Broken/Incomplete checks match what the runtime runs ---
 const REF_IDS = {
   deviceIds: new Set(["proj"]),
   macroIds: new Set(["all_on"]),
@@ -1058,7 +1058,7 @@ statusScenario("l147_valid_actions_clean", () => {
   return { pass: checks.every(Boolean), detail: checks };
 });
 
-// --- M-306: swapElementsInOrder swaps by id (visible-neighbour z-order move) ---
+// --- swapElementsInOrder swaps by id (visible-neighbour z-order move) ---
 // The OutlinePanel z-order buttons pass the moving element's VISIBLE (filtered)
 // neighbour, so a reorder swaps what the user sees adjacent — not a hidden
 // full-list neighbour, which the old direction-based adjacent move did.

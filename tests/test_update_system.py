@@ -470,7 +470,7 @@ class TestAFailedStartupIsWhatAccumulates:
 
     The marker is cleared the moment the engine finishes starting
     (confirm_startup), so one still on disk at the next boot is evidence that
-    the previous boot never got that far. Before Q-158 the marker instead
+    the previous boot never got that far. Before the fix the marker instead
     survived for 60 seconds and the counter caught every restart inside that
     window; on an appliance, whose supervisor kills the server and whose users
     power-cycle it, that reverted good updates as a matter of course. The
@@ -1291,7 +1291,7 @@ class TestHelperScriptDeferredUpdateRetry:
 @gates.skipif_missing(gates.BASH, _BASH_MISSING)
 @gates.skipif_missing(gates.OPENSSL, _OPENSSL_MISSING)
 class TestHelperScriptSignatureGate:
-    """H-075: once trusted keys are present (signing armed), the root helper must
+    """Once trusted keys are present (signing armed), the root helper must
     verify the artifact's detached signature against a trusted key before doing
     ANY work with the tarball — closing the openavc-user -> root escalation."""
 

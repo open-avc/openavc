@@ -35,7 +35,7 @@ def _bare_manager(tmp_path, deployment=DeploymentType.LINUX_PACKAGE):
     return mgr
 
 
-# ── M-012: maintenance-window time parsing rejects malformed/out-of-range ──
+# ── maintenance-window time parsing rejects malformed/out-of-range ──
 
 @pytest.mark.parametrize("value,expected", [
     ("02:30", dt_time(2, 30)),
@@ -52,7 +52,7 @@ def test_parse_window_time(value, expected):
     assert UpdateManager._parse_window_time(value) == expected
 
 
-# ── H-009: a bad/hostile timezone resolves to None (UTC), never raises ──
+# ── a bad/hostile timezone resolves to None (UTC), never raises ──
 
 @pytest.mark.parametrize("tz", ["", "Not/AZone", "\x00", "x" * 5000, None, 123])
 def test_resolve_tz_bad_values(tz):
@@ -65,7 +65,7 @@ def test_resolve_tz_valid():
     assert getattr(tzinfo, "key", None) == "America/New_York"
 
 
-# ── H-008: the maintenance window enforces its end (not just the start) ──
+# ── the maintenance window enforces its end (not just the start) ──
 
 def test_in_window_same_day(tmp_path):
     mgr = _bare_manager(tmp_path)
@@ -100,7 +100,7 @@ def _utc(hour, minute):
     return d
 
 
-# ── H-014 / M-013: cloud policy is validated; reconfigure tears down cleanly ──
+# ── cloud policy is validated; reconfigure tears down cleanly ──
 
 @pytest.mark.asyncio
 async def test_apply_policy_garbage_does_not_schedule(tmp_path):
@@ -143,7 +143,7 @@ async def test_apply_policy_valid_schedules_one_task_and_reconfigures(tmp_path):
         # Reconfiguring must cancel + await the old loop, leaving exactly one.
         await mgr.apply_update_policy(policy)
         task2 = mgr._maintenance_task
-        assert task1.done()          # old loop torn down (M-013)
+        assert task1.done()          # old loop torn down
         assert task2 is not task1 and not task2.done()
 
         # Switching to manual cancels it entirely.
@@ -152,7 +152,7 @@ async def test_apply_policy_valid_schedules_one_task_and_reconfigures(tmp_path):
         assert task2.done()
 
 
-# ── H-013 / L-010: history reconciliation ──
+# ── history reconciliation ──
 
 def _write_history(mgr, entry):
     (mgr._data_dir / "update-history.json").write_text(json.dumps([entry]), encoding="utf-8")
@@ -164,7 +164,7 @@ def test_history_marks_success_despite_tag_pyproject_skew(tmp_path):
     _write_history(mgr, {"from_version": "0.13.0", "to_version": "0.15.0", "status": "pending"})
     with patch("openavc.updater.manager.__version__", "0.14.0"):
         mgr._load_history()
-    assert mgr._history[0]["status"] == "success"  # version changed -> applied (H-013)
+    assert mgr._history[0]["status"] == "success"  # version changed -> applied
 
 
 def test_history_marks_failed_when_version_unchanged(tmp_path):
@@ -182,10 +182,10 @@ def test_history_corrupt_file_logs_and_resets(tmp_path, caplog):
     with caplog.at_level(logging.WARNING):
         mgr._load_history()
     assert mgr._history == []
-    assert any("update history" in r.message for r in caplog.records)  # L-010: not silent
+    assert any("update history" in r.message for r in caplog.records)  # not silent
 
 
-# ── H-010 / L-015: rollback clears the staged record and rotates backups ──
+# ── rollback clears the staged record and rotates backups ──
 
 @pytest.mark.asyncio
 async def test_rollback_clears_staged_update(tmp_path):
@@ -204,11 +204,11 @@ async def test_rollback_clears_staged_update(tmp_path):
         result = await mgr.rollback()
 
     assert result["success"] is True
-    assert mgr.get_staged_update() is None      # H-010
-    cleanup.assert_called_once()                # L-015: pre-rollback backup rotated
+    assert mgr.get_staged_update() is None
+    cleanup.assert_called_once()                # pre-rollback backup rotated
 
 
-# ── H-011: rollback_version reflects the real target, not history ──
+# ── rollback_version reflects the real target, not history ──
 
 def test_get_status_rollback_version_from_real_target(tmp_path):
     mgr = _bare_manager(tmp_path)
@@ -223,7 +223,7 @@ def test_get_status_rollback_version_from_real_target(tmp_path):
     assert status["rollback_version"] == "0.12.0"  # not "0.14.0" from history
 
 
-# ── H-012 / L-013: failed/cancelled apply cleans markers + records failure ──
+# ── failed/cancelled apply cleans markers + records failure ──
 
 def test_cleanup_failed_apply_clears_linux_instruction(tmp_path):
     mgr = _bare_manager(tmp_path)
@@ -232,7 +232,7 @@ def test_cleanup_failed_apply_clears_linux_instruction(tmp_path):
          patch("openavc.updater.manager.__version__", "0.13.0"), \
          patch.object(mgr, "_save_history"):
         mgr._cleanup_failed_apply("0.14.0", "boom")
-    assert not (mgr._data_dir / "apply-update.json").exists()      # H-012
+    assert not (mgr._data_dir / "apply-update.json").exists()
     assert mgr._history[0]["status"] == "failed"
 
 
@@ -255,10 +255,10 @@ async def test_cancelled_apply_records_failed_and_propagates(tmp_path):
             await mgr.apply_update()
 
     assert mgr._update_in_progress is False                 # finally ran
-    assert mgr._history and mgr._history[0]["status"] == "failed"  # L-013
+    assert mgr._history and mgr._history[0]["status"] == "failed"
 
 
-# ── L-011: a transient cloud apply failure keeps the staged record ──
+# ── a transient cloud apply failure keeps the staged record ──
 
 @pytest.mark.asyncio
 async def test_staged_update_kept_on_apply_failure(tmp_path):
@@ -271,10 +271,10 @@ async def test_staged_update_kept_on_apply_failure(tmp_path):
     with patch("openavc.updater.manager.can_self_update", return_value=True):
         result = await mgr.apply_update()
     assert result["success"] is False
-    assert mgr.get_staged_update() is not None   # retained for retry (L-011)
+    assert mgr.get_staged_update() is not None   # retained for retry
 
 
-# ── L-012: a mid-stream download error removes the partial artifact ──
+# ── a mid-stream download error removes the partial artifact ──
 
 @pytest.mark.asyncio
 async def test_download_removes_partial_on_error(tmp_path, monkeypatch):
@@ -305,10 +305,10 @@ async def test_download_removes_partial_on_error(tmp_path, monkeypatch):
     monkeypatch.setattr("openavc.updater.manager.httpx.AsyncClient", _Client)
     with pytest.raises(OSError):
         await mgr._download_artifact("https://x/a.tar.gz", "a.tar.gz")
-    assert not (mgr._data_dir / "update-cache" / "a.tar.gz").exists()  # L-012
+    assert not (mgr._data_dir / "update-cache" / "a.tar.gz").exists()
 
 
-# ── L-014: a mid-write backup failure leaves no countable .zip ──
+# ── a mid-write backup failure leaves no countable .zip ──
 
 def test_backup_atomic_on_write_failure(tmp_path, monkeypatch):
     from openavc.updater import backup
@@ -324,11 +324,11 @@ def test_backup_atomic_on_write_failure(tmp_path, monkeypatch):
         backup.create_backup(data_dir, "1.0.0")
     backups = list((data_dir / "backups").glob("pre-update-*.zip"))
     tmps = list((data_dir / "backups").glob("*.tmp"))
-    assert backups == []  # no truncated archive counts as a restore slot (L-014)
+    assert backups == []  # no truncated archive counts as a restore slot
     assert tmps == []     # temp cleaned up
 
 
-# ── M-014: a concurrent check doesn't clobber an in-flight apply's status ──
+# ── a concurrent check doesn't clobber an in-flight apply's status ──
 
 @pytest.mark.asyncio
 async def test_check_does_not_touch_status_during_apply(tmp_path):
@@ -344,11 +344,11 @@ async def test_check_does_not_touch_status_during_apply(tmp_path):
         await mgr.check_for_updates(channel="stable")
 
     keys = {k for k, _ in sets}
-    assert "system.update_status" not in keys  # M-014: apply's status preserved
+    assert "system.update_status" not in keys  # apply's status preserved
     assert "system.update_error" not in keys
 
 
-# ── M-015: a string/zero auto-check interval is coerced, not fatal ──
+# ── a string/zero auto-check interval is coerced, not fatal ──
 
 @pytest.mark.asyncio
 async def test_auto_check_interval_coerced(tmp_path):
@@ -370,10 +370,10 @@ async def test_auto_check_interval_coerced(tmp_path):
     with patch("openavc.system_config.get_system_config", return_value=cfg), \
          patch("openavc.updater.manager.asyncio.create_task", _capture):
         await mgr.start_auto_check()
-    assert captured.get("scheduled") is True  # didn't raise on the bad interval (M-015)
+    assert captured.get("scheduled") is True  # didn't raise on the bad interval
 
 
-# ── M-016: a non-HTTPS cloud update URL is refused before download ──
+# ── a non-HTTPS cloud update URL is refused before download ──
 
 @pytest.mark.asyncio
 async def test_apply_cloud_update_rejects_non_https(tmp_path):
@@ -384,7 +384,7 @@ async def test_apply_cloud_update_rejects_non_https(tmp_path):
     assert "HTTPS" in result["error"] or "https" in result["error"]
 
 
-# ── M-017: URL-derived filenames are sanitized ──
+# ── URL-derived filenames are sanitized ──
 
 @pytest.mark.parametrize("url_path,version,deployment,expected", [
     ("/releases/openavc-1.0.0-linux-amd64.tar.gz", "1.0.0", DeploymentType.LINUX_PACKAGE,

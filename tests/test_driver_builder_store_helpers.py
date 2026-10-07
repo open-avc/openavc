@@ -9,12 +9,12 @@ validator. Like the colorUtils suite it skips when the Node toolchain or esbuild
 isn't present rather than failing the Python-only CI gate.
 
 Covers the audit findings fixed in the driverBuilderStore.ts group:
-  H-072/M-126 reconcileAfterSave (don't clobber edits made during the save
-  await; keep selection consistent with the persisted id), M-127 makeLatestWins
+  reconcileAfterSave (don't clobber edits made during the save
+  await; keep selection consistent with the persisted id), makeLatestWins
   (overlapping list refreshes resolve newest-started-wins, not last-resolved),
-  M-128 importBlockers (an import is refused only for reasons the save would
+  importBlockers (an import is refused only for reasons the save would
   refuse it for — the contract rules come from the validate endpoint, plus the
-  duplicate-id check only the editor can make), L-150 parseDriverDefinition
+  duplicate-id check only the editor can make), parseDriverDefinition
   (gate on a mapping so an imported list/scalar is rejected with a shape
   message, not cast through to a misleading 422).
 """

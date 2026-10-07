@@ -7,11 +7,11 @@ the other frontend-logic suites it skips when the Node toolchain or esbuild
 isn't present rather than failing the Python-only CI gate.
 
 Covers the audit findings fixed in the wsClient.ts group:
-  H-116 disconnect() detaches handlers so the (still-async) onclose can't
-  reschedule a reconnect and resurrect a connection the app tore down; M-166
+  disconnect() detaches handlers so the (still-async) onclose can't
+  reschedule a reconnect and resurrect a connection the app tore down;
   disconnect() resets per-session module state (everConnected, sendQueue,
   preOpenFailures) so stale commands aren't replayed and fresh-connect auth
-  detection works again; M-167 a transient pre-open 1006 retries with backoff
+  detection works again; a transient pre-open 1006 retries with backoff
   instead of immediately wiping valid credentials, logging out only once it
   persists past the retry budget.
 """

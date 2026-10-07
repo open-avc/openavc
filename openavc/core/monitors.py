@@ -338,8 +338,8 @@ def drop_monitors_for_variable(monitors: list[Any], variable_id: str) -> list[An
 _RULE_PREFIX = "monitor."
 
 #: Every project-declared limit fires at the same severity. The authoring form
-#: is deliberately one toggle, a "normal is..." widget and a duration (plan
-#: §5.2); a severity picker there would be a fourth control earning its place by
+#: is deliberately one toggle, a "normal is..." widget and a duration;
+#: a severity picker there would be a fourth control earning its place by
 #: nothing, and the fleet-wide portal rules are where graded severity belongs.
 _SEVERITY = "warning"
 

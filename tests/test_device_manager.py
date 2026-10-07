@@ -600,7 +600,7 @@ async def test_on_device_disconnected_skips_when_already_connected(dm, core):
 
 
 # ---------------------------------------------------------------------------
-# Offline reason classification (§53)
+# Offline reason classification
 # ---------------------------------------------------------------------------
 
 class AuthFailDriver(BaseDriver):
@@ -641,7 +641,7 @@ class AuthFailDriver(BaseDriver):
 
 async def test_offline_reason_auth_failed_from_permission_denied(dm, core):
     """A transport last_error of 'Permission denied' classifies as auth_failed
-    with a human-readable offline_detail (the §53 acceptance test)."""
+    with a human-readable offline_detail."""
     state, events = core
     driver = AuthFailDriver(
         "sw", {"host": "169.254.100.100", "port": 22, "transport": "ssh"},
@@ -762,7 +762,7 @@ async def test_offline_reason_cleared_on_resume_success(dm, core):
 
 
 # ---------------------------------------------------------------------------
-# device.error.<id> emission (backlog §31)
+# device.error.<id> emission
 # ---------------------------------------------------------------------------
 
 class ErroringDriver(BaseDriver):

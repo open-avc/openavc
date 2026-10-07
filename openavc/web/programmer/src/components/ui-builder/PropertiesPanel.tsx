@@ -751,7 +751,7 @@ function PageProperties({
     onChange({ overlay: { ...overlay, ...patch } });
   };
 
-  // Preserve grid across page-type switches — Aaron explicitly wants this.
+  // Preserve grid across page-type switches.
   // The previous behavior reset grid to 4×4 / 4×8 silently, which clamped
   // existing elements off the grid with no path back.
   //

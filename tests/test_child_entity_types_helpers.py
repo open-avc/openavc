@@ -8,10 +8,10 @@ other frontend-logic suites it skips when the Node toolchain or esbuild isn't
 present rather than failing the Python-only CI gate.
 
 Covers the audit findings fixed in the ChildEntityTypesEditor.tsx group:
-  H-117 applyChildVarTypeChange computes the new var def as one atomic object so
-  a type switch no longer reverts via stale-snapshot multi-writes; H-118
+  applyChildVarTypeChange computes the new var def as one atomic object so
+  a type switch no longer reverts via stale-snapshot multi-writes;
   nextChildFieldId / nextChildTypeId skip every existing id so add/remove/add
-  never overwrites a field; M-168 sanitize* + checkRename back the commit-on-blur
+  never overwrites a field; sanitize* + checkRename back the commit-on-blur
   rename (reject empty/collision with a reason, accept a no-op).
 """
 from __future__ import annotations

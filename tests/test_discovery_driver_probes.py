@@ -180,7 +180,7 @@ def _tcp_responder_segments(
 # one step and hand the number back, and the one test that wants nothing
 # listening keeps its own socket open for the duration. Nothing here binds a
 # port, reads the number and lets go: that gap is the same bug wearing the
-# other hat, and it is what queue item Q-215 is about in six other files.
+# other hat, and six other test files had it too.
 
 
 # ---------------------------------------------------------------------------
@@ -480,7 +480,7 @@ class TestProbeRunnerIntegration:
         assert ev.data["response"]["manufacturer"] == "Lightware"
         # other fields land under 'extracted'
         assert ev.data["response"]["extracted"]["version"] == "2.7.3"
-        # Port + matched pattern feed the §10 phrasing — the UI
+        # Port + matched pattern feed the evidence phrasing — the UI
         # prefers the response excerpt for readable text but falls
         # back to "TCP probe on port <p> matched contains:Lightware"
         # for binary protocols whose excerpt would be gibberish.
@@ -576,7 +576,7 @@ class TestProbeRunnerIntegration:
 
 
 # ---------------------------------------------------------------------------
-# Send-rate cap (M-252) + distinct-responder flood guard (M-253)
+# Send-rate cap + distinct-responder flood guard
 # ---------------------------------------------------------------------------
 
 
@@ -619,7 +619,7 @@ class _FakeUDPSocket:
 
 
 class TestTcpProbeRateLimiting:
-    """M-252: the TCP active probe must honor the shared RateLimiter so the
+    """The TCP active probe must honor the shared RateLimiter so the
     documented global 10/sec send cap actually bounds the SYN rate."""
 
     @pytest.mark.asyncio
@@ -654,7 +654,7 @@ class TestTcpProbeRateLimiting:
 
 
 class TestUdpProbeResponderCap:
-    """M-253: a spoofed-source responder storm must not grow the results dict
+    """A spoofed-source responder storm must not grow the results dict
     without bound — distinct matching senders are capped per probe window."""
 
     @pytest.mark.asyncio

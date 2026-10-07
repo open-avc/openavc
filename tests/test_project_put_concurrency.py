@@ -183,7 +183,7 @@ async def test_put_project_without_a_version_is_refused(engine, monkeypatch):
     assert engine._project_revision == current
 
 
-# ── Q-184: a restart must not revalidate a stale tab's ETag ─────────────────
+# ── a restart must not revalidate a stale tab's ETag ─────────────────
 
 
 def _stale_after_restart_engines(tmp_path, monkeypatch):

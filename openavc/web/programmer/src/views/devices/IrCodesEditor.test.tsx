@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // Shared, hoisted mock state. `state.project` is mutated by tests to simulate a
-// project that hydrates AFTER the editor mounts (the §82.6 re-sync case).
+// project that hydrates AFTER the editor mounts (the re-sync case).
 const mocks = vi.hoisted(() => ({
   state: {
     project: {
@@ -67,7 +67,7 @@ beforeEach(() => {
   setProject([deviceWith(undefined)]);
 });
 
-describe("IrCodesEditor — silent-drop on save (§82.6a)", () => {
+describe("IrCodesEditor — silent-drop on save", () => {
   it("blocks the save and flags a named row that has no captured code", async () => {
     const user = userEvent.setup();
     renderEditor();
@@ -116,7 +116,7 @@ describe("IrCodesEditor — silent-drop on save (§82.6a)", () => {
   });
 });
 
-describe("IrCodesEditor — pre-hydration re-sync (§82.6b)", () => {
+describe("IrCodesEditor — pre-hydration re-sync", () => {
   it("adopts saved codes that arrive after the editor mounted empty", async () => {
     // Mount before the project has this device (empty devices list).
     setProject([]);

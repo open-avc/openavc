@@ -86,14 +86,14 @@ def helper_results() -> dict:
 
 
 SCENARIOS = [
-    # H-126 — event bindings are arrays of actions.
+    # event bindings are arrays of actions.
     "h126_array_press_var_found",
     "h126_array_multi_action",
     "h126_array_value_map",
     "h126_array_allkeys_device",
     "h126_legacy_object_still_works",
     "h126_two_way_binding",
-    # M-176 — globMatch escapes regex metacharacters.
+    # globMatch escapes regex metacharacters.
     "m176_metachar_no_crash",
     "m176_no_redos",
     # Backlog 67 — globMatch mirrors the runtime fnmatch semantics.
@@ -101,12 +101,12 @@ SCENARIOS = [
     "fn_question_single_char",
     "fn_char_class",
     "fn_unbalanced_bracket_no_throw",
-    # L-103 — wildcard matches device-only candidate keys.
+    # wildcard matches device-only candidate keys.
     "l103_wildcard_matches_device_keys",
     "l103_wildcard_segment_scoped",
     # Backlog 67 item 2 — var.* wildcard matches the project's variables.
     "varmap_wildcard_matches_vars",
-    # M-277 — plugin-action params (not just device/group) resolve $var refs.
+    # plugin-action params (not just device/group) resolve $var refs.
     "m277_plugin_action_params_resolve_vars",
 ]
 

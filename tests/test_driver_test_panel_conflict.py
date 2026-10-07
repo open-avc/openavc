@@ -286,7 +286,7 @@ async def test_disconnect_all_cancels_pause_ttl(dm, core):
 
 
 # ---------------------------------------------------------------------------
-# A pause survives driver-instance replacement (Q-191)
+# A pause survives driver-instance replacement
 #
 # The pause exists so the test panel can hold the only session a single-session
 # device allows. Both paths that swap the driver instance under a live device id

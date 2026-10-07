@@ -111,7 +111,7 @@ def acme_settings_panel():
 async def test_pending_settings_persist_from_inside_reconcile_no_deadlock(
     tmp_path, acme_settings_panel,
 ):
-    """The §4e re-entrancy trap: pending settings are applied on device
+    """The re-entrancy trap: pending settings are applied on device
     connect, which runs inside _sync_devices while apply_project holds the
     reconcile lock, and the event handler is awaited inline from there.
 

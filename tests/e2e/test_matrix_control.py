@@ -840,7 +840,7 @@ def test_a_matrix_that_reached_the_panel_unexpanded_draws_nothing(panel_page) ->
 # ---------------------------------------------------------------------------
 
 #: An invented decoder carrying two independent routing planes, chosen by a
-#: parameter on one command. The shape is the AVoIP one from the plan's §2.1a
+#: parameter on one command. The shape is the AVoIP one
 #: (a decoder routes video, audio, USB and more separately); the names are not
 #: any product's.
 ACME_AVOIP = {
@@ -932,7 +932,7 @@ def test_the_crosspoints_light_off_the_keys_the_driver_was_read_for(panel_page) 
 def test_the_two_planes_of_one_decoder_watch_different_keys(panel_page) -> None:
     """One element covers one plane, and the plane is part of the key.
 
-    Six routing planes needed no new machinery at all (matrix plan §3.1), and
+    Six routing planes needed no new machinery at all, and
     this is that claim tested rather than asserted: the audio matrix must not
     light for a video route.
     """

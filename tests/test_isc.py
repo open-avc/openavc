@@ -214,7 +214,7 @@ def test_clear_isc_state(isc, state):
     assert state.get("isc.peer1.power") is None
     assert state.get("isc.peer2.active") is None
     assert state.get("device.proj1.power") == "on"  # Not cleared
-    # L-024: keys are deleted outright, not left as ghost None entries in the
+    # keys are deleted outright, not left as ghost None entries in the
     # snapshot every subscriber sees.
     snap = state.snapshot()
     assert "isc.peer1.power" not in snap
@@ -371,7 +371,7 @@ async def test_handle_state_message(isc, state):
 
 async def test_handle_command_message(isc, devices):
     """isc.command should execute on local DeviceManager and send result —
-    when the command is permitted by the allowlist (H-023)."""
+    when the command is permitted by the allowlist."""
     isc._allowed_remote_commands = ["proj1.*"]
     ws = FakeWebSocket(auth_key="testkey")
     await isc.accept_inbound(ws, {
@@ -398,7 +398,7 @@ async def test_handle_command_message(isc, devices):
 
 
 async def test_remote_command_denied_by_default(isc, devices):
-    """H-023: with an empty allowlist a peer cannot run any device command;
+    """With an empty allowlist a peer cannot run any device command;
     the request is refused without ever reaching the DeviceManager."""
     assert isc._allowed_remote_commands == []
     ws = FakeWebSocket(auth_key="testkey")
@@ -419,7 +419,7 @@ async def test_remote_command_denied_by_default(isc, devices):
 
 
 async def test_remote_command_allowlist_is_scoped(isc, devices):
-    """H-023: a specific allowlist entry permits only its target, not siblings."""
+    """A specific allowlist entry permits only its target, not siblings."""
     isc._allowed_remote_commands = ["proj1.power_off"]
     assert isc._is_remote_command_allowed("proj1", "power_off") is True
     assert isc._is_remote_command_allowed("proj1", "power_on") is False
@@ -895,7 +895,7 @@ async def test_peer_connection_has_monotonic_id():
 
 
 # ---------------------------------------------------------------------------
-# TLS-aware discovery (HTTPS plan §6)
+# TLS-aware discovery
 # ---------------------------------------------------------------------------
 
 
@@ -986,12 +986,12 @@ def test_handle_beacon_https_falls_back_to_port_when_tls_port_missing(isc, monke
 
 
 # ---------------------------------------------------------------------------
-# Mutual auth (M-037) — inbound side
+# Mutual auth — inbound side
 # ---------------------------------------------------------------------------
 
 
 async def test_inbound_challenge_includes_server_proof(isc_with_auth):
-    """M-037: the acceptor proves key possession over the peer's client_nonce
+    """The acceptor proves key possession over the peer's client_nonce
     in the challenge, so the peer can verify us before disclosing its HMAC."""
     ws = FakeWebSocket(auth_key="secret123")
     peer_id = await isc_with_auth.accept_inbound(ws, {
@@ -1015,7 +1015,7 @@ async def test_inbound_tolerates_missing_client_nonce(isc_with_auth):
 
 
 # ---------------------------------------------------------------------------
-# Outbound handshake harness (H-022, M-037, M-040)
+# Outbound handshake harness
 # ---------------------------------------------------------------------------
 
 
@@ -1102,7 +1102,7 @@ def _patch_websockets(monkeypatch, fake_ws):
 
 
 async def test_outbound_connect_registers_and_cleans_up(isc, monkeypatch):
-    """M-040 happy path + H-022 clean close: full handshake registers the peer,
+    """Happy path and clean close: full handshake registers the peer,
     and a normal message-loop end reconciles tracking (no leak)."""
     fake = FakeClientWS(auth_key="testkey", server_id="srv-1")
     _patch_websockets(monkeypatch, fake)
@@ -1118,7 +1118,7 @@ async def test_outbound_connect_registers_and_cleans_up(isc, monkeypatch):
 
 
 async def test_outbound_aborts_on_bad_server_proof(isc, monkeypatch):
-    """M-037: a server that can't prove the key gets no HMAC from us — we abort
+    """A server that can't prove the key gets no HMAC from us — we abort
     before sending isc.auth, denying the relay/oracle."""
     fake = FakeClientWS(auth_key="testkey", good_server_proof=False)
     _patch_websockets(monkeypatch, fake)
@@ -1132,7 +1132,7 @@ async def test_outbound_aborts_on_bad_server_proof(isc, monkeypatch):
 
 
 async def test_outbound_no_leak_on_abnormal_disconnect(isc, monkeypatch):
-    """H-022: an abnormal disconnect (exception out of the message loop) still
+    """An abnormal disconnect (exception out of the message loop) still
     reconciles tracking via the finally — the entry doesn't leak as connected."""
     fake = FakeClientWS(
         auth_key="testkey", server_id="srv-3",
@@ -1148,7 +1148,7 @@ async def test_outbound_no_leak_on_abnormal_disconnect(isc, monkeypatch):
 
 
 async def test_outbound_tiebreak_preserves_inbound(isc, monkeypatch):
-    """M-040: when a live inbound at a smaller peer id already exists, the
+    """When a live inbound at a smaller peer id already exists, the
     outbound loses the tie-break (our id is larger) and must abort without
     touching the canonical inbound connection."""
     ws_in = FakeWebSocket()
@@ -1168,12 +1168,12 @@ async def test_outbound_tiebreak_preserves_inbound(isc, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Remote-state validation (H-024)
+# Remote-state validation
 # ---------------------------------------------------------------------------
 
 
 def test_apply_remote_state_drops_non_primitives(isc, state):
-    """H-024: nested/list values and non-string keys are dropped so a peer
+    """Nested/list values and non-string keys are dropped so a peer
     can't break the flat-primitive store invariant."""
     isc._apply_remote_state("peer-bad", {
         "good": "on",
@@ -1192,18 +1192,18 @@ def test_apply_remote_state_drops_non_primitives(isc, state):
 
 
 def test_apply_remote_state_ignores_non_dict(isc, state):
-    """H-024: a non-dict isc.state payload is ignored without raising."""
+    """A non-dict isc.state payload is ignored without raising."""
     isc._apply_remote_state("peer-bad", ["not", "a", "dict"])  # no exception
     assert not any(k.startswith("isc.peer-bad.") for k in state.snapshot())
 
 
 # ---------------------------------------------------------------------------
-# Stale-state + peer pruning (M-034, M-039)
+# Stale-state + peer pruning
 # ---------------------------------------------------------------------------
 
 
 def test_prune_stale_peers_removes_silent_discovered(isc):
-    """M-034: a discovered peer silent past BEACON_TTL is pruned; a connected
+    """A discovered peer silent past BEACON_TTL is pruned; a connected
     peer and a manual (configured) peer are kept regardless of last_seen."""
     isc._peers["ghost"] = PeerInfo(
         instance_id="ghost", name="Ghost", host="10.0.0.1", port=8080,
@@ -1227,7 +1227,7 @@ def test_prune_stale_peers_removes_silent_discovered(isc):
 
 
 def test_prune_clears_pruned_peer_state(isc, state):
-    """M-034/M-039: pruning a ghost peer also clears its shared-state keys."""
+    """Pruning a ghost peer also clears its shared-state keys."""
     state.set("isc.ghost.device.x.power", "on", source="isc")
     isc._peers["ghost"] = PeerInfo(
         instance_id="ghost", name="Ghost", host="10.0.0.1", port=8080,
@@ -1238,7 +1238,7 @@ def test_prune_clears_pruned_peer_state(isc, state):
 
 
 async def test_peer_state_cleared_on_disconnect(isc, state):
-    """M-039: a peer's isc.<peer>.* keys are removed when it disconnects so
+    """A peer's isc.<peer>.* keys are removed when it disconnects so
     stale values can't keep driving bindings/triggers."""
     ws = FakeWebSocket(auth_key="testkey")
     await isc.accept_inbound(ws, {
@@ -1253,12 +1253,12 @@ async def test_peer_state_cleared_on_disconnect(isc, state):
 
 
 # ---------------------------------------------------------------------------
-# Connect-task lifecycle (M-035) + auth-fail cap (M-036)
+# Connect-task lifecycle + auth-fail cap
 # ---------------------------------------------------------------------------
 
 
 async def test_completed_connect_task_self_removes(isc, monkeypatch):
-    """M-035: a finished outbound loop drops itself from _connect_tasks so a
+    """A finished outbound loop drops itself from _connect_tasks so a
     later beacon's _schedule_connect can re-dial the peer."""
     async def quick_loop(peer_id, host, port, scheme="http"):
         return
@@ -1271,7 +1271,7 @@ async def test_completed_connect_task_self_removes(isc, monkeypatch):
 
 
 def test_inbound_auth_fail_map_is_capped(isc_with_auth):
-    """M-036: a flood of fresh attacker-chosen instance_ids can't grow the
+    """A flood of fresh attacker-chosen instance_ids can't grow the
     auth-fail dedupe map without bound."""
     for i in range(MAX_AUTH_FAIL_ENTRIES + 50):
         isc_with_auth._log_inbound_auth_fail(f"peer-{i}", "bad")
@@ -1279,12 +1279,12 @@ def test_inbound_auth_fail_map_is_capped(isc_with_auth):
 
 
 # ---------------------------------------------------------------------------
-# send_to / send_command robustness (L-025, L-026)
+# send_to / send_command robustness
 # ---------------------------------------------------------------------------
 
 
 async def test_send_to_distinguishes_known_but_unconnected(isc):
-    """L-025: a known-but-not-yet-connected peer gets a precise error, distinct
+    """A known-but-not-yet-connected peer gets a precise error, distinct
     from an entirely unknown instance."""
     isc._peers["peer-known"] = PeerInfo(
         instance_id="peer-known", name="K", host="1.2.3.4", port=8080,
@@ -1297,7 +1297,7 @@ async def test_send_to_distinguishes_known_but_unconnected(isc):
 
 
 async def test_send_command_cleans_pending_on_send_failure(isc):
-    """L-026: if conn.send() raises after the future is registered, both
+    """If conn.send() raises after the future is registered, both
     pending maps are cleaned via finally — no leaked future."""
     class BoomConn:
         async def send(self, msg):

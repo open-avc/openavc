@@ -419,7 +419,7 @@ def test_yaml_driver_register_child_unknown_type_raises(state, events):
         drv.register_child("decoder", 1)
 
 
-# --- Command param validation + normalization (§69 Phase 3) ---
+# --- Command param validation + normalization ---
 #
 # The runtime gate for command values: every value (whatever the caller) is
 # trimmed and validated against the command's declared param schema before it

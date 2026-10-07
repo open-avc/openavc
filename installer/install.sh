@@ -478,7 +478,7 @@ setup_data_dir() {
     # The recursive chown above just made the signing-key store and the
     # root-executed helpers writable by the service user. Re-assert root
     # ownership on them so a compromised openavc process can't swap in its own
-    # key or rewrite the helper root runs (H-075 trust root). Mirrors
+    # key or rewrite the helper root runs (the update-signing trust root). Mirrors
     # update-helper.sh's harden_privileged_paths.
     harden_trust_store
 

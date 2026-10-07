@@ -1631,7 +1631,7 @@ class DiscoveryEngine:
     def _apply_plan(self, key: str, warnings: list[str]) -> None:
         """Record a phase plan: its granted deadline, and any narrowing.
 
-        A narrowing warning is the contract from §5 of the budget plan — work
+        A narrowing warning is the contract here — work
         dropped before a phase starts must be named, never silently omitted —
         and it also flips the scan to ``partial``, because results that cover
         less than the request asked for are not a complete scan.

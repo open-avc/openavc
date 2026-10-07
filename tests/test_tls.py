@@ -399,7 +399,7 @@ def test_collect_local_identifiers_hostname_sanitized(monkeypatch):
     and is pinned in tests/test_advertised_urls.py — here it is only that
     nothing illegal for DNS reaches a SAN entry.
     """
-    monkeypatch.setattr(socket, "gethostname", lambda: "Aaron's Pi 4")
+    monkeypatch.setattr(socket, "gethostname", lambda: "Sam's Pi 4")
     hostnames, _ = tls.collect_local_identifiers("127.0.0.1")
 
     sanitized = [h for h in hostnames if h != "localhost"]

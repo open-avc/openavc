@@ -27,7 +27,7 @@ const some = (refs, sub) => refs.some((r) => r.includes(sub));
 const results = {};
 const record = (name, pass, detail) => { results[name] = { pass, detail }; };
 
-// L-175a: a $device param reference with no step.device must be found.
+// a $device param reference with no step.device must be found.
 {
   const p = { device_groups: [], macros: [{ name: "M", steps: [
     { action: "state.set", key: "var.x", value: "$device.d1.volume" },
@@ -36,7 +36,7 @@ const record = (name, pass, detail) => { results[name] = { pass, detail }; };
   record("l175_param_device_ref", some(refs, 'Macro "M"'), refs);
 }
 
-// L-175b: a group.command step whose group contains the device, plus the
+// a group.command step whose group contains the device, plus the
 // device-group membership line.
 {
   const p = { device_groups: [{ id: "displays", name: "Displays", device_ids: ["d1", "d2"] }],
@@ -46,7 +46,7 @@ const record = (name, pass, detail) => { results[name] = { pass, detail }; };
   record("l175_group_command_step", some(refs, 'Macro "AllOff": 1 step(s)') && some(refs, 'Device group "Displays"'), refs);
 }
 
-// L-175c: a device.* event-trigger pattern.
+// a device.* event-trigger pattern.
 {
   const p = { device_groups: [], macros: [{ name: "M", steps: [],
     triggers: [{ type: "event", event_pattern: "device.disconnected.d1" }] }], ui: { pages: [] } };
@@ -54,7 +54,7 @@ const record = (name, pass, detail) => { results[name] = { pass, detail }; };
   record("l175_event_pattern", some(refs, "device.disconnected.d1"), refs);
 }
 
-// L-175d: a device.command buried in a conditional's then_steps.
+// a device.command buried in a conditional's then_steps.
 {
   const p = { device_groups: [], macros: [{ name: "M", steps: [
     { action: "conditional", condition: { key: "var.mode", operator: "eq", value: "on" },
@@ -64,7 +64,7 @@ const record = (name, pass, detail) => { results[name] = { pass, detail }; };
   record("l175_nested_conditional", some(refs, 'Macro "M"'), refs);
 }
 
-// L-176: substring false positive — searching d1 must NOT match a binding that
+// substring false positive — searching d1 must NOT match a binding that
 // only references sibling device d10.
 {
   const p = { device_groups: [], macros: [], ui: { pages: [{ name: "Home", elements: [
@@ -74,7 +74,7 @@ const record = (name, pass, detail) => { results[name] = { pass, detail }; };
   record("l176_sibling_still_found", find(p, "d10").length === 1, find(p, "d10"));
 }
 
-// L-176 no-regression: a do-action targeting the device by bare id is still caught.
+// no-regression: a do-action targeting the device by bare id is still caught.
 {
   const p = { device_groups: [], macros: [], ui: { pages: [{ name: "Home", elements: [
     { id: "b1", label: "On", bindings: { do: { press: [{ action: "device.command", device: "d1", command: "power_on" }] } } },

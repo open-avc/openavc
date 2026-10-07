@@ -809,7 +809,7 @@ CASES["vocabulary"] = _project([
 
 # A portrait arrangement, measured against a portrait screen.
 #
-# This case is the only evidence the Q-087 fix works, and it has to be, because
+# This case is the only evidence the portrait-page fix works, and it has to be, because
 # the bug failed toward ACCEPTING: a portrait page was measured against 1280x800,
 # so a control too narrow to touch came back clean on every surface at once and
 # nothing already in this corpus was red. Nothing here would trip a single check
@@ -1809,7 +1809,7 @@ def test_a_buried_master_is_named_on_the_control_that_buried_it(verdicts) -> Non
     # A master carries a box per orientation, so the portrait bar is a different
     # box in a different place -- and the arrangement it happens in is named.
     #
-    # These pixels are measured against PORTRAIT glass, which is the Q-087 fix
+    # These pixels are measured against PORTRAIT glass, which is the portrait-page fix
     # visible in an assertion that predates it: the same 30% x 8% overlap read
     # 384x64px while every arrangement was measured against 1280x800, and reads
     # 240x102px now that a portrait one is measured against 800x1280. The share

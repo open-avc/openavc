@@ -1,18 +1,18 @@
 """Regression tests for RestartProgressDialog's poll logic.
 
 Two fixes:
-- L-171: the dialog's cancellation flag was a shared useRef reset to false at the
+- the dialog's cancellation flag was a shared useRef reset to false at the
   top of every effect run, so when targetUrl/expectsNewCert changed a superseded
   run's guards stopped cancelling and it could re-POST restart or navigate to a
   stale URL. It now uses a boolean local to each effect closure.
-- L-172: the cert-error heuristic flipped after 5 consecutive fetch failures
+- the cert-error heuristic flipped after 5 consecutive fetch failures
   alone, so a slow-but-healthy restart (server still rebinding) was misread as
   the browser rejecting the new cert, misdirecting the user to install a CA. The
   decision (shouldEnterCertError) now also requires polling to have run past the
   normal restart window.
 
-L-172 is the pure shouldEnterCertError, exercised via the esbuild harness. L-171
-is inline React effect-closure logic (no pure seam), so it's pinned at the
+The second is the pure shouldEnterCertError, exercised via the esbuild harness.
+The first is inline React effect-closure logic (no pure seam), so it's pinned at the
 source. Skips when the Node toolchain or esbuild is absent.
 """
 from __future__ import annotations
@@ -94,7 +94,7 @@ def test_should_enter_cert_error(helper_results: dict, scenario: str) -> None:
     assert outcome["pass"], f"{scenario} failed: detail={outcome.get('detail')!r}"
 
 
-# --- L-171 source pins: per-run cancellation, not a shared ref ---------------
+# --- source pins: per-run cancellation, not a shared ref ---------------
 
 def test_cancellation_is_a_local_closure_flag() -> None:
     src = DIALOG.read_text(encoding="utf-8")

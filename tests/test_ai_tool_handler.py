@@ -585,7 +585,7 @@ class TestShowDoBindingValidation:
 
 
 # ===========================================================================
-# H-078 — A tool that returns an {"error": ...} / {"success": False} dict has
+# A tool that returns an {"error": ...} / {"success": False} dict has
 # failed even though it didn't raise. It must be reported with success=False
 # so the cloud sets is_error on the Anthropic tool_result, instead of handing
 # Claude a "successful" result with the error buried in the body.
@@ -665,7 +665,7 @@ class TestToolResultErrorSignaling:
 
 
 # ===========================================================================
-# M-132 — A failed pre-AI backup must NOT latch the "backup created" flag,
+# A failed pre-AI backup must NOT latch the "backup created" flag,
 # otherwise the safety net is silently disabled for the rest of the session.
 # ===========================================================================
 
@@ -726,7 +726,7 @@ class TestPreAIBackupSafetyNet:
 
 
 # ===========================================================================
-# M-133 — The runtime supports ui.navigate macro steps; the AI validator must
+# The runtime supports ui.navigate macro steps; the AI validator must
 # accept them so AI tools can author/edit macros that contain one.
 # ===========================================================================
 
@@ -762,7 +762,7 @@ class TestUINavigateMacroStep:
 
 
 # ===========================================================================
-# L-081 — The AI state-key validator answers for isc. keys the same way every
+# The AI state-key validator answers for isc. keys the same way every
 # other door does. It originally accepted them, matching a policy that listed
 # isc. as writable; that policy was wrong (the key is a peer's mirror and the
 # write is undone at the peer's next update), so the shared answer is now a
@@ -788,7 +788,7 @@ class TestStateKeyISCPrefix:
 
     def test_every_door_gives_the_same_verdict(self):
         """The point of the shared policy: no write succeeds through one door
-        and fails through another. Q-053 — REST used to have no prefix gate."""
+        and fails through another. REST used to have no prefix gate."""
         from openavc.core.state_store import (
             PANEL_WRITABLE_PREFIXES, VALID_KEY_PREFIXES, check_state_write,
         )
@@ -805,7 +805,7 @@ class TestStateKeyISCPrefix:
 
 
 # ===========================================================================
-# L-082 — Raw str(exception) must not leave the local trust boundary. The
+# Raw str(exception) must not leave the local trust boundary. The
 # handler maps tool exceptions through friendly_error before forwarding to the
 # cloud (where they're persisted in chat history).
 # ===========================================================================

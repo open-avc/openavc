@@ -283,7 +283,7 @@ def test_get_callable_functions_empty(engine):
     assert engine.get_callable_functions() == []
 
 
-# ===== H-069: scripts-dir path containment =====
+# ===== scripts-dir path containment =====
 
 
 async def test_script_path_traversal_is_refused(engine, subsystems, script_dir):
@@ -450,7 +450,7 @@ async def test_two_param_handler_refusal_keeps_running_version_on_reload(
     assert state.get("var.version") == "v1"
 
 
-# ===== H-068: bounded state-change cascade =====
+# ===== bounded state-change cascade =====
 
 
 async def test_state_cascade_depth_is_bounded(engine, subsystems, script_dir):
@@ -479,7 +479,7 @@ async def test_state_cascade_depth_is_bounded(engine, subsystems, script_dir):
     assert state.get("var.counter") == engine.MAX_STATE_HANDLER_DEPTH
 
 
-# ===== M-118: async state handlers get a timeout + surface errors =====
+# ===== async state handlers get a timeout + surface errors =====
 
 
 async def test_async_state_handler_error_surfaces(engine, subsystems, script_dir):
@@ -528,7 +528,7 @@ async def test_async_state_handler_timeout_surfaces(engine, subsystems, script_d
     assert any("timed out" in (p.get("error") or "") for p in seen), seen
 
 
-# ===== M-119: timed-out load thread is a daemon (won't block shutdown) =====
+# ===== timed-out load thread is a daemon (won't block shutdown) =====
 
 
 async def test_load_timeout_thread_is_daemon(engine, subsystems, script_dir):
@@ -578,7 +578,7 @@ async def test_top_level_timer_materializes(engine, subsystems, script_dir):
     assert state.get("var.fired") == "yes"
 
 
-# ===== M-120: per-script reload isolation + preserve-on-failure =====
+# ===== per-script reload isolation + preserve-on-failure =====
 
 
 async def test_reload_script_leaves_peers_running(engine, subsystems, script_dir):
@@ -666,7 +666,7 @@ async def test_reload_script_preserves_old_on_failure(engine, subsystems, script
     assert state.get("var.out") == "good:2"
 
 
-# ===== M-120: per-script timer ownership =====
+# ===== per-script timer ownership =====
 
 
 async def test_cancel_script_timers_is_scoped():
@@ -817,7 +817,7 @@ async def test_every_sync_callback_error_emits_and_keeps_ticking(monkeypatch):
     assert "tick failed" in errors[0]["error"]
 
 
-# ===== Q-183: an abandoned load thread is put on a leash, and reported =====
+# ===== an abandoned load thread is put on a leash, and reported =====
 #
 # Abandoning a load thread is not stopping it. A `while True:` at top level that
 # touches the platform kept writing state forever, every retry added another

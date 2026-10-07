@@ -158,7 +158,7 @@ describe("the presence dot", () => {
 });
 
 describe("an empty slot", () => {
-  /** Q-203: seven AT-LINK extension positions on a standalone mixer. Not in
+  /** seven AT-LINK extension positions on a standalone mixer. Not in
    *  service, and nothing to go and fix. The whole panel has to agree about
    *  that -- the dot, the badge, the order and the filter -- or it just moves
    *  the false alarm from one control to another. */
@@ -222,7 +222,7 @@ describe("an empty slot", () => {
 
 describe("a device that is offline", () => {
   it("says so on every child, and words the filter for it", async () => {
-    // Q-205: the platform takes every registered child down with the parent.
+    // the platform takes every registered child down with the parent.
     // "not answering" would send somebody to the endpoints; the fix is on the
     // device card above.
     mocks.listChildEntities.mockResolvedValue(

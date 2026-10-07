@@ -283,7 +283,7 @@ class UpdateManager:
                                     artifact_path=artifact_path, artifact_name=artifact_name)
 
         # For tarball-swap deployments, fetch the artifact's detached signature
-        # next to it so the root helper can verify it before extracting (H-075).
+        # next to it so the root helper can verify it before extracting.
         if self._consumes_signed_tarball():
             sig_url = self._find_asset_url(release, artifact_name + ".sig")
             if sig_url:
@@ -669,7 +669,7 @@ class UpdateManager:
             await self._verify_hash(artifact_path, checksum_sha256)
 
             # Fetch the detached signature (convention: artifact URL + ".sig")
-            # next to the tarball for the root helper's integrity gate (H-075).
+            # next to the tarball for the root helper's integrity gate.
             # The cloud hands the agent the raw GitHub release-asset URL
             # (release_service stores browser_download_url verbatim), and CI
             # uploads each artifact's .sig as a sibling asset — so the sidecar
@@ -1161,7 +1161,7 @@ class UpdateManager:
         log.info("Cloud update policy: %s", policy)
 
         # Tear down any existing maintenance loop and WAIT for it to stop before
-        # starting a new one, so two loops can't transiently overlap (M-013).
+        # starting a new one, so two loops can't transiently overlap.
         await self._cancel_maintenance_task()
 
         if policy != "auto" or not can_self_update(self._deployment_type):

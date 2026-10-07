@@ -383,7 +383,7 @@ def _validate_osc_args(where: str, arg_defs: Any, errors: list[str]) -> None:
 def _validate_param_option_providers(
     where: str, params: Any, errors: list[str],
 ) -> None:
-    """Validate the param-picker option/type providers (§69) on a param map:
+    """Validate the param-picker option/type providers on a param map:
     ``options_state`` (state-key list), ``options_from``
     (cascade off a sibling param), and ``type_from`` (take the input type from a
     sibling cascade's chosen control). Also validates the Phase 3 free-text

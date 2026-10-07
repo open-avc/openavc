@@ -226,7 +226,7 @@ promote_deferred_update() {
 # Verify an update artifact's detached signature against the root-owned set of
 # trusted public keys shipped in the CURRENTLY-INSTALLED release
 # ($APP_DIR/installer/trusted-keys/*.pem). This is the authoritative integrity
-# gate for the privilege boundary (H-075): anything running as the openavc
+# gate for the privilege boundary: anything running as the openavc
 # service user can write apply-update.json pointing at its own tarball and
 # trigger a restart, but it cannot forge a signature over that tarball, and it
 # cannot replace the root-owned trusted keys — so root never extracts an
@@ -284,7 +284,7 @@ verify_artifact_signature() {
 
 # Defense-in-depth for the trust root: keep the root-executed scripts and the
 # signing-key store root-owned and unreachable-for-write by the service user, so
-# the H-075 gate above never depends on the service user being unable to swap in
+# the signature gate above never depends on the service user being unable to swap in
 # its own key or rewrite the helper root runs. On Linux this is already enforced
 # at runtime by the unit's ProtectSystem=strict (/opt/openavc is read-only to
 # the service); asserting ownership too covers non-strict deployments and any
@@ -319,7 +319,7 @@ handle_update() {
         return
     fi
 
-    # Integrity gate (H-075): verify the artifact's signature before doing ANY
+    # Integrity gate: verify the artifact's signature before doing ANY
     # work with it (snapshot/extract/swap). Fail-closed once signing is armed.
     if ! verify_artifact_signature "$ARTIFACT"; then
         echo "$LOG_TAG: artifact failed signature verification, skipping update"

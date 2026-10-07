@@ -49,7 +49,7 @@ const H = moduleObj.exports;
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const results = {};
 
-// --- H-072 / M-126: reconcileAfterSave keeps edits + selects the saved id ---
+// --- reconcileAfterSave keeps edits + selects the saved id ---
 {
   // Draft untouched during the await -> mark clean, select the saved record.
   const r = H.reconcileAfterSave({ savedId: "acme_x", draftUnchanged: true, selectionUnchanged: true });
@@ -77,7 +77,7 @@ const results = {};
   };
 }
 
-// --- M-127: makeLatestWins makes the newest-started refresh win ---
+// --- makeLatestWins makes the newest-started refresh win ---
 {
   const g = H.makeLatestWins();
   const t1 = g.next();
@@ -106,7 +106,7 @@ const results = {};
   };
 }
 
-// --- M-128: importBlockers asks the platform, then adds what only it knows ---
+// --- importBlockers asks the platform, then adds what only it knows ---
 // The contract rules come from POST /driver-definitions/validate — the same
 // ones the create route is about to run — so an import can't be refused for a
 // reason the save would not have. The stub above stands in for the server and
@@ -200,7 +200,7 @@ async function importBlockerChecks() {
   }
 }
 
-// --- M-229: cloneDraft fills in the collections the editors index blindly ---
+// --- cloneDraft fills in the collections the editors index blindly ---
 {
   // The runtime loader tolerates a driver that omits any of these, so a
   // definition can arrive without them; cloning it verbatim crashed the
@@ -298,7 +298,7 @@ async function importBlockerChecks() {
   }
 }
 
-// --- L-150: parseDriverDefinition gates on a mapping, not any non-null object ---
+// --- parseDriverDefinition gates on a mapping, not any non-null object ---
 const parseOutcome = (text) => {
   try {
     return { value: H.parseDriverDefinition(text), threw: false };

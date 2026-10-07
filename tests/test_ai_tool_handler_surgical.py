@@ -496,7 +496,7 @@ async def test_add_macro_with_cancel_group(handler, mock_agent, mock_engine):
 
 @pytest.mark.asyncio
 async def test_add_macro_with_ui_navigate_step(handler, mock_agent, mock_engine):
-    """M-133: the AI can author a macro containing a ui.navigate step (the
+    """The AI can author a macro containing a ui.navigate step (the
     runtime supports it; the validator used to reject it)."""
     with patch.object(handler, "_get_engine", return_value=mock_engine):
         with patch("openavc.core.project_loader.save_project"):
@@ -918,12 +918,12 @@ async def test_delete_ui_elements_not_found(handler, mock_agent, mock_engine):
     assert "No matching elements" in payload["result"]["error"]
 
 
-# ===== UI VALIDATION & SIMULATION (H-079, M-134..M-137) =====
+# ===== UI VALIDATION & SIMULATION =====
 
 
 @pytest.mark.asyncio
 async def test_update_ui_element_rejects_non_dict_bindings(handler, mock_engine):
-    """H-079: a non-dict bindings value must be rejected, not assigned raw
+    """A non-dict bindings value must be rejected, not assigned raw
     (UIElement has no validate_assignment, so a raw assign would persist a
     structurally invalid element)."""
     with patch.object(handler, "_get_engine", return_value=mock_engine):
@@ -942,7 +942,7 @@ async def test_update_ui_element_rejects_non_dict_bindings(handler, mock_engine)
 
 @pytest.mark.asyncio
 async def test_add_ui_page_validates_inline_element_bindings(handler, mock_engine):
-    """M-134: inline elements get the same binding validation as add_ui_elements."""
+    """Inline elements get the same binding validation as add_ui_elements."""
     with patch.object(handler, "_get_engine", return_value=mock_engine):
         with patch("openavc.core.project_loader.save_project"):
             result = await handler._add_ui_page({
@@ -981,7 +981,7 @@ async def test_add_ui_page_accepts_valid_inline_bindings(handler, mock_engine):
 
 @pytest.mark.asyncio
 async def test_simulate_navigate_broadcasts_ui_navigate(handler, mock_engine):
-    """M-135: simulate navigate must broadcast ui.navigate so panels switch."""
+    """Simulate navigate must broadcast ui.navigate so panels switch."""
     mock_engine.events.emit = AsyncMock()
     with patch.object(handler, "_get_engine", return_value=mock_engine):
         result = await handler._simulate_ui_action({"action": "navigate", "page_id": "main"})
@@ -992,7 +992,7 @@ async def test_simulate_navigate_broadcasts_ui_navigate(handler, mock_engine):
 
 @pytest.mark.asyncio
 async def test_simulate_action_filters_background_state_changes(handler, mock_agent, mock_engine):
-    """M-136: only changes the action plausibly caused are reported — background
+    """Only changes the action plausibly caused are reported — background
     activity (heartbeat/system/cloud/ai/isc/discovered) is filtered out."""
     from openavc.core.state_store import StateStore
 
@@ -1267,7 +1267,7 @@ async def test_review_ui_says_clean_and_changes_nothing(handler, mock_engine):
 
 @pytest.mark.asyncio
 async def test_update_ui_page_snap_partial_merge(handler, mock_engine):
-    """M-137: a partial grid update keeps omitted fields + forward-compat keys."""
+    """A partial grid update keeps omitted fields + forward-compat keys."""
     from openavc.core.project_loader import SnapConfig
 
     page = next(p for p in mock_engine.project.ui.pages if p.id == "main")
@@ -1286,7 +1286,7 @@ async def test_update_ui_page_snap_partial_merge(handler, mock_engine):
 
 @pytest.mark.asyncio
 async def test_update_ui_element_placement_partial_merge(handler, mock_engine):
-    """M-137: a partial placement update keeps omitted fields (no snap to 0)."""
+    """A partial placement update keeps omitted fields (no snap to 0)."""
     with patch.object(handler, "_get_engine", return_value=mock_engine):
         with patch("openavc.core.project_loader.save_project"):
             # btn_on starts at col=1,row=1,col_span=2,row_span=1; move col only.
@@ -1794,7 +1794,7 @@ async def test_add_master_element_takes_placements_keyed_by_orientation(handler,
 
 @pytest.mark.asyncio
 async def test_add_master_element_rejects_a_page_style_placement(handler, mock_engine):
-    """A master borrows no page's layout -- that is what §34.17 used to be."""
+    """A master borrows no page's layout."""
     with patch.object(handler, "_get_engine", return_value=mock_engine):
         result = await handler._add_master_element({
             "id": "home_btn", "type": "page_nav",
@@ -1807,7 +1807,7 @@ async def test_add_master_element_rejects_a_page_style_placement(handler, mock_e
 
 @pytest.mark.asyncio
 async def test_layout_round_trip_through_the_tool_handlers(handler, mock_engine):
-    """The §11 round trip, entirely through the tools: create, add, move,
+    """The layout round trip, entirely through the tools: create, add, move,
     reparent, hide in a variant, and read it back."""
     with patch.object(handler, "_get_engine", return_value=mock_engine):
         with patch("openavc.core.project_loader.save_project"):

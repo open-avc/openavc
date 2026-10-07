@@ -8,7 +8,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 // it is never drawn, and until this file nothing rendered it. The e2e
 // affordance inventory did not either, and passed clean while a button was
 // deleted from it. Every bug found in this card on 2026-09-04 was found by
-// hand, on hardware, by Aaron.
+// hand, on hardware.
 //
 // So this names the controls rather than counting them: the inventory can tell
 // you a button went missing, and this tells you WHICH one and what it was for.

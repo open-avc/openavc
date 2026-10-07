@@ -5669,8 +5669,8 @@ class PanelApp {
      *  box. The synthetic element carries the page's own id, so the state
      *  pushes, the failure strip and `openavc:init`'s elementId all name the
      *  page. A second renderer here is how one of the two quietly loses a
-     *  guard, which is the reason §4.3 collapsed the plugin and control paths
-     *  into one to begin with. */
+     *  guard, which is the reason the plugin and control paths were
+     *  collapsed into one to begin with. */
     _renderCustomPageFrame(page) {
         const asElement = {
             id: page.id,

@@ -7,17 +7,17 @@ They are kept together because they are one campaign's regressions, and each
 still drives its endpoint through the real app.
 
 Covers the audit findings closed in the bug-fix campaign:
-  - H-027  cloud_pair() partial/renamed cloud body -> clean 502 (not KeyError 500)
-  - H-028  SSRF guard on cloud_api_url (link-local/loopback/bad-scheme)
+  - cloud_pair() partial/renamed cloud body -> clean 502 (not KeyError 500)
+  - SSRF guard on cloud_api_url (link-local/loopback/bad-scheme)
   - Which cloud answered: a misspelled `cloud_api_url` is refused rather than
     silently defaulting to the vendor's SaaS, and every sentence names the host
-  - M-048  save_cloud_config OSError -> clear 500, no silent success
-  - M-049  agent-start failure surfaced as agent_started=false + warning
-  - M-047/L-032  update channel mirrored to state on PATCH
-  - M-052  log level applied live on PATCH
-  - L-033  non-list device_ids -> 400 (not opaque 500)
-  - L-034  malformed JSON body to simulation start -> 400 (not simulate-all)
-  - L-035  tls-status reflects live config after PATCH
+  - save_cloud_config OSError -> clear 500, no silent success
+  - agent-start failure surfaced as agent_started=false + warning
+  - update channel mirrored to state on PATCH
+  - log level applied live on PATCH
+  - non-list device_ids -> 400 (not opaque 500)
+  - malformed JSON body to simulation start -> 400 (not simulate-all)
+  - tls-status reflects live config after PATCH
 """
 
 import asyncio
@@ -81,7 +81,7 @@ def isolated_config(tmp_path):
     reset_system_config()
 
 
-# ── H-028: SSRF guard on cloud_api_url ──────────────────────────────────────
+# ── SSRF guard on cloud_api_url ──────────────────────────────────────
 
 
 def _validate(url):
@@ -189,7 +189,7 @@ def _pair_env(monkeypatch, *, save=None):
         monkeypatch.setattr(cfg, name, getattr(cfg, name), raising=False)
 
 
-# ── H-027: partial/renamed cloud body -> 502 ────────────────────────────────
+# ── partial/renamed cloud body -> 502 ────────────────────────────────
 
 
 def test_cloud_pair_missing_field_is_502(client, monkeypatch):
@@ -344,7 +344,7 @@ def test_the_correctly_spelled_field_still_works(client, monkeypatch):
     assert resp.status_code == 200, resp.text
 
 
-# ── M-048: save failure -> clear 500, agent not started ─────────────────────
+# ── save failure -> clear 500, agent not started ─────────────────────
 
 
 def test_cloud_pair_save_oserror_is_clear_500(client, monkeypatch):
@@ -446,7 +446,7 @@ def test_no_project_means_no_name_rather_than_a_blank_one(client, monkeypatch):
     assert "name" not in sent
 
 
-# ── M-049: agent-start failure surfaced ─────────────────────────────────────
+# ── agent-start failure surfaced ─────────────────────────────────────
 
 
 def test_cloud_pair_agent_start_failure_surfaced(client, monkeypatch):
@@ -490,7 +490,7 @@ def test_cloud_pair_agent_start_success(client, monkeypatch):
     assert "warning" not in body
 
 
-# ── L-033 / L-034: simulation start input validation ────────────────────────
+# ── simulation start input validation ────────────────────────
 
 
 def test_simulation_start_malformed_json_is_400(client):
@@ -525,7 +525,7 @@ def test_simulation_start_valid_list_passes_through(client):
     engine.simulation.start.assert_awaited_once_with(["a", "b"])
 
 
-# ── M-047 / L-032 / M-052 / L-035: PATCH config live-apply ──────────────────
+# ── PATCH config live-apply ──────────────────
 
 
 def test_patch_update_channel_mirrors_state(client, isolated_config):

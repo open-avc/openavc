@@ -40,7 +40,7 @@ def _nested_bundle(depth: int, inner: bytes) -> bytes:
     return b
 
 
-# --- M-257: blob length sign / bounds ---
+# --- blob length sign / bounds ---
 
 
 def test_negative_blob_length_raises_valueerror():
@@ -80,7 +80,7 @@ def test_valid_multi_arg_message_still_decodes():
     assert args[2] == ("s", "hi")
 
 
-# --- M-258: bundle nesting depth cap ---
+# --- bundle nesting depth cap ---
 
 
 def test_deeply_nested_bundle_no_recursion_error():

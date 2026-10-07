@@ -10,13 +10,13 @@ from inside one call:
 
 1. **It is the same rules, once.** The refusal string the cloud AI's macro
    tools raise and the placed records the editor draws come out of one
-   traversal in ``core/macro_validation``. A second copy is what Q-053 removed
-   and what §109 refuses to reintroduce, so the parity test below compares them
+   traversal in ``core/macro_validation``. A second copy was removed once
+   and must not come back, so the parity test below compares them
    finding for finding rather than trusting the shared call.
 2. **Nothing it reports blocks anything.** Half-built is a normal state while
    somebody is editing, so a macro this endpoint flags still saves through
    ``PUT /api/project`` with a 200. If that ever becomes a 422, the fix was
-   turned into the thing §109 explicitly did not want.
+   turned into the thing this design explicitly did not want.
 """
 
 from __future__ import annotations
@@ -89,7 +89,7 @@ def test_an_incomplete_step_is_reported_against_its_own_row(client):
 
 
 def test_a_device_command_with_no_command_chosen_is_reported(client):
-    """§109's own example: the device is picked, the command never was."""
+    """The canonical case: the device is picked, the command never was."""
     http, _ = client
     issues = _lint(http, {
         "id": "macro_start",
@@ -273,7 +273,7 @@ def test_the_refusal_and_the_placed_records_are_the_same_findings(steps, trigger
     """One traversal, rendered two ways.
 
     ``validate_macro`` is what refuses a macro the AI generates;
-    ``macro_issues`` is what marks a macro somebody built by hand. §109's whole
+    ``macro_issues`` is what marks a macro somebody built by hand. The whole
     point is that those are the same rules, so this reassembles the records
     back into the string and demands they match exactly -- a rule added to one
     and not the other shows up here rather than in a room.
@@ -298,11 +298,11 @@ def test_the_corpus_actually_trips_the_rules():
 
 
 def test_a_macro_the_lint_flags_still_saves(client):
-    """The line §109 drew: show it, refuse nothing.
+    """The line this draws: show it, refuse nothing.
 
     A half-built step is what editing looks like. If this ever returns 422 the
-    lint has been wired into the save path, which is the outcome Q-053
-    deliberately did not choose.
+    lint has been wired into the save path, which is the outcome this
+    design deliberately did not choose.
     """
     http, _ = client
     flagged = {

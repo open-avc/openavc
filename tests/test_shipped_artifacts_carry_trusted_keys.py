@@ -10,13 +10,13 @@ both log "release signing not yet armed, skipping signature check" and carry on.
 So the day the key ceremony happens, every deployment that packs the keys flips
 to enforcement and any deployment that does not keeps accepting unsigned
 updates -- silently, and specifically re-opening the openavc-user -> root
-escalation the signing work exists to close (H-075, backlog §43).
+escalation the signing work exists to close.
 
 That is not hypothetical. `release-pi.yml` shipped without the keys while
 `installer/pi-image/build.sh` shipped with them, so the Pi image users flash had
 no trust anchor while the locally built one did -- which is also the likely
 reason a Pi-tested sign-off did not catch it. Same two-parallel-build-paths trap
-as `build.bat` in §66/M2: the local script and the CI job are separate hand-kept
+as `build.bat`: the local script and the CI job are separate hand-kept
 copies, and nothing read either of them.
 
 Reading the pack lists and asserting the anchor is in all of them is the guard.
@@ -76,7 +76,7 @@ def test_the_helper_still_treats_an_empty_key_set_as_unarmed() -> None:
     helper = (REPO_ROOT / "installer" / "update-helper.sh").read_text(encoding="utf-8")
     assert re.search(r"not yet armed", helper), (
         "update-helper.sh no longer has the warn-and-proceed 'not yet armed' "
-        "branch. Re-read backlog §43: if it now fails closed on an empty key "
+        "branch. If it now fails closed on an empty key "
         "set, the silent-failure reasoning in this module needs rewriting."
     )
 

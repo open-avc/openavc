@@ -306,7 +306,7 @@ class _CollectingWS:
 
 @pytest.mark.asyncio
 async def test_broadcast_returns_promptly_with_stuck_client(engine):
-    """broadcast must not await the wedged client's send (V-LC-001)."""
+    """broadcast must not await the wedged client's send."""
     stuck = _StuckWS()
     good = _CollectingWS()
     engine.ws.add_client(stuck)
@@ -362,8 +362,8 @@ async def test_stuck_client_dropped_on_queue_overflow(engine):
 @pytest.mark.asyncio
 async def test_deferred_delivery_buffers_until_ready(engine):
     """defer_delivery buffers broadcasts until mark_ws_client_ready — the
-    handshake registers before snapshotting so no flush window is missed
-    (V-LC-005)."""
+    handshake registers before snapshotting so no flush window is missed.
+    """
     ws = _CollectingWS()
     engine.ws.add_client(ws, defer_delivery=True)
 

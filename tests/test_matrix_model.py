@@ -1,6 +1,6 @@
 """What a matrix resolves to, which is the whole of project format 0.10.0.
 
-The shapes here are the ones the driver corpus forced (matrix plan §2.1a), not
+The shapes here are the ones the driver corpus forced, not
 invented variety: a decoder with six routing planes, a frame with two ports
 patched out, string ids, and a source that is an rtsp:// URL. Each of them was
 unsayable in the pattern form, and each is a list entry now.

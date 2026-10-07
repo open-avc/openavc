@@ -286,7 +286,7 @@ def test_state_binding_no_loop(state):
     assert state.get(var_key) == "on"
 
 
-# --- Flat-primitive invariant (H-080) ---
+# --- Flat-primitive invariant ---
 
 
 def test_set_rejects_nested_dict(state):
@@ -316,7 +316,7 @@ def test_set_accepts_bool_and_none(state):
 
 
 def test_set_non_primitive_cannot_corrupt_change_detection(state):
-    """The core H-080 harm: a mutable value mutated in place defeats the
+    """The core harm: a mutable value mutated in place defeats the
     equality+identity change guard and silently drops notifications. Rejecting
     non-primitives at the store boundary removes that class entirely — and a
     later legitimate primitive write still notifies normally."""
@@ -337,7 +337,7 @@ def test_set_batch_skips_non_primitive_keeps_valid(state):
     assert "var.bad" not in state.snapshot()
 
 
-# --- get_history count clamp (M-138) ---
+# --- get_history count clamp ---
 
 
 def test_get_history_count_zero_returns_empty(state):
@@ -364,7 +364,7 @@ def test_get_history_positive_count_unchanged(state):
     assert recent[0]["key"] == "var.b"
 
 
-# --- Event emission coalescing (M-139) ---
+# --- Event emission coalescing ---
 
 
 async def test_emit_events_coalesces_into_one_task_per_batch(wired):

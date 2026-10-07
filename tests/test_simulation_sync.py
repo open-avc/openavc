@@ -105,7 +105,7 @@ def _active_manager(dm) -> SimulationManager:
     return mgr
 
 
-# ── H-053 / H-054: full payload incl. child_entities ────────────────────────
+# ── full payload incl. child_entities ────────────────────────
 
 def test_device_sim_payload_includes_full_config_and_children():
     mgr = SimulationManager(engine=object())
@@ -132,7 +132,7 @@ def test_device_sim_payload_defaults_children_to_empty():
     assert p["child_entities"] == {}
 
 
-# ── M-099: removed-path only forgets the port when the stop succeeded ────────
+# ── removed-path only forgets the port when the stop succeeded ────────
 
 @pytest.mark.asyncio
 async def test_sync_removed_keeps_port_when_stop_fails(monkeypatch):
@@ -163,7 +163,7 @@ async def test_sync_removed_drops_port_when_stop_succeeds(monkeypatch):
     assert "dev1" not in mgr._original_configs
 
 
-# ── M-098: added-path rolls back a leaked instance ──────────────────────────
+# ── added-path rolls back a leaked instance ──────────────────────────
 
 @pytest.mark.asyncio
 async def test_sync_added_rolls_back_on_post_start_failure(monkeypatch):
@@ -191,7 +191,7 @@ async def test_sync_added_rolls_back_on_post_start_failure(monkeypatch):
     assert ("POST", f"{mgr._sim_ui_url}/api/devices/dev2/stop") in calls
 
 
-# ── L-067: added-path adopts an orphaned instance on a 400 ──────────────────
+# ── added-path adopts an orphaned instance on a 400 ──────────────────
 
 @pytest.mark.asyncio
 async def test_sync_added_adopts_orphan_on_already_simulated(monkeypatch):
@@ -220,7 +220,7 @@ async def test_sync_added_adopts_orphan_on_already_simulated(monkeypatch):
     assert "dev3" in dm.reconnected
 
 
-# ── Q-191: a paused device is not reconnected by the post-save re-redirect ──
+# ── a paused device is not reconnected by the post-save re-redirect ──
 
 @pytest.mark.asyncio
 async def test_sync_reapplies_redirect_and_reconnects_a_running_device():

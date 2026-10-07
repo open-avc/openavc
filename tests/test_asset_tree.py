@@ -4,7 +4,7 @@ The tree is flat in practice, so nothing here is exotic — which is the point.
 Four of the six paths that move a project agreed the tree was flat and
 flattened or dropped anything nested, while save, duplicate and export carried
 it, so a subfolder survived a duplicate and then silently did not exist in the
-next backup (backlog §139). One module owns the answer now; these are its
+next backup. One module owns the answer now; these are its
 rules, and the door-level round trips live beside the doors.
 """
 

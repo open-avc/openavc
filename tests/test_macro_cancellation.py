@@ -140,7 +140,7 @@ async def test_cancel_cleanup(engine, state):
     assert "test_macro" not in engine._running
 
 
-# ===== L-100: cancel()/cancel_all() surface tasks that ignore cancellation =====
+# ===== cancel()/cancel_all() surface tasks that ignore cancellation =====
 
 
 async def _stubborn_invocation():

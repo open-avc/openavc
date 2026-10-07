@@ -38,7 +38,7 @@ def test_normalize_rejects_short_or_garbage():
 
 
 def test_add_prefix_registers_bare_hex_hint():
-    """A bare-hex hint resolves for an observed MAC — the core M-290 regression.
+    """A bare-hex hint resolves for an observed MAC.
 
     Pre-fix ``add_prefix`` only kept prefixes already 8 chars after normalizing,
     so ``001122`` (6 chars) was dropped and the lookup returned None.

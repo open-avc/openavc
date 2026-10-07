@@ -16,7 +16,7 @@ tree is rule-bound (file types, caps, depth), while an asset is an opaque
 blob whose only rules are the ones any archive needs — stay inside the
 directory, and don't drag in the noise a design tool leaves behind.
 
-Direction of the fix, settled in backlog §139: every path becomes recursive.
+Direction of the fix: every path becomes recursive.
 The reverse (flatten everywhere) was available and rejected — flattening is
 what loses data, and ``ui/`` next door already proves the folder-carrying
 shape works.

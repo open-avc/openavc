@@ -44,7 +44,7 @@ const collectAllKeys = (bindings) => {
 
 const results = {};
 
-// --- H-126: do.<interaction> action lists are scanned ----------------------
+// --- do.<interaction> action lists are scanned ----------------------
 
 // A button whose do.press is an array with a Set Variable action — the action's
 // var reference is surfaced.
@@ -108,7 +108,7 @@ results.h126_two_way_binding = (() => {
   return { pass: ids.includes("vol"), detail: ids };
 })();
 
-// --- M-176: globMatch escapes regex metacharacters -------------------------
+// --- globMatch escapes regex metacharacters -------------------------
 
 // A key with an unbalanced paren used to throw SyntaxError. Now "*" is the only
 // special token, everything else is literal, so it matches safely.
@@ -136,7 +136,7 @@ results.m176_no_redos = (() => {
   return { pass: value === false && elapsed < 1000, detail: { value, elapsed } };
 })();
 
-// --- §67: globMatch mirrors the runtime's fnmatch semantics ----------------
+// --- globMatch mirrors the runtime's fnmatch semantics ----------------
 
 // "*" spans dots (like the runtime's fnmatch), so a script subscribing to
 // "device.*" covers multi-segment device keys the IDE used to miss.
@@ -173,11 +173,11 @@ results.fn_unbalanced_bracket_no_throw = (() => {
   }
 })();
 
-// --- L-103: wildcard matches device-only candidate keys --------------------
+// --- wildcard matches device-only candidate keys --------------------
 
 // A script subscribing to one device's properties ("device.proj.*") must
 // annotate that device's state keys even when no macro/UI references them — the
-// L-103 fix matches the wildcard against the known device-key set, not just the
+// fix matches the wildcard against the known device-key set, not just the
 // macro/UI-seeded keys.
 results.l103_wildcard_matches_device_keys = (() => {
   const hits = V.collectWildcardMatches("device.proj.*", [
@@ -204,7 +204,7 @@ results.l103_wildcard_segment_scoped = (() => {
   return { pass: hits.length === 1 && hits[0] === "device.proj.power", detail: hits };
 })();
 
-// --- §67 item 2: a var.* wildcard matches the project's variables ----------
+// --- a var.* wildcard matches the project's variables ----------
 results.varmap_wildcard_matches_vars = (() => {
   const hits = V.collectWildcardMatches("var.*", ["var.vol", "var.scene", "device.amp.mute"]);
   return {
@@ -216,7 +216,7 @@ results.varmap_wildcard_matches_vars = (() => {
   };
 })();
 
-// --- M-277: plugin-action params carry runtime-resolved $var refs ----------
+// --- plugin-action params carry runtime-resolved $var refs ----------
 // The macro engine resolves $var in device.command, group.command, AND any
 // plugin-registered action's params, but not in the other built-ins. The
 // variable rename rewrite + "Used By" scan gate on this predicate, so a var

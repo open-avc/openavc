@@ -452,7 +452,7 @@ def test_a_room_that_turned_the_message_off_never_sees_one(
 
 
 # ---------------------------------------------------------------------------
-# A macro that failed mid-run says why, on the panel that started it (Q-104)
+# A macro that failed mid-run says why, on the panel that started it
 # ---------------------------------------------------------------------------
 
 #: A second absent device, so a macro can fail twice in one run.
@@ -707,7 +707,7 @@ def test_a_macro_run_from_a_matrix_row_is_this_panel_s_too(macro_panel) -> None:
 
 
 def test_a_macro_this_panel_did_not_start_says_nothing(macro_panel) -> None:
-    """Aaron's call, proved: the message belongs to whoever pressed something.
+    """Proved: the message belongs to whoever pressed something.
 
     Run from the instance's own REST API instead of from this panel -- which
     is what a schedule, a trigger, a script or another panel looks like from
@@ -736,7 +736,7 @@ def test_a_macro_this_panel_did_not_start_says_nothing(macro_panel) -> None:
 def test_a_button_whose_macro_was_deleted_says_so_instead_of_nothing(
     macro_panel,
 ) -> None:
-    """Q-139/E3, end to end: the quietest failure of the lot.
+    """A press on a deleted macro, end to end: the quietest failure of the lot.
 
     Everything about this press works -- the socket, the binding runtime, the
     element -- and the macro it names is simply not there any more. The start
@@ -755,7 +755,7 @@ def test_a_button_whose_macro_was_deleted_says_so_instead_of_nothing(
 
 
 def test_the_message_gets_out_of_the_way_of_a_matrix_preset(macro_panel) -> None:
-    """Q-139/E8: a preset's frame names no element, so the band placed itself
+    """A preset's frame names no element, so the band placed itself
     against whatever was touched before it.
 
     Press something at the top of the page first, so "where the last press was"

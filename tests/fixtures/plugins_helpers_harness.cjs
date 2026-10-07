@@ -1,6 +1,6 @@
 "use strict";
 // Bundles pluginsView.helpers.ts (with the esbuild already in openavc/web/programmer/
-// node_modules) and exercises isPluginIncompatible — the M-174 fix that reads
+// node_modules) and exercises isPluginIncompatible — the fix that reads
 // the backend's truthful `compatible` flag instead of gating only on
 // status === "incompatible". Prints JSON results to stdout; the Python wrapper
 // skips when the Node toolchain or esbuild is absent.

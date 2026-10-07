@@ -1499,8 +1499,8 @@ class TestAgentThrottle:
 
 # ===========================================================================
 # Capability Gating (A23) — Agent drops downstream messages whose required
-# capability wasn't negotiated in session_start.enabled_capabilities. Spec
-# §13.8: "If `tunnel` is not enabled, the agent does not listen for
+# capability wasn't negotiated in session_start.enabled_capabilities. The
+# protocol: "If `tunnel` is not enabled, the agent does not listen for
 # `tunnel_open` messages." Same intent for `diagnostic`.
 # ===========================================================================
 
@@ -1580,7 +1580,7 @@ class TestAgentCapabilityGating:
 
     @pytest.mark.asyncio
     async def test_command_dropped_when_remote_access_missing(self):
-        """H-020: command is gated on 'remote_access' — dropped when it's missing."""
+        """Command is gated on 'remote_access' — dropped when it's missing."""
         agent = self._make_agent(enabled_capabilities=["monitoring"])
         await agent._handle_message({
             "type": "command",
@@ -1590,7 +1590,7 @@ class TestAgentCapabilityGating:
 
     @pytest.mark.asyncio
     async def test_command_dispatched_when_remote_access_enabled(self):
-        """H-020: command reaches the handler when 'remote_access' is enabled."""
+        """Command reaches the handler when 'remote_access' is enabled."""
         agent = self._make_agent(enabled_capabilities=["monitoring", "remote_access"])
         await agent._handle_message({
             "type": "command",
@@ -1600,7 +1600,7 @@ class TestAgentCapabilityGating:
 
     @pytest.mark.asyncio
     async def test_config_push_and_restart_gated_on_remote_access(self):
-        """H-020: config_push and restart are also gated on 'remote_access'."""
+        """config_push and restart are also gated on 'remote_access'."""
         # Without remote_access: both dropped.
         agent = self._make_agent(enabled_capabilities=["monitoring"])
         await agent._handle_message({"type": "config_push", "payload": {"request_id": "r1"}})
@@ -1891,7 +1891,7 @@ class TestFeaturesDisabledSubtraction:
 
 
 # ===========================================================================
-# A21 — Diagnostic actions. The agent now implements all five spec §13.12
+# Diagnostic actions. The agent now implements all five diagnostic
 # actions instead of returning "not yet implemented".
 # ===========================================================================
 

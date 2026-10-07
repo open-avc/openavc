@@ -104,7 +104,7 @@ function project({ elements, placements, background, snap, extraLayouts }) {
     };
 }
 
-/** A button in Toggle mode: the "Mute Ch 1" an integrator builds in Q-209. */
+/** A button in Toggle mode: the "Mute Ch 1" an integrator builds. */
 function toggleButton(id, key, onValue, extra) {
     return Object.assign({
         id, type: 'button', label: id,
@@ -319,7 +319,7 @@ const tests = {
         assert(app.root.textContent.includes('camera heading'), 'the fallback is drawn');
     },
 
-    // H-001 — matrix routes re-evaluate on incremental state.update for any of
+    // matrix routes re-evaluate on incremental state.update for any of
     // their key patterns (route / audio route / labels), not just on full render.
     h001_matrix_reeval() {
         const app = mkApp();
@@ -339,7 +339,7 @@ const tests = {
         assert(ran === 2, 'matrix must re-eval when an audio-route key changes');
     },
 
-    // H-002 — value displays revert to a no-data placeholder when the bound key
+    // value displays revert to a no-data placeholder when the bound key
     // is deleted (device removed/offline), instead of freezing on last value.
     h002_gauge_reset() {
         const app = mkApp();
@@ -401,14 +401,14 @@ const tests = {
         app.state = { 'var.vol': 75 };
         app.evaluateSliderValue(b);
         assert(Number(input.value) === 75, `slider set to 75, got ${input.value}`);
-        // M-005: inbound echo must not move the thumb while dragging.
+        // inbound echo must not move the thumb while dragging.
         input._dragging = true; app.state['var.vol'] = 10;
         app.evaluateSliderValue(b);
         assert(Number(input.value) === 75, 'slider unchanged during drag');
         input._dragging = false;
         app.evaluateSliderValue(b);
         assert(Number(input.value) === 10, 'slider updates once drag ends');
-        // H-002 / Q-172: no reading is not the floor. The travel empties and
+        // no reading is not the floor. The travel empties and
         // the thumb goes away rather than parking at min, which would be a
         // claim of minimum -- the same one an unreachable device gets.
         delete app.state['var.vol'];
@@ -426,7 +426,7 @@ const tests = {
         app.state = { 'var.sel': 'b' };
         app.evaluateSelectValue(b);
         assert(sel.value === 'b', 'select set to b');
-        // Q-172: no selection at all. Falling back to the first option was a
+        // no selection at all. Falling back to the first option was a
         // confident wrong answer -- "HDMI 1" for a switcher that never said.
         delete app.state['var.sel'];
         app.evaluateSelectValue(b);
@@ -452,7 +452,7 @@ const tests = {
         app.state = { 'var.f': 50 };
         app.evaluateFaderValue(b);
         assert(handle.style.bottom === '50%', `fader at 50%, got ${handle.style.bottom}`);
-        // Q-172: the handle goes away rather than parking at the floor, which
+        // the handle goes away rather than parking at the floor, which
         // on a -80..0 fader reads as fully attenuated.
         delete app.state['var.f'];
         app.evaluateFaderValue(b);
@@ -460,7 +460,7 @@ const tests = {
         assert(!handle.hasAttribute('aria-valuenow'), 'fader asserts no value to a screen reader');
     },
 
-    // §82.4 — fractional-step sliders/faders must not leak binary float noise
+    // fractional-step sliders/faders must not leak binary float noise
     // onto the wire (Math.round(v/step)*step yields e.g. 0.30000000000000004).
     slider_fader_step_no_float_noise() {
         const app = mkApp();
@@ -489,7 +489,7 @@ const tests = {
         assert(String(sent[0].value) === '0.3', `no float noise in wire value, got ${String(sent[0].value)}`);
     },
 
-    // H-003 / L-007 — lock shown once per session (no re-lock on reconnect), and
+    // lock shown once per session (no re-lock on reconnect), and
     // a cleared lock_code removes a stuck overlay.
     h003_l007_lock_reconcile() {
         const app = mkApp();
@@ -501,7 +501,7 @@ const tests = {
         // A reconnect resends ui.definition — must NOT re-lock.
         app._reconcileLockOnDefinition();
         assert(!document.getElementById('lock-overlay'), 'no re-lock on reconnect after unlock');
-        // L-007: lock_code cleared while locked removes the stuck overlay.
+        // lock_code cleared while locked removes the stuck overlay.
         app._lockInitialized = false; app.uiSettings = { lock_code: '1234' };
         app._reconcileLockOnDefinition();
         assert(document.getElementById('lock-overlay'), 'lock re-armed for a fresh session');
@@ -510,7 +510,7 @@ const tests = {
         assert(!document.getElementById('lock-overlay'), 'cleared lock_code removes the overlay');
     },
 
-    // H-004 — live state broadcast to an iframe element is scoped to what that
+    // live state broadcast to an iframe element is scoped to what that
     // element may see. Rendered through the real renderers rather than
     // hand-built nodes, so the scoping under test is the shipped rule and not
     // one the scenario set up for itself.
@@ -778,7 +778,7 @@ const tests = {
             `the saved version rides on the URL, got ${busted._pluginIframe.getAttribute('src')}`);
     },
 
-    // H-005 — the iframe action bridge enforces the grant the element was
+    // the iframe action bridge enforces the grant the element was
     // placed with. Same scenario for a plugin panel element and a custom
     // control, because the two share one bridge: the only difference is that a
     // plugin also owns its own plugin.<id>.* namespace.
@@ -991,7 +991,7 @@ const tests = {
             'dismissing takes the frame bridge listener with it');
     },
 
-    // ---- Q-160: a page nobody has built yet ---------------------------------
+    // ---- a page nobody has built yet ---------------------------------
 
     // The seed project ships one empty page, so opening /panel right after
     // claiming an instance drew the connection badge on black and nothing
@@ -1241,7 +1241,7 @@ const tests = {
         assert(app.ws.sent.length === 1, 'the same action lands once authoring is over');
     },
 
-    // M-001 / L-003 — countdown prefers a live state key over target_time and
+    // countdown prefers a live state key over target_time and
     // ignores unparseable dates.
     m001_l003_countdown() {
         const app = mkApp();
@@ -1252,7 +1252,7 @@ const tests = {
         el._clockUpdate();
         const txt = el.querySelector('.clock-display').textContent;
         assert(txt.length <= 5, `state key wins over target_time (short countdown), got "${txt}"`);
-        // L-003: an unparseable value renders the placeholder, not NaN.
+        // an unparseable value renders the placeholder, not NaN.
         app.state = { 'var.cd': 'not-a-date' };
         const el2 = app.renderClock({ id: 'cd2', type: 'clock', clock_mode: 'countdown', bindings: { show: { value: { key: 'var.cd' } } } });
         if (app._clockInterval) { window.clearInterval(app._clockInterval); app._clockInterval = null; }
@@ -1260,7 +1260,7 @@ const tests = {
         assert(txt2 === '--:--:--', `invalid date -> placeholder, got "${txt2}"`);
     },
 
-    // M-004 — conditional text uses a normalized compare (numeric 1 matches '1').
+    // conditional text uses a normalized compare (numeric 1 matches '1').
     m004_text_loose_compare() {
         const app = mkApp();
         const el = document.createElement('div');
@@ -1270,7 +1270,7 @@ const tests = {
         assert(el.textContent === 'ON', `numeric 1 matches '1', got ${el.textContent}`);
     },
 
-    // L-002 — format replaces every {value} and treats the value literally.
+    // format replaces every {value} and treats the value literally.
     l002_format_replace_all() {
         const app = mkApp();
         const el = document.createElement('div');
@@ -1378,12 +1378,12 @@ const tests = {
         assert(app._displayDecimals({}) === null, 'absent reads as unset');
     },
 
-    // L-004 — the reconnect backoff cap field is wired up.
+    // the reconnect backoff cap field is wired up.
     l004_max_reconnect_delay() {
         assert(mkApp().maxReconnectDelay === 30000, 'maxReconnectDelay is 30000');
     },
 
-    // L-005 — status LED is inactive for off-like values, not just literal 'off'.
+    // status LED is inactive for off-like values, not just literal 'off'.
     l005_status_led_active() {
         const app = mkApp();
         const cases = [[0, false], ['off', false], [false, false], ['', false], ['on', true], [1, true]];
@@ -1396,14 +1396,14 @@ const tests = {
         }
     },
 
-    // L-009 — _activeAudio is capped so it can't grow unbounded.
+    // _activeAudio is capped so it can't grow unbounded.
     l009_audio_cap() {
         const app = mkApp();
         for (let i = 0; i < 12; i++) app._playSound(`http://x/${i}.mp3`, 1);
         assert(app._activeAudio.size <= 8, `audio set capped, size=${app._activeAudio.size}`);
     },
 
-    // M-006 — meeting timer baseline survives a re-render (doesn't restart).
+    // meeting timer baseline survives a re-render (doesn't restart).
     m006_meeting_baseline_persists() {
         const app = mkApp();
         app.renderClock({ id: 'mt', type: 'clock', clock_mode: 'meeting', duration_minutes: 60 });
@@ -1415,7 +1415,7 @@ const tests = {
         assert(app._meetingStartTimes.mt === first, 'meeting start unchanged across re-render');
     },
 
-    // M-007 — a ui.* override reverts to the rendered base when its key is deleted.
+    // a ui.* override reverts to the rendered base when its key is deleted.
     m007_ui_override_revert() {
         const app = mkApp();
         const el = document.createElement('div');
@@ -1429,7 +1429,7 @@ const tests = {
         assert(el.style.backgroundColor === 'red', `override reverted to base, got ${el.style.backgroundColor}`);
     },
 
-    // M-010 / M-011 — CSS sanitizers neutralize breakout while keeping valid input.
+    // CSS sanitizers neutralize breakout while keeping valid input.
     m010_m011_css_sanitizers() {
         const app = mkApp();
         const v = app._sanitizeCssValue('red); background-image: url(http://evil)');
@@ -1443,7 +1443,7 @@ const tests = {
         assert(app._sanitizeCssUrl('/api/projects/default/assets/a.png') === '/api/projects/default/assets/a.png', 'relative asset url preserved');
     },
 
-    // M-002 / M-003 — dismissing an overlay unregisters its clock update
+    // dismissing an overlay unregisters its clock update
     // closures and removes its plugin iframe message listeners.
     m002_m003_overlay_cleanup() {
         const app = mkApp();
@@ -1470,7 +1470,7 @@ const tests = {
         assert(!app._pluginMessageHandlers.has(handler), 'overlay plugin listener removed on dismiss');
     },
 
-    // M-008 / L-006 — going offline clears the idle timer and disables open
+    // going offline clears the idle timer and disables open
     // overlays; reconnecting re-enables them.
     m008_l006_offline_handling() {
         const app = mkApp();
@@ -1548,7 +1548,7 @@ const tests = {
         assert(sel.style.backgroundColor !== '', 'dispatch applies the matched style to the control');
     },
 
-    // L-001 — degenerate ranges don't produce NaN.
+    // degenerate ranges don't produce NaN.
     l001_divide_by_zero_guards() {
         const app = mkApp();
         const fg = { setAttribute(k, v) { this[k] = v; } };
@@ -2130,7 +2130,7 @@ const tests = {
             'clearing the field removes the sheet');
     },
 
-    // --- Q-213: a control whose device is unreachable draws no value --------
+    // --- a control whose device is unreachable draws no value --------
     //
     // Measured on real hardware: an amplifier genuinely at -6.0 dB and muted,
     // with its port broken. The fader drew "0.0 dB" with the thumb at the top
@@ -2587,7 +2587,7 @@ const tests = {
         assert(!host.classList.contains('device-offline'), 'and both back clears it');
     },
 
-    // --- Q-206: a refused command leaves the operator's value standing ------
+    // --- a refused command leaves the operator's value standing ------
     //
     // Measured on real hardware: the fader was dragged to -40.5 dB, the command
     // was refused, the band said so and went away, and the wall kept reading
@@ -2595,9 +2595,9 @@ const tests = {
     // is no push coming to overwrite the move -- only a reload heals it, and a
     // wall tablet is the one browser that is never reloaded.
 
-    // Q-172: the device is RIGHT THERE and has not reported this reading yet.
+    // the device is RIGHT THERE and has not reported this reading yet.
     //
-    // A different sentence from Q-213's "the device is unreachable", and it now
+    // A different sentence from the offline mark's "the device is unreachable", and it now
     // happens on every fresh connection: a declared state variable holds no
     // value until the device sends one, where it used to hold a number the
     // platform invented. Three renderers' null branch invented one of their own
@@ -2685,7 +2685,7 @@ const tests = {
             `label unreported, got "${labelEl.textContent}"`);
     },
 
-    // The two states must not look the same. Q-213's dimmed-and-dashed mark
+    // The two states must not look the same. The offline dimmed-and-dashed mark
     // means "this control cannot be trusted"; a device that is answering and
     // has simply not sent this reading yet has not earned it, and its own CSS
     // comment says "--" alone cannot be told from "nothing reported yet" --
@@ -3102,7 +3102,7 @@ const tests = {
             `the failed step puts the control back, got ${readout.textContent}`);
     },
 
-    // --- Q-209 / F-064: a toggle button says whether it is on -------------
+    // --- a toggle button says whether it is on -------------
     //
     // Toggle mode used to be a dispatch rule and never a display rule: the
     // photographed mute button was pixel-identical muted and unmuted while
@@ -3308,7 +3308,7 @@ const tests = {
             'and no lit ring underneath it');
     },
 
-    // Q-213's rule, one control further on: an unreachable device's last known
+    // The offline rule, one control further on: an unreachable device's last known
     // state is not a state to draw, and "off" is a claim.
     q209_an_unreachable_device_is_not_a_toggle_that_is_off() {
         const app = mkApp();
@@ -3371,7 +3371,7 @@ const tests = {
             'and no ring');
     },
 
-    // Q-139 / E5 -- a macro is a fact about the room, so every panel sees every
+    // a macro is a fact about the room, so every panel sees every
     // run of it, and no frame says which run it belongs to. Clearing the claim
     // on the first ending run threw away the press somebody is standing there
     // waiting for.
@@ -3449,7 +3449,7 @@ const tests = {
         assert(!el.classList.contains('macro-busy'), 'both ended, and it goes dark');
     },
 
-    // Q-139 / E8 -- neither of a matrix's two odd frames names an element: a
+    // neither of a matrix's two odd frames names an element: a
     // preset sends macro.execute and a lock sends state.set. The failure band
     // would then place itself against whatever was touched before, and cover
     // the control somebody still has a finger on.
@@ -3804,7 +3804,7 @@ const tests = {
         }
     },
 
-    // Q-139 / E8 -- the band carries failures of things people did. A frame
+    // the band carries failures of things people did. A frame
     // with no source_type is the connection refusing a message before anything
     // was read off it, so it cannot name what failed; "Rate limit exceeded" in
     // front of a room is a fact about our protocol nobody there can act on.

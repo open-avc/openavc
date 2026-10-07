@@ -93,16 +93,16 @@ describe("panelAccess", () => {
 
   it("keeps a hostname that already carries a domain", () => {
     // The card appended ".local" unconditionally, so a macOS controller --
-    // gethostname() there is already "Aarons-MacBook-Air.local" -- published
-    // "Aarons-MacBook-Air.local.local", which resolves nowhere. The same
+    // gethostname() there is already "Sams-MacBook-Air.local" -- published
+    // "Sams-MacBook-Air.local.local", which resolves nowhere. The same
     // doubling was on the appliance setup screen (server side, fixed in
     // utils/hostnames.py).
     const a = panelAccess(
-      { ...LAN_STATUS, hostname: "Aarons-MacBook-Air.local" },
+      { ...LAN_STATUS, hostname: "Sams-MacBook-Air.local" },
       null,
       onLan,
     );
-    expect(a.hostnameUrl).toBe("http://Aarons-MacBook-Air.local:8080/panel");
+    expect(a.hostnameUrl).toBe("http://Sams-MacBook-Air.local:8080/panel");
   });
 
   it("leaves a managed host's domain name alone", () => {

@@ -1336,7 +1336,7 @@ async def test_state_change_value_reaches_macro(trigger_engine, macro_engine, co
     await trigger_engine.stop()
 
 
-# --- stop() vs in-flight trigger-fired macros (V-LC-003) ---
+# --- stop() vs in-flight trigger-fired macros ---
 
 
 async def test_stop_preserves_macro_already_executing(trigger_engine, macro_engine, core):

@@ -72,7 +72,7 @@ class TestDepthPolicy:
         standard = resolve_policy("standard")
         thorough = resolve_policy("thorough")
 
-        # The point of §6: depth decides what work is done, and the time
+        # The point: depth decides what work is done, and the time
         # follows from that work rather than being the setting itself.
         assert not quick.netbios and standard.netbios and thorough.netbios
         assert not quick.snmp_entity_mib and standard.snmp_entity_mib

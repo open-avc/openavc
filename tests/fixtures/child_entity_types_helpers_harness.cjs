@@ -27,7 +27,7 @@ const H = moduleObj.exports;
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const results = {};
 
-// --- H-118: nextChildFieldId never collides with an existing field ---
+// --- nextChildFieldId never collides with an existing field ---
 {
   results.h118_first_field = { pass: H.nextChildFieldId([]) === "field_1", detail: H.nextChildFieldId([]) };
 }
@@ -57,7 +57,7 @@ const results = {};
   };
 }
 
-// --- H-117: applyChildVarTypeChange is a single atomic object (no stale clobber) ---
+// --- applyChildVarTypeChange is a single atomic object (no stale clobber) ---
 {
   const r = H.applyChildVarTypeChange({ type: "string", label: "L" }, "integer");
   results.h117_string_to_integer_keeps_type = {
@@ -135,7 +135,7 @@ const results = {};
   };
 }
 
-// --- M-168: sanitize + checkRename back the commit-on-blur rename ---
+// --- sanitize + checkRename back the commit-on-blur rename ---
 {
   results.m168_sanitize_field = {
     pass: H.sanitizeFieldId("My Field!") === "myfield",

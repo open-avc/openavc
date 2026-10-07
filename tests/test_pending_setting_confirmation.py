@@ -132,7 +132,7 @@ async def test_readback_agreeing_clears_the_queue(dm):
 
 
 async def test_a_write_that_vanished_stays_queued_and_says_so(dm):
-    """The Q-192 failure: the send returns, the device never took the value,
+    """The original failure: the send returns, the device never took the value,
     and the old code logged 'Applied' and threw the queue away."""
     driver = await _device(dm)
     driver.echo = False

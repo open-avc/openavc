@@ -58,7 +58,7 @@ def test_auth_failed_ssh_permission_denied():
 
 
 def test_auth_failed_bare_permission_denied_tcp():
-    # The §53 device_manager scenario: a transport last_error of
+    # The device_manager scenario: a transport last_error of
     # "Permission denied" yields auth_failed.
     fault = classify_connection_fault(
         last_error="Permission denied", exc=None,

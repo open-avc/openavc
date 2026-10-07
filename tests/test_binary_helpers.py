@@ -86,7 +86,7 @@ def test_unescape_bytes_custom():
     assert result == bytes([0xAA, 0x55, 0xFE])
 
 
-# --- encode_escape_sequences (M-255) ---
+# --- encode_escape_sequences ---
 
 
 def test_encode_escape_sequences_control_escapes():
@@ -124,7 +124,7 @@ def test_encode_escape_sequences_latin1_high_char_no_longer_raises():
     assert encode_escape_sequences("é") == "é".encode("utf-8")
 
 
-# --- escape_char-mapped invariant (M-256) ---
+# --- escape_char-mapped invariant ---
 
 
 def test_escape_bytes_requires_escape_char_in_custom_map():

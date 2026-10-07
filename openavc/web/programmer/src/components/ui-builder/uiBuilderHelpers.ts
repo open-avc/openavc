@@ -440,7 +440,7 @@ export function createDefaultElement(
         // display -- where a grid of dots is a transliteration of a 1990s front
         // panel. List and Crosspoint stay a click away in Style.
         //
-        // Aaron's call, made by looking at all three rendered side by side
+        // Decided by looking at all three rendered side by side
         // (2026-08-13). Only NEW matrices: the panel still falls back to
         // crosspoint when an element says nothing, so no panel already built
         // changes shape.

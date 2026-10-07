@@ -6,7 +6,7 @@ import { resolvableHostname } from "./hostnames";
  * hostname shapes the product meets. Two surfaces used to append ".local"
  * unconditionally -- the Dashboard's Panel Access card and the hostname field
  * in Settings > Network -- so a Mac was told to browse to
- * `Aarons-MacBook-Air.local.local`.
+ * `Sams-MacBook-Air.local.local`.
  */
 describe("resolvableHostname", () => {
   it("gives a bare machine name its mDNS form", () => {
@@ -14,7 +14,7 @@ describe("resolvableHostname", () => {
   });
 
   it("leaves a name that already ends in .local alone", () => {
-    expect(resolvableHostname("Aarons-MacBook-Air.local")).toBe("Aarons-MacBook-Air.local");
+    expect(resolvableHostname("Sams-MacBook-Air.local")).toBe("Sams-MacBook-Air.local");
   });
 
   it("leaves a managed host's domain name alone", () => {

@@ -79,7 +79,7 @@ def _spy_on_cleanup(engine):
     return captured
 
 
-# --- H-057: background tasks released on a non-CancelledError ---------------
+# --- background tasks released on a non-CancelledError ---------------
 
 
 class TestBackgroundTaskCleanup:
@@ -149,7 +149,7 @@ class TestBackgroundTaskCleanup:
         assert done.done()
 
 
-# --- H-058: per-scan observation reset at scan start ------------------------
+# --- per-scan observation reset at scan start ------------------------
 
 
 class TestEvidenceResetOnScanStart:
@@ -229,7 +229,7 @@ class TestEvidenceResetOnScanStart:
         assert second == first  # no cross-scan accumulation
 
 
-# --- H-059: companion can't fabricate off-subnet records --------------------
+# --- companion can't fabricate off-subnet records --------------------
 
 
 class TestCompanionSubnetGuard:
@@ -332,7 +332,7 @@ class TestScanContactsOnlyItsSubnets:
         assert fetched == ["10.77.0.30"]
 
 
-# --- M-104: collect cleanup preserves cooperative cancellation --------------
+# --- collect cleanup preserves cooperative cancellation --------------
 
 
 class TestCollectCancellation:
@@ -390,7 +390,7 @@ class TestCollectCancellation:
             await coro
 
 
-# --- M-105: probes don't clobber authoritative passive identity -------------
+# --- probes don't clobber authoritative passive identity -------------
 
 
 class TestMergePriority:
@@ -500,7 +500,7 @@ class TestMergePriority:
         assert d.category == "projector"
 
 
-# --- M-252: TCP active probes honor the shared send-rate limiter ------------
+# --- TCP active probes honor the shared send-rate limiter ------------
 
 
 class TestTcpProbeRateLimit:
@@ -542,7 +542,7 @@ class TestTcpProbeRateLimit:
         assert isinstance(captured.get("rate_limiter"), RateLimiter)
 
 
-# --- L-069 / L-070: total_hosts_scanned accuracy + malformed-CIDR safety ----
+# --- total_hosts_scanned accuracy + malformed-CIDR safety ----
 
 
 class TestPingTotalAccounting:

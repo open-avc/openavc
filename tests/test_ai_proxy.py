@@ -195,7 +195,7 @@ class TestErrorJson:
 
 class TestErrorMessage:
     """_error_message is shared by the streaming and non-streaming paths so
-    neither relays a raw cloud body verbatim (L-168)."""
+    neither relays a raw cloud body verbatim."""
 
     def test_maps_known_statuses(self):
         assert "limit reached" in _error_message(429, b"whatever")
@@ -213,7 +213,7 @@ class TestErrorMessage:
         assert len(msg) <= 200
 
     def test_relays_the_clouds_own_503_sentence(self):
-        """Q-176: every 503 read as "AI service is not available" — including a
+        """Every 503 read as "AI service is not available" — including a
         plan refusal the customer could have acted on."""
         body = json.dumps({"detail": "The AI assistant is paused on this account."}).encode()
         assert _error_message(503, body) == "The AI assistant is paused on this account."
@@ -443,7 +443,7 @@ class TestAiChatEndpoint:
 
     async def test_non_streaming_cloud_error(self, client):
         """Non-streaming chat relays the cloud error STATUS but a sanitized
-        detail — not the raw cloud body verbatim (L-168)."""
+        detail — not the raw cloud body verbatim."""
         mock_response = MagicMock()
         mock_response.status_code = 429
         mock_response.content = b"Rate limited: account 4c9f... over quota"
@@ -471,7 +471,7 @@ class TestAiChatEndpoint:
 
     async def test_non_streaming_cloud_timeout_is_graceful(self, client):
         """A cloud timeout on the non-streaming path yields a graceful 504, not
-        a raw 500 (L-167)."""
+        a raw 500."""
         import httpx as _httpx
 
         with patch("openavc.api.ai_proxy.cfg") as mock_cfg:
@@ -493,7 +493,7 @@ class TestAiChatEndpoint:
         assert "timed out" in resp.json()["detail"].lower()
 
     async def test_non_streaming_cloud_connection_error_is_graceful(self, client):
-        """A cloud connection failure yields a graceful 502, not a raw 500 (L-167)."""
+        """A cloud connection failure yields a graceful 502, not a raw 500."""
         import httpx as _httpx
 
         with patch("openavc.api.ai_proxy.cfg") as mock_cfg:

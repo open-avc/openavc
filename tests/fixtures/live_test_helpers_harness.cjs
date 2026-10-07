@@ -29,7 +29,7 @@ const H = moduleObj.exports;
 
 const results = {};
 
-// --- M-154: transport-shape mismatch messages ----------------------------
+// --- transport-shape mismatch messages ----------------------------
 {
   const oscOnTcp = H.commandShapeMismatch("tcp", {
     label: "X", send: "", address: "/x", args: [], params: {},

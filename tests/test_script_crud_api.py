@@ -207,7 +207,7 @@ def test_get_recent_logs(client):
     assert isinstance(resp.json()["logs"], list)
 
 
-# ── Q-183: the errors endpoint also reports a load that was abandoned ───────
+# ── the errors endpoint also reports a load that was abandoned ───────
 
 
 def test_script_errors_endpoint_reports_abandoned_loads(client, mock_engine):

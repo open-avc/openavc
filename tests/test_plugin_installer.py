@@ -751,7 +751,7 @@ class TestInstallPipDeps:
         ) as mock_exec, patch("subprocess.run") as mock_run:
             await _install_pip_deps("deps_plugin", plugin_dir)
 
-        # Async subprocess, never the sync blocking call (V-LC-007)
+        # Async subprocess, never the sync blocking call
         mock_run.assert_not_called()
         mock_exec.assert_called_once()
         call_args = mock_exec.call_args[0]

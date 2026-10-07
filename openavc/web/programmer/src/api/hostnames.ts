@@ -4,8 +4,8 @@
  *  line: `.local` goes on a bare machine name only. The OS hostname's shape
  *  is the platform's business -- bare on an appliance image and on most
  *  Linux boxes (`openavc`), already dotted on macOS
- *  (`Aarons-MacBook-Air.local`), a full domain name on a managed host -- so
- *  appending unconditionally produced `Aarons-MacBook-Air.local.local`,
+ *  (`Sams-MacBook-Air.local`), a full domain name on a managed host -- so
+ *  appending unconditionally produced `Sams-MacBook-Air.local.local`,
  *  which resolves nowhere. Two surfaces did that: the Dashboard's Panel
  *  Access card, and the hostname field in Settings > Network, whose own
  *  validator deliberately accepts a dotted name.

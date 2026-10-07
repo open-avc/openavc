@@ -282,7 +282,7 @@ class TestSessionManagement:
     def test_session_malformed_expiry_fails_closed(self):
         """An unparseable expiry string doesn't crash — and fails closed (the
         session is treated as invalid rather than kept valid, since its expiry
-        can't be verified). See bug-fix L-164."""
+        can't be verified)."""
         session, _, _ = self._make_session(session_expires="not-a-date")
         assert session.is_valid is False
 

@@ -2,22 +2,22 @@
 
 Covers, one finding per test where practical:
 
-- H-015  _sync_devices re-adds on enabled / child_entities / pending_settings changes
-- H-016  chained variable bindings propagate; cycles terminate
-- M-018/L-016  network info detection caches and never leaks the socket FD
-- M-019  stop() serializes against an in-flight reload (holds _reload_lock)
-- M-020  reload rollback re-syncs devices and plugins
-- M-021  periodic backup runs off the event-loop thread
-- M-022  non-primitive source_map values are coerced to flat primitives
-- M-023  glob metacharacters in source_key are rejected
-- M-024  a de-persisted variable reverts to its default on load
-- M-025  state.json is pruned when a variable is de-persisted
-- M-027  list `selected` two-way binding is written on select events
-- L-017  get_status gates host/network identifiers behind include_sensitive
-- L-018  state.set UI action coerces non-primitive values
-- L-019  a clean reload zeroes system.startup_errors
-- L-020  stop() drains pending state.changed events
-- L-021  reconcile_runtime_services reconciles ISC/mDNS to live system config
+- _sync_devices re-adds on enabled / child_entities / pending_settings changes
+- chained variable bindings propagate; cycles terminate
+- network info detection caches and never leaks the socket FD
+- stop() serializes against an in-flight reload (holds _reload_lock)
+- reload rollback re-syncs devices and plugins
+- periodic backup runs off the event-loop thread
+- non-primitive source_map values are coerced to flat primitives
+- glob metacharacters in source_key are rejected
+- a de-persisted variable reverts to its default on load
+- state.json is pruned when a variable is de-persisted
+- list `selected` two-way binding is written on select events
+- get_status gates host/network identifiers behind include_sensitive
+- state.set UI action coerces non-primitive values
+- a clean reload zeroes system.startup_errors
+- stop() drains pending state.changed events
+- reconcile_runtime_services reconciles ISC/mDNS to live system config
 """
 
 import asyncio
@@ -57,7 +57,7 @@ def _write_project(tmp_path, *, variables=None, devices=None, ui_pages=None,
     return str(path)
 
 
-# ── H-015: hot-reload device change detection ──
+# ── hot-reload device change detection ──
 
 
 @pytest.mark.parametrize("field,old,new", [
@@ -113,7 +113,7 @@ async def test_sync_devices_no_change_does_not_reapply(tmp_path):
     devices.update_device.assert_not_awaited()
 
 
-# ── H-016: chained variable bindings ──
+# ── chained variable bindings ──
 
 
 @pytest.mark.asyncio
@@ -150,7 +150,7 @@ async def test_cyclic_variable_bindings_terminate(tmp_path):
     assert eng._var_binding_active == set()  # cleaned up after the cascade
 
 
-# ── M-022: source_map flat-primitive coercion ──
+# ── source_map flat-primitive coercion ──
 
 
 @pytest.mark.asyncio
@@ -169,7 +169,7 @@ async def test_source_map_nonprimitive_is_coerced(tmp_path):
     assert val == json.dumps(["a", "b"])
 
 
-# ── M-023: glob source_key rejected ──
+# ── glob source_key rejected ──
 
 
 @pytest.mark.asyncio
@@ -186,7 +186,7 @@ async def test_glob_source_key_is_rejected(tmp_path):
     assert eng.state.get("var.a") == "x"  # no spurious fan-in write
 
 
-# ── M-024 / M-025: de-persist load filter + disk prune ──
+# ── de-persist load filter + disk prune ──
 
 
 def test_init_variable_values_ignores_stale_depersisted_value(tmp_path):
@@ -235,7 +235,7 @@ def test_update_keys_prunes_depersisted_from_disk(tmp_path):
     persister.stop()
 
 
-# ── M-027: list selected two-way binding ──
+# ── list selected two-way binding ──
 
 
 @pytest.mark.asyncio
@@ -258,7 +258,7 @@ async def test_select_event_writes_selected_binding(tmp_path):
     assert eng.state.get("var.source") == "hdmi2"
 
 
-# ── L-017: status disclosure gating ──
+# ── status disclosure gating ──
 
 
 def test_get_status_gates_sensitive_fields(tmp_path):
@@ -283,7 +283,7 @@ def test_get_status_gates_sensitive_fields(tmp_path):
     assert "version" in redacted
 
 
-# ── M-018 / L-016: network info caching + no FD leak ──
+# ── network info caching + no FD leak ──
 
 
 def test_detect_network_info_caches(tmp_path, monkeypatch):
@@ -346,7 +346,7 @@ def test_detect_network_info_closes_socket_on_connect_failure(tmp_path, monkeypa
     assert closed["v"], "socket must be closed even when connect() fails"
 
 
-# ── L-018: state.set UI action coercion ──
+# ── state.set UI action coercion ──
 
 
 @pytest.mark.asyncio
@@ -364,7 +364,7 @@ async def test_state_set_action_coerces_nonprimitive(tmp_path):
     assert val == json.dumps({"nested": 1})
 
 
-# ── M-019: stop serializes against reload ──
+# ── stop serializes against reload ──
 
 
 @pytest.mark.asyncio
@@ -389,7 +389,7 @@ async def test_stop_waits_for_inflight_reload(tmp_path):
     assert done["v"]
 
 
-# ── L-020: stop drains pending events ──
+# ── stop drains pending events ──
 
 
 @pytest.mark.asyncio
@@ -416,7 +416,7 @@ async def test_stop_drains_pending_events(tmp_path):
 @pytest.mark.asyncio
 async def test_stop_cancels_inflight_macros(tmp_path):
     """A macro mid-run at shutdown is cancelled, not left racing device
-    teardown (V-LC-002)."""
+    teardown."""
     eng = Engine(_write_project(tmp_path))
     eng.project = load_project(eng.project_path)
     eng._running = True
@@ -471,7 +471,7 @@ async def test_reload_rollback_resyncs_devices_and_plugins(tmp_path):
     await eng.triggers.stop()
 
 
-# ── L-019: clean reload zeroes startup_errors ──
+# ── clean reload zeroes startup_errors ──
 
 
 @pytest.mark.asyncio
@@ -487,7 +487,7 @@ async def test_clean_reload_zeroes_startup_errors(tmp_path):
     await eng.triggers.stop()
 
 
-# ── M-021: periodic backup runs off the event loop ──
+# ── periodic backup runs off the event loop ──
 
 
 @pytest.mark.asyncio
@@ -522,7 +522,7 @@ async def test_periodic_backup_runs_off_event_loop(tmp_path, monkeypatch):
     assert seen["thread"] is not main_thread
 
 
-# ── L-021: reconcile ISC/mDNS to live config ──
+# ── reconcile ISC/mDNS to live config ──
 
 
 @pytest.mark.asyncio

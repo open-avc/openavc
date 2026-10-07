@@ -25,7 +25,7 @@ def _make_sim(driver_def: dict, device_id: str = "dev1") -> YAMLAutoSimulator:
 
 
 # ===========================================================================
-# H-034 / M-064 — state machines fire on command, time out, and reject
+# state machines fire on command, time out, and reject
 # ===========================================================================
 
 _PROJECTOR_DEF = {
@@ -60,7 +60,7 @@ _PROJECTOR_DEF = {
 
 @pytest.mark.asyncio
 async def test_state_machine_triggers_on_command_and_times_out():
-    """A command name fires the matching transition (H-034) and the entered
+    """A command name fires the matching transition and the entered
     state's after_seconds auto-transition arms and fires."""
     sim = _make_sim(_PROJECTOR_DEF)
     assert sim.get_state("power") == "off"
@@ -98,7 +98,7 @@ def test_state_machine_unrelated_command_does_not_transition():
 
 
 # ===========================================================================
-# M-222 / M-223 / L-139 — transition resolution must be order-independent:
+# transition resolution must be order-independent:
 # an exact trigger beats a "*" wildcard wherever each appears in the list,
 # reject resolves with the same rules, and every after_seconds arms.
 # ===========================================================================
@@ -115,7 +115,7 @@ def _machine(transitions: list[dict], initial: str = "locked") -> StateMachine:
 
 @pytest.mark.parametrize("order", ["wildcard_first", "specific_first"])
 def test_specific_transition_beats_wildcard_reject_in_any_order(order):
-    """M-222/M-223: 'reject everything except unlock' works no matter which
+    """'Reject everything except unlock' works no matter which
     line the author writes first — the wildcard must not shadow the specific
     transition, and reordering must not change behavior."""
     specific = {"from": "locked", "trigger": "unlock", "to": "idle"}
@@ -151,7 +151,7 @@ def test_specific_reject_beats_wildcard_accept():
 
 @pytest.mark.asyncio
 async def test_yaml_dispatch_allows_specific_command_past_wildcard_reject():
-    """M-223 end-to-end: the YAML dispatch path consults is_rejected() before
+    """End to end: the YAML dispatch path consults is_rejected() before
     trigger(), so a '*' reject used to veto a specific allowed transition for
     the same state even when the specific line was listed first."""
     driver_def = {
@@ -189,7 +189,7 @@ async def test_yaml_dispatch_allows_specific_command_past_wildcard_reject():
 
 @pytest.mark.asyncio
 async def test_all_after_seconds_transitions_arm():
-    """L-139: a state with a fallback timeout listed before a fast path must
+    """A state with a fallback timeout listed before a fast path must
     arm BOTH timers — only the first-listed used to arm. The first to fire
     wins and cancels the rest."""
     sm = _machine(
@@ -236,7 +236,7 @@ def test_validator_warns_on_duplicate_trigger_transition():
 
 
 def test_validator_flags_malformed_state_machine():
-    """M-064: a state_machine missing 'initial'/off-list state is an error, and
+    """A state_machine missing 'initial'/off-list state is an error, and
     a trigger naming no command is a warning — instead of a launch-time crash."""
     sim = {
         "state_machines": {
@@ -272,7 +272,7 @@ def test_validator_accepts_valid_state_machine():
 
 
 def test_malformed_state_machine_does_not_crash_construction():
-    """M-064 runtime backstop: a malformed machine is skipped, not a KeyError."""
+    """Runtime backstop: a malformed machine is skipped, not a KeyError."""
     bad = {
         **_PROJECTOR_DEF,
         "id": "acme_bad_sm",
@@ -283,7 +283,7 @@ def test_malformed_state_machine_does_not_crash_construction():
 
 
 # ===========================================================================
-# H-033 — handler try/except over builtin exceptions works (not NameError)
+# handler try/except over builtin exceptions works (not NameError)
 # ===========================================================================
 
 
@@ -321,7 +321,7 @@ def test_script_handler_can_catch_builtin_exception():
 
 
 # ===========================================================================
-# M-065 — OSC script handlers get the same builtins as TCP
+# OSC script handlers get the same builtins as TCP
 # ===========================================================================
 
 
@@ -350,7 +350,7 @@ def test_osc_handler_namespace_has_full_builtins():
 
 
 # ===========================================================================
-# M-066 — integer coercion returns the raw value (parity with the driver)
+# integer coercion returns the raw value (parity with the driver)
 # ===========================================================================
 
 
@@ -536,7 +536,7 @@ def test_osc_address_and_json_mappings_rules_build_no_state_responses():
 
 
 # ===========================================================================
-# M-067 — child_id command params capture digits, not greedy (.+)
+# child_id command params capture digits, not greedy (.+)
 # ===========================================================================
 
 
@@ -608,7 +608,7 @@ def test_auto_pattern_keeps_trailing_letter():
 
 
 # ===========================================================================
-# L-044 — a handler syntax error skips that handler, not the whole device
+# a handler syntax error skips that handler, not the whole device
 # ===========================================================================
 
 
@@ -633,7 +633,7 @@ def test_handler_syntax_error_does_not_abort_device():
 
 
 # ===========================================================================
-# L-045 / L-046 / L-047 — integer initial state, clamp rounding, bad bounds
+# integer initial state, clamp rounding, bad bounds
 # ===========================================================================
 
 
@@ -668,7 +668,7 @@ def test_integer_clamp_rounds_inward_for_fractional_bounds():
 
 
 def test_non_numeric_bounds_do_not_crash():
-    """L-047: a non-numeric min/max is ignored rather than crashing set_state
+    """A non-numeric min/max is ignored rather than crashing set_state
     or _coerce_value."""
     definition = {
         "id": "acme_badbounds",
@@ -685,7 +685,7 @@ def test_non_numeric_bounds_do_not_crash():
 
 
 # ===========================================================================
-# H-032 — notification templates substitute the documented {value}/{key}
+# notification templates substitute the documented {value}/{key}
 # ===========================================================================
 
 

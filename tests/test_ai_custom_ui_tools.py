@@ -538,7 +538,7 @@ async def test_a_grant_change_is_echoed_rather_than_folded_into_updated(
     """The grant is the whole reach model for markup somebody else wrote, and
     the one field nobody can see afterwards without reading the project back.
 
-    The AI may set it (Aaron, 2026-08-14), which is what makes saying so out
+    The AI may set it, which is what makes saying so out
     loud part of the deal rather than a nicety.
     """
     result = _result(await _run(handler, mock_engine, mock_agent, "update_ui_element", {

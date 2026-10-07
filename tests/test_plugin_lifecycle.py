@@ -1266,7 +1266,7 @@ class TestErrorIsolation:
 
 
 # ═══════════════════════════════════════════════════════════
-#  5. EXTENSIONS Validation (H-025 / L-029)
+#  5. EXTENSIONS Validation
 # ═══════════════════════════════════════════════════════════
 
 
@@ -1357,8 +1357,8 @@ class TestExtensionsValidation:
 
 
 class TestGetAllExtensionsIsolation:
-    """get_all_extensions: one bad plugin can't break the endpoint (H-025);
-    duplicate ids across plugins are de-duplicated (L-029)."""
+    """get_all_extensions: one bad plugin can't break the endpoint;
+    duplicate ids across plugins are de-duplicated."""
 
     @pytest.mark.asyncio
     async def test_malformed_extensions_does_not_break_endpoint(self, loader):
@@ -1442,7 +1442,7 @@ class TestGetAllExtensionsIsolation:
 
 
 # ═══════════════════════════════════════════════════════════
-#  6. Lifecycle-Hook Timeouts (H-026)
+#  6. Lifecycle-Hook Timeouts
 # ═══════════════════════════════════════════════════════════
 
 
@@ -1516,7 +1516,7 @@ class TestLifecycleTimeouts:
 
 
 # ═══════════════════════════════════════════════════════════
-#  7. Lifecycle Concurrency: locks, epoch, config (M-041..M-043)
+#  7. Lifecycle Concurrency: locks, epoch, config
 # ═══════════════════════════════════════════════════════════
 
 
@@ -1572,7 +1572,7 @@ class TestLifecycleConcurrency:
 
     @pytest.mark.asyncio
     async def test_auto_disable_scheduled_once_past_threshold(self, loader, monkeypatch):
-        """M-041: once the failure threshold is crossed, further failures don't
+        """Once the failure threshold is crossed, further failures don't
         each spawn a duplicate _auto_disable_plugin task."""
         state = loader._state
         calls = []
@@ -1643,7 +1643,7 @@ class TestLifecycleConcurrency:
 
 
 # ═══════════════════════════════════════════════════════════
-#  8. State-key hygiene & incompatible surfacing (M-044..M-046, L-028..L-031)
+#  8. State-key hygiene & incompatible surfacing
 # ═══════════════════════════════════════════════════════════
 
 
@@ -1660,7 +1660,7 @@ class _LinuxOnlyPlugin:
 class TestStateKeyHygiene:
     @pytest.mark.asyncio
     async def test_missing_keys_deleted_not_set_none(self, loader):
-        """L-028: clearing missing state uses delete(), so no dead None-valued
+        """Clearing missing state uses delete(), so no dead None-valued
         keys linger in the snapshot broadcast to panels."""
         loader._state.set("plugin.valid_plugin.missing", True)
         loader._state.set("plugin.valid_plugin.missing_reason", "x")
@@ -1673,7 +1673,7 @@ class TestStateKeyHygiene:
 
     @pytest.mark.asyncio
     async def test_incompatible_and_auto_disabled_cleared_on_start(self, loader):
-        """M-045: a successful start clears any stale incompatible/auto_disabled
+        """A successful start clears any stale incompatible/auto_disabled
         flag from a prior run."""
         loader._state.set("plugin.valid_plugin.incompatible", True)
         loader._state.set("plugin.valid_plugin.auto_disabled", True)
@@ -1707,7 +1707,7 @@ class TestStateKeyHygiene:
 
     @pytest.mark.asyncio
     async def test_incompatible_start_reports_incompatible_not_error(self, loader):
-        """M-046: enabling an incompatible plugin surfaces as 'incompatible'
+        """Enabling an incompatible plugin surfaces as 'incompatible'
         (its own banner), not a generic 'error' / 'Invalid manifest'."""
         loader._platform_id = "win_x64"
         register_plugin_class(_LinuxOnlyPlugin)
@@ -1720,7 +1720,7 @@ class TestStateKeyHygiene:
 
     @pytest.mark.asyncio
     async def test_list_plugins_surfaces_incompatible(self, loader):
-        """L-030: an incompatible plugin shows up with status 'incompatible'
+        """An incompatible plugin shows up with status 'incompatible'
         and compatible=False so the IDE can render its distinct banner."""
         loader._platform_id = "win_x64"
         register_plugin_class(_LinuxOnlyPlugin)
@@ -1734,7 +1734,7 @@ class TestStateKeyHygiene:
 
     @pytest.mark.asyncio
     async def test_plugin_log_tasks_are_bounded(self, loader, monkeypatch):
-        """L-031: a plugin logging in a tight loop can't spawn unbounded
+        """A plugin logging in a tight loop can't spawn unbounded
         one-shot event tasks."""
         monkeypatch.setattr("openavc.core.plugin_loader.MAX_PENDING_LOG_EVENTS", 5)
 

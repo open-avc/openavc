@@ -19,7 +19,7 @@ than one saying it could not reach the cloud.
 after the class ended, and without the context that made it true.
 
 **The cooldown is not an abuse guard.** A wall panel being leaned on is the
-programmer's problem to gate, and Aaron settled that: they own the page. What
+programmer's problem to gate, and that is settled: they own the page. What
 the cooldown defends against is a *trigger loop* -- "device offline" firing
 every poll through a lecture -- which is an authoring mistake whose cost would
 otherwise land on whoever is reading the mail.

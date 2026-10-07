@@ -502,7 +502,7 @@ class MacroToolsMixin:
         elif ref_type == "script":
             # There was no branch here at all, so every ask fell through to the
             # empty result below and the answer was always "nothing references
-            # this" -- the same all-clear-from-silence Q-168 fixed for devices.
+            # this" -- the same all-clear-from-silence deleting a device used to give.
             # The walk lives in core/script_references; what a bare function
             # name reaches is the script engine's own answer, because that is
             # what the press resolves through.

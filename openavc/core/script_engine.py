@@ -870,7 +870,7 @@ class ScriptEngine:
 
             # Async handler. Bound the state-change cascade so a toggling value
             # (which evades StateStore's unchanged-value short-circuit) can't
-            # spawn fire-and-forget tasks without limit (H-068).
+            # spawn fire-and-forget tasks without limit.
             depth = _state_handler_depth.get()
             if depth >= self.MAX_STATE_HANDLER_DEPTH:
                 result.close()  # never awaited — avoid the "coroutine" warning
@@ -911,8 +911,8 @@ class ScriptEngine:
         ``depth`` is published in a contextvar so it propagates through the
         fire-and-forget task hops a state-change cascade creates — that's what
         lets ``MAX_STATE_HANDLER_DEPTH`` cap the whole chain and not just one
-        synchronous call stack (H-068). A timeout or exception in the coroutine
-        body is re-emitted as ``script.error`` (M-118), honouring the documented
+        synchronous call stack. A timeout or exception in the coroutine
+        body is re-emitted as ``script.error``, honouring the documented
         guarantee that handler errors surface (the previous fire-and-forget
         ``create_task`` swallowed them and applied no timeout).
         """

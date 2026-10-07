@@ -395,7 +395,7 @@ def test_overflow_warning_without_a_label_is_still_readable(caplog):
 
 
 def test_callable_parser_no_forward_progress_does_not_hang():
-    """H-064: a parse_fn that returns a message without consuming the buffer
+    """A parse_fn that returns a message without consuming the buffer
     must not spin forever (it would wedge the whole event loop)."""
     calls = {"n": 0}
 
@@ -421,7 +421,7 @@ def test_callable_parser_buffer_grows_is_stopped():
 
 
 def test_fixed_length_overflow_clears_not_trims():
-    """M-108: on overflow a fixed-length parser clears (resyncs on the next
+    """On overflow a fixed-length parser clears (resyncs on the next
     whole frame) rather than keeping a misaligned tail that corrupts every
     subsequent frame."""
     length = 7
@@ -435,7 +435,7 @@ def test_fixed_length_overflow_clears_not_trims():
 
 
 def test_length_prefix_bogus_length_clears_no_byte_walk():
-    """M-109: a claimed frame larger than max_buffer clears the buffer instead
+    """A claimed frame larger than max_buffer clears the buffer instead
     of walking it one byte at a time (O(n^2) on the event loop)."""
     p = LengthPrefixFrameParser(header_size=2, max_buffer=1024)
     # Header claims 60000 bytes — far over max_buffer.
@@ -447,7 +447,7 @@ def test_length_prefix_bogus_length_clears_no_byte_walk():
 
 
 def test_length_prefix_stalled_frame_stays_bounded():
-    """L-074: a stalled partial frame (header received, payload never
+    """A stalled partial frame (header received, payload never
     completes) keeps the buffer bounded by max_buffer — symmetric with the
     other parsers, never silently pinning more than the cap."""
     p = LengthPrefixFrameParser(header_size=2, max_buffer=64)

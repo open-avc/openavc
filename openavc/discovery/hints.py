@@ -461,7 +461,7 @@ def _parse_response_match(
 ) -> ResponseMatch:
     """Pull ``expect:``, ``expect_regex:``, or ``expect_hex:`` out of a probe block.
 
-    Spec §2 rule 3: exactly one matcher per probe. Mixing them silently
+    Exactly one matcher per probe. Mixing them silently
     AND-matches both, which produces "matched hex ab cd, regex:<vendor>"
     output that's almost never the author's intent. If ``require_match``
     is True, exactly one must be present — UDP probes need a matcher to

@@ -1,14 +1,14 @@
 """Hardening regression tests for BaseDriver.
 
 Covers the audit findings closed in this group:
-  H-049 disconnect cleanup tasks keep a strong ref (no GC orphan)
-  M-090 serial params coerced + validated before pyserial
-  M-091 max_missed_polls <= 0 clamped so a healthy device isn't marked offline
-  M-092 a declared state var's key exists from construction, holding no reading
-  M-093 a non-numeric `min` doesn't crash driver instantiation
-  M-094 a watchdog/transport disconnect closes the transport (no leaked socket)
-  M-095 poll_children drops a stale write for a child re-registered mid-poll
-  L-061 poll_children applies the whole poll in one atomic batch
+  disconnect cleanup tasks keep a strong ref (no GC orphan)
+  serial params coerced + validated before pyserial
+  max_missed_polls <= 0 clamped so a healthy device isn't marked offline
+  a declared state var's key exists from construction, holding no reading
+  a non-numeric `min` doesn't crash driver instantiation
+  a watchdog/transport disconnect closes the transport (no leaked socket)
+  poll_children drops a stale write for a child re-registered mid-poll
+  poll_children applies the whole poll in one atomic batch
 """
 
 import asyncio
@@ -108,7 +108,7 @@ class _ChildDriver(BaseDriver):
         return None
 
 
-# ── H-049 / M-094: disconnect cleanup keeps a strong ref + closes transport ──
+# ── disconnect cleanup keeps a strong ref + closes transport ──
 
 
 class TestDisconnectCleanup:
@@ -128,15 +128,15 @@ class TestDisconnectCleanup:
 
         drv._handle_transport_disconnect()
 
-        # H-049: the cleanup task is strongly referenced while pending.
+        # the cleanup task is strongly referenced while pending.
         assert len(drv._bg_tasks) == 1
         task = next(iter(drv._bg_tasks))
         await task
 
         assert drv._connected is False
-        assert fake.closed is True          # M-094: transport closed
-        assert drv.transport is None        # M-094: ref nulled for reconnect
-        assert fired == [True]              # H-049: emit actually ran
+        assert fake.closed is True          # transport closed
+        assert drv.transport is None        # ref nulled for reconnect
+        assert fired == [True]              # emit actually ran
         assert len(drv._bg_tasks) == 0     # done-callback drained the set
 
     async def test_disconnect_without_running_loop_is_safe(self):
@@ -171,12 +171,12 @@ class TestDisconnectCleanup:
         await drv.stop_polling()
 
         assert drv.get_state("connected") is False
-        # M-094: the watchdog path closed + released the transport.
+        # the watchdog path closed + released the transport.
         assert fake.closed is True
         assert drv.transport is None
 
 
-# ── M-090: serial parameter coercion / validation ──
+# ── serial parameter coercion / validation ──
 
 
 class TestSerialParamCoercion:
@@ -222,7 +222,7 @@ class TestSerialParamCoercion:
             BaseDriver._coerce_serial_params(config)
 
 
-# ── M-091: max_missed_polls clamp ──
+# ── max_missed_polls clamp ──
 
 
 class TestMaxMissedPollsClamp:
@@ -257,7 +257,7 @@ class TestMaxMissedPollsClamp:
         await drv.stop_polling()
 
 
-# ── M-092 / M-093: what a declared state variable holds before the first read ──
+# ── what a declared state variable holds before the first read ──
 
 
 class TestDeclaredVariablesStartUnreported:
@@ -300,7 +300,7 @@ class TestDeclaredVariablesStartUnreported:
             async def send_command(self, c, p=None):
                 return None
 
-        # M-093: instantiation must not raise on a non-numeric min.
+        # instantiation must not raise on a non-numeric min.
         drv = _mk(_BadMinDrv)
         assert drv.state.has("device.dev.ratio")
         assert drv.state.has("device.dev.count")
@@ -323,7 +323,7 @@ class TestDeclaredVariablesStartUnreported:
             assert BaseDriver._default_for_var_def(var_def) is None, var_def
 
 
-# ── M-095 / L-061: poll_children atomicity + ABA guard ──
+# ── poll_children atomicity + ABA guard ──
 
 
 class TestPollChildren:
@@ -342,7 +342,7 @@ class TestPollChildren:
 
         await drv.poll_children("encoder", fetch, batch_size=10, inter_batch_delay=0)
 
-        # M-095: the stale write is dropped; the reset value stands.
+        # the stale write is dropped; the reset value stands.
         assert drv.state.get("device.ctrl.encoder.001.name") == "reset"
 
     async def test_drops_results_for_unregistered_ids(self):
@@ -375,7 +375,7 @@ class TestPollChildren:
 
         await drv.poll_children("encoder", fetch, batch_size=3, inter_batch_delay=0)
 
-        # L-061: one atomic apply for the whole poll, not one per batch.
+        # one atomic apply for the whole poll, not one per batch.
         assert apply_sizes == [10]
         for i in range(1, 11):
             assert drv.state.get(f"device.ctrl.encoder.{i:03d}.name") == f"E{i}"

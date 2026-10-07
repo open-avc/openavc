@@ -123,7 +123,7 @@ def test_corrupt_project_does_not_seed(tmp_path, monkeypatch):
     assert project.project.id == "recovery", "corruption must not seed the starter"
 
 
-# --- The notice a recovery leaves behind (Q-178 / F-028) ---
+# --- The notice a recovery leaves behind ---
 #
 # The recovery itself was already right. What none of it did was tell the
 # person whose last edit fell between the backup and the corrupt save, and

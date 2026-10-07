@@ -1,14 +1,14 @@
 """Security/reliability hardening tests for the plugin installer.
 
 Covers the audit findings closed in this group:
-  H-045 install accepts only the official catalog repo (not "any GitHub URL")
-  H-046 native-dependency download URL is SSRF-guarded
-  H-047 pip dependency strings can't inject pip args / VCS / URL installs
-  H-048 update_plugin rolls back to the working version on failure
-  M-086 per-plugin lock serializes concurrent install/update/uninstall
-  M-087 directory-install per-file download_url is re-validated against catalog
-  M-088 directory-install entry names can't traverse out of the plugin dir
-  M-089 every download path enforces size / file-count / decompression caps
+  install accepts only the official catalog repo (not "any GitHub URL")
+  native-dependency download URL is SSRF-guarded
+  pip dependency strings can't inject pip args / VCS / URL installs
+  update_plugin rolls back to the working version on failure
+  per-plugin lock serializes concurrent install/update/uninstall
+  directory-install per-file download_url is re-validated against catalog
+  directory-install entry names can't traverse out of the plugin dir
+  every download path enforces size / file-count / decompression caps
 """
 
 import asyncio
@@ -139,7 +139,7 @@ def _json_response(payload):
 
 
 # ═══════════════════════════════════════════════════════════
-#  H-045 — catalog-only plugin URL
+#  catalog-only plugin URL
 # ═══════════════════════════════════════════════════════════
 
 
@@ -156,7 +156,7 @@ class TestCatalogUrl:
         _validate_catalog_url(url)  # must not raise
 
     def test_rejects_other_github_repo(self):
-        # Same GitHub host, attacker-controlled repo — the whole point of H-045.
+        # Same GitHub host, attacker-controlled repo — the whole point of the catalog-only check.
         with pytest.raises(ValueError, match="open-avc/openavc-plugins|catalog"):
             _validate_catalog_url(
                 "https://raw.githubusercontent.com/attacker/evil/main/x.py"
@@ -187,7 +187,7 @@ class TestCatalogUrl:
 
 
 # ═══════════════════════════════════════════════════════════
-#  H-046 — native-dependency SSRF guard
+#  native-dependency SSRF guard
 # ═══════════════════════════════════════════════════════════
 
 
@@ -226,7 +226,7 @@ class TestDownloadUrlSSRF:
 
 
 # ═══════════════════════════════════════════════════════════
-#  H-047 — pip dependency injection
+#  pip dependency injection
 # ═══════════════════════════════════════════════════════════
 
 
@@ -272,7 +272,7 @@ class TestSafeRequirement:
 
 
 # ═══════════════════════════════════════════════════════════
-#  H-048 — update rollback
+#  update rollback
 # ═══════════════════════════════════════════════════════════
 
 
@@ -331,7 +331,7 @@ class TestUpdateRollback:
 
 
 # ═══════════════════════════════════════════════════════════
-#  M-086 — per-plugin operation lock
+#  per-plugin operation lock
 # ═══════════════════════════════════════════════════════════
 
 
@@ -368,7 +368,7 @@ class TestPluginLock:
 
 
 # ═══════════════════════════════════════════════════════════
-#  M-087 / M-088 — directory install: URL re-validation + traversal
+#  directory install: URL re-validation + traversal
 # ═══════════════════════════════════════════════════════════
 
 
@@ -429,7 +429,7 @@ class TestDirectoryInstallSafety:
 
 
 # ═══════════════════════════════════════════════════════════
-#  M-089 — download / decompression / file-count caps
+#  download / decompression / file-count caps
 # ═══════════════════════════════════════════════════════════
 
 

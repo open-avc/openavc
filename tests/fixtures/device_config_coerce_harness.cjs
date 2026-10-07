@@ -19,7 +19,7 @@ const C = moduleObj.exports;
 const coerce = C.coerceConfigValue;
 const results = {};
 
-// H-061: an object-typed field with a valid JSON object → parsed object. This
+// an object-typed field with a valid JSON object → parsed object. This
 // is the case the Add dialog used to store as a raw string, breaking command
 // sending at runtime.
 {

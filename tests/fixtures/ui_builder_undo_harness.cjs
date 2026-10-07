@@ -86,7 +86,7 @@ const results = {};
   };
 }
 
-// --- The H-137 bug: undo/redo must arm the shared save debounce ---
+// --- undo/redo must arm the shared save debounce ---
 // (update() only sets dirty; flushSave and the beforeunload handler no-op
 // with no pending timer, so without this the undone state never persists.)
 {
@@ -108,7 +108,7 @@ const results = {};
   };
 }
 
-// --- The L-106 bug: redo of an add/paste re-selects the re-created element ---
+// --- redo of an add/paste re-selects the re-created element ---
 {
   const pre = [{ id: "page1", elements: [el("A")] }];
   const post = [{ id: "page1", elements: [el("A"), el("B")] }];

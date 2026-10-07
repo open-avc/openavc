@@ -331,7 +331,7 @@ def build_signed_message(
 # of these builders; CloudAgent envelopes, sequences, and signs it at send
 # time (seq comes from the sequencer, which also buffers for replay — that is
 # why these build payloads, not full messages). The cloud reads exactly these
-# shapes: change one only together with its cloud-side reader and spec §13.
+# shapes: change one only together with its cloud-side reader.
 
 
 def build_heartbeat_payload(

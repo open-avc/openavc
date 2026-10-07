@@ -141,7 +141,7 @@ function stateTone(state: DeviceState): { bg: string; fg: string; label: string 
 // only when the device's evidence_log doesn't carry a record matching
 // the identification source — which shouldn't happen post-rewrite, but
 // we never want to leak the synthetic `custom_<driver_id>_*` source IDs
-// to the user (spec §10 final paragraph).
+// to the user.
 const SOURCE_KIND_FALLBACKS: Record<string, string> = {
   mdns: "mDNS announcement",
   ssdp: "SSDP announcement",
@@ -158,7 +158,7 @@ const SOURCE_KIND_FALLBACKS: Record<string, string> = {
 /**
  * One-line description of the signal that produced an identification.
  *
- * Renders the same §10 phrasing the "Why?" reveal uses, by finding the
+ * Renders the same phrasing the "Why?" reveal uses, by finding the
  * evidence record whose namespaced `source` matches `ident.source` and
  * running it through {@link describeEvidence}. Falls back to a generic
  * kind-only label when no matching evidence is found, so synthetic

@@ -742,7 +742,7 @@ async def test_alert_message_truncated_to_column_limit():
     await monitor.stop()
 
 
-# --- Project-declared monitors (the monitor plan, §6) ---
+# --- Project-declared monitors ---
 #
 # The point of every test below: the tile the Dashboard draws and the alert the
 # cloud receives come from ONE declaration in the project. Nothing here teaches

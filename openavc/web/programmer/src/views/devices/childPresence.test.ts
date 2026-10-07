@@ -89,7 +89,7 @@ describe("childStateFor", () => {
 });
 
 describe("an empty slot is not a fault", () => {
-  // Q-203: seven AT-LINK extension positions on a standalone mixer used to
+  // seven AT-LINK extension positions on a standalone mixer used to
   // draw seven green dots. Registering them offline fixes that half; this is
   // the other half -- they must not now read as seven faults instead.
   const EMPTY = { online: false, offline_reason: "not_fitted" };

@@ -8,8 +8,8 @@ present rather than failing the Python-only CI gate. Run them locally after
 `npm ci` in openavc/web/programmer; `node` ships on the CI runners.
 
 Covers the audit findings fixed in the UIBuilderView.tsx group:
-  H-038 clampOriginToGrid, M-077 findFreeGridPosition, L-051 pointerToCell,
-  H-039 duplicateElementInPage reserved ids, L-052 renameElement array identity.
+  clampOriginToGrid, findFreeGridPosition, pointerToCell,
+  duplicateElementInPage reserved ids, renameElement array identity.
 """
 from __future__ import annotations
 

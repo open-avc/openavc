@@ -18,7 +18,7 @@ describe("aiErrorDetail", () => {
 });
 
 describe("aiMessageForStatus", () => {
-  // Q-176: a plan refusal, a paused assistant and a cloud that is briefly down
+  // a plan refusal, a paused assistant and a cloud that is briefly down
   // all read as one fixed sentence, so "never going to work" and "try again in
   // a minute" were indistinguishable.
   it("relays the sentence the cloud sent for 503", () => {

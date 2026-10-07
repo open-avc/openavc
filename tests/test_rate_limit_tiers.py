@@ -286,14 +286,14 @@ def test_render_path_collection_endpoints_keep_their_budget():
 
 
 def test_credential_and_theme_routes_are_not_swept_in():
-    """The two §106 edges that made this a decision rather than a sweep."""
+    """The two edges that made this a decision rather than a sweep."""
     assert _classify("GET", "/api/plugins/audio_player/ext-token") == "standard"
     assert _classify("GET", "/api/themes/dark-default") == "standard"
     assert _classify("GET", "/api/themes/dark-default/export") == "standard"
 
 
 def test_a_heavy_cold_panel_load_no_longer_spends_the_standard_budget():
-    """The measured Q-101 load: 46 assets + 7 custom-control fetches.
+    """The measured cold load on a real tablet: 46 assets + 7 custom-control fetches.
 
     Measured at 59 requests against a 60/min limit on a real remote tablet.
     Only the two per-start fetches should still count.

@@ -115,7 +115,7 @@ const results = {};
 // Upper bound on simulated reconnect attempts (the client's retry budget is 3).
 const MAX_TRIES = 5;
 
-// --- H-116: an intentional disconnect() must not resurrect the socket ---
+// --- an intentional disconnect() must not resurrect the socket ---
 {
   const { ws, pendingReconnects, authEvents } = freshEnv();
   ws.connect();
@@ -133,7 +133,7 @@ const MAX_TRIES = 5;
   };
 }
 
-// --- M-166: sendQueue is cleared on disconnect (no stale replay onto hardware) ---
+// --- sendQueue is cleared on disconnect (no stale replay onto hardware) ---
 {
   const { ws } = freshEnv();
   // Queue a command while disconnected (no socket yet).
@@ -148,7 +148,7 @@ const MAX_TRIES = 5;
   };
 }
 
-// --- M-166: everConnected is reset on disconnect, re-enabling auth detection ---
+// --- everConnected is reset on disconnect, re-enabling auth detection ---
 // After a session that opened, a later connect() that keeps getting pre-open
 // 1006s must still be able to conclude an auth failure. If everConnected is
 // never reset it stays true forever and the 1006 path can never fire.
@@ -171,7 +171,7 @@ const MAX_TRIES = 5;
   };
 }
 
-// --- M-167: a transient pre-open 1006 retries with backoff, does NOT log out ---
+// --- a transient pre-open 1006 retries with backoff, does NOT log out ---
 {
   const { ws, pendingReconnects, authEvents } = freshEnv();
   ws.connect();
@@ -185,7 +185,7 @@ const MAX_TRIES = 5;
   };
 }
 
-// --- M-167: a persistent pre-open 1006 logs out, but only after the retry budget ---
+// --- a persistent pre-open 1006 logs out, but only after the retry budget ---
 {
   const { ws, pendingReconnects, authEvents } = freshEnv();
   ws.connect();

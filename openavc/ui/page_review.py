@@ -360,7 +360,7 @@ def page_container(orientation: str = "landscape") -> Container:
 
     A function rather than a constant because a portrait arrangement is drawn
     on the same screen turned, and measuring one against 1280x800 was the whole
-    of Q-087: 60% too generous on width, too strict on height, and wrong in the
+    of the defect: 60% too generous on width, too strict on height, and wrong in the
     direction that ACCEPTS -- so nothing was flagged anywhere.
     """
     width, height = reference_box(orientation)
