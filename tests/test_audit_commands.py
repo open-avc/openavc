@@ -1137,6 +1137,8 @@ def test_a_value_first_reported_is_said_apart_from_what_the_audit_changed():
              "by": {"number": 1, "label": "Mute"}, "on_its_own": False},
             {"key": "input.1.meter", "label": "Input 1 Level Meter", "before": None, "now": 0,
              "by": {"number": 5, "label": "Meters On"}, "on_its_own": False},
+            {"key": "input.2.meter", "label": "Input 2 Level Meter", "before": None, "now": 3,
+             "by": {"number": 5, "label": "Meters On"}, "on_its_own": False},
         ],
     }
     html = "".join(_render_commands(commands))
@@ -1144,7 +1146,7 @@ def test_a_value_first_reported_is_said_apart_from_what_the_audit_changed():
     assert "Mute" in table and "Meter" not in table
     assert (
         "First reported during the audit, with no earlier reading to compare: "
-        "Input 1 Level Meter: 0 (after 5. Meters On)."
+        "Input 1 Level Meter: 0, Input 2 Level Meter: 3 (after 5. Meters On)."
     ) in html
 
 

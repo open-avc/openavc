@@ -2170,13 +2170,17 @@ def _render_commands(commands: dict[str, Any] | None) -> list[str]:
             )))
         parts.append("</table>")
     if first:
-        texts = []
+        # Said once per command they followed (a Meters On reports a dozen).
+        groups: dict[Any, tuple[dict[str, Any] | None, list[str]]] = {}
         for item in first:
             by = item.get("by")
-            texts.append(
+            groups.setdefault((by or {}).get("number"), (by, []))[1].append(
                 f"{item.get('label') or item.get('key')}: {_value_text(item.get('now'))}"
-                + (f" (after {by['number']}. {by['label']})" if by else "")
             )
+        texts = [
+            ", ".join(values) + (f" (after {by['number']}. {by['label']})" if by else "")
+            for by, values in groups.values()
+        ]
         parts.append("<p>" + _e(
             "First reported during the audit, with no earlier reading to compare: "
             + "; ".join(texts) + "."

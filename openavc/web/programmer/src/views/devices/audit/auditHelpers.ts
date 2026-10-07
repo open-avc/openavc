@@ -273,11 +273,20 @@ export function splitChanged(changed: AuditChangedValue[]): {
   };
 }
 
-/** A value first reported during the audit: "Input 1 Level Meter: 0 (after
- *  5. Meters On)". */
-export function firstReportedText(item: AuditChangedValue): string {
-  const by = item.by ? ` (after ${item.by.number}. ${item.by.label})` : "";
-  return `${item.label}: ${valueText(item.now, "not reported")}${by}`;
+/** The values first reported during the audit, said once per command they
+ *  followed: "Input 1 Level Meter: 0, Input 2 Level Meter: 3 (after 5.
+ *  Meters On); Power: Yes (after 1. Power On)". */
+export function firstReportedText(items: AuditChangedValue[]): string {
+  const groups = new Map<number | null, { by: AuditChangedValue["by"]; values: string[] }>();
+  for (const item of items) {
+    const key = item.by ? item.by.number : null;
+    const group = groups.get(key) ?? { by: item.by, values: [] };
+    group.values.push(`${item.label}: ${valueText(item.now, "not reported")}`);
+    groups.set(key, group);
+  }
+  return [...groups.values()]
+    .map((g) => g.values.join(", ") + (g.by ? ` (after ${g.by.number}. ${g.by.label})` : ""))
+    .join("; ");
 }
 
 /** A command's traffic as the step lists it: each entry, and a line where the

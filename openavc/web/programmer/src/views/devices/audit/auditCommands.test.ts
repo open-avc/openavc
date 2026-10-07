@@ -414,8 +414,12 @@ describe("values first reported during the audit", () => {
 
   it("are said apart from what the audit changed and from what moves on its own", () => {
     expect(splitChanged([mute, meter, level])).toEqual({ left: [mute], first: [meter], moving: [level] });
-    expect(firstReportedText(meter)).toBe("Input 1 Level Meter: 0 (after 5. Meters On)");
-    expect(firstReportedText({ ...meter, by: null })).toBe("Input 1 Level Meter: 0");
+    const meter2 = { ...meter, key: "input.2.meter", label: "Input 2 Level Meter", now: 3 };
+    const power = { key: "power", label: "Power", before: null, now: true, by: { number: 1, label: "Power On" }, on_its_own: false };
+    expect(firstReportedText([meter, power, meter2])).toBe(
+      "Input 1 Level Meter: 0, Input 2 Level Meter: 3 (after 5. Meters On); Power: Yes (after 1. Power On)",
+    );
+    expect(firstReportedText([{ ...meter, by: null }])).toBe("Input 1 Level Meter: 0");
   });
 
   it("have their own line on the Report step", () => {

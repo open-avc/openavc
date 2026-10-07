@@ -406,7 +406,7 @@ function WhatChanged({ changed }: { changed: audit.AuditChangedValue[] }) {
       {first.length > 0 && (
         <div style={{ ...hintStyle, overflowWrap: "anywhere" }}>
           First reported during the audit, with no earlier reading to compare:{" "}
-          {first.map(firstReportedText).join("; ")}.
+          {firstReportedText(first)}.
         </div>
       )}
       {moving.length > 0 && (
