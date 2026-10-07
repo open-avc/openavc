@@ -197,6 +197,23 @@ PLATFORM_KEYS = frozenset({
     "restarting", "web_ui_url", "orphaned", "orphan_reason", "reconnect_attempt",
 })
 
+# What the platform writes for every child beside the driver's own values: its
+# label, and the fault pair it carries while its parent is unreachable. A
+# child's ``online`` stays the driver's: a roster with ``presence: reported``
+# writes it from the device.
+CHILD_PLATFORM_KEYS = frozenset({"label", "offline_reason", "offline_detail"})
+
+
+def is_platform_key(key: str) -> bool:
+    """Is this state key (the part after ``device.<id>.``) one the platform
+    writes rather than a status value the driver reports? A child's key
+    (``<type>.<id>.<prop>``) is judged by what the platform writes for a child,
+    so a channel's own ``name`` or ``enabled`` is the driver's even though the
+    device's are not."""
+    if "." not in key:
+        return key in PLATFORM_KEYS
+    return key.rsplit(".", 1)[-1] in CHILD_PLATFORM_KEYS
+
 
 def command_sent_nothing(
     entries: Iterable[TrafficEntry],

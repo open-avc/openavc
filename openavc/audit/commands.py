@@ -95,7 +95,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from openavc.audit.observe import PLATFORM_KEYS, REPLY_WINDOW_SECONDS, command_sent_nothing
+from openavc.audit.observe import REPLY_WINDOW_SECONDS, command_sent_nothing, is_platform_key
 from openavc.audit.session import AuditError
 from openavc.core.device_traffic import RX, TX, serialize_entry
 from openavc.core.state_store import is_flat_primitive
@@ -1192,7 +1192,7 @@ def moved_values(
     out: dict[str, dict[str, Any]] = {}
     for change in changes:
         key = change["key"]
-        if key.rsplit(".", 1)[-1] in PLATFORM_KEYS:
+        if is_platform_key(key):
             continue
         item = out.get(key)
         if item is None:
@@ -1260,8 +1260,7 @@ def changed_values(run: Any) -> list[dict[str, Any]]:
     out = []
     for key in sorted(now):
         value = now[key]
-        prop = key.rsplit(".", 1)[-1]
-        if prop in PLATFORM_KEYS or prop == "label" or value is None:
+        if is_platform_key(key) or value is None:
             continue
         before = baseline.get(key)
         if before == value and type(before) is type(value):

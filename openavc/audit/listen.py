@@ -43,9 +43,9 @@ from typing import TYPE_CHECKING, Any
 
 from openavc.audit.observe import (
     CONTRACT_TEXT,
-    PLATFORM_KEYS,
     REPLY_WINDOW_SECONDS,
     ContractEvent,
+    is_platform_key,
     replies_to_nobody,
 )
 from openavc.audit.sandbox import DriverSandbox, audit_device_id
@@ -484,14 +484,14 @@ class ListenPass:
                 "new": _shown(new),
             })
         if (
-            old is not None and new is not None and prop not in PLATFORM_KEYS
+            old is not None and new is not None and not is_platform_key(prop)
             and self.run.listen is self and not self.run.watching()
         ):
             self.run.note_unwatched(prop, now)
         if prop == "offline_reason" and new:
             self._note_offline()
         if (
-            new is not None and prop not in PLATFORM_KEYS and "." not in prop
+            new is not None and "." not in prop and not is_platform_key(prop)
             and prop not in self.first_reported
         ):
             self.first_reported[prop] = now

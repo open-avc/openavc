@@ -815,6 +815,56 @@ async def test_what_a_command_moved_is_told_from_what_moves_anyway():
     ) == []
 
 
+MIXER_INFO = {"child_entity_types": {"input": {
+    "label": "Input",
+    "state_variables": {
+        "name": {"type": "string", "label": "Channel Name"},
+        "enabled": {"type": "boolean", "label": "Enabled"},
+        "mute": {"type": "boolean", "label": "Mute"},
+    },
+}}}
+
+
+def test_a_child_value_named_like_a_device_key_is_the_drivers():
+    """A channel's own name is a value the driver reports, even though the
+    device's ``name`` is the platform's: a Rename Input on a mixer changed
+    ``input.3.name`` and its window said nothing changed. What the platform
+    writes for every child (its label, its offline reason) still is not."""
+    from types import SimpleNamespace as NS
+
+    changes = [
+        {"t": 1, "key": "input.3.name", "old": "CH 3", "new": "AuditProbe"},
+        {"t": 1, "key": "input.3.enabled", "old": True, "new": False},
+        {"t": 1, "key": "input.3.label", "old": "Input 3", "new": "Input 3 (AuditProbe)"},
+        {"t": 1, "key": "input.3.offline_reason", "old": None, "new": "parent_offline"},
+        {"t": 1, "key": "name", "old": "Mixer", "new": "Mixer 2"},
+    ]
+    moved = moved_values(changes, [], MIXER_INFO)
+    assert [m["key"] for m in moved] == ["input.3.name", "input.3.enabled"]
+    assert trial_sentence({"moved": moved, "traffic": {"received": 1}}) == (
+        "Input 3 Channel Name went from CH 3 to AuditProbe, Input 3 Enabled went from Yes to No."
+    )
+    trial = NS(
+        number=11, label="Rename Input", sent_at=100.0,
+        before={"input.3.name": "CH 3", "input.3.label": "Input 3", "name": "Mixer"},
+        changes=[{"key": "input.3.name"}, {"key": "input.3.label"}, {"key": "name"}],
+        already_moving=[],
+    )
+    listen = NS(sandbox=NS(
+        started=True, driver=NS(DRIVER_INFO=MIXER_INFO),
+        device_state=lambda: {
+            "input.3.name": "AuditProbe", "input.3.label": "Input 3 (AuditProbe)", "name": "Mixer 2",
+        },
+    ))
+    run = NS(
+        commands=NS(trials=[trial]), settings=None, listen=listen,
+        unwatched={}, choice=NS(driver_id="acme"),
+    )
+    assert [(c["key"], c["before"], c["now"]) for c in changed_values(run)] == [
+        ("input.3.name", "CH 3", "AuditProbe"),
+    ]
+
+
 def test_a_value_already_changing_is_not_left_changed_by_the_command():
     """A clock that ticked inside a command's window, and was already ticking
     when the command went out, is not what the command left changed, even
