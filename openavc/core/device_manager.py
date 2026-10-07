@@ -1888,7 +1888,10 @@ class DeviceManager:
         every extra attempt, locking the legitimate user out too. Policy:
         one attempt per user action. The initial connect (which may carry
         driver-default credentials worth trying) counts as that attempt;
-        after an auth_failed classification we stop and wait. Editing the
+        after an auth_failed classification we stop and wait. A connected
+        device whose credential is refused mid-session has had its attempt
+        too (the driver's login on the live connection), so its drop pauses
+        rather than reconnecting into the same refusal. Editing the
         device re-adds it (fresh attempt), and the Reconnect button forces
         one more try. ``reconnect_failed`` is set so the UI shows the
         not-retrying state.
@@ -1970,11 +1973,15 @@ class DeviceManager:
         if not config.get("enabled", True):
             return
 
-        log.info(f"[{device_id}] Transport disconnected — starting auto-reconnect")
         # Classify the drop from the transport's stashed last error (no connect
         # exception on this path) so the device card shows an actionable reason
         # instead of a bare code.
-        self._set_offline_reason(device_id, driver)
+        if self._set_offline_reason(device_id, driver) == "auth_failed":
+            # The driver had its credential refused on the live connection,
+            # and its own login there was this drop's one attempt.
+            self._pause_reconnect_for_auth(device_id)
+            return
+        log.info(f"[{device_id}] Transport disconnected — starting auto-reconnect")
         self._start_reconnect(device_id)
 
     async def _on_device_connected(self, event: str, payload: dict[str, Any]) -> None:
@@ -2411,8 +2418,10 @@ class DeviceManager:
                         # handler saw this loop running and left the retry to
                         # it, so returning here would leave the device down
                         # with nothing retrying.
+                        if self._set_offline_reason(device_id, driver) == "auth_failed":
+                            self._pause_reconnect_for_auth(device_id)
+                            return
                         log.info(f"[{device_id}] The connection dropped while it was starting up; retrying")
-                        self._set_offline_reason(device_id, driver)
                         attempt += 1
                         continue
                     log.info(f"[{device_id}] Reconnected successfully")
@@ -2423,7 +2432,9 @@ class DeviceManager:
                     if not driver.get_state("connected"):
                         # Dropped again while its settings were applied: the
                         # same hand-off as above, one await later.
-                        self._set_offline_reason(device_id, driver)
+                        if self._set_offline_reason(device_id, driver) == "auth_failed":
+                            self._pause_reconnect_for_auth(device_id)
+                            return
                         attempt += 1
                         continue
                     return

@@ -66,6 +66,29 @@ class _UnreachableDriver(_AuthRejectDriver):
         raise ConnectionError("connection refused")
 
 
+class _PasswordChangedDriver(_AuthRejectDriver):
+    """Connects, and every later login is refused: the password was changed
+    on the device while the session was up."""
+
+    async def connect(self) -> None:
+        self.connect_attempts += 1
+        if self.connect_attempts > 1:
+            raise ConnectionFaultError("Login rejected", code="auth_failed")
+        self._connected = True
+        self.set_state("connected", True)
+
+
+class _RefusedDuringStartupDriver(_AuthRejectDriver):
+    """The link comes up, then the credential is refused while the driver is
+    still starting up, so connect() returns with the device already dropped."""
+
+    async def connect(self) -> None:
+        self.connect_attempts += 1
+        self._connected = True
+        self.set_state("connected", True)
+        self._force_disconnect("auth_failed", "Login rejected")
+
+
 class _PermanentFaultDriver(_AuthRejectDriver):
     """Fails every attempt with a fault only a human can clear.
 
@@ -96,6 +119,13 @@ def _register(driver_id: str, cls):
 
 def _unregister(driver_id: str):
     _DRIVER_REGISTRY.pop(driver_id, None)
+
+
+async def _settle_drop(driver: BaseDriver) -> None:
+    """Run the drop's deferred cleanup, which emits device.disconnected and
+    so runs the device manager's handler."""
+    while driver._bg_tasks:
+        await asyncio.gather(*list(driver._bg_tasks))
 
 
 async def test_add_device_auth_failure_does_not_start_reconnect(dm):
@@ -165,6 +195,96 @@ async def test_manual_reconnect_tries_once_then_pauses_again(dm):
         assert dm.state.get("device.d1.reconnect_failed") is True
     finally:
         _unregister("acme_auth")
+
+
+async def test_connected_device_refused_mid_session_pauses_without_another_login(
+    dm, monkeypatch
+):
+    """A connected driver whose credential is refused drops with auth_failed
+    stashed. Its own re-login was the one attempt, so the drop pauses
+    instead of reconnecting into the same refusal."""
+    _register("acme_auth", _PasswordChangedDriver)
+    # A reconnect loop started by mistake retries at once instead of in 1 s.
+    monkeypatch.setattr(dm, "_reconnect_delay", lambda device_id, attempt: 0.0)
+    try:
+        await dm.add_device({
+            "id": "d1", "driver": "acme_auth", "name": "D1",
+            "config": {"host": "192.0.2.1"},
+        })
+        driver = dm._devices["d1"]
+        assert dm.state.get("device.d1.connected") is True
+
+        driver._force_disconnect("auth_failed", "Login rejected")
+        await _settle_drop(driver)
+        await asyncio.sleep(0.05)
+
+        assert driver.connect_attempts == 1  # no login after the refusal
+        assert "d1" not in dm._reconnect_tasks
+        assert dm.state.get("device.d1.offline_reason") == "auth_failed"
+        assert dm.state.get("device.d1.offline_detail") == "Login rejected"
+        assert dm.state.get("device.d1.reconnect_failed") is True
+    finally:
+        await dm._cancel_reconnect("d1")
+        _unregister("acme_auth")
+
+
+async def test_connected_device_dropping_for_another_reason_still_reconnects(dm):
+    _register("acme_auth", _PasswordChangedDriver)
+    try:
+        await dm.add_device({
+            "id": "d1", "driver": "acme_auth", "name": "D1",
+            "config": {"host": "192.0.2.1"},
+        })
+        driver = dm._devices["d1"]
+
+        driver._force_disconnect("no_response")
+        await _settle_drop(driver)
+
+        assert dm.state.get("device.d1.offline_reason") == "no_response"
+        assert "d1" in dm._reconnect_tasks
+        assert dm.state.get("device.d1.reconnect_failed") is None
+    finally:
+        await dm._cancel_reconnect("d1")
+        _unregister("acme_auth")
+
+
+@pytest.mark.parametrize("when", ["starting up", "applying queued settings"])
+async def test_reconnect_loop_pauses_when_the_new_session_is_refused(
+    dm, monkeypatch, when
+):
+    """A reconnect whose session comes up and then drops with auth_failed
+    (the credential refused during start-up, or while queued settings are
+    applied) pauses there instead of logging in again on the next attempt."""
+    if when == "starting up":
+        driver = _RefusedDuringStartupDriver(
+            "d1", {"host": "192.0.2.1"}, dm.state, dm.events
+        )
+    else:
+        driver = _PasswordChangedDriver(
+            "d1", {"host": "192.0.2.1"}, dm.state, dm.events
+        )
+
+        async def refused_while_applying(device_id: str) -> None:
+            driver._force_disconnect("auth_failed", "Login rejected")
+
+        monkeypatch.setattr(dm, "_apply_pending_settings", refused_while_applying)
+    dm._devices["d1"] = driver
+    dm._device_configs["d1"] = {"id": "d1", "driver": "acme_auth", "config": {}}
+
+    async def stop_at_3(delay):
+        if driver.connect_attempts >= 3:
+            raise asyncio.CancelledError
+
+    try:
+        with patch("openavc.core.device_manager.asyncio.sleep", side_effect=stop_at_3):
+            await dm._reconnect_loop("d1")
+        await _settle_drop(driver)
+
+        assert driver.connect_attempts == 1
+        assert dm.state.get("device.d1.offline_reason") == "auth_failed"
+        assert dm.state.get("device.d1.reconnect_failed") is True
+    finally:
+        await dm._cancel_reconnect("d1")
 
 
 @pytest.mark.parametrize(
