@@ -395,6 +395,37 @@ async def test_a_value_goes_out_in_the_form_of_the_first_rule_that_reads_it():
     assert driver.state.get("device.dev1.channel.2.minutes") == 40
 
 
+@pytest.mark.asyncio
+async def test_a_push_is_not_sent_in_a_form_whose_rule_reads_another_value():
+    # A later rule can match the rendered line and still read something else
+    # where the value goes (here an optional digit that matches nothing,
+    # leaving the rest of the line to ".*"). Sent, the driver would store that
+    # instead of the simulator's value, so the first rendering goes out as
+    # before.
+    definition = copy.deepcopy(RECEIVER)
+    definition["child_entity_types"]["channel"]["state_variables"]["level"] = {
+        "type": "string", "label": "Level",
+    }
+    definition["responses"][3:4] = [
+        {
+            "match": r"^REP (\d) LVL ([A-F])$",
+            "child_set": [{"type": "channel", "id": "$1", "state": {"level": "$2"}}],
+        },
+        {
+            "match": r"^REP (\d) LEVEL ([0-9]?).*$",
+            "child_set": [{"type": "channel", "id": "$1", "state": {"level": "$2"}}],
+        },
+    ]
+    sim = _sim(definition)
+    assert sim._format_state_reply("channel.2.level", "B") == "REP 2 LVL B"
+    assert sim._format_state_reply("channel.2.level", "7") == "REP 2 LEVEL 7"
+    assert sim._format_state_reply("channel.2.level", "xyz") == "REP 2 LVL xyz"
+
+    driver = _driver(definition)
+    await driver.on_data_received(b"REP 2 LEVEL xyz")
+    assert driver.state.get("device.dev1.channel.2.level") == ""
+
+
 def test_a_script_handler_reports_state_in_the_device_numbers():
     # A "report everything" request answered by a handler: reply(key) is the
     # text a query of that key gets, converted and padded, so the handler
