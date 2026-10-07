@@ -1097,7 +1097,7 @@ These rules apply to every driver format — a Python driver's declared `min`/`m
 
 **Two presentation-only parameter settings.** Neither changes the value the device receives:
 
-- `unit` puts a unit beside the input when the command is run (`%`, `ms`, `dB`) — worth setting wherever the number alone is ambiguous. The same key means the same thing on a state variable and on a device setting.
+- `unit` puts a unit beside the input when the command is run (`%`, `ms`, `dB`) — worth setting wherever the number alone is ambiguous. The same key means the same thing on a state variable. A device setting takes no `unit` (the device page lists a setting by its label and value), so name the unit in the setting's label instead: `Page Volume (dB)`.
 - `secret: true` masks the input, for a parameter that carries a password, PIN, or key. Use it wherever a credential would otherwise sit on screen in plain text. The same key does the same job on a `config_schema` field.
 
 ```yaml
