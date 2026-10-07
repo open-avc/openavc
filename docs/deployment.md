@@ -160,7 +160,7 @@ A few keys deserve a note:
 - `auth.programmer_username` is optional. When empty, any username is accepted with the correct password. Set it to require a specific username at the login prompt.
 - `discovery.advertise` controls the mDNS advertisement that lets panel apps find this server on the network. Set to `false` to hide the server from discovery (devices then connect by IP address).
 - `panels.access` decides who can open the room panel. `approved`, the default, makes a new tablet or browser wait until it is approved once in the Programmer (or with the admin password typed on the panel); `open` admits anyone who can reach the port. The screen on the device itself, a panel opened through OpenAVC Cloud and the Programmer's own preview never need approval. The same setting is **Panel access** under Settings > Access, and a change applies at once.
-- `network.trust_forwarded_for` should be `true` only when OpenAVC runs behind a reverse proxy that sets `X-Forwarded-For`, so per-client rate limiting sees the real client address.
+- `network.trust_forwarded_for` should be `true` only when OpenAVC runs behind a reverse proxy that sets `X-Forwarded-For`, so per-client rate limiting sees the real client address. With the proxy on the same machine it must be `true`, and the proxy must be the only way to reach OpenAVC: see [Behind a reverse proxy](hardened-deployment.md#behind-a-reverse-proxy).
 - `network.backend_module` is reserved for specialized deployments that supply their own host-network configuration backend. Leave it empty.
 
 **Configuration priority:** Environment variables override system.json values. This lets Docker and CI environments inject config without modifying the file.
@@ -637,4 +637,5 @@ Platform notes:
 - [Programmer Overview](programmer-overview.md). IDE walkthrough
 - [System Updates](updates.md). Update management and rollback
 - [Network & Security Cut Sheet](it-network-guide.md). IT network requirements and firewall rules
+- [Hardened Deployment Profile](hardened-deployment.md). The settings, firewall commands and checklist for a locked-down system
 - [Device Simulator](simulator.md). Test without real hardware

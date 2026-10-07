@@ -76,3 +76,28 @@ def test_poll_status_clears_update_available_when_server_down(monkeypatch):
 
     assert tray._update_available == ""
     assert "Update available" not in tray._build_tooltip()
+
+
+def test_server_config_falls_back_when_the_data_folder_refuses_a_stat(monkeypatch, tmp_path):
+    """An administrator may restrict the data folder to SYSTEM and Administrators.
+
+    The tray runs as the signed-in user, so even checking whether system.json
+    exists is refused. It must start on the defaults, not fail.
+    """
+    for name in ("OPENAVC_PORT", "OPENAVC_TLS_ENABLED", "OPENAVC_TLS_PORT"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("PROGRAMDATA", str(tmp_path))
+    original_exists = Path.exists
+
+    def refused(self, *args, **kwargs):
+        if self.name == "system.json":
+            raise PermissionError(13, "Access is denied", str(self))
+        return original_exists(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "exists", refused)
+
+    assert tray_mod._get_server_config() == {
+        "http_port": tray_mod.DEFAULT_PORT,
+        "tls_enabled": False,
+        "tls_port": 8443,
+    }

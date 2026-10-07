@@ -2,7 +2,7 @@
 
 **Audience:** IT administrators, network engineers, and security teams.
 
-**Scope:** Network requirements, traffic profiles, security posture, and firewall rules for OpenAVC deployments. This is not an installation guide. It is a technical reference for evaluating and approving OpenAVC on a managed network.
+**Scope:** Network requirements, traffic profiles, security posture, and firewall rules for OpenAVC deployments. This is not an installation guide. It is a technical reference for evaluating and approving OpenAVC on a managed network. The settings, firewall commands and checklist for a locked-down system are in the [Hardened Deployment Profile](hardened-deployment.md).
 
 ---
 
@@ -109,7 +109,7 @@ OpenAVC separates two surfaces with different access rules:
 
 **Code-writing endpoints are never open.** The endpoints that create or edit Python drivers and scripts (which execute code on the host) always require the admin credential, even on an instance that is otherwise configured for open access.
 
-**Binding.** Packaged deployments bind to `0.0.0.0` (all interfaces). A bare manual run (`python -m openavc.main` from source) binds to `127.0.0.1` (localhost only). To force localhost-only on a packaged deployment, set `OPENAVC_BIND=127.0.0.1` (e.g. `sudo systemctl edit openavc` on Linux, or the `network.bind_address` field in `system.json`).
+**Binding.** Packaged deployments bind to `0.0.0.0` (all interfaces). A bare manual run (`python -m openavc.main` from source) binds to `127.0.0.1` (localhost only). Packaged deployments set `OPENAVC_BIND=0.0.0.0` in the service environment, which takes precedence over `network.bind_address` in `system.json` and the Bind address field in Settings. To force localhost-only, set `OPENAVC_BIND=127.0.0.1` there instead: `sudo systemctl edit openavc` on Linux, the compose file's `environment:` on Docker. On Windows and macOS the installer rewrites the service environment, so restrict access with the firewall ([Hardened Deployment Profile](hardened-deployment.md#restrict-the-web-ports-to-the-av-network)).
 
 **Credentials.** The admin password set during first-run setup is stored in `system.json` on the host, as a salted scrypt hash rather than the password itself, in a file readable only by the account the service runs as. It can be changed later in **Settings > Security**. Both places require at least 8 characters. For unattended provisioning, it can also be supplied up front via `OPENAVC_PROGRAMMER_PASSWORD` (and optionally `OPENAVC_PROGRAMMER_USERNAME`), with an `OPENAVC_API_KEY` alongside it for programmatic clients — an instance configured this way is already "claimed" and goes straight to the login screen. Provision the password too, not the key alone: the login screen only accepts a password, so a key on its own leaves the Programmer unreachable from a browser. A password or API key written into `system.json` by hand is converted to a hash the next time the service starts, and both keep working across that conversion.
 
@@ -125,7 +125,7 @@ The Raspberry Pi appliance image hardens the operating-system login as well as t
 
 This is Pi-image-specific. On a generic Linux `install.sh` host, OpenAVC does not touch the operating-system account or `sshd` — the server runs as an unprivileged service user and you manage OS login and SSH yourself.
 
-**Fronting OpenAVC with your own auth** (an SSO reverse proxy, for example): set `OPENAVC_ALLOW_ANONYMOUS=true` to opt back into open admin access, and restrict reachability at the proxy. If you do this behind a trusted proxy that sets `X-Forwarded-For`, also set `network.trust_forwarded_for: true` in `system.json` so per-client rate limiting sees the real client IP.
+**Fronting OpenAVC with your own auth** (an SSO reverse proxy, for example): set `OPENAVC_ALLOW_ANONYMOUS=true` to opt back into open admin access, and restrict reachability at the proxy. If you do this behind a trusted proxy that sets `X-Forwarded-For`, also set `network.trust_forwarded_for: true` in `system.json` so per-client rate limiting sees the real client IP. With the proxy on the same machine this is required, not optional: without it every forwarded request arrives from the machine itself and is treated as the machine's own screen. The proxy also has to be the only way in. Both steps are in [Behind a reverse proxy](hardened-deployment.md#behind-a-reverse-proxy).
 
 ---
 
@@ -135,7 +135,7 @@ This is Pi-image-specific. On a generic Linux `install.sh` host, OpenAVC does no
 
 OpenAVC initiates outbound TCP and UDP connections to AV equipment. The specific ports depend entirely on which devices are configured in the project. OpenAVC only communicates with devices explicitly defined in the project configuration, using the ports those devices expect. It does not scan or probe the network during normal operation.
 
-**Offline devices are retried indefinitely.** When a configured device stops answering, OpenAVC keeps trying to reconnect to it, by default every 5 seconds, for as long as that device remains in the project. This is deliberate. A display that is unplugged on Friday has to come back on its own when it is plugged in again on Monday, without anyone opening the configuration interface. The traffic is one connection attempt per offline device per interval, always to that device's own configured address and port, and never to any address that is not already in the project. Nothing is swept, ranged, or discovered by this. If your monitoring flags repeated connection attempts to a host that is powered down, this is the source. The interval is adjustable per installation in `system.json` under `devices.reconnect_interval_seconds` (1 to 300 seconds). The one exception is a device whose driver declared that a command it was just sent restarts it: for that declared window only, and only for that device, attempts come about every two seconds so the device is picked up promptly when it finishes booting. The window is capped at ten minutes and ends as soon as the device answers.
+**Offline devices are retried indefinitely.** When a configured device stops answering, OpenAVC keeps trying to reconnect to it, by default every 5 seconds, for as long as that device remains in the project. This is deliberate. A display that is unplugged on Friday has to come back on its own when it is plugged in again on Monday, without anyone opening the configuration interface. The traffic is one connection attempt per offline device per interval, always to that device's own configured address and port, and never to any address that is not already in the project. Nothing is swept, ranged, or discovered by this. If your monitoring flags repeated connection attempts to a host that is powered down, this is the source. The interval is adjustable in **Settings > Devices > Retry every** (1 to 300 seconds), which is saved with the project; `devices.reconnect_interval_seconds` in `system.json` applies when the project does not set one. The one exception is a device whose driver declared that a command it was just sent restarts it: for that declared window only, and only for that device, attempts come about every two seconds so the device is picked up promptly when it finishes booting. The window is capped at ten minutes and ends as soon as the device answers.
 
 The table below lists common AV control ports. This is not exhaustive. AV manufacturers use a wide range of proprietary and standard ports, and new drivers may use ports not listed here.
 
@@ -460,8 +460,8 @@ Failed authentication attempts are throttled at the strict (10/min) rate on ever
 
 | Data | Location | Sensitive? |
 |------|----------|-----------|
-| Project configuration (devices, macros, UI layouts) | `project.avc` (JSON) | Low. Contains device IP addresses and connection parameters. |
-| System configuration | `system.json` | Medium. The admin password and API key are stored as salted hashes, not as typed. The cloud and inter-system keys are stored as-is, because the instance has to present them. The file is readable only by the account the service runs as. |
+| Project configuration (devices, macros, UI layouts) | `project.avc` (JSON) | Low to medium. Contains device IP addresses and connection parameters, any device passwords entered for them, and the inter-system key as-is when ISC is set up. |
+| System configuration | `system.json` | Medium. The admin password and API key are stored as salted hashes, not as typed. The cloud key is stored as-is, because the instance has to present it. On Linux and macOS the file is readable only by the account the service runs as. On Windows the data folder takes its permissions from `C:\ProgramData`, which lets every local account read it; see [Protect the data folder](hardened-deployment.md#protect-the-data-folder). |
 | Persistent variables | `state.json` | Low. Key-value pairs for automation state. |
 | Approved panels | `panel_devices.json` | Medium. One record per approved panel: its name, the kind of device, its address, when it was approved and by whom, and a salted hash of its secret, never the secret itself. Readable only by the account the service runs as; carried by the pre-update backup. Devices still waiting, and denied ones, are held in memory only. |
 | Application logs | `logs/` directory | Low. Standard application logs at INFO level. Device protocol traffic (which can include device credentials) is never written to disk — it is held in a fixed-size in-memory buffer, visible only in the live log view behind an authenticated Programmer login. Configurable rotation (default: 50 MB, 5 files). |
@@ -662,6 +662,8 @@ OpenAVC is designed to work well on segmented networks. A common and recommended
 
 **Internet/WAN** - Only required for update checks and cloud connectivity. Can be fully blocked if these features are not needed.
 
+To restrict the web ports to these VLANs at the host itself, use the per-platform commands in the [Hardened Deployment Profile](hardened-deployment.md#restrict-the-web-ports-to-the-av-network).
+
 OpenAVC does not use UPnP port mapping, NAT traversal, or any technique that modifies network infrastructure. It operates strictly as a client or server on the ports listed in this document.
 
 ---
@@ -712,7 +714,7 @@ Not by default. Update checks (to GitHub's public API) can be enabled or disable
 No. All data is stored in JSON files on the local filesystem. There is no PostgreSQL, MySQL, Redis, or any external data store.
 
 **Does it modify the host system?**
-Minimally. The Windows installer creates a Windows service (via NSSM) and one program-scoped Windows Firewall rule for the OpenAVC server executable — inbound traffic is accepted only on ports the server is actually listening on (the HTTP port, plus HTTPS and the port-80 short-URL listener when those features are enabled). The server adds one more rule, named like `OpenAVC plugin UDP 8189`, for a plugin that needs a port of its own, such as the Video Panel. The server removes it when the plugin is uninstalled, and uninstalling OpenAVC removes any that are left. The Linux install script creates a systemd service and an `openavc` user, and a root helper syncs ufw/firewalld (when active) with the configured listener ports at each service start — ports it opened are closed again when the feature is disabled, and rules added by an administrator are never touched. Docker and from-source installations make no system modifications. In all cases, application data is confined to a single data directory.
+Minimally. The Windows installer creates a Windows service (via NSSM) and one program-scoped Windows Firewall rule for the OpenAVC server executable — inbound traffic is accepted only on ports the server is actually listening on (the HTTP port, plus HTTPS and the port-80 short-URL listener when those features are enabled). The rule allows every address and is re-created at each update; to restrict it, add a block rule of your own as described in the [Hardened Deployment Profile](hardened-deployment.md#windows). The server adds one more rule, named like `OpenAVC plugin UDP 8189`, for a plugin that needs a port of its own, such as the Video Panel. The server removes it when the plugin is uninstalled, and uninstalling OpenAVC removes any that are left. The Linux install script creates a systemd service and an `openavc` user, and a root helper syncs ufw/firewalld (when active) with the configured listener ports at each service start — ports it opened are closed again when the feature is disabled, and rules added by an administrator are never touched. Docker and from-source installations make no system modifications. In all cases, application data is confined to a single data directory.
 
 **What if we block all outbound internet?**
 OpenAVC will work normally. Update checks will fail silently and cloud features (if configured) will be dormant. All AV control, automation, and UI functionality is fully local.
@@ -722,4 +724,4 @@ Yes. OpenAVC is MIT-licensed open source. The full source code, including the cl
 
 ---
 
-*Document version: 1.6. For the latest version, see [docs.openavc.com](https://docs.openavc.com).*
+*Document version: 1.7. For the latest version, see [docs.openavc.com](https://docs.openavc.com).*

@@ -81,9 +81,13 @@ def _get_server_config() -> dict:
         except ValueError:
             pass
 
+    # The existence check is inside the try too: on a data folder an
+    # administrator has restricted to SYSTEM and Administrators, the tray (which
+    # runs as the signed-in user) is refused even a stat, and that must leave it
+    # on the defaults rather than stop it starting.
     system_json = Path(os.environ.get('PROGRAMDATA', 'C:\\ProgramData')) / 'OpenAVC' / 'system.json'
-    if system_json.exists():
-        try:
+    try:
+        if system_json.exists():
             data = json.loads(system_json.read_text(encoding='utf-8'))
             if 'OPENAVC_PORT' not in os.environ:
                 result["http_port"] = data.get('network', {}).get('http_port', DEFAULT_PORT)
@@ -92,8 +96,8 @@ def _get_server_config() -> dict:
                 result["tls_enabled"] = bool(tls_section.get('enabled', False))
             if 'OPENAVC_TLS_PORT' not in os.environ:
                 result["tls_port"] = int(tls_section.get('port', 8443))
-        except (json.JSONDecodeError, OSError, ValueError, TypeError):
-            pass
+    except (json.JSONDecodeError, OSError, ValueError, TypeError):
+        pass
 
     return result
 
