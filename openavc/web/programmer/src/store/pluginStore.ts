@@ -87,7 +87,7 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
       set({ plugins, loading: false });
       get().loadExtensions();
     } catch (e) {
-      set({ error: String(e), loading: false });
+      set({ error: parseApiError(e), loading: false });
     }
   },
 
@@ -202,7 +202,7 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
         communityError: community.error,
       });
     } catch (e) {
-      set({ communityError: String(e), communityLoading: false });
+      set({ communityError: parseApiError(e), communityLoading: false });
     }
   },
 
@@ -241,7 +241,7 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
       await api.uninstallPlugin(pluginId, options);
       await Promise.all([get().load(), get().loadInstalled()]);
     } catch (e) {
-      set({ error: String(e) });
+      set({ error: parseApiError(e) });
     }
   },
 

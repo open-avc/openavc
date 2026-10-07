@@ -389,7 +389,7 @@ export function InlineProtocolEditor({
       await api.sendRaw(deviceId, rawText);
       setRawResult("Sent");
     } catch (e) {
-      setRawResult(String(e));
+      setRawResult(parseApiError(e));
     } finally {
       setRawSending(false);
       setTimeout(() => setRawResult(null), 2500);

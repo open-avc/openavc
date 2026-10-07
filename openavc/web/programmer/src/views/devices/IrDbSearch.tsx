@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import * as api from "../../api/restClient";
 import type { IrDbDevice, IrDbFunction } from "../../api/deviceClient";
+import { parseApiError } from "../../api/errors";
 
 // Search flow for the external IR code database (IRDB): brand -> code set ->
 // function, then take one rendered Pronto code into the code-set editor. The
@@ -97,7 +98,7 @@ export function IrDbSearch({
         setNotice(res.notice);
         setHomepage(res.homepage);
       })
-      .catch((e) => alive && setLoadErr(e instanceof Error ? e.message : "Failed to load"));
+      .catch((e) => alive && setLoadErr(parseApiError(e) || "Failed to load"));
     return () => {
       alive = false;
     };
@@ -123,7 +124,7 @@ export function IrDbSearch({
       const res = await api.irDbDevices(b);
       setDevices(res.devices);
     } catch (e) {
-      setLoadErr(e instanceof Error ? e.message : "Failed to load device list");
+      setLoadErr(parseApiError(e) || "Failed to load device list");
     } finally {
       setBusy(false);
     }
@@ -139,7 +140,7 @@ export function IrDbSearch({
       setFunctions(res.functions);
       if (res.notice) setNotice(res.notice);
     } catch (e) {
-      setLoadErr(e instanceof Error ? e.message : "Failed to load codes");
+      setLoadErr(parseApiError(e) || "Failed to load codes");
     } finally {
       setBusy(false);
     }
@@ -160,7 +161,7 @@ export function IrDbSearch({
       setTestStatus((s) => ({ ...s, [key]: "sent" }));
       setTimeout(() => setTestStatus((s) => ({ ...s, [key]: "" })), 1500);
     } catch (e) {
-      setTestStatus((s) => ({ ...s, [key]: e instanceof Error ? e.message : "failed" }));
+      setTestStatus((s) => ({ ...s, [key]: parseApiError(e) || "failed" }));
     }
   };
 

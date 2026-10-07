@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Radio, Zap, X, AlertCircle } from "lucide-react";
 import * as api from "../../api/restClient";
 import { IrLearnSession } from "../../api/irLearn";
+import { parseApiError } from "../../api/errors";
 
 // Standalone learn + raw-emit diagnostics for one IR port on a bridge card.
 // This is for testing the emitter and codes directly on the bridge, without a
@@ -53,7 +54,7 @@ export function BridgeIrTools({
       await api.irEmit(bridgeId, { port, pronto: code, repeat: 1 });
       setStatus("sent");
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "emit failed");
+      setErr(parseApiError(e) || "emit failed");
       setStatus("");
     }
   };

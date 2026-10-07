@@ -26,6 +26,7 @@ import type { MonitorConfig } from "../api/types";
 import {
   ABNORMAL, NORMAL, monitorLabel, monitorReading, monitorStatus,
 } from "../api/monitorHelpers";
+import { parseApiError } from "../api/errors";
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -820,7 +821,7 @@ function RecoveryNotice({ notice }: { notice: RecoveryNoticeCopy }) {
   const dismiss = useCallback(() => {
     setDismissing(true);
     api.dismissRecoveryNotice()
-      .catch((e) => showError(`Could not dismiss the notice: ${e.message || e}`))
+      .catch((e) => showError(`Could not dismiss the notice: ${parseApiError(e)}`))
       .finally(() => setDismissing(false));
   }, []);
 
@@ -915,7 +916,7 @@ export function DashboardView() {
 
   useEffect(() => {
     const fetchAll = () => {
-      api.getSystemStatus().then(s => { setSystemStatus(s); setFetchError(null); }).catch(e => setFetchError(`Unable to reach server: ${e.message || e}`));
+      api.getSystemStatus().then(s => { setSystemStatus(s); setFetchError(null); }).catch(e => setFetchError(`Unable to reach server: ${parseApiError(e)}`));
       api.getCloudStatus().then(s => setCloudStatus(s)).catch(() => {});
       api.getTlsStatus().then(s => setTlsStatus(s)).catch(() => {});
       setRefreshTick(t => t + 1);

@@ -490,7 +490,7 @@ export function SystemSettingsView() {
   }, []);
 
   useEffect(() => {
-    api.getSystemConfig().then(setConfig).catch((e) => showError("Failed to load config: " + e));
+    api.getSystemConfig().then(setConfig).catch((e) => showError("Failed to load config: " + parseApiError(e)));
     api.getSystemVersion().then((v) => {
       setKioskAvailable(v.kiosk_available);
       setPanelDimAvailable(v.panel_dim_available);
@@ -563,7 +563,7 @@ export function SystemSettingsView() {
       try {
         await useProjectStore.getState().save();
       } catch (e) {
-        showError("Could not save project settings: " + String(e));
+        showError("Could not save project settings: " + parseApiError(e));
         return;
       }
     }
@@ -606,7 +606,7 @@ export function SystemSettingsView() {
         setShowRestartPrompt(true);
       }
     } catch (e) {
-      showError("Failed to save: " + String(e));
+      showError("Failed to save: " + parseApiError(e));
     } finally {
       setSaving(false);
     }
@@ -628,7 +628,7 @@ export function SystemSettingsView() {
         showError("SSH change failed: " + (r.error || "unknown error"));
       }
     } catch (e) {
-      showError("SSH change failed: " + String(e));
+      showError("SSH change failed: " + parseApiError(e));
     } finally {
       setSshBusy(false);
     }
@@ -664,7 +664,7 @@ export function SystemSettingsView() {
         loadTlsStatus();
       }
     } catch (e) {
-      showError("Could not start enrollment: " + String(e));
+      showError("Could not start enrollment: " + parseApiError(e));
     } finally {
       setCloudCertBusy(false);
     }
@@ -680,7 +680,7 @@ export function SystemSettingsView() {
       const fresh = await api.getSystemConfig().catch(() => null);
       if (fresh) setConfig(fresh);
     } catch (e) {
-      showError("Could not turn off the trusted certificate: " + String(e));
+      showError("Could not turn off the trusted certificate: " + parseApiError(e));
     } finally {
       setCloudCertBusy(false);
     }
@@ -699,7 +699,7 @@ export function SystemSettingsView() {
       URL.revokeObjectURL(url);
       showSuccess("CA certificate downloaded. Install it on your panel devices to skip the security warning.");
     } catch (e) {
-      showError("Could not download CA certificate: " + String(e));
+      showError("Could not download CA certificate: " + parseApiError(e));
     }
   };
 

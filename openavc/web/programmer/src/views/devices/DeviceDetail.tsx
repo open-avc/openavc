@@ -136,7 +136,7 @@ export function DeviceDetail({
       const result = await api.testDeviceConnection(deviceId);
       setTestResult(result);
     } catch (e) {
-      setTestResult({ success: false, error: String(e), latency_ms: null });
+      setTestResult({ success: false, error: parseApiError(e), latency_ms: null });
     } finally {
       setTesting(false);
     }
@@ -303,7 +303,7 @@ export function DeviceDetail({
       const result = await api.sendCommand(deviceId, selectedCommand, params);
       setCommandResult(JSON.stringify(result, null, 2));
     } catch (e) {
-      setCommandResult(String(e));
+      setCommandResult(parseApiError(e));
     } finally {
       setSending(false);
     }
@@ -1260,7 +1260,7 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
       // Refresh settings to get updated current_value
       setTimeout(loadSettings, 1000);
     } catch (e) {
-      setSaveResult({ key, success: false, error: String(e) });
+      setSaveResult({ key, success: false, error: parseApiError(e) });
     } finally {
       setSaving(null);
     }

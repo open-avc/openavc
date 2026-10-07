@@ -1,6 +1,7 @@
 import type { LogEntryResponse } from "./types";
 import type { PanelAccessMode } from "./panelDevicesClient";
 import { BASE, request } from "./base";
+import { ApiError } from "./errors";
 
 // --- Cloud Connection ---
 
@@ -164,8 +165,7 @@ export async function uploadAsset(file: File): Promise<{ name: string; reference
     body: formData,
   });
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Upload failed: ${body}`);
+    throw new ApiError(res.status, await res.text());
   }
   return res.json();
 }
@@ -264,8 +264,7 @@ export async function importTheme(
       }
       throw new Error(typeof body?.detail === "string" ? body.detail : "Import failed");
     }
-    const body = await res.text();
-    throw new Error(`Import failed: ${body}`);
+    throw new ApiError(res.status, await res.text());
   }
   return res.json();
 }

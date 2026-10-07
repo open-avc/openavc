@@ -14,6 +14,7 @@ import {
 } from "./actionParamFields";
 import { hasInvalidParams } from "../../components/shared/paramValidation";
 import { SetupActionWizard } from "./SetupActionWizard";
+import { parseApiError } from "../../api/errors";
 
 /**
  * Quick Actions strip — driver-declared actions promoted to one-click buttons
@@ -57,7 +58,7 @@ export function QuickActions({
         setFeedback({ id: action.id, ok: true, message: `${action.label} done` });
         onInvoked?.();
       } catch (e) {
-        setFeedback({ id: action.id, ok: false, message: String(e) });
+        setFeedback({ id: action.id, ok: false, message: parseApiError(e) });
       } finally {
         setRunning(null);
         setDialogAction(null);

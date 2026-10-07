@@ -37,6 +37,7 @@ import {
   requireToList,
   type JsonRuleRow,
 } from "./responseBuilderHelpers";
+import { parseApiError } from "../../api/errors";
 
 /** Coercion types offered on a JSON field row (what coerce_json_value
  *  distinguishes). A loaded rule may carry another spelling ("number",
@@ -487,7 +488,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
               />
               {pattern && (() => { try { new RegExp(pattern); return null; } catch (e) { return (
                 <div style={{ fontSize: 11, color: "var(--color-error, #f44336)", marginTop: 2 }}>
-                  Invalid regex: {String(e).replace("SyntaxError: ", "")}
+                  Invalid regex: {parseApiError(e)}
                 </div>
               ); } })()}
               {hasJsonRule && (

@@ -18,6 +18,7 @@ import {
   parseColor, rgbToHex6, contrastRatio, wcagLevel, deriveSurfaceBorder,
   CSS_VAR_FALLBACKS, type WcagLevel,
 } from "./colorUtils";
+import { parseApiError } from "../../api/errors";
 
 // --- Constants ---
 
@@ -841,7 +842,7 @@ export function ThemeStudio({
       setBusy(false);
       return true;
     } catch (e) {
-      setStatusMsg({ kind: "error", text: e instanceof Error ? e.message : "Save failed" });
+      setStatusMsg({ kind: "error", text: parseApiError(e) || "Save failed" });
       setBusy(false);
       return false;
     }
@@ -893,7 +894,7 @@ export function ThemeStudio({
       setBusy(false);
       return true;
     } catch (e) {
-      setStatusMsg({ kind: "error", text: e instanceof Error ? e.message : "Save failed" });
+      setStatusMsg({ kind: "error", text: parseApiError(e) || "Save failed" });
       setBusy(false);
       return false;
     }
@@ -918,7 +919,7 @@ export function ThemeStudio({
       onRefreshThemes();
       setStatusMsg({ kind: "info", text: `Deleted "${working.name}"` });
     } catch (e) {
-      setStatusMsg({ kind: "error", text: e instanceof Error ? e.message : "Delete failed" });
+      setStatusMsg({ kind: "error", text: parseApiError(e) || "Delete failed" });
     }
     setBusy(false);
   };
@@ -945,7 +946,7 @@ export function ThemeStudio({
       onRefreshThemes();
       setStatusMsg({ kind: "info", text: `Duplicated as "${copyName}"` });
     } catch (e) {
-      setStatusMsg({ kind: "error", text: e instanceof Error ? e.message : "Duplicate failed" });
+      setStatusMsg({ kind: "error", text: parseApiError(e) || "Duplicate failed" });
     }
     setBusy(false);
   };
@@ -987,7 +988,7 @@ export function ThemeStudio({
         // Don't silently clobber an edited custom theme — ask first.
         setImportCollision({ file, id: err.themeId, name: err.themeName });
       } else {
-        setStatusMsg({ kind: "error", text: err instanceof Error ? err.message : "Import failed" });
+        setStatusMsg({ kind: "error", text: `Import failed: ${parseApiError(err)}` });
       }
     }
     setBusy(false);
@@ -1002,7 +1003,7 @@ export function ThemeStudio({
     try {
       await runImport(file, true);
     } catch (err) {
-      setStatusMsg({ kind: "error", text: err instanceof Error ? err.message : "Import failed" });
+      setStatusMsg({ kind: "error", text: `Import failed: ${parseApiError(err)}` });
     }
     setBusy(false);
   };
@@ -1027,7 +1028,7 @@ export function ThemeStudio({
       onRefreshThemes();
       setStatusMsg({ kind: "info", text: `Imported as "${payload.name}"` });
     } catch (err) {
-      setStatusMsg({ kind: "error", text: err instanceof Error ? err.message : "Import failed" });
+      setStatusMsg({ kind: "error", text: `Import failed: ${parseApiError(err)}` });
     }
     setBusy(false);
   };

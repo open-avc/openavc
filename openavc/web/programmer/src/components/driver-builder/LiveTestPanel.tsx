@@ -20,7 +20,7 @@ import {
 } from "../shared/commandParams";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { BASE } from "../../api/base";
-import { ApiError } from "../../api/errors";
+import { ApiError, parseApiError } from "../../api/errors";
 import type {
   DryRunResult,
   TestCommandResult,
@@ -356,7 +356,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
           setPreview({
             command: selectedCommand,
             result: null,
-            error: e instanceof Error ? e.message : String(e),
+            error: parseApiError(e),
           });
         });
     }, WIRE_PREVIEW_DEBOUNCE_MS);
@@ -497,7 +497,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
         ...prev,
       ]);
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
+      const message = parseApiError(e);
       // A82 — distinguish "throttled by our own rate limiter" from
       // protocol or transport errors. Start a visible countdown on Send and
       // tag the result row so the user understands it isn't a device fail.

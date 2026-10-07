@@ -7,6 +7,7 @@ import { Search, Download, Trash2, CheckCircle, Shield, Loader2, RefreshCw, Aler
 import { usePluginStore } from "../../store/pluginStore";
 import type { CommunityPlugin } from "../../api/restClient";
 import { hasUpdate } from "../../api/types";
+import { parseApiError } from "../../api/errors";
 
 const COMMUNITY_BASE_URL =
   "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/";
@@ -82,7 +83,7 @@ export function BrowsePlugins() {
       const fileUrl = `${COMMUNITY_BASE_URL}${plugin.file}`;
       await installCommunityPlugin(plugin.id, fileUrl);
     } catch (e) {
-      setInstallError((prev) => ({ ...prev, [plugin.id]: String(e) }));
+      setInstallError((prev) => ({ ...prev, [plugin.id]: parseApiError(e) }));
     }
   };
 
@@ -90,7 +91,7 @@ export function BrowsePlugins() {
     try {
       await uninstallPlugin(pluginId);
     } catch (e) {
-      setInstallError((prev) => ({ ...prev, [pluginId]: String(e) }));
+      setInstallError((prev) => ({ ...prev, [pluginId]: parseApiError(e) }));
     }
   };
 
@@ -104,7 +105,7 @@ export function BrowsePlugins() {
       const fileUrl = `${COMMUNITY_BASE_URL}${plugin.file}`;
       await updateCommunityPlugin(plugin.id, fileUrl);
     } catch (e) {
-      setInstallError((prev) => ({ ...prev, [plugin.id]: String(e) }));
+      setInstallError((prev) => ({ ...prev, [plugin.id]: parseApiError(e) }));
     }
   };
 

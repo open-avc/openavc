@@ -9,6 +9,7 @@ import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { Modal } from "../components/shared/Modal";
 import { ClipboardCheck } from "lucide-react";
 import { useAuditStore } from "../store/auditStore";
+import { parseApiError } from "../api/errors";
 
 type ViewTab = "installed" | "create" | "browse-community";
 
@@ -75,7 +76,7 @@ export function DriverPanel() {
         setShowImportDialog(false);
       } catch (err) {
         useDriverBuilderStore.setState({
-          error: `Failed to import: ${err instanceof SyntaxError ? err.message : String(err)}`,
+          error: `Failed to import: ${parseApiError(err)}`,
         });
       }
       // Reset the input so the same file can be re-selected
@@ -240,7 +241,7 @@ export function DriverPanel() {
               setShowImportDialog(false);
             } catch (err) {
               useDriverBuilderStore.setState({
-                error: `Failed to import: ${err instanceof SyntaxError ? err.message : String(err)}`,
+                error: `Failed to import: ${parseApiError(err)}`,
               });
             }
           }}

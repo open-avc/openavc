@@ -10,6 +10,7 @@ import { Modal } from "../shared/Modal";
 import { InlineError } from "../shared/InlineError";
 import { SearchableSelect } from "../shared/SearchableSelect";
 import { deviceOptions } from "../shared/pickerOptions";
+import { parseApiError } from "../../api/errors";
 
 /**
  * Set a matrix up from the device, instead of from the manual.
@@ -273,7 +274,7 @@ export function MatrixSetupDialog({
       seed(next);
     } catch (e) {
       setProposals(null);
-      setError(e instanceof Error ? e.message : String(e));
+      setError(parseApiError(e));
     } finally {
       setLoading(false);
     }

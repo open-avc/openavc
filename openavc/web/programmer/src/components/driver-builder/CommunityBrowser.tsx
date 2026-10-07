@@ -6,6 +6,7 @@ import { showError } from "../../store/toastStore";
 import { Modal } from "../shared/Modal";
 import { hasUpdate, compareSemver } from "../../api/types";
 import type { CommunityDriver } from "../../api/types";
+import { parseApiError } from "../../api/errors";
 
 /** The platform release a driver needs, when this system is older than it.
  *
@@ -294,7 +295,7 @@ export function CommunityBrowser() {
       try {
         await useDriverBuilderStore.getState().installDriver(driver.id, fileUrl, driver.min_platform_version);
       } catch (e) {
-        setInstallErrors((prev) => ({ ...prev, [driver.id]: String(e) }));
+        setInstallErrors((prev) => ({ ...prev, [driver.id]: parseApiError(e) }));
       } finally {
         setInstallingIds((prev) => {
           const next = new Set(prev);
@@ -329,7 +330,7 @@ export function CommunityBrowser() {
           );
         }
       } catch (e) {
-        setInstallErrors((prev) => ({ ...prev, [driver.id]: String(e) }));
+        setInstallErrors((prev) => ({ ...prev, [driver.id]: parseApiError(e) }));
       } finally {
         setInstallingIds((prev) => {
           const next = new Set(prev);

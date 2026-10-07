@@ -222,7 +222,7 @@ export function ScriptView() {
           } catch (e) {
             // Never leave an error message sitting in the buffer as if it were
             // the file: saving would write it over the author's control.
-            showError(`Could not open ${id}: ${e instanceof Error ? e.message : e}`);
+            showError(`Could not open ${id}: ${parseApiError(e)}`);
             setSelectedId(null);
             setSelectedType(null);
             setSource("");
@@ -241,7 +241,7 @@ export function ScriptView() {
       }
     } catch (e) {
       console.error(`Failed to load ${type}:`, e);
-      setSource(`# Error loading ${type}: ${e}`);
+      setSource(`# Error loading ${type}: ${parseApiError(e)}`);
       setOriginalSource("");
     } finally {
       setLoading(false);
@@ -421,7 +421,7 @@ export function ScriptView() {
         source: "openavc.programmer",
         device: "",
         category: "script",
-        message: `Script reload failed: ${e}`,
+        message: `Script reload failed: ${parseApiError(e)}`,
       });
     } finally {
       setReloading(false);
@@ -511,7 +511,7 @@ export function ScriptView() {
         source: "openavc.programmer",
         device: "",
         category: "driver",
-        message: `Driver reload failed: ${e}`,
+        message: `Driver reload failed: ${parseApiError(e)}`,
       });
     } finally {
       setReloading(false);
@@ -588,7 +588,7 @@ export function ScriptView() {
           doSelect(result.driver_id, "driver");
         }
       } catch (err) {
-        showError(`Import failed: ${err instanceof Error ? err.message : String(err)}`);
+        showError(`Import failed: ${parseApiError(err)}`);
       }
     },
     [loadPythonDrivers, doSelect]
@@ -609,7 +609,7 @@ export function ScriptView() {
       } catch (e) {
         // The server owns what may live in ui/, so its refusal is the message
         // worth showing — it names the rule that was broken.
-        showError(e instanceof Error ? e.message : String(e));
+        showError(parseApiError(e));
       }
     },
     [loadUiFiles, doSelect],
@@ -630,7 +630,7 @@ export function ScriptView() {
           showSuccess(`Added ${result.written.length} file(s) to custom controls`);
         }
       } catch (e) {
-        showError(`Upload failed: ${e instanceof Error ? e.message : String(e)}`);
+        showError(`Upload failed: ${parseApiError(e)}`);
       }
     },
     [loadUiFiles],
@@ -680,7 +680,7 @@ export function ScriptView() {
     try {
       await api.downloadDriverBundle(id);
     } catch (e) {
-      showError(`Export failed: ${e instanceof Error ? e.message : String(e)}`);
+      showError(`Export failed: ${parseApiError(e)}`);
     }
   }, []);
 

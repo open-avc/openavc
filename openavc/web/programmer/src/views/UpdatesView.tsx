@@ -9,6 +9,7 @@ import * as api from "../api/restClient";
 import type { UpdateStatus, UpdateCheckResult, UpdateHistoryEntry } from "../api/restClient";
 import { updateCompletionOutcome, healthProbeOutcome, historyEntryDisplay } from "./updatesHelpers";
 import { healthProbeUrl } from "../components/shared/restartPollHelpers";
+import { parseApiError } from "../api/errors";
 
 // How often to ask /api/health whether the server is back on a new version.
 // Fast enough that the dialog closes promptly after a swap, slow enough that a
@@ -239,7 +240,7 @@ export function UpdatesView() {
       // Refresh status
       api.getUpdateStatus().then(setStatus).catch(console.error);
     } catch (e) {
-      showError("Update check failed: " + String(e));
+      showError("Update check failed: " + parseApiError(e));
     } finally {
       setChecking(false);
     }
@@ -257,7 +258,7 @@ export function UpdatesView() {
       }
     } catch (e) {
       actionRef.current = null;
-      showError("Failed to start update: " + String(e));
+      showError("Failed to start update: " + parseApiError(e));
     }
   };
 
@@ -276,7 +277,7 @@ export function UpdatesView() {
       }
     } catch (e) {
       actionRef.current = null;
-      showError("Rollback failed: " + String(e));
+      showError("Rollback failed: " + parseApiError(e));
     }
   }, []);
 

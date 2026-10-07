@@ -3,6 +3,7 @@ import { AlertTriangle, Download, ExternalLink, RefreshCw } from "lucide-react";
 import { Dialog } from "./Dialog";
 import { candidateOrigins, healthProbeUrl, shouldEnterCertError } from "./restartPollHelpers";
 import * as api from "../../api/restClient";
+import { parseApiError } from "../../api/errors";
 
 type Phase = "starting" | "waiting" | "polling" | "cert-error" | "success" | "timeout" | "error";
 
@@ -50,7 +51,7 @@ export function RestartProgressDialog({
         if (cancelled) return;
         // Keep the detail around in case polling never succeeds — we'll
         // surface it then. Don't switch phase yet.
-        setErrorDetail(String(e));
+        setErrorDetail(parseApiError(e));
       }
       if (cancelled) return;
 

@@ -5,6 +5,7 @@
 import { create } from "zustand";
 import * as cloud from "../api/cloudClient";
 import { friendlyAIError } from "../api/aiErrors";
+import { parseApiError } from "../api/errors";
 
 // Optimistic message ids. Date.now() alone collides when two sends land in
 // the same millisecond (the pre-send project snapshot await leaves a window
@@ -445,7 +446,7 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
         error: null,
       }));
     } catch (e) {
-      set({ error: `Undo failed: ${e instanceof Error ? e.message : e}` });
+      set({ error: `Undo failed: ${parseApiError(e)}` });
     }
   },
 
@@ -458,7 +459,7 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
       await restoreSnapshot(oldest.snapshot);
       set({ undoStack: [], messages: [], suggestions: [], error: null });
     } catch (e) {
-      set({ error: `Revert failed: ${e instanceof Error ? e.message : e}` });
+      set({ error: `Revert failed: ${parseApiError(e)}` });
     }
   },
 }));

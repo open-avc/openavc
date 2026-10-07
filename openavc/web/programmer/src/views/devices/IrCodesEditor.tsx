@@ -17,6 +17,7 @@ import { useProjectStore, syncDeviceConfig } from "../../store/projectStore";
 import * as api from "../../api/restClient";
 import { IrLearnSession, type IrLearnMode } from "../../api/irLearn";
 import { IrDbSearch } from "./IrDbSearch";
+import { parseApiError } from "../../api/errors";
 
 // An IR device's code-set is a map name -> {label, pronto, repeat} stored in
 // device.config.ir_codes. Each code becomes a device command that emits through
@@ -289,7 +290,7 @@ export function IrCodesEditor({
       setSaved(true);
       onSaved();
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : "Save failed");
+      setSaveError(parseApiError(e) || "Save failed");
     } finally {
       setSaving(false);
     }
@@ -323,7 +324,7 @@ export function IrCodesEditor({
         setRow(editKey, { pronto: res.pronto });
         setEditKey(null);
       } catch (e) {
-        setEditErr(e instanceof Error ? e.message : "Could not import that code.");
+        setEditErr(parseApiError(e) || "Could not import that code.");
       } finally {
         setEditBusy(false);
       }
@@ -352,7 +353,7 @@ export function IrCodesEditor({
     } catch (e) {
       setTestStatus((s) => ({
         ...s,
-        [rowKey]: e instanceof Error ? e.message : "failed",
+        [rowKey]: parseApiError(e) || "failed",
       }));
     }
   };

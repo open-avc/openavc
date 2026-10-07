@@ -46,6 +46,7 @@ import {
 import * as api from "../../api/restClient";
 import { DOCS } from "./docLinks";
 import { copyToClipboard } from "../shared/clipboard";
+import { parseApiError } from "../../api/errors";
 
 type TabId =
   | "general"
@@ -185,7 +186,7 @@ export function DriverEditor({
     try {
       return yaml.dump(draft, { ...DRIVER_YAML_DUMP_OPTIONS, skipInvalid: true });
     } catch (e) {
-      return `# YAML serialization failed: ${e instanceof Error ? e.message : String(e)}`;
+      return `# YAML serialization failed: ${parseApiError(e)}`;
     }
   }, [draft]);
 

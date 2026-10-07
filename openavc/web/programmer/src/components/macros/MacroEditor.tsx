@@ -65,6 +65,7 @@ import {
 import { CopyButton } from "../shared/CopyButton";
 import { issuesAt, issueLabel, issueSummary, type MacroIssue } from "./macroLint";
 import * as api from "../../api/restClient";
+import { parseApiError } from "../../api/errors";
 
 interface SortableStepItemProps {
   id: string;
@@ -472,7 +473,7 @@ export function MacroEditor({
       };
       if (trouble[status]) showError(trouble[status]);
     } catch (e) {
-      showError(e instanceof Error ? e.message : String(e));
+      showError(parseApiError(e));
     } finally {
       setTestPending(false);
     }

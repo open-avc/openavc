@@ -7,6 +7,7 @@ import type { DriverValidationIssue } from "../../api/driverClient";
 // Contract constant tables, generated from the platform's driver-contract
 // registry (types.gen.ts).
 import { CHILD_RESERVED_PROPS, DISALLOWED_OPEN_PORTS } from "../../api/types";
+import { parseApiError } from "../../api/errors";
 
 // Re-exported for the Discovery editor, which shows the rule inline at
 // authoring time.
@@ -720,7 +721,7 @@ export function validateDriverSafely(
   try {
     return validateDriver(draft, siblings, originalId);
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
+    const detail = parseApiError(err);
     return [
       {
         severity: "error",

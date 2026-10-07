@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { RefreshCw, Wifi, Lock, Check } from "lucide-react";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { showError, showSuccess } from "../../store/toastStore";
-import { parseApiError } from "../../api/errors";
+import { ApiError, parseApiError } from "../../api/errors";
 import { resolvableHostname } from "../../api/hostnames";
 import * as api from "../../api/restClient";
 import type { HostNetworkInterface, HostNetworkStatus, WifiNetwork } from "../../api/restClient";
@@ -464,15 +464,15 @@ export function HostNetworkCard() {
     } catch (e) {
       // 404 = no backend on this deployment; anything else also hides the
       // card rather than presenting a broken control surface.
-      const message = e instanceof Error ? e.message : String(e);
+      const status = e instanceof ApiError ? e.status : null;
       // 403 is different from missing: the settings are here, this session
       // just cannot change them. Vanishing would read as "not supported".
-      if (/^API 403/.test(message)) {
+      if (status === 403) {
         setNeedsPassword(true);
         return;
       }
       setHidden(true);
-      if (!/^API 404/.test(message)) {
+      if (status !== 404) {
         console.warn("Host network status unavailable:", e);
       }
     }

@@ -3,6 +3,7 @@ import { Plus, ExternalLink, Loader2, AlertCircle } from "lucide-react";
 import { useProjectStore } from "../../store/projectStore";
 import type { DeviceConfig } from "../../api/types";
 import { BridgeIrTools } from "./BridgeIrTools";
+import { parseApiError } from "../../api/errors";
 
 // Per-IR-port controls on a bridge card. The bridge port is the entry point to
 // IR control: from here you create (or open) the IR device that holds this
@@ -86,7 +87,7 @@ export function BridgeIrPort({
       await save();
       onOpenDevice?.(id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not add the IR device.");
+      setError(parseApiError(e) || "Could not add the IR device.");
     } finally {
       setCreating(false);
     }

@@ -7,6 +7,7 @@
  * same paths without a credential, because a wall panel has none to present.
  */
 import { BASE, request } from "./base";
+import { ApiError } from "./errors";
 
 export interface CustomUiFile {
   /** Path relative to the ui/ folder, e.g. "room_map/index.html". */
@@ -72,7 +73,7 @@ export async function deleteCustomUiFile(path: string): Promise<{ status: string
 export async function readCustomUiFile(path: string): Promise<string> {
   const res = await fetch(customUiFileUrl(path));
   if (!res.ok) {
-    throw new Error(await res.text());
+    throw new ApiError(res.status, await res.text());
   }
   return res.text();
 }
@@ -97,7 +98,7 @@ export async function uploadCustomUiFile(
     body: formData,
   });
   if (!res.ok) {
-    throw new Error(await res.text());
+    throw new ApiError(res.status, await res.text());
   }
   return res.json();
 }

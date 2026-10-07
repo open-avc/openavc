@@ -21,6 +21,7 @@ import {
 import { filesFromDataTransfer, filesFromList } from "../../shared/dropFiles";
 import { useUiFilesStore } from "../../../store/uiFilesStore";
 import { FieldRow } from "./FieldRow";
+import { parseApiError } from "../../../api/errors";
 
 /** The two fields this writes, shared by the element and the page that use it. */
 export interface CustomFilePatch {
@@ -53,7 +54,7 @@ export function CustomControlConfig({
       setFiles(listing.files);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(parseApiError(e));
     }
   }, []);
 
@@ -80,7 +81,7 @@ export function CustomControlConfig({
           : null,
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(parseApiError(e));
     } finally {
       setBusy(false);
     }
