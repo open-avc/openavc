@@ -50,7 +50,7 @@ the container instead when the element sits in one.
 |---|---|---|---|
 | fader | 88 x 177 px | 6.88% x 22.12% | fader-handle 44 x 44, fader-scale 42 wide (font-driven) |
 | level_meter | 13 x 98 px | 1.02% x 12.25% | meter-segment 2 tall |
-| keypad | 102 x 266 px | 7.97% x 33.25% | keypad-key 36 tall (font-driven) |
+| keypad | 98 x 266 px | 7.66% x 33.25% | keypad-key 36 tall (font-driven) |
 | select | 44 x 84 px | 3.44% x 10.5% | native control 46 tall (font-driven) |
 | text_input | 44 x 85 px | 3.44% x 10.62% | native control 46 tall (font-driven) |
 
@@ -170,7 +170,7 @@ whose value is whatever they typed, and nothing in this file sizes text.
 Where a floor is not what the shape of the control suggests.
 
 - **list** -- Row height does not change how wide a list has to be.
-- **keypad** -- 102 wide: 98 measured on a Windows box, 101 on the ubuntu CI runner, and a pixel in hand for the Playwright container, which needed two more than a dev box at the old 18px digits. The enter key's glyph is wider than a digit, so the grid's three equal columns stop being equal -- that column takes the room it needs and the two digit columns divide what is left, which is what actually gets crushed -- and how much it needs depends on the font, which is why this floor differs by machine more than any other.
+- **keypad** -- 98 wide on macOS and on the ubuntu CI runner alike: the columns are the C key's glyph, a digit's, and the enter key's arrow, an icon of fixed em size. It used to be a font's return symbol, which few fonts carry, so each machine drew a different stand-in at a different width and this floor ran from 98 to 110. 266 tall is a Windows box's 265, measured before the display stopped drawing a stray character, with its pixel in hand; macOS and the runner need 264.
 
 ## Types with no floor at all
 

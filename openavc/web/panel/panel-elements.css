@@ -1146,7 +1146,7 @@
    down when the first digit landed. A zero-width space is a line box and
    nothing else: no text the keypad's own code has to know about. */
 .panel-keypad .keypad-display::after {
-    content: 'B';
+    content: '\200B';
 }
 .panel-keypad .keypad-grid {
     display: grid;
@@ -1184,6 +1184,16 @@
 }
 .panel-keypad .keypad-enter {
     color: var(--panel-success);
+}
+/* The enter key's arrow is the panel's own icon (panel.js renderKeypad), so
+   its width is the same on every device. Drawn at 1em of the key text it
+   stands as tall as the digits beside it. Lucide leaves 3 of its 24 units
+   empty on every side, and the negative margin hands that back, so the key
+   takes up only the arrow it draws: 0.75em, about a digit's height. */
+.panel-keypad .keypad-enter svg {
+    width: 1em;
+    height: 1em;
+    margin: -0.125em;
 }
 
 /* ===== A control whose device cannot be reached ===== */

@@ -339,14 +339,21 @@ def _smallest_holding(page, type_: str, w: float, h: float, *, limit: int = 40) 
     log is frequently the only place the real answer exists. Saying "needs 237"
     instead of "is too small" is the difference between a one-line edit and
     another round trip.
+
+    Each axis is searched with the other given ``limit`` px of room, then the
+    two answers are checked together. Growing one axis at a time cannot find a
+    box that is short on both: it reported "nothing within +40px holds" for a
+    keypad that needed +8 wide and +4 tall.
     """
-    for grow in range(1, limit + 1):
-        if _holds(page, type_, w, h + grow)[0]:
-            return f"{w:.0f}x{h + grow:.0f} holds here (+{grow}px tall)"
-    for grow in range(1, limit + 1):
-        if _holds(page, type_, w + grow, h)[0]:
-            return f"{w + grow:.0f}x{h:.0f} holds here (+{grow}px wide)"
-    return f"nothing within +{limit}px on either axis holds here"
+    need_w = next((g for g in range(limit + 1) if _holds(page, type_, w + g, h + limit)[0]), None)
+    need_h = next((g for g in range(limit + 1) if _holds(page, type_, w + limit, h + g)[0]), None)
+    if need_w is None or need_h is None:
+        return f"nothing within +{limit}px on both axes holds here"
+    size = f"{w + need_w:.0f}x{h + need_h:.0f}"
+    if not _holds(page, type_, w + need_w, h + need_h)[0]:
+        return f"each axis holds alone at {size}, but not the two together"
+    grown = ", ".join(f"+{g}px {axis}" for g, axis in ((need_w, "wide"), (need_h, "tall")) if g)
+    return f"{size} holds here" + (f" ({grown})" if grown else "")
 
 
 @pytest.mark.parametrize("type_", TYPES_WITH_MINIMUMS)

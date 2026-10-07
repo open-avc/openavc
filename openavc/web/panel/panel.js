@@ -5430,7 +5430,7 @@ class PanelApp {
         if (keypadStyle === 'phone') {
             keys = ['1','2','3','4','5','6','7','8','9','*','0','#'];
         } else {
-            keys = ['1','2','3','4','5','6','7','8','9','C','0','⏎'];
+            keys = ['1','2','3','4','5','6','7','8','9','C','0','enter'];
         }
 
         let autoSendTimer = null;
@@ -5451,18 +5451,23 @@ class PanelApp {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'keypad-key';
-            btn.textContent = key;
-            btn.setAttribute('aria-label', key === 'C' ? 'Clear' : key === '⏎' ? 'Enter' : key === '*' ? 'Star' : key === '#' ? 'Hash' : `Key ${key}`);
+            // Enter is the panel's own arrow, never a font's return symbol.
+            // Few fonts carry U+23CE, so each device drew a different
+            // stand-in at a different width, and that one key set the
+            // keypad's minimum width. The stylesheet sizes the arrow.
+            if (key === 'enter') btn.appendChild(this.renderIcon('corner-down-left'));
+            else btn.textContent = key;
+            btn.setAttribute('aria-label', key === 'C' ? 'Clear' : key === 'enter' ? 'Enter' : key === '*' ? 'Star' : key === '#' ? 'Hash' : `Key ${key}`);
 
             if (key === 'C') btn.classList.add('keypad-clear');
-            if (key === '⏎') btn.classList.add('keypad-enter');
+            if (key === 'enter') btn.classList.add('keypad-enter');
 
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 if (key === 'C') {
                     buffer = '';
                     if (autoSendTimer) { clearTimeout(autoSendTimer); autoSendTimer = null; }
-                } else if (key === '⏎') {
+                } else if (key === 'enter') {
                     doSubmit();
                 } else {
                     if (buffer.length < digits) {
@@ -8838,7 +8843,9 @@ class PanelApp {
         }
     }
 
-    /** `size` is in rem, so an icon scales with the rest of the panel. */
+    /** `size` is in rem, so an icon scales with the rest of the panel. Leave
+     *  it out and the stylesheet sizes the icon instead: an inline size would
+     *  beat any rule there. */
     renderIcon(iconName, size, color) {
         if (!iconName) return null;
 
@@ -8846,8 +8853,10 @@ class PanelApp {
         if (iconName.startsWith('assets://')) {
             const img = document.createElement('img');
             img.src = this.resolveAssetUrl(iconName);
-            img.style.width = `${size}rem`;
-            img.style.height = `${size}rem`;
+            if (size != null) {
+                img.style.width = `${size}rem`;
+                img.style.height = `${size}rem`;
+            }
             img.style.flexShrink = '0';
             if (color) img.style.filter = `brightness(0) saturate(100%)`;
             return img;
@@ -8865,8 +8874,10 @@ class PanelApp {
         svg.appendChild(use);
         // Sized in CSS rather than the width/height attributes: SVG attributes
         // are user units and can't carry rem, and CSS wins over them anyway.
-        svg.style.width = `${size}rem`;
-        svg.style.height = `${size}rem`;
+        if (size != null) {
+            svg.style.width = `${size}rem`;
+            svg.style.height = `${size}rem`;
+        }
         svg.setAttribute('viewBox', '0 0 24 24');
         svg.setAttribute('fill', 'none');
         svg.setAttribute('stroke', color || 'currentColor');

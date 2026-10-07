@@ -439,7 +439,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
     "note": ""
   },
   "keypad": {
-    "baseWidthPx": 102,
+    "baseWidthPx": 98,
     "baseHeightPx": 266,
     "internals": [
       {
@@ -457,7 +457,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
     "styleProperty": "",
     "styles": {},
     "styleDefault": "",
-    "note": "102 wide: 98 measured on a Windows box, 101 on the ubuntu CI runner, and a pixel in hand for the Playwright container, which needed two more than a dev box at the old 18px digits. The enter key's glyph is wider than a digit, so the grid's three equal columns stop being equal -- that column takes the room it needs and the two digit columns divide what is left, which is what actually gets crushed -- and how much it needs depends on the font, which is why this floor differs by machine more than any other."
+    "note": "98 wide on macOS and on the ubuntu CI runner alike: the columns are the C key's glyph, a digit's, and the enter key's arrow, an icon of fixed em size. It used to be a font's return symbol, which few fonts carry, so each machine drew a different stand-in at a different width and this floor ran from 98 to 110. 266 tall is a Windows box's 265, measured before the display stopped drawing a stray character, with its pixel in hand; macOS and the runner need 264."
   },
   "select": {
     "baseWidthPx": 44,
