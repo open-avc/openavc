@@ -387,6 +387,12 @@ def test_control_is_whole_at_its_recorded_minimum(panel_page, type_: str) -> Non
 #: that needs LESS than the recorded number, never one that needs more. The
 #: check still does its real job, which is catching a floor inflated far enough
 #: to make the Builder and the AI reject layouts that would render fine.
+#:
+#: The container is no longer one of the machines the floors are recorded for.
+#: It has no Latin default sans, so its captions take a CJK face with a taller
+#: line, and today it needs 3 to 9px more height than eight of the floors carry;
+#: the same module section says which machines are covered. Widening this to
+#: reach it would let a floor nine pixels too big pass everywhere else.
 TIGHTNESS_SLACK_PX = 4
 
 

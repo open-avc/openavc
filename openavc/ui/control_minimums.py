@@ -41,22 +41,34 @@ and it says which control and by how much; being two pixels short draws a broken
 control on the device it was short for and says nothing at all. So where they
 disagree the larger wins.
 
-Seven of the floors below are consequently a pixel or two above what this
-machine measures, and are marked where they sit: ``fader``, ``slider``,
-``list``, ``level_meter``, ``keypad``, ``select`` and ``text_input`` carry the
-allowance the Playwright container first showed over a dev box (two pixels on
-the fader, one on the rest). When the panel's text default moved they were
-re-measured on a Windows box and that allowance was kept rather than
-re-derived; the container leg says so if it needs more. Re-measuring one of
-those locally and tightening it to what came back is how they go short again
--- the machine that needs the extra pixel is not the one you are on, and it
-will not be the one that notices.
+Seven of the floors below are consequently a pixel or two above what a dev
+box measures, and are marked where they sit. ``fader``, ``slider``, ``list``,
+``level_meter``, ``select`` and ``text_input`` keep the allowance the
+Playwright Docker image first showed over a dev box (two pixels on the fader,
+one on the rest); when the panel's text default moved they were re-measured on
+a Windows box and that allowance was kept rather than re-derived. ``keypad``'s
+height is the Windows box's measurement with the same pixel added (its note
+has the numbers). Re-measuring one of those locally and tightening it to what
+came back is how they go short again -- the machine that needs the extra pixel
+is not the one you are on, and it will not be the one that notices.
+
+Which machines that covers: ones whose default sans-serif is a Latin face --
+macOS, Windows, and the ubuntu runner the browser suite runs on in CI. A
+browser whose default sans is a CJK face is not covered, and is short on height
+by more than any allowance here. The bare Playwright Docker image is one: it
+carries no Latin face, so ``system-ui`` and ``sans-serif`` both resolve to
+WenQuanYi Zen Hei, and eight of the nine floors (all but ``status_led``, whose
+caption sits beside its dot) need 3 to 9px more height than recorded there.
+Nothing runs the suite in that image, so nothing reports it. The cause is that
+a caption's line box is ``line-height: normal``, which takes its height from
+the font's own metrics; the widths are glyph widths and agree.
 
 What stops "largest" from sliding into "add ten and stop thinking" is
 ``TIGHTNESS_SLACK_PX`` in the e2e test: it tolerates the disagreement that has
-actually been measured between machines and fails on anything wider. That is
-also why raising one of these numbers does not need every platform re-measured
-by hand -- the suite's other half will say so on whichever machine runs it.
+actually been measured between the machines above and fails on anything
+wider. That is also why raising one of these numbers does not need every
+platform re-measured by hand -- the suite's other half will say so on
+whichever machine runs it.
 
 What is deliberately NOT here
 -----------------------------
@@ -532,8 +544,8 @@ RULES: dict[str, MinimumRule] = {
              "sliver of text, so a labelled LED needs 29 before any of the "
              "caption is legible; how much more is content, not a minimum.",
     ),
-    "fader": MinimumRule(88, 177, (_HANDLE, _SCALE)),  # +2 (container)
-    "slider": MinimumRule(  # +1 tall (container)
+    "fader": MinimumRule(88, 177, (_HANDLE, _SCALE)),  # +2 (kept from the Docker image)
+    "slider": MinimumRule(  # +1 tall (kept from the Docker image)
         24, 55,
         scales_with=ScalingInternal(
             "slider thumb", "thumb_size", 44.0, 1.0, 1.0,
@@ -541,7 +553,7 @@ RULES: dict[str, MinimumRule] = {
             from_theme=True,
         ),
     ),
-    "list": MinimumRule(  # +1 tall (container)
+    "list": MinimumRule(  # +1 tall (kept from the Docker image)
         28, 51,
         scales_with=ScalingInternal(
             "list-item", "item_height", 44.0, 0.0, 1.0, "panel.js:2099 item_height",
@@ -549,7 +561,7 @@ RULES: dict[str, MinimumRule] = {
         note="Row height does not change how wide a list has to be.",
     ),
     "matrix": _MATRIX_CROSSPOINT,
-    "level_meter": MinimumRule(13, 98, (_SEGMENT,)),  # +1 tall (container)
+    "level_meter": MinimumRule(13, 98, (_SEGMENT,)),  # +1 tall (kept from the Docker image)
     "keypad": MinimumRule(  # +2 tall (Windows box)
         98, 266, (_KEY,),
         note="98 wide on macOS and on the ubuntu CI runner alike: the columns "
@@ -561,8 +573,8 @@ RULES: dict[str, MinimumRule] = {
              "drawing a stray character, with its pixel in hand; macOS and the "
              "runner need 264.",
     ),
-    "select": MinimumRule(44, 84, (_CONTROL,)),  # +1 tall (container)
-    "text_input": MinimumRule(44, 85, (_CONTROL,)),  # +1 tall (container)
+    "select": MinimumRule(44, 84, (_CONTROL,)),  # +1 tall (kept from the Docker image)
+    "text_input": MinimumRule(44, 85, (_CONTROL,)),  # +1 tall (kept from the Docker image)
 }
 
 
