@@ -130,7 +130,7 @@ sudo systemctl restart openavc
 sudo ufw status
 ```
 
-The first two lines remove the rules OpenAVC added at install. OpenAVC does not add them back while the ports stay the same, so after the restart `ufw status` shows only the rules scoped to `10.20.30.0/24`. If ufw was not active when OpenAVC was installed, enable it and restart OpenAVC once before running these lines (`sudo ufw allow from <your admin network> to any port 22 proto tcp` first if you reach the machine over SSH).
+The first two lines remove the rules OpenAVC added at install. OpenAVC does not add them back while the ports stay the same. **Expected:** after the restart, `ufw status` lists 8080 and 8443 only from `10.20.30.0/24`. If ufw was not active when OpenAVC was installed, enable it and restart OpenAVC once before running these lines (`sudo ufw allow from <your admin network> to any port 22 proto tcp` first if you reach the machine over SSH).
 
 Changing the HTTP or HTTPS port, or turning on HTTPS or Short URLs later, opens the new port to every address at the next service start. Scope it the same way.
 
@@ -146,7 +146,7 @@ sudo systemctl restart openavc
 sudo firewall-cmd --list-all
 ```
 
-The same two notes as ufw apply: OpenAVC does not re-add the ports it opened while they stay the same, and a newly enabled port opens to every address until you scope it.
+**Expected:** two rich rules naming `10.20.30.0/24`, and neither port listed under `ports:`. These commands change the default zone, which is where OpenAVC opens its ports; if the AV adapter is assigned to another zone, add `--zone=<name>` to each line. The same two notes as ufw apply: OpenAVC does not re-add the ports it opened while they stay the same, and a newly enabled port opens to every address until you scope it.
 
 ### Windows
 
@@ -155,7 +155,7 @@ The installer adds an inbound rule named **OpenAVC** that allows the server prog
 The block rule lists every address except the networks you allow and `127.0.0.0/8` (loopback, which the machine's own screen uses). For `10.20.30.0/24`, in an administrator PowerShell:
 
 ```powershell
-New-NetFirewallRule -DisplayName "OpenAVC - block outside AV network" -Direction Inbound -Action Block -Protocol TCP -LocalPort 8080,8443 -RemoteAddress 0.0.0.0-10.20.29.255,10.20.31.0-126.255.255.255,128.0.0.0-255.255.255.255
+New-NetFirewallRule -DisplayName "OpenAVC - block outside AV network" -Direction Inbound -Action Block -Protocol TCP -LocalPort 8080,8443 -RemoteAddress "0.0.0.0-10.20.29.255","10.20.31.0-126.255.255.255","128.0.0.0-255.255.255.255"
 Get-NetFirewallRule -DisplayName "OpenAVC*" | Format-Table DisplayName, Action, Enabled
 ```
 
@@ -190,7 +190,7 @@ If nginx, Caddy, HAProxy or another proxy is in front of OpenAVC:
    - **Proxy on the same machine, Docker with published ports:** publish on loopback, `"127.0.0.1:8081:8080"`.
    - **Proxy on the same machine, Windows:** a block rule for every address except loopback:
      ```powershell
-     New-NetFirewallRule -DisplayName "OpenAVC - block all but loopback" -Direction Inbound -Action Block -Protocol TCP -LocalPort 8080,8443 -RemoteAddress 0.0.0.0-126.255.255.255,128.0.0.0-255.255.255.255
+     New-NetFirewallRule -DisplayName "OpenAVC - block all but loopback" -Direction Inbound -Action Block -Protocol TCP -LocalPort 8080,8443 -RemoteAddress "0.0.0.0-126.255.255.255","128.0.0.0-255.255.255.255"
      ```
    - **Proxy on another machine:** allow 8080 and 8443 from the proxy's address only.
 
