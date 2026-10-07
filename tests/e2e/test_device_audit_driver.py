@@ -288,9 +288,14 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
         r"Put Display label back to Lobby: the device reported it back after"
     ))).to_be_visible(timeout=EXPECT_TIMEOUT)
 
-    # What changed: the input, by the command; the label is back as it was.
+    # What changed: nothing left changed; the input, which the widget had not
+    # reported before the command, is said apart; the label is back as it was.
+    expect(dialog.get_by_text("The audit has left no value changed.")).to_be_visible(
+        timeout=EXPECT_TIMEOUT,
+    )
     expect(dialog.get_by_text(
-        "Input: not reported before, hdmi2 now (after 1. Set Input)",
+        "First reported during the audit, with no earlier reading to compare: "
+        "Input: hdmi2 (after 1. Set Input).",
     )).to_be_visible(timeout=EXPECT_TIMEOUT)
     expect(dialog.get_by_text(re.compile(r"^Display label:"))).to_have_count(0)
     dialog.get_by_role("button", name="Continue", exact=True).click()
@@ -334,7 +339,8 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     expect(dialog.get_by_role("row", name="Commands sent 1")).to_be_visible()
     expect(dialog.get_by_role("row", name="Did it happen 1 yes")).to_be_visible()
     expect(dialog.get_by_role("row", name="Settings written 1 (1 read back, 1 put back)")).to_be_visible()
-    expect(dialog.get_by_role("row", name="Values changed Input")).to_be_visible()
+    expect(dialog.get_by_role("row", name="Values first reported Input")).to_be_visible()
+    expect(dialog.get_by_role("row", name=re.compile(r"^Values changed"))).to_have_count(0)
 
     with page.expect_download(timeout=EXPECT_TIMEOUT) as info:
         dialog.get_by_role("button", name="Download report").click()
