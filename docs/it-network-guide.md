@@ -125,7 +125,7 @@ The Raspberry Pi appliance image hardens the operating-system login as well as t
 
 This is Pi-image-specific. On a generic Linux `install.sh` host, OpenAVC does not touch the operating-system account or `sshd` — the server runs as an unprivileged service user and you manage OS login and SSH yourself.
 
-**Fronting OpenAVC with your own auth** (an SSO reverse proxy, for example): set `OPENAVC_ALLOW_ANONYMOUS=true` to opt back into open admin access, and restrict reachability at the proxy. Have the proxy set `X-Forwarded-For`, and set `network.trust_forwarded_for: true` in `system.json` so per-client rate limiting sees the real client IP; a proxy on another machine also goes in `network.trusted_proxies`. Without the header, every request through a proxy on the same machine arrives from the machine itself and is treated as the machine's own screen. The proxy also has to be the only way in. The steps are in [Behind a reverse proxy](hardened-deployment.md#behind-a-reverse-proxy).
+**Fronting OpenAVC with your own auth** (an SSO reverse proxy, for example): set `OPENAVC_ALLOW_ANONYMOUS=true` to opt back into open admin access, and restrict reachability at the proxy. Have the proxy set `X-Forwarded-For`, and set `network.trust_forwarded_for: true` in `system.json` so per-client rate limiting sees the real client IP; a proxy that does not reach OpenAVC over loopback (on another machine, or in front of Docker) also goes in `network.trusted_proxies`. Without the header, every request through a proxy on the same machine arrives from the machine itself and is treated as the machine's own screen. The proxy also has to be the only way in. The steps are in [Behind a reverse proxy](hardened-deployment.md#behind-a-reverse-proxy).
 
 ---
 

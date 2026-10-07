@@ -186,7 +186,7 @@ The Video Panel and Present plugins open UDP and TCP ports of their own while th
 If nginx, Caddy, HAProxy or another proxy is in front of OpenAVC:
 
 1. Have the proxy set `X-Forwarded-For` to the client's address. In nginx that is `proxy_set_header X-Forwarded-For $remote_addr;`. Caddy sets it by default.
-2. Set `network.trust_forwarded_for` to `true`. A proxy on another machine also goes in `network.trusted_proxies`, as an address or a range: `["10.20.30.5"]`, or `OPENAVC_TRUSTED_PROXIES=10.20.30.5`. A proxy on the same machine needs no entry. OpenAVC reads `X-Forwarded-For` only from these proxies.
+2. Set `network.trust_forwarded_for` to `true`. Unless the proxy reaches OpenAVC over loopback, also list it in `network.trusted_proxies`, as an address or a range: `["10.20.30.5"]`, or `OPENAVC_TRUSTED_PROXIES=10.20.30.5`. That means a proxy on another machine, and any proxy in front of Docker with published ports, which arrives from the Docker network: list that network's range, which `docker network inspect <network> --format '{{(index .IPAM.Config 0).Subnet}}'` prints. OpenAVC reads `X-Forwarded-For` only from loopback and these proxies.
 3. Make the proxy the only way to reach OpenAVC.
    - **Proxy on the same machine, Linux or Docker with host networking:** set `OPENAVC_BIND=127.0.0.1`.
    - **Proxy on the same machine, Docker with published ports:** publish on loopback, `"127.0.0.1:8081:8080"`.
@@ -196,7 +196,7 @@ If nginx, Caddy, HAProxy or another proxy is in front of OpenAVC:
      ```
    - **Proxy on another machine:** allow 8080 and 8443 from the proxy's address only.
 
-Without step 1, every request through a proxy on the same machine arrives from the machine itself, so OpenAVC treats it as the machine's own screen: panels connect without approval, sign-in attempts are not rate-limited, and the host network settings, on a system that offers them, open without the admin password. Without the `network.trusted_proxies` entry, OpenAVC counts every client of a proxy on another machine as the proxy, so one client's failed sign-ins slow down sign-in for all of them.
+Without step 1, every request through a proxy on the same machine arrives from the machine itself, so OpenAVC treats it as the machine's own screen: panels connect without approval, sign-in attempts are not rate-limited, and the host network settings, on a system that offers them, open without the admin password. Without the `network.trusted_proxies` entry, OpenAVC counts every client of a proxy that is not on loopback as the proxy, so one client's failed sign-ins slow down sign-in for all of them.
 
 Behind a proxy every panel needs approval, including a browser on the OpenAVC machine that goes through the proxy. To terminate TLS at the proxy instead of in OpenAVC, see [Deployment](deployment.md).
 

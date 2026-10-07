@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 
 import pytest
+from fastapi.testclient import TestClient
 
 from openavc import config
 from openavc.api.panel_access import Admission, admit, cookie_name
@@ -24,6 +25,7 @@ from tests.panel_access_helpers import (
     cookie_header,
     lan_client,
     loopback_client,
+    peer_app,
     set_cookie_of,
 )
 
@@ -80,6 +82,29 @@ def test_the_cookie_is_secure_only_over_https(claimed_engine, access_mode):
     access_mode("approved")
     resp = lan_client(base_url="https://testserver").get("/api/panel/access")
     assert set_cookie_of(resp)[cookie_name(claimed_engine.instance_id)]["secure"]
+
+
+@pytest.mark.parametrize("trust, listed, proto, secure", [
+    (True, True, "https", True),
+    (True, False, "https", False),
+    (True, True, "http", False),
+    (False, True, "https", False),
+])
+def test_a_proxy_on_another_machine_says_whether_it_was_https(
+    claimed_engine, access_mode, monkeypatch, trust, listed, proto, secure
+):
+    """A proxy that ends HTTPS talks plain HTTP to OpenAVC. uvicorn only takes
+    its X-Forwarded-Proto from loopback, so a listed proxy's is read for the
+    cookie's Secure flag, and nobody else's."""
+    access_mode("approved")
+    monkeypatch.setattr(config, "TRUST_FORWARDED_FOR", trust)
+    monkeypatch.setattr(config, "TRUSTED_PROXIES", ["10.0.0.5"] if listed else [])
+    resp = TestClient(peer_app("10.0.0.5")).get(
+        "/api/panel/access",
+        headers={"x-forwarded-for": "198.51.100.50", "x-forwarded-proto": proto},
+    )
+    morsel = set_cookie_of(resp)[cookie_name(claimed_engine.instance_id)]
+    assert bool(morsel["secure"]) is secure
 
 
 def test_approval_reaches_the_device_on_its_next_poll(claimed_engine, access_mode):

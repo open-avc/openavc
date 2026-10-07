@@ -270,6 +270,26 @@ def forwarded_client(request: HTTPConnection) -> str | None:
     return hops[0]
 
 
+def client_used_https(request: HTTPConnection) -> bool:
+    """Whether the client reached this server over HTTPS, directly or via a proxy.
+
+    For a loopback peer uvicorn has already turned a proxy's
+    ``X-Forwarded-Proto`` into the request's scheme; a proxy on another
+    machine is not one uvicorn trusts, so its word is read here, from a peer
+    in ``network.trusted_proxies`` only and only as the single value uvicorn
+    accepts. It decides the Secure flag on the panel approval cookie, so a
+    false ``https`` can only withhold the cookie from a plain-HTTP client.
+    """
+    if request.url.scheme in ("https", "wss"):
+        return True
+    if not config.TRUST_FORWARDED_FOR:
+        return False
+    client = request.client
+    if client is None or not _is_proxy(client.host, _proxy_networks()):
+        return False
+    return request.headers.get("x-forwarded-proto", "").strip() in ("https", "wss")
+
+
 def peer_address(request: HTTPConnection) -> str:
     """The address to show a person for this connection, as data.
 

@@ -69,6 +69,7 @@ from openavc.core.panel_devices import (
 )
 from openavc.utils.logger import get_logger
 from openavc.utils.request_origin import (
+    client_used_https,
     is_local_console_request,
     is_tunneled_request,
     peer_address,
@@ -246,7 +247,7 @@ async def panel_access_check_in(
     if result.set_cookie and result.device is not None:
         _set_cookie(
             response, engine, result.set_cookie, result.cookie_max_age,
-            secure=request.url.scheme == "https",
+            secure=client_used_https(request),
         )
     if result.created and result.device is not None:
         log.info(
@@ -318,7 +319,7 @@ async def panel_access_claim(
 
         _set_cookie(
             response, engine, value, COOKIE_MAX_AGE_SECONDS,
-            secure=request.url.scheme == "https",
+            secure=client_used_https(request),
         )
     return {"access": "approved", "status": STATUS_APPROVED, "name": device.name}
 
