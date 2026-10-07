@@ -842,15 +842,32 @@ async def test_a_busy_window_still_shows_what_the_command_sent():
         assert "MUTE=1" in [e["text"].strip() for e in view["entries"][:5]]
         shown = len(view["entries"])
         assert shown == 40 and view["left_out"] == len(every["entries"]) - shown
-        head = view["left_out_after"]
-        assert view["entries"][:head] == every["entries"][:head]
-        assert view["entries"][head:] == every["entries"][-(shown - head):]
-        assert "left_out" not in every
+        assert view["gaps"] == [{"before": 20, "count": view["left_out"]}]
+        assert view["entries"][:20] == every["entries"][:20]
+        assert view["entries"][20:] == every["entries"][-20:]
+        assert "left_out" not in every and "gaps" not in every
     finally:
         await run.stop()
         server.close()
         _DRIVER_REGISTRY.pop("acme_meter", None)
         get_traffic_recorder().clear()
+
+
+def test_the_live_traffic_starts_at_the_commands_own_message():
+    """A command queued behind a poll goes out after the poll's messages
+    already on the way: the live view starts at its own message, and says
+    what it left out before it and between it and the newest."""
+    from openavc.audit.commands import LIVE_ENTRIES, LIVE_HEAD, live_traffic
+
+    window = list(range(100))
+    shown, gaps = live_traffic(window, 7)
+    assert shown == list(range(7, 7 + LIVE_HEAD)) + list(range(100 - (LIVE_ENTRIES - LIVE_HEAD), 100))
+    assert gaps == [{"before": 0, "count": 7}, {"before": LIVE_HEAD, "count": 100 - 7 - LIVE_ENTRIES}]
+    assert live_traffic(window, 0)[1] == [{"before": LIVE_HEAD, "count": 60}]
+    # Its own message late in the window: the newest ones are what follow it.
+    shown, gaps = live_traffic(window, 90)
+    assert shown == list(range(60, 100)) and gaps == [{"before": 0, "count": 60}]
+    assert live_traffic(list(range(40)), 12) == (list(range(40)), [])
 
 
 MIXER_INFO = {"child_entity_types": {"input": {

@@ -356,11 +356,12 @@ export interface AuditCommandTrial {
     sent: number;
     received: number;
     entries: AuditTrafficEntry[];
-    /** Live view only: how many entries were left out, and after how many of
-     *  the shown ones (the first are the command's own exchange, the rest the
-     *  newest; the report keeps every one). */
+    /** Live view only: how many entries were left out, and each run of them,
+     *  ``before`` the index among the shown entries it would come before (the
+     *  view keeps the command's own message on, and the newest; the report
+     *  keeps every one). */
     left_out?: number;
-    left_out_after?: number;
+    gaps?: { before: number; count: number }[];
   };
   /** The command sent before this one, and how long before. */
   since_previous: { number: number; command: string; label: string; seconds: number } | null;

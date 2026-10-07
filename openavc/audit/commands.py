@@ -129,10 +129,9 @@ CHANGES_KEPT = 500
 # How often the wizard hears about a command being watched.
 FLUSH_SECONDS = 0.5
 # Traffic entries and state changes each command shows live (the report
-# keeps them all). The traffic keeps its first LIVE_HEAD entries, which start
-# with what the command sent and what came straight back, and its newest:
-# a poll that lands in the window would otherwise push the command's own
-# exchange out of view.
+# keeps them all). The traffic keeps LIVE_HEAD entries from the command's own
+# message on, and the newest: a poll that lands in the window would otherwise
+# push what the command sent, and what came straight back, out of view.
 LIVE_ENTRIES = 40
 LIVE_HEAD = 20
 LIVE_CHANGES = 20
@@ -1064,6 +1063,25 @@ class CommandPass:
 
     # -- reading -----------------------------------------------------------------
 
+    def _own_send(self, trial: CommandTrial, traffic: list[Any]) -> int:
+        """Where in ``traffic`` (the window without its raw chunks) the
+        command's own message went out: the last one sent before the call
+        returned, else the first after it (a command queued behind a poll goes
+        out after polling messages already on the way). 0 when none did."""
+        attempt = self.run.listens[trial.connect_attempt] if self.run.listens else None
+        if attempt is None:
+            return 0
+        start = trial.marks.get("traffic", 0)
+        returned = trial.marks.get("returned", start)
+        sends = [
+            (start + i, e) for i, e in enumerate(trial.traffic_in(attempt.sandbox.observer))
+            if e.direction == TX and not e.chunk
+        ]
+        before = [e for at, e in sends if at < returned]
+        after = [e for at, e in sends if at >= returned]
+        own = before[-1] if before else (after[0] if after else None)
+        return next((i for i, e in enumerate(traffic) if e is own), 0)
+
     def _window_traffic(self, trial: CommandTrial) -> list[Any]:
         attempt = self.run.listens[trial.connect_attempt] if self.run.listens else None
         if attempt is None:
@@ -1076,21 +1094,21 @@ class CommandPass:
     def _trial_view(self, trial: CommandTrial, *, every_entry: bool) -> dict[str, Any]:
         traffic = self._window_traffic(trial) if self.run.listens else []
         redactor = self._redactor(trial) if self.run.listens else None
-        left_out = 0 if every_entry else max(len(traffic) - LIVE_ENTRIES, 0)
-        shown = (
-            traffic[:LIVE_HEAD] + traffic[-(LIVE_ENTRIES - LIVE_HEAD):] if left_out else traffic
-        )
+        if every_entry:
+            shown, gaps = traffic, []
+        else:
+            shown, gaps = live_traffic(traffic, self._own_send(trial, traffic))
         out = trial.to_dict()
         out["traffic"] = {
             "sent": sum(1 for e in traffic if e.direction == TX),
             "received": sum(1 for e in traffic if e.direction == RX),
             "entries": [serialize_entry(e, redactor) for e in shown] if redactor else [],
         }
-        if left_out:
-            # The entries between the first LIVE_HEAD and the newest, which
-            # only the report carries.
-            out["traffic"]["left_out"] = left_out
-            out["traffic"]["left_out_after"] = LIVE_HEAD
+        if gaps:
+            # What only the report carries: how many, and where each run of
+            # them would go among the entries shown.
+            out["traffic"]["left_out"] = sum(g["count"] for g in gaps)
+            out["traffic"]["gaps"] = gaps
         if redactor is not None:
             out["params"] = redactor.value(dict(out["params"]))
             out["changes"] = redactor.value(out["changes"])
@@ -1191,6 +1209,25 @@ def state_label(info: dict[str, Any], key: str) -> str:
     pspec = (cdef.get("state_variables") or {}).get(prop)
     plabel = pspec.get("label") if isinstance(pspec, dict) else None
     return f"{cdef.get('label') or ctype} {local_id} {plabel or prop}"
+
+
+def live_traffic(traffic: list[Any], own: int) -> tuple[list[Any], list[dict[str, int]]]:
+    """A command's traffic cut to ``LIVE_ENTRIES`` for the live view: from its
+    own message (at ``own``) for ``LIVE_HEAD`` entries, then the newest. Each
+    run left out is ``{"before", "count"}``, ``before`` the index among the
+    entries shown that it would come before."""
+    if len(traffic) <= LIVE_ENTRIES:
+        return traffic, []
+    own = max(0, min(own, len(traffic) - LIVE_ENTRIES))
+    head_end = own + LIVE_HEAD
+    tail_start = len(traffic) - (LIVE_ENTRIES - LIVE_HEAD)
+    shown = traffic[own:head_end] + traffic[tail_start:]
+    gaps = []
+    if own > 0:
+        gaps.append({"before": 0, "count": own})
+    if tail_start > head_end:
+        gaps.append({"before": LIVE_HEAD, "count": tail_start - head_end})
+    return shown, gaps
 
 
 def moved_values(

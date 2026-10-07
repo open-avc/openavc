@@ -708,10 +708,10 @@ function TrialRow({
             fontSize: "var(--font-size-xs)",
           }}
         >
-          {trafficRows(trial.traffic).map((row) => {
+          {trafficRows(trial.traffic).map((row, i) => {
             if (row.kind === "gap") {
               return (
-                <div key="gap" style={{ ...hintStyle, fontFamily: "inherit", margin: "var(--space-xs) 0" }}>
+                <div key={`gap-${i}`} style={{ ...hintStyle, fontFamily: "inherit", margin: "var(--space-xs) 0" }}>
                   {row.text}
                 </div>
               );

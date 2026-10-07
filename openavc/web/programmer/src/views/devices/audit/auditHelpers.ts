@@ -287,13 +287,17 @@ export type TrafficRow =
   | { kind: "gap"; text: string };
 
 export function trafficRows(traffic: AuditCommandTrial["traffic"]): TrafficRow[] {
-  const rows: TrafficRow[] = traffic.entries.map((entry) => ({ kind: "entry", entry }));
-  const count = traffic.left_out ?? 0;
-  if (count > 0) {
-    const at = Math.min(traffic.left_out_after ?? rows.length, rows.length);
-    const text = `${count} more ${count === 1 ? "message" : "messages"} in between; the report has every one.`;
-    rows.splice(at, 0, { kind: "gap", text });
-  }
+  const rows: TrafficRow[] = [];
+  const gaps = [...(traffic.gaps ?? [])].sort((a, b) => a.before - b.before);
+  const gapRow = (count: number): TrafficRow => ({
+    kind: "gap",
+    text: `${count} more ${count === 1 ? "message" : "messages"} here; the report has every one.`,
+  });
+  traffic.entries.forEach((entry, i) => {
+    for (const g of gaps) if (g.before === i) rows.push(gapRow(g.count));
+    rows.push({ kind: "entry", entry });
+  });
+  for (const g of gaps) if (g.before >= traffic.entries.length) rows.push(gapRow(g.count));
   return rows;
 }
 
