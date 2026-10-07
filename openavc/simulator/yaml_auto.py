@@ -1571,8 +1571,8 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                     template = (
                         emit_template(match_pattern, group) if group > 0 else None
                     )
-                    if template and not sr.template:
-                        sr.template = template
+                    if template:
+                        sr.add_template(template, _rule_pattern(match_pattern))
                 else:
                     # Value-mapped: Amt1 with set: { mute: "true" }
                     # → value "true" maps to response text "Amt1"
@@ -2342,13 +2342,11 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 group = int(expr[1:])
             except ValueError:
                 return
-            if sr.template is None:
-                template = emit_template_multi(
-                    pattern, {id_group: "{child_id}", group: "{value}"}
-                )
-                if template:
-                    sr.template = template
-                    sr.id_wire_map = wire_id_map
+            template = emit_template_multi(
+                pattern, {id_group: "{child_id}", group: "{value}"}
+            )
+            if template:
+                sr.add_template(template, _rule_pattern(pattern), wire_id_map)
             return
         if isinstance(expr, dict):
             if "group" in expr:
@@ -2370,13 +2368,12 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                             sr.value_map[vkey] = reply
                             if sr.id_wire_map is None:
                                 sr.id_wire_map = wire_id_map
-                elif sr.template is None:
+                else:
                     template = emit_template_multi(
                         pattern, {id_group: "{child_id}", group: "{value}"}
                     )
                     if template:
-                        sr.template = template
-                        sr.id_wire_map = wire_id_map
+                        sr.add_template(template, _rule_pattern(pattern), wire_id_map)
                 return
             if "value" in expr:
                 expr = expr["value"]
@@ -3153,6 +3150,24 @@ class ChildStateResponse:
         # local id -> wire id, from the child_set rule's id map: reversed —
         # a device that reports 0-based ids must answer with them too.
         self.id_wire_map: dict[str, str] | None = None
+        # The rule the template came from, and every later rule that writes
+        # this variable as (template, rule, id map). See _first_read_back.
+        self.template_rule: re.Pattern | None = None
+        self.alternates: list[
+            tuple[str, re.Pattern | None, dict[str, str] | None]
+        ] = []
+
+    def add_template(
+        self, template: str, rule: re.Pattern | None, id_wire_map: dict[str, str] | None
+    ) -> None:
+        """Keep a rule's template: the first becomes ``template``, the rest
+        are alternates, in the order the rules were read."""
+        if self.template is None:
+            self.template = template
+            self.template_rule = rule
+            self.id_wire_map = id_wire_map
+        else:
+            self.alternates.append((template, rule, id_wire_map))
 
     def format(self, child_id: str, value: Any) -> str | None:
         """Reply text for this child/value, or None when nothing derivable
@@ -3165,10 +3180,15 @@ class ChildStateResponse:
         if value_str in self.value_map:
             return fill_template(self.value_map[value_str], {"child_id": wire_id})
         if self.template:
-            return fill_template(self.template, {
-                "child_id": wire_id,
-                "value": value_to_wire(value, self.conversion),
-            })
+            wire = value_to_wire(value, self.conversion)
+            lines = []
+            for template, rule, id_map in (
+                (self.template, self.template_rule, self.id_wire_map),
+                *self.alternates,
+            ):
+                cid = child_id if id_map is None else id_map.get(str(child_id), str(child_id))
+                lines.append((fill_template(template, {"child_id": cid, "value": wire}), rule))
+            return _first_read_back(lines)
         return None
 
 
@@ -3217,6 +3237,19 @@ class StateResponse:
         self.conversion = conversion
         self.template: str | None = None  # e.g., "In{value} All"
         self.value_map: dict[str, str] = {}  # e.g., {"true": "Amt1", "false": "Amt0"}
+        # The rule the template came from, and every later rule that writes
+        # this variable as (template, rule). See _first_read_back.
+        self.template_rule: re.Pattern | None = None
+        self.alternates: list[tuple[str, re.Pattern | None]] = []
+
+    def add_template(self, template: str, rule: re.Pattern | None) -> None:
+        """Keep a rule's template: the first becomes ``template``, the rest
+        are alternates, in the order the rules were read."""
+        if self.template is None:
+            self.template = template
+            self.template_rule = rule
+        else:
+            self.alternates.append((template, rule))
 
     def format(self, value: Any) -> str:
         """Generate response text for the given value."""
@@ -3230,10 +3263,41 @@ class StateResponse:
 
         # Use template
         if self.template:
-            return fill_template(self.template, {"value": wire})
+            return _first_read_back([
+                (fill_template(template, {"value": wire}), rule)
+                for template, rule in (
+                    (self.template, self.template_rule), *self.alternates
+                )
+            ])
 
         # Fallback
         return str(wire)
+
+
+def _rule_pattern(pattern: str) -> re.Pattern | None:
+    """A response rule's ``match:`` compiled the way the driver reads it
+    (``search``), or None when it does not compile as written (a config
+    placeholder the driver substitutes first)."""
+    try:
+        return re.compile(pattern)
+    except re.error:
+        return None
+
+
+def _first_read_back(lines: list[tuple[str, re.Pattern | None]]) -> str:
+    """The first rendered reply whose own rule reads it back, else the first.
+
+    Several rules can write one variable: a driver puts a rule for the
+    device's codes ahead of the general one (``BATT_RUN_TIME (6553[2-5])``,
+    then ``BATT_RUN_TIME (\\d{5})``), because the driver takes the first rule
+    that matches. Rendering a value from the first rule alone sent ``400`` in
+    the codes rule's unpadded form, which the general rule rejects, so the
+    driver never saw the change. Each rule gets its own rendering, and the
+    first one its rule matches is sent, as the driver would read it."""
+    for line, rule in lines:
+        if rule is None or rule.search(line):
+            return line
+    return lines[0][0]
 
 
 # ── Utility functions ──

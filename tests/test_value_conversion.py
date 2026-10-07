@@ -359,6 +359,42 @@ def test_the_simulator_pads_a_fixed_width_reply_like_the_device():
     assert sim._state.get("channel.2.gain") == -14
 
 
+@pytest.mark.asyncio
+async def test_a_value_goes_out_in_the_form_of_the_first_rule_that_reads_it():
+    # A rule for the device's codes comes first, because the driver takes the
+    # first rule that matches and the general rule would read a code as a
+    # count. A count must still go out padded, the way the general rule reads
+    # it, and a code the way the codes rule does: on a flat and a child
+    # variable, and read back by the driver.
+    definition = copy.deepcopy(RECEIVER)
+    definition["child_entity_types"]["channel"]["state_variables"]["minutes"] = {
+        "type": "integer", "label": "Minutes", "unknown": [65533, 65534, 65535],
+    }
+    definition["responses"][3:4] = [
+        {"match": r"^REP BATT_MINS (6553[3-5])$", "set": {"battery_minutes": "$1"}},
+        {"match": r"^REP BATT_MINS (\d{5})$", "set": {"battery_minutes": "$1"}},
+        {
+            "match": r"^REP (\d) MINS (6553[3-5])$",
+            "child_set": [{"type": "channel", "id": "$1", "state": {"minutes": "$2"}}],
+        },
+        {
+            "match": r"^REP (\d) MINS (\d{5})$",
+            "child_set": [{"type": "channel", "id": "$1", "state": {"minutes": "$2"}}],
+        },
+    ]
+    sim = _sim(definition)
+    assert sim._format_state_reply("battery_minutes", 125) == "REP BATT_MINS 00125"
+    assert sim._format_state_reply("battery_minutes", None) == "REP BATT_MINS 65533"
+    assert sim._format_state_reply("channel.2.minutes", 40) == "REP 2 MINS 00040"
+    assert sim._format_state_reply("channel.2.minutes", None) == "REP 2 MINS 65533"
+
+    driver = _driver(definition)
+    for line in ("REP BATT_MINS 00125", "REP 2 MINS 00040"):
+        await driver.on_data_received(line.encode())
+    assert driver.state.get("device.dev1.battery_minutes") == 125
+    assert driver.state.get("device.dev1.channel.2.minutes") == 40
+
+
 def test_a_script_handler_reports_state_in_the_device_numbers():
     # A "report everything" request answered by a handler: reply(key) is the
     # text a query of that key gets, converted and padded, so the handler
