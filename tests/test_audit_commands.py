@@ -679,7 +679,9 @@ async def test_wait_longer_and_stop_watching(driver):
     server, port = await _fake_device()
     session, run, _ = await _connected(port)
     try:
-        commands = commands_for(session, run, window_seconds=30.0, max_window_seconds=40.0,
+        # A window that already covers the driver's 30 s poll, so the wait
+        # for Power On's read-back adds nothing to it.
+        commands = commands_for(session, run, window_seconds=35.0, max_window_seconds=45.0,
                                 flush_seconds=0.05)
         with pytest.raises(AuditError, match="No command is being watched"):
             commands.extend()
@@ -689,8 +691,8 @@ async def test_wait_longer_and_stop_watching(driver):
         commands.extend()
         assert trial.ends_at == pytest.approx(before + 10.0)
         assert trial.extended == pytest.approx(10.0)
-        # 30 seconds and one more wait reach the 40-second ceiling.
-        with pytest.raises(AuditError, match="for 40 seconds at most"):
+        # 35 seconds and one more wait reach the 45-second ceiling.
+        with pytest.raises(AuditError, match="for 45 seconds at most"):
             commands.extend()
         commands.end_now()
         await _until(lambda: trial.status == DONE)
@@ -868,6 +870,96 @@ def test_the_live_traffic_starts_at_the_commands_own_message():
     shown, gaps = live_traffic(window, 90)
     assert shown == list(range(60, 100)) and gaps == [{"before": 0, "count": 60}]
     assert live_traffic(list(range(40)), 12) == (list(range(40)), [])
+
+
+POLLED_DRIVER = {
+    "id": "acme_polled",
+    "name": "Acme Polled",
+    "manufacturer": "Acme",
+    "category": "utility",
+    "transport": "tcp",
+    "default_config": {"port": 1, "poll_interval": 2},
+    "state_variables": {
+        "title": {"type": "string", "label": "Title"},
+        "volume": {"type": "integer", "label": "Volume"},
+    },
+    "commands": {
+        "set_title": {
+            "label": "Set Title", "send": "TITLE {title}\\r", "sets": {"title": "{title}"},
+            "params": {"title": {"type": "string", "required": True}},
+        },
+        "set_volume": {
+            "label": "Set Volume", "send": "VOL {level}\\r", "sets": {"volume": "{level}"},
+            "params": {"level": {"type": "integer", "required": True}},
+        },
+    },
+    "polling": {"queries": ["TITLE?\\r"]},
+    "responses": [
+        {"match": r"TITLE=(\w+)", "set": {"title": "$1"}},
+        {"match": r"VOL=(\d+)", "set": {"volume": "$1"}},
+    ],
+}
+
+
+async def _polled_device():
+    """Takes a title without a word and reports it only when asked; echoes a
+    volume at once."""
+    state = {"title": "Lobby"}
+
+    async def handle(reader, writer):
+        try:
+            while True:
+                line = (await reader.readuntil(b"\r")).decode().strip()
+                if line.startswith("TITLE "):
+                    state["title"] = line[6:]
+                elif line == "TITLE?":
+                    writer.write(f"TITLE={state['title']}\r".encode())
+                elif line.startswith("VOL "):
+                    writer.write(f"VOL={line[4:]}\r".encode())
+                await writer.drain()
+        except (asyncio.IncompleteReadError, ConnectionError):
+            pass
+        finally:
+            writer.close()
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    return server, server.sockets[0].getsockname()[1]
+
+
+async def test_a_value_the_device_reports_only_when_polled_is_waited_for():
+    """A mixer that reports a channel's name only when polled, every 15 s:
+    the 10 s window closed first and a rename that worked read "Input 3
+    Channel Name is still CH 3, not AuditProbe". A command that declares what
+    it sets is watched until the next poll has had time to report it, and no
+    longer than its usual window once every declared value has come back."""
+    from openavc.audit.observe import REPLY_WINDOW_SECONDS
+
+    _DRIVER_REGISTRY["acme_polled"] = create_configurable_driver_class(POLLED_DRIVER)
+    server, port = await _polled_device()
+    session = AuditSession("cmd11", AuditTarget("127.0.0.1", "127.0.0.1"), AuditOptions())
+    run = DriverRun(index=0, choice=DriverChoice(
+        driver_id="acme_polled", identity={"name": "Acme Polled", "version": "1.0.0"},
+    ))
+    run.config = {"host": "127.0.0.1", "port": port}
+    session.runs.append(run)
+    try:
+        listen = await start_listen(session, run, **FAST)
+        await _until(lambda: listen.sandbox.device_state().get("title") == "Lobby")
+        commands = commands_for(session, run, window_seconds=0.1, flush_seconds=0.05)
+        titled = await commands.send("set_title", {"title": "Stage"})
+        await _until(lambda: titled.status == DONE, timeout=10.0)
+        assert [e["outcome"] for e in titled.effects] == ["confirmed"]
+        watched = titled.finished_at - titled.returned_at
+        assert 0.1 < watched <= 2 + REPLY_WINDOW_SECONDS + 0.5
+        loud = await commands.send("set_volume", {"level": 40})
+        await _until(lambda: loud.status == DONE, timeout=10.0)
+        assert [e["outcome"] for e in loud.effects] == ["confirmed"]
+        assert loud.finished_at - loud.returned_at < 1.0
+    finally:
+        await run.stop()
+        server.close()
+        _DRIVER_REGISTRY.pop("acme_polled", None)
+        get_traffic_recorder().clear()
 
 
 MIXER_INFO = {"child_entity_types": {"input": {

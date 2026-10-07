@@ -40,7 +40,10 @@ open, because that window promises to send none of the driver's commands.
 
 **What a command did** is read from its **window**: from the moment it is
 sent until ``WINDOW_SECONDS`` after it returns ("Wait longer" adds more, up to
-``MAX_WINDOW_SECONDS``; "Stop watching" ends it). In the window the audit keeps
+``MAX_WINDOW_SECONDS``; "Stop watching" ends it). A command that declares what
+it sets is watched until the driver's next poll has had time to report it (a
+device that reports a value only when polled), and ends at the usual time once
+every declared value has come back. In the window the audit keeps
 every byte both ways, every status value that changed, and every sign that
 the device refused it: an error the driver raised or published
 (``device.error``), a ``last_error`` it wrote, a reply no response rule
@@ -378,6 +381,9 @@ class CommandTrial:
     connect_attempt: int
     sent_at: float
     returned_at: float | None = None
+    # The sandbox store's write number when the call returned: what the
+    # device reported after it, exactly.
+    returned_seq: int = 0
     ends_at: float | None = None
     finished_at: float | None = None
     status: str = SENDING
@@ -734,6 +740,38 @@ class CommandPass:
         self._publish(trial)
         return trial
 
+    def _readback_span(self, trial: CommandTrial) -> float:
+        """How long a command that declares what it sets may be watched for
+        the device to report it: until the driver's next poll has had time to
+        answer (the poll interval and ``REPLY_WINDOW_SECONDS``), within the
+        ceiling. 0 for a command that declares nothing, or a driver that does
+        not poll. A device that reports a value only when polled, more slowly
+        than the window, otherwise reads as never having taken a command that
+        worked."""
+        if not trial.declared.get("sets"):
+            return 0.0
+        attempt = self.run.listens[trial.connect_attempt] if self.run.listens else None
+        poll = float(getattr(attempt, "poll_interval", 0.0) or 0.0)
+        if poll <= 0:
+            return 0.0
+        return min(poll + REPLY_WINDOW_SECONDS, self.max_window_seconds)
+
+    def _read_back(self, trial: CommandTrial, sandbox: Any) -> bool:
+        """Has the device reported each value the command declares since the
+        call returned, or does it already read what it should? (A reply on
+        its way when the command was sent can still answer with the old
+        value.)"""
+        entry = {**trial.declared, "params": self._params_of(trial.command)}
+        state = sandbox.device_state()
+        fresh = sandbox.written_after(trial.returned_seq)
+        for effect in declared_effects(entry, trial.params, self._driver()):
+            if not effect["has_value"]:
+                continue
+            key = effect["state_key"]
+            if key not in fresh and not same_value(effect["expected"], state.get(key)):
+                return False
+        return True
+
     def _restart_span(self, trial: CommandTrial) -> float:
         declared = trial.declared.get("restarts_device_for") or 0
         return float(declared) + self.restart_margin_seconds if declared else 0.0
@@ -815,9 +853,12 @@ class CommandPass:
             finally:
                 trial.returned_at = time.time()
                 trial.marks["returned"] = len(sandbox.observer.traffic)
+                trial.returned_seq = getattr(sandbox.state, "seq", 0)
                 span = self.window_seconds if window is None else window
                 if not trial.error:
                     span = max(span, self._restart_span(trial))
+                    if window is None:
+                        span = max(span, self._readback_span(trial))
                 elif command_sent_nothing(
                     trial.traffic_in(sandbox.observer), trial.sent_at, trial.returned_at,
                     grace=0.0, started_inclusive=True,
@@ -828,10 +869,27 @@ class CommandPass:
                 trial.status = WATCHING
                 trial.returned.set()
                 self._publish(trial)
+            # Watched past the usual window only to hear the device report what
+            # the command declares: once it has (or when nothing was sent, so
+            # nothing can come back), the window ends as usual.
+            waiting_for_readback = (
+                window is None and not trial.error and not self._restart_span(trial)
+                and self._readback_span(trial) > self.window_seconds
+            )
+            usual_end = (trial.returned_at or 0) + self.window_seconds
             while time.time() < (trial.ends_at or 0) and sandbox.started:
                 await asyncio.sleep(
                     min(self.flush_seconds, max(0.0, (trial.ends_at or 0) - time.time()))
                 )
+                if (
+                    waiting_for_readback and not trial.extended and time.time() >= usual_end
+                    and (self._read_back(trial, sandbox) or command_sent_nothing(
+                        trial.traffic_in(sandbox.observer), trial.sent_at,
+                        trial.returned_at or trial.sent_at, started_inclusive=True,
+                    ))
+                ):
+                    trial.ends_at = time.time()
+                    waiting_for_readback = False
                 self._publish(trial)
         finally:
             # Every last_error the driver wrote while it was watched, with
