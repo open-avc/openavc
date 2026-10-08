@@ -205,7 +205,10 @@ _TAKES_ELEMENT = re.compile(r"\belement(Def)?\b")
 _PROP_READ = re.compile(r"\b(?:element|elementDef)\??\.([a-z_][a-z0-9_]*)")
 #: Inside an evaluator `element` is the DOM node and `elementDef` is the
 #: definition, so reading both there collects `value`, `_dragging` and `class`.
+#: The same holds in any helper that is handed both: `_reapplyButtonImage`
+#: calls `element.querySelector`, which the wider pattern reads as `query`.
 _PROP_READ_DEF = re.compile(r"\belementDef\??\.([a-z_][a-z0-9_]*)")
+_NAMES_ELEMENT_DEF = re.compile(r"\belementDef\b")
 _REGISTERED_BINDING = re.compile(r"type:\s*'([\w_]+)'")
 #: One ``this.bindings.push({ ... })`` call, so a registration's binding type
 #: can be read together with the slot it was registered from.
@@ -279,8 +282,11 @@ def test_every_type_reads_exactly_the_properties_the_table_says(
                 methods |= _reachable(evaluator, panel_method_bodies)
         found: set[str] = set()
         for method in methods:
-            pattern = _PROP_READ_DEF if method.startswith("evaluate") else _PROP_READ
-            found |= set(pattern.findall(panel_method_bodies[method]))
+            body = panel_method_bodies[method]
+            signature = body.split("\n", 1)[0]
+            def_only = method.startswith("evaluate") or _NAMES_ELEMENT_DEF.search(signature)
+            pattern = _PROP_READ_DEF if def_only else _PROP_READ
+            found |= set(pattern.findall(body))
         derived[el_type] = frozenset(found - STRUCTURAL_PROPERTIES)
 
     assert derived == HONORED_PROPERTIES
