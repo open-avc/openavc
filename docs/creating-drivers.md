@@ -1450,7 +1450,7 @@ A query may also be written in mapping form to carry extra semantics: `{ send: "
 
 The poll cadence is **not** set in the `polling` block — it comes from `default_config.poll_interval` (in seconds), which device config can override per-instance. Set `poll_interval: 0` to disable polling. A top-level `polling.interval` is inert (the runtime never reads it) and is rejected by the community-catalog build, so don't add one.
 
-**How fast the lines go.** On `tcp` and `serial`, `on_connect` and poll lines are spaced by `inter_command_delay` when the driver sets one, and otherwise 50 ms apart. When the device's documentation states a minimum time between commands, set `inter_command_delay` to it. A command sent from a panel or a macro waits at most for the line being sent, never for the rest of the poll. The spacing adds up: 60 poll lines take about 3 seconds at 50 ms and 30 seconds with an `inter_command_delay` of 0.5, so keep `poll_interval` well above that. On `udp` and `osc`, only `inter_command_delay` spaces the lines.
+**How fast the lines go.** On `tcp` and `serial`, `on_connect` and poll lines are spaced by `inter_command_delay` when the driver sets one, and otherwise 50 ms apart. When the device's documentation states a minimum time between commands, set `inter_command_delay` to it. A command sent from a panel or a macro waits at most for the line being sent, never for the rest of the poll. The spacing adds up: 60 poll lines take about 3 seconds at 50 ms and 30 seconds with an `inter_command_delay` of 0.5, so keep `poll_interval` well above that. On `udp` and `osc`, only `inter_command_delay` spaces the lines. On `http`, `inter_command_delay` spaces every request, poll, start-up and command alike: requests go one at a time, each that long after the previous response, so a device whose manual asks for a gap between commands gets it. Left at 0, HTTP requests are not spaced and may overlap.
 
 A line in both `on_connect` and `polling` is sent once at connect: the first poll, which runs as soon as `on_connect` finishes, skips it. HTTP drivers are the exception; their first poll sends every line.
 
@@ -2096,6 +2096,7 @@ These fields in `config_schema` are recognized by the HTTP transport:
 | `verify_ssl` | Verify HTTPS certificates (default: true, set false for self-signed) |
 | `timeout` | Request timeout in seconds (default: 10) |
 | `max_response_bytes` | Ceiling on the response body size in bytes (default: 33554432 / 32 MB). Raise it only for a device that legitimately returns a larger body, such as a firmware or log export. |
+| `inter_command_delay` | Seconds between one response and the next request (default: 0). Above 0, requests go one at a time; a command sent meanwhile waits behind at most the request in flight. Set it to the gap the device's manual asks for between commands. |
 
 #### HTTP polling
 

@@ -1348,6 +1348,7 @@ class BaseDriver(ABC):
                 name=self.device_id,
                 local_address=control_ip or None,
                 max_response_bytes=self._http_max_response_bytes(),
+                inter_command_delay=self.config.get("inter_command_delay", 0.0),
             )
             self.transport = HTTPClientTransport(
                 **self._transport_kwargs(transport_type, kwargs)

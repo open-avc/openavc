@@ -576,9 +576,10 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
         </>
       )}
 
-      {/* Inter-command delay — TCP, UDP, serial, and OSC. A bridge device
-          owns no transport of its own, so pacing is the bridge's job. */}
-      {draft.transport !== "http" && draft.transport !== "bridge" && <div style={rowStyle}>
+      {/* Inter-command delay — every transport that owns a connection. A
+          bridge device owns no transport of its own, so pacing is the
+          bridge's job. */}
+      {draft.transport !== "bridge" && <div style={rowStyle}>
         <label style={labelStyle}>Inter-Command Delay (seconds)</label>
         <input
           type="number"
@@ -597,8 +598,10 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
           }}
         >
           Minimum delay between commands. Some devices need this to avoid
-          command flooding (e.g., Extron recommends 0.1s). Left at 0,
-          start-up and poll lines over TCP or serial still go 50 ms apart.
+          command flooding (e.g., Extron recommends 0.1s).{" "}
+          {draft.transport === "http"
+            ? "Over HTTP, each request waits this long after the previous response, and requests go one at a time."
+            : "Left at 0, start-up and poll lines over TCP or serial still go 50 ms apart."}
         </div>
       </div>}
     </div>

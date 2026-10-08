@@ -618,6 +618,7 @@ class HTTPClientTransport:
         name: str | None = None,
         local_address: str | None = None,
         max_response_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
+        inter_command_delay: float = 0.0,
     ):
         """
         Args:
@@ -641,8 +642,18 @@ class HTTPClientTransport:
                 can take down the whole control server. 32 MB clears any
                 realistic device API payload (JSON/XML status, EDID dumps,
                 camera snapshots) while keeping memory bounded.
+            inter_command_delay: Seconds between one request's response and
+                the next request. Above 0, requests go one at a time, each
+                waiting this long after the previous one finished, as the
+                byte-stream transports wait after each write: a device whose
+                manual asks for a gap between commands gets it from the end
+                of one exchange to the start of the next.
         """
         self.base_url = base_url.rstrip("/")
+        self._inter_command_delay = max(float(inter_command_delay or 0), 0.0)
+        # Serializes requests while a delay is set; unused at 0, where
+        # requests may overlap as they always have.
+        self._pace_lock = asyncio.Lock()
         self.auth_type = auth_type
         self.credentials = credentials or {}
         self.verify_ssl = verify_ssl
@@ -846,7 +857,38 @@ class HTTPClientTransport:
             httpx.TimeoutException: If the request times out.
             httpx.ConnectError: If connection to the device fails.
             ValueError: If the response body exceeds max_response_bytes.
+
+        With an ``inter_command_delay``, requests go one at a time and the
+        next starts that long after this one finished, failed or not; a
+        command sent meanwhile waits behind at most the one in flight.
         """
+        args = (method, path, params, json_body, form_data, content, headers, timeout)
+        delay = self._inter_command_delay
+        if delay <= 0:
+            return await self._exchange(*args)
+        async with self._pace_lock:
+            try:
+                result = await self._exchange(*args)
+            except asyncio.CancelledError:
+                raise
+            except BaseException:
+                await asyncio.sleep(delay)
+                raise
+            await asyncio.sleep(delay)
+            return result
+
+    async def _exchange(
+        self,
+        method: str,
+        path: str,
+        params: dict[str, Any] | None,
+        json_body: Any,
+        form_data: dict[str, str] | None,
+        content: bytes | None,
+        headers: dict[str, str] | None,
+        timeout: httpx.Timeout | float | None,
+    ) -> HTTPResponse:
+        """One request and its response, unpaced (see request())."""
         if self._client is None:
             raise ConnectionError("HTTP client not open — call open() first")
 

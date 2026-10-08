@@ -769,9 +769,9 @@ class ConfigurableDriver(BaseDriver):
         these steps against a transport that records (``drivers/dry_run.py``).
 
         ``inter_command_delay`` is applied by the transport after every write
-        (tcp, serial, udp, and osc, which writes through one of those), so
-        only HTTP, whose transport does not, waits for it here. Every line
-        sent is noted in ``_start_up_lines`` for connect() (see poll()).
+        (tcp, serial, udp, osc, which writes through one of those, and http,
+        after each response), so nothing waits for it here. Every line sent
+        is noted in ``_start_up_lines`` for connect() (see poll()).
         """
         self._start_up_lines = set()
         on_connect = self._definition.get("on_connect", [])
@@ -848,8 +848,6 @@ class ConfigurableDriver(BaseDriver):
                             await self._pace_line()
                             await self._dispatch_query(query)
                             self._start_up_lines.add(query)
-                            if delay and transport_type == "http":
-                                await asyncio.sleep(delay)
                         except Exception as e:
                             log.warning(f"[{self.device_id}] on_connect command failed: {e}")
 
@@ -2790,7 +2788,8 @@ class ConfigurableDriver(BaseDriver):
 
         TCP and serial lines are spaced by ``inter_command_delay`` (in the
         transport) or, when none is set, by DEFAULT_LINE_GAP_S (_pace_line).
-        UDP and OSC lines are spaced only by ``inter_command_delay``.
+        UDP, OSC and HTTP lines are spaced only by ``inter_command_delay``
+        (on HTTP, from one response to the next request).
         """
         if not self.transport or not self.transport.connected:
             return
