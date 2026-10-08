@@ -32,8 +32,17 @@ INSTALL_SERVICE_BAT = INSTALLER / "install-service.bat"
 SETUP_ISS = INSTALLER / "setup.iss"
 
 SYSTEM, ADMINS, USERS = "S-1-5-18", "S-1-5-32-544", "S-1-5-32-545"
+OWNER_RIGHTS = "S-1-3-4"
 READ_EXECUTE = 0x1200A9
 FULL = "FA"
+# The accounts that may hold an entry anywhere in the folder once the script has
+# run (Users aside, in status). OWNER RIGHTS is whoever owns the item, and the
+# script makes Administrators the owner of everything, so an entry for it grants
+# nothing Administrators do not already have. CI's runner (Windows Server, the
+# built-in Administrator account) ends with one on the folder where a workstation
+# does not, so it is allowed here and never required.
+ALLOWED = {SYSTEM, ADMINS, OWNER_RIGHTS}
+REQUIRED = {(FULL, SYSTEM), (FULL, ADMINS)}
 
 
 def _commands(text: str) -> list[str]:
@@ -244,13 +253,36 @@ def _user_sid() -> str:
     return out.stdout.strip().split(",")[-1].strip('"')
 
 
+def _entries(sddl: str) -> set[tuple[str, bool, str, str]]:
+    return {(kind, inherited, _rights(rights), sid) for kind, inherited, rights, sid in _aces(sddl)}
+
+
+def _check_item(path: str, sddl: str, run: str) -> None:
+    """One item inside the folder: owned by Administrators, everything inherited
+    from the folder, and Users only reading, only in status."""
+    where = f"{run}: {path} is {sddl}"
+    assert _owner(sddl) == ADMINS, where
+    entries = _entries(sddl)
+    users = {(kind, inherited, rights) for kind, inherited, rights, sid in entries if sid == USERS}
+    others = {entry for entry in entries if entry[3] != USERS}
+    assert all(kind == "A" and inherited for kind, inherited, _r, _s in others), where
+    assert {sid for *_, sid in others} <= ALLOWED, where
+    assert REQUIRED <= {(rights, sid) for _k, _i, rights, sid in others}, where
+    users_read = f"{READ_EXECUTE:#x}"
+    if path == "status":
+        assert users == {("A", False, users_read)}, where
+    elif path.startswith("status\\"):
+        assert users == {("A", True, users_read)}, where
+    else:
+        assert not users, where
+
+
 def test_the_script_locks_an_existing_folder_and_takes_back_a_planted_file(tmp_path):
     gates.skip_or_fail(gates.HOST_FIREWALL, _host_reason())
     root = tmp_path / "OpenAVC"
     _plant(root, _user_sid())
+    before = _sddl(root)["."]
 
-    inherited = {("A", True, FULL, SYSTEM), ("A", True, FULL, ADMINS)}
-    users_read = f"{READ_EXECUTE:#x}"
     # Run twice: the install, then an update over the folder it left.
     for run in ("install", "update"):
         result = _run([str(SECURE_BAT), str(root)])
@@ -258,23 +290,19 @@ def test_the_script_locks_an_existing_folder_and_takes_back_a_planted_file(tmp_p
 
         acl = _sddl(root)
         top = acl.pop(".")
-        assert _protected(top), f"{run}: the folder still inherits from its parent"
-        assert {(k, i, _rights(r), s) for k, i, r, s in _aces(top)} == {
-            ("A", False, FULL, SYSTEM), ("A", False, FULL, ADMINS),
-        }
+        where = f"{run}: the folder was {before} and is {top}"
+        assert _protected(top), where
+        entries = _entries(top)
+        assert all(kind == "A" and not inherited for kind, inherited, _r, _s in entries), where
+        assert {sid for *_, sid in entries} <= ALLOWED, where
+        assert REQUIRED <= {(rights, sid) for _k, _i, rights, sid in entries}, where
         assert "status" in acl, f"{run}: no status folder"
         for path, sddl in acl.items():
-            assert _owner(sddl) == ADMINS, f"{run}: {path} is owned by {_owner(sddl)}"
-            aces = {(k, i, _rights(r), s) for k, i, r, s in _aces(sddl)}
-            expected = set(inherited)
-            if path == "status":
-                expected.add(("A", False, users_read, USERS))
-            elif path.startswith("status\\"):
-                expected.add(("A", True, users_read, USERS))
-            assert aces == expected, f"{run}: {path} has {sorted(aces)}"
+            _check_item(path, sddl, run)
 
         # A file the server writes into status afterwards: every account can read it.
-        written = root / "status" / "server.json"
-        written.write_text("{}", encoding="utf-8")
-        aces = {(k, i, _rights(r), s) for k, i, r, s in _aces(_sddl(root)["status\\server.json"])}
-        assert aces == inherited | {("A", True, users_read, USERS)}, f"{run}: {sorted(aces)}"
+        (root / "status" / "server.json").write_text("{}", encoding="utf-8")
+        written = _sddl(root)["status\\server.json"]
+        assert {(k, i, r) for k, i, r, s in _entries(written) if s == USERS} == {
+            ("A", True, f"{READ_EXECUTE:#x}"),
+        }, f"{run}: status\\server.json is {written}"
