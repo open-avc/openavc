@@ -11,10 +11,14 @@ Covers the audit findings fixed in the openavc/cloud/tools/device_tools.py group
   install_community_driver rejects an id that diverges from the file
   set_device_setting rejects a non-primitive value
   test_device_connection reports a missing port instead of probing :23
+  test_device_connection dials the resolved address (connections-table host,
+    driver default port), and get_device_info / get_project_summary read it back
+  update_device merges a partial config instead of replacing it
   V-API-008 install_community_driver delegates to the canonical REST install
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -59,6 +63,12 @@ class _NoopTCP(BaseDriver):
 
     async def send_command(self, command: str, params: dict | None = None) -> Any:
         return None
+
+
+class _NoPortTCP(_NoopTCP):
+    """The same, with a driver that declares no default port."""
+
+    DRIVER_INFO: dict[str, Any] = {**_NoopTCP.DRIVER_INFO, "id": "noport_tcp", "default_config": {}}
 
 
 def _pure_handler() -> AIToolHandler:
@@ -262,16 +272,25 @@ async def device_engine(tmp_path):
     """Real engine + live no-op device, wired into the rest module the AI tools
     read via _get_engine()."""
     register_driver(_NoopTCP)
+    register_driver(_NoPortTCP)
     project_path = str(tmp_path / "project.avc")
     engine = Engine(project_path)
     engine.project = ProjectConfig(
         project=ProjectMeta(id="p", name="P"),
         devices=[
-            DeviceConfig(id="dev1", driver="noop_tcp", name="Dev 1", config={"transport": "tcp"}),
-            # host-in-config, no port: the case that used to probe :23.
-            DeviceConfig(id="dev_noport", driver="noop_tcp", name="No Port", config={"transport": "tcp", "host": "1.2.3.4"}),
+            DeviceConfig(
+                id="dev1", driver="noop_tcp", name="Dev 1",
+                config={"transport": "tcp", "poll_interval": 7, "inter_command_delay": 0.1},
+            ),
+            # The host where every device added since 0.5.0 keeps it (the
+            # connections table), and no port anywhere: neither the device nor
+            # its driver names one. The case that used to probe :23.
+            DeviceConfig(id="dev_noport", driver="noport_tcp", name="No Port", config={}),
         ],
-        connections={"dev1": {"host": "10.0.0.5", "port": 4000}},
+        connections={
+            "dev1": {"host": "10.0.0.5", "port": 4000},
+            "dev_noport": {"host": "192.0.2.10"},
+        },
     )
     save_project(project_path, engine.project)
     for device in engine.project.devices:
@@ -287,6 +306,7 @@ async def device_engine(tmp_path):
         rest.set_engine(None)
         ws.set_engine(None)
         unregister_driver("noop_tcp")
+        unregister_driver("noport_tcp")
 
 
 async def test_update_device_splits_connection_fields(device_engine) -> None:
@@ -377,8 +397,89 @@ async def test_set_device_setting_rejects_non_primitive(device_engine) -> None:
 
 
 async def test_test_device_connection_reports_missing_port(device_engine) -> None:
-    """A TCP device with no port reports the gap instead of probing :23."""
+    """A TCP device with no port reports the gap instead of probing :23, and
+    found its host in the connections table to get that far."""
     handler, _engine = device_engine
     result = await handler._test_device_connection({"device_id": "dev_noport"})
     assert result["success"] is False
-    assert "port" in result["error"].lower()
+    assert "No port" in result["error"]
+    assert result["connection"]["host"] == "192.0.2.10"
+
+
+async def test_a_device_the_ai_added_tests_at_the_address_it_set(device_engine) -> None:
+    """add_device puts the host in the connections table; the test reads it
+    there and takes the port from the driver, as the device manager does."""
+    handler, engine = device_engine
+    accepted: list[int] = []
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        accepted.append(1)
+        writer.close()
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+
+    class _Listening(_NoopTCP):
+        DRIVER_INFO: dict[str, Any] = {
+            **_NoopTCP.DRIVER_INFO, "id": "acme_listening", "default_config": {"port": port},
+        }
+
+    register_driver(_Listening)
+    try:
+        added = await handler._add_device({
+            "id": "acme1", "driver": "acme_listening", "name": "Acme 1",
+            "config": {"host": "127.0.0.1"},
+        })
+        assert added["status"] == "created"
+        assert engine.project.connections["acme1"] == {"host": "127.0.0.1"}
+
+        result = await handler._test_device_connection({"device_id": "acme1"})
+    finally:
+        server.close()
+        await server.wait_closed()
+        unregister_driver("acme_listening")
+
+    assert result["success"] is True, result
+    assert result["connection"] == {"transport": "tcp", "host": "127.0.0.1", "port": port, "bridge": ""}
+    assert accepted == [1]
+
+
+async def test_update_device_with_only_a_host_keeps_every_other_setting(device_engine) -> None:
+    """A partial config merges: sending the host alone moves the device and
+    leaves its port and its protocol settings where they were."""
+    handler, engine = device_engine
+    await handler._update_device({"device_id": "dev1", "config": {"host": "10.0.0.99"}})
+
+    reloaded = load_project(engine.project_path)
+    dev = next(d for d in reloaded.devices if d.id == "dev1")
+    assert reloaded.connections["dev1"] == {"host": "10.0.0.99", "port": 4000}
+    assert dev.config == {"transport": "tcp", "poll_interval": 7, "inter_command_delay": 0.1}
+
+
+async def test_update_device_removes_a_setting_sent_as_null(device_engine) -> None:
+    handler, engine = device_engine
+    await handler._update_device(
+        {"device_id": "dev1", "config": {"poll_interval": None, "port": None}}
+    )
+    reloaded = load_project(engine.project_path)
+    dev = next(d for d in reloaded.devices if d.id == "dev1")
+    assert "poll_interval" not in dev.config
+    assert dev.config["inter_command_delay"] == 0.1
+    assert reloaded.connections["dev1"] == {"host": "10.0.0.5"}
+
+
+async def test_get_device_info_reads_back_the_address_the_ai_set(device_engine) -> None:
+    handler, _engine = device_engine
+    await handler._update_device({"device_id": "dev1", "config": {"host": "10.0.0.42"}})
+    info = await handler._get_device_info({"device_id": "dev1"})
+    assert info["connection"] == {"transport": "tcp", "host": "10.0.0.42", "port": 4000, "bridge": ""}
+
+
+async def test_the_project_summary_lists_where_each_device_connects(device_engine) -> None:
+    handler, _engine = device_engine
+    summary = await handler._get_project_summary({})
+    by_id = {d["id"]: d for d in summary["devices"]}
+    assert by_id["dev1"]["connection"] == {
+        "transport": "tcp", "host": "10.0.0.5", "port": 4000, "bridge": "",
+    }
+    assert by_id["dev_noport"]["connection"]["port"] is None

@@ -10,7 +10,7 @@ import { useLogStore } from "../../store/logStore";
 import * as api from "../../api/restClient";
 import { getAuditDeviceTarget } from "../../api/auditClient";
 import { useAuditStore } from "../../store/auditStore";
-import type { BridgePort, DeviceConfig, DeviceInfo, DeviceSettingValue, DriverParamDef } from "../../api/types";
+import type { BridgePort, DeviceConfig, DeviceConnectionTest, DeviceInfo, DeviceSettingValue, DriverParamDef } from "../../api/types";
 import { CommandParamForm } from "../../components/shared/CommandParamForm";
 import {
   commandConfirmMessage,
@@ -29,6 +29,7 @@ import { DEVICE_STALE_TITLE, LastHeard, staleValueStyle } from "./staleReading";
 import { normalizeOptionList, parseStateOptionList, settingValueText } from "../../components/shared/paramOptions";
 import { DevicePanelSlot, ContextActionRenderer } from "../../components/plugins/PluginExtensions";
 import { findDeviceReferences, validateSettingValue } from "./deviceUtils";
+import { formatDeviceAddress } from "./deviceAddress";
 import { BooleanOptions } from "../../components/shared/BooleanOptions";
 import { valueText } from "../../components/shared/booleanWords";
 import { ChildEntities } from "./ChildEntities";
@@ -66,11 +67,7 @@ export function DeviceDetail({
   const [confirmSend, setConfirmSend] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [testResult, setTestResult] = useState<{
-    success: boolean;
-    error: string | null;
-    latency_ms: number | null;
-  } | null>(null);
+  const [testResult, setTestResult] = useState<DeviceConnectionTest | null>(null);
   const [testing, setTesting] = useState(false);
   // Why "Audit this device" could not start (a device on a serial port, say).
   const [auditRefusal, setAuditRefusal] = useState("");
@@ -703,9 +700,25 @@ export function DeviceDetail({
             color: testResult.success ? "var(--color-success)" : "var(--color-error)",
           }}
         >
-          {testResult.success
-            ? `Connected successfully (${testResult.latency_ms}ms)`
-            : `Connection failed: ${testResult.error}`}
+          {(() => {
+            const address = formatDeviceAddress(
+              testResult.connection,
+              (id) => project?.devices.find((d) => d.id === id)?.name || id,
+            );
+            if (testResult.success) {
+              return address
+                ? `Connected to ${address} (${testResult.latency_ms} ms)`
+                : `Connected (${testResult.latency_ms} ms)`;
+            }
+            return address
+              ? `Could not connect to ${address}: ${testResult.error}`
+              : `Connection failed: ${testResult.error}`;
+          })()}
+          {testResult.note && (
+            <div style={{ marginTop: "var(--space-xs)", color: "var(--text-muted)" }}>
+              {testResult.note}
+            </div>
+          )}
         </div>
       )}
 

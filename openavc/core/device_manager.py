@@ -41,7 +41,7 @@ from openavc.drivers.child_ids import (
     coerce_child_local_id,
 )
 from openavc.drivers.registry import get_driver_class, is_driver_registered
-from openavc.core.device_config import bridge_first
+from openavc.core.device_config import bridge_first, connection_of
 from openavc.core.event_bus import EventBus, detach_emit_chain
 from openavc.core.state_store import StateStore
 from openavc.core.device_traffic import get_traffic_recorder
@@ -989,7 +989,13 @@ class DeviceManager:
         return out
 
     def get_device_info(self, device_id: str) -> dict[str, Any]:
-        """Return device metadata, status, and capabilities."""
+        """Return device metadata, status, and capabilities.
+
+        ``connection`` is where the device connects: its resolved transport,
+        host, port and bridge (``core.device_config.connection_of``). It is
+        read from the record this manager was handed, never from the live
+        driver, whose host a running simulation points at 127.0.0.1.
+        """
         # Check if orphaned first
         if device_id in self._orphaned_devices:
             config = self._orphaned_devices[device_id]
@@ -998,6 +1004,7 @@ class DeviceManager:
                 "name": config.get("name", device_id),
                 "driver": config.get("driver", ""),
                 "connected": False,
+                "connection": connection_of(config).address(),
                 "orphaned": True,
                 "orphan_reason": f"Driver '{config.get('driver', '')}' is not installed",
                 "state": self.state.get_namespace(f"device.{device_id}"),
@@ -1020,6 +1027,7 @@ class DeviceManager:
                     "name": config.get("name", device_id),
                     "driver": config.get("driver", ""),
                     "connected": False,
+                    "connection": connection_of(config).address(),
                     "state": self.state.get_namespace(f"device.{device_id}"),
                     "commands": {},
                     "driver_info": {},
@@ -1034,6 +1042,7 @@ class DeviceManager:
             "name": config.get("name", device_id),
             "driver": config.get("driver", ""),
             "connected": driver.get_state("connected"),
+            "connection": connection_of(config).address(),
             "state": self.state.get_namespace(f"device.{device_id}"),
             "commands": driver.DRIVER_INFO.get("commands", {}),
             # Quick Actions strip: driver-declared actions resolved (quick_actions
@@ -1065,6 +1074,7 @@ class DeviceManager:
                     "name": info["name"],
                     "driver": info["driver"],
                     "connected": info["connected"],
+                    "connection": info["connection"],
                 }
                 # Include command names so callers don't need get_device_info per device
                 if info.get("commands"):
@@ -1082,6 +1092,7 @@ class DeviceManager:
                     "name": config.get("name", device_id),
                     "driver": config.get("driver", ""),
                     "connected": False,
+                    "connection": connection_of(config).address(),
                     "orphaned": True,
                     "orphan_reason": f"Driver '{config.get('driver', '')}' is not installed",
                 })
@@ -1095,6 +1106,7 @@ class DeviceManager:
                     "name": config.get("name", device_id),
                     "driver": config.get("driver", ""),
                     "connected": False,
+                    "connection": connection_of(config).address(),
                     "enabled": False,
                 })
 

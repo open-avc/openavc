@@ -1194,21 +1194,12 @@ class BaseDriver(ABC):
         frame_parser = self._create_frame_parser()
         delimiter = self._resolve_delimiter()
 
-        # Get control interface binding (if configured)
-        from openavc.system_config import get_system_config
-        control_ip = get_system_config().get("network", "control_interface")
-        # A device on this machine (a simulator, a local service) is reached
-        # over loopback, which a socket bound to an adapter's address cannot
-        # do: Windows refuses the connect (WinError 1214).
-        if control_ip:
-            import ipaddress
-            host = str(self.config.get("host", "")).strip().strip("[]").lower()
-            try:
-                loopback = host == "localhost" or ipaddress.ip_address(host).is_loopback
-            except ValueError:
-                loopback = False
-            if loopback:
-                control_ip = None
+        # Control interface binding (if configured); never for a loopback
+        # host. The rule, and each transport's fallback port below, are in
+        # transport/endpoint.py so a connection test dials the same way.
+        from openavc.transport.endpoint import control_bind_address, implied_port
+
+        control_ip = control_bind_address(self.config.get("host", ""))
 
         if transport_type == "tcp":
             from openavc.transport.tcp import TCPTransport
@@ -1332,7 +1323,7 @@ class BaseDriver(ABC):
             use_ssl = self.config.get("ssl", False)
             scheme = "https" if use_ssl else "http"
             if port is None:
-                port = 443 if use_ssl else 80
+                port = implied_port("http", self.config)
             base_url = f"{scheme}://{host}:{port}"
 
             # Build credentials from config
@@ -1366,7 +1357,7 @@ class BaseDriver(ABC):
             from openavc.transport.ssh import SSHTransport
 
             host = self.config.get("host", "")
-            port = int(self.config.get("port", 22) or 22)
+            port = int(self.config.get("port") or implied_port("ssh", self.config))
             username = self.config.get("username", "")
             auth_method = self.config.get("ssh_auth_method", "key")
             known_hosts = self.config.get("known_hosts_path")
@@ -1400,7 +1391,7 @@ class BaseDriver(ABC):
             from openavc.transport.mqtt import MQTTTransport
 
             host = self.config.get("host", "")
-            port = int(self.config.get("port", 1883) or 1883)
+            port = int(self.config.get("port") or implied_port("mqtt", self.config))
 
             # Pub/sub, not a byte stream: inbound messages arrive topic-tagged
             # via on_mqtt_message (subscribe in _post_connect). TLS vocabulary
@@ -1431,10 +1422,9 @@ class BaseDriver(ABC):
             )
         elif transport_type == "snmp":
             from openavc.transport.snmp import SNMPTransport
-            from openavc.transport.snmp_codec import SNMP_PORT
 
             host = self.config.get("host", "")
-            port = int(self.config.get("port", SNMP_PORT) or SNMP_PORT)
+            port = int(self.config.get("port") or implied_port("snmp", self.config))
 
             # Request/response only: SNMP has no inbound byte stream, so
             # there is no on_data. A device that also sends traps needs a

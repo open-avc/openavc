@@ -20,6 +20,11 @@ before it sends anything. Both read the same resolved config the device
 manager dials, so a device on its driver's default port, a transport
 override, or a serial device reached through a bridge's pass-through port is
 found where it really connects.
+
+``connection_of`` is that answer for one device. It is what a device's info
+reports, what the AI's project summary lists, and what the connection test
+(``core/device_reachability``) dials, so all three name the address the
+device manager uses.
 """
 
 from __future__ import annotations
@@ -33,6 +38,7 @@ from openavc.drivers.registry import (
     get_driver_default_config,
     get_driver_transport,
 )
+from openavc.transport.endpoint import implied_port
 from openavc.transport.serial_transport import resolve_usb_binding
 from openavc.utils.logger import get_logger
 
@@ -183,9 +189,12 @@ def bridge_first(
 class DeviceConnection:
     """Where one project device connects, after every layer and rewrite.
 
-    ``port`` is a number for a network transport and a path for serial.
-    ``bridge`` is the bridge device's id when the device reaches ``host``
-    through that bridge's pass-through port, empty otherwise.
+    ``port`` is a number for a network transport and a path for serial; a
+    transport that falls back to a port of its own (http, ssh, mqtt, snmp)
+    reports that port when the device names none. ``bridge`` is the bridge
+    device's id when the device reaches ``host`` through that bridge's
+    pass-through port, or (transport ``bridge``) emits through that bridge
+    and holds no connection of its own; empty otherwise.
     """
 
     device_id: str
@@ -201,11 +210,62 @@ class DeviceConnection:
             "device_id": self.device_id,
             "device_name": self.name,
             "driver": self.driver,
+            **self.address(),
+        }
+
+    def address(self) -> dict[str, Any]:
+        """Just where it connects: what a device's info and the connection
+        test report back."""
+        return {
             "transport": self.transport,
             "host": self.host,
             "port": self.port,
             "bridge": self.bridge,
         }
+
+
+def connection_of(resolved: dict[str, Any]) -> DeviceConnection:
+    """Where a device connects, from its resolved record.
+
+    ``resolved`` is what :func:`resolve_device_config` returns, which is also
+    what the device manager holds for every device it was handed. The
+    transport is the device's own choice, else its driver's, else tcp, the
+    same order ``BaseDriver.connect`` takes.
+    """
+    cfg = resolved.get("config") or {}
+    driver = str(resolved.get("driver") or "")
+    transport = str(
+        cfg.get("transport") or get_driver_transport(driver) or "tcp"
+    ).lower()
+    port = cfg.get("port")
+    if transport == "serial":
+        port = str(port) if port is not None else None
+    elif port is None or port == "":
+        port = implied_port(transport, cfg)
+    else:
+        # A port that is not a number is reported as no port, never replaced
+        # by the transport's fallback: the driver would not dial that either.
+        try:
+            port = int(port)
+        except (TypeError, ValueError):
+            port = None
+    # resolve_bridge_binding turns a serial device bound to a bridge's
+    # pass-through port into a TCP connection to the bridge's host, and an IR
+    # device bound to an emitter port into transport "bridge".
+    bridged = (
+        bool(cfg.get("bridge") and cfg.get("bridge_port"))
+        and transport in ("tcp", "bridge")
+    )
+    device_id = str(resolved.get("id") or "")
+    return DeviceConnection(
+        device_id=device_id,
+        name=str(resolved.get("name") or device_id),
+        driver=driver,
+        transport=transport,
+        host=str(cfg.get("host") or ""),
+        port=port,
+        bridge=str(cfg["bridge"]) if bridged else "",
+    )
 
 
 def device_connections(project) -> list[DeviceConnection]:
@@ -225,31 +285,7 @@ def device_connections(project) -> list[DeviceConnection]:
             log.debug("Could not resolve %s's connection", getattr(device, "id", "?"),
                       exc_info=True)
             continue
-        cfg = resolved.get("config") or {}
-        driver = str(resolved.get("driver") or "")
-        transport = str(
-            cfg.get("transport") or get_driver_transport(driver) or "tcp"
-        ).lower()
-        port = cfg.get("port")
-        if transport != "serial":
-            try:
-                port = int(port) if port is not None and port != "" else None
-            except (TypeError, ValueError):
-                port = None
-        elif port is not None:
-            port = str(port)
-        # resolve_bridge_binding turns a serial device bound to a bridge's
-        # pass-through port into a TCP connection to the bridge's host.
-        bridged = bool(cfg.get("bridge") and cfg.get("bridge_port")) and transport == "tcp"
-        out.append(DeviceConnection(
-            device_id=str(resolved.get("id") or device.id),
-            name=str(resolved.get("name") or device.id),
-            driver=driver,
-            transport=transport,
-            host=str(cfg.get("host") or ""),
-            port=port,
-            bridge=str(cfg["bridge"]) if bridged else "",
-        ))
+        out.append(connection_of(resolved))
     return out
 
 

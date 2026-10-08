@@ -674,11 +674,34 @@ export interface DeviceAction {
   url?: string; // kind === "link": URL to open (host-substituted by the backend)
 }
 
+// Where a device connects after every layer: the driver's default port,
+// the device's config, the connections table, and a bridge's rewrite.
+// `port` is a path for serial; `bridge` is the bridge device's id when the
+// device is reached through one, "" otherwise.
+export interface DeviceAddress {
+  transport: string;
+  host: string;
+  port: number | string | null;
+  bridge: string;
+}
+
+// POST /devices/{id}/test. `connection` is the address that was tried;
+// `note` says what a success did not prove (a UDP device has no connection
+// to open).
+export interface DeviceConnectionTest {
+  success: boolean;
+  error: string | null;
+  latency_ms: number | null;
+  connection?: DeviceAddress;
+  note?: string;
+}
+
 export interface DeviceInfo {
   id: string;
   name: string;
   driver: string;
   connected: boolean;
+  connection?: DeviceAddress;
   orphaned?: boolean;
   orphan_reason?: string;
   enabled?: boolean;

@@ -369,6 +369,66 @@ def test_verify_ssl_disabled():
     assert t.verify_ssl is False
 
 
+@pytest.fixture
+async def self_signed_https():
+    """An HTTPS server on loopback with a throwaway self-signed certificate."""
+    import asyncio
+    import ssl
+
+    from openavc.simulator.self_signed_tls import _generate_self_signed, remove_cert_files
+
+    cert, key = _generate_self_signed()
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(certfile=cert, keyfile=key)
+
+    async def handle(reader, writer):
+        try:
+            await reader.readuntil(b"\r\n\r\n")
+            writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+            await writer.drain()
+        except (ConnectionError, asyncio.IncompleteReadError, ssl.SSLError):
+            pass
+        finally:
+            writer.close()
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0, ssl=ctx)
+    port = server.sockets[0].getsockname()[1]
+    try:
+        yield f"https://127.0.0.1:{port}"
+    finally:
+        server.close()
+        await server.wait_closed()
+        remove_cert_files((cert, key))
+
+
+@pytest.mark.parametrize("local_address", [None, "127.0.0.1"])
+async def test_verify_ssl_off_reaches_a_self_signed_device(self_signed_https, local_address):
+    """verify_ssl: false holds with a control interface pinned too: httpx
+    ignores the client's own verify once it is handed a bound transport."""
+    t = HTTPClientTransport(
+        base_url=self_signed_https, verify_ssl=False, local_address=local_address
+    )
+    await t.open()
+    try:
+        response = await t.get("/")
+    finally:
+        await t.close()
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize("local_address", [None, "127.0.0.1"])
+async def test_verify_ssl_on_refuses_a_self_signed_device(self_signed_https, local_address):
+    t = HTTPClientTransport(
+        base_url=self_signed_https, verify_ssl=True, local_address=local_address
+    )
+    await t.open()
+    try:
+        with pytest.raises(ConnectionError, match="CERTIFICATE_VERIFY_FAILED"):
+            await t.get("/")
+    finally:
+        await t.close()
+
+
 # --- _parse_send_string() ---
 
 def test_parse_get():

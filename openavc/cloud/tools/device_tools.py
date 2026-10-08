@@ -80,17 +80,23 @@ class DeviceToolsMixin:
             # do: connection fields (host/port/...) live in project.connections, not
             # device.config. Without this the AI's host/port edits land in the wrong
             # place and the IDE can't edit them consistently (v0.5.0 layout).
+            #
+            # Both halves MERGE into what the device has, and a field sent as null
+            # is removed (back to the driver's default). The REST editor replaces
+            # the protocol half because the IDE always sends the whole config; a
+            # generator sends the field it means to change, and replacing would
+            # take `{"host": ...}` as "and drop every other setting".
             if "config" in input:
                 from openavc.core.project_migration import CONNECTION_FIELDS
                 raw_config = input.get("config") or {}
-                protocol_config: dict = {}
+                protocol_config: dict = dict(existing.config)
                 conn_overrides = dict(project.connections.get(device_id, {}))
                 for key, value in raw_config.items():
                     if key in CONNECTION_FIELDS:
                         conn_overrides[key] = value
                     else:
                         protocol_config[key] = value
-                new_config = protocol_config
+                new_config = {k: v for k, v in protocol_config.items() if v is not None}
                 conn_overrides = {k: v for k, v in conn_overrides.items() if v is not None}
                 if conn_overrides:
                     project.connections[device_id] = conn_overrides
@@ -302,68 +308,21 @@ class DeviceToolsMixin:
         return "OK"
 
     async def _test_device_connection(self, input: dict) -> Any:
-        import asyncio as _asyncio
-        import time as _time
+        # The same test as the device page's Test Connection, at the address
+        # the device manager dials: the driver's default port, the device's
+        # config and the connections table, layered.
+        from openavc.core.device_config import resolve_device_config
+        from openavc.core.device_reachability import check_reachability
 
         device_id = input.get("device_id", "")
         engine = self._get_engine()
         if not engine or not engine.project:
             return {"success": False, "error": "No project loaded", "latency_ms": None}
 
-        device_cfg = None
-        for d in engine.project.devices:
-            if d.id == device_id:
-                device_cfg = d
-                break
-        if device_cfg is None:
+        device = next((d for d in engine.project.devices if d.id == device_id), None)
+        if device is None:
             return {"success": False, "error": f"Device '{device_id}' not found", "latency_ms": None}
-
-        cfg = device_cfg.config
-        host = cfg.get("host", "")
-        port = cfg.get("port")
-        transport = cfg.get("transport", "tcp")
-        start = _time.monotonic()
-
-        if transport == "http":
-            url = cfg.get("base_url", cfg.get("url", ""))
-            if not url and host:
-                scheme = "https" if cfg.get("ssl") else "http"
-                url = f"{scheme}://{host}" + (f":{port}" if port else "")
-            if not url:
-                return {"success": False, "error": "No URL configured", "latency_ms": None}
-            try:
-                import httpx
-                async with httpx.AsyncClient(timeout=5.0, verify=False) as client:
-                    await client.head(url)
-                latency = round((_time.monotonic() - start) * 1000, 1)
-                return {"success": True, "error": None, "latency_ms": latency}
-            except (httpx.HTTPError, OSError) as e:
-                return {"success": False, "error": str(e), "latency_ms": None}
-        else:
-            if not host:
-                return {"success": False, "error": "No host configured", "latency_ms": None}
-            # A missing port is a configuration gap, not Telnet — report it
-            # rather than silently probing :23 and returning a misleading result.
-            if port in (None, "", 0):
-                return {"success": False, "error": "No port configured", "latency_ms": None}
-            try:
-                tcp_port = int(port)
-            except (TypeError, ValueError):
-                return {"success": False, "error": f"Invalid port: {port!r}", "latency_ms": None}
-            if not 0 < tcp_port <= 65535:
-                return {"success": False, "error": f"Port out of range: {tcp_port}", "latency_ms": None}
-            try:
-                reader, writer = await _asyncio.wait_for(
-                    _asyncio.open_connection(host, tcp_port), timeout=5.0
-                )
-                writer.close()
-                await writer.wait_closed()
-                latency = round((_time.monotonic() - start) * 1000, 1)
-                return {"success": True, "error": None, "latency_ms": latency}
-            except _asyncio.TimeoutError:
-                return {"success": False, "error": "Connection timed out (5s)", "latency_ms": None}
-            except OSError as e:
-                return {"success": False, "error": str(e), "latency_ms": None}
+        return await check_reachability(resolve_device_config(device, engine.project), engine.project)
 
     async def _get_device_settings(self, input: dict) -> Any:
         engine = self._get_engine()

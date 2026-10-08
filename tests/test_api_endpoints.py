@@ -283,12 +283,13 @@ def test_serial_connection_test_runs_off_event_loop(client, monkeypatch):
     loop (and with it every other request, WS push, and device poll).
     """
     import asyncio
-    from types import SimpleNamespace
+
+    from openavc.core.project_loader import DeviceConfig
 
     c, engine = client
     engine.project.devices = [
-        SimpleNamespace(
-            id="serdev",
+        DeviceConfig(
+            id="serdev", driver="acme_unregistered", name="Serial",
             config={"transport": "serial", "port": "COM_TEST", "baudrate": 9600},
         )
     ]

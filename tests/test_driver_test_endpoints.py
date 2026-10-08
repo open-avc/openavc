@@ -23,6 +23,7 @@ from pydantic import ValidationError
 from openavc.api.models import TestCommandRequest
 from openavc.api.routes import devices as devices_routes
 from openavc.api.routes.driver_test import _test_http_raw
+from openavc.core.project_loader import DeviceConfig
 
 
 # --- timeout bounds ----------------------------------------------------------
@@ -92,7 +93,9 @@ async def test_raw_http_test_honors_verify_ssl_opt_out(captured_httpx):
 
 
 def _engine_with_http_device(device_id: str, config: dict):
-    device = SimpleNamespace(id=device_id, config=config)
+    # A device record the way a project holds one; its driver is not
+    # installed, so the transport and URL come from the config alone.
+    device = DeviceConfig(id=device_id, driver="acme_unregistered", name=device_id, config=config)
     project = SimpleNamespace(devices=[device], connections={})
     return SimpleNamespace(project=project)
 

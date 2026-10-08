@@ -3,6 +3,7 @@ import type {
   ChildEntitiesListResponse,
   ChildEntityDetailResponse,
   ChildEntityRefreshResponse,
+  DeviceConnectionTest,
   DeviceInfo,
   DeviceSettingValue,
 } from "./types";
@@ -135,7 +136,7 @@ export async function deleteDevice(
 
 export async function testDeviceConnection(
   deviceId: string
-): Promise<{ success: boolean; error: string | null; latency_ms: number | null }> {
+): Promise<DeviceConnectionTest> {
   return request(`/devices/${deviceId}/test`, { method: "POST" });
 }
 

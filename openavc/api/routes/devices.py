@@ -332,114 +332,25 @@ async def delete_device(device_id: str) -> dict[str, Any]:
 
 @router.post("/devices/{device_id}/test")
 async def test_device_connection(device_id: str) -> dict[str, Any]:
-    """Test network reachability of a device without using the driver."""
+    """Test network reachability of a device without using the driver.
+
+    Dials where the device manager would (``core/device_reachability``), and
+    answers with the address it tried.
+    """
     _rate_limit_test(f"test_device:{device_id}")
-    import asyncio as _asyncio
-    import time as _time
+    from openavc.core.device_config import resolve_device_config
+    from openavc.core.device_reachability import check_reachability
 
     engine = _get_engine()
     if not engine.project:
         raise HTTPException(status_code=503, detail="No project loaded")
 
-    # Find device config
-    device_cfg = None
-    for d in engine.project.devices:
-        if d.id == device_id:
-            device_cfg = d
-            break
-    if device_cfg is None:
+    device = next((d for d in engine.project.devices if d.id == device_id), None)
+    if device is None:
         raise HTTPException(status_code=404, detail=f"Device '{device_id}' not found")
-
-    # Merge device.config with connection table overrides (host, port, etc.)
-    conn = engine.project.connections.get(device_id, {})
-    cfg = {**device_cfg.config, **conn}
-    host = cfg.get("host", "")
-    port = cfg.get("port")
-    transport = cfg.get("transport", "tcp")
-
-    start = _time.monotonic()
-
-    if transport == "serial":
-        # Test serial port open/close. pyserial's open is a synchronous,
-        # blocking syscall — a locked port or slow USB-serial adapter would
-        # freeze the whole event loop (every other request, WS state push,
-        # device poll, reconnect) for its full duration. Run it in a worker
-        # thread, the same way the HTTP/TCP branches below use async I/O.
-        serial_port = cfg.get("port", "")
-        baud = cfg.get("baudrate", 9600)
-
-        def _probe_serial() -> None:
-            import serial
-            ser = serial.Serial(serial_port, baud, timeout=2)
-            ser.close()
-
-        try:
-            await _asyncio.to_thread(_probe_serial)
-            latency = round((_time.monotonic() - start) * 1000, 1)
-            return {"success": True, "error": None, "latency_ms": latency}
-        except (OSError, ValueError) as e:
-            return {"success": False, "error": str(e), "latency_ms": None}
-
-    elif transport in ("udp", "osc"):
-        # UDP/OSC is connectionless — verify the host resolves and socket opens
-        import socket as _socket
-        try:
-            sock = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
-            sock.settimeout(2)
-            sock.connect((host, int(port)))
-            sock.close()
-            latency = round((_time.monotonic() - start) * 1000, 1)
-            return {"success": True, "error": None, "latency_ms": latency}
-        except (OSError, ValueError, TypeError) as e:
-            return {"success": False, "error": str(e), "latency_ms": None}
-
-    elif transport == "http":
-        # Test HTTP HEAD request
-        url = cfg.get("base_url", cfg.get("url", ""))
-        if not url and host:
-            scheme = "https" if cfg.get("ssl") else "http"
-            url = f"{scheme}://{host}" + (f":{port}" if port else "")
-        if not url:
-            return {"success": False, "error": "No URL configured", "latency_ms": None}
-        try:
-            import httpx
-            # Verify TLS the way the HTTP transport will (verify_ssl from
-            # device config, on by default) so the reachability result
-            # matches what the driver connection would actually get.
-            verify = bool(cfg.get("verify_ssl", True))
-            async with httpx.AsyncClient(timeout=5.0, verify=verify) as client:
-                await client.head(url)
-            latency = round((_time.monotonic() - start) * 1000, 1)
-            return {"success": True, "error": None, "latency_ms": latency}
-        except (httpx.HTTPError, OSError, ValueError) as e:
-            return {"success": False, "error": str(e), "latency_ms": None}
-
-    else:
-        # Default: TCP connection test
-        if not host:
-            return {"success": False, "error": "No host configured", "latency_ms": None}
-        if not port:
-            return {
-                "success": False,
-                "error": "No port configured — set a port in the device config to test connectivity",
-                "latency_ms": None,
-            }
-        try:
-            tcp_port = int(port)
-        except (ValueError, TypeError):
-            return {"success": False, "error": f"Invalid port value: {port}", "latency_ms": None}
-        try:
-            reader, writer = await _asyncio.wait_for(
-                _asyncio.open_connection(host, tcp_port), timeout=5.0
-            )
-            writer.close()
-            await writer.wait_closed()
-            latency = round((_time.monotonic() - start) * 1000, 1)
-            return {"success": True, "error": None, "latency_ms": latency}
-        except _asyncio.TimeoutError:
-            return {"success": False, "error": "Connection timed out (5s)", "latency_ms": None}
-        except OSError as e:
-            return {"success": False, "error": str(e), "latency_ms": None}
+    return await check_reachability(
+        resolve_device_config(device, engine.project), engine.project
+    )
 
 
 @router.post("/devices/{device_id}/reconnect")

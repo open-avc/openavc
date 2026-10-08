@@ -689,7 +689,11 @@ class HTTPClientTransport:
 
         transport = None
         if self._local_address:
-            transport = httpx.AsyncHTTPTransport(local_address=self._local_address)
+            # httpx ignores the client's own `verify` once it is handed a
+            # transport, so the transport has to carry it.
+            transport = httpx.AsyncHTTPTransport(
+                local_address=self._local_address, verify=self.verify_ssl
+            )
 
         self._client = httpx.AsyncClient(
             base_url=self.base_url,

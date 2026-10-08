@@ -159,7 +159,7 @@ Commands that act on a specific sub-unit (route this decoder to that encoder, re
 The device detail panel includes several management actions:
 
 - **Enable/Disable.** Temporarily disable a device without removing it from the project. Disabled devices do not connect or poll.
-- **Test Connection.** Test network reachability (ping/TCP connect) without using the driver, useful for diagnosing network issues.
+- **Test Connection.** Opens a connection to the device's address without using the driver (a TCP connection, an HTTP request, or the serial port), and shows the address it tried, including a port that comes from the driver's default. A success means something answered at that address, not that it is the right device: whether the device itself replies shows on its card. A UDP device has no connection to open, so the test only checks that its address is valid.
 - **Reconnect.** Force an immediate reconnect attempt on a disconnected device.
 - **Duplicate.** Create a copy of the device with a new ID, pre-filled with the same driver and settings.
 - **Device Log.** Filtered log view showing only activity for the selected device (commands sent, responses received, errors).
