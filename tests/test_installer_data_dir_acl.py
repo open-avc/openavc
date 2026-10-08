@@ -18,6 +18,7 @@ temporary folder.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -108,17 +109,59 @@ def _run(args: list[str]) -> subprocess.CompletedProcess:
     )
 
 
+def _sddl_of(path: str) -> str:
+    """The owner and DACL of one path, as SDDL, read through the Windows API.
+
+    Not through PowerShell: Windows PowerShell started from a PowerShell 7
+    session (CI's test step) inherits its module path, cannot load Get-Acl,
+    and still exits 0.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    advapi.GetNamedSecurityInfoW.argtypes = [
+        wintypes.LPCWSTR, ctypes.c_int, wintypes.DWORD, ctypes.c_void_p,
+        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p),
+    ]
+    advapi.GetNamedSecurityInfoW.restype = wintypes.DWORD
+    advapi.ConvertSecurityDescriptorToStringSecurityDescriptorW.argtypes = [
+        ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD,
+        ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p,
+    ]
+    advapi.ConvertSecurityDescriptorToStringSecurityDescriptorW.restype = wintypes.BOOL
+    kernel.LocalFree.argtypes = [ctypes.c_void_p]
+
+    file_object, owner_and_dacl = 1, 0x1 | 0x4
+    descriptor = ctypes.c_void_p()
+    status = advapi.GetNamedSecurityInfoW(
+        path, file_object, owner_and_dacl, None, None, None, None, ctypes.byref(descriptor),
+    )
+    if status:
+        raise ctypes.WinError(status)
+    try:
+        text = ctypes.c_void_p()
+        if not advapi.ConvertSecurityDescriptorToStringSecurityDescriptorW(
+            descriptor, 1, owner_and_dacl, ctypes.byref(text), None,
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            return ctypes.wstring_at(text.value)
+        finally:
+            kernel.LocalFree(text)
+    finally:
+        kernel.LocalFree(descriptor)
+
+
 def _sddl(root: Path) -> dict[str, str]:
     """Owner and DACL of the folder and everything in it, hidden files included."""
-    script = (
-        f"$r = '{root}'; "
-        "Get-Item -LiteralPath $r -Force | ForEach-Object { '.|' + (Get-Acl -LiteralPath $_.FullName).Sddl }; "
-        "Get-ChildItem -LiteralPath $r -Recurse -Force | ForEach-Object { "
-        "$_.FullName.Substring($r.Length + 1) + '|' + (Get-Acl -LiteralPath $_.FullName).Sddl }"
-    )
-    out = _run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script])
-    assert out.returncode == 0, out.stderr
-    return dict(line.split("|", 1) for line in out.stdout.splitlines() if "|" in line)
+    found = {".": _sddl_of(str(root))}
+    for folder, dirs, files in os.walk(root):
+        for name in dirs + files:
+            full = os.path.join(folder, name)
+            found[os.path.relpath(full, root)] = _sddl_of(full)
+    return found
 
 
 def _owner(sddl: str) -> str:
