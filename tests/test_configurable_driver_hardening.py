@@ -212,6 +212,25 @@ async def test_poll_auth_tally_does_not_leak_across_cycles():
 
 
 @pytest.mark.asyncio
+async def test_a_rejected_cycle_drops_the_device_without_another_cycle():
+    """Every request in a cycle refused is the credentials, so the connection
+    drops after that one cycle instead of sending them for two more."""
+    drv = _make_driver({**_HTTP_AUTH_DEF, "id": "acme_http_auth3"})
+    transport = _StatusHTTP({"/status": 401, "/inputs": 401})
+    drv.transport = transport
+    drv._connected = True
+    drv.set_state("connected", True)
+
+    await drv.start_polling(0.01)
+    await asyncio.sleep(0.25)
+
+    assert drv.get_state("connected") is False
+    assert transport.requested == ["/status", "/inputs"]
+    assert drv.last_fault is not None
+    assert drv.last_fault.code == "auth_failed"
+
+
+@pytest.mark.asyncio
 async def test_rejected_login_reaches_the_device_card_as_auth_failed():
     """End-to-end: the typed fault survives the missed-poll watchdog into
     last_fault, which is what the device manager reads for offline_reason."""

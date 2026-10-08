@@ -26,6 +26,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from openavc.core.connection_fault import (
+    AUTH_FAILED,
     CHILD_DRIVER_FAULT_CODES,
     CHILD_NOT_FITTED,
     CHILD_PARENT_OFFLINE,
@@ -38,6 +39,7 @@ from openavc.core.connection_fault import (
     default_child_fault_message,
     default_fault_message,
     normalize_child_fault_claim,
+    typed_fault_from_exc,
 )
 from openavc.core.condition_eval import _coerce_bool
 from openavc.core.device_traffic import record_traffic
@@ -1960,6 +1962,10 @@ class BaseDriver(ABC):
         protocol error) counts as a miss; a clean return resets the counter.
         So a probe whose request the device answered with an error returns
         instead of raising (see _liveness_probe): the device answered.
+
+        The exception is a typed ``auth_failed``: the device answered by
+        refusing the credential, so the connection drops on the first one and
+        keeps that code, which pauses reconnecting rather than starting it.
         """
         detach_emit_chain()  # a device-lifetime loop is a root, not a continuation
         interval = float(self.HEALTH_INTERVAL_S)
@@ -1976,6 +1982,16 @@ class BaseDriver(ABC):
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
+                    refused = typed_fault_from_exc(
+                        exc, host=self.config.get("host", ""), port=self.config.get("port"),
+                    )
+                    if refused is not None and refused.code == AUTH_FAILED:
+                        log.warning(
+                            f"[{self.device_id}] Liveness probe refused the "
+                            f"credential; dropping the connection: {exc}"
+                        )
+                        self._force_disconnect(AUTH_FAILED, refused.message)
+                        return
                     self._health_failures += 1
                     log.warning(
                         f"[{self.device_id}] Liveness probe failed "
@@ -2806,6 +2822,13 @@ class BaseDriver(ABC):
         Drivers MUST propagate transport errors from poll(). Swallowing
         httpx.ConnectError and friends in a driver's poll() causes connected
         state to lie.
+
+        A typed ``auth_failed`` is not a missed poll: the device answered by
+        refusing the credential, and every further poll would send it again,
+        which is what trips a device's lockout. The connection drops on the
+        first one. Untyped text that only reads like a refusal ("401
+        Unauthorized") still takes the count, since an expired session looks
+        the same and the classifier is guessing.
         """
         detach_emit_chain()  # a device-lifetime loop is a root, not a continuation
         import time
@@ -2839,6 +2862,17 @@ class BaseDriver(ABC):
                     if self._last_error_writes == errors_before:
                         self._clear_stale_last_error()
                 except (ConnectionError, TimeoutError, OSError) as exc:
+                    refused = typed_fault_from_exc(
+                        exc, host=self.config.get("host", ""), port=self.config.get("port"),
+                    )
+                    if refused is not None and refused.code == AUTH_FAILED:
+                        log.warning(
+                            f"[{self.device_id}] Poll refused the credential; "
+                            f"dropping the connection: {exc}"
+                        )
+                        self._last_fault = refused
+                        self._handle_transport_disconnect()
+                        return
                     log.warning(
                         f"[{self.device_id}] Poll failed (connection): {exc}"
                     )

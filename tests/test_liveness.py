@@ -16,7 +16,7 @@ import pytest
 
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
-from openavc.drivers.base import BaseDriver
+from openavc.drivers.base import BaseDriver, ConnectionFaultError
 from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.drivers.driver_loader import validate_driver_definition
 from openavc.transport.tcp import TCPTransport
@@ -123,6 +123,24 @@ async def test_watchdog_flips_offline_with_typed_fault_after_misses() -> None:
     assert "keep-alive" in drv.last_fault.message
     # The loop exited on its own after forcing the disconnect
     assert drv._health_task is None or drv._health_task.done()
+
+
+@pytest.mark.asyncio
+async def test_a_refused_credential_drops_on_the_first_probe_and_keeps_its_code() -> None:
+    """A probe the device answered by refusing the credential is not a miss:
+    the device is there. It drops at once as auth_failed, so the platform
+    pauses instead of reconnecting into the same refusal."""
+    drv = _make_driver()
+    drv.probe_raises = ConnectionFaultError("Login rejected", code="auth_failed")
+
+    drv._start_health_loop()
+    await asyncio.sleep(0.3)
+
+    assert drv.get_state("connected") is False
+    assert drv.probe_count == 1
+    assert drv.last_fault is not None
+    assert drv.last_fault.code == "auth_failed"
+    assert drv.last_fault.message == "Login rejected"
 
 
 @pytest.mark.asyncio

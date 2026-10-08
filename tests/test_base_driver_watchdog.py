@@ -14,7 +14,7 @@ import pytest
 
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
-from openavc.drivers.base import BaseDriver
+from openavc.drivers.base import BaseDriver, ConnectionFaultError
 
 
 class _CountingDriver(BaseDriver):
@@ -229,6 +229,52 @@ async def test_watchdog_uses_no_response_for_a_generic_drop() -> None:
     assert drv.last_fault is not None
     assert drv.last_fault.code == NO_RESPONSE
     assert "stopped answering" in drv.last_fault.message
+
+
+@pytest.mark.asyncio
+async def test_a_refused_credential_drops_on_the_first_poll() -> None:
+    """A typed auth_failed from poll() is the device answering no, not a
+    missed poll: every further poll would send the refused credential again,
+    so the connection drops on the first one, in the driver's own words."""
+    drv = _make_driver()
+    drv._connected = True
+    drv.set_state("connected", True)
+    drv.poll_raises = ConnectionFaultError("Login rejected", code="auth_failed")
+
+    await drv.start_polling(0.01)
+    await _wait_until(lambda: drv.get_state("connected") is False)
+    await asyncio.sleep(0.05)  # room for a second poll that must not come
+
+    assert drv.get_state("connected") is False
+    assert drv.poll_count == 1
+    assert drv.last_fault is not None
+    assert drv.last_fault.code == "auth_failed"
+    assert drv.last_fault.message == "Login rejected"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "raised, code",
+    [
+        # Untyped text that reads as a refusal is a guess (an expired session
+        # looks the same), so it keeps the tolerance and is classified at the end.
+        (ConnectionError("401 Unauthorized"), "auth_failed"),
+        (ConnectionFaultError("Not this protocol", code="no_response"), "no_response"),
+    ],
+)
+async def test_other_poll_failures_still_take_the_missed_poll_count(raised, code) -> None:
+    drv = _make_driver()
+    drv._connected = True
+    drv.set_state("connected", True)
+    drv.poll_raises = raised
+
+    await drv.start_polling(0.01)
+    await _wait_until(lambda: drv.get_state("connected") is False)
+
+    assert drv.get_state("connected") is False
+    assert drv.poll_count == 3
+    assert drv.last_fault is not None
+    assert drv.last_fault.code == code
 
 
 @pytest.mark.asyncio

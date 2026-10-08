@@ -2779,10 +2779,10 @@ class ConfigurableDriver(BaseDriver):
             # Every request this cycle came back rejected — not one privileged
             # endpoint, the credentials themselves. Raise typed so the fault
             # reaches the device card as auth_failed instead of the device
-            # sitting "connected" with stale state. BaseDriver's missed-poll
-            # watchdog carries this through to _set_offline_reason once the
-            # cycle count is met, so a one-off rejection during a device
-            # reboot still can't flip the card on its own.
+            # sitting "connected" with stale state. BaseDriver's poll loop
+            # drops the connection on it at once rather than counting it as a
+            # missed poll, so the credentials are not sent for more cycles,
+            # and the platform then waits for them to change.
             raise ConnectionFaultError(
                 f"the device rejected the credentials on every request this "
                 f"poll cycle ({tally[0]} of {tally[0]}) — check the username "

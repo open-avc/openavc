@@ -89,6 +89,27 @@ class _RefusedDuringStartupDriver(_AuthRejectDriver):
         self._force_disconnect("auth_failed", "Login rejected")
 
 
+class _RefusedWhenPolledDriver(_AuthRejectDriver):
+    """Connects and polls; every poll is refused (the password changed on a
+    device that sends the credential with every request)."""
+
+    def __init__(self, *a: Any, **k: Any) -> None:
+        super().__init__(*a, **k)
+        self.poll_count = 0
+
+    async def connect(self) -> None:
+        self.connect_attempts += 1
+        if self.connect_attempts > 1:
+            raise ConnectionFaultError("Login rejected", code="auth_failed")
+        self._connected = True
+        self.set_state("connected", True)
+        await self.start_polling(0.01)
+
+    async def poll(self) -> None:
+        self.poll_count += 1
+        raise ConnectionFaultError("Login rejected", code="auth_failed")
+
+
 class _PermanentFaultDriver(_AuthRejectDriver):
     """Fails every attempt with a fault only a human can clear.
 
@@ -285,6 +306,34 @@ async def test_reconnect_loop_pauses_when_the_new_session_is_refused(
         assert dm.state.get("device.d1.reconnect_failed") is True
     finally:
         await dm._cancel_reconnect("d1")
+
+
+async def test_a_refused_poll_pauses_after_one_refusal(dm, monkeypatch):
+    """A device that starts refusing the credential its polls carry: one
+    refused poll, then offline as auth_failed and paused. No second poll and
+    no reconnect sends it again."""
+    _register("acme_auth", _RefusedWhenPolledDriver)
+    monkeypatch.setattr(dm, "_reconnect_delay", lambda device_id, attempt: 0.0)
+    try:
+        await dm.add_device({
+            "id": "d1", "driver": "acme_auth", "name": "D1",
+            "config": {"host": "192.0.2.1"},
+        })
+        driver = dm._devices["d1"]
+        for _ in range(100):
+            if dm.state.get("device.d1.reconnect_failed"):
+                break
+            await asyncio.sleep(0.01)
+        await asyncio.sleep(0.05)
+
+        assert driver.poll_count == 1
+        assert driver.connect_attempts == 1
+        assert dm.state.get("device.d1.offline_reason") == "auth_failed"
+        assert dm.state.get("device.d1.reconnect_failed") is True
+        assert "d1" not in dm._reconnect_tasks
+    finally:
+        await dm._cancel_reconnect("d1")
+        _unregister("acme_auth")
 
 
 @pytest.mark.parametrize(
