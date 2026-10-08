@@ -32,8 +32,6 @@ INSTALL_SERVICE_BAT = INSTALLER / "install-service.bat"
 SETUP_ISS = INSTALLER / "setup.iss"
 
 SYSTEM, ADMINS, USERS = "S-1-5-18", "S-1-5-32-544", "S-1-5-32-545"
-# The SDDL aliases Windows prints for those three.
-ALIAS = {"SY": SYSTEM, "BA": ADMINS, "BU": USERS}
 READ_EXECUTE = 0x1200A9
 FULL = "FA"
 
@@ -164,9 +162,42 @@ def _sddl(root: Path) -> dict[str, str]:
     return found
 
 
+def _sid(text: str) -> str:
+    """A SID however SDDL wrote it, as S-1-...
+
+    SDDL writes well-known accounts as two-letter aliases, and which ones
+    depends on the machine: BA, SY and BU anywhere, but LA for the built-in
+    Administrator account, which is the account CI's Windows runner uses.
+    Windows itself does the expansion, so no alias needs listing here.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    advapi.ConvertStringSidToSidW.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_void_p)]
+    advapi.ConvertStringSidToSidW.restype = wintypes.BOOL
+    advapi.ConvertSidToStringSidW.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)]
+    advapi.ConvertSidToStringSidW.restype = wintypes.BOOL
+    kernel.LocalFree.argtypes = [ctypes.c_void_p]
+
+    binary = ctypes.c_void_p()
+    if not advapi.ConvertStringSidToSidW(text, ctypes.byref(binary)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        string = ctypes.c_void_p()
+        if not advapi.ConvertSidToStringSidW(binary, ctypes.byref(string)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            return ctypes.wstring_at(string.value)
+        finally:
+            kernel.LocalFree(string)
+    finally:
+        kernel.LocalFree(binary)
+
+
 def _owner(sddl: str) -> str:
-    sid = re.match(r"O:([^:]+?)(?:G:|D:)", sddl).group(1)
-    return ALIAS.get(sid, sid)
+    return _sid(re.match(r"O:([^:]+?)(?:G:|D:)", sddl).group(1))
 
 
 def _protected(sddl: str) -> bool:
@@ -179,7 +210,7 @@ def _aces(sddl: str) -> set[tuple[str, bool, str, str]]:
     found = set()
     for ace in re.findall(r"\(([^)]*)\)", dacl):
         kind, flags, rights, _obj, _inh, sid = ace.split(";")[:6]
-        found.add((kind, "ID" in flags, rights, ALIAS.get(sid, sid)))
+        found.add((kind, "ID" in flags, rights, _sid(sid)))
     return found
 
 
