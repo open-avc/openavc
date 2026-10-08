@@ -3235,7 +3235,7 @@ Two things follow for a driver author. A `connect()` that is expensive (spawning
 
 ### The liveness probe
 
-Override `_liveness_probe()` when the link can die without the transport noticing (UDP, OSC, a push-mostly TCP device). The platform calls it every `HEALTH_INTERVAL_S` seconds (default 30) under a `HEALTH_TIMEOUT_S` deadline (default 5). Returning means the device answered; any exception is a miss. After `HEALTH_MAX_FAILURES` misses in a row (default 2) the platform drops the connection with `no_response` and `HEALTH_FAULT_MESSAGE`, then reconnects. All four are class attributes you can override.
+Override `_liveness_probe()` when the link can die without the transport noticing (UDP, OSC, a push-mostly TCP device). The platform calls it every `HEALTH_INTERVAL_S` seconds (default 30) under a `HEALTH_TIMEOUT_S` deadline (default 5). Returning means the device answered; any exception is a miss. After `HEALTH_MAX_FAILURES` misses in a row (default 2) the platform drops the connection with `no_response` and `HEALTH_FAULT_MESSAGE`, then reconnects. A typed `auth_failed` is not a miss: it drops the connection at once and stops the retries. All four are class attributes you can override.
 
 ```python
 async def _liveness_probe(self) -> None:
