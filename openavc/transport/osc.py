@@ -73,6 +73,8 @@ class OSCTransport:
         self._udp: UDPTransport | None = None
         self._listen_transport: asyncio.DatagramTransport | None = None
         self._listen_protocol: _OSCListenProtocol | None = None
+        # Feedback accepted on the dedicated listen socket (receive_count).
+        self._listen_receive_count = 0
 
         # TCP+SLIP mode state.
         self._tcp: Any = None  # TCPTransport, imported lazily
@@ -272,6 +274,22 @@ class OSCTransport:
         return max(udp_ts, listen_ts)
 
     @property
+    def send_count(self) -> int:
+        """Messages written on the active socket, for the life of this
+        transport (the counts are the inner transport's own)."""
+        inner = self._tcp if self._tcp_mode else self._udp
+        return inner.send_count if inner is not None else 0
+
+    @property
+    def receive_count(self) -> int:
+        """Reads that brought data back on any of this transport's sockets:
+        the active one, and in UDP mode the dedicated listen socket too, which
+        is where some devices send their feedback (see verify())."""
+        inner = self._tcp if self._tcp_mode else self._udp
+        count = inner.receive_count if inner is not None else 0
+        return count + self._listen_receive_count
+
+    @property
     def connected(self) -> bool:
         """True if the active transport is open and ready."""
         if self._tcp_mode:
@@ -323,6 +341,7 @@ class _OSCListenProtocol(asyncio.DatagramProtocol):
                 return
         if self._parent is not None:
             self._parent._listen_last_data = time.monotonic()
+            self._parent._listen_receive_count += 1
         log.debug(f"[{self._name}] RX: ({len(data)} bytes) <- {addr[0]}:{addr[1]}")
         record_traffic(
             self._traffic_name, RX, data, channel="osc",

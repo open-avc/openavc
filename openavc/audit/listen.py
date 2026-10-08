@@ -211,6 +211,10 @@ class ListenPass:
         self.finished_at: float | None = None
         self.poll_interval = 0.0
         self.liveness_every = 0.0
+        # The poll loop's silence check, when it watches this driver: how many
+        # polls in a row with no reply take the device offline. Known once the
+        # connection is up (it asks the live transport).
+        self.silence_polls = 0
         # Drops and reconnects while listening, and after the window closed
         # (in a command's window or a power test, which each say their own).
         self.reconnects = 0
@@ -446,6 +450,12 @@ class ListenPass:
             self.connected_at = now
             self.status = LISTENING
             self.offline = None
+            driver = self.sandbox.driver
+            watches = getattr(driver, "_watches_for_silence", None)
+            if self.poll_interval > 0 and callable(watches) and watches() is True:
+                self.silence_polls = max(
+                    int((driver.config or {}).get("max_missed_polls", 3) or 3), 1
+                )
             self.ends_at = self._window_end()
             self._timeline("listen.connected", f"Connected, {self._since(now)} after starting.")
         else:
@@ -686,6 +696,7 @@ class ListenPass:
             "max_ends_at": self.started_at + self.max_seconds,
             "poll_interval": self.poll_interval,
             "liveness_every": self.liveness_every,
+            "silence_polls": self.silence_polls,
             "reconnects": self.reconnects,
             "drops": self.drops,
             "later_reconnects": self.later_reconnects,

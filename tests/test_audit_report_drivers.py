@@ -663,6 +663,13 @@ def test_clock_times_say_their_time_zone_and_the_liveness_check_is_said():
     page = "".join(_render_driver(section))
     assert "Liveness check" in page
     assert "every 30.0 seconds, apart from the polls" in page
+    assert "Silence check" not in page
+
+    section["attempts"][0].update({"liveness_every": 0.0, "silence_polls": 3})
+    page = "".join(_render_driver(section))
+    assert "Liveness check" not in page
+    assert "Silence check" in page
+    assert "3 polls in a row with no reply take the device offline" in page
 
 
 def test_the_report_says_where_each_identity_field_came_from():

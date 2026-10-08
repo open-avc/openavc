@@ -538,9 +538,17 @@ export interface AuditOutage {
   ends_at: number | null;
   notice_ceiling_seconds: number;
   ping: { used: boolean; why: string };
-  /** How the driver notices a device that went: a liveness probe, how often
-   *  it probes, and the longest it takes to give up (seconds). */
-  watch: { liveness_probe: boolean; probe_every: number; notice_within: number; poll_interval: number };
+  /** How the driver notices a device that went: a liveness probe and how
+   *  often it probes, or the silence check (that many polls in a row with no
+   *  reply), and the longest either takes to give up (seconds). */
+  watch: {
+    liveness_probe: boolean;
+    probe_every: number;
+    silence_check: boolean;
+    silence_polls: number;
+    notice_within: number;
+    poll_interval: number;
+  };
   reason: { code: string; detail: string } | null;
   reasons: { t: number; code: string; detail: string }[];
   measured: {

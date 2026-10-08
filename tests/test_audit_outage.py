@@ -435,10 +435,16 @@ async def test_a_device_that_does_not_answer_ping_is_timed_by_the_marks(driver):
 
 
 async def test_a_pulled_cable_the_driver_never_notices_is_said_plainly(driver):
-    """No liveness probe: polls go out, nothing comes back, nothing fails."""
+    """No liveness probe and no polling (so no silence check): it reads the
+    device once at connect, and nothing it does afterwards can fail."""
+    unpolled = dict(
+        DRIVER, id="acme_unpolled", default_config={"port": 1, "poll_interval": 0},
+        on_connect=["PWR?\\r", "VOL?\\r"],
+    )
+    _DRIVER_REGISTRY["acme_unpolled"] = create_configurable_driver_class(unpolled)
     unit = Unit()
     await unit.start()
-    session, run = await _connected(unit)
+    session, run = await _connected(unit, driver_id="acme_unpolled")
 
     async def pinger() -> bool:
         return not unit.unplugged
@@ -448,7 +454,7 @@ async def test_a_pulled_cable_the_driver_never_notices_is_said_plainly(driver):
             session, run, CABLE_PULL, pinger=pinger, notice_ceiling_seconds=1.0,
             back_unnoticed_seconds=0.3, **QUICK,
         )
-        assert not test.watch["liveness_probe"]
+        assert not test.watch["liveness_probe"] and not test.watch["silence_check"]
         test.mark("off")
         unit.unplugged = True
         await _until(lambda: test.not_noticed_at is not None)
@@ -464,6 +470,40 @@ async def test_a_pulled_cable_the_driver_never_notices_is_said_plainly(driver):
             "something it sends fails"
         )
         assert "outage.not_noticed" in [e.kind for e in session.timeline]
+    finally:
+        await run.stop()
+        await unit.close()
+        _DRIVER_REGISTRY.pop("acme_unpolled", None)
+
+
+async def test_a_polled_driver_notices_a_pulled_cable_by_its_silence(driver):
+    """No liveness probe, but it polls and reads replies: polls in a row with
+    no reply take it offline, and once the cable is back the reconnect holds
+    until the device answers, then reports it back."""
+    unit = Unit()
+    await unit.start()
+    session, run = await _connected(unit)
+
+    async def pinger() -> bool:
+        return not unit.unplugged
+
+    try:
+        test = start_outage(session, run, CABLE_PULL, pinger=pinger, **QUICK)
+        assert not test.watch["liveness_probe"]
+        assert test.watch["silence_check"] and test.watch["silence_polls"] == 3
+        # The poll answered just before the cable went, then three silent ones.
+        assert test.watch["notice_within"] == 0.8
+        test.mark("off")
+        unit.unplugged = True
+        await _until(lambda: test.noticed_at is not None)
+        assert test.reason["code"] == "no_response"
+        unit.unplugged = False
+        test.mark("on")
+        await _until(lambda: test.status == DONE, timeout=30.0)
+        record = test.record()
+        assert record["reconnected_at"] is not None
+        assert record["summary"].startswith("OpenAVC noticed the device was gone")
+        assert "does not check on its own" not in record["summary"]
     finally:
         await run.stop()
         await unit.close()

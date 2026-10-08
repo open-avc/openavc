@@ -123,6 +123,15 @@ class TCPTransport:
         # write). Cleared on every connect so a healed link can't report it.
         self._last_fault: ConnectionFault | None = None
 
+        # Writes that reached the socket and reads that brought bytes back,
+        # counted for the life of this connection. The poll loop compares them
+        # across a cycle to notice a peer that takes every query and answers
+        # none (BaseDriver._poll_loop). Reads are counted as they arrive, before
+        # framing: a device that answers in a shape the parser cannot frame is
+        # still answering.
+        self.send_count = 0
+        self.receive_count = 0
+
         # For send_and_wait: a queue to capture the next response. May also
         # carry _DISCONNECT_SENTINEL to wake a parked waiter on disconnect.
         self._response_queue: asyncio.Queue[bytes | object] = asyncio.Queue(maxsize=100)
@@ -285,6 +294,7 @@ class TCPTransport:
         try:
             self._writer.write(data)
             await drain_or_stalled(self._writer, self._name)
+            self.send_count += 1
             log.debug(f"[{self._name}] TX: {self._format_data(data)}")
             record_traffic(self._traffic_name, TX, data, channel=self._traffic_channel)
             if self._inter_command_delay > 0:
@@ -367,6 +377,7 @@ class TCPTransport:
                 if not data:
                     # Connection closed by remote
                     break
+                self.receive_count += 1
 
                 if self._frame_parser is None:
                     # Raw mode — deliver all data as-is

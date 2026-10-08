@@ -112,6 +112,11 @@ class UDPTransport:
         self._connected = False
         self._send_lock = asyncio.Lock()
         self.last_data_received: float = 0.0
+        # Datagrams sent, and datagrams accepted from the target, for the life
+        # of this socket: the poll loop compares them across a cycle to notice
+        # a peer that answers nothing (BaseDriver._poll_loop).
+        self.send_count = 0
+        self.receive_count = 0
         # Last send/socket error string, for the connection-fault classifier.
         # UDP is connectionless, so this is best-effort — an ICMP
         # port-unreachable surfaces via the protocol's error_received.
@@ -177,6 +182,7 @@ class UDPTransport:
                 self._last_error = str(e) or type(e).__name__
                 log.error(f"[{self._name}] UDP send failed to {host}:{port}: {e}")
                 raise
+            self.send_count += 1
             log.debug(
                 f"[{self._name}] TX: {_format_data(data, self._name)} "
                 f"-> {host}:{port}"
@@ -226,6 +232,7 @@ class UDPTransport:
                     f"{self.host}:{self.port}: {e}"
                 )
                 raise
+            self.send_count += 1
             log.info(
                 f"[{self._name}] TX: {_format_data(data, self._name)} -> "
                 f"{self.host}:{self.port}"
@@ -321,6 +328,7 @@ class UDPTransport:
                 return
 
         self.last_data_received = time.monotonic()
+        self.receive_count += 1
         log.debug(
             f"[{self._name}] RX: {_format_data(data, self._name)} "
             f"<- {addr[0]}:{addr[1]}"

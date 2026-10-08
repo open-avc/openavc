@@ -9,18 +9,19 @@ from openavc.transport.osc_codec import osc_encode_message
 
 
 class _StubParent:
-    """Minimal stand-in for OSCTransport (the listen protocol reads _host and
-    stamps _listen_last_data)."""
+    """Minimal stand-in for OSCTransport (the listen protocol reads _host,
+    stamps _listen_last_data and counts _listen_receive_count)."""
 
     def __init__(self, host):
         self._host = host
         self._listen_last_data = 0.0
+        self._listen_receive_count = 0
 
 
 def test_osc_listen_socket_drops_spoofed_feedback():
     """The dedicated OSC feedback socket only accepts datagrams from the
     configured device — a spoofed source is dropped (no callback, no liveness
-    stamp) while the device's own feedback passes."""
+    stamp, not counted as an answer) while the device's own feedback passes."""
     received: list[bytes] = []
     parent = _StubParent("10.0.0.7")
     proto = _OSCListenProtocol(received.append, "osc", parent=parent)
@@ -28,10 +29,12 @@ def test_osc_listen_socket_drops_spoofed_feedback():
     proto.datagram_received(b"forged", ("10.0.0.99", 9000))
     assert received == []
     assert parent._listen_last_data == 0.0
+    assert parent._listen_receive_count == 0
 
     proto.datagram_received(b"real", ("10.0.0.7", 9000))
     assert received == [b"real"]
     assert parent._listen_last_data > 0.0
+    assert parent._listen_receive_count == 1
 
 
 def test_osc_listen_socket_fails_open_for_hostname_target():

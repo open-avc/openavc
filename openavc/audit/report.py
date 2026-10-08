@@ -74,7 +74,10 @@
     ``active``, ``error``, the times (``started_at``, ``first_tx_at``,
     ``first_rx_at``, ``connected_at``, ``ends_at``, ``max_ends_at`` (how far
     "Keep listening" can take it), ``finished_at``), ``poll_interval``,
-    ``reconnects`` and ``drops`` while listening, ``later_reconnects`` and
+    ``liveness_every`` (the driver's liveness probe interval, 0 for none),
+    ``silence_polls`` (polls in a row with no reply that take it offline,
+    0 when the silence check does not watch it), ``reconnects`` and ``drops``
+    while listening, ``later_reconnects`` and
     ``later_drops`` after the window closed, ``offline`` (``code``, ``detail``,
     ``next_step``), ``declared``, ``reported`` (by the device: a value
     written at or after its first reply) and ``set_by_driver`` (a value the
@@ -182,8 +185,10 @@
     reconnect, as a device still booting can do, and the reconnect that
     held), ``not_noticed_at`` (the ``notice_ceiling_seconds`` passed first),
     ``ends_at``, ``finished_at``; ``watch`` (``liveness_probe``,
-    ``probe_every``, ``notice_within``: the longest its probe can take to
-    notice, ``poll_interval``: how the driver notices a device that went
+    ``probe_every``, ``silence_check`` and ``silence_polls``: the poll loop
+    drops it after that many polls in a row with no reply,
+    ``notice_within``: the longest the probe or the silence check can take
+    to notice, ``poll_interval``: how the driver notices a device that went
     quiet); ``reason`` (the first offline reason after it noticed: ``code``,
     ``detail``) and every one in ``reasons``; ``measured``, in seconds
     (``noticed_after``, negative when OpenAVC noticed before the device
@@ -1832,6 +1837,12 @@ def _render_driver(section: dict[str, Any]) -> list[str]:
         if attempt.get("liveness_every"):
             parts.append(_row("Liveness check", _e(
                 f"every {attempt['liveness_every']} seconds, apart from the polls: how the driver "
+                "notices a device that stopped answering"
+            )))
+        elif attempt.get("silence_polls"):
+            polls = attempt["silence_polls"]
+            parts.append(_row("Silence check", _e(
+                f"{polls} polls in a row with no reply take the device offline: how the driver "
                 "notices a device that stopped answering"
             )))
         for label, drops, again in (

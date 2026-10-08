@@ -16,7 +16,7 @@ function outage(extra: Partial<AuditOutage> = {}): AuditOutage {
     reachable_at: null, noticed_at: null, reconnected_at: null, not_noticed_at: null,
     dropped_again_at: null, reconnected_again_at: null,
     ends_at: null, notice_ceiling_seconds: 300, ping: { used: true, why: "" },
-    watch: { liveness_probe: false, probe_every: 0, notice_within: 0, poll_interval: 5 }, reason: null,
+    watch: { liveness_probe: false, probe_every: 0, silence_check: false, silence_polls: 0, notice_within: 0, poll_interval: 5 }, reason: null,
     reasons: [], measured: { noticed_after: null, away_for: null, answered_after_on: null,
       reconnected_after_back: null, dropped_again_after: null, reconnected_again_after: null },
     before: ["power", "volume"], repopulated: { reported_again: [], not_reported_again: ["power", "volume"] },
@@ -55,7 +55,7 @@ describe("what to do now, while a test runs", () => {
 
   it("keeps the power off until a driver that probes has noticed", () => {
     const off = outage({
-      off_at: 101, watch: { liveness_probe: true, probe_every: 30, notice_within: 66, poll_interval: 5 },
+      off_at: 101, watch: { liveness_probe: true, probe_every: 30, silence_check: false, silence_polls: 0, notice_within: 66, poll_interval: 5 },
     });
     expect(outageNowText(off, 110)).toBe(
       "Leave it off until OpenAVC notices it is gone. This driver checks every 30 s, so it can " +
@@ -65,6 +65,22 @@ describe("what to do now, while a test runs", () => {
     const noticed = { ...off, noticed_at: 150 };
     expect(outageNowText(noticed, 151)).toBe("Now turn it back on and press I turned it back on.");
     expect(outageNextMark(noticed)).toBe("on");
+  });
+
+  it("keeps the power off until a driver watched for silence has noticed", () => {
+    const off = outage({
+      off_at: 101,
+      watch: {
+        liveness_probe: false, probe_every: 0, silence_check: true, silence_polls: 3,
+        notice_within: 20, poll_interval: 5,
+      },
+    });
+    expect(outageNowText(off, 110)).toBe(
+      "Leave it off until OpenAVC notices it is gone. This driver polls every 5 s and notices " +
+        "after 3 polls with no reply, so it can take up to 20 s. The table below shows it.",
+    );
+    expect(outageNextMark(off)).toBe("");
+    expect(outageNextMark({ ...off, noticed_at: 118 })).toBe("on");
   });
 
   it("never reads a running clock below zero", () => {
@@ -84,10 +100,21 @@ describe("what to do now, while a test runs", () => {
         "The table below shows it.",
     );
     expect(outageNextMark(pulled)).toBe("");
-    const checked = { ...pulled, watch: { liveness_probe: true, probe_every: 30, notice_within: 66, poll_interval: 5 } };
+    const checked = { ...pulled, watch: { liveness_probe: true, probe_every: 30, silence_check: false, silence_polls: 0, notice_within: 66, poll_interval: 5 } };
     expect(outageNowText(checked, 110)).toBe(
       "Leave it unplugged until OpenAVC notices it is gone. This driver checks every 30 s, so it " +
         "can take up to 66 s. The table below shows it.",
+    );
+    const watched = {
+      ...pulled,
+      watch: {
+        liveness_probe: false, probe_every: 0, silence_check: true, silence_polls: 3,
+        notice_within: 40, poll_interval: 10,
+      },
+    };
+    expect(outageNowText(watched, 110)).toBe(
+      "Leave it unplugged until OpenAVC notices it is gone. This driver polls every 10 s and " +
+        "notices after 3 polls with no reply, so it can take up to 40 s. The table below shows it.",
     );
     for (const seen of [{ noticed_at: 130 }, { not_noticed_at: 401 }]) {
       expect(outageNowText({ ...pulled, ...seen }, 410)).toBe(

@@ -1950,6 +1950,14 @@ class ConfigurableDriver(BaseDriver):
         declarative driver)."""
         return self._liveness_def is not None
 
+    def _reads_replies(self) -> bool:
+        """A definition reads what the device sends when it declares a
+        response rule of any kind. One with none is a device that is only
+        told things, so the poll loop's silence check leaves it alone."""
+        return bool(
+            self._compiled_responses or self._json_responses or self._osc_responses
+        )
+
     async def _liveness_probe(self) -> None:
         """Send the declared probe and wait for a qualifying reply.
 

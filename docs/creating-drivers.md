@@ -1454,9 +1454,11 @@ The poll cadence is **not** set in the `polling` block — it comes from `defaul
 
 A line in both `on_connect` and `polling` is sent once at connect: the first poll, which runs as soon as `on_connect` finishes, skips it. HTTP drivers are the exception; their first poll sends every line.
 
+**A device that answers nothing goes offline.** On `tcp`, `udp` and `osc`, a driver that polls and declares any `responses` rule is watched for silence: when three polls in a row send something and nothing at all comes back before the next one is due, the device goes offline with *Not responding* (`no_response`), and the card says whether anything answered on that connection. Anything the device sends counts as an answer, a reply no rule matches included, so a poll query only has to be something the device answers in every state (standby, warm-up, idle). After that, the reconnects keep the device offline until it answers a poll, so a device that never answers stays offline instead of reading connected for three polls of every retry. `max_missed_polls` in the device config changes the count. The check is off for a driver with a `liveness` block (the probe decides instead), for one with no response rules, and for now on `serial`.
+
 #### `liveness` section
 
-A `liveness` block arms a watchdog for a link that can die without the transport noticing (UDP, OSC, a push-style TCP device with long idle gaps): send a probe every `interval` seconds, expect a reply within `timeout`, and after `max_failures` misses in a row drop the connection, so the platform reconnects and the device card shows *Not responding*.
+A `liveness` block arms a watchdog for a link that can die without the transport noticing: send a probe every `interval` seconds, expect a reply within `timeout`, and after `max_failures` misses in a row drop the connection, so the platform reconnects and the device card shows *Not responding*. A polled driver with response rules on `tcp`, `udp` or `osc` already goes offline when its polls stop drawing replies (see polling above). Declare `liveness` for a device you don't poll (push only), a `serial` device, one whose poll interval is too long to notice silence in time, or one that sends data on its own so steadily (metering) that silence never shows without an `expect` pattern. With a `liveness` block the probe alone decides.
 
 ```yaml
 liveness:
@@ -1475,7 +1477,7 @@ liveness:
 
 Valid on `tcp`, `serial`, `udp`, and `osc`. HTTP drivers don't need it: every HTTP poll awaits its response, so missed polls take the device offline.
 
-For a plain TCP request/response device, `tcp_keepalive: true` in `default_config` has the socket itself detect a dead peer (in about 90 seconds). `tcp_keepalive` proves the TCP path is up; `liveness` proves the device answers the protocol.
+`tcp_keepalive: true` in `default_config` has the socket itself detect a dead peer (in about 90 seconds). It proves the TCP path is up, not that the device answers the protocol: something else listening on the port passes it. The replies to your polls, or a `liveness` probe, prove that.
 
 #### `routing` section
 
@@ -2902,7 +2904,7 @@ class BeaconDriver(BaseDriver):
         await self.events.emit(f"device.disconnected.{self.device_id}")
 ```
 
-**Reachability for UDP drivers.** UDP is purely connectionless — there's no `verify()` probe and no socket-level disconnect signal. If your device is meant to be bidirectional (i.e., you poll status, not just fire-and-forget like Wake-on-LAN), declare a positive `poll_interval` in `default_config` and implement `poll()` to send a status query. A successful round-trip keeps `connected: True`; consecutive failures flip it to `False` and start auto-reconnect. Without polling, the platform has no way to know the device went away and `connected` stays `True` against a dead host. The Wake-on-LAN example above is the rare case where omitting polling is correct, because there's nothing to read back.
+**Reachability for UDP drivers.** UDP is purely connectionless — there's no `verify()` probe and no socket-level disconnect signal. If your device is meant to be bidirectional (i.e., you poll status, not just fire-and-forget like Wake-on-LAN), declare a positive `poll_interval` in `default_config` and implement `poll()` to send a status query, with the reply handled in `on_data_received`. A reply keeps `connected: True`; three polls in a row with no reply flip it to `False` and start auto-reconnect, whether `poll()` awaits the reply or not (see [The `poll()` contract](#the-poll-contract)). Without polling, the platform has no way to know the device went away and `connected` stays `True` against a dead host. The Wake-on-LAN example above is the rare case where omitting polling is correct, because there's nothing to read back.
 
 ### Controller drivers: managing many child entities
 
@@ -3154,6 +3156,8 @@ These methods can be overridden in your driver subclass:
 
 Python drivers that override `poll()` **must propagate transport-level errors**. The polling loop catches `ConnectionError`, `TimeoutError`, `OSError`, and any `httpx.HTTPError` and counts them toward the missed-poll watchdog. After 3 consecutive dry polls, the platform flips `device.<id>.connected` to `False` and emits `device.disconnected.<id>`. A typed `auth_failed` is the exception: the device answered by refusing the credential, so the connection drops on the first one instead of sending it again on two more polls (below).
 
+A poll that sends its queries and returns without awaiting the replies is watched too, when the driver uses the platform's `tcp`, `udp` or `osc` transport, overrides `on_data_received`, and has no liveness probe: three polls in a row that send something and get nothing back before the next poll take the device offline with `no_response`, and the reconnects keep it offline until it answers a poll. Anything that arrives counts, so poll something the device answers in every state it can be in. A driver that owns its session (its own socket or client) is not watched; its `poll()` has to notice silence itself.
+
 Swallowing transport errors here causes `device.<id>.connected` to lie when the device is unreachable. **Do this:**
 
 ```python
@@ -3242,7 +3246,7 @@ Two things follow for a driver author. A `connect()` that is expensive (spawning
 
 ### The liveness probe
 
-Override `_liveness_probe()` when the link can die without the transport noticing (UDP, OSC, a push-mostly TCP device). The platform calls it every `HEALTH_INTERVAL_S` seconds (default 30) under a `HEALTH_TIMEOUT_S` deadline (default 5). Returning means the device answered; any exception is a miss. After `HEALTH_MAX_FAILURES` misses in a row (default 2) the platform drops the connection with `no_response` and `HEALTH_FAULT_MESSAGE`, then reconnects. A typed `auth_failed` is not a miss: it drops the connection at once and stops the retries. All four are class attributes you can override.
+Override `_liveness_probe()` when the link can die without the transport noticing and polling cannot tell: a push-mostly device you don't poll, a serial device, or one that streams data on its own so steadily that silence on the control channel never shows. A driver with a probe is not watched by the poll loop's silence check; the probe decides. The platform calls it every `HEALTH_INTERVAL_S` seconds (default 30) under a `HEALTH_TIMEOUT_S` deadline (default 5). Returning means the device answered; any exception is a miss. After `HEALTH_MAX_FAILURES` misses in a row (default 2) the platform drops the connection with `no_response` and `HEALTH_FAULT_MESSAGE`, then reconnects. A typed `auth_failed` is not a miss: it drops the connection at once and stops the retries. All four are class attributes you can override.
 
 ```python
 async def _liveness_probe(self) -> None:

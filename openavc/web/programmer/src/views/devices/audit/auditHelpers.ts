@@ -1016,11 +1016,26 @@ function endsIn(o: AuditOutage, now: number): number | null {
   return o.ends_at === null ? null : Math.max(0, Math.ceil(o.ends_at - now));
 }
 
-/** A power cycle whose driver notices through its liveness probe, and has not
- *  yet: the person waits for it before turning the device back on. */
-function awaitingProbe(o: AuditOutage): boolean {
+/** Whether the driver checks on its own that the device is still there: a
+ *  liveness probe, or the silence check on its polls. */
+function checksOnItsOwn(o: AuditOutage): boolean {
+  return o.watch.liveness_probe || o.watch.silence_check;
+}
+
+/** How the driver notices, and the longest that takes. */
+function checkText(o: AuditOutage): string {
+  const within = Math.ceil(o.watch.notice_within);
+  return o.watch.liveness_probe
+    ? `This driver checks every ${o.watch.probe_every} s, so it can take up to ${within} s.`
+    : `This driver polls every ${o.watch.poll_interval} s and notices after ` +
+        `${o.watch.silence_polls} polls with no reply, so it can take up to ${within} s.`;
+}
+
+/** A power cycle whose driver notices on its own, and has not yet: the
+ *  person waits for it before turning the device back on. */
+function awaitingCheck(o: AuditOutage): boolean {
   return (
-    o.kind === "power_cycle" && o.watch.liveness_probe
+    o.kind === "power_cycle" && checksOnItsOwn(o)
     && o.noticed_at === null && o.not_noticed_at === null
   );
 }
@@ -1036,12 +1051,8 @@ export function outageNowText(o: AuditOutage, now: number): string {
       : "Now turn the device off, and press I turned it off as you do.";
   }
   if (!back) {
-    if (awaitingProbe(o)) {
-      return (
-        `Leave it off until OpenAVC notices it is gone. This driver checks every ` +
-        `${o.watch.probe_every} s, so it can take up to ${Math.ceil(o.watch.notice_within)} s. ` +
-        `The table below shows it.`
-      );
+    if (awaitingCheck(o)) {
+      return `Leave it off until OpenAVC notices it is gone. ${checkText(o)} The table below shows it.`;
     }
     if (!cable) {
       return o.noticed_at !== null
@@ -1050,10 +1061,8 @@ export function outageNowText(o: AuditOutage, now: number): string {
     }
     if (o.noticed_at === null && o.not_noticed_at === null) {
       const minutes = Math.round(o.notice_ceiling_seconds / 60) || 1;
-      return o.watch.liveness_probe
-        ? `Leave it unplugged until OpenAVC notices it is gone. This driver checks every ` +
-            `${o.watch.probe_every} s, so it can take up to ${Math.ceil(o.watch.notice_within)} s. ` +
-            `The table below shows it.`
+      return checksOnItsOwn(o)
+        ? `Leave it unplugged until OpenAVC notices it is gone. ${checkText(o)} The table below shows it.`
         : `Leave it unplugged until OpenAVC notices it is gone, up to ${minutes} minutes. This ` +
             `driver does not check on its own whether the device is still there, so OpenAVC may ` +
             `not notice at all. The table below shows it.`;
@@ -1081,7 +1090,7 @@ export function outageNextMark(o: AuditOutage): "off" | "on" | "" {
   if (o.kind === "cable_pull" && o.noticed_at === null && o.not_noticed_at === null && o.reachable_at === null) {
     return "";
   }
-  if (awaitingProbe(o) && o.reachable_at === null) return "";
+  if (awaitingCheck(o) && o.reachable_at === null) return "";
   return "on";
 }
 

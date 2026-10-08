@@ -2009,6 +2009,18 @@ class DeviceManager:
         if len(parts) < 3:
             return
         device_id = parts[2]
+        # A held connection (see _reconnect_loop) is announced by the driver
+        # when the device answers, and the loop that opened it clears the
+        # offline reason. If that loop was stopped meanwhile (a setup action
+        # cancels it and leaves the connection up), nothing else would.
+        if device_id not in self._reconnect_tasks:
+            driver = self._devices.get(device_id)
+            if (
+                driver is not None
+                and driver.get_state("connected") is True
+                and self.state.get(f"device.{device_id}.offline_reason") is not None
+            ):
+                self._clear_offline_reason(device_id)
         # A bridge only configures its ports when a downstream is ADDED, so a
         # bridge that was down then and heals now would carry that downstream's
         # bytes at whatever its NVRAM holds -- the factory default, or the last
@@ -2421,7 +2433,28 @@ class DeviceManager:
 
                 try:
                     self._refresh_usb_serial_port(device_id, driver)
+                    # A device dropped because it answered no poll is not
+                    # announced again until it answers one: re-announcing it at
+                    # every reconnect made its card read connected for most of
+                    # each retry and fired its Connected/Disconnected triggers
+                    # every cycle. The link still opens and polls as usual.
+                    if getattr(driver, "_dropped_for_silence", False) is True:
+                        driver._hold_next_connect = True
                     await driver.connect()
+                    if getattr(driver, "_held", False) is True:
+                        if noisy:
+                            log.info(
+                                "[%s] Connected; it stays offline until it "
+                                "answers a poll", device_id,
+                            )
+                        if not await driver._wait_for_answer():
+                            # Closed again before answering. The driver kept
+                            # why (another silent verdict, or the link failing).
+                            if self._set_offline_reason(device_id, driver) == "auth_failed":
+                                self._pause_reconnect_for_auth(device_id)
+                                return
+                            attempt += 1
+                            continue
                     if not driver.get_state("connected"):
                         # The connection dropped while the driver was still
                         # starting up (a device that accepts one as it boots,

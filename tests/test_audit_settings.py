@@ -95,9 +95,16 @@ async def _fake_device(state: dict | None = None):
                 line = (await reader.readuntil(b"\r")).decode().strip()
                 if line.startswith("NAME "):
                     state["name"] = line[5:]
-                if line.startswith(("NAME", "MODE")) and not state.get("silent"):
+                if not line.startswith(("NAME", "MODE")):
+                    continue
+                if state.get("silent"):
+                    # Never reports the name, but still answers: a device
+                    # that answers nothing at all goes offline, and this one
+                    # is only keeping one value to itself.
+                    writer.write(f"MODE={state['mode']}\r".encode())
+                else:
                     writer.write(f"NAME={state['name']}\rMODE={state['mode']}\r".encode())
-                    await writer.drain()
+                await writer.drain()
         except (asyncio.IncompleteReadError, ConnectionError):
             pass
         finally:
@@ -294,7 +301,7 @@ async def test_an_audit_that_ends_before_the_read_back_still_puts_it_back(driver
     try:
         settings = settings_for(session, run, stop_readback_seconds=0.3)
         run.listen.sandbox.manager._confirm_window = lambda _driver: 30.0
-        device["silent"] = True  # takes the write, reports nothing
+        device["silent"] = True  # takes the write, never reports the name
         trial = await settings.write("device_name", "Boardroom")
         await _until(lambda: device["name"] == "Boardroom")
     finally:

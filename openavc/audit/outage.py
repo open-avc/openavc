@@ -36,13 +36,14 @@ from the session's listeners.
 
 **The ceiling.** OpenAVC has ``NOTICE_CEILING_SECONDS`` from the moment the
 device went away to notice. Past it the result is "OpenAVC did not notice",
-a finding about the driver, said plainly: a driver with no liveness probe
-notices a device that went quiet only when something it sends fails. When the
-device is back and OpenAVC has not noticed it was gone, the test ends
-``BACK_UNNOTICED_SECONDS`` later, or for a driver with a liveness probe once
-its probes have had time to fail (``watch.notice_within`` from when the device
-went): a device that reboots leaves the old connection dead, and the probe
-can notice after the device is back. Noticing then clears that deadline and
+a finding about the driver, said plainly: a driver with no liveness probe and
+no silence check (BaseDriver._watches_for_silence: polls in a row that draw no
+reply) notices a device that went quiet only when something it sends fails.
+When the device is back and OpenAVC has not noticed it was gone, the test ends
+``BACK_UNNOTICED_SECONDS`` later, or for a driver with a probe or the silence
+check once that has had time to fail (``watch.notice_within`` from when the
+device went): a device that reboots leaves the old connection dead, and the
+driver can notice after the device is back. Noticing then clears that deadline and
 the test waits for the reconnect.
 
 The test sends nothing but the pings (which the network check already sent).
@@ -210,19 +211,36 @@ class OutageTest:
         # come back.
         self.before = {name: state.get(name) for name in declared if state.get(name) is not None}
         # How this driver would notice a device that went quiet: a liveness
-        # probe (and how often), or only its polling and its sends failing.
+        # probe (and how often), the poll loop's silence check (polls in a
+        # row with no reply), or only its sends failing.
         driver = sandbox.driver
         probe = bool(driver is not None and getattr(driver, "_health_enabled", lambda: False)())
         every = float(getattr(driver, "HEALTH_INTERVAL_S", 0) or 0) if probe else 0.0
         misses = max(int(getattr(driver, "HEALTH_MAX_FAILURES", 1) or 1), 1) if probe else 0
         wait = float(getattr(driver, "HEALTH_TIMEOUT_S", 0) or 0) if probe else 0.0
+        poll = float(run.listen.poll_interval or 0)
+        silence = bool(
+            not probe and poll > 0 and driver is not None
+            and getattr(driver, "_watches_for_silence", lambda: False)()
+        )
+        polls = max(int((driver.config or {}).get("max_missed_polls", 3) or 3), 1) if silence else 0
+        if probe:
+            # The longest the probe takes to give up on a device that went:
+            # each missed probe's interval and its reply deadline.
+            notice_within = round(misses * (every + wait), 1)
+        elif silence:
+            # The poll answered just before the device went is judged one
+            # interval later, then `polls` silent ones follow.
+            notice_within = round((polls + 1) * poll, 1)
+        else:
+            notice_within = 0.0
         self.watch = {
             "liveness_probe": probe,
             "probe_every": every,
-            # The longest the probe takes to give up on a device that went:
-            # each missed probe's interval and its reply deadline.
-            "notice_within": round(misses * (every + wait), 1) if probe else 0.0,
-            "poll_interval": float(run.listen.poll_interval or 0),
+            "silence_check": silence,
+            "silence_polls": polls,
+            "notice_within": notice_within,
+            "poll_interval": poll,
         }
         self._handles: tuple[str, list[str]] | None = None
         self.task: asyncio.Task | None = None
@@ -601,7 +619,8 @@ def outage_sentence(record: dict[str, Any]) -> str:
             if record.get("not_noticed_at")
             else "OpenAVC did not notice the device was gone"
         )
-        if not (record.get("watch") or {}).get("liveness_probe"):
+        watch = record.get("watch") or {}
+        if not watch.get("liveness_probe") and not watch.get("silence_check"):
             text += (
                 ". This driver does not check on its own whether the device is still "
                 "there, so it notices only when something it sends fails"

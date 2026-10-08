@@ -8,11 +8,12 @@ interface LivenessEditorProps {
 
 /**
  * Edits the `liveness` block — a declarative connection watchdog for links
- * that die without closing the connection (UDP/OSC are connectionless; a
- * push-style TCP device that vanishes looks connected forever). The runtime
- * sends the probe every `interval` seconds, awaits a reply within `timeout`,
- * and reconnects after `max_failures` consecutive misses. Supported on
- * tcp/serial/udp/osc transports.
+ * that die without closing the connection. The runtime sends the probe every
+ * `interval` seconds, awaits a reply within `timeout`, and reconnects after
+ * `max_failures` consecutive misses. Supported on tcp/serial/udp/osc
+ * transports. Without it, a polled definition with response rules on
+ * tcp/udp/osc is still watched for silence by the poll loop
+ * (BaseDriver._watches_for_silence); with it, the probe alone decides.
  */
 export function LivenessEditor({ draft, onUpdate }: LivenessEditorProps) {
   const liveness = draft.liveness;
@@ -63,13 +64,11 @@ export function LivenessEditor({ draft, onUpdate }: LivenessEditorProps) {
           marginBottom: "var(--space-md)",
         }}
       >
-        Sends a cheap probe on an interval and reconnects after consecutive
-        unanswered probes, for devices and transports that go quiet without
-        closing the connection. UDP and OSC queries are fire-and-forget (a
-        dead host answers nothing and nothing errors), and a push-style TCP
-        device that vanishes without closing the socket looks connected
-        forever. Leave disabled for devices whose regular polling already
-        detects failures.
+        Sends a probe on an interval and reconnects after consecutive
+        unanswered probes. Without it, a driver that polls and has response
+        rules still goes offline over TCP, UDP or OSC when three polls in a
+        row get no reply. Turn it on for a device you don't poll, a serial
+        device, or to notice silence sooner than three poll intervals.
       </p>
 
       <label
