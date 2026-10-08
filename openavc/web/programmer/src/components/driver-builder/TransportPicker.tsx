@@ -597,7 +597,8 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
           }}
         >
           Minimum delay between commands. Some devices need this to avoid
-          command flooding (e.g., Extron recommends 0.1s).
+          command flooding (e.g., Extron recommends 0.1s). Left at 0,
+          start-up and poll lines over TCP or serial still go 50 ms apart.
         </div>
       </div>}
     </div>

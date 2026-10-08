@@ -18,9 +18,11 @@ connect() as before.
 from __future__ import annotations
 
 import asyncio
+import functools
 import math
 import os
 import re
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -662,6 +664,31 @@ class BaseDriver(ABC):
     #: ignore it, and then the real one is ignored too.
     LAST_ERROR_PROPERTY = "last_error"
 
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Note when each poll() a subclass defines starts and finishes.
+
+        The poll loop asks this to tell whether the connect has just polled:
+        a driver's _initial_sync() reading state with ``await self.poll()``
+        is that connect's first poll cycle, and the loop must not send the
+        same reads again a moment later (see _poll_loop). A driver calls its
+        own poll() directly, so the record has to live on the method itself.
+        Only a poll() that returns is noted; one that raised read nothing.
+        """
+        super().__init_subclass__(**kwargs)
+        poll = cls.__dict__.get("poll")
+        if poll is None or getattr(poll, "_notes_poll_start", False):
+            return
+
+        @functools.wraps(poll)
+        async def poll_noted(self: BaseDriver, *args: Any, **kw: Any) -> Any:
+            started = time.monotonic()
+            result = await poll(self, *args, **kw)
+            self._last_poll_started_at = started
+            return result
+
+        poll_noted._notes_poll_start = True  # type: ignore[attr-defined]
+        cls.poll = poll_noted  # type: ignore[method-assign]
+
     def __init__(
         self,
         device_id: str,
@@ -677,6 +704,11 @@ class BaseDriver(ABC):
         self._poll_task: asyncio.Task | None = None
         self._connected = False
         self._last_poll_success: float = 0.0
+        # When the current connect() began, and when the latest poll() that
+        # returned began (stamped by __init_subclass__'s wrapper). Together
+        # they tell the poll loop whether this connect already polled.
+        self._connect_began_at: float | None = None
+        self._last_poll_started_at: float | None = None
         # Bumped every time this driver writes LAST_ERROR_PROPERTY. The poll
         # loop compares it across a poll to tell "the poll reported nothing"
         # from "the poll reported the same thing again" — a value comparison
@@ -984,6 +1016,8 @@ class BaseDriver(ABC):
         # can't be misattributed to this one by the fault classifier.
         self._last_transport_error = ""
         self._last_fault = None
+        # A poll from before this attempt says nothing about the state now.
+        self._connect_began_at = time.monotonic()
         # A reconnect attempt may arrive with a stale push subscription if the
         # async cleanup hasn't run yet; drop it so we never hold two. Same for
         # a driver-owned session (an httpx client, a secondary socket) left
@@ -1823,6 +1857,10 @@ class BaseDriver(ABC):
         Protocol-level errors (unexpected response shape, expected device
         states like "in standby") may be handled inside poll() — those
         indicate the device is reachable but not in a queryable state.
+
+        The loop runs the first poll as soon as polling starts, unless this
+        connect already polled (from _initial_sync); then it waits one
+        interval from that poll.
         """
 
     async def _pre_connect(self) -> None:
@@ -1875,6 +1913,10 @@ class BaseDriver(ABC):
         a fully-initialized device. Raising tears the connection back down
         and fails the connect attempt; catch inside the override if a failed
         sync should leave the device connected anyway. Default: no-op.
+
+        A ``poll()`` that returns here counts as the poll loop's first cycle:
+        the loop polls next a full interval after it. Without one, the loop
+        polls as soon as it starts, so state is read at connect either way.
         """
 
     async def _close_session(self) -> None:
@@ -2829,9 +2871,13 @@ class BaseDriver(ABC):
         first one. Untyped text that only reads like a refusal ("401
         Unauthorized") still takes the count, since an expired session looks
         the same and the classifier is guessing.
+
+        The first poll runs at once, unless this connect has already polled
+        (an _initial_sync that reads state): that was the first cycle, so the
+        loop waits out the rest of its interval before polling again, and a
+        device is not sent every read twice back to back on each connect.
         """
         detach_emit_chain()  # a device-lifetime loop is a root, not a continuation
-        import time
         try:
             import httpx
             httpx_errors: tuple = (httpx.HTTPError,)
@@ -2852,6 +2898,12 @@ class BaseDriver(ABC):
 
         last_poll_exc: BaseException | None = None
         try:
+            polled_at = self._last_poll_started_at
+            began_at = self._connect_began_at
+            if polled_at is not None and began_at is not None and polled_at >= began_at:
+                remaining = interval - (time.monotonic() - polled_at)
+                if remaining > 0:
+                    await asyncio.sleep(remaining)
             while True:
                 try:
                     errors_before = self._last_error_writes

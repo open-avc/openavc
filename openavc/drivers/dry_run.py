@@ -244,6 +244,8 @@ async def preview_connect(driver: Any) -> ConnectPreview:
     else:
         capture = CaptureTransport()
     driver.transport = capture
+    # A preview records what is sent, not when: no pauses between lines.
+    driver._pace_lines = False
     steps: list[dict[str, Any]] = []
     seen: dict[int, int] = {}
 

@@ -1380,7 +1380,7 @@ Response patterns (and the `auth` prompt regexes) are validated when the driver 
 
 #### `on_connect` section
 
-Commands sent once immediately after the TCP/serial connection is established, before polling starts. Use this to enable feedback modes, request initial state, or set up the device for real-time notifications.
+Commands sent once immediately after the TCP/serial connection is established, before polling starts. Use this to enable feedback modes, request initial state, or set up the device for real-time notifications. The lines are spaced the same way as poll lines (see the `polling` section).
 
 ```yaml
 on_connect:
@@ -1449,6 +1449,10 @@ If the device's auth scheme isn't a prompt-and-response Telnet login (for exampl
 A query may also be written in mapping form to carry extra semantics: `{ send: "V\r", when: enable_meters }` gates it on a config field (see `when:` under child polling), and `{ send: "V\r", query_for: volume }` names the state variable the reply reports so the device simulator answers the query with that variable's current value instead of guessing from command names (requires platform 0.24.0; `query_for` must name a declared state variable).
 
 The poll cadence is **not** set in the `polling` block — it comes from `default_config.poll_interval` (in seconds), which device config can override per-instance. Set `poll_interval: 0` to disable polling. A top-level `polling.interval` is inert (the runtime never reads it) and is rejected by the community-catalog build, so don't add one.
+
+**How fast the lines go.** On `tcp` and `serial`, `on_connect` and poll lines are spaced by `inter_command_delay` when the driver sets one, and otherwise 50 ms apart. When the device's documentation states a minimum time between commands, set `inter_command_delay` to it. A command sent from a panel or a macro waits at most for the line being sent, never for the rest of the poll. The spacing adds up: 60 poll lines take about 3 seconds at 50 ms and 30 seconds with an `inter_command_delay` of 0.5, so keep `poll_interval` well above that. On `udp` and `osc`, only `inter_command_delay` spaces the lines.
+
+A line in both `on_connect` and `polling` is sent once at connect: the first poll, which runs as soon as `on_connect` finishes, skips it. HTTP drivers are the exception; their first poll sends every line.
 
 #### `liveness` section
 
@@ -2070,7 +2074,7 @@ These fields in `config_schema` (or `default_config`) are recognized by the TCP 
 | `ssl` | Wrap the connection in TLS (default: false). Use for a device that exposes its control port over TLS. |
 | `verify_ssl` | Verify the device's TLS certificate (default: true; set false for a self-signed cert) |
 | `timeout` | Connection timeout in seconds (default: 5) |
-| `inter_command_delay` | Minimum seconds between sends (default: 0). Use for gear that drops back-to-back commands. |
+| `inter_command_delay` | Minimum seconds between sends (default: 0). Use for gear that drops back-to-back commands. Left at 0, a YAML driver's `on_connect` and poll lines still go 50 ms apart (see the `polling` section). |
 
 `ssl` / `verify_ssl` mirror the HTTP transport's fields, so a single `transport: tcp` driver reaches a plaintext or a TLS-wrapped device just by toggling `ssl` in config — no Python `connect()` override needed.
 
@@ -2780,6 +2784,8 @@ async def _initial_sync(self) -> None:
     await self._identify()      # model / firmware / serial reads
     await self.poll()           # seed state before the first poll interval
 ```
+
+A `poll()` that returns from `_initial_sync()` counts as the first poll cycle: the poll loop polls next one full interval later. Leave it out and the loop polls as soon as it starts instead, so state is read at connect either way.
 
 ### Driver-owned HTTP sessions (httpx)
 

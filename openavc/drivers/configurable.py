@@ -128,6 +128,20 @@ def _build_commands_meta(commands_def: dict[str, Any]) -> dict[str, Any]:
 # placeholder and a literal JSON brace is neither.
 _WIRE_PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)(?::[^{}]*)?\}")
 
+#: Seconds between the lines a driver sends on its own (on_connect and each
+#: poll cycle) over tcp or serial when it declares no ``inter_command_delay``.
+#: Sent back to back, a poll of any size reaches the device as one burst, and
+#: a device that reads slower than that keeps what fits in its receive buffer:
+#: the rest of the replies come back cut short or not at all. Devices differ
+#: and nothing measured fixes one right value. Some take a burst whole (one
+#: unit took 232 lines 10 ms apart, another 17 lines with no gap at all);
+#: the protocols whose documents state a minimum ask for 100 to 500 ms, and
+#: their drivers declare it. So this is a floor for drivers that say nothing,
+#: and its ceiling is the start-up: on_connect runs inside the 30 seconds a
+#: connect is given, and the largest start-up a library driver declares is
+#: 514 lines, 25.7 s at this gap (at 100 ms it could never finish connecting).
+DEFAULT_LINE_GAP_S = 0.05
+
 
 class ConfigurableDriver(BaseDriver):
     """
@@ -195,6 +209,16 @@ class ConfigurableDriver(BaseDriver):
         # proves nothing — only a cycle where EVERY request was rejected is
         # read as a credential problem. See poll().
         self._http_auth_tally: list[int] | None = None
+
+        # Pacing for the lines this driver sends on its own (see _pace_line):
+        # when the next may go, and whether to pace at all (a connection
+        # preview records what would be sent and must not sit out the gaps).
+        self._next_line_at: float = 0.0
+        self._pace_lines: bool = True
+        # The on_connect lines the latest start-up sent, and those the first
+        # poll after a connect skips because start-up has just sent them.
+        self._start_up_lines: set[str] = set()
+        self._first_poll_skips: set[str] | None = None
 
         # Telnet/serial login handshake state. Active only during
         # _perform_auth_handshake() — outside that window on_data_received
@@ -695,14 +719,61 @@ class ConfigurableDriver(BaseDriver):
         await self._run_on_connect()
 
         if saved_poll_interval > 0:
+            # The first poll follows straight on; what start-up just asked
+            # for is not asked again (see poll()).
+            self._first_poll_skips = set(self._start_up_lines)
             await self.start_polling(saved_poll_interval)
+        else:
+            self._first_poll_skips = None
+
+    def _line_gap(self) -> float:
+        """Seconds _pace_line() keeps between two lines, 0 for no pacing.
+
+        Only a tcp or serial link with no ``inter_command_delay`` is paced
+        here. With a delay set, the transport already waits that long after
+        every write; datagram and HTTP links are not paced by this.
+        """
+        if not self._pace_lines:
+            return 0.0
+        transport = self.config.get("transport") or self._definition.get("transport")
+        if transport not in ("tcp", "serial"):
+            return 0.0
+        try:
+            if float(self.config.get("inter_command_delay") or 0) > 0:
+                return 0.0
+        except (TypeError, ValueError):
+            pass
+        return DEFAULT_LINE_GAP_S
+
+    async def _pace_line(self) -> None:
+        """Wait until the next on_connect or poll line may go.
+
+        The wait sits here, between sends, never inside the transport's send
+        lock: a command somebody presses meanwhile goes straight out, behind
+        at most the one line being written, never behind the rest of a poll.
+        The spacing runs from the previous line whichever of the two sent it,
+        so the last start-up line and the first poll line are spaced as well.
+        """
+        gap = self._line_gap()
+        if gap <= 0:
+            return
+        wait = self._next_line_at - time.monotonic()
+        if wait > 0:
+            await asyncio.sleep(wait)
+        self._next_line_at = time.monotonic() + gap
 
     async def _run_on_connect(self) -> None:
         """Send the declared start-up steps (``on_connect``).
 
         Its own method so a device audit's connection preview can run exactly
         these steps against a transport that records (``drivers/dry_run.py``).
+
+        ``inter_command_delay`` is applied by the transport after every write
+        (tcp, serial, udp, and osc, which writes through one of those), so
+        only HTTP, whose transport does not, waits for it here. Every line
+        sent is noted in ``_start_up_lines`` for connect() (see poll()).
         """
+        self._start_up_lines = set()
         on_connect = self._definition.get("on_connect", [])
         if on_connect and self.transport and self.transport.connected:
             transport_type = self._definition.get("transport")
@@ -720,12 +791,13 @@ class ConfigurableDriver(BaseDriver):
                                     else expanded
                                 )
                                 await self.transport.send(osc_encode_message(address))
-                                if delay:
-                                    await asyncio.sleep(delay)
+                                self._start_up_lines.add(expanded)
                             continue
+                        line: str | None = None
                         if isinstance(item, str):
                             address = self._safe_substitute(item, self.config) if "{" in item else item
                             data = osc_encode_message(address)
+                            line = item
                         elif isinstance(item, dict):
                             if not self._query_enabled(item):
                                 continue
@@ -734,6 +806,8 @@ class ConfigurableDriver(BaseDriver):
                             # entry) — accept either so a gated OSC subscription
                             # isn't silently sent as an empty address.
                             address = item.get("address") or item.get("send") or ""
+                            if not item.get("args"):
+                                line = address
                             if "{" in address:
                                 address = self._safe_substitute(address, self.config)
                             args = self._build_osc_args(item.get("args", []), self.config)
@@ -741,15 +815,16 @@ class ConfigurableDriver(BaseDriver):
                         else:
                             continue
                         await self.transport.send(data)
-                        if delay:
-                            await asyncio.sleep(delay)
+                        if line:
+                            self._start_up_lines.add(line)
                     except Exception as e:
                         log.warning(f"[{self.device_id}] on_connect OSC command failed: {e}")
 
                 # Query all OSC state variable addresses to fetch initial state.
                 # OSC convention: sending an address with no args returns the
                 # current value. This populates state immediately on connect.
-                query_delay = max(delay, 0.005)
+                # With no inter_command_delay, 5 ms apart; with one, the
+                # transport's own wait spaces them.
                 for addr_pattern, *_rest in self._osc_responses:
                     # A response address with fnmatch wildcards (e.g. QLab's
                     # push-only "/update/workspace/*/...") is a match pattern,
@@ -761,15 +836,19 @@ class ConfigurableDriver(BaseDriver):
                     try:
                         addr = self._safe_substitute(addr_pattern, self.config) if "{" in addr_pattern else addr_pattern
                         await self.transport.send(osc_encode_message(addr))
-                        await asyncio.sleep(query_delay)
+                        self._start_up_lines.add(addr_pattern)
+                        if not delay:
+                            await asyncio.sleep(0.005)
                     except Exception as e:
                         log.warning(f"[{self.device_id}] OSC initial query failed: {e}")
             else:
                 for raw in on_connect:
                     for query in self._expand_query(raw):
                         try:
+                            await self._pace_line()
                             await self._dispatch_query(query)
-                            if delay:
+                            self._start_up_lines.add(query)
+                            if delay and transport_type == "http":
                                 await asyncio.sleep(delay)
                         except Exception as e:
                             log.warning(f"[{self.device_id}] on_connect command failed: {e}")
@@ -2708,6 +2787,10 @@ class ConfigurableDriver(BaseDriver):
         transport, so its reply goes through response matching and send-side
         framing applies. Anything else is a raw string for the transport: a URL
         path on HTTP, an OSC address on OSC, the protocol bytes on TCP/serial/UDP.
+
+        TCP and serial lines are spaced by ``inter_command_delay`` (in the
+        transport) or, when none is set, by DEFAULT_LINE_GAP_S (_pace_line).
+        UDP and OSC lines are spaced only by ``inter_command_delay``.
         """
         if not self.transport or not self.transport.connected:
             return
@@ -2725,9 +2808,17 @@ class ConfigurableDriver(BaseDriver):
         # first become visible.
         self._http_auth_tally = [0, 0] if is_http else None
 
+        # The first poll after a connect follows on_connect at once, so a line
+        # start-up has just sent is not sent again. Not on HTTP: its poll is
+        # where a refused login first shows (the tally above), so it runs whole.
+        skips = self._first_poll_skips if not is_http else None
+        self._first_poll_skips = None
+
         for raw_query in queries:
             # each_child entries expand to one query per registered child.
             for query in self._expand_query(raw_query):
+                if skips and query in skips:
+                    continue
                 try:
                     if is_osc:
                         commands = self._definition.get("commands", {})
@@ -2743,6 +2834,7 @@ class ConfigurableDriver(BaseDriver):
                         # applies and the response is matched) and falls back to
                         # the raw string. Shared with on_connect via
                         # _dispatch_query so the two paths can't drift apart.
+                        await self._pace_line()
                         await self._dispatch_query(query)
                 except (ConnectionError, TimeoutError, OSError):
                     # Transport-level failure: propagate so BaseDriver._poll_loop's
