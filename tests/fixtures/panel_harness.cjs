@@ -3890,6 +3890,214 @@ const tests = {
             document.documentElement.style.removeProperty('--panel-accent');
         }
     },
+
+    // --- a look that goes inactive lets go of its colours ------------------
+    //
+    // applyStyle writes only what it is given, so a look whose inactive half
+    // names no colour used to leave the active colour standing: an input
+    // picker showed several inputs lit at once, and a Blank All button stayed
+    // orange after the screens were restored.
+
+    look_with_no_inactive_colour_lets_go_of_the_active_one() {
+        const app = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'blank', type: 'button', label: 'Blank All',
+                bindings: { show: { look: {
+                    key: 'var.blanked', condition: { equals: true },
+                    style_active: { bg_color: '#ff9800', text_color: '#000000' },
+                } } },
+            }],
+            placements: { blank: { x: 5, y: 5, w: 20, h: 10 } },
+        });
+        app.state = { 'var.blanked': false };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="blank"]');
+        app.state['var.blanked'] = true;
+        app.evaluateAllBindings(['var.blanked']);
+        assert(el.style.backgroundColor === 'rgb(255, 152, 0)',
+            `blanked: lit, got ${el.style.backgroundColor}`);
+        app.state['var.blanked'] = false;
+        app.evaluateAllBindings(['var.blanked']);
+        assert(el.style.backgroundColor === '',
+            `restored: the orange is dropped, got "${el.style.backgroundColor}"`);
+        assert(el.style.color === '',
+            `restored: and so is the text colour, got "${el.style.color}"`);
+    },
+
+    input_picker_lights_only_the_current_input() {
+        const app = mkApp();
+        const input = (n) => ({
+            id: `in${n}`, type: 'button', label: `Input ${n}`,
+            bindings: { show: { look: {
+                key: 'var.input', condition: { equals: n },
+                style_active: { bg_color: '#4caf50' },
+            } } },
+        });
+        const proj = project({
+            elements: [input(1), input(2), input(3)],
+            placements: {
+                in1: { x: 5, y: 5, w: 20, h: 10 },
+                in2: { x: 30, y: 5, w: 20, h: 10 },
+                in3: { x: 55, y: 5, w: 20, h: 10 },
+            },
+        });
+        app.state = { 'var.input': 1 };
+        renderProject(app, proj);
+        const lit = () => [1, 2, 3].filter(n =>
+            app.root.querySelector(`[data-element-id="in${n}"]`).style.backgroundColor
+                === 'rgb(76, 175, 80)');
+        for (const n of [1, 2, 3, 1]) {
+            app.state['var.input'] = n;
+            app.evaluateAllBindings(['var.input']);
+            const on = lit();
+            assert(on.length === 1 && on[0] === n,
+                `input ${n} selected: exactly it is lit, got [${on}]`);
+        }
+    },
+
+    state_naming_no_colour_drops_the_last_states_colour_and_opacity() {
+        const app = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'pwr', type: 'button', label: 'Power',
+                bindings: { show: { look: {
+                    key: 'device.proj.power', default_state: 'off',
+                    states: {
+                        on: { label: 'Power ON', bg_color: '#4caf50' },
+                        warming: { label: 'Warming', bg_color: '#ff9800', opacity: 0.6 },
+                        off: { label: 'Power OFF' },
+                    },
+                } } },
+            }],
+            placements: { pwr: { x: 5, y: 5, w: 20, h: 10 } },
+        });
+        app.state = { 'device.proj.connected': true, 'device.proj.power': 'off' };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="pwr"]');
+        const go = (v) => {
+            app.state['device.proj.power'] = v;
+            app.evaluateAllBindings(['device.proj.power']);
+        };
+        go('on');
+        assert(el.style.backgroundColor === 'rgb(76, 175, 80)', `on: green, got ${el.style.backgroundColor}`);
+        go('off');
+        assert(el.style.backgroundColor === '', `off: no colour of its own, got "${el.style.backgroundColor}"`);
+        go('warming');
+        assert(el.style.opacity === '0.6', `warming: dimmed, got "${el.style.opacity}"`);
+        go('off');
+        assert(el.style.backgroundColor === '' && el.style.opacity === '',
+            `off again: neither colour nor dimming stays, got "${el.style.backgroundColor}" / "${el.style.opacity}"`);
+        go('standby');
+        assert(el.style.backgroundColor === '' && el.textContent.includes('Power OFF'),
+            `an unlisted value falls to the default state, clean, got "${el.style.backgroundColor}"`);
+    },
+
+    // Most element types take their theme colour inline rather than from CSS,
+    // so letting go of a state's colour has to put the theme's back.
+    themed_element_returns_to_its_theme_colour() {
+        const app = mkApp();
+        app.themeElementDefaults = { camera_preset: { bg_color: '#2a2a4a', text_color: '#e0e0e0' } };
+        const proj = project({
+            elements: [{
+                id: 'cam', type: 'camera_preset', label: 'Wide', preset_number: 1,
+                bindings: { show: { look: {
+                    key: 'var.preset', condition: { equals: 1 },
+                    style_active: { bg_color: '#ff0000' },
+                } } },
+            }],
+            placements: { cam: { x: 5, y: 5, w: 20, h: 10 } },
+        });
+        app.state = { 'var.preset': 1 };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="cam"]');
+        assert(el.style.backgroundColor === 'rgb(255, 0, 0)', `active: red, got ${el.style.backgroundColor}`);
+        app.state['var.preset'] = 2;
+        app.evaluateAllBindings(['var.preset']);
+        assert(el.style.backgroundColor === 'rgb(42, 42, 74)',
+            `inactive: back to the theme's colour, got ${el.style.backgroundColor}`);
+    },
+
+    label_look_lets_go_of_its_colour() {
+        const app = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'st', type: 'label', text: 'Status',
+                bindings: { show: { look: { key: 'var.s', states: {
+                    alarm: { label: 'ALARM', text_color: '#ff0000', opacity: 0.5 },
+                    ok: { label: 'OK' },
+                } } } },
+            }],
+            placements: { st: { x: 5, y: 5, w: 20, h: 10 } },
+        });
+        app.state = { 'var.s': 'alarm' };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="st"]');
+        assert(el.style.color === 'rgb(255, 0, 0)', `alarm: red, got ${el.style.color}`);
+        app.state['var.s'] = 'ok';
+        app.evaluateAllBindings(['var.s']);
+        assert(el.style.color === '' && el.style.opacity === '',
+            `ok: no colour or dimming left over, got "${el.style.color}" / "${el.style.opacity}"`);
+    },
+
+    // applyStyle decides background-image on every call (the gradient, or
+    // nothing), and a button's own image lives in the same property, so every
+    // look or toggle pass used to wipe it.
+    looks_and_toggles_keep_the_buttons_own_image() {
+        const PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+        const mount = (def, state) => {
+            const app = mkApp();
+            renderProject(app, project({
+                elements: [def], placements: { [def.id]: { x: 5, y: 5, w: 20, h: 10 } },
+            }));
+            app.state = state;
+            app.evaluateAllBindings(Object.keys(state));
+            return { app, el: app.root.querySelector(`[data-element-id="${def.id}"]`) };
+        };
+        const flip = (app, key, value) => {
+            app.state[key] = value;
+            app.evaluateAllBindings([key]);
+        };
+        const base = { type: 'button', label: 'Cam', display_mode: 'image_text', button_image: PIXEL };
+        const look = { key: 'var.s', default_state: 'off', states: {
+            on: { label: 'ON', bg_color: '#ff0000' }, off: { label: 'OFF' } } };
+        const toggle = { do: { press: [{ action: 'state.set', key: 'var.on', value: true,
+            mode: 'toggle', toggle_key: 'var.on', toggle_value: true }] } };
+
+        let m = mount({ id: 'a', ...base, bindings: { show: { look } } }, { 'var.s': 'off' });
+        flip(m.app, 'var.s', 'on');
+        assert(m.el.style.backgroundImage.includes('url('), `look on: image kept, got "${m.el.style.backgroundImage}"`);
+        flip(m.app, 'var.s', 'off');
+        assert(m.el.style.backgroundImage.includes('url('), `look off: image kept, got "${m.el.style.backgroundImage}"`);
+
+        m = mount({ id: 'b', ...base, bindings: toggle }, { 'var.on': false });
+        flip(m.app, 'var.on', true);
+        assert(m.el.style.backgroundImage.includes('url('), `toggle on: image kept, got "${m.el.style.backgroundImage}"`);
+        flip(m.app, 'var.on', false);
+        assert(m.el.style.backgroundImage.includes('url('), `toggle off: image kept, got "${m.el.style.backgroundImage}"`);
+
+        m = mount({ id: 'c', ...base, frameless: true, bindings: toggle }, { 'var.on': false });
+        flip(m.app, 'var.on', true);
+        assert(m.el.style.backgroundImage.includes('url('),
+            `frameless toggle: image kept, got "${m.el.style.backgroundImage}"`);
+
+        m = mount({ id: 'd', ...base, style: { background_gradient: { from: '#e74c3c', to: '#8e44ad', angle: 180 } },
+            bindings: { show: { look } } }, { 'var.s': 'off' });
+        flip(m.app, 'var.s', 'on');
+        const both = m.el.style.backgroundImage;
+        assert(both.includes('url(') && both.includes('linear-gradient'),
+            `gradient and image both survive a look, got "${both}"`);
+
+        // A masked image is drawn as a coloured layer; with no state colour it
+        // must take the text colour, not go transparent.
+        m = mount({ id: 'e', ...base, display_mode: 'image', image_blend_mode: 'mask', bindings: toggle },
+            { 'var.on': true });
+        flip(m.app, 'var.on', false);
+        const layer = m.el.querySelector('.panel-button-image-layer');
+        assert(layer, 'masked toggle off: the image layer is still there');
+        assert(layer.style.backgroundColor !== '',
+            `masked toggle off: the layer keeps a fill, got "${layer.style.backgroundColor}"`);
+    },
 };
 
 const results = {};

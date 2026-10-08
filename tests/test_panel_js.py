@@ -224,6 +224,14 @@ SCENARIOS = [
     "theme_override_moves_the_page_background",
     "theme_with_no_override_paints_its_own_page_colour",
     "theme_page_defaults_references_read_one_set_of_variables",
+    # A look that goes inactive lets go of what its active state drew, and
+    # no look or toggle pass takes a button's own image away.
+    "look_with_no_inactive_colour_lets_go_of_the_active_one",
+    "input_picker_lights_only_the_current_input",
+    "state_naming_no_colour_drops_the_last_states_colour_and_opacity",
+    "themed_element_returns_to_its_theme_colour",
+    "label_look_lets_go_of_its_colour",
+    "looks_and_toggles_keep_the_buttons_own_image",
 ]
 
 

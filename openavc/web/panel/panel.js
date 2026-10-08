@@ -6448,10 +6448,16 @@ class PanelApp {
     }
 
     /**
-     * Drop the inline colours a state look wrote, where the element's own
-     * style has nothing to put back. applyStyle writes only the properties it
-     * is given, so without this a revert to base leaves the last state's
-     * colours standing.
+     * Drop what a state look wrote inline -- background, text colour and
+     * opacity -- where the resting style has nothing to put back. applyStyle
+     * writes only the properties it is given, so without this a look that goes
+     * inactive keeps the last state's colours: a picker shows several inputs
+     * lit at once, a Blank All button stays orange after it is restored.
+     *
+     * Pass the THEMED resting style (getThemedStyle), not the element's own:
+     * most element types take their theme colour inline from it, and clearing
+     * one of those without putting it back would drop to the bare CSS. A
+     * button's theme colour comes from CSS, so clearing to '' restores it.
      */
     _clearStateColours(element, baseStyle) {
         if (!element.style) return;
@@ -6459,6 +6465,37 @@ class PanelApp {
             element.style.backgroundColor = '';
         }
         if (!baseStyle.text_color) element.style.color = '';
+        if (baseStyle.opacity == null) element.style.opacity = '';
+    }
+
+    /**
+     * Draw the artwork a button should show in its current state, after
+     * applyStyle has decided background-image for the gradient.
+     *
+     * applyStyle sets background-image on every call (the gradient, or empty),
+     * and the button's own image lives in the same property, so every look or
+     * toggle pass wiped it unless something drew it again. A state's own
+     * artwork wins; otherwise the button's, where its display mode draws one.
+     * The tint falls back to the text colour inside applyImageEffect, so a
+     * masked image stays visible when the state carries no colour.
+     */
+    _reapplyButtonImage(element, elementDef, stateImage, tint) {
+        const mode = elementDef.display_mode || 'text';
+        const showsOwn = mode === 'image' || mode === 'image_text';
+        // A state's artwork shows in any mode (the Builder offers it on every
+        // button); the button's own only where its display mode draws it.
+        const image = stateImage || (showsOwn ? elementDef.button_image : null);
+        if (!image) {
+            // A previous state's artwork on an effect layer goes with it.
+            element.querySelector(':scope > .panel-button-image-layer')?.remove();
+            return;
+        }
+        this.applyImageEffect(element, image, {
+            fit: elementDef.image_fit,
+            blend: elementDef.image_blend_mode,
+            opacity: elementDef.image_opacity,
+            tintColor: tint,
+        });
     }
 
     /** What a readout says when there is no reading: "--", with the unit if it carries one. */
@@ -6754,6 +6791,7 @@ class PanelApp {
             }
         }
 
+        this._clearStateColours(element, this.getThemedStyle(elementDef.type, baseStyle));
         this.applyStyle(element, this.getThemedStyle(elementDef.type, { ...baseStyle, ...appearance }));
 
         if (appearance.label !== undefined) {
@@ -6818,12 +6856,13 @@ class PanelApp {
             const matched = binding.states[stateKey] !== undefined
                 ? stateKey
                 : (binding.default_state || '');
-            const style = { ...baseStyle, ...appearance };
+            const rest = this.getThemedStyle(elementDef.type, baseStyle);
+            const style = { ...rest, ...appearance };
+            this._clearStateColours(element, rest);
             this.applyStyle(element, style);
             // Re-apply frameless so state bg_color changes don't reintroduce chrome
             if (elementDef.frameless) this.applyFrameless(element);
-            // Retint the image layer so tint tracks state bg_color
-            if (style.bg_color) this.updateImageTint(element, style.bg_color);
+            this._reapplyButtonImage(element, elementDef, appearance.button_image, style.bg_color);
 
             // Update label (suppressed when display mode hides text).
             // Remove only text nodes so we don't wipe the image layer (an element child).
@@ -6848,15 +6887,6 @@ class PanelApp {
                 this.renderElementContent(element, iconDef);
             }
 
-            // Swap button image if state overrides it (10% case: genuinely different image per state)
-            if (appearance.button_image && elementDef.button_image !== appearance.button_image) {
-                this.applyImageEffect(element, appearance.button_image, {
-                    fit: elementDef.image_fit,
-                    blend: elementDef.image_blend_mode,
-                    opacity: elementDef.image_opacity,
-                    tintColor: style.bg_color,
-                });
-            }
             return;
         }
 
@@ -6868,24 +6898,18 @@ class PanelApp {
         const activeStyle = binding.style_active || {};
         const inactiveStyle = binding.style_inactive || {};
 
+        const rest = this.getThemedStyle(elementDef.type, baseStyle);
         const style = isActive
-            ? { ...baseStyle, ...activeStyle }
-            : { ...baseStyle, ...inactiveStyle };
+            ? { ...rest, ...activeStyle }
+            : { ...rest, ...inactiveStyle };
 
+        this._clearStateColours(element, rest);
         this.applyStyle(element, style);
         if (elementDef.frameless) this.applyFrameless(element);
-        if (style.bg_color) this.updateImageTint(element, style.bg_color);
 
-        // Per-state image override (legacy feedback)
+        // Per-state image override (legacy feedback), else the button's own
         const stateImage = (isActive ? activeStyle.button_image : inactiveStyle.button_image);
-        if (stateImage && elementDef.button_image !== stateImage) {
-            this.applyImageEffect(element, stateImage, {
-                fit: elementDef.image_fit,
-                blend: elementDef.image_blend_mode,
-                opacity: elementDef.image_opacity,
-                tintColor: style.bg_color,
-            });
-        }
+        this._reapplyButtonImage(element, elementDef, stateImage, style.bg_color);
 
         // Conditional labels — must run BEFORE renderElementContent so
         // the icon+text layout rebuild captures the updated text.
@@ -6982,9 +7006,7 @@ class PanelApp {
         // class above is the whole indication there -- an outline, which no
         // inline write of ours ever clobbers.
         if (elementDef.frameless) this.applyFrameless(element);
-        // Empty rather than skipped when there is nothing to put back: a tinted
-        // image layer would otherwise stay lit after the button went off.
-        this.updateImageTint(element, style.bg_color || '');
+        this._reapplyButtonImage(element, elementDef, null, style.bg_color);
 
         // The words, only where the author asked for them. A toggle that names
         // neither label keeps whatever it is already showing: rewriting the
@@ -7013,8 +7035,8 @@ class PanelApp {
      * the panel's own accent setting, and so an element that names its own
      * `accent_color` lights in that. Deliberately no border colour: the off
      * pass restores the element's own style, and `_clearStateColours` drops
-     * exactly the two properties a state look may write (background and text)
-     * -- adding a third here without teaching that helper about it is how a
+     * only what a state look may write (background, text colour, opacity)
+     * -- adding another here without teaching that helper about it is how a
      * button ends up wearing half of a state it is no longer in.
      */
     _toggleOnStyle(elementDef) {
