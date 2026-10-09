@@ -6,6 +6,7 @@ import { create } from "zustand";
 import * as cloud from "../api/cloudClient";
 import { friendlyAIError } from "../api/aiErrors";
 import { parseApiError } from "../api/errors";
+import { messagesFromConversation } from "./aiChatHistory";
 
 // Optimistic message ids. Date.now() alone collides when two sends land in
 // the same millisecond (the pre-send project snapshot await leaves a window
@@ -142,28 +143,7 @@ export const useAIChatStore = create<AIChatStore>((set, get) => ({
     set({ loading: true, error: null, activeConversationId: id, undoStack: [] });
     try {
       const detail = await cloud.getConversation(id);
-      const messages: Message[] = detail.messages.map((m) => {
-        const msg: Message = {
-          id: m.id,
-          role: m.role as Message["role"],
-          content: m.content,
-          toolCalls: m.tool_calls as Message["toolCalls"],
-          createdAt: m.created_at,
-        };
-        // Build content blocks from persisted data (text + tools interleaved)
-        if (msg.role === "assistant") {
-          const blocks: ContentBlock[] = [];
-          if (msg.content) blocks.push({ type: "text", text: msg.content });
-          if (msg.toolCalls) {
-            for (const tc of msg.toolCalls) {
-              blocks.push({ type: "tool", toolCall: { ...tc, status: "success" as const } });
-            }
-          }
-          msg.contentBlocks = blocks;
-        }
-        return msg;
-      });
-      set({ messages, loading: false });
+      set({ messages: messagesFromConversation(detail.messages), loading: false });
     } catch (e) {
       set({ error: friendlyAIError(e, "Couldn't load this conversation."), loading: false });
     }
