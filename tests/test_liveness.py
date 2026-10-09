@@ -800,8 +800,9 @@ def test_serial_and_countless_transports_are_not_watched() -> None:
 async def switchable_server():
     """TCP server whose behaviour a test changes as it runs: ``mode`` is
     "silent" or "answer" (``PWR=ON`` for each ``PWR?``), ``greet`` sends a
-    banner on every new connection, ``connections`` counts accepts."""
-    state: dict[str, Any] = {"mode": "silent", "greet": False, "connections": 0}
+    banner on every new connection, ``connections`` counts accepts and
+    ``lines`` keeps every line received."""
+    state: dict[str, Any] = {"mode": "silent", "greet": False, "connections": 0, "lines": []}
 
     async def handle(reader, writer):
         state["connections"] += 1
@@ -817,6 +818,7 @@ async def switchable_server():
                 buf += chunk
                 while b"\r" in buf:
                     line, buf = buf.split(b"\r", 1)
+                    state["lines"].append(line)
                     if line == b"PWR?" and state["mode"] == "answer":
                         writer.write(b"PWR=ON\r")
                         await writer.drain()
@@ -847,7 +849,9 @@ async def managed_acme(monkeypatch, switchable_server):
         DeviceManager, "_reconnect_delay", lambda self, device_id, attempt: 0.05
     )
     port, server = switchable_server
-    definition = _acme_polled()
+    definition = _acme_polled(
+        commands={"power_on": {"label": "Power On", "send": "PWR 1\\r"}},
+    )
     register_driver(create_configurable_driver_class(definition))
     state, events = StateStore(), EventBus()
     dm = DeviceManager(state, events)
@@ -918,3 +922,64 @@ async def test_pressing_reconnect_on_a_held_device_is_a_fresh_attempt(managed_ac
     assert await _until(lambda: server["connections"] >= 2, 3.0)
     await dm.reconnect_device("acme1")
     assert state.get("device.acme1.connected") is True
+
+
+@pytest.mark.asyncio
+async def test_a_held_device_still_takes_a_command(managed_acme) -> None:
+    """A device that goes quiet in standby is held offline, and the Power On
+    that wakes it has to reach it: refused there, it would stay off."""
+    dm, state, server, seen = managed_acme
+    assert await _until(lambda: state.get("device.acme1.connected") is False, 3.0)
+    assert await _until(lambda: dm._devices["acme1"]._held is True, 3.0)
+    assert dm.accepts_commands("acme1") is True
+    await dm.send_command("acme1", "power_on")
+    assert await _until(lambda: b"PWR 1" in server["lines"], 1.0)
+    assert state.get("device.acme1.connected") is False
+
+
+@pytest.mark.asyncio
+async def test_a_skip_if_offline_step_reaches_a_held_device(managed_acme) -> None:
+    from openavc.core.macro_engine import MacroEngine
+
+    dm, state, server, seen = managed_acme
+    assert await _until(lambda: dm._devices["acme1"]._held is True, 3.0)
+    macros = MacroEngine(state, dm.events, dm)
+    await macros.execute_steps([{
+        "action": "device.command", "device": "acme1",
+        "command": "power_on", "skip_if_offline": True,
+    }])
+    assert await _until(lambda: b"PWR 1" in server["lines"], 1.0)
+
+
+@pytest.mark.asyncio
+async def test_a_device_that_is_not_held_still_refuses(managed_acme) -> None:
+    dm, state, server, seen = managed_acme
+    await dm.pause_device("acme1")
+    assert state.get("device.acme1.connected") is False
+    assert dm.accepts_commands("acme1") is False
+    with pytest.raises(ConnectionError):
+        await dm.send_command("acme1", "power_on")
+
+
+class _AcmePythonAsleep(_AcmePython):
+    """Expects silence while ``asleep`` is set (a display it knows is off)."""
+
+    asleep = True
+
+    def _silence_expected(self) -> bool:
+        return self.asleep
+
+
+@pytest.mark.asyncio
+async def test_expected_silence_is_not_counted(silent_server) -> None:
+    _server, port = silent_server
+    drv = _AcmePythonAsleep("acme1", _connect_config(port), StateStore(), EventBus())
+    await drv.connect()
+    try:
+        await asyncio.sleep(_SILENCE_INTERVAL * 7)
+        assert drv.get_state("connected") is True
+        drv.asleep = False
+        assert await _until(lambda: drv.get_state("connected") is False, 3.0)
+        assert drv.last_fault.code == "no_response"
+    finally:
+        await drv.disconnect()

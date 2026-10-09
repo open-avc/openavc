@@ -2153,6 +2153,18 @@ class BaseDriver(ABC):
             return False
         return self._io_counts() is not None
 
+    def _silence_expected(self) -> bool:
+        """True while the device may answer nothing at all and still be fine.
+
+        Asked each time the silence check judges a poll that drew no reply:
+        while it is True, that poll does not count toward dropping the
+        connection (nor does it reset the count). Override it in a driver
+        that knows the device is in such a state, e.g. a display the driver
+        knows is off whose manual only promises replies when it is on.
+        Default: never.
+        """
+        return False
+
     def _silence_fault(self, cycles: int) -> ConnectionFault:
         """The no_response fault for ``cycles`` polls in a row that drew
         nothing back: one sentence for a connection that has never answered
@@ -3078,7 +3090,8 @@ class BaseDriver(ABC):
 
         A poll that returned cleanly is judged again when the next one is
         due (the silence check, _watches_for_silence): it sent something and
-        nothing came back since it began. ``max_missed_polls`` of those in a
+        nothing came back since it began, while the driver did not expect
+        silence (_silence_expected). ``max_missed_polls`` of those in a
         row drop the connection as ``no_response``, and the automatic
         reconnect then holds the device offline until a poll is answered
         (connect(), _announce_held). Only cycles this loop ran are judged;
@@ -3131,7 +3144,7 @@ class BaseDriver(ABC):
                             heard_cycles += 1
                             if heard_cycles >= 2:
                                 await self._announce_held()
-                        elif sent:
+                        elif sent and not self._silence_expected():
                             silent_polls += 1
                     if silent_polls >= max_dry_polls:
                         if self._held:

@@ -29,7 +29,7 @@ Use the search box at the top of the macro list to filter by name.
 
 The **Device Command** step uses smart dropdowns: after selecting a device, the command dropdown only shows commands defined by that device's driver, with parameter fields that match the driver's command definition. No guessing at command syntax.
 
-The **Group Command** step works the same way but targets a device group instead of a single device. All devices in the group receive the command concurrently. Only commands shared by every device in the group are shown, and its parameters use the same smart inputs as a single-device command: a Yes/No selector for boolean parameters, a dropdown for enumerated values, and the **$** toggle for dynamic values. You pick from the driver's choices instead of typing raw values. Offline devices are skipped automatically. Create and manage device groups from the **Groups** tab in the Devices view.
+The **Group Command** step works the same way but targets a device group instead of a single device. All devices in the group receive the command concurrently. Only commands shared by every device in the group are shown, and its parameters use the same smart inputs as a single-device command: a Yes/No selector for boolean parameters, a dropdown for enumerated values, and the **$** toggle for dynamic values. You pick from the driver's choices instead of typing raw values. Offline devices are skipped automatically, except one whose connection is still open (see **Skip if device is offline** below). Create and manage device groups from the **Groups** tab in the Devices view.
 
 The **Emit Event** step can attach optional payload fields that travel with the event. Each field has a name and a typed value (text, number, or a Yes / No boolean), and a value starting with `$` is resolved when the step runs, so `$var.current_source` travels as that variable's value rather than as the text. Scripts read a field with `event.get("<field>")` inside an `@on_event` handler, and a macro triggered by the event can read each field with `$trigger.<field>`. The same step is available directly on a button or other control, in the UI Builder's **Does** bucket.
 
@@ -179,7 +179,7 @@ Every step has an optional **Skip this step if...** guard in the Guards section 
 
 This is simpler than a full conditional block when you just want to skip one step. For example: skip the "power on" command if `device.projector.power` already equals `"on"`.
 
-Device Command steps also have a **Skip if device is offline** checkbox. When checked, the step is silently skipped instead of failing if the device is disconnected. This is useful for macros that control optional equipment that may not always be present.
+Device Command steps also have a **Skip if device is offline** checkbox. When checked, the step is silently skipped instead of failing if the device is disconnected. This is useful for macros that control optional equipment that may not always be present. A device shown offline only because it stopped answering its polls, with its connection still open, still gets the command, so a display that goes quiet in standby can still be switched on.
 
 ## Dynamic Parameters
 

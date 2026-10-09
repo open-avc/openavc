@@ -20,9 +20,12 @@ def events():
 
 
 @pytest.fixture
-def devices():
+def devices(state):
     d = MagicMock()
     d.send_command = AsyncMock()
+    # DeviceManager.accepts_commands for a device that is not held: its
+    # connected state.
+    d.accepts_commands = lambda device_id: bool(state.get(f"device.{device_id}.connected"))
     return d
 
 

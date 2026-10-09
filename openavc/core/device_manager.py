@@ -759,8 +759,9 @@ class DeviceManager:
         # available_offline — a handler that needs no live connection (e.g. a
         # Wake-on-LAN power_on) so a macro, panel button, or schedule can wake a
         # device that has gone fully off the network. Param validation below
-        # still runs for every command.
-        if not driver.get_state("connected") and not self._command_available_offline(
+        # still runs for every command. A connection held offline until the
+        # device answers is open, so it takes commands (accepts_commands).
+        if not self.accepts_commands(device_id) and not self._command_available_offline(
             driver, command
         ):
             # Someone just asked for this device by name. That is the clearest
@@ -886,6 +887,22 @@ class DeviceManager:
         info = getattr(driver, "DRIVER_INFO", {}) or {}
         cmd_def = (info.get("commands") or {}).get(command)
         return isinstance(cmd_def, dict) and bool(cmd_def.get("available_offline"))
+
+    def accepts_commands(self, device_id: str) -> bool:
+        """Whether a command sent to this device now would go out.
+
+        True while it is connected, and also while its connection is open but
+        held offline until it answers a poll (BaseDriver._held, the poll
+        loop's silence check). A device that goes quiet in standby is held
+        like that, and the Power On that wakes it has to reach it: refusing
+        it there would leave the device off for good. The one rule for the
+        command and setting gates, a macro's "skip if offline" and a group
+        command's offline skip.
+        """
+        if self.state.get(f"device.{device_id}.connected"):
+            return True
+        driver = self._devices.get(device_id)
+        return driver is not None and driver._held is True
 
     @staticmethod
     def _validate_command_params(
@@ -1234,7 +1251,7 @@ class DeviceManager:
         driver = self._devices.get(device_id)
         if driver is None:
             raise DeviceNotFoundError(f"Device '{device_id}' not found")
-        if not driver.get_state("connected"):
+        if not self.accepts_commands(device_id):
             raise not_connected(device_id)
 
         # Validate the setting exists
