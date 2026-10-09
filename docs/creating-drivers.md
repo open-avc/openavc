@@ -65,6 +65,7 @@ What's flagged:
 - **Publish quality** (warnings): missing `description`, `version`, `author`, or `help.overview`.
 - **Commands**: any `{placeholder}` in the wire string (send/path/body/headers/query_params/address/args) that doesn't resolve to a declared parameter or config field. Catches typos that would otherwise leave a literal `{level}` on the wire.
 - **Parameter names**: illegal characters surface as an inline error instead of being silently stripped.
+- **Polling** (warnings): a poll that takes longer than its interval, and a device that could stop answering with nothing to notice (see [Checking the file against the driver contract](#checking-the-file-against-the-driver-contract)).
 
 ### Step-by-step walkthrough
 
@@ -3666,6 +3667,26 @@ the rest merged or built at runtime)
 
 A skip is never a pass. It is the command telling you which of your
 declarations it had no way to verify.
+
+For a `.avcdriver` it also prints the warnings the Driver Builder shows. A
+warning never changes the exit code and never stops the driver from saving or
+loading. Two of them describe how the driver will behave against a device:
+
+```
+my_driver.avcdriver: warning: At the largest roster this driver accepts (Output Count 128), each poll sends 257 lines, 25.7 s at 100 ms apart, longer than the 10 s poll interval: the device answers polls more than half the time, and each reading refreshes every 35.7 s. Poll less per child, set a longer poll_interval, or lower the roster's max to the largest unit the driver supports.
+my_driver.avcdriver: warning: Nothing notices if the device stops answering over serial: polls over serial are not checked for a reply, and there is no liveness block, so the device reads connected for as long as the connection stays open. Add a liveness block that asks something the device answers in every state.
+```
+
+- **A poll longer than its interval.** Each poll line waits the
+  `inter_command_delay` after it, or 50 ms over TCP or serial when none is set,
+  so a poll's length is its line count times that spacing. The check counts the
+  lines at the driver's default config, and again with each child roster that a
+  config field sizes at the largest value the driver accepts (the field's `max`,
+  else the child id's `max`).
+- **A device that could stop answering unnoticed.** A driver that reads replies
+  over TCP, UDP or OSC and polls is taken offline when its polls stop drawing
+  replies. Over serial, or with no poll, nothing does that unless the driver has
+  a `liveness` block.
 
 ### Without hardware (simulation mode)
 

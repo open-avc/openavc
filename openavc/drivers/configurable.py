@@ -35,6 +35,7 @@ from openavc.drivers.base import (
     normalize_and_validate_command_params as _normalize_and_validate_command_params,
 )
 from openavc.drivers.child_ids import coerce_child_local_id
+from openavc.drivers.spec import DEFAULT_LINE_GAP_S, LINE_GAP_TRANSPORTS
 from openavc.drivers.inline_protocol import (
     derive_command_params,
     derive_state_vars_from_responses,
@@ -129,19 +130,9 @@ def _build_commands_meta(commands_def: dict[str, Any]) -> dict[str, Any]:
 # placeholder and a literal JSON brace is neither.
 _WIRE_PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)(?::[^{}]*)?\}")
 
-#: Seconds between the lines a driver sends on its own (on_connect and each
-#: poll cycle) over tcp or serial when it declares no ``inter_command_delay``.
-#: Sent back to back, a poll of any size reaches the device as one burst, and
-#: a device that reads slower than that keeps what fits in its receive buffer:
-#: the rest of the replies come back cut short or not at all. Devices differ
-#: and nothing measured fixes one right value. Some take a burst whole (one
-#: unit took 232 lines 10 ms apart, another 17 lines with no gap at all);
-#: the protocols whose documents state a minimum ask for 100 to 500 ms, and
-#: their drivers declare it. So this is a floor for drivers that say nothing,
-#: and its ceiling is the start-up: on_connect runs inside the 30 seconds a
-#: connect is given, and the largest start-up a library driver declares is
-#: 514 lines, 25.7 s at this gap (at 100 ms it could never finish connecting).
-DEFAULT_LINE_GAP_S = 0.05
+# DEFAULT_LINE_GAP_S (imported above from spec.py, where the reason for its
+# value lives) is the spacing _pace_line keeps between this driver's own lines
+# over LINE_GAP_TRANSPORTS when no ``inter_command_delay`` is set.
 
 
 class ConfigurableDriver(BaseDriver):
@@ -737,7 +728,7 @@ class ConfigurableDriver(BaseDriver):
         if not self._pace_lines:
             return 0.0
         transport = self.config.get("transport") or self._definition.get("transport")
-        if transport not in ("tcp", "serial"):
+        if transport not in LINE_GAP_TRANSPORTS:
             return 0.0
         try:
             if float(self.config.get("inter_command_delay") or 0) > 0:

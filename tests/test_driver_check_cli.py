@@ -172,6 +172,58 @@ def test_printed_paths_use_native_separators(tmp_path):
     assert _display_path(nested, Path(tmp_path.anchor) / "elsewhere") == str(nested)
 
 
+# ── Warnings are shown, never a failure ──
+
+# A serial driver that reads replies and has no liveness block: the validator
+# warns that nothing would notice the device going quiet.
+WARNED_YAML = CLEAN_YAML.replace("transport: tcp", "transport: serial") + """\
+    responses:
+      - match: 'PWR=(\\w+)'
+        set:
+          power: "$1"
+"""
+
+
+def test_yaml_warnings_are_the_validators_verbatim(tmp_path):
+    import yaml
+
+    from openavc.drivers.avcdriver_semantic import validate_driver_warnings
+
+    driver = _write(tmp_path / "acme_widget.avcdriver", WARNED_YAML)
+    result = check_driver_file(driver)
+    expected = validate_driver_warnings(
+        yaml.safe_load(driver.read_text(encoding="utf-8"))
+    )
+    assert result.ok
+    assert expected
+    assert result.warnings == list(expected)
+
+
+def test_warnings_print_and_exit_zero(tmp_path, capsys):
+    driver = _write(tmp_path / "acme_widget.avcdriver", WARNED_YAML)
+    assert main([str(driver)]) == 0
+    captured = capsys.readouterr()
+    assert f"{driver}: warning: Nothing notices if the device stops answering" in (
+        captured.err
+    )
+    assert "1 file(s) checked, 0 with errors, 1 with warnings, 0 unreadable." in (
+        captured.out
+    )
+
+
+def test_simulator_validate_shows_contract_warnings_and_stays_green(tmp_path, capsys):
+    import pytest
+
+    from openavc.simulator.validate import main as validate_main
+
+    driver = _write(tmp_path / "acme_widget.avcdriver", WARNED_YAML)
+    with pytest.raises(SystemExit) as exit_info:
+        validate_main([str(driver)])
+    assert exit_info.value.code == 0
+    out = capsys.readouterr().out
+    assert "WARN  [contract] Nothing notices if the device stops answering" in out
+
+
 # ── A file it cannot read is an error, not a skip ──
 
 

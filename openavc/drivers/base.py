@@ -51,6 +51,7 @@ from openavc.drivers.spec import (
     CHILD_PRESENCE_MODES,
     CHILD_RESERVED_PROP_SCHEMA,
     CHILD_RESERVED_PROPS,
+    SILENCE_CHECK_TRANSPORTS,
 )
 from openavc.core.state_store import StateStore, is_flat_primitive
 from openavc.transport.frame_parsers import FrameParser
@@ -76,11 +77,9 @@ __all__ = [
 log = get_logger(__name__)
 
 # The transports BaseDriver._poll_loop watches for a peer that answers no poll
-# (_watches_for_silence). Serial stays out until the check has been measured
-# against a serial unit. HTTP and SNMP fail a request nobody answers; ssh runs
-# its own keep-alive (ServerAliveInterval, transport/ssh.py); MQTT talks to a
-# broker, so one device going quiet behind it is the driver's call.
-_SILENCE_CHECK_TRANSPORTS = frozenset({"tcp", "udp", "osc"})
+# (_watches_for_silence). The list and the reason for each one left out live
+# in spec.py, where the driver validator reads them too.
+_SILENCE_CHECK_TRANSPORTS = frozenset(SILENCE_CHECK_TRANSPORTS)
 
 # How often a held connection (BaseDriver._held) looks for the device's first
 # answer between polls.

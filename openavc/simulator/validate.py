@@ -2205,6 +2205,7 @@ def _contract_issues(contract) -> list[Issue]:
     re-derived here, so the terminal, catalog CI and the IDE cannot disagree.
     """
     issues = [Issue("error", "contract", msg) for msg in contract.errors]
+    issues += [Issue("warning", "contract", msg) for msg in contract.warnings]
     issues += [Issue("info", "contract", note) for note in contract.notes]
     return issues
 

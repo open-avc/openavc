@@ -1417,31 +1417,6 @@ class DeviceManager:
             if cfg.get("driver") == driver_id
         ]
 
-    async def connect_all(self) -> list[str]:
-        """Connect all devices concurrently. Returns list of failed device IDs."""
-        failed: list[str] = []
-
-        async def _connect_one(device_id: str, driver: Any) -> None:
-            try:
-                await asyncio.wait_for(driver.connect(), timeout=30)
-            except Exception as e:
-                log.warning(f"Failed to connect '{device_id}': {e}")
-                code = self._set_offline_reason(device_id, driver, exc=e)
-                failed.append(device_id)
-                if code == "auth_failed":
-                    self._pause_reconnect_for_auth(device_id)
-                else:
-                    self._start_reconnect(device_id)
-
-        tasks = [
-            _connect_one(did, drv)
-            for did, drv in self._devices.items()
-            if not drv.get_state("connected")
-        ]
-        if tasks:
-            await asyncio.gather(*tasks)
-        return failed
-
     async def disconnect_all(self) -> None:
         """Disconnect all devices gracefully (called at shutdown)."""
         # Cancel all reconnect tasks first — await each so loops finish cleanly

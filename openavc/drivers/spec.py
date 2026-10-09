@@ -118,6 +118,35 @@ AUTH_TYPES: tuple[str, ...] = ("telnet_login",)
 # own no transport).
 LIVENESS_TRANSPORTS: tuple[str, ...] = ("tcp", "serial", "udp", "osc")
 
+# The transports the poll loop watches for a peer that answers no poll
+# (BaseDriver._watches_for_silence): a driver that polls, reads replies and
+# has no liveness probe is dropped as `no_response` after max_missed_polls
+# polls that drew nothing. Serial stays out until the check has been measured
+# against a serial unit. HTTP and SNMP fail a request nobody answers; ssh runs
+# its own keep-alive (ServerAliveInterval, transport/ssh.py); MQTT talks to a
+# broker, so one device going quiet behind it is the driver's call.
+SILENCE_CHECK_TRANSPORTS: tuple[str, ...] = ("tcp", "udp", "osc")
+
+# The transports whose start-up and poll lines a YAML driver spaces itself
+# when it declares no `inter_command_delay` (ConfigurableDriver._pace_line).
+# With a delay set, the transport waits that long after every write instead.
+LINE_GAP_TRANSPORTS: tuple[str, ...] = ("tcp", "serial")
+
+# Seconds between the lines a YAML driver sends on its own (on_connect and
+# each poll cycle) over LINE_GAP_TRANSPORTS when it declares no
+# `inter_command_delay`. Sent back to back, a poll of any size reaches the
+# device as one burst, and a device that reads slower than that keeps what
+# fits in its receive buffer: the rest of the replies come back cut short or
+# not at all. Devices differ and nothing measured fixes one right value. Some
+# take a burst whole (one unit took 232 lines 10 ms apart, another 17 lines
+# with no gap at all); the protocols whose documents state a minimum ask for
+# 100 to 500 ms, and their drivers declare it. So this is a floor for drivers
+# that say nothing. Its cost is time: a start-up or a poll of N lines takes
+# N times this (the largest start-up a library driver declares is 514 lines,
+# 25.7 s). The driver validator warns when a poll takes longer than its
+# interval.
+DEFAULT_LINE_GAP_S = 0.05
+
 # Transports that put the device on a TCP port of its own, which is what makes
 # a `discovery.port_open` hint able to fire at all: the scan behind that hint is
 # a TCP connect sweep (discovery/port_scanner.py). A driver whose transports

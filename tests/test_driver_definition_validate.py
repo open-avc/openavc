@@ -253,6 +253,19 @@ WARNING_SECTION_CASES: list[tuple[str, dict[str, Any], str]] = [
         _d(commands={"go": {"send": "GO {n}\r", "params": {"n": {"type": "integer"}}}}),
         "commands.go.params.n",
     ),
+    (
+        "polling.queries (a poll longer than its interval)",
+        _d(
+            default_config={"poll_interval": 1},
+            polling={"queries": [f"Q{n}\r" for n in range(30)]},
+        ),
+        "polling.queries",
+    ),
+    (
+        "liveness (silence nothing notices)",
+        _d(transport="serial", responses=[{"match": "OK", "set": {"power": "on"}}]),
+        "liveness",
+    ),
 ]
 
 

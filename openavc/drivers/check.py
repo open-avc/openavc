@@ -23,7 +23,9 @@ the save doors, the loader and the catalog already call:
 
     .avcdriver   driver_loader.validate_driver_definition(..., strict=True)
                  — the whole rule set (unknown keys, cross-field rules, the
-                 discovery block), exactly as the Builder's save runs it
+                 discovery block), exactly as the Builder's save runs it —
+                 plus avcdriver_semantic.validate_driver_warnings, the
+                 warnings the Builder shows beside the errors
     .py          python_info.extract_python_driver_info_full  ->
                  avcdriver_semantic.unknown_key_errors, plus
                  python_info.python_driver_info_issues (the loader's
@@ -65,6 +67,9 @@ class FileCheckResult:
     path: Path
     kind: str  # "yaml" | "python" | "unknown"
     errors: list[str] = field(default_factory=list)
+    # Findings that never block anything: the list the Driver Builder shows
+    # beside the errors. They never change the exit code.
+    warnings: list[str] = field(default_factory=list)
     # Notes are coverage statements, not defects: places the check could not
     # reach. They never change the exit code, and they are never omitted.
     notes: list[str] = field(default_factory=list)
@@ -114,9 +119,11 @@ def _check_yaml_driver(path: Path) -> FileCheckResult:
 
     # Imported here, not at module scope: the discovery-block check pulls in
     # the discovery engine, and this module stays cheap to import.
+    from openavc.drivers.avcdriver_semantic import validate_driver_warnings
     from openavc.drivers.driver_loader import validate_driver_definition
 
     result.errors.extend(validate_driver_definition(driver_def, strict=True))
+    result.warnings.extend(validate_driver_warnings(driver_def))
     return result
 
 
@@ -275,6 +282,7 @@ def main(argv: list[str] | None = None) -> int:
             "  python -m openavc.drivers.check data/driver_repo/\n"
             "\n"
             "Exits 1 when anything is wrong, 0 when the contract is clean.\n"
+            "Warnings are printed and never change the exit code.\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -307,21 +315,24 @@ def main(argv: list[str] | None = None) -> int:
         where = _display_path(result.path, cwd)
         for message in result.errors:
             print(f"{where}: error: {message}", file=sys.stderr)
+        for message in result.warnings:
+            print(f"{where}: warning: {message}", file=sys.stderr)
         for note in result.notes:
             print(f"{where}: note: {note}")
 
     failed = [r for r in results if not r.ok]
+    warned = [r for r in results if r.warnings]
     unreadable = [r for r in results if not r.readable]
 
     # A single clean file says nothing and exits 0. Anything else prints the
     # coverage line, because "no findings" and "did not look" are the same
     # output otherwise — and the second one is the dangerous one. A skip counts
     # as "did not look", so it prints the line too.
-    if len(results) > 1 or failed or skipped:
-        summary = (
-            f"\n{len(results)} file(s) checked, {len(failed)} with errors, "
-            f"{len(unreadable)} unreadable"
-        )
+    if len(results) > 1 or failed or warned or skipped:
+        summary = f"\n{len(results)} file(s) checked, {len(failed)} with errors, "
+        if warned:
+            summary += f"{len(warned)} with warnings, "
+        summary += f"{len(unreadable)} unreadable"
         if skipped:
             summary += (
                 f"; {len(skipped)} file(s) declaring a DRIVER_INFO were "

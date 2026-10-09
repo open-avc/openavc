@@ -1,7 +1,7 @@
 """Import-guard for the driver-contract modules.
 
-``openavc/drivers/spec.py``, ``openavc/drivers/avcdriver_semantic.py`` and
-``openavc/drivers/python_info.py`` are shared beyond the server runtime (the
+``openavc/drivers/spec.py``, ``openavc/drivers/avcdriver_semantic.py``,
+``openavc/drivers/child_ids.py`` and ``openavc/drivers/python_info.py`` are shared beyond the server runtime (the
 community driver catalog runs the same rules in its CI, in a job that installs
 no ``openavc`` package), so they must stay importable with nothing but the
 standard library and each other: no runtime, no transports, no discovery, no
@@ -21,6 +21,7 @@ ALLOWED = {
     "openavc.drivers",
     "openavc.drivers.spec",
     "openavc.drivers.avcdriver_semantic",
+    "openavc.drivers.child_ids",
     "openavc.utils",
     "openavc.utils.regex_safety",
 }

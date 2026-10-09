@@ -20,6 +20,7 @@ import difflib as _difflib
 import re
 from typing import Any, Callable
 
+from openavc.drivers.child_ids import declared_child_ids
 from openavc.drivers.spec import (
     ACTION_KINDS,
     AUTH_TRANSPORTS,
@@ -29,12 +30,14 @@ from openavc.drivers.spec import (
     CHILD_RESERVED_PROPS,
     CLOUD_PRIORITIES,
     CONFIG_FIELD_SOURCES,
+    DEFAULT_LINE_GAP_S,
     DEFS,
     FIELDS,
     GENERIC_ID_PREFIXES,
     INSTANCE_SOURCES,
     LENGTH_ENDIANS,
     LENGTH_HEADER_SIZES,
+    LINE_GAP_TRANSPORTS,
     LIVENESS_TRANSPORTS,
     OSC_ARG_TYPES as _OSC_ARG_TYPES,
     PARAM_OPTIONS_FROM_SOURCES as _PARAM_OPTIONS_FROM_SOURCES,
@@ -45,6 +48,7 @@ from openavc.drivers.spec import (
     PUSH_TYPE_KEYS,
     REQUIRED_FIELDS,
     SEND_FRAME_TYPES,
+    SILENCE_CHECK_TRANSPORTS,
     STRUCT_LENGTH_SIZES,
     VALUE_TYPES,
     VISIBLE_WHEN_OPERATORS as _VISIBLE_WHEN_OPERATORS,
@@ -2819,7 +2823,189 @@ def validate_driver_warnings(driver_def: dict[str, Any]) -> list[str]:
                     f"what to enter."
                 )
 
+    _poll_length_warnings(driver_def, warnings)
+    _unwatched_silence_warnings(driver_def, warnings)
+
     return warnings
+
+
+def _number(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _seconds(value: float) -> str:
+    return f"{value:.1f}".rstrip("0").rstrip(".")
+
+
+def _poll_lines(
+    queries: list[Any], child_types: dict[str, Any], config: dict[str, Any]
+) -> int:
+    """How many lines one poll cycle sends with this config.
+
+    Counted the way ConfigurableDriver._expand_query expands them: a string
+    is one line, a ``{send}`` entry one line while its ``when:`` field is
+    truthy, an ``each_child`` entry one line per child the declaration
+    registers (none while the roster is empty or reported by the device).
+    """
+    lines = 0
+    for entry in queries:
+        if isinstance(entry, str):
+            lines += 1
+            continue
+        if not isinstance(entry, dict):
+            continue
+        when = entry.get("when")
+        if isinstance(when, str) and when and not config.get(when):
+            continue
+        child_type = entry.get("each_child")
+        if child_type is None:
+            lines += 1 if isinstance(entry.get("send"), str) else 0
+            continue
+        ids = declared_child_ids(child_types.get(child_type), config)
+        lines += len(ids) if ids else 0
+    return lines
+
+
+def _poll_length_warnings(driver_def: dict[str, Any], warnings: list[str]) -> None:
+    """A poll cycle that takes longer than the poll interval.
+
+    Each line of a poll waits ``inter_command_delay`` after it, or
+    DEFAULT_LINE_GAP_S over LINE_GAP_TRANSPORTS when no delay is set, and the
+    next cycle starts one poll interval after this one ends. So a cycle longer
+    than the interval keeps the device answering polls more than half the time
+    and refreshes every reading less than half as often as the interval says.
+    Checked at the driver's default config and, when a child roster is sized
+    by a config field, with every such field at the largest value the driver
+    accepts (the field's ``max``, else the child id's ``max``). OSC lines go
+    out differently and are not counted here.
+    """
+    defaults = driver_def.get("default_config")
+    config = dict(defaults) if isinstance(defaults, dict) else {}
+    transport = config.get("transport") or driver_def.get("transport")
+    delay = _number(config.get("inter_command_delay")) or 0.0
+    if transport in LINE_GAP_TRANSPORTS:
+        gap = delay if delay > 0 else DEFAULT_LINE_GAP_S
+    elif transport in ("udp", "http"):
+        gap = delay
+    else:
+        return
+    interval = _number(config.get("poll_interval"))
+    polling = driver_def.get("polling")
+    queries = polling.get("queries") if isinstance(polling, dict) else None
+    if gap <= 0 or not interval or interval <= 0 or not isinstance(queries, list):
+        return
+    raw_types = driver_def.get("child_entity_types")
+    child_types = raw_types if isinstance(raw_types, dict) else {}
+    raw_schema = driver_def.get("config_schema")
+    schema = raw_schema if isinstance(raw_schema, dict) else {}
+    spacing = f"{round(gap * 1000)} ms apart"
+    if delay <= 0:
+        spacing += " (the spacing used when no inter_command_delay is set)"
+
+    def verdict(lines: int) -> str | None:
+        cycle = lines * gap
+        if cycle <= interval:
+            return None
+        return (
+            f"{lines} lines, {_seconds(cycle)} s at {spacing}, longer than the "
+            f"{_seconds(interval)} s poll interval: the device answers polls more "
+            f"than half the time, and each reading refreshes every "
+            f"{_seconds(cycle + interval)} s"
+        )
+
+    warnings.ctx = "polling.queries"
+    at_default = verdict(_poll_lines(queries, child_types, config))
+    if at_default:
+        warnings.append(
+            f"Each poll sends {at_default}. Poll less per cycle, or set a longer "
+            f"poll_interval in default_config."
+        )
+        return
+
+    largest = dict(config)
+    raised: list[str] = []
+    for type_def in child_types.values():
+        if not isinstance(type_def, dict):
+            continue
+        instances = type_def.get("instances")
+        field = instances.get("count_from") if isinstance(instances, dict) else None
+        if not isinstance(field, str) or not field:
+            continue
+        field_def = schema.get(field)
+        field_def = field_def if isinstance(field_def, dict) else {}
+        top = field_def.get("max")
+        id_format = type_def.get("id_format")
+        if top is None and isinstance(id_format, dict):
+            top = id_format.get("max")
+        if isinstance(top, bool) or not isinstance(top, int) or top < 1:
+            continue
+        current = _number(largest.get(field))
+        if current is not None and current >= top:
+            continue
+        largest[field] = top
+        label = field_def.get("label")
+        name = label if isinstance(label, str) and label else field
+        raised.append(f"{name} {top}")
+    if not raised:
+        return
+    at_largest = verdict(_poll_lines(queries, child_types, largest))
+    if at_largest:
+        warnings.append(
+            f"At the largest roster this driver accepts ({', '.join(raised)}), "
+            f"each poll sends {at_largest}. Poll less per child, set a longer "
+            f"poll_interval, or lower the roster's max to the largest unit the "
+            f"driver supports."
+        )
+
+
+def _unwatched_silence_warnings(
+    driver_def: dict[str, Any], warnings: list[str]
+) -> None:
+    """A device that stops answering would keep reading connected.
+
+    The poll loop drops a connection whose polls draw nothing, but only on
+    SILENCE_CHECK_TRANSPORTS and only for a driver that sends polls; a
+    ``liveness:`` block covers every LIVENESS_TRANSPORTS link. A driver with no
+    response rules reads nothing, so it has nothing to watch.
+    """
+    if driver_def.get("liveness"):
+        return
+    responses = driver_def.get("responses")
+    if not isinstance(responses, list) or not responses:
+        return
+    defaults = driver_def.get("default_config")
+    config = defaults if isinstance(defaults, dict) else {}
+    declared = [config.get("transport") or driver_def.get("transport")]
+    extra = driver_def.get("transports")
+    if isinstance(extra, list):
+        declared.extend(extra)
+    transports = [t for t in dict.fromkeys(declared) if t in LIVENESS_TRANSPORTS]
+    polling = driver_def.get("polling")
+    queries = polling.get("queries") if isinstance(polling, dict) else None
+    interval = _number(config.get("poll_interval"))
+    polls = bool(queries) and interval is not None and interval > 0
+    unwatched = [
+        t for t in transports if not polls or t not in SILENCE_CHECK_TRANSPORTS
+    ]
+    if not unwatched:
+        return
+    over = " or ".join(unwatched)
+    if polls:
+        reason = f"polls over {over} are not checked for a reply"
+    else:
+        reason = "it sends no poll at its default config"
+    warnings.ctx = "liveness"
+    warnings.append(
+        f"Nothing notices if the device stops answering over {over}: {reason}, "
+        f"and there is no liveness block, so the device reads connected for as "
+        f"long as the connection stays open. Add a liveness block that asks "
+        f"something the device answers in every state."
+    )
 
 
 def _as_issues(messages: list[str], severity: str) -> list[dict[str, str]]:
