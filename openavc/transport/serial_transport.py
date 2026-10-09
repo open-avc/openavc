@@ -27,6 +27,7 @@ from openavc.transport.frame_parsers import DelimiterFrameParser, FrameParser
 from openavc.transport.wire_log import format_wire_data
 from openavc.transport.write_drain import close_or_abandon, drain_or_stalled
 from openavc.utils.logger import get_logger
+from openavc.transport.pacing import sleep_at_least
 from .types import Callback
 
 log = get_logger(__name__)
@@ -389,7 +390,7 @@ class SerialTransport:
             log.debug(f"[{self._name}] TX: {self._format_data(data)}")
             record_traffic(self._traffic_name, TX, data, channel="serial")
             if self._inter_command_delay > 0:
-                await asyncio.sleep(self._inter_command_delay)
+                await sleep_at_least(self._inter_command_delay)
             return
 
         try:
@@ -398,7 +399,7 @@ class SerialTransport:
             log.debug(f"[{self._name}] TX: {self._format_data(data)}")
             record_traffic(self._traffic_name, TX, data, channel="serial")
             if self._inter_command_delay > 0:
-                await asyncio.sleep(self._inter_command_delay)
+                await sleep_at_least(self._inter_command_delay)
         except (OSError, ConnectionError) as e:
             self._last_error = str(e) or type(e).__name__
             self._last_fault = typed_fault_from_exc(e, port=self.port)

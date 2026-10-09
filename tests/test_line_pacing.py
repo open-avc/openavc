@@ -88,8 +88,12 @@ class _Wire:
 def wire_log(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, Any]]:
     log: list[tuple[str, Any]] = []
     clock = _Clock()
-    monkeypatch.setattr(configurable_mod, "asyncio", _RecordingAsyncio(clock, log))
+    recorder = _RecordingAsyncio(clock, log)
+    monkeypatch.setattr(configurable_mod, "asyncio", recorder)
     monkeypatch.setattr(configurable_mod, "time", clock)
+    # The line gap is measured and slept through the pacing helpers.
+    monkeypatch.setattr(configurable_mod, "pacing_clock", clock.monotonic)
+    monkeypatch.setattr(configurable_mod, "sleep_at_least", recorder.sleep)
     return log
 
 

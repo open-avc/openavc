@@ -22,6 +22,7 @@ from typing import Callable
 from openavc.core.device_traffic import RX, TX, record_traffic
 from openavc.transport.wire_log import format_wire_data
 from openavc.utils.logger import get_logger
+from openavc.transport.pacing import sleep_at_least
 from .types import Callback
 
 log = get_logger(__name__)
@@ -192,7 +193,7 @@ class UDPTransport:
                 meta={"peer": f"{host}:{port}"},
             )
             if self._inter_command_delay > 0:
-                await asyncio.sleep(self._inter_command_delay)
+                await sleep_at_least(self._inter_command_delay)
 
     async def send_and_wait(self, data: bytes, timeout: float = 2.0) -> bytes:
         """Send a datagram and wait for the next response.
@@ -252,7 +253,7 @@ class UDPTransport:
                         f"from {self.host}:{self.port}"
                     )
                 if self._inter_command_delay > 0:
-                    await asyncio.sleep(self._inter_command_delay)
+                    await sleep_at_least(self._inter_command_delay)
                 return response
             except asyncio.TimeoutError:
                 log.warning(

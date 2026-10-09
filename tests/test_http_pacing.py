@@ -40,7 +40,7 @@ async def device():
             # A client that gave up before sending anything (the failed-request
             # test) leaves this read open; the teardown closes it.
             head = await reader.readuntil(b"\r\n\r\n")
-            arrived = time.monotonic()
+            arrived = time.perf_counter()
             path = head.split(b" ", 2)[1].decode()
             if path == state["slow"]:
                 await asyncio.sleep(0.3)
@@ -51,7 +51,7 @@ async def device():
                 b"Content-Length: 2\r\nConnection: close\r\n\r\nOK"
             )
             await writer.drain()
-            log.append((path, arrived, time.monotonic()))
+            log.append((path, arrived, time.perf_counter()))
         except (asyncio.IncompleteReadError, ConnectionError):
             pass
         finally:
@@ -128,9 +128,9 @@ async def test_a_failed_request_still_leaves_the_gap(device) -> None:
         # The device takes 20 ms to answer; this request gives up long before.
         with pytest.raises(httpx.TimeoutException):
             await t.request("GET", "/x", timeout=0.001)
-        started = time.monotonic()
+        started = time.perf_counter()
         await t.get("/after")
-        waited = time.monotonic() - started
+        waited = time.perf_counter() - started
     finally:
         await t.close()
     assert waited >= DELAY - 0.01, waited

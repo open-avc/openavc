@@ -53,6 +53,7 @@ from openavc.core.connection_fault import (
     typed_fault_from_exc,
 )
 from openavc.core.device_traffic import RX, TX, record_traffic
+from openavc.transport.pacing import sleep_at_least
 from openavc.transport.write_drain import drain_or_stalled
 from openavc.utils.logger import get_logger
 from openavc.utils.spawn import CREATE_NO_WINDOW
@@ -396,7 +397,7 @@ class SSHTransport:
                 await drain_or_stalled(self._proc.stdin, self._name)
                 record_traffic(self._traffic_name, TX, data, channel="ssh")
                 if self._inter_command_delay > 0:
-                    await asyncio.sleep(self._inter_command_delay)
+                    await sleep_at_least(self._inter_command_delay)
             except (ConnectionError, OSError, BrokenPipeError) as e:
                 self._last_fault = typed_fault_from_exc(
                     e, host=self.host, port=self.port

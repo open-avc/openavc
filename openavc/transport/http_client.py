@@ -51,6 +51,7 @@ from openavc.core.device_traffic import (
     record_traffic,
 )
 from openavc.utils.logger import get_logger
+from openavc.transport.pacing import sleep_at_least
 
 log = get_logger(__name__)
 
@@ -872,9 +873,9 @@ class HTTPClientTransport:
             except asyncio.CancelledError:
                 raise
             except BaseException:
-                await asyncio.sleep(delay)
+                await sleep_at_least(delay)
                 raise
-            await asyncio.sleep(delay)
+            await sleep_at_least(delay)
             return result
 
     async def _exchange(

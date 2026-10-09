@@ -46,6 +46,7 @@ from openavc.drivers.inline_protocol import (
 from openavc.transport.binary_helpers import encode_escape_sequences as _safe_encode_escapes
 from openavc.transport.frame_parsers import DEFAULT_MAX_BUFFER, FrameParser
 from openavc.utils.logger import get_logger
+from openavc.transport.pacing import pacing_clock, sleep_at_least
 
 log = get_logger(__name__)
 
@@ -757,10 +758,10 @@ class ConfigurableDriver(BaseDriver):
         gap = self._line_gap()
         if gap <= 0:
             return
-        wait = self._next_line_at - time.monotonic()
+        wait = self._next_line_at - pacing_clock()
         if wait > 0:
-            await asyncio.sleep(wait)
-        self._next_line_at = time.monotonic() + gap
+            await sleep_at_least(wait)
+        self._next_line_at = pacing_clock() + gap
 
     async def _run_on_connect(self) -> None:
         """Send the declared start-up steps (``on_connect``).
