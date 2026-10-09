@@ -899,10 +899,14 @@ class DeviceManager:
         command and setting gates, a macro's "skip if offline" and a group
         command's offline skip.
         """
-        if self.state.get(f"device.{device_id}.connected"):
-            return True
         driver = self._devices.get(device_id)
-        return driver is not None and driver._held is True
+        if driver is None:
+            # A device with no live driver (disabled, orphaned) has nothing to
+            # send through; its published state is the whole answer.
+            return bool(self.state.get(f"device.{device_id}.connected"))
+        if driver.get_state("connected"):
+            return True
+        return getattr(driver, "_held", False) is True
 
     @staticmethod
     def _validate_command_params(
