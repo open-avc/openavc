@@ -2893,9 +2893,9 @@ class ConfigurableDriver(BaseDriver):
         self._http_cycle = [0, 0] if is_http else None
 
         # The first poll after a connect follows on_connect at once, so a line
-        # start-up has just sent is not sent again. Not on HTTP, where the
-        # first poll runs whole.
-        skips = self._first_poll_skips if not is_http else None
+        # start-up has just sent is not sent again. A line whose send failed
+        # was not noted (_run_on_connect), so it is asked again here.
+        skips = self._first_poll_skips
         self._first_poll_skips = None
 
         for raw_query in queries:

@@ -35,6 +35,7 @@ from openavc.drivers.configurable import (
     create_configurable_driver_class,
 )
 from openavc.drivers.dry_run import preview_connect
+from openavc.transport.http_client import HTTPResponse
 from openavc.transport.osc_codec import osc_encode_message
 
 _real_sleep = asyncio.sleep
@@ -281,6 +282,63 @@ async def test_with_polling_off_a_later_poll_skips_nothing(wire_log, connect_wit
     wire_log.clear()
     await driver.poll()
     assert [d for k, d in wire_log if k == "send"] == [b"A?\r", b"B?\r", b"C?\r"]
+
+
+class _HTTPWire:
+    """An HTTP transport stand-in: records each GET, answers 200, and raises
+    for a path in ``failing`` (the request never reached the device)."""
+
+    connected = True
+
+    def __init__(self, log: list[tuple[str, Any]], failing: set[str] | None = None) -> None:
+        self._log = log
+        self.failing = set(failing or ())
+
+    async def get(self, path: str) -> HTTPResponse:
+        self._log.append(("get", path))
+        if path in self.failing:
+            raise ConnectionError(f"{path} did not reach the device")
+        return HTTPResponse(status_code=200, headers={}, text="", ok=True)
+
+
+def _acme_http() -> dict[str, Any]:
+    return _acme(
+        "http",
+        commands={},
+        on_connect=["/subscribe", "/a"],
+        polling={"queries": ["/a", "/b", "/c"]},
+    )
+
+
+async def test_http_start_up_lines_are_not_repeated_by_the_first_poll(
+    wire_log, connect_without_a_socket,
+):
+    driver = _driver(_acme_http(), wire_log, poll_interval=10)
+    driver.transport = _HTTPWire(wire_log)
+    await driver.connect()
+    wire_log.clear()
+
+    await driver.poll()
+    assert [d for k, d in wire_log if k == "get"] == ["/b", "/c"]
+
+    wire_log.clear()
+    await driver.poll()
+    assert [d for k, d in wire_log if k == "get"] == ["/a", "/b", "/c"]
+
+
+async def test_an_http_start_up_line_that_failed_is_asked_again_by_the_first_poll(
+    wire_log, connect_without_a_socket,
+):
+    """Only what start-up got an answer to is skipped: a request that never
+    reached the device is asked again straight away."""
+    driver = _driver(_acme_http(), wire_log, poll_interval=10)
+    driver.transport = _HTTPWire(wire_log, failing={"/a"})
+    await driver.connect()
+    driver.transport.failing.clear()
+    wire_log.clear()
+
+    await driver.poll()
+    assert [d for k, d in wire_log if k == "get"] == ["/a", "/b", "/c"]
 
 
 async def test_osc_start_up_lines_are_not_repeated_by_the_first_poll(
