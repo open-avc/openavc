@@ -779,3 +779,116 @@ def test_direct_serial_device_unaffected_by_bridge_resolver(
     cfg = engine.resolved_device_config(dev)["config"]
     assert cfg["port"] == "COM3"
     assert cfg.get("transport") != "tcp"
+
+
+@pytest.fixture
+def wol_discovery_driver():
+    """An invented Acme display with a Wake-on-LAN MAC Address setting."""
+
+    class _AcmeWakeDriver(BaseDriver):
+        DRIVER_INFO = {
+            "id": "acme_wake_test",
+            "name": "Acme Display (scanned MAC test)",
+            "transport": "tcp",
+            "default_config": {"host": "", "port": 5000, "mac_address": ""},
+            "config_schema": {
+                "host": {"type": "string", "label": "Host"},
+                "mac_address": {"type": "string", "label": "MAC Address"},
+            },
+            "state_variables": {},
+            "commands": {},
+        }
+
+        async def connect(self) -> None:
+            return None
+
+        async def disconnect(self) -> None:
+            return None
+
+        async def send_command(self, command, params=None):
+            return None
+
+    register_driver(_AcmeWakeDriver)
+    yield _AcmeWakeDriver
+    unregister_driver("acme_wake_test")
+
+
+def _scanned(ip: str, mac: str | None):
+    from unittest.mock import MagicMock
+
+    found = MagicMock()
+    found.mac = mac
+    found.model = None
+    found.device_name = None
+    found.manufacturer = "Acme"
+    found.open_ports = []
+    return found
+
+
+async def test_a_scanned_mac_fills_the_mac_setting(
+    tmp_path, wol_discovery_driver, monkeypatch
+):
+    """Adding a device from a scan saves the MAC the scan read into the
+    driver's MAC Address setting, so a Wake-on-LAN power-on works without
+    typing it."""
+    from openavc.api import discovery as discovery_api
+    from openavc.api.discovery import AddDeviceRequest, add_device
+
+    engine = _wire_add_device_env(tmp_path, monkeypatch)
+    discovery_api._get_engine().results["192.0.2.60"] = _scanned(
+        "192.0.2.60", "00:11:22:aa:bb:cc")
+
+    result = await add_device(AddDeviceRequest(ip="192.0.2.60", driver_id="acme_wake_test"))
+    saved = next(d for d in engine.project.devices if d.id == result["device_id"])
+    assert saved.config["mac_address"] == "00:11:22:aa:bb:cc"
+    runtime = engine.devices.get_device_config(result["device_id"])
+    assert runtime["config"]["mac_address"] == "00:11:22:aa:bb:cc"
+
+
+async def test_no_scanned_mac_leaves_the_setting_empty(
+    tmp_path, wol_discovery_driver, monkeypatch
+):
+    """A device across a router has no ARP entry, so no MAC: nothing is
+    invented, the setting stays for the integrator to fill in."""
+    from openavc.api import discovery as discovery_api
+    from openavc.api.discovery import AddDeviceRequest, add_device
+
+    engine = _wire_add_device_env(tmp_path, monkeypatch)
+    discovery_api._get_engine().results["192.0.2.61"] = _scanned("192.0.2.61", None)
+
+    result = await add_device(AddDeviceRequest(ip="192.0.2.61", driver_id="acme_wake_test"))
+    saved = next(d for d in engine.project.devices if d.id == result["device_id"])
+    assert "mac_address" not in saved.config
+
+
+async def test_a_mac_sent_with_the_add_wins_over_the_scan(
+    tmp_path, wol_discovery_driver, monkeypatch
+):
+    from openavc.api import discovery as discovery_api
+    from openavc.api.discovery import AddDeviceRequest, add_device
+
+    engine = _wire_add_device_env(tmp_path, monkeypatch)
+    discovery_api._get_engine().results["192.0.2.62"] = _scanned(
+        "192.0.2.62", "00:11:22:aa:bb:cc")
+
+    result = await add_device(AddDeviceRequest(
+        ip="192.0.2.62", driver_id="acme_wake_test",
+        config={"mac_address": "00:11:22:dd:ee:ff"},
+    ))
+    saved = next(d for d in engine.project.devices if d.id == result["device_id"])
+    assert saved.config["mac_address"] == "00:11:22:dd:ee:ff"
+
+
+async def test_a_driver_with_no_mac_setting_gets_no_mac(
+    tmp_path, noop_discovery_driver, monkeypatch
+):
+    from openavc.api import discovery as discovery_api
+    from openavc.api.discovery import AddDeviceRequest, add_device
+
+    engine = _wire_add_device_env(tmp_path, monkeypatch)
+    discovery_api._get_engine().results["192.0.2.63"] = _scanned(
+        "192.0.2.63", "00:11:22:aa:bb:cc")
+
+    result = await add_device(AddDeviceRequest(ip="192.0.2.63", driver_id="fake_disco_test"))
+    saved = next(d for d in engine.project.devices if d.id == result["device_id"])
+    assert "mac_address" not in saved.config

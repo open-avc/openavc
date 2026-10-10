@@ -12,7 +12,11 @@ from openavc.api.auth import require_programmer_auth
 from openavc.api.errors import api_error as _api_error
 from openavc.discovery.engine import DiscoveryEngine, ScanBlocked
 from openavc.utils.logger import get_logger
-from openavc.drivers.registry import get_driver_default_config, list_registered_drivers
+from openavc.drivers.registry import (
+    get_driver_class,
+    get_driver_default_config,
+    list_registered_drivers,
+)
 
 log = get_logger(__name__)
 
@@ -385,6 +389,30 @@ def _sanitize_add_device_config(config: dict[str, Any]) -> dict[str, Any]:
     return clean
 
 
+# The setting a driver keeps a device's MAC address in, by name, the way
+# ``host`` is the setting the scanned address goes into.
+SCANNED_MAC_FIELD = "mac_address"
+
+
+def _scanned_mac_field(driver_id: str) -> str | None:
+    """The setting a device added from a scan gets the scanned MAC in, or None.
+
+    The scan reads a MAC from this computer's ARP cache, keyed by the
+    device's own address, so it is only ever that device's MAC, and only a
+    device on the same network segment has one (one across a router has no
+    entry, never the router's). A driver opts in by naming a plain-text
+    setting ``mac_address``: Wake-on-LAN power-on is what needs it.
+    """
+    cls = get_driver_class(driver_id)
+    schema = (getattr(cls, "DRIVER_INFO", {}) or {}).get("config_schema") if cls else None
+    field = schema.get(SCANNED_MAC_FIELD) if isinstance(schema, dict) else None
+    if not isinstance(field, dict) or field.get("secret"):
+        return None
+    if field.get("type", "string") not in ("string", "text"):
+        return None
+    return SCANNED_MAC_FIELD
+
+
 @router.post("/add-device")
 async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
     """Add a discovered device to the project.
@@ -437,7 +465,7 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
 
     # Layer the device's config so it lands in the project pre-filled,
     # not just at runtime:
-    #   driver defaults  <  request overrides  <  discovery-provided host
+    #   driver defaults  <  discovery-provided host and MAC  <  request overrides
     # Empty-string / None defaults are dropped so we don't write blanks
     # over fields the user can fill later (mirrors the manual Add Device
     # dialog's prefill behavior).
@@ -449,6 +477,9 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
     }
 
     config = {**driver_defaults, "host": req.ip}
+    mac_field = _scanned_mac_field(req.driver_id)
+    if mac_field and discovered and discovered.mac:
+        config[mac_field] = discovered.mac
     config.update(_sanitize_add_device_config(req.config))
 
     # Split config into connection fields and protocol fields
