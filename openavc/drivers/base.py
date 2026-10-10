@@ -776,14 +776,15 @@ class BaseDriver(ABC):
         # the device is there as well as a reply on the transport does, so the
         # poll loop's silence check counts them (_io_counts).
         self._push_receives = 0
-        # A connection the poll loop dropped because no poll drew an answer
-        # stays offline on the automatic reconnect until the device answers
-        # one (_hold_next_connect, _announce_held, _wait_for_answer): without
-        # that, a device that never answers reads connected for N polls of
-        # every reconnect and the card flickers. `_dropped_for_silence` is
-        # that verdict, kept until an answer; the reconnect loop sets
-        # `_hold_next_connect` from it; `_held` is a connection that is up
-        # but not yet announced.
+        # A connection dropped because the device stopped answering (no poll
+        # drew an answer, or the liveness probe missed HEALTH_MAX_FAILURES
+        # times) stays offline on the automatic reconnect until the device
+        # answers a poll or a probe (_hold_next_connect, _announce_held,
+        # _wait_for_answer): without that, a device that never answers reads
+        # connected for most of every reconnect and the card flickers.
+        # `_dropped_for_silence` is that verdict, kept until an answer; the
+        # reconnect loop sets `_hold_next_connect` from it; `_held` is a
+        # connection that is up but not yet announced.
         self._dropped_for_silence = False
         self._hold_next_connect = False
         self._held = False
@@ -1135,15 +1136,16 @@ class BaseDriver(ABC):
             # here aborts the connection and the transport is cleaned up below.
             await self._post_connect()
             self._connected = True
-            if hold and self._watches_for_silence():
-                # Sends and polling run as usual; `connected` and the event
-                # wait for the first poll the device answers (_announce_held).
+            if hold and (self._health_enabled() or self._watches_for_silence()):
+                # Sends, polling and the liveness probe run as usual;
+                # `connected` and the event wait for the first poll or probe
+                # the device answers (_announce_held).
                 self._held = True
                 self._answer_waiter = asyncio.get_running_loop().create_future()
                 log.info(
-                    f"[{self.device_id}] Connected via {transport_type}; it "
-                    f"answered no poll last time, so it stays offline until "
-                    f"it answers one"
+                    f"[{self.device_id}] Connected via {transport_type}; the "
+                    f"device stopped answering last time, so it stays offline "
+                    f"until it answers"
                 )
             else:
                 self._dropped_for_silence = False
@@ -2074,19 +2076,28 @@ class BaseDriver(ABC):
         The exception is a typed ``auth_failed``: the device answered by
         refusing the credential, so the connection drops on the first one and
         keeps that code, which pauses reconnecting rather than starting it.
+
+        A drop for HEALTH_MAX_FAILURES misses holds the automatic reconnect
+        offline until a probe is answered (connect(), _announce_held), as the
+        poll loop's silence check does. A held connection is probed at once
+        rather than an interval later: every stage of connect() has run by
+        the time this loop starts, and the hold exists to ask whether the
+        device is back.
         """
         detach_emit_chain()  # a device-lifetime loop is a root, not a continuation
         interval = float(self.HEALTH_INTERVAL_S)
         timeout = float(self.HEALTH_TIMEOUT_S)
         max_failures = max(int(self.HEALTH_MAX_FAILURES), 1)
+        probe_now = self._held
         try:
             while self._link_alive():
-                await asyncio.sleep(interval)
+                if not probe_now:
+                    await asyncio.sleep(interval)
+                probe_now = False
                 if not self._link_alive():
                     return
                 try:
                     await asyncio.wait_for(self._liveness_probe(), timeout)
-                    self._health_failures = 0
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -2101,20 +2112,34 @@ class BaseDriver(ABC):
                         self._force_disconnect(AUTH_FAILED, refused.message)
                         return
                     self._health_failures += 1
-                    log.warning(
+                    # A held device is already shown offline: its misses are
+                    # expected, and a device that stays down for hours would
+                    # otherwise warn twice on every retry.
+                    (log.debug if self._held else log.warning)(
                         f"[{self.device_id}] Liveness probe failed "
                         f"({self._health_failures}/{max_failures}): {exc}"
                     )
                     if self._health_failures >= max_failures:
-                        log.warning(
-                            f"[{self.device_id}] Device unresponsive — "
-                            f"dropping the connection so the platform can "
-                            f"reconnect"
-                        )
+                        if self._held:
+                            log.info(
+                                f"[{self.device_id}] Still no answer to the "
+                                f"liveness probe; closing the connection to "
+                                f"try again"
+                            )
+                        else:
+                            log.warning(
+                                f"[{self.device_id}] Device unresponsive — "
+                                f"dropping the connection so the platform can "
+                                f"reconnect"
+                            )
+                        self._dropped_for_silence = True
                         self._force_disconnect(
                             NO_RESPONSE, self.HEALTH_FAULT_MESSAGE
                         )
                         return
+                else:
+                    self._health_failures = 0
+                    await self._announce_held()
         except asyncio.CancelledError:
             return
 
@@ -2151,7 +2176,8 @@ class BaseDriver(ABC):
 
         - the transport is one of _SILENCE_CHECK_TRANSPORTS and keeps counts;
         - the driver supplies no liveness probe (that watchdog already
-          decides this, with the driver's own knowledge of the protocol);
+          decides when to drop, with the driver's own knowledge of the
+          protocol; the reconnect after its drop is held the same way);
         - the driver reads replies (_reads_replies): a device that is only
           ever told things has nothing to answer with.
         """
@@ -2199,8 +2225,8 @@ class BaseDriver(ABC):
             waiter.set_result(answered)
 
     async def _announce_held(self) -> None:
-        """A held connection's device answered a poll: announce it now, the
-        way connect() announces any other connection."""
+        """A held connection's device answered a poll or a liveness probe:
+        announce it now, the way connect() announces any other connection."""
         if not self._held:
             return
         self._held = False
@@ -2212,17 +2238,23 @@ class BaseDriver(ABC):
 
     async def _wait_for_answer(self) -> bool:
         """For the reconnect loop, after a connect() that was held: True once
-        the device answers a poll (it is announced by then), False when the
-        connection closes first (a silent verdict again, or the link failing).
+        the device answers a poll or a liveness probe (it is announced by
+        then), False when the connection closes first (a silent verdict or
+        missed probes again, or the link failing).
 
-        A device that is not being polled has nothing to answer, so it is
-        announced on the open connection, as any connection is.
+        A device that nothing asks (no poll running, no liveness probe) has
+        nothing to answer, so it is announced on the open connection, as any
+        connection is.
         """
         waiter = self._answer_waiter
         if waiter is None:
             return self.get_state("connected") is True
         try:
-            if not waiter.done() and (self._poll_task is None or self._poll_task.done()):
+            unasked = (
+                (self._poll_task is None or self._poll_task.done())
+                and (self._health_task is None or self._health_task.done())
+            )
+            if not waiter.done() and unasked:
                 await self._announce_held()
             return await waiter
         finally:

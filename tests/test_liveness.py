@@ -983,3 +983,109 @@ async def test_expected_silence_is_not_counted(silent_server) -> None:
         assert drv.last_fault.code == "no_response"
     finally:
         await drv.disconnect()
+
+
+# --- A keep-alive probe's drop holds the reconnect too ---
+#
+# The probe decides when to drop a device that stopped answering, but before
+# the hold covered it, every reconnect announced the device again: measured on
+# a 30 s probe, about a second offline and over a minute online, repeating,
+# with Connected / Disconnected firing each cycle.
+
+
+def _acme_probed(**extra: Any) -> dict[str, Any]:
+    return _acme_polled(
+        commands={"power_on": {"label": "Power On", "send": "PWR 1\\r"}},
+        liveness={"send": "PWR?\\r", "expect": "PWR=", "interval": 0.05,
+                  "timeout": 0.05, "max_failures": 2},
+        **extra,
+    )
+
+
+@pytest.fixture
+async def managed_probed_acme(monkeypatch, switchable_server):
+    """``managed_acme`` with a liveness probe, as a factory taking the
+    device's config overrides."""
+    from openavc.core.device_manager import DeviceManager
+    from openavc.drivers.registry import register_driver, unregister_driver
+
+    monkeypatch.setattr(
+        DeviceManager, "_reconnect_delay", lambda self, device_id, attempt: 0.05
+    )
+    port, server = switchable_server
+    definition = _acme_probed()
+    register_driver(create_configurable_driver_class(definition))
+    state, events = StateStore(), EventBus()
+    dm = DeviceManager(state, events)
+    seen: list[str] = []
+    events.on("device.connected.*", lambda event, payload=None: seen.append("connected"))
+    events.on("device.disconnected.*", lambda event, payload=None: seen.append("disconnected"))
+
+    async def start(**config: Any) -> tuple[Any, StateStore, dict[str, Any], list[str]]:
+        await dm.add_device({
+            "id": "acme1", "driver": definition["id"], "name": "Acme",
+            "config": _connect_config(port, **config),
+        })
+        return dm, state, server, seen
+
+    try:
+        yield start
+    finally:
+        await dm.disconnect_all()
+        unregister_driver(definition["id"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("poll_interval", [_SILENCE_INTERVAL, 0])
+async def test_a_device_the_probe_dropped_stays_offline_across_reconnects(
+    managed_probed_acme, poll_interval,
+) -> None:
+    """With no poll running, the probe is still what answers: the held
+    connection is not announced just because nothing polls it."""
+    dm, state, server, seen = await managed_probed_acme(poll_interval=poll_interval)
+    assert await _until(lambda: state.get("device.acme1.connected") is False, 3.0)
+    first_drop = server["connections"]
+    assert await _until(lambda: server["connections"] >= first_drop + 3, 6.0)
+    assert state.get("device.acme1.connected") is False
+    assert state.get("device.acme1.offline_reason") == "no_response"
+    assert state.get("device.acme1.offline_detail") == BaseDriver.HEALTH_FAULT_MESSAGE
+    assert seen == ["connected", "disconnected"]
+
+
+@pytest.mark.asyncio
+async def test_a_device_the_probe_dropped_comes_online_when_it_answers(
+    managed_probed_acme,
+) -> None:
+    dm, state, server, seen = await managed_probed_acme()
+    assert await _until(lambda: state.get("device.acme1.connected") is False, 3.0)
+    assert await _until(lambda: dm._devices["acme1"]._held is True, 3.0)
+    server["mode"] = "answer"
+    assert await _until(
+        lambda: state.get("device.acme1.connected") is True
+        and state.get("device.acme1.offline_reason") is None,
+        2.0,
+    )
+    assert seen == ["connected", "disconnected", "connected"]
+    await asyncio.sleep(0.5)
+    assert state.get("device.acme1.connected") is True
+
+
+@pytest.mark.asyncio
+async def test_a_held_reconnect_probes_at_once(managed_probed_acme) -> None:
+    """The hold asks the device straight away rather than an interval later:
+    a device that came back is shown online on the reconnect that finds it."""
+    dm, state, server, seen = await managed_probed_acme()
+    assert await _until(lambda: state.get("device.acme1.connected") is False, 3.0)
+    dm._devices["acme1"].HEALTH_INTERVAL_S = 30.0
+    server["mode"] = "answer"
+    assert await _until(lambda: state.get("device.acme1.connected") is True, 2.0)
+
+
+@pytest.mark.asyncio
+async def test_a_device_the_probe_holds_still_takes_a_command(managed_probed_acme) -> None:
+    dm, state, server, seen = await managed_probed_acme()
+    assert await _until(lambda: dm._devices["acme1"]._held is True, 3.0)
+    assert dm.accepts_commands("acme1") is True
+    await dm.send_command("acme1", "power_on")
+    assert await _until(lambda: b"PWR 1" in server["lines"], 1.0)
+    assert state.get("device.acme1.connected") is False

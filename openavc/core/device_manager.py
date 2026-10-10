@@ -892,8 +892,9 @@ class DeviceManager:
         """Whether a command sent to this device now would go out.
 
         True while it is connected, and also while its connection is open but
-        held offline until it answers a poll (BaseDriver._held, the poll
-        loop's silence check). A device that goes quiet in standby is held
+        held offline until it answers a poll or a liveness probe
+        (BaseDriver._held, after the poll loop's silence check or the probe
+        dropped it). A device that goes quiet in standby is held
         like that, and the Power On that wakes it has to reach it: refusing
         it there would leave the device off for good. The one rule for the
         command and setting gates, a macro's "skip if offline" and a group
@@ -2429,19 +2430,20 @@ class DeviceManager:
 
                 try:
                     self._refresh_usb_serial_port(device_id, driver)
-                    # A device dropped because it answered no poll is not
-                    # announced again until it answers one: re-announcing it at
-                    # every reconnect made its card read connected for most of
-                    # each retry and fired its Connected/Disconnected triggers
-                    # every cycle. The link still opens and polls as usual.
+                    # A device dropped because it stopped answering (its polls
+                    # or its liveness probe) is not announced again until it
+                    # answers: re-announcing it at every reconnect made its
+                    # card read connected for most of each retry and fired its
+                    # Connected/Disconnected triggers every cycle. The link
+                    # still opens, polls and probes as usual.
                     if getattr(driver, "_dropped_for_silence", False) is True:
                         driver._hold_next_connect = True
                     await driver.connect()
                     if getattr(driver, "_held", False) is True:
                         if noisy:
                             log.info(
-                                "[%s] Connected; it stays offline until it "
-                                "answers a poll", device_id,
+                                "[%s] Connected; it stays offline until the "
+                                "device answers", device_id,
                             )
                         if not await driver._wait_for_answer():
                             # Closed again before answering. The driver kept
