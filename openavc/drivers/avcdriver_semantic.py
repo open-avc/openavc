@@ -2859,7 +2859,10 @@ def _poll_lines(
     Counted the way ConfigurableDriver._expand_query expands them: a string
     is one line, a ``{send}`` entry one line while its ``when:`` field is
     truthy, an ``each_child`` entry one line per child the declaration
-    registers (none while the roster is empty or reported by the device).
+    registers (none while the roster is empty). A roster the device resizes
+    (``count_from_state``) is counted at its config field, which is what the
+    runtime builds before the first report and what a matrix of that size
+    reports anyway.
     """
     lines = 0
     for entry in queries:
@@ -2875,9 +2878,21 @@ def _poll_lines(
         if child_type is None:
             lines += 1 if isinstance(entry.get("send"), str) else 0
             continue
-        ids = declared_child_ids(child_types.get(child_type), config)
+        ids = declared_child_ids(_config_sized(child_types.get(child_type)), config)
         lines += len(ids) if ids else 0
     return lines
+
+
+def _config_sized(type_def: Any) -> Any:
+    """A child type with ``count_from_state`` dropped, so its roster is the
+    one its config field declares."""
+    if not isinstance(type_def, dict):
+        return type_def
+    instances = type_def.get("instances")
+    if not isinstance(instances, dict) or not instances.get("count_from_state"):
+        return type_def
+    trimmed = {k: v for k, v in instances.items() if k != "count_from_state"}
+    return {**type_def, "instances": trimmed}
 
 
 def _poll_length_warnings(driver_def: dict[str, Any], warnings: list[str]) -> None:

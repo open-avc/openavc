@@ -164,6 +164,25 @@ def test_the_largest_roster_is_checked_when_the_default_fits():
     )
 
 
+def test_a_roster_the_device_resizes_is_counted_at_its_config_field():
+    # count_from_state follows the device once it reports; until then, and on
+    # a matrix of the configured size, the poll is the config field's.
+    definition = _matrix(
+        default_config={"poll_interval": 10, "output_count": 4, "inter_command_delay": 0.1},
+    )
+    definition["child_entity_types"]["output"]["instances"]["count_from_state"] = "outputs"
+    definition["state_variables"]["outputs"] = {"type": "integer", "label": "Outputs"}
+    [warning] = _poll_warnings(definition)
+    assert warning.startswith(
+        "At the largest roster this driver accepts (Output Count 64), "
+        "each poll sends 129 lines"
+    )
+    assert _poll_lines(
+        definition["polling"]["queries"], definition["child_entity_types"],
+        {"output_count": 4},
+    ) == 9
+
+
 def test_a_count_field_with_no_max_takes_the_child_ids_max():
     definition = _matrix(
         default_config={"poll_interval": 10, "output_count": 4, "inter_command_delay": 0.1},
