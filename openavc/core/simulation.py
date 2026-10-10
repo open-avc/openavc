@@ -317,6 +317,12 @@ class SimulationManager:
     def simulated_devices(self) -> list[str]:
         return list(self._sim_ports.keys())
 
+    def is_redirected(self, device_id: str) -> bool:
+        """True while this device's connection points at the simulator rather
+        than at its own address. Whatever it reports then is the simulator's,
+        not the equipment's (a learned config value is never saved from it)."""
+        return device_id in self._original_configs
+
     async def start(self, device_ids: list[str] | None = None) -> dict:
         """Start simulation for the specified devices (or all devices).
 

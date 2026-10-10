@@ -17,6 +17,10 @@ export interface ConfigFieldDef {
   min?: number;
   max?: number;
   values?: string[];
+  /** A state variable the device reports this value in. Once the device is
+   *  connected to the real equipment, the reported value is saved into the
+   *  device's setting. */
+  learned_from?: string;
 }
 
 /** Config-field types whose values are numbers. `float` is the runtime's

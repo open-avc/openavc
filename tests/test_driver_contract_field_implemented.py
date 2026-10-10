@@ -160,18 +160,12 @@ RUNTIME_OPT_OUT = {
     # The rest of config_schema's members, on the same footing as row_label
     # above: the runtime hands the whole block to the IDE
     # (configurable.py's driver_info, device_manager's driver listing) and
-    # never reads a member. These passed the old name-keyed check only
+    # reads none of these. These passed the old name-keyed check only
     # because words like "values" and "help" are everywhere in the server.
-    "configSchemaEntry.values":
-        "Connection-form presentation: the dropdown's options. Read by the "
-        "device config form (configFieldKind -> select), not by the runtime.",
     "configSchemaEntry.help":
         "Connection-form presentation: help text under the input.",
     "configSchemaEntry.regex":
         "Connection-form validation, applied by the IDE while editing.",
-    "configSchemaEntry.secret":
-        "Connection-form presentation: render masked "
-        "(configFieldKind -> password). The value is stored as typed.",
     "configSchemaEntry.advanced":
         "Connection-form presentation: collapse the field behind Advanced "
         "when the device is added or edited (DeviceDialogs). Nothing on the "
@@ -185,17 +179,16 @@ RUNTIME_OPT_OUT = {
     # It never had any: the runtime hands config_schema to the IDE whole and
     # reads only `secret` and `default` (avcdriver_semantic's masked-default
     # warning), so these belong here beside the rest of the block.
+    # Since 2026-10-10 `learned_from` (declared only on config fields) is an
+    # anchor too. core/learned_config.py reads `values`, `min`, `max` and
+    # `secret` to decide whether a value a device reports may be saved into a
+    # field, and avcdriver_semantic reads `default`; those left this list and
+    # the blind spots below because the search can see them now.
     "configSchemaEntry.required":
         "Connection-form validation: the field is mandatory in the device "
         "config form. Nothing on the wire consults it.",
     "configSchemaEntry.description":
         "Connection-form presentation: prose shown beside the input.",
-    "configSchemaEntry.min":
-        "Connection-form validation: numeric lower bound applied by the IDE "
-        "while editing.",
-    "configSchemaEntry.max":
-        "Connection-form validation: numeric upper bound applied by the IDE "
-        "while editing.",
     # config_schema's `columns` and help's `overview`/`connection` belong here
     # on the same reasoning, and are deliberately NOT listed: each is declared
     # in only one block, so it takes the unscoped grep and passes on ordinary
@@ -211,13 +204,6 @@ RUNTIME_OPT_OUT = {
 # that proves it. Keep them near-empty: a growing list means the scoping rule
 # needs rethinking, not more entries.
 RUNTIME_BLIND_SPOTS = {
-    "configSchemaEntry.default":
-        "Read by avcdriver_semantic's masked-default check "
-        "(`field_def.get(\"default\")` inside its config_schema loop), which "
-        "is what refuses to ship a real password baked into a driver file. "
-        "That file names neither `columns` nor `row_label`, configSchemaEntry's "
-        "only two anchors, so the scoped search cannot see it. It passed until "
-        "2026-08-01 on the UI page grid's `columns` living in project_loader.py.",
     "deviceSettingEntry.regex":
         "Read by base.py's _coerce_device_setting_value "
         "(`sdef.get(\"regex\") or sdef.get(\"pattern\")`). deviceSettingEntry "

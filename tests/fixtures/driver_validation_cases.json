@@ -2499,6 +2499,100 @@
   },
   "transport": "tcp"
  },
+ "config_learned_from_empty": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "config_schema": {
+   "model": {
+    "learned_from": "",
+    "type": "string"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "config_learned_from_secret": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "config_schema": {
+   "pin": {
+    "learned_from": "power",
+    "secret": true,
+    "type": "string"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "config_learned_from_table": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "config_schema": {
+   "map": {
+    "columns": {
+     "name": {
+      "type": "string"
+     }
+    },
+    "learned_from": "power",
+    "type": "table"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "config_learned_from_undeclared": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "config_schema": {
+   "model": {
+    "learned_from": "ghost",
+    "type": "string"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "device_setting_map_boolean_key_not_boolean": {
   "commands": {
    "noop": {

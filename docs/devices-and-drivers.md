@@ -148,6 +148,8 @@ The readings stay too, marked **last heard** rather than left looking current. A
 
 A device's sub-units are listed as soon as the driver knows how many there are, which for most drivers is before the device has ever been reached. You can build panels and macros against a room's equipment before any of it is racked.
 
+**Some settings fill themselves in.** A setting marked "Filled in from the device when it connects" (a model, a channel count, a MAC address) is what you pick while the equipment is not there yet, and what the simulator plays. The first time the real device connects, what it reports is saved into that setting, so a wrong pick is corrected and the value is kept after a restart. Simulation never changes it.
+
 Some drivers cover a whole family of frames, so how many sub-units *this* one has is a setting on the device rather than something it reports — a matrix switcher with an **Input Count** and an **Output Count**, for example. Until you fill those in there are no sub-units to list, and no amount of connecting or refreshing will produce any. The empty list names the setting to fill in when that is the case, and the sub-units appear as soon as you save it.
 
 Each sub-unit's state is addressable everywhere a state key is, using the pattern `device.<id>.<type>.<local_id>.<property>` (for example `device.matrix_main.encoder.005.signal_present`). You rarely type these by hand. The pickers in UI bindings, macros, triggers, and scripts surface them for you.

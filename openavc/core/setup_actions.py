@@ -30,6 +30,7 @@ import json
 from typing import Any
 from uuid import uuid4
 
+from openavc.core.device_config import apply_config_delta
 from openavc.core.device_manager import DeviceNotFoundError
 from openavc.utils.logger import get_logger
 
@@ -98,22 +99,8 @@ class SetupActionContext:
         # Build the change on a copy — apply_project diffs it against the
         # live project, so an in-place edit would reconcile nothing.
         project = engine.project.model_copy(deep=True)
-        dev = next((d for d in project.devices if d.id == device_id), None)
-        if dev is None:
+        if not apply_config_delta(project, device_id, delta):
             raise RuntimeError(f"Device '{device_id}' not found in project")
-
-        conn = dict(project.connections.get(device_id, {}))
-        protocol = dict(dev.config)
-        for key, value in delta.items():
-            if key in CONNECTION_FIELDS:
-                conn[key] = value
-            else:
-                protocol[key] = value
-        if conn:
-            project.connections[device_id] = conn
-        else:
-            project.connections.pop(device_id, None)
-        dev.config = protocol
 
         # Merge into the live device BEFORE the reconcile — into the driver
         # (what the next connect dials) and into the config the device manager

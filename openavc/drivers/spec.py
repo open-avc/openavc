@@ -2136,6 +2136,20 @@ DEFS = {
             'regex': {
                 'type': 'string',
             },
+            'learned_from': {
+                'type': 'string',
+                'doc': (
+                    'Name of a state variable the device reports this value in. '
+                    'While the device is connected to real equipment (never '
+                    'while simulated), a reported value the field accepts '
+                    'replaces what is saved in the device settings, so a value '
+                    'chosen before the equipment existed is corrected the first '
+                    'time it connects. For a model, a channel or bay count, a '
+                    'MAC address. Not on a connection field, a secret or a '
+                    'table.'
+                ),
+                'since': '0.37.0',
+            },
         },
         'extra': False,
     },

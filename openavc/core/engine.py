@@ -29,6 +29,7 @@ from openavc.core.device_config import bridge_first, resolve_device_config
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
 from openavc.core.help_requests import HelpRequests
+from openavc.core.learned_config import LearnedConfig
 from openavc.core.macro_engine import MacroEngine
 from openavc.core.panel_devices import (
     ACCESS_APPROVED,
@@ -142,6 +143,8 @@ class Engine:
         # Setup-action runner (driver-declared provisioning wizards)
         from openavc.core.setup_actions import SetupActionRunner
         self.setup_actions = SetupActionRunner(self)
+        # Settings the device fills in (config fields with learned_from).
+        self.learned_config = LearnedConfig(self)
 
         # Simulation
         from openavc.core.simulation import SimulationManager
@@ -443,6 +446,9 @@ class Engine:
             self._on_pending_settings_applied,
         ))
 
+        # Save a value a device reports into a config field that asks for it
+        self.learned_config.start()
+
         # Inter-System Communication
         await self._start_isc()
 
@@ -554,6 +560,8 @@ class Engine:
         # Stop update manager
         if self.update_manager:
             await self.update_manager.stop_auto_check()
+
+        self.learned_config.stop()
 
         # Unsubscribe all event/state handlers to prevent leaks on reload
         for sub_id in self._state_sub_ids:

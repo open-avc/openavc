@@ -81,6 +81,40 @@ def resolve_device_config(device, project) -> dict:
     return cfg
 
 
+def apply_config_delta(project, device_id: str, delta: dict[str, Any]) -> bool:
+    """Write a config delta for one device into ``project`` in place.
+
+    THE one place a delta coming from the runtime (a setup action, a value the
+    device reported) is split the way the project stores it: connection fields
+    (host, port, credentials, serial line, bridge, USB id) into
+    ``project.connections[device_id]``, everything else into the device's
+    protocol ``config``. Returns False when the device is not in the project.
+
+    The caller decides how the project is then persisted (a reconcile through
+    ``Engine.apply_project``, or a bookkeeping persist), and is responsible for
+    moving the live driver too (``DeviceManager.merge_live_config``) so the next
+    reconcile does not read the change as an edit.
+    """
+    from openavc.core.project_migration import CONNECTION_FIELDS
+
+    dev = next((d for d in project.devices if d.id == device_id), None)
+    if dev is None:
+        return False
+    conn = dict(project.connections.get(device_id, {}))
+    protocol = dict(dev.config)
+    for key, value in delta.items():
+        if key in CONNECTION_FIELDS:
+            conn[key] = value
+        else:
+            protocol[key] = value
+    if conn:
+        project.connections[device_id] = conn
+    else:
+        project.connections.pop(device_id, None)
+    dev.config = protocol
+    return True
+
+
 def resolve_bridge_binding(config: dict, project) -> dict:
     """Rewrite a bridge-bound device's effective connection to its bridge's port.
 

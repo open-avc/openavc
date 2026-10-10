@@ -34,6 +34,7 @@ export function ConfigSchemaEditor({ draft, onUpdate }: ConfigSchemaEditorProps)
     "host", "port", "baudrate", "parity", "poll_interval", "inter_command_delay",
   ]);
   const fieldNames = Object.keys(schema).filter((k) => !builtinKeys.has(k));
+  const stateVariableNames = Object.keys(draft.state_variables ?? {}).sort();
 
   const addField = () => {
     let counter = fieldNames.length + 1;
@@ -400,6 +401,46 @@ export function ConfigSchemaEditor({ draft, onUpdate }: ConfigSchemaEditorProps)
                     style={{ width: "100%" }}
                   />
                 </div>
+
+                {!field.secret && field.type !== "table" && (
+                  <div style={{ marginTop: "var(--space-md)" }}>
+                    <label style={labelStyle} htmlFor={`config-learned-${name}`}>
+                      Filled In From
+                    </label>
+                    <select
+                      id={`config-learned-${name}`}
+                      value={field.learned_from ?? ""}
+                      onChange={(e) =>
+                        updateField(name, { learned_from: e.target.value || undefined })
+                      }
+                      style={{ width: "100%" }}
+                    >
+                      <option value="">Nothing: the user enters it</option>
+                      {stateVariableNames.map((v) => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
+                      {field.learned_from && !stateVariableNames.includes(field.learned_from) && (
+                        <option value={field.learned_from}>
+                          {field.learned_from} (not a state variable)
+                        </option>
+                      )}
+                    </select>
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "var(--text-muted)",
+                        marginTop: 2,
+                      }}
+                    >
+                      Pick the state variable the device reports this value in.
+                      Once the device connects, what it reports is saved here,
+                      so a value chosen before the equipment existed is
+                      corrected. Never filled in from the simulator.
+                    </div>
+                  </div>
+                )}
 
                 {field.type === "enum" && (
                   <div style={{ marginTop: "var(--space-md)" }}>

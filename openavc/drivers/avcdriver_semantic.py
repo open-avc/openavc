@@ -1451,6 +1451,15 @@ def validate_driver_definition(
     # and just show "(not set)" forever while writes silently fired.
     # (`declared_vars` is hoisted above the command loop.)
     valid_setting_types = set(VALUE_TYPES)
+    raw_config_schema = driver_def.get("config_schema")
+    if isinstance(raw_config_schema, dict):
+        for field_name, field_def in raw_config_schema.items():
+            if isinstance(field_def, dict) and "learned_from" in field_def:
+                errors.ctx = f"config_schema.{field_name}"
+                errors.extend(
+                    config_learned_from_errors(field_name, field_def, declared_vars)
+                )
+
     errors.ctx = "device_settings"
     device_settings = driver_def.get("device_settings")
     if device_settings is not None and not isinstance(device_settings, dict):
@@ -3171,6 +3180,47 @@ def device_setting_state_key_errors(
         f"{where}: state_key '{state_key}' is not a declared "
         f"state variable — the setting would never read back"
     ]
+
+
+def config_learned_from_errors(
+    field_name: str,
+    field_def: dict[str, Any],
+    declared_vars: Any,
+) -> list[str]:
+    """A config field's ``learned_from`` names the state variable the device
+    reports the value in, and the platform saves that report into the field.
+
+    One rule for both surfaces, like ``device_setting_state_key_errors``. A
+    name that is not a declared state variable is never reported, so the
+    field is silently never filled in. A secret is never learned (the value
+    would have to sit in visible state first), and a table has no single
+    value to learn. A state-variable block built at runtime cannot be judged
+    from the source and is skipped, not failed.
+    """
+    learned_from = field_def.get("learned_from")
+    if learned_from is None:
+        return []
+    where = f"Config field '{field_name}'"
+    if not isinstance(learned_from, str) or not learned_from.strip():
+        return [f"{where}: learned_from must name a state variable"]
+    errors: list[str] = []
+    if field_def.get("secret") is True:
+        errors.append(
+            f"{where}: a secret field cannot be learned_from a state variable, "
+            f"because the value would have to be shown as state first"
+        )
+    if field_def.get("type") == "table":
+        errors.append(
+            f"{where}: a table field cannot be learned_from a state variable, "
+            f"because it has no single value to fill in"
+        )
+    if isinstance(declared_vars, dict) and UNEVALUATED_KEY not in declared_vars:
+        if learned_from not in declared_vars:
+            errors.append(
+                f"{where}: learned_from '{learned_from}' is not a declared "
+                f"state variable, so the field would never be filled in"
+            )
+    return errors
 
 
 def device_setting_map_errors(where: str, setting_def: dict[str, Any]) -> list[str]:

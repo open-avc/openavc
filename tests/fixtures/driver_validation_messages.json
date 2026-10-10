@@ -280,6 +280,18 @@
  "commands_not_mapping": [
   "commands: must be a mapping"
  ],
+ "config_learned_from_empty": [
+  "Config field 'model': learned_from must name a state variable"
+ ],
+ "config_learned_from_secret": [
+  "Config field 'pin': a secret field cannot be learned_from a state variable, because the value would have to be shown as state first"
+ ],
+ "config_learned_from_table": [
+  "Config field 'map': a table field cannot be learned_from a state variable, because it has no single value to fill in"
+ ],
+ "config_learned_from_undeclared": [
+  "Config field 'model': learned_from 'ghost' is not a declared state variable, so the field would never be filled in"
+ ],
  "device_setting_map_boolean_key_not_boolean": [
   "Device setting 'knob': map key 'maybe' is not a value a boolean setting takes; use \"true\" and \"false\""
  ],

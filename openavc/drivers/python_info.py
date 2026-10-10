@@ -26,6 +26,7 @@ from openavc.drivers.avcdriver_semantic import (
     UNEVALUATED_KEY,
     child_param_reference_errors,
     command_confirm_errors,
+    config_learned_from_errors,
     device_setting_state_key_errors,
     platform_version_errors,
     routing_block_errors,
@@ -281,6 +282,22 @@ def python_driver_info_issues(
             "declares a kind:'setup' action but does not override "
             "run_setup_action — the wizard will 501 on launch"
         )
+
+    # A config field's learned_from, from the same shared rule the YAML walk
+    # runs: the state variable it names must be declared.
+    config_schema = info.get("config_schema")
+    if isinstance(config_schema, dict):
+        for field_name, field_def in config_schema.items():
+            if (
+                field_name != UNEVALUATED_KEY
+                and isinstance(field_def, dict)
+                and "learned_from" in field_def
+            ):
+                issues.extend(
+                    config_learned_from_errors(
+                        field_name, field_def, info.get("state_variables"),
+                    )
+                )
 
     settings = info.get("device_settings")
     if settings is not None and not isinstance(settings, dict):

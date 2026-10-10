@@ -484,6 +484,22 @@ CASES: dict[str, Any] = {
     # --- send-side framing strings ---
     "command_prefix_not_string": _d(command_prefix=2),
     "command_suffix_not_string": _d(command_suffix=["\r"]),
+    # --- config fields learned from state ---
+    "config_learned_from_undeclared": _d(
+        config_schema={"model": {"type": "string", "learned_from": "ghost"}},
+    ),
+    "config_learned_from_empty": _d(
+        config_schema={"model": {"type": "string", "learned_from": ""}},
+    ),
+    "config_learned_from_secret": _d(
+        config_schema={"pin": {"type": "string", "secret": True, "learned_from": "power"}},
+    ),
+    "config_learned_from_table": _d(
+        config_schema={"map": {
+            "type": "table", "learned_from": "power",
+            "columns": {"name": {"type": "string"}},
+        }},
+    ),
     # --- device settings ---
     "device_settings_not_mapping": _d(device_settings=["knob"]),
     "device_setting_not_mapping": _d(device_settings={"knob": "integer"}),

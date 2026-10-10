@@ -120,7 +120,7 @@ The other Connection sub-sections are optional:
 - **Authentication** — for devices that present a `login:` / `password:` prompt over Telnet or SSH after connect (Lutron HomeWorks QS, some Cisco gear, legacy serial-over-IP gateways). Off by default.
 - **Connect Sequence** (`on_connect`) — wire strings sent automatically on every connect. Common uses: turning on the device's feedback mode, asking for a full state dump, subscribing to OSC updates.
 - **Frame Parser** — advanced. Only for binary protocols framed by length prefix or fixed length. Most drivers leave this off and rely on the message delimiter instead.
-- **Configuration Fields** (`config_schema`) — per-device settings users fill in on the Add Device dialog (display IDs, instance tags, custom passwords). Become `{placeholders}` in command strings. The **Computed Fields** table underneath builds derived values from other config fields via templates (`config_derived`), so one friendly field can drive several address forms.
+- **Configuration Fields** (`config_schema`) — per-device settings users fill in on the Add Device dialog (display IDs, instance tags, custom passwords). Become `{placeholders}` in command strings. **Filled In From** picks a state variable the device reports the field's value in (a model, a channel count), so it fills itself in once the device connects (`learned_from`, below). The **Computed Fields** table underneath builds derived values from other config fields via templates (`config_derived`), so one friendly field can drive several address forms.
 
 #### 4. Behavior tab: state, commands, responses, polling, settings
 
@@ -522,6 +522,44 @@ later. Do not mark a field the driver cannot work without.
 An older platform that predates this flag ignores it and draws the field
 normally, so it needs no `min_platform_version`.
 
+`learned_from: <state variable>` makes a field **fill itself in from the
+device**. Use it for a value the device reports about itself that an
+integrator also has to pick before the equipment exists: a model, a channel or
+bay count, a MAC address for Wake-on-LAN. The integrator picks it when building
+or simulating a project; once the device is connected to the real equipment,
+the value it reports in that state variable is saved into the field. A wrong
+pick is corrected the first time the device is reached, and the value is still
+there after a restart, when the device may be off.
+
+```yaml
+config_schema:
+  channel_count:
+    type: enum
+    label: Channels
+    learned_from: channel_count_reported   # a declared state variable
+    values: [2, 4, 8]
+```
+
+- It is saved when the device connects, and again whenever that state
+  variable changes while it is connected. A value the device reports while it
+  is still connecting is picked up when it connects.
+- **Nothing is saved while the device is simulated.** The simulator reports
+  what it was told, so a simulated device never changes the project.
+- Only a value the field accepts is saved: a listed `enum` value (a reported
+  `4` matches a listed `"4"` or `4`, and the listed one is stored), a number
+  within `min` and `max`, a non-empty string, a boolean. Anything else is
+  left alone and noted once in the device log.
+- The device keeps running; nothing reconnects. The device page shows the new
+  value, and the field carries the note "Filled in from the device when it
+  connects."
+- Your driver keeps reading the state variable first while it is connected.
+  The field is what it has when the device has not reported yet: before the
+  first connection, and in simulation.
+- Not on a `secret` field or a `table`. Requires platform 0.37.0.
+
+A Python driver declares it the same way in `DRIVER_INFO["config_schema"]` and
+needs no code: it only has to publish the state variable.
+
 `text` renders as a multi-line monospace textarea in the Add Device dialog. Use it for config that doesn't fit in a single line — zone definitions for room combiners, channel-name maps, custom command translation tables, anything the integrator pastes from manufacturer software. The raw string is preserved on save (no JSON parsing or number coercion); your driver parses it at `__init__` time.
 
 `table` renders a friendly row editor **on the device page** (not the Add Device dialog — the dialog just points the user to it). Use it for a repeatable list of typed rows the integrator declares — a Modbus register map, a DSP block list, a point/channel table. You declare the columns; the platform renders one input per column (dropdowns for `enum`, number inputs for numeric types, a checkbox for `boolean`) with Add/Remove rows and per-cell validation. The stored value is a **list of row objects** keyed by column id, so your driver reads `self.config.get("<field>", [])` as a list of dicts (no string parsing). Each column is a normal scalar field spec:
@@ -793,7 +831,7 @@ Leave `presence` off unless the roster's steady state on a bare unit is blank. A
       count_from_state: num_outputs  # what to follow once it does
 ```
 
-The roster is built from the config field at connect, then re-sized as soon as the state variable arrives, and again whenever it changes. The config field stays the offline fallback, so a device that never reports (or reports zero) still comes up with a sensible roster. `count_from_state` is a companion to `count_from`, not a fifth roster source — pair it with a **fixed** `count` and the fixed number wins outright and the state variable is never read.
+The roster is built from the config field at connect, then re-sized as soon as the state variable arrives, and again whenever it changes. The config field stays the offline fallback, so a device that never reports (or reports zero) still comes up with a sensible roster. Add `learned_from:` naming the same state variable on that config field and the count the device reports is also saved into the field, so the project matches the hardware once it has been reached (see `config_schema` entry above). `count_from_state` is a companion to `count_from`, not a fifth roster source — pair it with a **fixed** `count` and the fixed number wins outright and the state variable is never read.
 
 Route response captures into child state with `child_set:` on a response entry. `id` is a capture reference (`$1`) or a literal; each state value is a capture reference or a literal, coerced by the child property's declared type:
 
@@ -1181,7 +1219,7 @@ commands:
       message: { type: string, required: true, label: Message }
 ```
 
-- `magic_packet`: names the config field that holds the device's MAC address, so it can be typed in under Edit Device for a device that has never connected. Declare a state variable of the same name too and the MAC the device reports on connect is read first. The packet (six `0xFF` bytes, then the MAC sixteen times) goes to the broadcast address *and* directly to `host`, so a switch that filters broadcast between subnets does not stop it. Port defaults to 9. A command run before any MAC is known is refused with a message that says so.
+- `magic_packet`: names the config field that holds the device's MAC address, so it can be typed in under Edit Device for a device that has never connected. Declare a state variable of the same name too and the MAC the device reports on connect is read first. Give the config field `learned_from: mac_address` as well and that MAC is saved into the device's settings, so a power-on after a server restart, while the device is off, still knows where to send. The packet (six `0xFF` bytes, then the MAC sixteen times) goes to the broadcast address *and* directly to `host`, so a switch that filters broadcast between subnets does not stop it. Port defaults to 9. A command run before any MAC is known is refused with a message that says so.
 - `payload`: the datagram bytes. `{param}` and `{config}` placeholders and the `\r`, `\n`, `\xHH` escapes work exactly as in `send`. The datagram is **not** framed by `command_prefix` / `command_suffix` or `send_frame`: the side channel speaks its own protocol. `port` is required, as a number or as a `{config_field}` placeholder so it can be set per device.
 - `host`: where the datagram goes. Defaults to the device's own host; a `{config_field}` works here too.
 - `broadcast: true`: send the payload to 255.255.255.255 instead of `host`. A magic packet always broadcasts as well as sending to the host.

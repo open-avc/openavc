@@ -66,8 +66,17 @@ export function ConfigFieldInputs({
           : key === "baud_rate" || key === "baudrate" ? "9600"
           : defaultVal != null && defaultVal !== "" ? String(defaultVal)
           : label;
+        // A field the driver fills in from what the device reports, once it
+        // connects to the real equipment.
+        const learnedNote = schema.learned_from
+          ? "Filled in from the device when it connects."
+          : "";
+        const selectOptions = normalizeOptionList(values ?? []);
+        // An enum that lists its own blank entry ("Detect automatically")
+        // needs no "Select..." placeholder beside it.
+        const listsBlank = selectOptions.some((o) => o.value === "");
         const fieldId = `${idPrefix}-${key}`;
-        const helpId = description ? `${fieldId}-help` : undefined;
+        const helpId = description || learnedNote ? `${fieldId}-help` : undefined;
         const labelled = { id: fieldId, "aria-describedby": helpId, "aria-required": isRequired || undefined };
 
         return (
@@ -133,8 +142,8 @@ export function ConfigFieldInputs({
                 }
                 style={{ width: "100%" }}
               >
-                <option value="">Select...</option>
-                {normalizeOptionList(values ?? []).map((o) => (
+                {!listsBlank && <option value="">Select...</option>}
+                {selectOptions.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
                   </option>
@@ -193,9 +202,11 @@ export function ConfigFieldInputs({
                 style={{ width: "100%" }}
               />
             )}
-            {description && (
+            {(description || learnedNote) && (
               <div id={helpId} style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
                 {description}
+                {description && learnedNote ? " " : ""}
+                {learnedNote}
               </div>
             )}
           </div>
