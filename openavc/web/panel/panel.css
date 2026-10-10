@@ -45,9 +45,31 @@ html, body {
     background: var(--panel-bg);
     color: var(--panel-text);
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    /* A number, never `normal`. `normal` takes a line's height from the font's
+       own metrics, and the font is whatever the machine resolves the stack
+       above to: Segoe UI draws a taller line than the Mac's default, and a CJK
+       face taller again, so the same caption was a different height on every
+       kind of machine and a control's smallest box went with it
+       (openavc/ui/control_minimums.py). 1.2 is about what the Mac's default
+       already drew, so a panel designed there looks the same; a Windows kiosk
+       now draws it the same way rather than about 10% looser. */
+    line-height: 1.2;
     -webkit-user-select: none;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
+}
+
+/* Form controls do not inherit a line height: the browser's own stylesheet
+   gives them `font: -webkit-small-control`, which sets it back to `normal` and
+   with it the font-dependence the rule above removes. A matrix's preset button
+   and a list matrix's dropdown are not .panel-element, so the button reset
+   below does not reach them; this does. A rule that sets its own line height
+   (.panel-button, the matrix legend) is more specific and still wins. */
+button,
+select,
+input,
+textarea {
+    line-height: inherit;
 }
 
 /* Accessibility: focus indicator for keyboard navigation */

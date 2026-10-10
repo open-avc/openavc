@@ -48,11 +48,11 @@ the container instead when the element sits in one.
 
 | Type | Smallest box | Of a full page | What does not shrink |
 |---|---|---|---|
-| fader | 88 x 177 px | 6.88% x 22.12% | fader-handle 44 x 44, fader-scale 42 wide (font-driven) |
-| level_meter | 13 x 98 px | 1.02% x 12.25% | meter-segment 2 tall |
-| keypad | 98 x 266 px | 7.66% x 33.25% | keypad-key 36 tall (font-driven) |
-| select | 44 x 84 px | 3.44% x 10.5% | native control 46 tall (font-driven) |
-| text_input | 44 x 85 px | 3.44% x 10.62% | native control 46 tall (font-driven) |
+| fader | 88 x 175 px | 6.88% x 21.88% | fader-handle 44 x 44, fader-scale 42 wide (font-driven) |
+| level_meter | 13 x 97 px | 1.02% x 12.12% | meter-segment 2 tall |
+| keypad | 98 x 268 px | 7.66% x 33.5% | keypad-key 36 tall (font-driven) |
+| select | 44 x 86 px | 3.44% x 10.75% | native control 47.6 tall (font-driven) |
+| text_input | 44 x 86 px | 3.44% x 10.75% | native control 47.6 tall (font-driven) |
 
 ## A status LED's floor changes when it draws a caption
 
@@ -82,8 +82,8 @@ authored value by 14 before working one out.
 
 | Type | Floor | Authored by | Default | Of a full page at the default |
 |---|---|---|---|---|
-| slider | 24 + thumb_size wide, 55 + thumb_size tall | `thumb_size` on the element or the theme | thumb_size `3.14` rem (renders 44px), so 68 x 99 px | 5.31% x 12.38% |
-| list | 28 wide, 51 + item_height tall | `item_height` on the element | item_height `3.14` rem (renders 44px), so 28 x 95 px | 2.19% x 11.88% |
+| slider | 24 + thumb_size wide, 54 + thumb_size tall | `thumb_size` on the element or the theme | thumb_size `3.14` rem (renders 44px), so 68 x 98 px | 5.31% x 12.25% |
+| list | 28 wide, 50 + item_height tall | `item_height` on the element | item_height `3.14` rem (renders 44px), so 28 x 94 px | 2.19% x 11.75% |
 
 ## The matrix, whose floor is a function of the grid you asked for
 
@@ -102,7 +102,7 @@ two across and four down portrait.
 | Type and `matrix_style` | Floor |
 |---|---|
 | matrix (crosspoint) | 95 + sources x (cell + 1) wide, 84 + destinations x (cell + 1) tall |
-| matrix (list) | 148 wide, 9 + destinations x 48 tall |
+| matrix (list) | 148 wide, 9 + destinations x 50.25 tall |
 | matrix (tiles) | 10 + columns x 126 wide, 10 + rows x 97 tall |
 
 `cell` is 44px unless `style.cell_size` authors another size, in which case the
@@ -122,9 +122,9 @@ Worked, for a matrix with a label:
 
 | Grid | crosspoint | list | tiles |
 |---|---|---|---|
-| 4x4 | 275 x 304 px | 148 x 241 px | 262 x 244 px |
-| 8x8 | 455 x 484 px | 148 x 433 px | 514 x 244 px |
-| 16x16 | 815 x 844 px | 148 x 817 px | 514 x 438 px |
+| 4x4 | 275 x 304 px | 148 x 250 px | 262 x 244 px |
+| 8x8 | 455 x 484 px | 148 x 451 px | 514 x 244 px |
+| 16x16 | 815 x 844 px | 148 x 853 px | 514 x 438 px |
 
 The tiles column ignores the source count in those rows, because a tile wall has
 no source axis: `4x4`, `8x8` and `16x16` are four, eight and sixteen destinations.
@@ -170,7 +170,7 @@ whose value is whatever they typed, and nothing in this file sizes text.
 Where a floor is not what the shape of the control suggests.
 
 - **list** -- Row height does not change how wide a list has to be.
-- **keypad** -- 98 wide on macOS and on the ubuntu CI runner alike: the columns are the C key's glyph, a digit's, and the enter key's arrow, an icon of fixed em size. It used to be a font's return symbol, which few fonts carry, so each machine drew a different stand-in at a different width and this floor ran from 98 to 110. 266 tall is a Windows box's 265, measured before the display stopped drawing a stray character, with its pixel in hand; macOS and the runner need 264.
+- **keypad** -- 98 wide on macOS and on the ubuntu CI runner alike: the columns are the C key's glyph, a digit's, and the enter key's arrow, an icon of fixed em size. It used to be a font's return symbol, which few fonts carry, so each machine drew a different stand-in at a different width and this floor ran from 98 to 110. 268 tall on every machine measured: the label and the display are a line each, and a line is the panel's 1.2 whatever the font.
 
 ## Types with no floor at all
 
@@ -188,10 +188,10 @@ plus the finger rule below where the type is one you touch.
 ## Some numbers above are the theme's, not a declared size
 
 - **fader-scale 42 wide** -- fader
-- **matrix-list-row 42 tall** -- matrix (list)
+- **matrix-list-row 44.25 tall** -- matrix (list)
 - **matrix-tile 120 x 91** -- matrix (tiles)
 - **keypad-key 36 tall** -- keypad
-- **native control 46 tall** -- select, text_input
+- **native control 47.6 tall** -- select, text_input
 
 None of these has a declared floor anywhere. They fall out of the panel's text
 default plus padding, so the value recorded above is what that default produces

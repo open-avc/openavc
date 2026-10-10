@@ -134,7 +134,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
   },
   "fader": {
     "baseWidthPx": 88,
-    "baseHeightPx": 177,
+    "baseHeightPx": 175,
     "internals": [
       {
         "part": "fader-handle",
@@ -162,7 +162,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
   },
   "slider": {
     "baseWidthPx": 24,
-    "baseHeightPx": 55,
+    "baseHeightPx": 54,
     "internals": [],
     "scalesWith": {
       "part": "slider thumb",
@@ -183,7 +183,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
   },
   "list": {
     "baseWidthPx": 28,
-    "baseHeightPx": 51,
+    "baseHeightPx": 50,
     "internals": [],
     "scalesWith": {
       "part": "list-item",
@@ -287,9 +287,9 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
           {
             "part": "matrix-list-row",
             "widthPx": null,
-            "heightPx": 42,
+            "heightPx": 44.25,
             "origin": "font-driven",
-            "source": "panel-elements.css .matrix-list-select padding + 0.9em of the matrix's text"
+            "source": "panel-elements.css .matrix-list-select padding + one line of 0.9em of the matrix's text"
           }
         ],
         "scalesWith": null,
@@ -297,7 +297,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
         "repeated": [
           {
             "part": "matrix-list-row",
-            "sizePx": 42,
+            "sizePx": 44.25,
             "gapPx": 6,
             "countKey": "destinations",
             "countIn": "matrix_config",
@@ -419,7 +419,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
   },
   "level_meter": {
     "baseWidthPx": 13,
-    "baseHeightPx": 98,
+    "baseHeightPx": 97,
     "internals": [
       {
         "part": "meter-segment",
@@ -440,14 +440,14 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
   },
   "keypad": {
     "baseWidthPx": 98,
-    "baseHeightPx": 266,
+    "baseHeightPx": 268,
     "internals": [
       {
         "part": "keypad-key",
         "widthPx": null,
         "heightPx": 36,
         "origin": "font-driven",
-        "source": "panel-elements.css .keypad-key 1.2857em of the keypad's text, line-height 1"
+        "source": "panel-elements.css .keypad-key min-height 2.5714rem; its text is 1.2857em of the keypad's"
       }
     ],
     "scalesWith": null,
@@ -457,18 +457,18 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
     "styleProperty": "",
     "styles": {},
     "styleDefault": "",
-    "note": "98 wide on macOS and on the ubuntu CI runner alike: the columns are the C key's glyph, a digit's, and the enter key's arrow, an icon of fixed em size. It used to be a font's return symbol, which few fonts carry, so each machine drew a different stand-in at a different width and this floor ran from 98 to 110. 266 tall is a Windows box's 265, measured before the display stopped drawing a stray character, with its pixel in hand; macOS and the runner need 264."
+    "note": "98 wide on macOS and on the ubuntu CI runner alike: the columns are the C key's glyph, a digit's, and the enter key's arrow, an icon of fixed em size. It used to be a font's return symbol, which few fonts carry, so each machine drew a different stand-in at a different width and this floor ran from 98 to 110. 268 tall on every machine measured: the label and the display are a line each, and a line is the panel's 1.2 whatever the font."
   },
   "select": {
     "baseWidthPx": 44,
-    "baseHeightPx": 84,
+    "baseHeightPx": 86,
     "internals": [
       {
         "part": "native control",
         "widthPx": null,
-        "heightPx": 46,
+        "heightPx": 47.6,
         "origin": "font-driven",
-        "source": "panel-elements.css select/input padding + the element's text"
+        "source": "panel-elements.css select/input padding + one line of the element's text"
       }
     ],
     "scalesWith": null,
@@ -482,14 +482,14 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
   },
   "text_input": {
     "baseWidthPx": 44,
-    "baseHeightPx": 85,
+    "baseHeightPx": 86,
     "internals": [
       {
         "part": "native control",
         "widthPx": null,
-        "heightPx": 46,
+        "heightPx": 47.6,
         "origin": "font-driven",
-        "source": "panel-elements.css select/input padding + the element's text"
+        "source": "panel-elements.css select/input padding + one line of the element's text"
       }
     ],
     "scalesWith": null,

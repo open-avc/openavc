@@ -21,15 +21,17 @@ behaviour compose in ways that do not add up by hand, and three of the numbers
 below live in ``panel.js`` rather than in any stylesheet.
 
 ``tests/e2e/test_control_minimums.py`` re-measures every entry and fails if a
-box no longer holds, and also fails if one pixel LESS still holds -- which is
-what keeps these tight rather than merely safe as the panel styling changes.
-Without that second half they would rot into round numbers nobody trusts.
+box no longer holds, and also fails if a box comfortably smaller still holds --
+a pixel less on height, a few on width (the tolerances are at the end of the
+next section) -- which is what keeps these tight rather than merely safe as the
+panel styling changes. Without that second half they would rot into round
+numbers nobody trusts.
 
 When two machines disagree
 --------------------------
 Several of these floors are text-driven: a keypad key is as wide as the glyph
-on it needs, and a glyph is not the same width in every font stack. So the same
-control measures differently on macOS, on Linux and on the CI runner, and there
+on it needs, and a glyph is not the same width in every font. So the same
+control can measure differently on macOS, on Linux and on Windows, and there
 is no single true answer to record.
 
 **The number here is the largest of the machines it has been measured on.** A
@@ -41,34 +43,40 @@ and it says which control and by how much; being two pixels short draws a broken
 control on the device it was short for and says nothing at all. So where they
 disagree the larger wins.
 
-Seven of the floors below are consequently a pixel or two above what a dev
-box measures, and are marked where they sit. ``fader``, ``slider``, ``list``,
-``level_meter``, ``select`` and ``text_input`` keep the allowance the
-Playwright Docker image first showed over a dev box (two pixels on the fader,
-one on the rest); when the panel's text default moved they were re-measured on
-a Windows box and that allowance was kept rather than re-derived. ``keypad``'s
-height is the Windows box's measurement with the same pixel added (its note
-has the numbers). Re-measuring one of those locally and tightening it to what
-came back is how they go short again -- the machine that needs the extra pixel
-is not the one you are on, and it will not be the one that notices.
+That disagreement is about WIDTH, never height. Every line of text on the
+panel has a numeric line height (``line-height: 1.2`` on the panel's body in
+panel.css, which its buttons, dropdowns and text boxes inherit), so a line box
+is the same height whatever font draws the text in it, and so is every height
+below. Each was measured in five places and came out the same to the pixel in
+all of them, as did every matrix the browser suite checks: macOS with its
+default face, and with Hiragino Sans and with PingFang SC forced (two CJK
+faces); and the Playwright Linux image with DejaVu Sans installed, which
+reproduces the ubuntu runner the suite runs on in CI, and bare, where the only
+face is WenQuanYi Zen Hei, a CJK one. A line used to be ``normal``, which takes
+its height from the font's own metrics, so the heights here carried a pixel or
+two of allowance for the machines whose default face drew a taller line, and a
+CJK default needed 5 to 13px more than any of them. Those allowances are gone:
+every height below is the measured one, and none is marked.
 
-Which machines that covers: ones whose default sans-serif is a Latin face --
-macOS, Windows, and the ubuntu runner the browser suite runs on in CI. A
-browser whose default sans is a CJK face is not covered, and is short on height
-by more than any allowance here. The bare Playwright Docker image is one: it
-carries no Latin face, so ``system-ui`` and ``sans-serif`` both resolve to
-WenQuanYi Zen Hei, and eight of the nine floors (all but ``status_led``, whose
-caption sits beside its dot) need 3 to 9px more height than recorded there.
-Nothing runs the suite in that image, so nothing reports it. The cause is that
-a caption's line box is ``line-height: normal``, which takes its height from
-the font's own metrics; the widths are glyph widths and agree.
+The widths still differ, because a glyph is as wide as its font draws it.
+``fader``'s 88 is two over what all five of those need; it dates from when the
+panel's text default moved and the floors were re-measured on a Windows box,
+and nothing has measured a width there since. ``keypad``'s 98 is short for a
+CJK face on macOS -- its C key needs 100 in PingFang SC and 104 in Hiragino
+Sans -- while the Linux image's WenQuanYi Zen Hei needs 98. Re-measuring a width
+locally and tightening it to what came back is how it goes short again -- the
+machine that needs the extra pixel is not the one you are on, and it will not
+be the one that notices.
 
-What stops "largest" from sliding into "add ten and stop thinking" is
-``TIGHTNESS_SLACK_PX`` in the e2e test: it tolerates the disagreement that has
-actually been measured between the machines above and fails on anything
-wider. That is also why raising one of these numbers does not need every
-platform re-measured by hand -- the suite's other half will say so on
-whichever machine runs it.
+What stops "largest" from sliding into "add ten and stop thinking" is the
+tightness half of the e2e test, which has one tolerance per axis.
+``WIDTH_TIGHTNESS_SLACK_PX`` covers the width disagreement actually measured
+between machines and fails on anything wider. ``HEIGHT_TIGHTNESS_SLACK_PX`` is
+one pixel, and covers no machine at all: the matrix's check compares scroll
+sizes, which are whole pixels, so it lets a box under a pixel short pass. That
+is also why raising one of these numbers does not need every platform
+re-measured by hand -- the suite's other half will say so on whichever machine
+runs it.
 
 What is deliberately NOT here
 -----------------------------
@@ -89,12 +97,13 @@ Two kinds of number live here, and the difference matters when one changes:
                 column, a matrix tile. That default is one token,
                 ``--panel-font-size`` in panel-elements.css, and every text
                 inside a control is em of it, so there is no declared floor
-                for these: the value below is what the default produces in the
-                default theme's font family. They are still here -- a keypad is
-                the second-largest trap on the list and leaving it out would be
-                worse -- but an element's own ``font_size``, a theme's font
-                family or a change to the token moves them, and the test is
-                what catches that rather than a promise in a comment.
+                for these: the value below is what the default produces at the
+                panel's line height, in the default theme's font family. They
+                are still here -- a keypad is the second-largest trap on the
+                list and leaving it out would be worse -- but an element's own
+                ``font_size``, a change to the token or to the line height, or
+                (on width only) a theme's font family moves them, and the test
+                is what catches that rather than a promise in a comment.
 """
 
 from __future__ import annotations
@@ -196,8 +205,8 @@ _DOT = FixedInternal("led-dot", 20, 20, "declared", "panel-elements.css .led-dot
 _HANDLE = FixedInternal("fader-handle", 44, 44, "declared", "panel-elements.css .fader-handle 3.1429rem")
 _SCALE = FixedInternal("fader-scale", 42, None, "font-driven", "panel-elements.css .fader-scale 1.5em of the fader's text")
 _SEGMENT = FixedInternal("meter-segment", None, 2, "declared", "panel-elements.css .meter-segment min-height")
-_KEY = FixedInternal("keypad-key", None, 36, "font-driven", "panel-elements.css .keypad-key 1.2857em of the keypad's text, line-height 1")
-_CONTROL = FixedInternal("native control", None, 46, "font-driven", "panel-elements.css select/input padding + the element's text")
+_KEY = FixedInternal("keypad-key", None, 36, "font-driven", "panel-elements.css .keypad-key min-height 2.5714rem; its text is 1.2857em of the keypad's")
+_CONTROL = FixedInternal("native control", None, 47.6, "font-driven", "panel-elements.css select/input padding + one line of the element's text")
 
 
 def _has_caption(element: Mapping[str, Any]) -> bool:
@@ -408,11 +417,15 @@ class MinimumRule:
 # is one row tall whatever the names are, and scrolls sideways.
 _MATRIX_LIST = MinimumRule(
     148, 9,
-    (FixedInternal("matrix-list-row", None, 42, "font-driven",
-                   "panel-elements.css .matrix-list-select padding + 0.9em of the matrix's text"),),
+    # A row is its dropdown: one line of 0.9em of the matrix's text at the
+    # panel's 1.2 line height, plus padding and border, 44.24 at the default
+    # text size. Recorded as the 44.25 the floors measure rather than rounded:
+    # at 44, sixteen rows come out 3.75px short and the last one is cut.
+    (FixedInternal("matrix-list-row", None, 44.25, "font-driven",
+                   "panel-elements.css .matrix-list-select padding + one line of 0.9em of the matrix's text"),),
     repeated=(
         RepeatedInternal(
-            "matrix-list-row", 42, 6, "destinations", "matrix_config", 0, "height",
+            "matrix-list-row", 44.25, 6, "destinations", "matrix_config", 0, "height",
             origin="font-driven",
             source="panel-elements.css .matrix-list gap 0.4286rem + row height",
         ),
@@ -544,37 +557,36 @@ RULES: dict[str, MinimumRule] = {
              "sliver of text, so a labelled LED needs 29 before any of the "
              "caption is legible; how much more is content, not a minimum.",
     ),
-    "fader": MinimumRule(88, 177, (_HANDLE, _SCALE)),  # +2 (kept from the Docker image)
-    "slider": MinimumRule(  # +1 tall (kept from the Docker image)
-        24, 55,
+    "fader": MinimumRule(88, 175, (_HANDLE, _SCALE)),
+    "slider": MinimumRule(
+        24, 54,
         scales_with=ScalingInternal(
             "slider thumb", "thumb_size", 44.0, 1.0, 1.0,
             "panel.js:1696 / --thumb-size (a ::-webkit-slider-thumb pseudo-element)",
             from_theme=True,
         ),
     ),
-    "list": MinimumRule(  # +1 tall (kept from the Docker image)
-        28, 51,
+    "list": MinimumRule(
+        28, 50,
         scales_with=ScalingInternal(
             "list-item", "item_height", 44.0, 0.0, 1.0, "panel.js:2099 item_height",
         ),
         note="Row height does not change how wide a list has to be.",
     ),
     "matrix": _MATRIX_CROSSPOINT,
-    "level_meter": MinimumRule(13, 98, (_SEGMENT,)),  # +1 tall (kept from the Docker image)
-    "keypad": MinimumRule(  # +2 tall (Windows box)
-        98, 266, (_KEY,),
+    "level_meter": MinimumRule(13, 97, (_SEGMENT,)),
+    "keypad": MinimumRule(
+        98, 268, (_KEY,),
         note="98 wide on macOS and on the ubuntu CI runner alike: the columns "
              "are the C key's glyph, a digit's, and the enter key's arrow, an "
              "icon of fixed em size. It used to be a font's return symbol, "
              "which few fonts carry, so each machine drew a different stand-in "
-             "at a different width and this floor ran from 98 to 110. 266 tall "
-             "is a Windows box's 265, measured before the display stopped "
-             "drawing a stray character, with its pixel in hand; macOS and the "
-             "runner need 264.",
+             "at a different width and this floor ran from 98 to 110. 268 tall "
+             "on every machine measured: the label and the display are a line "
+             "each, and a line is the panel's 1.2 whatever the font.",
     ),
-    "select": MinimumRule(44, 84, (_CONTROL,)),  # +1 tall (kept from the Docker image)
-    "text_input": MinimumRule(44, 85, (_CONTROL,)),  # +1 tall (kept from the Docker image)
+    "select": MinimumRule(44, 86, (_CONTROL,)),
+    "text_input": MinimumRule(44, 86, (_CONTROL,)),
 }
 
 

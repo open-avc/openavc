@@ -335,7 +335,7 @@ def _smallest_holding(page, type_: str, w: float, h: float, *, limit: int = 40) 
 
     A floor that is too small is reported by the machine that noticed, and the
     machine that noticed is usually not the one that can be asked interactively
-    -- these numbers differ per font stack (see TIGHTNESS_SLACK_PX), so the CI
+    -- the widths differ per font (see WIDTH_TIGHTNESS_SLACK_PX), so the CI
     log is frequently the only place the real answer exists. Saying "needs 237"
     instead of "is too small" is the difference between a one-line edit and
     another round trip.
@@ -369,31 +369,34 @@ def test_control_is_whole_at_its_recorded_minimum(panel_page, type_: str) -> Non
     )
 
 
-#: How much bigger than strictly necessary a recorded floor may be.
+#: How much bigger than strictly necessary a recorded floor may be, per axis.
 #:
-#: These floors are text-driven -- a control's height is its label's line box
-#: plus fixed furniture -- so the true answer moves with the font stack, and the
-#: font stack moves with the machine. The same specimens measured in Chromium in
-#: three places give three answers: the fader is 100px tall on the Windows dev
-#: box, 99 on the GitHub ubuntu runner and 102 in the Playwright container. A
-#: test demanding the floor be exact to the pixel is therefore asserting which
-#: machine ran it, and it duly failed CI on seven controls at once the first
-#: time it was ever allowed to execute there.
+#: Widths are text-driven -- a keypad column is as wide as the glyph on its key
+#: -- so the true answer moves with the font, and the font moves with the
+#: machine. The same specimens measured in Chromium on different machines give
+#: different widths: the matrix's spans 274..278. A test demanding the width be
+#: exact to the pixel is therefore asserting which machine ran it. Four is the
+#: widest disagreement actually measured, not a round number. Each floor is
+#: recorded at the TOP of its range (control_minimums, "When two machines
+#: disagree"), so what this tolerates is one-directional -- a machine that needs
+#: LESS than the recorded number, never one that needs more.
 #:
-#: Four is the widest disagreement actually measured across those three, not a
-#: round number: the matrix's width spans 274..278 and the fader's height 99..102.
-#: Each floor is recorded at the TOP of its range (control_minimums, "When two
-#: machines disagree"), so what this tolerates is one-directional -- a machine
-#: that needs LESS than the recorded number, never one that needs more. The
-#: check still does its real job, which is catching a floor inflated far enough
-#: to make the Builder and the AI reject layouts that would render fine.
+#: Heights used to need the same four: a line was `line-height: normal`, whose
+#: height is the font's own, and the fader measured 99..102 across three
+#: machines. The panel's line height is a number now, and every height floor
+#: measures the same to the pixel on macOS (its default face and two CJK faces)
+#: and in the Playwright Linux image (DejaVu Sans, which matches the CI runner,
+#: and its bare CJK default). So no machine is tolerated on height. The one
+#: pixel is the matrix check's own: it compares scroll sizes, which are whole
+#: pixels, and allows one, so a tile wall whose last row is cut by half a pixel
+#: still passes. Its floor is rounded up past that cut, and so it passes a
+#: pixel under too.
 #:
-#: The container is no longer one of the machines the floors are recorded for.
-#: It has no Latin default sans, so its captions take a CJK face with a taller
-#: line, and today it needs 3 to 9px more height than eight of the floors carry;
-#: the same module section says which machines are covered. Widening this to
-#: reach it would let a floor nine pixels too big pass everywhere else.
-TIGHTNESS_SLACK_PX = 4
+#: Either way the check still does its real job, which is catching a floor
+#: inflated far enough to make the Builder and the AI reject layouts that would
+#: render fine.
+WIDTH_TIGHTNESS_SLACK_PX = 4
+HEIGHT_TIGHTNESS_SLACK_PX = 1
 
 
 @pytest.mark.parametrize("type_", TYPES_WITH_MINIMUMS)
@@ -402,24 +405,24 @@ def test_recorded_minimum_is_tight_not_merely_safe(panel_page, type_: str) -> No
 
     An inflated floor is not a harmless safety margin: it makes the Builder and
     the AI reject layouts that render perfectly well, and nothing signals it.
-    See TIGHTNESS_SLACK_PX for why this is not the exact one-pixel check it
-    reads like it should be.
+    See WIDTH_TIGHTNESS_SLACK_PX for why this is not the exact one-pixel check
+    it reads like it should be.
     """
     box = minimum_box({"type": type_, **SPECIMENS[type_]})
     assert box is not None
 
-    narrow = box.width_px - 1 - TIGHTNESS_SLACK_PX
-    short = box.height_px - 1 - TIGHTNESS_SLACK_PX
+    narrow = box.width_px - 1 - WIDTH_TIGHTNESS_SLACK_PX
+    short = box.height_px - 1 - HEIGHT_TIGHTNESS_SLACK_PX
     narrow_ok, _ = _holds(panel_page, type_, narrow, box.height_px)
     short_ok, _ = _holds(panel_page, type_, box.width_px, short)
     assert not narrow_ok, (
         f"{type_} still renders whole at {narrow:.0f}px wide, more than "
-        f"{TIGHTNESS_SLACK_PX}px under its recorded minimum width "
+        f"{WIDTH_TIGHTNESS_SLACK_PX}px under its recorded minimum width "
         f"{box.width_px:.0f}, so that floor is too big -- re-measure it."
     )
     assert not short_ok, (
         f"{type_} still renders whole at {short:.0f}px tall, more than "
-        f"{TIGHTNESS_SLACK_PX}px under its recorded minimum height "
+        f"{HEIGHT_TIGHTNESS_SLACK_PX}px under its recorded minimum height "
         f"{box.height_px:.0f}, so that floor is too big -- re-measure it."
     )
 
@@ -503,18 +506,18 @@ def test_the_matrix_floor_predicts_every_grid_not_just_the_default(
         f"a {name} matrix is drawn broken at its computed floor "
         f"{box.width_px:.0f}x{box.height_px:.0f}: {reason}"
     )
-    narrow = box.width_px - 1 - TIGHTNESS_SLACK_PX
-    short = box.height_px - 1 - TIGHTNESS_SLACK_PX
+    narrow = box.width_px - 1 - WIDTH_TIGHTNESS_SLACK_PX
+    short = box.height_px - 1 - HEIGHT_TIGHTNESS_SLACK_PX
     narrow_ok, _ = _holds(panel_page, "matrix", narrow, box.height_px, element)
     short_ok, _ = _holds(panel_page, "matrix", box.width_px, short, element)
     assert not narrow_ok, (
         f"a {name} matrix still draws whole at {narrow:.0f}px wide, more than "
-        f"{TIGHTNESS_SLACK_PX}px under its computed {box.width_px:.0f} -- the "
+        f"{WIDTH_TIGHTNESS_SLACK_PX}px under its computed {box.width_px:.0f} -- the "
         f"model overstates the width"
     )
     assert not short_ok, (
         f"a {name} matrix still draws whole at {short:.0f}px tall, more than "
-        f"{TIGHTNESS_SLACK_PX}px under its computed {box.height_px:.0f} -- the "
+        f"{HEIGHT_TIGHTNESS_SLACK_PX}px under its computed {box.height_px:.0f} -- the "
         f"model overstates the height"
     )
 
@@ -677,13 +680,12 @@ def test_the_overridable_internals_move_the_floor(panel_page) -> None:
                 f"{box.width_px:.0f}x{box.height_px:.0f}: {reason}. "
                 f"{_smallest_holding(panel_page, type_, box.width_px, box.height_px)}"
             )
-            # Same per-machine wobble as the recorded floors, so the same slack:
-            # the scaled floor is checked for gross overstatement, not to the pixel.
-            short = box.height_px - 1 - TIGHTNESS_SLACK_PX
+            # The same height tolerance as the recorded floors.
+            short = box.height_px - 1 - HEIGHT_TIGHTNESS_SLACK_PX
             short_ok, _ = _holds(panel_page, type_, box.width_px, short)
             assert not short_ok, (
                 f"{type_} with {key}={px:.0f}px still fits at {short:.0f}px tall, more "
-                f"than {TIGHTNESS_SLACK_PX}px under its computed floor "
+                f"than {HEIGHT_TIGHTNESS_SLACK_PX}px under its computed floor "
                 f"{box.height_px:.0f} -- the scaling model overstates it"
             )
         finally:
