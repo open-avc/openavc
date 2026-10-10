@@ -110,6 +110,30 @@ class _RefusedWhenPolledDriver(_AuthRejectDriver):
         raise ConnectionFaultError("Login rejected", code="auth_failed")
 
 
+class _OpenLink:
+    """A transport that is up until closed."""
+
+    connected = True
+
+    async def close(self) -> None:
+        self.connected = False
+
+
+class _RefusedInInitialSyncDriver(_AuthRejectDriver):
+    """BaseDriver's own connect(): the link comes up and is declared, then a
+    start-up request in _initial_sync is refused the credential."""
+
+    async def connect(self) -> None:
+        self.connect_attempts += 1
+        await BaseDriver.connect(self)
+
+    async def _create_transport(self, transport_type: str) -> None:
+        self.transport = _OpenLink()
+
+    async def _initial_sync(self) -> None:
+        raise ConnectionFaultError("Login rejected", code="auth_failed")
+
+
 class _PermanentFaultDriver(_AuthRejectDriver):
     """Fails every attempt with a fault only a human can clear.
 
@@ -331,6 +355,33 @@ async def test_a_refused_poll_pauses_after_one_refusal(dm, monkeypatch):
         assert dm.state.get("device.d1.offline_reason") == "auth_failed"
         assert dm.state.get("device.d1.reconnect_failed") is True
         assert "d1" not in dm._reconnect_tasks
+    finally:
+        await dm._cancel_reconnect("d1")
+        _unregister("acme_auth")
+
+
+async def test_a_credential_refused_in_initial_sync_pauses_after_one_attempt(
+    dm, monkeypatch
+):
+    """A refusal raised from _initial_sync fails the attempt after the device
+    was declared, so the teardown also emits device.disconnected. The handler
+    of that event has no exception to read, and must still see auth_failed
+    and hold, not start a reconnect that sends the password again."""
+    _register("acme_auth", _RefusedInInitialSyncDriver)
+    monkeypatch.setattr(dm, "_reconnect_delay", lambda device_id, attempt: 0.0)
+    try:
+        await dm.add_device({
+            "id": "d1", "driver": "acme_auth", "name": "D1",
+            "config": {"host": "192.0.2.1"},
+        })
+        driver = dm._devices["d1"]
+        await asyncio.sleep(0.05)
+
+        assert driver.connect_attempts == 1
+        assert "d1" not in dm._reconnect_tasks
+        assert dm.state.get("device.d1.offline_reason") == "auth_failed"
+        assert dm.state.get("device.d1.offline_detail") == "Login rejected"
+        assert dm.state.get("device.d1.reconnect_failed") is True
     finally:
         await dm._cancel_reconnect("d1")
         _unregister("acme_auth")

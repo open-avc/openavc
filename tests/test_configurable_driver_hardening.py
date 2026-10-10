@@ -16,7 +16,7 @@ import pytest
 from openavc.core.connection_fault import ConnectionFaultError
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
-from openavc.transport.http_client import HTTPResponse
+from openavc.transport.http_client import HTTPClientTransport, HTTPResponse
 from openavc.drivers.configurable import (
     _AUTH_MAX_BUFFER,
     ConfigurableDriver,
@@ -204,11 +204,9 @@ async def test_poll_auth_tally_does_not_leak_across_cycles():
     drv.transport = _StatusHTTP({"/status": 401, "/inputs": 401})
     with pytest.raises(ConnectionFaultError):
         await drv.poll()
-    assert drv._http_auth_tally is None
 
     drv.transport = _StatusHTTP({"/status": 200, "/inputs": 200})
     await drv.poll()  # a clean cycle after a rejected one must not raise
-    assert drv._http_auth_tally is None
 
 
 @pytest.mark.asyncio
@@ -248,6 +246,217 @@ async def test_rejected_login_reaches_the_device_card_as_auth_failed():
     assert drv.get_state("connected") is False
     assert drv.last_fault is not None
     assert drv.last_fault.code == "auth_failed"
+
+
+# ===========================================================================
+# A refused credential stops the requests at once
+# ===========================================================================
+#
+# Every refused request is a failed login on the device, and devices lock an
+# account (or the controller's address) after a few. So a query that answered
+# on this connection and is now refused ends the cycle there, and a device
+# that has answered nothing gives up after a few distinct queries. A query
+# refused from the start, once something else has answered, is an endpoint
+# this account may not read and never counts.
+
+
+class _AcmeHTTPDevice:
+    """An invented HTTP device behind a real HTTPClientTransport. Answers
+    each request with the status set for its path, else the one under "*",
+    else 200, and records the paths asked for, so a test can count what
+    reached it."""
+
+    def __init__(self, statuses: dict[str, int] | None = None):
+        self.statuses: dict[str, int] = dict(statuses or {})
+        self.requested: list[str] = []
+
+    def _handle(self, request: httpx.Request) -> httpx.Response:
+        if request.method == "HEAD":  # the connect-time reachability check
+            return httpx.Response(200)
+        path = request.url.raw_path.decode()
+        self.requested.append(path)
+        status = self.statuses.get(path, self.statuses.get("*", 200))
+        return httpx.Response(status, text="ok")
+
+    def transport(self) -> HTTPClientTransport:
+        t = HTTPClientTransport(base_url="http://acme-widget.invalid")
+        t._client = httpx.AsyncClient(
+            base_url=t.base_url, transport=httpx.MockTransport(self._handle)
+        )
+        return t
+
+
+_ACME_WIDGET_DEF = {
+    **_HTTP_DEF,
+    "id": "acme_widget_http",
+    "commands": {"get_status": {"label": "Get Status", "method": "GET", "path": "/status"}},
+    "polling": {"queries": ["get_status", "/inputs", "/outputs", "/levels"]},
+}
+
+
+async def _connect(drv, device: _AcmeHTTPDevice) -> None:
+    """connect() with the invented device standing in for the network."""
+
+    async def _create_transport(transport_type):  # noqa: ARG001
+        drv.transport = device.transport()
+
+    drv._create_transport = _create_transport
+    await drv.connect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [401, 407])
+async def test_a_query_that_answered_and_is_now_refused_ends_the_cycle(status):
+    """The password changed on the device: the first refused query that had
+    answered on this connection raises, and nothing more is sent."""
+    device = _AcmeHTTPDevice()
+    drv = _make_driver(_ACME_WIDGET_DEF)
+    drv.transport = device.transport()
+    await drv.poll()
+    assert device.requested == ["/status", "/inputs", "/outputs", "/levels"]
+
+    device.requested.clear()
+    device.statuses = {"*": status}
+    with pytest.raises(ConnectionFaultError) as excinfo:
+        await drv.poll()
+    assert excinfo.value.fault_code == "auth_failed"
+    assert device.requested == ["/status"]
+    assert str(excinfo.value) == (
+        "The device stopped accepting the username and password. "
+        "Check them in the device settings."
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_raw_path_query_that_answered_and_is_now_refused_ends_the_cycle():
+    """The same for a raw path query, the other branch a poll query takes."""
+    device = _AcmeHTTPDevice()
+    drv = _make_driver({**_ACME_WIDGET_DEF, "polling": {"queries": ["/inputs", "get_status"]}})
+    drv.transport = device.transport()
+    await drv.poll()
+
+    device.requested.clear()
+    device.statuses = {"*": 401}
+    with pytest.raises(ConnectionFaultError):
+        await drv.poll()
+    assert device.requested == ["/inputs"]
+
+
+@pytest.mark.asyncio
+async def test_a_query_refused_from_the_start_never_counts():
+    """A privileged endpoint, refused on every cycle while the rest answer,
+    leaves the device connected however long it runs."""
+    device = _AcmeHTTPDevice({"/outputs": 401})
+    drv = _make_driver(_ACME_WIDGET_DEF)
+    drv.transport = device.transport()
+    for _ in range(4):
+        await drv.poll()  # must NOT raise
+    assert device.requested.count("/outputs") == 4
+    assert device.requested.count("/levels") == 4
+
+
+@pytest.mark.asyncio
+async def test_a_403_on_a_query_that_answered_is_not_a_refused_password():
+    """403 names a resource this account may not use, not a password the
+    device no longer accepts: the cycle carries on. Only a cycle where every
+    request is refused says the credential is gone."""
+    device = _AcmeHTTPDevice()
+    drv = _make_driver(_ACME_WIDGET_DEF)
+    drv.transport = device.transport()
+    await drv.poll()
+
+    device.statuses = {"/status": 403}
+    await drv.poll()  # must NOT raise
+
+    device.requested.clear()
+    device.statuses = {"*": 403}
+    with pytest.raises(ConnectionFaultError) as excinfo:
+        await drv.poll()
+    assert excinfo.value.fault_code == "auth_failed"
+    assert device.requested == ["/status", "/inputs", "/outputs", "/levels"]
+
+
+@pytest.mark.asyncio
+async def test_a_device_that_answered_nothing_gives_up_after_three_queries():
+    """A wrong password from the start: three distinct queries refused with
+    nothing answered is the credential, so the fourth is never sent."""
+    device = _AcmeHTTPDevice({"*": 401})
+    drv = _make_driver(_ACME_WIDGET_DEF)
+    drv.transport = device.transport()
+    with pytest.raises(ConnectionFaultError) as excinfo:
+        await drv.poll()
+    assert excinfo.value.fault_code == "auth_failed"
+    assert device.requested == ["/status", "/inputs", "/outputs"]
+    assert str(excinfo.value) == (
+        "The device refused the username and password. "
+        "Check them in the device settings."
+    )
+
+
+@pytest.mark.asyncio
+async def test_two_refused_queries_then_an_answer_stays_connected():
+    """Two endpoints this account may not read, ahead of one it can: the
+    device answered, so it is the account's scope, not its password."""
+    device = _AcmeHTTPDevice({"/status": 401, "/inputs": 403})
+    drv = _make_driver(_ACME_WIDGET_DEF)
+    drv.transport = device.transport()
+    await drv.poll()  # must NOT raise
+    await drv.poll()
+    assert device.requested.count("/levels") == 2
+
+
+@pytest.mark.asyncio
+async def test_start_up_with_a_wrong_password_fails_the_connect_after_three_queries():
+    """A device added with the wrong password: start-up stops after three
+    refused queries and the connect attempt fails as auth_failed, with the
+    connection torn down, instead of sending every start-up line and then a
+    whole poll cycle more."""
+    device = _AcmeHTTPDevice({"*": 401})
+    drv = _make_driver(
+        {**_ACME_WIDGET_DEF, "on_connect": ["get_status", "/inputs", "/outputs", "/levels", "/names"]},
+        config={"poll_interval": 5},
+    )
+    with pytest.raises(ConnectionFaultError) as excinfo:
+        await _connect(drv, device)
+    assert excinfo.value.fault_code == "auth_failed"
+    assert device.requested == ["/status", "/inputs", "/outputs"]
+    assert drv.get_state("connected") is False
+    assert drv.transport is None
+    assert drv._poll_task is None
+
+
+@pytest.mark.asyncio
+async def test_a_query_refused_at_start_up_and_again_in_the_poll_counts_once():
+    """The same privileged endpoint asked at start-up and again by the first
+    poll is one endpoint, not two refusals toward the three."""
+    device = _AcmeHTTPDevice({"/status": 401, "/inputs": 401})
+    drv = _make_driver(
+        {**_ACME_WIDGET_DEF, "on_connect": ["get_status", "/inputs"]},
+        config={"poll_interval": 0},
+    )
+    await _connect(drv, device)
+    await drv.poll()  # must NOT raise: /outputs answers
+    assert device.requested == ["/status", "/inputs", "/status", "/inputs", "/outputs", "/levels"]
+    await drv.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_a_new_connection_starts_with_no_history():
+    """What answered on the last connection proves nothing about this one:
+    a reconnect with the wrong password is judged from scratch."""
+    device = _AcmeHTTPDevice()
+    drv = _make_driver(
+        {**_ACME_WIDGET_DEF, "on_connect": ["get_status", "/inputs", "/outputs", "/levels"]},
+        config={"poll_interval": 0},
+    )
+    await _connect(drv, device)
+    await drv.disconnect()
+
+    device.requested.clear()
+    device.statuses = {"*": 401, "/status": 200}
+    await _connect(drv, device)  # /status answers, so the rest are scope
+    assert device.requested == ["/status", "/inputs", "/outputs", "/levels"]
+    await drv.disconnect()
 
 
 # ===========================================================================

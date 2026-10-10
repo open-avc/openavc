@@ -1178,8 +1178,17 @@ class BaseDriver(ABC):
         # degraded-but-connected outcome catches inside its override.
         try:
             await self._initial_sync()
-        except Exception:
+        except Exception as exc:
             self._stash_transport_error()
+            # The disconnect event emitted below reaches the device manager's
+            # handler with no exception to read, so a typed cause (a refused
+            # credential) is kept where it looks, or the handler would start
+            # a reconnect that the caller of connect() is about to hold.
+            typed = typed_fault_from_exc(
+                exc, host=self.config.get("host", ""), port=self.config.get("port"),
+            )
+            if typed is not None:
+                self._last_fault = typed
             await self._stop_push()
             transport = self.transport
             self.transport = None

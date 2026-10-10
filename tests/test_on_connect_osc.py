@@ -55,10 +55,12 @@ ACME_OSC_BRINGUP = {
 def _make_driver(on_connect, config, monkeypatch):
     """A connected OSC driver whose on_connect dispatch runs against a capturing
     transport. Stubs BaseDriver.connect (the ``super().connect()`` call) so no
-    real socket is opened; the ConfigurableDriver on_connect logic still runs."""
+    real socket is opened; like the real one it runs _initial_sync(), where the
+    ConfigurableDriver on_connect logic runs."""
 
     async def fake_super_connect(self) -> None:
         self.transport = FakeTransport()
+        await self._initial_sync()
 
     monkeypatch.setattr(base_mod.BaseDriver, "connect", fake_super_connect)
 

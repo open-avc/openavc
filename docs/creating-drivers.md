@@ -2109,6 +2109,14 @@ For HTTP drivers, polling queries can be:
 
 Response text from polled endpoints is matched against `responses` patterns, same as TCP/serial.
 
+**A refused password.** A device that answers a request with 401, 403 or 407 has refused it. Many devices lock an account, or the controller's address, after a few refused logins, so the start-up and poll requests stop as soon as the refusal is clearly the password's:
+
+- A query that answered earlier on the same connection is now refused with 401 or 407: the password changed on the device. The device goes offline as `auth_failed` at once, and nothing more is sent.
+- Three different queries refused before any has answered: the password is wrong. During start-up this fails the connection attempt.
+- Every request in one poll cycle refused: `auth_failed` at the end of that cycle.
+
+A query refused from the start while others answer is something this account may not read, and it never takes the device offline. Put a query every account can read first in `on_connect` and `polling`, so a wrong password is caught on it. After `auth_failed` the platform stops reconnecting until the device's credentials are edited or Reconnect is pressed.
+
 #### JSON body with parameter substitution
 
 For REST APIs that expect JSON bodies, use the `body` field. Parameter placeholders `{name}` are substituted, and literal JSON braces are preserved:
