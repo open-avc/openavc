@@ -4,6 +4,8 @@
 // imports. Mirrors stateVariableHelpers.ts, which backs the state-variable
 // editor the same way.
 
+import type { EnumOption } from "../../api/types";
+
 export interface ConfigFieldDef {
   type: string;
   label: string;
@@ -16,7 +18,9 @@ export interface ConfigFieldDef {
   advanced?: boolean;
   min?: number;
   max?: number;
-  values?: string[];
+  /** The choices of an enum field: a bare value, or `{value, label}` when the
+   *  form should show a label instead of the value. */
+  values?: EnumOption[];
   /** A state variable the device reports this value in. Once the device is
    *  connected to the real equipment, the reported value is saved into the
    *  device's setting. */

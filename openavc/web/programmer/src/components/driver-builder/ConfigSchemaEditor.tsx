@@ -10,6 +10,8 @@ import {
   coerceConfigDefault,
 } from "./configSchemaHelpers";
 import { BooleanOptions } from "../shared/BooleanOptions";
+import { EnumValuesEditor } from "../shared/EnumValuesEditor";
+import { normalizeOptionList } from "../shared/paramOptions";
 
 const sanitizeFieldName = (raw: string) =>
   raw.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase();
@@ -291,8 +293,8 @@ export function ConfigSchemaEditor({ draft, onUpdate }: ConfigSchemaEditorProps)
                         style={{ width: "100%" }}
                       >
                         <option value="">(none)</option>
-                        {(field.values ?? []).map((v) => (
-                          <option key={v} value={v}>{v}</option>
+                        {normalizeOptionList(field.values ?? []).map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
                         ))}
                       </select>
                     ) : (
@@ -445,33 +447,10 @@ export function ConfigSchemaEditor({ draft, onUpdate }: ConfigSchemaEditorProps)
                 {field.type === "enum" && (
                   <div style={{ marginTop: "var(--space-md)" }}>
                     <label style={labelStyle}>Allowed Values</label>
-                    <input
-                      value={(field.values ?? []).join(", ")}
-                      onChange={(e) => {
-                        const values = e.target.value
-                          .split(",")
-                          .map((s) => s.trim())
-                          .filter(Boolean);
-                        updateField(name, {
-                          values: values.length ? values : undefined,
-                        });
-                      }}
-                      placeholder="e.g. tcp, udp, http"
-                      style={{
-                        width: "100%",
-                        fontFamily: "var(--font-mono)",
-                      }}
+                    <EnumValuesEditor
+                      values={field.values}
+                      onChange={(values) => updateField(name, { values })}
                     />
-                    <div
-                      style={{
-                        fontSize: "11px",
-                        color: "var(--text-muted)",
-                        marginTop: 2,
-                      }}
-                    >
-                      Comma-separated. The Add Device dialog renders these as
-                      a dropdown.
-                    </div>
                   </div>
                 )}
               </div>

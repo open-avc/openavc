@@ -509,7 +509,7 @@ The tables below document each field in detail.
 }
 ```
 
-Types: `string`, `text`, `integer`, `number`, `float`, `boolean`, `enum`, `table`. For `enum`, add a `"values"` array; for `table`, add a `"columns"` map (see below).
+Types: `string`, `text`, `integer`, `number`, `float`, `boolean`, `enum`, `table`. For `enum`, add a `"values"` array; for `table`, add a `"columns"` map (see below). Each `values` entry is a plain value or a `{value, label}` pair: the Add Device dropdown shows the label, and the value is what is saved and what `{placeholders}` send. In the Driver Builder, **Allowed Values** takes one row per choice, with the label optional.
 
 `advanced: true` collapses a field behind an **Advanced** group in the Add Device
 and Edit Device dialogs. Nothing changes about how the value is stored or read;
