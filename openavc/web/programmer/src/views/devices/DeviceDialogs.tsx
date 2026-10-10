@@ -6,7 +6,7 @@ import type { DeviceConfig, DriverInfo } from "../../api/types";
 import { DeviceSettingsSetupDialog, hasDriverSetupSettings } from "../../components/shared/DeviceSettingsSetupDialog";
 import { Modal } from "../../components/shared/Modal";
 import { normalizeOptionList } from "../../components/shared/paramOptions";
-import { coerceConfigValue, configFieldKind, splitConnectionFields, SERIAL_PICKER_FIELDS, IR_PICKER_FIELDS, prefillConfigValues } from "./deviceConfigCoerce";
+import { buildConfigFromForm, configFieldKind, splitConnectionFields, SERIAL_PICKER_FIELDS, IR_PICKER_FIELDS, prefillConfigValues } from "./deviceConfigCoerce";
 import { parseApiError } from "../../api/errors";
 import { booleanWord } from "../../components/shared/booleanWords";
 
@@ -842,13 +842,17 @@ export function AddDeviceDialog({
   const [selectedDriver, setSelectedDriver] = useState(prefill?.driver ?? "");
   const [idTouchedByUser, setIdTouchedByUser] = useState(!!prefill);
   const [nameTouchedByUser, setNameTouchedByUser] = useState(!!prefill?.name);
-  const [configValues, setConfigValues] = useState<Record<string, string>>(() => {
+  // The typed values the form's text came from, so a key the driver's schema
+  // does not describe keeps its type on save (buildConfigFromForm).
+  const [configOriginals, setConfigOriginals] = useState<Record<string, unknown>>(() => {
     if (!prefill) return {};
     // Merge device.config with connection table overrides (host, port, etc.)
     const conn = useProjectStore.getState().project?.connections?.[prefill.id] ?? {};
-    const merged = { ...prefill.config, ...conn };
+    return { ...prefill.config, ...conn };
+  });
+  const [configValues, setConfigValues] = useState<Record<string, string>>(() => {
     const vals: Record<string, string> = {};
-    for (const [k, v] of Object.entries(merged)) {
+    for (const [k, v] of Object.entries(configOriginals)) {
       if (v != null && typeof v === "object") {
         // Pretty-print so object fields (e.g. a command map) are editable as
         // readable JSON in the multi-line textarea.
@@ -890,21 +894,13 @@ export function AddDeviceDialog({
       return;
     }
 
-    const config: Record<string, unknown> = {};
     const schema = (driverInfo?.config_schema ?? {}) as Record<string, Record<string, unknown>>;
-    for (const [key, val] of Object.entries(configValues)) {
-      // Empty normally means "unset, leave alone", but an empty usb_serial is a
-      // deliberate clear (user re-picked a manual / no-serial port) and must be
-      // sent so it overwrites a previously bound adapter serial in the merge.
-      if (val === "" && key !== "usb_serial") continue;
-      const fieldType = String(schema[key]?.type || "");
-      const result = coerceConfigValue(val, fieldType, schema[key]?.secret === true);
-      if (!result.ok) {
-        setError(`${String(schema[key]?.label || key)}: ${result.error}`);
-        return;
-      }
-      config[key] = result.value;
+    const built = buildConfigFromForm(configValues, schema, configOriginals);
+    if (!built.ok) {
+      setError(built.error);
+      return;
     }
+    const config = built.config;
 
     // Same split the device-update API applies: connection fields go to the
     // connections table (v0.5.0 schema), the rest stays in device.config.
@@ -1002,6 +998,7 @@ export function AddDeviceDialog({
             onChange={(newDriverId) => {
               setSelectedDriver(newDriverId);
               const newDriver = drivers.find((d) => d.id === newDriverId);
+              setConfigOriginals(newDriver?.default_config ?? {});
               setConfigValues(
                 prefillConfigValues(newDriver?.default_config, newDriver?.config_schema),
               );
@@ -1194,12 +1191,16 @@ export function EditDeviceDialog({
   const [drivers, setDrivers] = useState<DriverInfo[]>([]);
   const [deviceName, setDeviceName] = useState(device.name);
   const [selectedDriver, setSelectedDriver] = useState(device.driver);
-  const [configValues, setConfigValues] = useState<Record<string, string>>(() => {
+  // The typed values the form's text came from, so a key the driver's schema
+  // does not describe keeps its type on save (buildConfigFromForm).
+  const [configOriginals, setConfigOriginals] = useState<Record<string, unknown>>(() => {
     // Merge device.config with connection table overrides (host, port, etc.)
     const conn = useProjectStore.getState().project?.connections?.[device.id] ?? {};
-    const merged = { ...device.config, ...conn };
+    return { ...device.config, ...conn };
+  });
+  const [configValues, setConfigValues] = useState<Record<string, string>>(() => {
     const vals: Record<string, string> = {};
-    for (const [k, v] of Object.entries(merged)) {
+    for (const [k, v] of Object.entries(configOriginals)) {
       if (v != null && typeof v === "object") {
         // Pretty-print so object fields (e.g. a command map) are editable as
         // readable JSON in the multi-line textarea.
@@ -1236,6 +1237,7 @@ export function EditDeviceDialog({
     setSelectedDriver(newDriver);
     if (newDriver !== device.driver) {
       const newDriverInfo = drivers.find((d) => d.id === newDriver);
+      setConfigOriginals(newDriverInfo?.default_config ?? {});
       setConfigValues(
         prefillConfigValues(newDriverInfo?.default_config, newDriverInfo?.config_schema),
       );
@@ -1251,22 +1253,14 @@ export function EditDeviceDialog({
     setSaving(true);
     setError("");
     try {
-      const config: Record<string, unknown> = {};
       const schema = (driverInfo?.config_schema ?? {}) as Record<string, Record<string, unknown>>;
-      for (const [key, val] of Object.entries(configValues)) {
-        // Empty normally means "unset, leave alone", but an empty usb_serial is a
-      // deliberate clear (user re-picked a manual / no-serial port) and must be
-      // sent so it overwrites a previously bound adapter serial in the merge.
-      if (val === "" && key !== "usb_serial") continue;
-        const fieldType = String(schema[key]?.type || "");
-        const result = coerceConfigValue(val, fieldType, schema[key]?.secret === true);
-        if (!result.ok) {
-          setError(`${String(schema[key]?.label || key)}: ${result.error}`);
-          setSaving(false);
-          return;
-        }
-        config[key] = result.value;
+      const built = buildConfigFromForm(configValues, schema, configOriginals);
+      if (!built.ok) {
+        setError(built.error);
+        setSaving(false);
+        return;
       }
+      const config = built.config;
 
       const updateData: Record<string, unknown> = {
         name: deviceName || device.id,

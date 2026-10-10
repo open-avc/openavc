@@ -190,3 +190,20 @@ def test_device_update_request_round_trips_child_entities():
     assert body.child_entities == {
         "encoder": {"005": {"label": "Lobby TX", "config": {}}},
     }
+
+
+@pytest.mark.parametrize("value", [True, False])
+async def test_rest_patch_stores_config_values_as_sent(child_engine, value):
+    """A true/false the device form sends stays a boolean on disk and in the
+    live driver: the route stores the edit as typed, with no coercion."""
+    client, engine = child_engine
+    resp = client.patch(
+        "/api/devices/ctrl1",
+        json={"config": {"host": "10.0.0.50", "port": 5001, "tcp_keepalive": value}},
+    )
+    assert resp.status_code == 200
+
+    dev = next(d for d in load_project(engine.project_path).devices if d.id == "ctrl1")
+    assert dev.config["tcp_keepalive"] is value
+    cfg = engine.devices._device_configs["ctrl1"]
+    assert cfg["config"]["tcp_keepalive"] is value

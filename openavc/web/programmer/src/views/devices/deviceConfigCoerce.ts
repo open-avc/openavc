@@ -89,10 +89,15 @@ export function configFieldKind(
   return "plain";
 }
 
+// `original` is the typed value the form's text came from, when known (the
+// device's saved config, or the driver's default_config). It only matters for
+// a key the schema does not describe, where the text alone cannot say whether
+// "true" was a boolean or "1" was text.
 export function coerceConfigValue(
   val: string,
   fieldType: string,
   secret = false,
+  original?: unknown,
 ): CoerceResult {
   if (fieldType === "boolean") {
     return { ok: true, value: val === "true" };
@@ -137,7 +142,17 @@ export function coerceConfigValue(
     // "0123" became the number 123, and codes past 2^53 lost digits.
     return { ok: true, value: val };
   }
-  // Untyped: accept a JSON object if it happens to parse (back-compat with
+  // Untyped. A value the form still shows as it came keeps its type, and a
+  // true/false that came as a boolean stays one: a hidden default of `true`
+  // saved as the text "true" made a saved "false" read as on.
+  if (original != null && typeof original !== "object") {
+    if (String(original) === val) return { ok: true, value: original };
+    if (typeof original === "boolean" && (val === "true" || val === "false")) {
+      return { ok: true, value: val === "true" };
+    }
+    if (typeof original === "string") return { ok: true, value: val };
+  }
+  // Otherwise accept a JSON object if it happens to parse (back-compat with
   // schema-less edits), else a number when the round-trip is lossless, else
   // the raw string. The lossless check keeps schema-less edits from
   // corrupting values that merely look numeric ("0123", 19-digit codes).
@@ -153,6 +168,56 @@ export function coerceConfigValue(
     return { ok: true, value: Number(val) };
   }
   return { ok: true, value: val };
+}
+
+// The listed value of an enum field whose text is `val`, so the field keeps
+// the type its driver lists ("4" stays text, 4 stays a number): the rule the
+// server applies to a value the device fills in (core/learned_config.py).
+function listedEnumValue(
+  field: Record<string, unknown> | undefined,
+  val: string,
+): { found: boolean; value?: unknown } {
+  if (field?.type !== "enum" || !Array.isArray(field.values)) return { found: false };
+  for (const option of field.values as unknown[]) {
+    const value =
+      option !== null && typeof option === "object"
+        ? (option as { value?: unknown }).value
+        : option;
+    if (value == null || value === "") continue;
+    if (String(value) === val.trim()) return { found: true, value };
+  }
+  return { found: false };
+}
+
+// The Add and Edit dialogs' form back into a typed config: every key coerced
+// by its schema field, or, for a key the schema does not describe, by the
+// typed value it came from (`originals`). Empty normally means "unset, leave
+// alone", but an empty usb_serial is a deliberate clear (the user re-picked a
+// manual or no-serial port) and is kept so it overwrites a previously bound
+// adapter serial in the merge.
+export function buildConfigFromForm(
+  values: Record<string, string>,
+  schema: Record<string, Record<string, unknown>>,
+  originals: Record<string, unknown>,
+): { ok: true; config: Record<string, unknown> } | { ok: false; error: string } {
+  const config: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(values)) {
+    if (val === "" && key !== "usb_serial") continue;
+    const field = schema[key];
+    const listed = listedEnumValue(field, val);
+    if (listed.found) {
+      config[key] = listed.value;
+      continue;
+    }
+    const result = coerceConfigValue(
+      val, String(field?.type || ""), field?.secret === true, originals[key],
+    );
+    if (!result.ok) {
+      return { ok: false, error: `${String(field?.label || key)}: ${result.error}` };
+    }
+    config[key] = result.value;
+  }
+  return { ok: true, config };
 }
 
 // Connection-related config fields that belong in the project's connections
