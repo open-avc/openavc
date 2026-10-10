@@ -31,10 +31,16 @@ and broadcasts ``project.reloaded`` (an open IDE tab refetches, or warns when it
 holds unsaved edits). The project split (connection fields to the connections
 table, the rest to the device's config) is ``device_config.apply_config_delta``,
 the same one a setup action uses.
+
+A saved field that a declared child roster is built from (``instances``
+``count_from`` or ``ids_from``) re-derives that roster at once, as the IDE's
+Refresh from Device does, so the children match the setting without waiting
+for the next connection.
 """
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from openavc.core.device_config import apply_config_delta
@@ -119,6 +125,21 @@ def learned_fields(driver: Any) -> dict[str, str]:
     return fields
 
 
+def roster_fields(driver: Any) -> set[str]:
+    """The config fields a driver's declared child rosters are built from."""
+    info = getattr(driver, "DRIVER_INFO", {}) or {}
+    fields: set[str] = set()
+    for tdef in (info.get("child_entity_types") or {}).values():
+        inst = tdef.get("instances") if isinstance(tdef, dict) else None
+        if not isinstance(inst, dict):
+            continue
+        for key in ("count_from", "ids_from"):
+            name = inst.get(key)
+            if isinstance(name, str) and name:
+                fields.add(name)
+    return fields
+
+
 class LearnedConfig:
     """Saves the values devices report into the config fields that ask for it."""
 
@@ -130,6 +151,7 @@ class LearnedConfig:
         self._watched: dict[str, str] = {}
         # (device, field, value) already logged as not accepted.
         self._refused: set[tuple[str, str, str]] = set()
+        self._tasks: set[asyncio.Task] = set()
 
     def start(self) -> None:
         self._event_ids.append(
@@ -229,4 +251,25 @@ class LearnedConfig:
         for field, value in delta.items():
             label = (schema.get(field) or {}).get("label") or field
             log.info("[%s] %s set to %s, as the device reports", device_id, label, value)
+        if roster_fields(driver) & set(delta):
+            self._refresh_rosters(device_id, driver)
         return delta
+
+    def _refresh_rosters(self, device_id: str, driver: Any) -> None:
+        """Re-derive the declared rosters from the config just saved."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+
+        async def refresh() -> None:
+            try:
+                await driver.refresh_children()
+            except NotImplementedError:
+                return
+            except Exception:
+                log.exception("[%s] Could not refresh children after a filled-in setting", device_id)
+
+        task = loop.create_task(refresh())
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)

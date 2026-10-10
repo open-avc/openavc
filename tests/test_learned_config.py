@@ -23,7 +23,7 @@ import pytest
 
 from openavc.core.device_config import apply_config_delta
 from openavc.core.engine import Engine
-from openavc.core.learned_config import accepted_value, learned_fields
+from openavc.core.learned_config import accepted_value, learned_fields, roster_fields
 from openavc.core.project_loader import DeviceConfig, load_project
 from openavc.drivers.base import BaseDriver
 from openavc.drivers.registry import register_driver, unregister_driver
@@ -289,6 +289,64 @@ def test_apply_config_delta_splits_connection_fields():
     dev = next(d for d in project.devices if d.id == "w1")
     assert dev.config == {"keep": 1, "model": "W200"}
     assert apply_config_delta(project, "nobody", {"model": "W1"}) is False
+
+
+_ZONED_ID = "acme_zoned_learned_test"
+
+
+class _AcmeZoned(_AcmeWidget):
+    """A widget whose zone roster is built from a setting it also reports."""
+
+    DRIVER_INFO: dict[str, Any] = {
+        "id": _ZONED_ID,
+        "name": "Acme Zoned (learned config test)",
+        "transport": "tcp",
+        "default_config": {"port": 5000, "zones": "A,B"},
+        "config_schema": {
+            "zones": {"type": "string", "label": "Zones", "learned_from": "zones_reported"},
+        },
+        "state_variables": {"zones_reported": {"type": "string", "label": "Zones"}},
+        "child_entity_types": {
+            "zone": {
+                "label": "Zone",
+                "id_format": {"type": "string"},
+                "instances": {"ids_from": "zones"},
+            },
+        },
+        "commands": {},
+    }
+    REPORT: dict[str, Any] = {}
+    refreshed: list[str] = []
+
+    async def refresh_children(self) -> Any:
+        type(self).refreshed.append(str(self.config.get("zones")))
+        return {}
+
+
+@pytest.mark.asyncio
+async def test_a_saved_roster_setting_refreshes_the_roster(tmp_path):
+    register_driver(_AcmeZoned)
+    _AcmeZoned.REPORT = {"zones_reported": "A,B,C,D"}
+    _AcmeZoned.refreshed = []
+    try:
+        eng, _ = _engine(tmp_path)
+        project = eng.project.model_copy(deep=True)
+        project.devices.append(DeviceConfig(
+            id="z1", driver=_ZONED_ID, name="Zoned", config={"zones": "A,B"}, enabled=True,
+        ))
+        await asyncio.wait_for(eng.apply_project(project), timeout=10)
+        await wait_for_condition(
+            lambda: _AcmeZoned.refreshed == ["A,B,C,D"],
+            message="the zone roster was not refreshed from the saved setting",
+        )
+        assert _disk_config(eng, "z1")["zones"] == "A,B,C,D"
+    finally:
+        unregister_driver(_ZONED_ID)
+
+
+def test_roster_fields():
+    assert roster_fields(_AcmeZoned) == {"zones"}
+    assert roster_fields(_AcmeWidget) == set()
 
 
 def load_project_dict(data: dict):

@@ -552,6 +552,10 @@ config_schema:
 - The device keeps running; nothing reconnects. The device page shows the new
   value, and the field carries the note "Filled in from the device when it
   connects."
+- A field a child roster is built from (`instances` `count_from` or
+  `ids_from`) rebuilds that roster as soon as it is saved, the way **Refresh
+  from Device** does. A count roster that already follows the device through
+  `count_from_state` needs nothing more.
 - Your driver keeps reading the state variable first while it is connected.
   The field is what it has when the device has not reported yet: before the
   first connection, and in simulation.
