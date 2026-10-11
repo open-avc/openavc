@@ -109,7 +109,7 @@ The Transport section is required — pick TCP, serial, UDP, OSC, HTTP, or Bridg
 - **OSC**: dual UDP socket settings.
 - **UDP**: default port.
 
-The transport also decides what the Add Device dialog asks for: an IP address and port for TCP, UDP, OSC and HTTP, the serial port for serial, nothing for Bridge. The Builder writes those fields into the driver (`host` and `port` in `config_schema`) and swaps them when the transport changes.
+The transport also decides what the Add Device dialog asks for: an IP address and port for TCP, UDP, OSC and HTTP, the serial port for serial, nothing for Bridge. The Builder writes those fields into the driver (`host` and `port` in `config_schema`) and swaps them when the transport changes. A network driver that lacks them gets them when you open it in the Builder; save it to keep them.
 
 Common to text protocols: **Message Delimiter** marks the end of each message. `\r` for most AV gear (Extron, Kramer, PJLink), `\r\n` for some network devices.
 

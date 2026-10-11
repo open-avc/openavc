@@ -44,6 +44,7 @@ function editor(props: { isNew: boolean; originalId: string | null; draft?: Driv
       readOnly={false}
       originalId={props.originalId}
       commentLines={0}
+      addedConnectionFields={[]}
       onUpdate={() => {}}
       onSave={() => {}}
       onExport={() => {}}

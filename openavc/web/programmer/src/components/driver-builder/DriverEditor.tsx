@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Lock,
   MessageSquare,
+  Plug,
 } from "lucide-react";
 import yaml from "js-yaml";
 import type { DriverDefinition } from "../../api/types";
@@ -62,6 +63,14 @@ type TabId =
  *  short enough that the issue list feels attached to what you just typed. */
 const VALIDATE_DEBOUNCE_MS = 300;
 
+/** The note shown when opening a driver added connection fields to it. */
+function addedFieldsNote(keys: string[], draft: DriverDefinition): string {
+  const schema = (draft.config_schema ?? {}) as Record<string, { label?: string }>;
+  const labels = keys.map((k) => schema[k]?.label || k);
+  const one = labels.length === 1;
+  return `Added the ${labels.join(" and ")} field${one ? "" : "s"}, which Add Device shows for this driver. Save to keep ${one ? "it" : "them"}.`;
+}
+
 interface DriverEditorProps {
   draft: DriverDefinition;
   dirty: boolean;
@@ -77,6 +86,9 @@ interface DriverEditorProps {
    *  the file from the edited structure, so they are not carried back out —
    *  warn before that happens rather than after. */
   commentLines: number;
+  /** Connection fields added when this driver was opened (it had none).
+   *  Save stays available while there are any, and a note names them. */
+  addedConnectionFields: string[];
   onUpdate: (partial: Partial<DriverDefinition>) => void;
   onSave: () => void;
   onExport: () => void;
@@ -94,11 +106,13 @@ export function DriverEditor({
   readOnly,
   originalId,
   commentLines,
+  addedConnectionFields,
   onUpdate,
   onSave,
   onExport,
   onDuplicate,
 }: DriverEditorProps) {
+  const unsaved = dirty || addedConnectionFields.length > 0;
   const [activeTab, setActiveTab] = useState<TabId>("general");
   const [yamlPaneOpen, setYamlPaneOpen] = useState(false);
   const [yamlCopied, setYamlCopied] = useState(false);
@@ -345,15 +359,15 @@ export function DriverEditor({
         {!readOnly && (
           <button
             onClick={handleSave}
-            disabled={!dirty || saving}
+            disabled={!unsaved || saving}
             style={{
               display: "flex",
               alignItems: "center",
               gap: "var(--space-xs)",
               padding: "var(--space-sm) var(--space-lg)",
               borderRadius: "var(--border-radius)",
-              background: dirty ? "var(--accent-bg)" : "var(--bg-hover)",
-              color: dirty ? "var(--text-on-accent)" : "var(--text-muted)",
+              background: unsaved ? "var(--accent-bg)" : "var(--bg-hover)",
+              color: unsaved ? "var(--text-on-accent)" : "var(--text-muted)",
               opacity: saving ? 0.6 : 1,
             }}
           >
@@ -431,6 +445,31 @@ export function DriverEditor({
             {commentLines === 1 ? "line" : "lines"}. Saving here rewrites the
             file from the fields above and does not keep them. Edit the
             .avcdriver directly if the comments matter.
+          </span>
+        </div>
+      )}
+
+      {!readOnly && addedConnectionFields.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-md)",
+            padding: "var(--space-sm) var(--space-lg)",
+            background: "var(--bg-hover)",
+            borderBottom: "1px solid var(--border-color)",
+            flexShrink: 0,
+          }}
+        >
+          <Plug size={14} style={{ color: "var(--accent)" }} />
+          <span
+            style={{
+              fontSize: "var(--font-size-sm)",
+              color: "var(--text-secondary)",
+              flex: 1,
+            }}
+          >
+            {addedFieldsNote(addedConnectionFields, draft)}
           </span>
         </div>
       )}

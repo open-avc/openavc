@@ -105,6 +105,33 @@ export function connectionFieldsFor(transport: string): Record<string, FieldDef>
   }
 }
 
+const NETWORK_TRANSPORTS = new Set(["tcp", "udp", "osc", "http"]);
+
+/**
+ * A network driver's config_schema with the connection fields it lacks
+ * added first, and the keys that were added. A driver saved by an earlier
+ * Builder has none, so the Add Device form had nowhere to enter the address.
+ * A serial driver is left as it is: Add Device's serial picker has its own
+ * port and baud fields.
+ */
+export function addMissingConnectionFields(
+  schema: Record<string, unknown> | undefined,
+  transport: string,
+): { schema: Record<string, unknown>; added: string[] } {
+  const current = schema ?? {};
+  if (!NETWORK_TRANSPORTS.has(transport)) return { schema: current, added: [] };
+  const fields = connectionFieldsFor(transport);
+  const added = Object.keys(fields).filter((key) => !(key in current));
+  if (added.length === 0) return { schema: current, added };
+  const rest: Record<string, unknown> = { ...current };
+  const first: Record<string, unknown> = {};
+  for (const [key, def] of Object.entries(fields)) {
+    first[key] = key in rest ? rest[key] : def;
+    delete rest[key];
+  }
+  return { schema: { ...first, ...rest }, added };
+}
+
 function sameField(a: unknown, b: FieldDef): boolean {
   if (!a || typeof a !== "object") return false;
   const x = a as FieldDef;

@@ -11,6 +11,7 @@ import {
   DRIVER_YAML_DUMP_OPTIONS,
 } from "./driverBuilderStore.helpers";
 import {
+  addMissingConnectionFields,
   connectionFieldsFor,
   secretFieldsInConfig,
 } from "../components/driver-builder/transportPickerHelpers";
@@ -73,6 +74,11 @@ interface DriverBuilderState {
    *  Kept out of `draft` on purpose: in the draft it would show up in the live
    *  YAML preview and in an exported .avcdriver. */
   commentLines: number;
+  /** Connection fields the editor added to the selected driver when it was
+   *  opened (a network driver saved by an earlier Builder has none). Kept out
+   *  of `dirty` so opening such a driver to look at it and moving on asks
+   *  nothing; the editor offers Save while this is non-empty. */
+  addedConnectionFields: string[];
 
   // All registered drivers (from GET /drivers)
   registeredDrivers: DriverInfo[];
@@ -106,6 +112,23 @@ interface DriverBuilderState {
   updateDriver: (driverId: string, fileUrl: string, minPlatformVersion?: string) => Promise<string[]>;
 }
 
+/** A saved driver as the editor opens it: a network driver gets the
+ *  connection fields it lacks, so Add Device can take its address. A built-in
+ *  is read-only and is shown as it is. */
+function draftForEditing(definition: DriverDefinition): {
+  draft: DriverDefinition;
+  added: string[];
+} {
+  const draft = cloneDraft(definition);
+  if ((definition as { source?: string }).source === "builtin") return { draft, added: [] };
+  const { schema, added } = addMissingConnectionFields(
+    draft.config_schema as Record<string, unknown> | undefined,
+    draft.transport,
+  );
+  if (added.length > 0) draft.config_schema = schema as DriverDefinition["config_schema"];
+  return { draft, added };
+}
+
 export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
   // Raw selection — clones the definition into the editor draft with no dirty
   // guard. Used by the public selectDriver (which guards first) and by the
@@ -120,6 +143,7 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
         draft: { ...EMPTY_DEFINITION },
         dirty: false,
         commentLines: 0,
+        addedConnectionFields: [],
       });
       return;
     }
@@ -127,12 +151,14 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
     if (found) {
       const commentLines =
         (found as unknown as { _comment_lines?: number })._comment_lines ?? 0;
+      const { draft, added } = draftForEditing(found);
       set({
         selectedId: id,
-        draft: cloneDraft(found),
+        draft,
         dirty: false,
         error: null,
         commentLines,
+        addedConnectionFields: added,
       });
     }
   };
@@ -147,6 +173,7 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
     loading: false,
     error: null,
     commentLines: 0,
+    addedConnectionFields: [],
 
     registeredDrivers: [],
     communityDrivers: [],
@@ -182,6 +209,7 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
         dirty: true,
         error: null,
         commentLines: 0,
+        addedConnectionFields: [],
       });
     },
 
@@ -209,13 +237,14 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
         } else {
           await api.createDriverDefinition(capturedDraft);
         }
-        set(
-          reconcileAfterSave({
+        set({
+          ...reconcileAfterSave({
             savedId,
             draftUnchanged: get().draft === capturedDraft,
             selectionUnchanged: get().selectedId === selectionAtStart,
           }),
-        );
+          addedConnectionFields: [],
+        });
         await get().loadDefinitions();
       } catch (e) {
         set({ saving: false, error: parseApiError(e) });
@@ -227,7 +256,12 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
         await api.deleteDriverDefinition(id);
         const { selectedId } = get();
         if (selectedId === id) {
-          set({ selectedId: null, draft: { ...EMPTY_DEFINITION }, dirty: false });
+          set({
+            selectedId: null,
+            draft: { ...EMPTY_DEFINITION },
+            dirty: false,
+            addedConnectionFields: [],
+          });
         }
         await get().loadDefinitions();
       } catch (e) {
@@ -242,9 +276,11 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
       // IssueList the form editor shows, instead of getting a terse backend 422.
       const blockers = await importBlockers(definition, get().definitions);
       if (blockers.length > 0) {
+        const { draft, added } = draftForEditing(definition);
         set({
           selectedId: null,
-          draft: cloneDraft(definition),
+          draft,
+          addedConnectionFields: added,
           dirty: true,
           saving: false,
           error: `This driver needs fixes before it can be saved: ${blockers.join(" ")}`,
