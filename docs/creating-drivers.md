@@ -525,7 +525,12 @@ a device connected over the network, `port` of one connected over the network
 or a direct serial line, and neither of a device reached through a bridge. A
 `table` field is set up on the device page and is not checked. A project that
 already holds a device with the field blank still opens and saves; that device
-is asked for the field the next time it is edited.
+is asked for the field the next time it is edited. A required `host` is also
+checked when the device connects, for every driver: a network device with no
+address is not dialed, its card reads "No address is set for this device.",
+and it is not retried until the address is set. Leave `host` unmarked when a
+blank address means something to your driver (a multicast or broadcast
+default).
 
 `advanced: true` collapses a field behind an **Advanced** group in the Add Device
 and Edit Device dialogs. Nothing changes about how the value is stored or read;

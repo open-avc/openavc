@@ -32,6 +32,7 @@ from openavc.core.connection_fault import (
     CHILD_DRIVER_FAULT_CODES,
     CHILD_NOT_FITTED,
     CHILD_PARENT_OFFLINE,
+    INVALID_CONFIG,
     NO_FAULT_CLAIMED,
     NO_RESPONSE,
     TRANSPORT_DISCONNECTED,
@@ -40,6 +41,7 @@ from openavc.core.connection_fault import (
     classify_connection_fault,
     default_child_fault_message,
     default_fault_message,
+    no_address_message,
     normalize_child_fault_claim,
     typed_fault_from_exc,
 )
@@ -75,6 +77,9 @@ __all__ = [
 ]
 
 log = get_logger(__name__)
+
+# The transports that dial a network address of their own (``config["host"]``).
+_ADDRESSED_TRANSPORTS = frozenset({"tcp", "udp", "osc", "http", "ssh", "mqtt", "snmp"})
 
 # The transports BaseDriver._poll_loop watches for a peer that answers no poll
 # (_watches_for_silence). The list and the reason for each one left out live
@@ -1098,6 +1103,13 @@ class BaseDriver(ABC):
                 )
             return
 
+        # A network device with no address is refused here, before any
+        # transport or driver-owned session is built: an empty address dials
+        # this computer, and the card then blamed a refused port on a device
+        # nobody had given an address. Every driver passes through here.
+        if self.address_missing():
+            raise ConnectionFaultError(no_address_message(), code=INVALID_CONFIG)
+
         # Stage 3 — establishment: driver-owned setup hook, then the
         # transport (or driver-owned session) itself.
         await self._pre_connect()
@@ -1985,6 +1997,22 @@ class BaseDriver(ABC):
         null its references (the health loop keeps running until
         _link_alive() goes false). Default: no-op.
         """
+
+    def address_missing(self) -> bool:
+        """True when this device dials a network address it does not have.
+
+        Asked of the address the driver would dial now, which a running
+        simulation has pointed at the simulator, and only when the driver
+        marks its ``host`` field required: a driver whose blank address means
+        something (a multicast default, a broadcast) leaves it unmarked.
+        Serial, bridge-routed and IR devices dial no address of their own.
+        """
+        if self._effective_transport() not in _ADDRESSED_TRANSPORTS:
+            return False
+        field = (self.DRIVER_INFO.get("config_schema") or {}).get("host")
+        if not (isinstance(field, dict) and field.get("required") is True):
+            return False
+        return not str(self.config.get("host") or "").strip()
 
     def _effective_transport(self) -> str:
         """The transport this device connects over.

@@ -19,6 +19,7 @@ from typing import Any, TYPE_CHECKING
 
 from openavc.core.connection_fault import (
     BRIDGE_OFFLINE,
+    INVALID_CONFIG,
     UNREACHABLE,
     ConnectionFaultError,
     classify_connection_fault,
@@ -2219,9 +2220,19 @@ class DeviceManager:
         )
 
     def _start_reconnect(self, device_id: str) -> None:
-        """Start a background reconnect loop for a device."""
+        """Start a background reconnect loop for a device.
+
+        A device with no address to dial gets none: retrying cannot supply
+        one, so it stops at once, the way a rejected login does, rather than
+        after the attempts a device-reported fault is allowed. The card
+        already says what to set; editing the device or Reconnect retries.
+        """
         if device_id in self._reconnect_tasks:
             return  # Already reconnecting
+        driver = self._devices.get(device_id)
+        if driver is not None and driver.address_missing():
+            self._stop_reconnect_for_permanent_fault(device_id, INVALID_CONFIG)
+            return
         self._note_flap(device_id)
         task = asyncio.create_task(self._reconnect_loop(device_id))
         task.add_done_callback(_log_task_exception)

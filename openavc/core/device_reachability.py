@@ -39,6 +39,7 @@ from typing import Any
 import httpx
 
 from openavc.core.connection_fault import (
+    no_address_message,
     NO_RESPONSE,
     TRANSPORT_DISCONNECTED,
     classify_connection_fault,
@@ -49,10 +50,7 @@ from openavc.transport.endpoint import control_bind_address
 _CONNECT_TIMEOUT_S = 5.0
 _SERIAL_TIMEOUT_S = 2
 
-_NO_HOST = (
-    "No address is set for this device. Enter its IP address or hostname "
-    "in the device's Connection Settings."
-)
+_NO_HOST = no_address_message()
 _NO_PORT = (
     "No port is set for this device, and its driver does not supply one. "
     "Enter the port in the device's Connection Settings."

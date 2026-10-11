@@ -120,6 +120,19 @@ _DEFAULT_MESSAGES = {
 }
 
 
+_NO_ADDRESS_MESSAGE = (
+    "No address is set for this device. Enter its IP address or hostname "
+    "in the device's Connection Settings."
+)
+
+
+def no_address_message() -> str:
+    """What a network device with no address to dial says: on its card (an
+    ``invalid_config`` fault BaseDriver raises before dialing) and from the
+    connection test, one sentence for both."""
+    return _NO_ADDRESS_MESSAGE
+
+
 def default_fault_message(code: str, where: str = "the device") -> str:
     """The taxonomy's standard integrator-facing sentence for ``code``."""
     template = _DEFAULT_MESSAGES.get(code) or _DEFAULT_MESSAGES[TRANSPORT_DISCONNECTED]
