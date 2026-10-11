@@ -32,6 +32,7 @@ import { normalizeOptionList, parseStateOptionList, settingValueText } from "../
 import { DevicePanelSlot, ContextActionRenderer } from "../../components/plugins/PluginExtensions";
 import { findDeviceReferences, validateSettingValue } from "./deviceUtils";
 import { formatDeviceAddress } from "./deviceAddress";
+import { isSecretConfigField } from "./deviceConfigCoerce";
 import { BooleanOptions } from "../../components/shared/BooleanOptions";
 import { readingText, valueText } from "../../components/shared/booleanWords";
 import { ChildEntities } from "./ChildEntities";
@@ -680,6 +681,9 @@ export function DeviceDetail({
           reason={offlineReason}
           failed={reconnectFailed}
           hint={connectionHint}
+          signInFields={hasSignInFields(
+            deviceInfo?.driver_info?.config_schema as Record<string, unknown> | undefined,
+          )}
         />
       )}
 
@@ -1656,7 +1660,18 @@ function ChildTroubleBanner({ headline, names }: { headline: string; names: stri
 
 
 /** The Offline banner's last line: what happens next, and what to do. */
-export function offlineNextStep(reason: string | undefined, failed: boolean): string {
+/** True when the driver has a password, key or other sign-in field, so a
+ *  refused sign-in may be fixed under Edit. A device that pairs (a TV
+ *  accepting a prompt, a bridge's link button) or has no credentials does not. */
+export function hasSignInFields(schema: Record<string, unknown> | undefined): boolean {
+  return Object.keys(schema ?? {}).some((key) => isSecretConfigField(schema, key));
+}
+
+export function offlineNextStep(
+  reason: string | undefined,
+  failed: boolean,
+  signInFields: boolean,
+): string {
   if (!failed) {
     // Deliberately no attempt count. There's no ceiling to count toward, and
     // a device left off over a weekend would show a number in the thousands,
@@ -1666,7 +1681,12 @@ export function offlineNextStep(reason: string | undefined, failed: boolean): st
   if (reason === "auth_failed") {
     // Retrying a rejected login would only trip the device's brute-force
     // lockout, so the server holds off on purpose.
-    return "Not retrying, so repeated sign-ins cannot lock OpenAVC out of the device. Fix the credentials with Edit, then press Reconnect.";
+    // The line above is the driver's sentence and names what was refused,
+    // which is not always a password: a declined pairing prompt, a bridge to
+    // pair with its link button, a setting on the device itself.
+    return signInFields
+      ? "Not retrying, so repeated sign-ins cannot lock OpenAVC out of the device. Fix the cause above (the sign-in details are under Edit), then press Reconnect."
+      : "Not retrying, so repeated sign-ins cannot lock OpenAVC out of the device. Fix the cause above, then press Reconnect.";
   }
   if (PERMANENT_OFFLINE_REASONS.has(reason ?? "")) {
     // Stopped early on purpose, not out of attempts: the detail line above
@@ -1687,12 +1707,14 @@ function OfflineBanner({
   reason,
   failed,
   hint,
+  signInFields = false,
 }: {
   installed?: boolean;
   detail: string;
   reason?: string;
   failed: boolean;
   hint?: string;
+  signInFields?: boolean;
 }) {
   const accent = "var(--color-warning, #f59e0b)";
   return (
@@ -1734,7 +1756,7 @@ function OfflineBanner({
         >
           {installed && failed
             ? "Automatic reconnect is paused. Check this product's OpenAVC status, then press Reconnect."
-            : offlineNextStep(reason, failed)}
+            : offlineNextStep(reason, failed, signInFields)}
         </div>)}
       </div>
     </div>
