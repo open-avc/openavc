@@ -142,7 +142,7 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   configSchemaEntry: new Set(["advanced", "columns", "default", "description", "help", "label", "learned_from", "max", "min", "regex", "required", "row_label", "secret", "type", "values"]),
   deviceSettingEntry: new Set(["default", "help", "label", "map", "max", "min", "regex", "setup", "state_key", "type", "unique", "values", "write"]),
   deviceSettingWrite: new Set(["address", "args", "body", "headers", "method", "path", "send"]),
-  simulatorSection: new Set(["command_handlers", "controls", "delays", "error_modes", "initial_state", "notifications", "push_state", "state_machines"]),
+  simulatorSection: new Set(["capacity", "command_handlers", "controls", "delays", "error_modes", "initial_state", "notifications", "push_state", "state_machines"]),
   routingBlock: new Set(["command", "destination_child_type", "destination_param", "params", "planes", "source_child_type", "source_param"]),
   routingPlane: new Set(["command", "destination_child_type", "destination_param", "label", "params", "route_property", "source_child_type", "source_param"]),
   discoveryBlock: new Set(["amx_ddp", "hostname", "manufacturer_alias", "mdns", "oui", "port_open", "python", "requires", "snmp_pen", "ssdp", "tcp_probe", "udp_probe"]),
@@ -924,6 +924,17 @@ export interface DriverSimulatorDef {
   command_handlers?: Array<Record<string, unknown>>;
   /** Unsolicited messages emitted on state change, keyed by state variable. */
   notifications?: Record<string, unknown>;
+  /**
+   * How much the device can take in at once, for the simulator's Capacity
+   * setting. Off until it is switched on for a device in the Simulator UI;
+   * then the simulated device holds rx_buffer bytes it has not read yet, takes
+   * one message every process_ms, and loses what arrives while it is full.
+   * Lets a driver that sends faster than the device reads fail in the
+   * simulator the way it fails on the device. Declare the numbers the
+   * manufacturer documents; a driver that declares nothing gets the
+   * simulator's own. Requires platform 0.37.0.
+   */
+  capacity?: { rx_buffer: number; process_ms: number; on_overflow?: "discard" | "silence" };
 }
 
 export interface DriverStateVarDef {

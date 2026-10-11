@@ -158,4 +158,31 @@ scenario("coerce_matches_declared_types", () => {
   return { pass: Object.values(checks).every(Boolean), detail: checks };
 });
 
+// --- capacity: both numbers stay set, discard is written by omission -------
+scenario("capacity_number_set", () => {
+  const r = H.setCapacityNumber({ rx_buffer: 128, process_ms: 20 }, "rx_buffer", "64");
+  return { pass: eq(r, { rx_buffer: 64, process_ms: 20 }), detail: r };
+});
+scenario("capacity_zero_process_ms_is_kept", () => {
+  const r = H.setCapacityNumber({ rx_buffer: 128, process_ms: 20 }, "process_ms", "0");
+  return { pass: eq(r, { rx_buffer: 128, process_ms: 0 }), detail: r };
+});
+scenario("capacity_blank_or_out_of_range_keeps_the_old_value", () => {
+  const start = { rx_buffer: 128, process_ms: 20 };
+  const checks = {
+    blank: eq(H.setCapacityNumber(start, "rx_buffer", ""), start),
+    zeroBuffer: eq(H.setCapacityNumber(start, "rx_buffer", "0"), start),
+    negativeTime: eq(H.setCapacityNumber(start, "process_ms", "-5"), start),
+  };
+  return { pass: Object.values(checks).every(Boolean), detail: checks };
+});
+scenario("capacity_overflow_discard_is_omitted", () => {
+  const silent = H.setCapacityOverflow({ rx_buffer: 64, process_ms: 5 }, "silence");
+  const back = H.setCapacityOverflow(silent, "discard");
+  return {
+    pass: silent.on_overflow === "silence" && !("on_overflow" in back),
+    detail: { silent, back },
+  };
+});
+
 process.stdout.write(JSON.stringify(results));

@@ -373,6 +373,57 @@ input, select {
   accent-color: var(--color-error);
 }
 
+/* ── Capacity ── */
+
+.capacity-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.capacity-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.capacity-field-label {
+  width: 110px;
+  flex-shrink: 0;
+}
+
+.capacity-field input[type="number"] {
+  width: 72px;
+}
+
+.capacity-field select {
+  flex: 1;
+  min-width: 0;
+}
+
+.capacity-unit,
+.capacity-help {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.capacity-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.capacity-problem {
+  font-size: 11px;
+  color: var(--color-error);
+}
+
 /* ── Protocol Log ── */
 
 .protocol-log {

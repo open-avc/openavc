@@ -10,6 +10,7 @@ Endpoints:
   POST /api/devices/{id}/stop   — stop simulating a device
   POST /api/devices/{id}/state  — change device state (from UI)
   POST /api/devices/{id}/errors/{mode}  — inject/clear error
+  POST /api/devices/{id}/capacity       — switch the capacity model, set its numbers
   GET  /api/devices/{id}/log    — protocol log
   GET  /api/network             — get network conditions
   POST /api/network             — set network conditions
@@ -57,6 +58,14 @@ class StateUpdate(BaseModel):
 
 class ErrorAction(BaseModel):
     active: bool = True
+
+
+class CapacityUpdate(BaseModel):
+    """A change to a device's capacity model; a field left out keeps its value."""
+    enabled: bool | None = None
+    rx_buffer: int | None = None
+    process_ms: float | None = None
+    on_overflow: str | None = None
 
 
 # ── Dependency: manager is set by server.py at startup ──
@@ -229,6 +238,19 @@ async def toggle_error(device_id: str, mode: str, req: ErrorAction):
         "mode": mode,
         "active": mode in inst.active_errors,
     }
+
+
+@router.post("/devices/{device_id}/capacity")
+async def set_capacity(device_id: str, req: CapacityUpdate):
+    mgr = _get_manager()
+    inst = mgr.get_instance(device_id)
+    if not inst:
+        raise HTTPException(404, f"Device '{device_id}' not found")
+    try:
+        capacity = inst.set_capacity(**req.model_dump())
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"status": "ok", "capacity": capacity}
 
 
 @router.get("/devices/{device_id}/log")

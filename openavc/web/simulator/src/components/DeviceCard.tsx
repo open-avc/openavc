@@ -9,6 +9,7 @@ import { AudioPanel } from "./devices/AudioPanel";
 import { CameraPanel } from "./devices/CameraPanel";
 import { GenericPanel } from "./devices/GenericPanel";
 import { ChildEntitiesPanel } from "./ChildEntitiesPanel";
+import { CapacityPanel } from "./CapacityPanel";
 import { DynamicControls } from "./controls/DynamicControls";
 import {
   Projector,
@@ -210,6 +211,9 @@ export function DeviceCard({ device, expandAll }: {
           })}
         </div>
       )}
+
+      {/* What the device can take in (TCP and UDP devices) */}
+      {device.capacity && <CapacityPanel deviceId={device.device_id} capacity={device.capacity} />}
     </div>
   );
 }

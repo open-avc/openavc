@@ -14,6 +14,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any, Callable
 
+from openavc.simulator.capacity import DeviceCapacity, capacity_problems
 from openavc.simulator.self_signed_tls import wants_tls
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,11 @@ class BaseSimulator(ABC):
     # Subclasses must set this
     SIMULATOR_INFO: dict = {}
 
+    #: Which capacity model this simulator runs (capacity.py): "stream" for a
+    #: TCP server, "datagram" for a UDP one, None where there is none (HTTP,
+    #: MQTT, WebSocket).
+    CAPACITY_KIND: str | None = None
+
     def __init__(self, device_id: str, config: dict | None = None):
         self.device_id = device_id
         self.config = config or {}
@@ -52,6 +58,10 @@ class BaseSimulator(ABC):
         self._port: int = 0
         self._running = False
         self._network_layer = None  # Set by SimulatorManager
+        # How much the device can take in (capacity.py); off until switched on.
+        self._capacity = DeviceCapacity(
+            device_id, info.get("capacity"), notify=self._notify_change,
+        )
         # v0.5.0 child entities from the project, keyed
         # {child_type: {padded_local_id: {label, config}}}. Set by the manager
         # via set_child_entities after construction; Python simulators read
@@ -239,6 +249,35 @@ class BaseSimulator(ABC):
         counts any byte as proof of life would otherwise read it as alive."""
         return self.has_error_behavior("no_response")
 
+    # ── Capacity ──
+
+    @property
+    def capacity_kind(self) -> str | None:
+        """The capacity model this device runs, or None when it has none."""
+        return self.CAPACITY_KIND
+
+    def set_capacity(self, **changes) -> dict:
+        """Switch the capacity model and/or change its numbers.
+
+        ``changes`` takes ``enabled``, ``rx_buffer``, ``process_ms`` and
+        ``on_overflow``; the ones left out keep their value. Raises
+        ValueError, saying why, for a device with no capacity model or a
+        number out of range. Returns the device's capacity as the API shows it.
+        """
+        if self.capacity_kind is None:
+            raise ValueError(
+                f"{self.name} has no capacity setting: each request to it is its own exchange"
+            )
+        changes = {k: v for k, v in changes.items() if v is not None}
+        merged = {**self._capacity.settings.to_dict(), **{
+            k: v for k, v in changes.items() if k != "enabled"
+        }}
+        problems = capacity_problems(merged)
+        if problems:
+            raise ValueError("; ".join(problems))
+        self._capacity.update(**changes)
+        return self._capacity.to_info()
+
     # ── Protocol Log ──
 
     def log_protocol(self, direction: str, data: bytes | str, client_id: str = "") -> None:
@@ -322,6 +361,10 @@ class BaseSimulator(ABC):
         if controls:
             info["controls"] = controls
         info["push_state"] = getattr(self, "_push_state", False)
+        kind = self.capacity_kind
+        info["capacity"] = (
+            {**self._capacity.to_info(), "kind": kind} if kind is not None else None
+        )
         if self._child_entities:
             info["child_entities"] = self._child_entities
         return info

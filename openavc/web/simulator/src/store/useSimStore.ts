@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DeviceInfo, LogEntry } from "./api";
+import type { CapacityInfo, DeviceInfo, LogEntry } from "./api";
 import { BASE, fetchDevices } from "./api";
 import { authSubprotocols } from "./session";
 
@@ -17,7 +17,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let consumerCount = 0;
 
 interface WsMessage {
-  type: "state" | "error" | "protocol";
+  type: "state" | "error" | "protocol" | "capacity";
   timestamp: number;
   device_id?: string;
   [key: string]: unknown;
@@ -101,6 +101,10 @@ function isWsConnected(): boolean {
 // ── Hook ──
 
 const MAX_LOG = 500;
+
+const CAPACITY_FIELDS = [
+  "enabled", "rx_buffer", "process_ms", "on_overflow", "source", "declared", "bytes_lost",
+] as const;
 
 export function useSimStore() {
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
@@ -197,6 +201,19 @@ export function useSimStore() {
             if (msg.active) errors.add(msg.mode as string);
             else errors.delete(msg.mode as string);
             return { ...d, active_errors: Array.from(errors) };
+          })
+        );
+      } else if (msg.type === "capacity" && msg.device_id) {
+        // The simulator sends the whole capacity record (bytes lost included)
+        // whenever it changes; the device's transport kind is not in it.
+        const fields: Record<string, unknown> = {};
+        for (const key of CAPACITY_FIELDS) {
+          if (key in msg) fields[key] = msg[key];
+        }
+        setDevices((prev) =>
+          prev.map((d) => {
+            if (d.device_id !== msg.device_id || !d.capacity) return d;
+            return { ...d, capacity: { ...d.capacity, ...(fields as Partial<CapacityInfo>) } };
           })
         );
       } else if (msg.type === "protocol") {

@@ -14,6 +14,7 @@ import uuid
 from abc import abstractmethod
 
 from openavc.simulator.base import BaseSimulator
+from openavc.simulator.capacity import ReceiveLink, first_delimited_len, first_line_len
 from openavc.simulator.network_conditions import corrupt_bytes
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,9 @@ class TCPSimulator(BaseSimulator):
         super().__init__(device_id, config)
         self._server: asyncio.Server | None = None
         self._clients: dict[str, asyncio.StreamWriter] = {}
+        # Each connected client's receive side (capacity.ReceiveLink), keyed
+        # like _clients.
+        self._links: dict[str, ReceiveLink] = {}
         self._delimiter: bytes | None = None
         self._line_mode = False  # True = flexible line reading
 
@@ -42,6 +46,9 @@ class TCPSimulator(BaseSimulator):
             # reading for these instead of strict readuntil.
             if self._delimiter in self._LINE_DELIMITERS:
                 self._line_mode = True
+
+    #: A TCP device's capacity model buffers the byte stream (capacity.py).
+    CAPACITY_KIND = "stream"
 
     # ── Override points for subclasses ──
 
@@ -89,6 +96,8 @@ class TCPSimulator(BaseSimulator):
             return
         dead = []
         for client_id, writer in self._clients.items():
+            if self._client_silenced(client_id):
+                continue
             try:
                 writer.write(data)
                 await writer.drain()
@@ -100,7 +109,7 @@ class TCPSimulator(BaseSimulator):
 
     async def push_to(self, client_id: str, data: bytes) -> None:
         """Send data to a specific client."""
-        if self._silenced:
+        if self._client_silenced(client_id):
             return
         writer = self._clients.get(client_id)
         if writer:
@@ -150,6 +159,37 @@ class TCPSimulator(BaseSimulator):
         logger.info("%s stopped", self.name)
 
     # ── Internal ──
+
+    def _client_silenced(self, client_id: str) -> bool:
+        """True while this client is answered nothing: the device stops
+        responding, or this connection overflowed with on_overflow: silence."""
+        if self._silenced:
+            return True
+        link = self._links.get(client_id)
+        return link is not None and link.silenced
+
+    def _first_message_len(self, buf: bytearray) -> int | None:
+        """How many bytes at the front of ``buf`` are one message, or None
+        when none is complete. With the capacity model on, a read hands the
+        loop one message, framed the way this simulator reads its input."""
+        if self._line_mode:
+            return first_line_len(buf)
+        if self._delimiter:
+            return first_delimited_len(buf, self._delimiter)
+        return len(buf) or None
+
+    def _note_overflow(self, link: ReceiveLink, lost: int) -> None:
+        if link.bytes_lost == lost:
+            logger.info(
+                "%s: receive buffer full, %d bytes lost from client %s",
+                self.name, lost, link.client_id,
+            )
+        if link.silenced and not link.silence_announced:
+            link.silence_announced = True
+            logger.info(
+                "%s: the device stops answering client %s until it reconnects",
+                self.name, link.client_id,
+            )
 
     async def _wait_out_silence(
         self, reader: asyncio.StreamReader, client_id: str,
@@ -274,6 +314,14 @@ class TCPSimulator(BaseSimulator):
     ) -> None:
         client_id = uuid.uuid4().hex[:8]
         self._clients[client_id] = writer
+        # Everything below reads through the link, so the capacity model (off
+        # unless switched on) sees every byte this client sends.
+        link = ReceiveLink(
+            reader, self._capacity, self._first_message_len,
+            client_id=client_id, on_overflow=self._note_overflow,
+        )
+        self._links[client_id] = link
+        reader = link
         peer = writer.get_extra_info("peername")
         logger.info("%s: client connected from %s (id=%s)", self.name, peer, client_id)
 
@@ -321,8 +369,9 @@ class TCPSimulator(BaseSimulator):
                         disconnect = True
                         break
 
-                    # Check for no_response error behavior
-                    if self.has_error_behavior("no_response"):
+                    # The device stops responding, or this connection
+                    # overflowed with on_overflow: silence.
+                    if self._client_silenced(client_id):
                         continue
 
                     # Apply network latency (before device response delay)
@@ -346,7 +395,7 @@ class TCPSimulator(BaseSimulator):
                         response = corrupt_bytes(response)
 
                     # The mode may have started during the delays above.
-                    if response and not self._silenced:
+                    if response and not self._client_silenced(client_id):
                         writer.write(response)
                         await writer.drain()
                         self.log_protocol("out", response, client_id)
@@ -364,6 +413,8 @@ class TCPSimulator(BaseSimulator):
             )
         finally:
             self._clients.pop(client_id, None)
+            self._links.pop(client_id, None)
+            link.close()
             try:
                 writer.close()
                 await writer.wait_closed()

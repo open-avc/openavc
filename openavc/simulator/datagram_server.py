@@ -15,16 +15,23 @@ driver's ``transport:`` field names. Nothing here defines ``start`` or
 ``stop``, so mixing it in never fights the class it is mixed into.
 
 Mix into a :class:`~openavc.simulator.base.BaseSimulator` — the pipeline reads
-``log_protocol``, ``has_error_behavior``, ``_silenced``, ``_delays`` and
-``_network_layer`` from it.
+``log_protocol``, ``has_error_behavior``, ``_silenced``, ``_delays``,
+``_capacity`` and ``_network_layer`` from it.
+
+With the capacity model on (``capacity.py``), datagrams wait in a queue of
+``rx_buffer`` bytes and one worker takes them one at a time, at most one per
+``process_ms``; a datagram that does not fit is dropped whole. With it off,
+each datagram is answered on its own as soon as its delays are over.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+from collections import deque
 
 from openavc.simulator.network_conditions import corrupt_bytes
+from openavc.transport.pacing import pacing_clock, sleep_at_least
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +46,15 @@ class DatagramServerMixin:
         # Remembered before the drop check: a dropped datagram still proves
         # someone is out there listening.
         self._last_client_addr: tuple[str, int] | None = None
+        # The capacity model's queue: datagrams waiting, their total size, and
+        # the one worker that answers them.
+        self._dgram_queue: deque[tuple[bytes, tuple[str, int]]] = deque()
+        self._dgram_queued_bytes = 0
+        self._dgram_worker: asyncio.Task | None = None
+        self._dgram_next_start = 0.0
+
+    #: A datagram device's capacity model queues whole datagrams (capacity.py).
+    CAPACITY_KIND = "datagram"
 
     # ── Lifecycle ──
 
@@ -68,6 +84,11 @@ class DatagramServerMixin:
         """Close the datagram endpoint."""
         self._running = False
         self._cancel_state_machine_timers()
+        if self._dgram_worker is not None:
+            self._dgram_worker.cancel()
+            self._dgram_worker = None
+        self._dgram_queue.clear()
+        self._dgram_queued_bytes = 0
         if self._udp_transport:
             self._udp_transport.close()
             self._udp_transport = None
@@ -82,7 +103,7 @@ class DatagramServerMixin:
         :meth:`push_datagram`, because a device that garbles its answers
         still emits clean notifications.
         """
-        if not self._udp_transport or self._silenced:
+        if not self._udp_transport or self._datagrams_silenced:
             return
         if self.has_error_behavior("corrupt_response"):
             data = corrupt_bytes(data)
@@ -93,7 +114,7 @@ class DatagramServerMixin:
         """Send one unsolicited datagram, to ``addr`` or the last peer heard
         from. Nothing is sent while the device is not responding."""
         addr = addr or self._last_client_addr
-        if not self._udp_transport or not addr or self._silenced:
+        if not self._udp_transport or not addr or self._datagrams_silenced:
             return
         self._udp_transport.sendto(data, addr)
         self.log_protocol("out", data)
@@ -123,6 +144,12 @@ class DatagramServerMixin:
 
     # ── Internal ──
 
+    @property
+    def _datagrams_silenced(self) -> bool:
+        """True while the device answers nothing: it stops responding, or it
+        overflowed with on_overflow: silence (until capacity is switched off)."""
+        return self._silenced or self._capacity.datagram_silenced
+
     def _receive_datagram(self, data: bytes, addr: tuple[str, int]) -> None:
         """Entry point from the asyncio protocol: log, filter, then schedule.
 
@@ -134,10 +161,45 @@ class DatagramServerMixin:
 
         if self._network_layer and self._network_layer.should_drop(self.device_id):
             return
-        if self.has_error_behavior("no_response"):
+        if self._datagrams_silenced:
             return
 
-        asyncio.ensure_future(self._process_datagram(data, addr))
+        active = self._capacity.active
+        if active is None:
+            asyncio.ensure_future(self._process_datagram(data, addr))
+            return
+        if self._dgram_queued_bytes + len(data) > active.rx_buffer:
+            self._capacity.note_lost(len(data))
+            if active.on_overflow == "silence":
+                if not self._capacity.datagram_silenced:
+                    logger.info(
+                        "%s: receive buffer full; the device stops answering "
+                        "until capacity is switched off", self.name,
+                    )
+                self._capacity.datagram_silenced = True
+            return
+        self._dgram_queue.append((data, addr))
+        self._dgram_queued_bytes += len(data)
+        if self._dgram_worker is None or self._dgram_worker.done():
+            self._dgram_worker = asyncio.ensure_future(self._work_datagram_queue())
+
+    async def _work_datagram_queue(self) -> None:
+        """Answer queued datagrams one at a time, no faster than process_ms."""
+        while self._dgram_queue:
+            active = self._capacity.active
+            if active is not None:
+                wait = self._dgram_next_start - pacing_clock()
+                if wait > 0:
+                    await sleep_at_least(wait)
+                self._dgram_next_start = pacing_clock() + active.process_ms / 1000.0
+            data, addr = self._dgram_queue.popleft()
+            self._dgram_queued_bytes -= len(data)
+            if self._datagrams_silenced:
+                continue
+            try:
+                await self._process_datagram(data, addr)
+            except Exception:
+                logger.exception("%s: error answering a datagram", self.name)
 
     async def _process_datagram(self, data: bytes, addr: tuple[str, int]) -> None:
         """Wait out network latency and the device's response delay, then dispatch."""

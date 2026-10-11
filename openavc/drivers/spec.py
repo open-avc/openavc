@@ -2335,6 +2335,32 @@ DEFS = {
                 'type': 'object',
                 'doc': 'Unsolicited messages emitted on state change, keyed by state variable.',
             },
+            'capacity': {
+                'type': 'object',
+                'doc': "How much the device can take in at once, for the simulator's Capacity setting. Off until it is switched on for a device in the Simulator UI; then the simulated device holds rx_buffer bytes it has not read yet, takes one message every process_ms, and loses what arrives while it is full. Lets a driver that sends faster than the device reads fail in the simulator the way it fails on the device. Declare the numbers the manufacturer documents; a driver that declares nothing gets the simulator's own.",
+                'since': '0.37.0',
+                'fields': {
+                    'rx_buffer': {
+                        'type': 'integer',
+                        'min': 1,
+                        'max': 1048576,
+                        'doc': 'Bytes the device holds before it reads them. What arrives while they are all in use is lost.',
+                    },
+                    'process_ms': {
+                        'type': 'number',
+                        'min': 0,
+                        'max': 60000,
+                        'doc': 'Milliseconds the device spends on each message before it takes the next. Not the reply delay (delays.command_response): the device answers one message at a time, so a message takes the longer of the two.',
+                    },
+                    'on_overflow': {
+                        'type': 'string',
+                        'enum': ('discard', 'silence'),
+                        'doc': 'What the device does when it loses bytes. discard (the default): carries on with what it kept. silence: stops answering until the connection closes; over UDP, until Capacity is switched off.',
+                    },
+                },
+                'required': ('rx_buffer', 'process_ms'),
+                'extra': False,
+            },
         },
         'extra': False,
     },

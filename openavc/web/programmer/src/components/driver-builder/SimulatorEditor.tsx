@@ -2,13 +2,17 @@ import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { DriverDefinition, DriverSimulatorDef } from "../../api/types";
 import {
+  SIM_CAPACITY_START,
   SIM_ERROR_BEHAVIORS,
   addErrorModeStateEntry,
   applyErrorModeBehavior,
   coerceSimStateValue,
   removeErrorModeStateEntry,
   renameErrorModeStateVar,
+  setCapacityNumber,
+  setCapacityOverflow,
   setCommandResponseDelay,
+  type SimCapacity,
   type SimErrorMode,
 } from "./simulatorEditorHelpers";
 
@@ -188,6 +192,16 @@ export function SimulatorEditor({ draft, onUpdate }: SimulatorEditorProps) {
         </div>
       </div>
 
+      {/* Capacity */}
+      <div style={rowStyle}>
+        <CapacityEditor
+          capacity={sim.capacity}
+          datagram={draft.transport === "udp" || draft.transport === "osc"}
+          onChange={(capacity) => update({ capacity })}
+          helpStyle={helpStyle}
+        />
+      </div>
+
       {/* Error Modes */}
       <div style={rowStyle}>
         <ErrorModesEditor
@@ -247,6 +261,94 @@ export function SimulatorEditor({ draft, onUpdate }: SimulatorEditorProps) {
         description="Widgets shown on this device's page in the Simulator UI, for driving it by hand."
       />
     </div>
+  );
+}
+
+/** The device's declared capacity: what the Simulator UI's Capacity setting
+ *  uses for this driver when it is switched on. */
+function CapacityEditor({
+  capacity,
+  datagram,
+  onChange,
+  helpStyle,
+}: {
+  capacity: SimCapacity | undefined;
+  /** A UDP or OSC device has no connection to end its silence. */
+  datagram: boolean;
+  onChange: (capacity: SimCapacity | undefined) => void;
+  helpStyle: React.CSSProperties;
+}) {
+  const fieldRow: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: "var(--space-sm)",
+    marginTop: "var(--space-xs)",
+    fontSize: "var(--font-size-sm)",
+  };
+  const labelStyle: React.CSSProperties = { width: 140 };
+  const unitStyle: React.CSSProperties = { color: "var(--text-muted)" };
+  return (
+    <>
+      <h3 style={{ fontSize: "var(--font-size-base)", marginBottom: "var(--space-sm)" }}>
+        Capacity
+      </h3>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--font-size-sm)", cursor: "pointer" }}>
+        <input
+          type="checkbox"
+          checked={capacity !== undefined}
+          onChange={(e) => onChange(e.target.checked ? { ...SIM_CAPACITY_START } : undefined)}
+        />
+        Declare how much this device can take in
+      </label>
+      <p style={helpStyle}>
+        The numbers the Capacity setting in the Simulator UI starts from for this
+        driver. That setting is off until it is switched on for a device; while it is
+        on, the simulated device loses what arrives faster than it can take in. Use
+        the numbers in the manufacturer's documentation.
+      </p>
+      {capacity && (
+        <div>
+          <label style={fieldRow}>
+            <span style={labelStyle}>Receive buffer</span>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={capacity.rx_buffer}
+              onChange={(e) => onChange(setCapacityNumber(capacity, "rx_buffer", e.target.value))}
+              style={{ width: 100 }}
+            />
+            <span style={unitStyle}>bytes the device holds before it reads them</span>
+          </label>
+          <label style={fieldRow}>
+            <span style={labelStyle}>Time per message</span>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={capacity.process_ms}
+              onChange={(e) => onChange(setCapacityNumber(capacity, "process_ms", e.target.value))}
+              style={{ width: 100 }}
+            />
+            <span style={unitStyle}>ms before it takes the next message</span>
+          </label>
+          <label style={fieldRow}>
+            <span style={labelStyle}>When full</span>
+            <select
+              value={capacity.on_overflow ?? "discard"}
+              onChange={(e) => onChange(setCapacityOverflow(capacity, e.target.value))}
+            >
+              <option value="discard">Discard what does not fit</option>
+              <option value="silence">
+                {datagram
+                  ? "Stop answering until Capacity is switched off"
+                  : "Stop answering until it reconnects"}
+              </option>
+            </select>
+          </label>
+        </div>
+      )}
+    </>
   );
 }
 

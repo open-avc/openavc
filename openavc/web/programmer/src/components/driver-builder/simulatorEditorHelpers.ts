@@ -40,6 +40,41 @@ export function setCommandResponseDelay(
   return Object.keys(next).length > 0 ? next : undefined;
 }
 
+/** A driver's simulator.capacity declaration. */
+export interface SimCapacity {
+  rx_buffer: number;
+  process_ms: number;
+  on_overflow?: "discard" | "silence";
+}
+
+/** What a new capacity declaration starts from: the simulator's own numbers,
+ *  for the author to replace with the device's. */
+export const SIM_CAPACITY_START: SimCapacity = { rx_buffer: 128, process_ms: 20 };
+
+/**
+ * Change one capacity number from a text field. A blank or unreadable entry
+ * keeps the old value: both numbers are required while capacity is declared.
+ */
+export function setCapacityNumber(
+  capacity: SimCapacity,
+  key: "rx_buffer" | "process_ms",
+  raw: string,
+): SimCapacity {
+  const n = key === "rx_buffer" ? parseInt(raw, 10) : parseFloat(raw);
+  const floor = key === "rx_buffer" ? 1 : 0;
+  if (!Number.isFinite(n) || n < floor) return capacity;
+  return { ...capacity, [key]: n };
+}
+
+/** Set what the device does when full. discard is the default, so it is
+ *  written by leaving the key out. */
+export function setCapacityOverflow(capacity: SimCapacity, value: string): SimCapacity {
+  const next = { ...capacity };
+  if (value === "silence") next.on_overflow = "silence";
+  else delete next.on_overflow;
+  return next;
+}
+
 /**
  * Set or clear an error mode's behavior. "" (State Change Only) removes the
  * key entirely — the runtime treats a behavior-less mode as set_state-only,

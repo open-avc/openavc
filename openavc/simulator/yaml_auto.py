@@ -525,7 +525,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             return raw.decode("utf-8", errors="replace").strip("\r\n")
 
         async def emit(data: bytes) -> None:
-            if self._silenced:
+            if self._client_silenced(client_id):
                 return
             writer.write(data)
             await writer.drain()
@@ -1158,6 +1158,26 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             return None
         buffer.extend(raw)
         return split_send_frames(self._send_frame, buffer)
+
+    def _first_message_len(self, buf: bytearray) -> int | None:
+        if not self._send_frame:
+            return super()._first_message_len(buf)
+        sf = self._send_frame
+        header_len = len(sf["header"])
+        total_header = header_len + sf["length_size"] + len(sf["after_length"])
+        if len(buf) < total_header:
+            return None
+        body = int.from_bytes(
+            buf[header_len: header_len + sf["length_size"]], sf["length_endian"]
+        )
+        total = total_header + body
+        return total if len(buf) >= total else None
+
+    @property
+    def capacity_kind(self) -> str | None:
+        if self._is_http:
+            return None
+        return "datagram" if self._is_udp or self._is_osc else "stream"
 
     async def _read_messages(
         self, reader: asyncio.StreamReader, buffer: bytearray | None = None,
@@ -2537,6 +2557,10 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         # Override delays
         for key, value in sim.get("delays", {}).items():
             self._delays[key] = value
+
+        # How much the device can take in (off until switched on per device).
+        if "capacity" in sim:
+            self._capacity.declare(sim["capacity"])
 
         # Add error modes
         for mode, mode_def in sim.get("error_modes", {}).items():

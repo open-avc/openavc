@@ -90,6 +90,10 @@ SCENARIOS = [
     "rename_keeps_value_and_order",
     "remove_last_entry_drops_set_state",
     "coerce_matches_declared_types",
+    "capacity_number_set",
+    "capacity_zero_process_ms_is_kept",
+    "capacity_blank_or_out_of_range_keeps_the_old_value",
+    "capacity_overflow_discard_is_omitted",
 ]
 
 

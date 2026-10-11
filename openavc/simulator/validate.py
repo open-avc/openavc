@@ -67,6 +67,7 @@ from typing import Any
 import yaml
 
 from openavc.drivers.check import check_driver_file, iter_driver_files
+from openavc.simulator.capacity import capacity_problems
 from openavc.drivers.compiled_protocol import (
     decode_delimiter,
     derive_config,
@@ -206,7 +207,23 @@ def validate_yaml_driver(path: Path) -> ValidationResult:
     # ── Check 11: Child entity simulation gap ──
     _check_child_entities(result, driver_def, sim)
 
+    # ── Check 12: Declared capacity ──
+    if "capacity" in sim:
+        _check_capacity(result, sim["capacity"], "simulator.capacity")
+
     return result
+
+
+def _check_capacity(result: ValidationResult, value: Any, where: str) -> None:
+    """A declared capacity the simulator would ignore is an error: the
+    simulator logs it and falls back to its own numbers."""
+    from openavc.drivers.python_info import UNEVALUATED
+
+    if value is UNEVALUATED:
+        result.info("capacity", f"{where} is computed, so it could not be checked.")
+        return
+    for problem in capacity_problems(value):
+        result.error("capacity", f"{where}: {problem}")
 
 
 def _known_state_keys(state_vars: dict, sim_initial: dict, sim: dict) -> set[str]:
@@ -1769,6 +1786,9 @@ def validate_python_driver(driver_path: Path) -> ValidationResult:
     for field in ("driver_id", "name", "initial_state"):
         if field not in sim_info:
             result.error("simulator_info", f"SIMULATOR_INFO missing required field: '{field}'")
+
+    if "capacity" in sim_info:
+        _check_capacity(result, sim_info["capacity"], 'SIMULATOR_INFO["capacity"]')
 
     # Check driver_id match
     if driver_info.get("id") and sim_info.get("driver_id"):

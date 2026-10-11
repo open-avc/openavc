@@ -136,6 +136,31 @@ export interface DeviceInfo {
    *  flat state dict under "<type>.<id>.<prop>" keys — read them there so
    *  per-key WS updates keep the panel current. */
   children?: Record<string, ChildTypeInfo>;
+  /** How much the device can take in. Null on a device that has no such
+   *  limit (HTTP, MQTT, WebSocket). */
+  capacity?: CapacityInfo | null;
+}
+
+export type OnOverflow = "discard" | "silence";
+
+export interface CapacitySettings {
+  /** Bytes the device holds before it reads them. */
+  rx_buffer: number;
+  /** Milliseconds the device spends on each message before it takes the next. */
+  process_ms: number;
+  on_overflow: OnOverflow;
+}
+
+export interface CapacityInfo extends CapacitySettings {
+  enabled: boolean;
+  /** Where the numbers came from: the driver's declaration, the simulator's
+   *  own defaults, or changed here. */
+  source: "driver" | "simulator" | "edited";
+  declared: CapacitySettings | null;
+  /** Bytes lost since the limit was switched on. */
+  bytes_lost: number;
+  /** "stream" for a TCP device, "datagram" for a UDP one. */
+  kind: "stream" | "datagram";
 }
 
 export interface ChildTypeInfo {
@@ -201,6 +226,28 @@ export async function toggleError(id: string, mode: string, active: boolean): Pr
     body: JSON.stringify({ active }),
   });
   if (!res.ok) throw new Error(`Toggle error failed: ${res.status} ${res.statusText}`);
+}
+
+/** Switch a device's capacity limit and/or change its numbers. A field left
+ *  out keeps its value. Rejects with the simulator's reason. */
+export async function setCapacity(
+  id: string,
+  changes: Partial<CapacitySettings> & { enabled?: boolean },
+): Promise<CapacityInfo> {
+  const res = await api(`/api/devices/${id}/capacity`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(changes),
+  });
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`;
+    try {
+      const body = await res.json();
+      if (typeof body?.detail === "string") detail = body.detail;
+    } catch { /* keep the status line */ }
+    throw new Error(detail);
+  }
+  return (await res.json()).capacity;
 }
 
 export async function fetchLog(id: string, limit = 200): Promise<LogEntry[]> {

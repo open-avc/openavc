@@ -3888,6 +3888,12 @@ simulator:
     garbled_response:
       behavior: corrupt_response
       description: "Corrupted data on the wire"
+
+  # Optional: how much the device can take in (off until switched on in the Simulator UI)
+  capacity:
+    rx_buffer: 64       # bytes it holds before it reads them
+    process_ms: 20      # milliseconds per message before it takes the next
+    on_overflow: discard
 ```
 
 **Key sections:**
@@ -3902,6 +3908,9 @@ simulator:
 | `command_handlers` | How the simulator responds to commands |
 | `state_machines` | Devices that take time to change state (projector warm-up, cooldown) |
 | `error_modes` | Failure scenarios for testing error handling. Every simulator already offers `communication_timeout` ("Device stops responding"); declare the ones particular to the device |
+| `capacity` | How much the device can take in at once, for the Simulator UI's **Capacity** setting (requires OpenAVC 0.37.0) |
+
+**Capacity.** A device reads what it receives into a buffer of fixed size and works through it one message at a time; what arrives while the buffer is full is lost. The simulator models this when **Capacity** is switched on for a device in the Simulator UI, so a driver that sends faster than the device can take in fails in the simulator the way it fails on the device. Declare the device's numbers here: `rx_buffer` (bytes it holds before it reads them; what arrives beyond that is lost) and `process_ms` (milliseconds it spends on each message before it takes the next), both required, and `on_overflow`: `discard` (the default; it carries on with what it kept) or `silence` (it stops answering until the connection closes; over UDP, until Capacity is switched off). `process_ms` is not `delays.command_response`, which is how long a reply takes; the simulator answers one message at a time, so a message takes the longer of the two. A driver that declares nothing gets the simulator's own numbers. The setting covers TCP, serial and UDP devices; HTTP devices have none.
 
 **Control types:** `power`, `slider`, `toggle`, `select`, `matrix`, `indicator`, `meters`, `presets`, `group`.
 
