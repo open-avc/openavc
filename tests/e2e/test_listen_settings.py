@@ -32,6 +32,7 @@ import os
 import re
 import signal
 import socket
+import sys
 import time
 from urllib.request import urlopen
 
@@ -161,6 +162,13 @@ def _open_settings(page: Page, base_url: str) -> None:
 
 def test_a_browser_on_this_computer_moves_to_127_0_0_1(server_factory, page: Page):
     if not _can_bind("127.0.0.2"):
+        if sys.platform == "darwin":
+            # macOS answers 127.0.0.1 alone until an alias is added, so a
+            # missing second address is the platform, not a missing tool.
+            pytest.skip(
+                "macOS has no second loopback address until one is added: "
+                "sudo ifconfig lo0 alias 127.0.0.2 up"
+            )
         gates.skip_or_fail(gates.E2E, "this host cannot listen on a second loopback address")
     handle = server_factory(bind="127.0.0.2", hold_bind=False, system_json=ANY_NETWORK, env=DEV_RUN)
     port = _port_of(handle.base_url)
