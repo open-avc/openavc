@@ -15,6 +15,7 @@ carrying exactly those two files and those fields.
 import importlib.util
 import json
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -102,10 +103,11 @@ def test_a_start_records_the_address_and_clears_the_last_error(data_dir, monkeyp
     chosen = plan_for("adapter", ETHERNET)
     monkeypatch.setattr(listen, "start", lambda: chosen)
     bound = []
+    listener = Mock()
 
     def bind(plan, port, retries=1):
         bound.append(port)
-        return ["sockets"], plan.without(["10.20.30.5"])
+        return [listener], plan.without(["10.20.30.5"])
 
     monkeypatch.setattr(listen_sockets, "bind_for_plan", bind)
     served = []
@@ -115,7 +117,8 @@ def test_a_start_records_the_address_and_clears_the_last_error(data_dir, monkeyp
     main.main()
 
     assert bound == [8090]
-    assert served == [["sockets"]]
+    assert served == [[listener]]
+    listener.close.assert_called_once_with()
     assert not (data_dir / "status" / "startup-error.json").exists()
     recorded = json.loads((data_dir / "status" / "server.json").read_text(encoding="utf-8"))
     assert recorded["http_port"] == 8090
