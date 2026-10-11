@@ -244,13 +244,13 @@ export function DiscoveryPanel() {
   // Ceiling the running scan is actually working to.
   const [scanBudget, setScanBudget] = useState(0);
 
-  // Active control interface
+  // The adapter chosen in Settings > Network > Reach devices through, or ""
+  // for every connected adapter.
   const [controlInterface, setControlInterface] = useState("");
   const [adapterLabel, setAdapterLabel] = useState("");
-  // Why the pinned control interface cannot scan: its address is on no
-  // adapter here (the box changed networks since it was set), or its adapter
-  // has no link. The scan would refuse; offer a one-off "scan what's actually
-  // here" instead. Null when the pin is usable.
+  // Why the chosen adapter cannot scan: it is not on this computer any more,
+  // or it has no link. The scan would refuse; offer a one-off "scan what's
+  // actually here" instead. Null when the adapter is usable.
   const [pinProblem, setPinProblem] = useState<"missing" | "no_link" | null>(null);
   const [adapterSubnets, setAdapterSubnets] = useState<string[]>([]);
 
@@ -283,11 +283,16 @@ export function DiscoveryPanel() {
       if (r.warnings) setWarnings(r.warnings);
     }).catch(console.error);
     api.getSystemConfig().then((cfg) => {
-      const ip = cfg.network?.control_interface || "";
-      setControlInterface(ip);
-      if (ip) {
+      // Resolved by the server: the chosen adapter's name and the address
+      // device traffic binds to now (its last one, when it is missing).
+      const reach = cfg._reach_devices;
+      const pinned = reach?.mode === "adapter";
+      const ip = pinned ? reach.address : "";
+      const name = pinned ? reach.adapter_name : "";
+      setControlInterface(pinned ? (ip || name || "the chosen adapter") : "");
+      if (pinned) {
         api.getNetworkAdapters().then((r) => {
-          const match = r.adapters.find((a) => a.ip === ip);
+          const match = ip ? r.adapters.find((a) => a.ip === ip) : undefined;
           // The escape hatch scans what can actually be reached: adapters
           // with a link.
           const connected = r.adapters.filter((a) => a.link !== false);
@@ -298,13 +303,13 @@ export function DiscoveryPanel() {
             setPinProblem("no_link");
             setAdapterSubnets([...new Set(connected.map((a) => a.subnet).filter(Boolean))]);
           } else {
-            // No current adapter has the pinned address — say so here, because
-            // the pin otherwise looks like a live scan target.
-            setAdapterLabel(`${ip} (adapter not found on this machine, fix in Settings > Network)`);
+            // The chosen adapter is not here: say so, because it otherwise
+            // looks like a live scan target.
+            setAdapterLabel(`${name || ip} (not connected, choose another in Settings > Network)`);
             setPinProblem("missing");
             setAdapterSubnets([...new Set(connected.map((a) => a.subnet).filter(Boolean))]);
           }
-        }).catch(() => setAdapterLabel(ip));
+        }).catch(() => setAdapterLabel(name || ip));
       }
     }).catch(() => {});
     useDriverBuilderStore.getState().loadRegisteredDrivers().catch(console.error);
@@ -735,8 +740,8 @@ export function DiscoveryPanel() {
         </div>
       )}
 
-      {/* Stale pin escape hatch: the pinned adapter is gone, so the normal
-          scan will refuse. Offer scanning what is actually on the machine. */}
+      {/* The chosen adapter is gone or has no link, so the normal scan will
+          refuse. Offer scanning what is actually on the machine. */}
       {!showSettings && pinProblem && !isRunning && (
         <div
           style={{
@@ -751,8 +756,8 @@ export function DiscoveryPanel() {
           <AlertTriangle size={12} />
           <span>
             {pinProblem === "no_link"
-              ? "The pinned adapter has no link, so a scan will find nothing."
-              : "The pinned adapter is not on this machine, so a scan will find nothing."}
+              ? "The adapter chosen in Reach devices through has no link, so a scan will find nothing."
+              : "The adapter chosen in Reach devices through isn't connected, so a scan will find nothing."}
           </span>
           <button
             type="button"

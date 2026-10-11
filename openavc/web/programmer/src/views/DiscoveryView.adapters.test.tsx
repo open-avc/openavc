@@ -11,6 +11,7 @@ import { render, screen } from "@testing-library/react";
 const mocks = vi.hoisted(() => ({
   subnets: [] as string[],
   controlInterface: "",
+  reachName: "",
   adapters: [] as unknown[],
 }));
 
@@ -22,7 +23,15 @@ vi.mock("../api/restClient", () => ({
     gentle_mode: false,
   })),
   discoveryGetResults: vi.fn(async () => ({ devices: [], status: "idle", port_labels: {}, warnings: [] })),
-  getSystemConfig: vi.fn(async () => ({ network: { control_interface: mocks.controlInterface } })),
+  // Reach devices through, as the server resolves it.
+  getSystemConfig: vi.fn(async () => ({
+    network: {},
+    _reach_devices: mocks.controlInterface
+      ? { mode: "adapter", adapter: { name: mocks.reachName }, adapter_name: mocks.reachName,
+          address: mocks.controlInterface, connected: false, label: mocks.reachName }
+      : { mode: "every", adapter: {}, adapter_name: "", address: "", connected: true,
+          label: "Every connected adapter" },
+  })),
   getNetworkAdapters: vi.fn(async () => ({ adapters: mocks.adapters })),
   listDrivers: vi.fn(async () => []),
   fetchCommunityDrivers: vi.fn(async () => []),
@@ -77,12 +86,27 @@ describe("the Scanning on line", () => {
 
   it("says a pinned adapter has no link, and offers the connected ones", async () => {
     mocks.controlInterface = "10.20.0.5";
+    mocks.reachName = "Ethernet";
     render(<DiscoveryPanel />);
     expect(await screen.findByText("Scanning on: Ethernet (10.20.0.5/24, no link)")).toBeTruthy();
     expect(
-      screen.getByText("The pinned adapter has no link, so a scan will find nothing."),
+      screen.getByText("The adapter chosen in Reach devices through has no link, so a scan will find nothing."),
     ).toBeTruthy();
     const button = screen.getByRole("button", { name: "Scan current adapters instead" });
     expect((button as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("names a chosen adapter this computer no longer has", async () => {
+    mocks.controlInterface = "10.99.0.5";
+    mocks.reachName = "Thunderbolt Ethernet";
+    render(<DiscoveryPanel />);
+    expect(
+      await screen.findByText(
+        "Scanning on: Thunderbolt Ethernet (not connected, choose another in Settings > Network)",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("The adapter chosen in Reach devices through isn't connected, so a scan will find nothing."),
+    ).toBeTruthy();
   });
 });

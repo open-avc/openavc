@@ -7,6 +7,7 @@ import { ShortcutsPanel } from "./components/shared/ShortcutsPanel";
 import { MissingDriversWatcher } from "./components/shared/MissingDriversWatcher";
 import { PanelRequestBanner } from "./components/shared/PanelRequestBanner";
 import { PanelAccessNotice } from "./components/shared/PanelAccessNotice";
+import { ListenNotice } from "./components/shared/ListenNotice";
 import { DeviceAuditHost } from "./views/devices/audit/DeviceAuditHost";
 import { Login } from "./components/Login";
 import { Setup } from "./components/Setup";
@@ -287,6 +288,8 @@ function AuthedApp() {
         <PanelRequestBanner />
         {/* Once, on a system updated with its panels connected: it is still open */}
         <PanelAccessNotice />
+        {/* Every load confirms a change of who can connect; "Kept" or "Went back" once */}
+        <ListenNotice />
         <main style={{ flex: 1, overflow: "hidden" }}>
           <ErrorBoundary>
             <Suspense fallback={null}>{renderView()}</Suspense>

@@ -32,7 +32,10 @@ vi.mock("../store/projectStore", () => ({
 }));
 
 const BASE: Record<string, unknown> = {
-  network: { http_port: 8080, bind_address: "0.0.0.0", control_interface: "", port80_redirect: false },
+  network: {
+    http_port: 8080, accept_connections_from: "any", accept_connections_adapter: {},
+    bind_address: "0.0.0.0", reach_devices_through: {}, control_interface: "", port80_redirect: false,
+  },
   auth: { programmer_username: "", programmer_password: "***", api_key: "" },
   isc: { enabled: true },
   logging: { level: "info", file_enabled: true, max_size_mb: 50, max_files: 5 },
@@ -56,7 +59,8 @@ vi.mock("../api/restClient", () => ({
     version: "0", channel: "stable", platform: "linux", kiosk_available: false, panel_dim_available: false,
   })),
   getSshStatus: vi.fn(async () => null),
-  getNetworkAdapters: vi.fn(async () => ({ adapters: [] })),
+  getNetworkAdapters: vi.fn(async () => ({ adapters: [], interfaces: [] })),
+  previewListen: vi.fn(async () => null),
   getTlsStatus: vi.fn(async () => null),
   updateSystemConfig: vi.fn(async () => ({ status: "ok", updated_sections: [] })),
 }));
@@ -67,12 +71,18 @@ vi.mock("../components/shared/VariableKeyPicker", () => ({ VariableKeyPicker: ()
 
 import { SystemSettingsView } from "./SystemSettingsView";
 
-const bindField = () => screen.getByLabelText("Bind address") as HTMLInputElement;
+const listenField = () => screen.getByLabelText("Accept connections from") as HTMLSelectElement;
 const advertise = () => screen.getByRole("switch", { name: "Advertise on the network" });
+
+const HELD_BY_BIND = {
+  "network.accept_connections_from": "OPENAVC_BIND",
+  "network.accept_connections_adapter": "OPENAVC_BIND",
+  "network.bind_address": "OPENAVC_BIND",
+};
 
 async function renderSettings() {
   render(<SystemSettingsView />);
-  await waitFor(() => expect(screen.queryByLabelText("Bind address")).toBeTruthy());
+  await waitFor(() => expect(screen.queryByLabelText("Accept connections from")).toBeTruthy());
 }
 
 /** The note in the same row as `el`. */
@@ -94,28 +104,58 @@ describe("A field the environment holds", () => {
 
   it("is editable when nothing holds it", async () => {
     await renderSettings();
-    expect(bindField()).not.toBeDisabled();
+    expect(listenField()).not.toBeDisabled();
     expect(screen.queryAllByTestId("env-held-note")).toHaveLength(0);
   });
 
-  it("is locked and names its variable", async () => {
-    served.config = withEnvironment("linux_package", { "network.bind_address": "OPENAVC_BIND" });
+  it("is locked and says where it is set, on Linux", async () => {
+    served.config = withEnvironment("linux_package", HELD_BY_BIND);
     await renderSettings();
-    expect(bindField()).toBeDisabled();
-    const note = noteBeside(bindField());
-    expect(note?.textContent).toContain("Set by OPENAVC_BIND in this server's environment");
-    expect(note?.textContent).toContain("sudo systemctl edit openavc");
+    expect(listenField()).toBeDisabled();
+    const note = noteBeside(listenField());
+    expect(note?.textContent).toContain(
+      "Set by the OPENAVC_BIND line in a systemd override for this server (sudo systemctl edit openavc). Remove that line to change it here.",
+    );
     expect(note?.querySelector("a")?.getAttribute("href")).toContain(
       "hardened-deployment/#setting-values-in-the-environment-instead",
     );
     // Only the held field is locked.
     expect(screen.getByLabelText("HTTP port")).not.toBeDisabled();
+    expect(screen.getByLabelText("Reach devices through")).not.toBeDisabled();
   });
 
-  it("says the installer resets it on Windows", async () => {
-    served.config = withEnvironment("windows_installer", { "network.bind_address": "OPENAVC_BIND" });
+  it.each([
+    ["windows_installer", "Set by OPENAVC_BIND on the OpenAVC Windows service. Remove it from the service's environment to change it here."],
+    ["macos_app", "Set by OPENAVC_BIND in the OpenAVC launch settings. Remove it there to change it here."],
+    ["git_dev", "Set by OPENAVC_BIND where you start the server."],
+    ["android_appliance", "Set by OPENAVC_BIND in this server's environment, so it can't be changed here."],
+  ])("names where it is set on %s", async (deploymentType, sentence) => {
+    served.config = withEnvironment(deploymentType, HELD_BY_BIND);
     await renderSettings();
-    expect(noteBeside(bindField())?.textContent).toContain("sets it again on every update");
+    expect(noteBeside(listenField())?.textContent).toContain(sentence);
+  });
+
+  it("is fixed at Any network in Docker, with the compose file named instead", async () => {
+    served.config = withEnvironment("docker", HELD_BY_BIND);
+    await renderSettings();
+    expect(listenField()).toBeDisabled();
+    expect(listenField().value).toBe("any");
+    expect(screen.getByTestId("accept-connections-docker").textContent).toContain(
+      "In Docker, choose the host address in the compose file's ports: setting.",
+    );
+    expect(noteBeside(listenField())).toBeNull();
+  });
+
+  it("locks Reach devices through when OPENAVC_CONTROL_INTERFACE holds it", async () => {
+    served.config = withEnvironment("linux_package", {
+      "network.reach_devices_through": "OPENAVC_CONTROL_INTERFACE",
+      "network.control_interface": "OPENAVC_CONTROL_INTERFACE",
+    });
+    await renderSettings();
+    const reach = screen.getByLabelText("Reach devices through");
+    expect(reach).toBeDisabled();
+    expect(noteBeside(reach)?.textContent).toContain("Set by the OPENAVC_CONTROL_INTERFACE line");
+    expect(listenField()).not.toBeDisabled();
   });
 
   it("locks a switch, so a click changes nothing and nothing is saved", async () => {
@@ -138,12 +178,12 @@ describe("A field the environment holds", () => {
     expect(screen.getByRole("radio", { name: /^Anyone on the network/ })).toBeDisabled();
     const notes = screen.getAllByTestId("env-held-note");
     expect(notes).toHaveLength(1);
-    expect(notes[0].textContent).toContain("Set by OPENAVC_PANEL_ACCESS");
+    expect(notes[0].textContent).toContain("Set by the OPENAVC_PANEL_ACCESS line");
   });
 });
 
 describe("The Access section", () => {
-  it("does not tie the need for a password to the bind address", async () => {
+  it("does not tie the need for a password to who can connect", async () => {
     served.config = BASE;
     await renderSettings();
     const access = screen.getByRole("heading", { name: "Access" });

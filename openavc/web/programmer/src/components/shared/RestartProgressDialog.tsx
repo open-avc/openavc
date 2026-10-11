@@ -1,11 +1,18 @@
-import { useEffect, useState } from "react";
-import { AlertTriangle, Download, ExternalLink, RefreshCw } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { AlertTriangle, CheckCircle2, Download, ExternalLink, RefreshCw } from "lucide-react";
 import { Dialog } from "./Dialog";
-import { healthProbeUrl, shouldEnterCertError } from "./restartPollHelpers";
+import {
+  HANDOFF_ATTEMPTS,
+  healthProbeUrl,
+  probeInit,
+  probeReached,
+  shouldEnterCertError,
+  waitOrigins,
+} from "./restartPollHelpers";
 import * as api from "../../api/restClient";
 import { parseApiError } from "../../api/errors";
 
-type Phase = "starting" | "waiting" | "polling" | "cert-error" | "success" | "timeout" | "error";
+type Phase = "starting" | "waiting" | "polling" | "cert-error" | "success" | "timeout" | "error" | "handoff";
 
 interface RestartProgressDialogProps {
   /** Full URL the page should land on once the server is back. */
@@ -17,6 +24,13 @@ interface RestartProgressDialogProps {
    *  Used to interpret persistent fetch failures as a CA-not-yet-installed problem. */
   expectsNewCert: boolean;
   onClose: () => void;
+  /** More addresses to wait at after `targetUrl`, best first. When the
+   *  browser is cut off (`handoff`), the only ones. */
+  alsoTry?: string[];
+  /** Set when a change of who can connect cuts this browser off. `lines` is
+   *  shown while the server restarts; `saved` replaces the 60-second failure
+   *  once nothing answers here, because nothing is wrong. */
+  handoff?: { lines: ReactNode; saved: ReactNode };
 }
 
 const POLL_INTERVAL_MS = 1000;
@@ -30,7 +44,13 @@ export function RestartProgressDialog({
   isProtocolSwitch,
   expectsNewCert,
   onClose,
+  alsoTry = [],
+  handoff,
 }: RestartProgressDialogProps) {
+  // The effect re-runs only when the addresses change, not on every render
+  // of a parent that builds a fresh array.
+  const alsoTryKey = alsoTry.join(" ");
+  const cutOff = !!handoff;
   const [phase, setPhase] = useState<Phase>("starting");
   const [errorDetail, setErrorDetail] = useState<string>("");
 
@@ -62,13 +82,22 @@ export function RestartProgressDialog({
       await new Promise((r) => setTimeout(r, INITIAL_WAIT_MS));
       if (cancelled) return;
 
-      // Step 3: poll only the expected public address. A second healthy
-      // listener on the configured internal port might be another server.
+      // Step 3: poll only the expected public address, and the other
+      // addresses a change of who can connect makes reachable. A second
+      // healthy listener on the configured internal port might be another
+      // server.
       setPhase("polling");
       const targetPath = new URL(targetUrl).pathname; // "/programmer"
-      const origins = [new URL(targetUrl).origin];
+      const more = alsoTryKey ? alsoTryKey.split(" ").map((u) => new URL(u).origin) : [];
+      // Cut off, the page waits only at the new choice's own addresses
+      // (alsoTry); targetUrl is then just the address the messages name.
+      const origins = waitOrigins(new URL(targetUrl).origin, more, cutOff);
+      // A browser cut off by the change tries the new choice's own addresses
+      // for a while (a computer on both networks reaches them), then says
+      // where to open the Programmer. With none to try, it says so now.
+      const attempts = cutOff ? (origins.length ? HANDOFF_ATTEMPTS : 0) : MAX_POLL_ATTEMPTS;
       let consecutiveFailures = 0;
-      for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
+      for (let attempt = 0; attempt < attempts; attempt++) {
         if (cancelled) return;
         // `sawResponse` distinguishes "server reachable but not ready" (any
         // HTTP response, even non-2xx) from "no candidate answered" (every
@@ -80,12 +109,12 @@ export function RestartProgressDialog({
           try {
             // `cache: "no-store"` keeps stale 502/0 responses from the previous
             // boot out of the way.
-            const res = await fetch(healthProbeUrl(origin), {
-              cache: "no-store",
-              credentials: "omit",
-            });
+            const res = await fetch(
+              healthProbeUrl(origin),
+              probeInit(origin, window.location.origin),
+            );
             sawResponse = true;
-            if (res.ok) {
+            if (probeReached(res)) {
               reachedOrigin = origin;
               break;
             }
@@ -117,14 +146,16 @@ export function RestartProgressDialog({
         }
         await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
       }
-      if (!cancelled) setPhase("timeout");
+      if (!cancelled) setPhase(cutOff ? "handoff" : "timeout");
     };
 
     void run();
     return () => {
       cancelled = true;
     };
-  }, [targetUrl, expectsNewCert]);
+    // cutOff is fixed for the dialog's life.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetUrl, expectsNewCert, alsoTryKey]);
 
   const downloadCertThenOpen = async () => {
     try {
@@ -163,6 +194,12 @@ export function RestartProgressDialog({
           </div>
         )}
 
+        {handoff && (phase === "starting" || phase === "waiting" || phase === "polling") && (
+          <div data-testid="restart-handoff-lines" style={{ marginBottom: "var(--space-md)" }}>
+            {handoff.lines}
+          </div>
+        )}
+
         {(phase === "starting" || phase === "waiting" || phase === "polling") && (
           <div style={{ display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
             <RefreshCw size={20} style={{ animation: "spin 1s linear infinite" }} />
@@ -177,6 +214,18 @@ export function RestartProgressDialog({
         {phase === "success" && (
           <div style={{ color: "var(--accent-color, #8AB493)" }}>
             Reconnected. Loading the new page...
+          </div>
+        )}
+
+        {phase === "handoff" && handoff && (
+          <div data-testid="restart-handoff-saved">
+            <div style={{ display: "flex", gap: "var(--space-sm)", marginBottom: "var(--space-md)" }}>
+              <CheckCircle2 size={18} style={{ color: "var(--accent-color, #8AB493)", flexShrink: 0, marginTop: 2 }} />
+              <div>{handoff.saved}</div>
+            </div>
+            <button onClick={onClose} style={btnSecondary}>
+              Close
+            </button>
           </div>
         )}
 

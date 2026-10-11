@@ -325,16 +325,24 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
             </div>
           </div>
         ) : access.localOnly ? (
-          <div style={{ fontSize: "var(--font-size-sm)" }}>
+          <div style={{ fontSize: "var(--font-size-sm)" }} data-testid="panel-access-local-only">
+            {access.problem && (
+              <div style={{ display: "flex", gap: "var(--space-xs)", alignItems: "flex-start", marginBottom: "var(--space-sm)" }}>
+                <AlertTriangle size={14} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: 2 }} />
+                <span>{access.problem}</span>
+              </div>
+            )}
             <div style={{ color: "var(--text-muted)", marginBottom: "var(--space-sm)" }}>
-              The server is set to local-only access. To open the panel from anywhere else on the network, go to{" "}
+              {access.problem
+                ? "Until it is, only this computer's own screen and browser can open the panel. To choose another network, change "
+                : "Only this computer's own screen and browser can open the panel. To open it from other devices, change "}
               <strong
                 onClick={() => useNavigationStore.getState().navigateTo("settings")}
                 style={{ color: "var(--accent)", cursor: "pointer" }}
               >
-                Settings
+                Accept connections from
               </strong>{" "}
-              and change the bind address to <code>0.0.0.0</code>.
+              in Settings.
             </div>
           </div>
         ) : (

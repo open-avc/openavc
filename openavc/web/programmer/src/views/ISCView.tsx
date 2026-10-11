@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { getTunnelPrefix } from "../api/restClient";
 import {
+  AlertTriangle,
   Network,
   Wifi,
   WifiOff,
@@ -30,6 +31,11 @@ interface ISCStatus {
   connected_count?: number;
   shared_patterns?: string[];
   auth_key_set?: boolean;
+  /** False when other systems cannot connect in: Settings > Network > Accept
+   *  connections from is this computer only, or its adapter is missing.
+   *  `accepts_peers_note` is then the sentence to show. */
+  accepts_peers?: boolean;
+  accepts_peers_note?: string;
 }
 
 interface ISCPeer {
@@ -255,6 +261,20 @@ export function ISCView() {
                 </div>
               </label>
             </div>
+
+            {iscEnabled && status.enabled && status.accepts_peers === false && status.accepts_peers_note && (
+              <div
+                role="status"
+                data-testid="isc-accepts-peers-note"
+                style={{
+                  display: "flex", gap: "var(--space-sm)", alignItems: "flex-start",
+                  marginBottom: "var(--space-md)", fontSize: "var(--font-size-sm)",
+                }}
+              >
+                <AlertTriangle size={14} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: 2 }} aria-hidden />
+                <span>{status.accepts_peers_note}</span>
+              </div>
+            )}
 
             {iscEnabled && status.enabled ? (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-sm)" }}>

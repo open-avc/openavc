@@ -30,6 +30,50 @@ export function configuredOrigin(
   return url.origin;
 }
 
+/** `origin` with its host replaced, keeping its scheme and port: where the
+ *  same listener answers on another address of this computer. */
+export function withHost(origin: string, host: string): string {
+  const url = new URL(origin);
+  url.hostname = host;
+  return url.origin;
+}
+
+/**
+ * The origins a restart waits at, best first: the expected one, then any
+ * other address a change of who can connect makes reachable. Only expected
+ * addresses, never the page's own as a fallback: an unrelated healthy
+ * listener is not this server. A browser the change cuts off waits only at
+ * the new choice's own addresses (`alsoTry`).
+ */
+export function waitOrigins(targetOrigin: string, alsoTry: string[], cutOff: boolean): string[] {
+  return [...new Set([cutOff ? "" : targetOrigin, ...alsoTry].filter(Boolean))];
+}
+
+/**
+ * How to probe one origin. The page's own origin is fetched normally, so its
+ * status can be read. Any other origin (a new port, or another address of this
+ * computer) refuses a CORS read, so it is fetched `no-cors`: the response is
+ * opaque, but that it arrived at all says the server is answering there, and
+ * a refused or unreachable address still rejects.
+ */
+export function probeInit(origin: string, currentOrigin: string): RequestInit {
+  return {
+    cache: "no-store",
+    credentials: "omit",
+    mode: origin === currentOrigin ? "cors" : "no-cors",
+  };
+}
+
+/** Whether a probe response means the server is back at that origin. */
+export function probeReached(res: { ok: boolean; type: string }): boolean {
+  return res.ok || res.type === "opaque";
+}
+
+// A browser that a change of who can connect cuts off keeps trying the new
+// choice's addresses this many times (one a second) before it stops and says
+// where to open the Programmer instead. Long enough for a normal restart.
+export const HANDOFF_ATTEMPTS = 25;
+
 // Consecutive fetch failures before we consider that the browser might be
 // rejecting the new self-signed cert (rather than the server still being down).
 export const CERT_ERROR_THRESHOLD = 5;

@@ -281,8 +281,85 @@ export async function importTheme(
 
 // --- System Config ---
 
+/** An adapter as a choice names it: by identity, never by address. A literal
+ *  `address` appears only when the environment set one. */
+export interface AdapterIdentity {
+  name?: string;
+  mac?: string;
+  address?: string;
+}
+
+export type ListenMode = "any" | "adapter" | "this_computer";
+
+/** Why the network is not being listened on: the one sentence every surface
+ *  shows ("Not accepting connections from the network: the Ethernet adapter
+ *  isn't connected."). */
+export interface ListenProblem {
+  code: "adapter_not_connected" | "adapter_no_address" | "address_not_found";
+  message: string;
+}
+
+/** Who can connect as this server is running it (`/api/status.listen`, and
+ *  `_listen` on the config). */
+export interface ListenRunning {
+  mode: ListenMode;
+  adapter: AdapterIdentity;
+  adapter_name: string;
+  /** "Any network", "Ethernet only", "This computer only". */
+  label: string;
+  /** Every address a web listener bound. */
+  addresses: string[];
+  /** The adapter's own addresses listened on (one adapter only). */
+  network_addresses: string[];
+  /** Nothing on the network can connect. */
+  local_only: boolean;
+  /** The environment variable holding the choice, or null. */
+  held_by: string | null;
+  problem: ListenProblem | null;
+}
+
+/** While a change that cut off the browser making it waits to be confirmed. */
+export interface ListenSafetyNet {
+  previous: string;
+  choice: string;
+  /** The server is listening on the new choice, so the clock is running. */
+  running: boolean;
+  deadline: string | null;
+}
+
+export interface ListenBlock extends ListenRunning {
+  /** The saved choice differs from the running one. */
+  restart_needed: boolean;
+  safety_net: ListenSafetyNet | null;
+}
+
+/** Reach devices through, resolved now. */
+export interface ReachDevicesBlock {
+  mode: "every" | "adapter";
+  adapter: AdapterIdentity;
+  adapter_name: string;
+  /** The address device traffic binds to ("" for every adapter). */
+  address: string;
+  connected: boolean;
+  label: string;
+}
+
 export interface SystemConfig {
-  network: { http_port: number; bind_address: string; control_interface: string; port80_redirect: boolean };
+  network: {
+    http_port: number;
+    /** Settings > Network > Accept connections from. */
+    accept_connections_from: ListenMode;
+    /** The adapter for "adapter": `{name, mac}`. */
+    accept_connections_adapter: AdapterIdentity;
+    /** Written for a rollback only; the server refuses a change to it. */
+    bind_address: string;
+    /** Settings > Network > Reach devices through: `{}` for every connected
+     *  adapter, or `{name, mac}`. Null until the server first starts. */
+    reach_devices_through: AdapterIdentity | null;
+    /** Written for a rollback only; the server refuses a change to it. */
+    control_interface: string;
+    port80_redirect: boolean;
+  };
   auth: { programmer_username: string; programmer_password: string; api_key: string };
   isc: { enabled: boolean };
   logging: { level: string; file_enabled: boolean; max_size_mb: number; max_files: number };
@@ -302,6 +379,10 @@ export interface SystemConfig {
    *  The server runs with a held value whatever system.json says and refuses
    *  a change to one. */
   _environment?: { deployment_type: string; overrides: Record<string, string>; configuration_owner?: "firmware" };
+  /** Not a system.json section: who can connect as this server is running it. */
+  _listen?: ListenBlock;
+  /** Not a system.json section: Reach devices through, resolved now. */
+  _reach_devices?: ReachDevicesBlock | null;
 }
 
 export async function getSystemVersion(): Promise<{
@@ -325,11 +406,49 @@ export async function getSystemConfig(): Promise<SystemConfig> {
 
 export async function updateSystemConfig(
   data: Partial<SystemConfig>
-): Promise<{ status: string; updated_sections: string[] }> {
+): Promise<{ status: string; updated_sections: string[]; safety_net?: ListenSafetyNet | null }> {
   return request("/system/config", {
     method: "PATCH",
     body: JSON.stringify(data),
   });
+}
+
+/** What the server says saving a choice of who can connect would do. */
+export interface ListenPreview {
+  mode: ListenMode;
+  adapter_name: string;
+  label: string;
+  /** The addresses a panel could open under the choice, best first. */
+  panel_addresses: string[];
+  /** This computer's address the asking browser reached. */
+  connected_through: string;
+  /** That address still answers under the choice. */
+  serves_this_address: boolean;
+  /** The person can keep working without walking anywhere (the address
+   *  answers, or they are on this computer or the cloud tunnel). */
+  keeps_this_connection: boolean;
+  /** Saving it arms the safety net (the opposite of the above). */
+  safety_net: boolean;
+  problem: ListenProblem | null;
+  /** What stops working: approved panels, Inter-System. */
+  consequences: { code: string; count: number; message: string }[];
+  held_by: string | null;
+}
+
+export async function previewListen(choice: {
+  accept_connections_from: ListenMode;
+  accept_connections_adapter?: AdapterIdentity;
+}): Promise<ListenPreview> {
+  return request("/system/listen/preview", {
+    method: "POST",
+    body: JSON.stringify(choice),
+  });
+}
+
+/** Called once on every Programmer load: keeps a change the safety net was
+ *  watching, and hands over the "Went back" sentence once. */
+export async function confirmListen(): Promise<{ kept: string | null; went_back: string | null }> {
+  return request("/system/listen/confirm", { method: "POST" });
 }
 
 export async function rebootSystem(): Promise<{ status: string }> {
@@ -517,7 +636,19 @@ export interface NetworkAdapter {
   link: boolean;
 }
 
-export async function getNetworkAdapters(): Promise<{ adapters: NetworkAdapter[] }> {
+/** One physical adapter, connected or not: what the adapter pickers list. */
+export interface NetworkInterface {
+  name: string;
+  mac: string;
+  addresses: { ip: string; subnet: string }[];
+  /** False when the adapter is not connected (cable out, radio off). */
+  link: boolean;
+  has_address: boolean;
+}
+
+/** `adapters` is one entry per IPv4 address (Discovery); `interfaces` is one
+ *  entry per adapter, including one with no address (Settings' pickers). */
+export async function getNetworkAdapters(): Promise<{ adapters: NetworkAdapter[]; interfaces?: NetworkInterface[] }> {
   return request("/network/adapters");
 }
 
@@ -549,7 +680,7 @@ export async function getSerialPorts(): Promise<{ ports: SerialPortInfo[] }> {
 
 // --- Host Network Configuration ---
 // The machine's own network (IP, gateway, DNS, WiFi, hostname) — distinct
-// from the adapter list above, which only selects the control interface.
+// from the adapter list above, which only chooses which adapter to use.
 // Available only on deployments where OpenAVC owns the OS (Pi appliance,
 // Linux with NetworkManager); elsewhere the GET throws "API 404" and the
 // settings card hides itself.

@@ -5,15 +5,28 @@ import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { copyToClipboard } from "../components/shared/clipboard";
 import { HostNetworkCard } from "../components/system/HostNetworkCard";
 import { EnvHeldNote, EnvLock } from "../components/system/EnvHeldNote";
+import { AcceptConnectionsField, ReachDevicesField } from "../components/system/NetworkChoiceFields";
+import { CutOffRestartLines, CutOffSaved, CutOffWarning, type CutOffFacts } from "../components/system/ListenCutOff";
+import { adapterName, restartPlan, sameListenChoice, type RestartPlan } from "../components/system/adapterChoice";
 import { VariableKeyPicker } from "../components/shared/VariableKeyPicker";
 import { useProjectStore } from "../store/projectStore";
 import { RestartProgressDialog } from "../components/shared/RestartProgressDialog";
-import { configuredOrigin, restartOrigin } from "../components/shared/restartPollHelpers";
+import { configuredOrigin, restartOrigin, withHost } from "../components/shared/restartPollHelpers";
 import { showError, showSuccess } from "../store/toastStore";
 import * as api from "../api/restClient";
 import { ApiError, parseApiError } from "../api/errors";
 import { PASSWORD_TOO_SHORT, passwordTooShortToSave } from "../api/auth";
-import type { SystemConfig, NetworkAdapter, TlsStatus, TlsUploadResult, SshStatus } from "../api/restClient";
+import type {
+  AdapterIdentity,
+  ListenMode,
+  ListenPreview,
+  NetworkAdapter,
+  NetworkInterface,
+  SshStatus,
+  SystemConfig,
+  TlsStatus,
+  TlsUploadResult,
+} from "../api/restClient";
 import type { ProjectConfig } from "../api/types";
 
 const REDACTED = "***";
@@ -399,6 +412,13 @@ function getTheme(): "dark" | "light" {
   return (localStorage.getItem("openavc-theme") as "dark" | "light") || "dark";
 }
 
+/** A choice of who can connect, as the preview and PATCH take it. */
+function listenBody(mode: ListenMode, adapter: AdapterIdentity) {
+  return mode === "adapter"
+    ? { accept_connections_from: mode, accept_connections_adapter: adapter }
+    : { accept_connections_from: mode };
+}
+
 function setTheme(theme: "dark" | "light") {
   localStorage.setItem("openavc-theme", theme);
   document.documentElement.dataset.theme = theme;
@@ -444,7 +464,15 @@ export function SystemSettingsView() {
   const [ssh, setSsh] = useState<SshStatus | null>(null);
   const [sshBusy, setSshBusy] = useState(false);
   const [adapters, setAdapters] = useState<NetworkAdapter[]>([]);
+  // One entry per adapter, connected or not: what the two adapter pickers list.
+  const [interfaces, setInterfaces] = useState<NetworkInterface[]>([]);
   const [adaptersLoading, setAdaptersLoading] = useState(false);
+  // The server's answer for the Accept connections from choice on screen.
+  const [listenPreview, setListenPreview] = useState<ListenPreview | null>(null);
+  // Set while the "Change who can connect?" dialog is open.
+  const [cutOffCheck, setCutOffCheck] = useState<ListenPreview | null>(null);
+  // Where the restart dialog waits, worked out when it opens.
+  const [restartSetup, setRestartSetup] = useState<{ plan: RestartPlan; preview: ListenPreview | null } | null>(null);
   const [tlsStatus, setTlsStatus] = useState<TlsStatus | null>(null);
   const [installOs, setInstallOs] = useState<CaInstallOs>(() => detectOs());
   const [installStepsOpen, setInstallStepsOpen] = useState(false);
@@ -453,7 +481,10 @@ export function SystemSettingsView() {
   const loadAdapters = useCallback(() => {
     setAdaptersLoading(true);
     api.getNetworkAdapters()
-      .then((r) => setAdapters(r.adapters))
+      .then((r) => {
+        setAdapters(r.adapters);
+        setInterfaces(r.interfaces ?? []);
+      })
       .catch(() => {})
       .finally(() => setAdaptersLoading(false));
   }, []);
@@ -516,8 +547,11 @@ export function SystemSettingsView() {
         ...prev,
         [section]: { ...(prev[section] as Record<string, unknown> ?? {}), [key]: value },
       }));
-      // Track restart-required changes (bind_address/port need restart, control_interface does not)
-      if (section === "network" && (key === "bind_address" || key === "http_port" || key === "port80_redirect")) setRestartNeeded(true);
+      // Track restart-required changes. Who can connect needs one too, and is
+      // tracked against what the server runs (listenNeedsRestart below), so
+      // choosing the running choice again clears it. Reach devices through
+      // applies with no restart.
+      if (section === "network" && (key === "http_port" || key === "port80_redirect")) setRestartNeeded(true);
       // Any TLS change requires a restart — uvicorn only reads cert + ports at startup.
       if (section === "tls") setRestartNeeded(true);
     },
@@ -563,7 +597,77 @@ export function SystemSettingsView() {
     [config, dirty],
   );
 
-  const handleSave = async () => {
+  // Accept connections from, as on screen: saved, or changed and not saved.
+  const shownNetwork = config ? { ...config.network, ...(dirty.network ?? {}) } : null;
+  const listenMode = (shownNetwork?.accept_connections_from || "this_computer") as ListenMode;
+  const listenAdapter: AdapterIdentity =
+    listenMode === "adapter" ? (shownNetwork?.accept_connections_adapter ?? {}) : {};
+  const listenKey = JSON.stringify([listenMode, listenAdapter]);
+
+  // Ask the server what the choice on screen does: the addresses a panel can
+  // open, whether this browser keeps its connection, what stops working.
+  // Asked again after every save, since the adapters may have changed.
+  useEffect(() => {
+    if (!config) return;
+    let stale = false;
+    const timer = window.setTimeout(() => {
+      api.previewListen(listenBody(listenMode, listenAdapter))
+        .then((p) => { if (!stale) setListenPreview(p); })
+        .catch(() => { if (!stale) setListenPreview(null); });
+    }, 150);
+    return () => {
+      stale = true;
+      window.clearTimeout(timer);
+    };
+    // listenKey stands for listenMode and listenAdapter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listenKey, config]);
+
+  // A change of who can connect that the screen shows and the server does
+  // not have saved yet.
+  const listenSaving = (): boolean =>
+    !!config && !!dirty.network &&
+    ("accept_connections_from" in dirty.network || "accept_connections_adapter" in dirty.network) &&
+    !sameListenChoice(
+      { mode: listenMode, adapter: listenAdapter },
+      { mode: config.network.accept_connections_from, adapter: config.network.accept_connections_adapter },
+    );
+
+  /** Open the restart dialog, having worked out where it waits: a change of
+   *  who can connect can move this page to another address, or cut it off. */
+  const startRestart = async (cfg: SystemConfig | null = config) => {
+    let preview: ListenPreview | null = null;
+    if (cfg?._listen?.restart_needed) {
+      const n = cfg.network;
+      try {
+        preview = await api.previewListen(listenBody(n.accept_connections_from, n.accept_connections_adapter ?? {}));
+      } catch {
+        preview = null; // the dialog then waits where it always has
+      }
+    }
+    setRestartSetup({ plan: restartPlan(preview), preview });
+    setShowRestartDialog(true);
+  };
+
+  const handleSave = async (cutOffConfirmed = false) => {
+    // A change of who can connect that would cut off this browser is said
+    // first, from the server's own answer ("Change who can connect?"), and
+    // nothing is saved until the person agrees.
+    const changingListen = listenSaving();
+    if (changingListen && !cutOffConfirmed) {
+      let check: ListenPreview;
+      try {
+        check = await api.previewListen(listenBody(listenMode, listenAdapter));
+      } catch (e) {
+        showError("Could not check the change to Accept connections from: " + parseApiError(e));
+        return;
+      }
+      if (check.safety_net) {
+        setCutOffCheck(check);
+        return;
+      }
+    }
+
     // The panel display + device settings live in the project, so one Save
     // button has to flush both stores. Project first: it is the one with a
     // conflict path, and a failure there must not be hidden behind a
@@ -597,7 +701,7 @@ export function SystemSettingsView() {
 
     // Capture the restart flag before the post-save reset, so we can decide
     // whether to pop the confirm prompt after the request returns.
-    const needsRestart = restartNeeded;
+    const needsRestart = restartNeeded || changingListen;
 
     setSaving(true);
     let saved = false;
@@ -613,6 +717,9 @@ export function SystemSettingsView() {
       if (hasKioskChanges && kioskAvailable) {
         // Kiosk-reboot dialog handles its own flow; don't stack a second prompt.
         setShowRebootDialog(true);
+      } else if (cutOffConfirmed) {
+        // "Restart and apply" was the answer already.
+        void startRestart(fresh);
       } else if (needsRestart) {
         setShowRestartPrompt(true);
       }
@@ -797,9 +904,61 @@ export function SystemSettingsView() {
   const panelAccess = merged("panels")?.access === "open" ? "open" : "approved";
   const advertise = merged("discovery")?.advertise !== false;
 
-  // Warning: no auth + public bind
+  // Who can connect: what the server runs, and whether the choice on screen
+  // needs a restart to take effect (choosing the running one again does not).
+  const listenRunning = config?._listen;
+  const listenNeedsRestart = !!listenRunning && !sameListenChoice(
+    { mode: listenMode, adapter: listenAdapter },
+    { mode: listenRunning.mode, adapter: listenRunning.adapter },
+  );
+  const listenChanged = !!config && !sameListenChoice(
+    { mode: listenMode, adapter: listenAdapter },
+    { mode: config.network.accept_connections_from, adapter: config.network.accept_connections_adapter },
+  );
+  const listenHeld = heldBy("network", "accept_connections_from");
+  const reachHeld = heldBy("network", "reach_devices_through");
+  const reachChosen: AdapterIdentity = net.reach_devices_through ?? {};
+  const listenAdapterName = adapterName(listenAdapter, interfaces, listenRunning?.adapter_name ?? "");
+  const urlFacts = {
+    httpPort: net.http_port,
+    // Settings cannot know whether port 80 is answering, so it always
+    // prints the port.
+    port80: false,
+    tlsEnabled: !!tls?.enabled,
+    tlsPort: tls?.port ?? 8443,
+    redirectHttp: tls?.redirect_http !== false,
+  };
+  // An environment-held address is not something the preview takes, so its
+  // panel addresses come from what the server is running.
+  const shownPreview: ListenPreview | null = listenPreview ?? (
+    !listenChanged && listenRunning && listenRunning.network_addresses.length > 0
+      ? {
+        mode: listenRunning.mode, adapter_name: listenRunning.adapter_name, label: listenRunning.label,
+        panel_addresses: listenRunning.network_addresses, connected_through: "",
+        serves_this_address: true, keeps_this_connection: true, safety_net: false,
+        problem: null, consequences: [], held_by: listenRunning.held_by,
+      }
+      : null
+  );
+
+  /** What the cut-off warning and the restart dialog say, from the server's
+   *  answer for the change. */
+  const cutOffFacts = (p: ListenPreview, programmerUrls: string[], localUrl: string): CutOffFacts => ({
+    connectedThrough: p.connected_through || window.location.hostname,
+    mode: p.mode,
+    adapterName: p.adapter_name,
+    programmerUrls: p.mode === "adapter" ? programmerUrls : [],
+    localUrl,
+    // The safety net goes back to the choice the server is running.
+    previousLabel: listenRunning?.label ?? "the previous choice",
+    minutes: 10,
+    cloudPaired: !!config?.cloud?.system_id,
+    consequences: p.consequences.map((c) => c.message),
+  });
+
+  // Warning: no auth, and something on the network can connect.
   const noAuth = !auth.programmer_password && auth.programmer_password !== REDACTED && !auth.api_key && auth.api_key !== REDACTED;
-  const publicBind = net.bind_address === "0.0.0.0";
+  const publicBind = listenMode !== "this_computer";
 
   // An API key claims the system but is only ever accepted in the X-API-Key
   // header, which a browser can't attach to a page it is opening. So a key with
@@ -878,7 +1037,7 @@ export function SystemSettingsView() {
       actions={
         <button
           style={{ ...btnStyle, opacity: hasDirty && !saving && !saveBlocked ? 1 : 0.5 }}
-          onClick={handleSave}
+          onClick={() => void handleSave()}
           disabled={!hasDirty || saving || saveBlocked}
           title={saveBlocked ? "Fix the validation errors below before saving" : undefined}
         >
@@ -891,8 +1050,8 @@ export function SystemSettingsView() {
         {/* Restart warning + action.
             - hasDirty: settings unsaved; user has to save first.
             - !hasDirty: settings saved; offer to restart in-app. */}
-        {restartNeeded && (
-          <div style={warningBox}>
+        {(restartNeeded || listenNeedsRestart) && (
+          <div style={warningBox} data-testid="restart-banner">
             <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: 2 }} />
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-md)", flexWrap: "wrap", flex: 1 }}>
               <span style={{ flex: 1 }}>
@@ -902,7 +1061,7 @@ export function SystemSettingsView() {
               </span>
               {!hasDirty && (
                 <button
-                  onClick={() => setShowRestartDialog(true)}
+                  onClick={() => void startRestart()}
                   style={{
                     ...btnStyle,
                     background: "rgb(255, 152, 0)",
@@ -950,19 +1109,36 @@ export function SystemSettingsView() {
         <h3 style={sectionTitle}>Network</h3>
         <div style={cardStyle}>
           <div style={fieldRow}>
-            <label style={labelStyle} htmlFor="cfg-bind-address">Bind address</label>
-            <EnvLock held={heldBy("network", "bind_address")}>
-              <input
-                id="cfg-bind-address"
-                style={inputStyle}
-                value={net.bind_address}
-                onChange={(e) => update("network", "bind_address", e.target.value)}
-              />
-            </EnvLock>
-            <span style={helpText}>
-              Controls whether other devices on the network can reach the server. Set to <code>0.0.0.0</code> to allow tablets, phones, and other computers to access the Panel UI. Use <code>127.0.0.1</code> to restrict access to this machine only.
-            </span>
-            <EnvHeldNote variable={heldBy("network", "bind_address")} deploymentType={deploymentType} configurationOwner={configurationOwner} style={{ gridColumn: "2" }} />
+            <AcceptConnectionsField
+              interfaces={interfaces}
+              mode={listenMode}
+              adapter={listenAdapter}
+              runningName={listenRunning?.adapter_name ?? ""}
+              problem={listenNeedsRestart ? null : (listenRunning?.problem ?? null)}
+              preview={shownPreview}
+              changed={listenChanged}
+              heldBy={listenHeld}
+              deploymentType={deploymentType}
+              configurationOwner={configurationOwner}
+              urlFacts={urlFacts}
+              onChange={(mode, adapter) => {
+                update("network", "accept_connections_from", mode);
+                update("network", "accept_connections_adapter", adapter);
+              }}
+            />
+          </div>
+          <div style={fieldRow}>
+            <ReachDevicesField
+              interfaces={interfaces}
+              chosen={reachChosen}
+              resolved={config._reach_devices}
+              heldBy={reachHeld}
+              deploymentType={deploymentType}
+              configurationOwner={configurationOwner}
+              loading={adaptersLoading}
+              onChange={(identity) => update("network", "reach_devices_through", identity)}
+              onRefresh={loadAdapters}
+            />
           </div>
           <div style={fieldRow}>
             <label style={labelStyle} htmlFor="cfg-http-port">HTTP port</label>
@@ -998,67 +1174,27 @@ export function SystemSettingsView() {
           <div style={toggleRow}>
             <div>
               <div style={{ fontSize: "var(--font-size-sm)" }}>Advertise on the network</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Lets the OpenAVC Panel app find this system in its list. Turning this off hides
-                the system from the list; devices can still connect by address.
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }} data-testid="advertise-help">
+                {listenMode === "this_computer"
+                  ? "Nothing on the network can connect, so there is nothing to announce."
+                  : listenMode === "adapter"
+                    ? `Lets the OpenAVC Panel app on the ${listenAdapterName || "chosen"} network find this system in its list. Turning this off hides the system from the list; devices can still connect by address.`
+                    : "Lets the OpenAVC Panel app find this system in its list. Turning this off hides the system from the list; devices can still connect by address."}
               </div>
               <EnvHeldNote variable={heldBy("discovery", "advertise")} deploymentType={deploymentType} configurationOwner={configurationOwner} />
             </div>
-            <EnvLock held={heldBy("discovery", "advertise")} style={{ flexShrink: 0 }}>
+            {/* With this computer only, it is shown off and left as saved, so
+                choosing a network again brings back what was set. */}
+            <EnvLock
+              held={listenMode === "this_computer" ? "this_computer" : heldBy("discovery", "advertise")}
+              style={{ flexShrink: 0 }}
+            >
               <Toggle
                 label="Advertise on the network"
-                checked={advertise}
+                checked={listenMode === "this_computer" ? false : advertise}
                 onChange={(v) => update("discovery", "advertise", v)}
               />
             </EnvLock>
-          </div>
-          <div style={fieldRow}>
-            <label style={labelStyle} htmlFor="cfg-control-interface">Control interface</label>
-            <EnvLock held={heldBy("network", "control_interface")} style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
-              <select
-                id="cfg-control-interface"
-                style={{ ...selectStyle, flex: 1 }}
-                value={net.control_interface ?? ""}
-                onChange={(e) => update("network", "control_interface", e.target.value)}
-              >
-                <option value="">Auto (every connected adapter)</option>
-                {adapters.map((a) => (
-                  <option key={a.ip} value={a.ip}>
-                    {a.name}: {a.ip} ({a.subnet}){a.link === false ? ", no link" : ""}
-                  </option>
-                ))}
-                {/* A stored pin whose adapter is gone matches no option above;
-                    without its own entry the select silently renders "Auto"
-                    while the stale pin stays live and breaks scans/connects. */}
-                {net.control_interface && !adapters.some((a) => a.ip === net.control_interface) && (
-                  <option value={net.control_interface}>
-                    {net.control_interface} (not connected, pick a current adapter or Auto)
-                  </option>
-                )}
-              </select>
-              <button
-                type="button"
-                onClick={loadAdapters}
-                disabled={adaptersLoading}
-                title="Refresh adapter list"
-                style={{
-                  background: "none",
-                  border: "1px solid var(--border-color)",
-                  borderRadius: "var(--border-radius)",
-                  color: "var(--text-secondary)",
-                  cursor: "pointer",
-                  padding: "var(--space-sm)",
-                  display: "flex",
-                  alignItems: "center",
-                }}
-              >
-                <RefreshCw size={14} style={adaptersLoading ? { animation: "spin 1s linear infinite" } : undefined} />
-              </button>
-            </EnvLock>
-            <span style={helpText}>
-              Which network adapter OpenAVC uses to communicate with AV devices and run discovery scans. Auto scans the network of every adapter that has a link, and reaches each device through whichever adapter the computer routes it to. Changes take effect on the next device connection or scan. Does not require a restart.
-            </span>
-            <EnvHeldNote variable={heldBy("network", "control_interface")} deploymentType={deploymentType} configurationOwner={configurationOwner} style={{ gridColumn: "2" }} />
           </div>
         </div>
 
@@ -2207,26 +2343,72 @@ export function SystemSettingsView() {
         cancelLabel="Later"
         onConfirm={() => {
           setShowRestartPrompt(false);
-          setShowRestartDialog(true);
+          void startRestart();
         }}
         onCancel={() => setShowRestartPrompt(false)}
       />
     )}
 
+    {cutOffCheck && (() => {
+      // The URLs use what this save will run with: the ports on screen.
+      const scheme = tls?.enabled ? "https" : "http";
+      const port = tls?.enabled ? (tls.port ?? 8443) : net.http_port;
+      return (
+        <ConfirmDialog
+          title="Change who can connect?"
+          message={
+            <CutOffWarning
+              facts={cutOffFacts(
+                cutOffCheck,
+                cutOffCheck.panel_addresses.map((ip) => `${scheme}://${ip}:${port}/programmer`),
+                `${scheme}://localhost:${port}/programmer`,
+              )}
+            />
+          }
+          confirmLabel="Restart and apply"
+          destructive
+          onConfirm={() => {
+            setCutOffCheck(null);
+            void handleSave(true);
+          }}
+          onCancel={() => setCutOffCheck(null)}
+        />
+      );
+    })()}
+
     {showRestartDialog && (() => {
       // Target URL is derived from the SAVED config (not the unsaved `dirty`
       // state). The Restart button is only enabled when !hasDirty, so config
       // reflects what the post-restart server will actually serve.
+      // Where the server answers after the restart: the page's own origin
+      // behind a proxy, else the configured listener (restartOrigin).
       const origin = restartOrigin(window.location.origin, originalServerOrigin.current,
         configuredOrigin(config, window.location.origin));
-      const targetUrl = new URL("/programmer", origin).toString();
-      const targetScheme = new URL(targetUrl).protocol === "https:" ? "https" : "http";
+      const targetScheme = new URL(origin).protocol === "https:" ? "https" : "http";
+      // A change of who can connect can move this page, on the same scheme and
+      // port: to 127.0.0.1 for a browser on this computer at an address the
+      // choice leaves out, or, for a browser it cuts off, to the new choice's
+      // own addresses if it can reach them (restartPlan).
+      const plan = restartSetup?.plan ?? { cutOff: false, hosts: [""] };
+      const urlFor = (host: string) =>
+        new URL("/programmer", host ? withHost(origin, host) : origin).toString();
+      const localUrl = new URL("/programmer", withHost(origin, "localhost")).toString();
+      const urls = plan.hosts.map(urlFor);
+      const targetUrl = plan.cutOff ? (urls[0] ?? localUrl) : urls[0];
       const currentScheme = window.location.protocol === "https:" ? "https" : "http";
       const isProtocolSwitch = currentScheme !== targetScheme;
       const expectsNewCert = currentScheme === "http" && targetScheme === "https";
+      const facts = plan.cutOff && restartSetup?.preview
+        ? cutOffFacts(restartSetup.preview, urls, localUrl)
+        : null;
       return (
         <RestartProgressDialog
           targetUrl={targetUrl}
+          alsoTry={plan.cutOff ? urls : urls.slice(1)}
+          handoff={facts ? {
+            lines: <CutOffRestartLines facts={facts} />,
+            saved: <CutOffSaved facts={facts} />,
+          } : undefined}
           isProtocolSwitch={isProtocolSwitch}
           expectsNewCert={expectsNewCert}
           onClose={() => {

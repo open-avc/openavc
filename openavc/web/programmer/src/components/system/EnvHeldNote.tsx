@@ -30,26 +30,34 @@ export function EnvLock({ held, children, style }: {
   );
 }
 
-/** What changes a held value on this kind of install. */
-function whereToChange(variable: string, deploymentType: string): ReactNode {
+/** Where a held value is set on this kind of install, and how to give the
+ *  choice back to this screen: one sentence that names a place the reader can
+ *  find. */
+function whereItIsSet(variable: string, deploymentType: string): ReactNode {
+  const name = <code>{variable}</code>;
   switch (deploymentType) {
     case "linux_package":
       return (
         <>
-          To change it, run <code>sudo systemctl edit openavc</code> and add an{" "}
-          <code>Environment={variable}=</code> line under <code>[Service]</code>.
+          Set by the {name} line in a systemd override for this server
+          (<code>sudo systemctl edit openavc</code>). Remove that line to change it here.
         </>
       );
     case "docker":
-      return <>To change it, set it in the container's environment.</>;
+      return <>Set by {name} in the container's environment. Remove it there to change it here.</>;
     case "windows_installer":
-      return <>The installer sets it, and sets it again on every update.</>;
+      return (
+        <>
+          Set by {name} on the OpenAVC Windows service. Remove it from the service's
+          environment to change it here.
+        </>
+      );
     case "macos_app":
-      return <>The installer sets it, and sets it again each time it runs.</>;
+      return <>Set by {name} in the OpenAVC launch settings. Remove it there to change it here.</>;
     case "git_dev":
-      return <>To change it, set it where you start the server.</>;
+      return <>Set by {name} where you start the server.</>;
     default:
-      return null;
+      return <>Set by {name} in this server's environment, so it can't be changed here.</>;
   }
 }
 
@@ -62,7 +70,6 @@ export function EnvHeldNote({ variable, deploymentType, configurationOwner, styl
   style?: CSSProperties;
 }) {
   if (!variable) return null;
-  const where = whereToChange(variable, deploymentType);
   return (
     <span
       data-testid="env-held-note"
@@ -82,8 +89,7 @@ export function EnvHeldNote({ variable, deploymentType, configurationOwner, styl
         {configurationOwner === "firmware" ? <>
           This setting is managed by the product's firmware. Contact product support if it needs to change.
         </> : <>
-        Set by <code>{variable}</code> in this server's environment, so it can't be changed here.
-        {where && <> {where}</>}{" "}
+        {whereItIsSet(variable, deploymentType)}{" "}
         <a href={ENV_SETTINGS_DOCS_URL} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
           Setting values in the environment
         </a>

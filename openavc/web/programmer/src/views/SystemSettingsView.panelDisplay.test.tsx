@@ -48,7 +48,10 @@ vi.mock("../store/projectStore", () => ({
 }));
 
 const CONFIG = {
-  network: { http_port: 8080, bind_address: "0.0.0.0", control_interface: "", port80_redirect: false },
+  network: {
+    http_port: 8080, accept_connections_from: "any", accept_connections_adapter: {},
+    bind_address: "0.0.0.0", reach_devices_through: {}, control_interface: "", port80_redirect: false,
+  },
   auth: { programmer_username: "", programmer_password: "***", api_key: "" },
   isc: { enabled: true },
   logging: { level: "info", file_enabled: true, max_size_mb: 50, max_files: 5 },
@@ -69,7 +72,8 @@ vi.mock("../api/restClient", () => ({
     kiosk_available: false, panel_dim_available: capability.panel_dim_available,
   })),
   getSshStatus: vi.fn(async () => null),
-  getNetworkAdapters: vi.fn(async () => ({ adapters: [] })),
+  getNetworkAdapters: vi.fn(async () => ({ adapters: [], interfaces: [] })),
+  previewListen: vi.fn(async () => null),
   getTlsStatus: vi.fn(async () => null),
   updateSystemConfig: vi.fn(async () => ({ status: "ok", updated_sections: [] })),
 }));

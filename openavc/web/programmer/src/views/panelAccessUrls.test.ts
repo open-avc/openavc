@@ -1,5 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { panelAccess } from "./panelAccessUrls";
+import { panelAccess, panelBase } from "./panelAccessUrls";
+
+const ANY = {
+  mode: "any", adapter: {}, adapter_name: "", label: "Any network",
+  addresses: ["0.0.0.0"], network_addresses: [], local_only: false,
+  held_by: null, problem: null,
+};
+const THIS_COMPUTER = {
+  ...ANY, mode: "this_computer", label: "This computer only",
+  addresses: ["127.0.0.1"], local_only: true,
+};
 
 const LAN_STATUS = {
   local_ip: "192.168.1.50",
@@ -7,7 +17,7 @@ const LAN_STATUS = {
   hostname: "AVC-LOBBY",
   http_port: 8080,
   port80_active: false,
-  bind_address: "0.0.0.0",
+  listen: ANY,
 };
 
 const onLan = { hostname: "192.168.1.50", origin: "http://192.168.1.50:8080" };
@@ -60,8 +70,8 @@ describe("panelAccess", () => {
     expect(a.panelUrl).toBe("");
   });
 
-  it("reports a loopback-bound server as local only", () => {
-    const a = panelAccess({ ...LAN_STATUS, bind_address: "127.0.0.1" }, null, onLan);
+  it("reports a server that accepts this computer only as local only", () => {
+    const a = panelAccess({ ...LAN_STATUS, listen: THIS_COMPUTER }, null, onLan);
     expect(a.localOnly).toBe(true);
     expect(a.tunneled).toBe(false);
     expect(a.panelUrl).toBe("");
@@ -71,7 +81,7 @@ describe("panelAccess", () => {
     // The tunnel proxies to loopback, so Remote Panel reaches this server.
     // Sending the reader to Settings to change the bind address would not.
     const a = panelAccess(
-      { ...LAN_STATUS, bind_address: "127.0.0.1", tunneled: true },
+      { ...LAN_STATUS, listen: THIS_COMPUTER, tunneled: true },
       null,
       { hostname: "cloud.openavc.com", origin: "https://cloud.openavc.com" },
     );
@@ -121,6 +131,50 @@ describe("panelAccess", () => {
     expect(a.hostnameUrl).toBe("");
   });
 
+  it("says why when the chosen adapter is missing", () => {
+    const problem = {
+      code: "adapter_not_connected",
+      message: "Not accepting connections from the network: the Ethernet adapter isn't connected.",
+    };
+    const a = panelAccess(
+      { ...LAN_STATUS, listen: { ...ANY, mode: "adapter", local_only: true, problem } },
+      null,
+      onLan,
+    );
+    expect(a.localOnly).toBe(true);
+    expect(a.problem).toBe(problem.message);
+    expect(a.panelUrl).toBe("");
+  });
+
+  it("publishes only the chosen adapter's address", () => {
+    // The page was opened on this computer, and the server's local_ip is
+    // already the chosen adapter's.
+    const adapter = {
+      ...ANY, mode: "adapter", adapter_name: "Ethernet", label: "Ethernet only",
+      addresses: ["10.20.30.5", "127.0.0.1"], network_addresses: ["10.20.30.5"],
+    };
+    const a = panelAccess(
+      { ...LAN_STATUS, local_ip: "10.20.30.5", local_ips: ["10.20.30.5"], listen: adapter },
+      null,
+      { hostname: "localhost", origin: "http://localhost:8080" },
+    );
+    expect(a.panelUrl).toBe("http://10.20.30.5:8080/panel");
+    expect(a.qrPanelUrl).toBe("http://10.20.30.5:8080/panel");
+  });
+
+  it("never publishes a page address the chosen adapter does not answer on", () => {
+    const adapter = {
+      ...ANY, mode: "adapter", adapter_name: "Ethernet", label: "Ethernet only",
+      addresses: ["10.20.30.5", "127.0.0.1"], network_addresses: ["10.20.30.5"],
+    };
+    const a = panelAccess(
+      { ...LAN_STATUS, local_ip: "10.20.30.5", listen: adapter },
+      null,
+      { hostname: "192.168.1.50", origin: "http://192.168.1.50:8080" },
+    );
+    expect(a.panelUrl).toBe("http://10.20.30.5:8080/panel");
+  });
+
   it("drops the port when a port-80 listener is up", () => {
     const a = panelAccess({ ...LAN_STATUS, port80_active: true }, null, {
       hostname: "192.168.1.50",
@@ -128,5 +182,23 @@ describe("panelAccess", () => {
     });
     expect(a.panelUrl).toBe("http://192.168.1.50/panel");
     expect(a.hostnameUrl).toBe("http://AVC-LOBBY.local/panel");
+  });
+});
+
+describe("panelBase", () => {
+  const facts = { httpPort: 8080, port80: false, tlsEnabled: false, tlsPort: 8443, redirectHttp: true };
+
+  it("is the HTTP listener, with its port", () => {
+    expect(panelBase("10.20.30.5", facts)).toBe("http://10.20.30.5:8080");
+  });
+
+  it("drops the port when port 80 is answered", () => {
+    expect(panelBase("10.20.30.5", { ...facts, port80: true })).toBe("http://10.20.30.5");
+  });
+
+  it("is HTTPS only when nothing on HTTP redirects", () => {
+    expect(panelBase("10.20.30.5", { ...facts, tlsEnabled: true })).toBe("http://10.20.30.5:8080");
+    expect(panelBase("10.20.30.5", { ...facts, tlsEnabled: true, redirectHttp: false }))
+      .toBe("https://10.20.30.5:8443");
   });
 });
