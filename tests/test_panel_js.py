@@ -233,6 +233,9 @@ SCENARIOS = [
     "themed_element_returns_to_its_theme_colour",
     "label_look_lets_go_of_its_colour",
     "looks_and_toggles_keep_the_buttons_own_image",
+    # Clearing a ui.<id>.* override hands the element back to its look as it
+    # stands now.
+    "cleared_override_returns_to_what_the_look_shows_now",
 ]
 
 

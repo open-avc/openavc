@@ -1225,6 +1225,17 @@ class PanelApp {
     _revertRefusedInteraction(elementId) {
         const id = elementId || this._lastTouchedElementId;
         if (!id) return;
+        this._redrawElement(id);
+    }
+
+    /**
+     * Draw every binding of one element again from current state, forgetting
+     * what each last drew (a renderer that remembers its last value would
+     * otherwise skip the write). Asked by the refusal revert and by a cleared
+     * `ui.<id>.*` override, both of which need the element as current state
+     * says it should look, whatever is on screen.
+     */
+    _redrawElement(id) {
         for (const b of this.bindings) {
             if (b.elementDef?.id !== id) continue;
             for (const k of Object.keys(b)) {
@@ -6661,60 +6672,80 @@ class PanelApp {
             }
             const base = entry._uiBase;
             const applied = entry._uiApplied;
-
-            // Label override (preserve image layer and other element children)
+            const isSet = (v) => v !== undefined && v !== null;
             const labelOverride = this.state[prefix + 'label'];
-            if (labelOverride !== undefined && labelOverride !== null) {
-                // Runtime words with no authored home. The editor refuses these
-                // and says which key is setting them: writing the element's own
-                // label here would be a silent no-op, because this override
-                // would still be covering it.
-                this._setLabelText(el, String(labelOverride), null);
-                applied.add('label');
-            } else if (applied.has('label')) {
+            const bgOverride = this.state[prefix + 'bg_color'];
+            const textColorOverride = this.state[prefix + 'text_color'];
+            const opacityOverride = this.state[prefix + 'opacity'];
+            const visibleOverride = this.state[prefix + 'visible'];
+
+            // First, put back what a cleared override was covering.
+            let cleared = false;
+            if (!isSet(labelOverride) && applied.has('label')) {
                 this._setLabelText(el, base.label != null ? String(base.label) : '',
                     ['label']);
                 applied.delete('label');
+                cleared = true;
             }
-
-            const bgOverride = this.state[prefix + 'bg_color'];
-            if (bgOverride !== undefined && bgOverride !== null) {
-                el.style.backgroundColor = String(bgOverride);
-                applied.add('bg');
-            } else if (applied.has('bg')) {
+            if (!isSet(bgOverride) && applied.has('bg')) {
                 el.style.backgroundColor = base.backgroundColor;
                 applied.delete('bg');
+                cleared = true;
             }
-
-            const textColorOverride = this.state[prefix + 'text_color'];
-            if (textColorOverride !== undefined && textColorOverride !== null) {
-                el.style.color = String(textColorOverride);
-                applied.add('text');
-            } else if (applied.has('text')) {
+            if (!isSet(textColorOverride) && applied.has('text')) {
                 el.style.color = base.color;
                 applied.delete('text');
+                cleared = true;
             }
-
-            const opacityOverride = this.state[prefix + 'opacity'];
-            if (opacityOverride !== undefined && opacityOverride !== null) {
-                el.style.opacity = String(opacityOverride);
-                applied.add('opacity');
-            } else if (applied.has('opacity')) {
+            if (!isSet(opacityOverride) && applied.has('opacity')) {
                 el.style.opacity = base.opacity;
                 applied.delete('opacity');
+                cleared = true;
             }
-
-            const visibleOverride = this.state[prefix + 'visible'];
-            if (visibleOverride !== undefined && visibleOverride !== null) {
-                el.style.display = (visibleOverride === false || visibleOverride === 'false')
-                    ? 'none' : '';
-                applied.add('visible');
-            } else if (applied.has('visible')) {
-                // Hand display back to a visible_when binding if one governs this
-                // element (it re-asserts on the next evaluation); otherwise
+            if (!isSet(visibleOverride) && applied.has('visible')) {
+                // Hand display back to a visible_when binding if one governs
+                // this element (the redraw below re-asserts it); otherwise
                 // restore the rendered base.
                 el.style.display = elementDef?.bindings?.show?.visible_when ? '' : base.display;
                 applied.delete('visible');
+                cleared = true;
+            }
+            // The snapshot is the element as first drawn, and a look or a
+            // toggle may have drawn something else since: a Blank All button
+            // lit orange, coloured by a script, then uncoloured, went back to
+            // the grey it had before the screens were blanked. So the
+            // element's own bindings draw again from current state, over the
+            // snapshot, and what shows is what it would show had the override
+            // never been set. The snapshot stays the answer only for what no
+            // binding draws.
+            if (cleared) this._redrawElement(elementId);
+
+            // Then every override still set, over whatever was drawn.
+            if (isSet(labelOverride)) {
+                // Runtime words with no authored home. The editor refuses these
+                // and says which key is setting them: writing the element's own
+                // label here would be a silent no-op, because this override
+                // would still be covering it. Preserves the image layer and
+                // other element children.
+                this._setLabelText(el, String(labelOverride), null);
+                applied.add('label');
+            }
+            if (isSet(bgOverride)) {
+                el.style.backgroundColor = String(bgOverride);
+                applied.add('bg');
+            }
+            if (isSet(textColorOverride)) {
+                el.style.color = String(textColorOverride);
+                applied.add('text');
+            }
+            if (isSet(opacityOverride)) {
+                el.style.opacity = String(opacityOverride);
+                applied.add('opacity');
+            }
+            if (isSet(visibleOverride)) {
+                el.style.display = (visibleOverride === false || visibleOverride === 'false')
+                    ? 'none' : '';
+                applied.add('visible');
             }
         }
     }

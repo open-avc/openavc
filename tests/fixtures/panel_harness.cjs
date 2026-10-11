@@ -4116,6 +4116,69 @@ const tests = {
         assert(layer.style.backgroundColor !== '',
             `masked toggle off: the layer keeps a fill, got "${layer.style.backgroundColor}"`);
     },
+
+    // --- clearing a ui.<id>.* override hands the element back to its look ---
+    //
+    // What came back used to be a snapshot of the element as the panel first
+    // drew it, so a Blank All button lit orange by its look, coloured by a
+    // script, then uncoloured, went back to the grey it had before the
+    // screens were blanked.
+
+    cleared_override_returns_to_what_the_look_shows_now() {
+        const app = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'blank', type: 'button', label: 'Blank All',
+                bindings: { show: { look: {
+                    key: 'var.blanked', condition: { equals: true },
+                    style_active: { bg_color: '#ff9800', text_color: '#000000' },
+                    label_active: 'Blanked',
+                } } },
+            }],
+            placements: { blank: { x: 5, y: 5, w: 20, h: 10 } },
+        });
+        app.state = { 'var.blanked': false };
+        renderProject(app, proj);
+        app.evaluateAllBindings();
+        const el = app.root.querySelector('[data-element-id="blank"]');
+        const set = (key, value) => {
+            if (value === undefined) delete app.state[key]; else app.state[key] = value;
+            app.evaluateAllBindings([key]);
+        };
+        const ORANGE = 'rgb(255, 152, 0)';
+
+        set('var.blanked', true);
+        assert(el.style.backgroundColor === ORANGE, `blanked: lit, got ${el.style.backgroundColor}`);
+        set('ui.blank.bg_color', '#ff0000');
+        set('ui.blank.text_color', '#ffffff');
+        set('ui.blank.label', 'Busy');
+        assert(el.style.backgroundColor === 'rgb(255, 0, 0)', `override: red, got ${el.style.backgroundColor}`);
+        set('ui.blank.bg_color', undefined);
+        assert(el.style.backgroundColor === ORANGE,
+            `override cleared: back to the look's orange, got "${el.style.backgroundColor}"`);
+        assert(el.style.color === 'rgb(255, 255, 255)',
+            `the text colour override still set is still drawn, got "${el.style.color}"`);
+        assert(el.textContent.includes('Busy'),
+            `the label override still set is still drawn, got "${el.textContent}"`);
+        set('ui.blank.text_color', undefined);
+        set('ui.blank.label', undefined);
+        assert(el.style.color === 'rgb(0, 0, 0)',
+            `text colour cleared: the look's black, got "${el.style.color}"`);
+        assert(el.textContent.includes('Blanked'),
+            `label cleared: the look's word, got "${el.textContent}"`);
+
+        // The look moves while the override covers it: what comes back is
+        // where the look is now, not where it was when the override was set.
+        set('ui.blank.bg_color', '#ff0000');
+        set('var.blanked', false);
+        assert(el.style.backgroundColor === 'rgb(255, 0, 0)',
+            `the override outranks the look, got ${el.style.backgroundColor}`);
+        set('ui.blank.bg_color', undefined);
+        assert(el.style.backgroundColor === '',
+            `override cleared after restore: no colour of its own, got "${el.style.backgroundColor}"`);
+        assert(el.textContent.includes('Blank All'),
+            `and its own label, got "${el.textContent}"`);
+    },
 };
 
 const results = {};
