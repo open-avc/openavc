@@ -10,7 +10,10 @@ import {
   cloneDraft,
   DRIVER_YAML_DUMP_OPTIONS,
 } from "./driverBuilderStore.helpers";
-import { secretFieldsInConfig } from "../components/driver-builder/transportPickerHelpers";
+import {
+  connectionFieldsFor,
+  secretFieldsInConfig,
+} from "../components/driver-builder/transportPickerHelpers";
 
 const EMPTY_DEFINITION: DriverDefinition = {
   id: "",
@@ -25,7 +28,7 @@ const EMPTY_DEFINITION: DriverDefinition = {
   // every installed driver, so the delimiter dropdown recognizes it.
   delimiter: "\r",
   default_config: {},
-  config_schema: {},
+  config_schema: connectionFieldsFor("tcp"),
   state_variables: {},
   commands: {},
   responses: [],

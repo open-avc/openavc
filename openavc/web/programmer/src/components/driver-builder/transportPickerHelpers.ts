@@ -74,3 +74,69 @@ export function secretFieldsInConfig(
     (field) => typeof config[field] === "string" && (config[field] as string).length > 0,
   );
 }
+
+type FieldDef = Record<string, unknown>;
+
+const ADDRESS_FIELD: FieldDef = { type: "string", required: true, label: "IP Address" };
+
+/**
+ * The connection fields a driver declares for its transport, so the Add
+ * Device form asks for them: an address and port on the network, the port
+ * on a serial line, nothing for a bridge device (it has no address of its
+ * own). tcp, udp and osc have no port to fall back on, so theirs is
+ * required; http dials 80 or 443 without one. The Builder keeps these out of
+ * its Configuration Fields list, so it is the only thing that writes them.
+ */
+export function connectionFieldsFor(transport: string): Record<string, FieldDef> {
+  switch (transport) {
+    case "tcp":
+    case "udp":
+    case "osc":
+      return {
+        host: { ...ADDRESS_FIELD },
+        port: { type: "integer", required: true, label: "Port" },
+      };
+    case "http":
+      return { host: { ...ADDRESS_FIELD }, port: { type: "integer", label: "Port" } };
+    case "serial":
+      return { port: { type: "string", required: true, label: "Serial Port" } };
+    default:
+      return {};
+  }
+}
+
+function sameField(a: unknown, b: FieldDef): boolean {
+  if (!a || typeof a !== "object") return false;
+  const x = a as FieldDef;
+  const keys = new Set([...Object.keys(x), ...Object.keys(b)]);
+  for (const k of keys) if (x[k] !== b[k]) return false;
+  return true;
+}
+
+/**
+ * config_schema after the transport changes from `from` to `to`. A
+ * connection field still as the Builder wrote it for `from` gives way to the
+ * one `to` needs; a field the author changed is kept. The connection fields
+ * come first, so the Add Device form asks for the address before anything
+ * else.
+ */
+export function switchConnectionFields(
+  schema: Record<string, unknown> | undefined,
+  from: string,
+  to: string,
+): Record<string, unknown> {
+  const rest: Record<string, unknown> = { ...(schema ?? {}) };
+  for (const [key, def] of Object.entries(connectionFieldsFor(from))) {
+    if (sameField(rest[key], def)) delete rest[key];
+  }
+  const first: Record<string, unknown> = {};
+  for (const [key, def] of Object.entries(connectionFieldsFor(to))) {
+    if (key in rest) {
+      first[key] = rest[key];
+      delete rest[key];
+    } else {
+      first[key] = def;
+    }
+  }
+  return { ...first, ...rest };
+}

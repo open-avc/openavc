@@ -7,6 +7,7 @@ import {
   displayDelimiter,
   normalizeDelimiter,
   parseNumericField,
+  switchConnectionFields,
 } from "./transportPickerHelpers";
 
 interface TransportPickerProps {
@@ -92,6 +93,7 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
     }
     onUpdate({
       transport: next,
+      config_schema: switchConnectionFields(draft.config_schema, draft.transport, next),
       commands: scrub.commands,
       ...(scrub.device_settings ? { device_settings: scrub.device_settings } : {}),
       ...(dropTransports ? { transports: undefined } : {}),
