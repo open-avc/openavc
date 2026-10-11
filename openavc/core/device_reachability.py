@@ -22,6 +22,11 @@ control-interface bind. Each probe opens what that transport opens in
 Success means something accepted a connection at that address. It does not
 mean the device there speaks the driver's protocol: whether it answers is the
 device's ``connected`` and ``offline_reason`` state.
+
+A failure the operating system reports (host down, refused, no route) is
+worded by ``core/connection_fault``, the same sentence the device card shows,
+never the raw OS text. While a device is simulated it is connected to the
+simulator, so :func:`run_connection_test` tests the simulator and says so.
 """
 
 from __future__ import annotations
@@ -33,6 +38,11 @@ from typing import Any
 
 import httpx
 
+from openavc.core.connection_fault import (
+    NO_RESPONSE,
+    TRANSPORT_DISCONNECTED,
+    classify_connection_fault,
+)
 from openavc.core.device_config import connection_of, resolve_device_config
 from openavc.transport.endpoint import control_bind_address
 
@@ -56,6 +66,35 @@ _DATAGRAM_NOTE = (
     "only checks that the address resolves and has a route. Whether the "
     "device answers shows in its status."
 )
+
+
+async def run_connection_test(device: Any, engine: Any) -> dict[str, Any]:
+    """Test one project device where it really connects: the device page's
+    Test Connection and the AI's ``test_device_connection`` both ask here.
+
+    While the device is simulated, the simulator is what it is connected to,
+    so that is what is tested, and the result says so (``simulated`` and a
+    ``note`` naming the equipment's own address).
+    """
+    resolved = resolve_device_config(device, engine.project)
+    simulation = getattr(engine, "simulation", None)
+    redirect = simulation.redirect_of(device.id) if simulation is not None else None
+    if not redirect:
+        return await check_reachability(resolved, engine.project)
+    equipment = connection_of(resolved)
+    simulated = {**resolved, "config": {**(resolved.get("config") or {}), **redirect}}
+    result = await check_reachability(simulated, engine.project)
+    where = (
+        f"{equipment.host}:{equipment.port}" if equipment.host and equipment.port
+        else equipment.host or str(equipment.port or "")
+    )
+    result["simulated"] = True
+    result["note"] = (
+        "This device is simulated, so the test reached the simulator, not the "
+        f"equipment at {where}." if where else
+        "This device is simulated, so the test reached the simulator, not the equipment."
+    )
+    return result
 
 
 async def check_reachability(resolved: dict[str, Any], project: Any) -> dict[str, Any]:
@@ -102,7 +141,7 @@ async def check_reachability(resolved: dict[str, Any], project: Any) -> dict[str
             error = await _open_tcp(conn.host, conn.port, cfg)
             note = None
     except Exception as exc:  # a probe reports, it never raises to the door
-        error = str(exc) or type(exc).__name__
+        error = _in_words(exc, conn.host, conn.port, conn.transport)
         note = None
 
     if error is not None:
@@ -116,6 +155,18 @@ async def check_reachability(resolved: dict[str, Any], project: Any) -> dict[str
     if note:
         result["note"] = note
     return result
+
+
+def _in_words(exc: BaseException, host: str, port: Any, transport: str) -> str:
+    """The classifier's sentence for a failed probe, the one the device card
+    shows. Its fallbacks describe a connection that dropped while in use,
+    which a test never had, so those keep the error's own text."""
+    fault = classify_connection_fault(
+        last_error=None, exc=exc, host=host, port=port, transport=transport,
+    )
+    if fault.code in (NO_RESPONSE, TRANSPORT_DISCONNECTED):
+        return str(exc) or type(exc).__name__
+    return fault.message
 
 
 def _failure(error: str, address: dict[str, Any]) -> dict[str, Any]:
@@ -167,7 +218,7 @@ async def _open_tcp(host: str, port: Any, cfg: dict[str, Any]) -> str | None:
     except asyncio.TimeoutError:
         return f"Connection timed out ({_CONNECT_TIMEOUT_S:g}s)"
     except OSError as exc:
-        return str(exc)
+        return _in_words(exc, host, port, "tcp")
     writer.close()
     try:
         await writer.wait_closed()
@@ -193,7 +244,7 @@ async def _point_datagram_socket(host: str, port: Any, cfg: dict[str, Any]) -> s
                 sock.bind((bind, 0))
             sock.connect(sockaddr)
     except OSError as exc:
-        return str(exc)
+        return _in_words(exc, host, port, "udp")
     return None
 
 
@@ -215,7 +266,7 @@ async def _head(host: str, port: Any, cfg: dict[str, Any]) -> str | None:
         async with httpx.AsyncClient(**kwargs) as client:
             await client.head(url)
     except (httpx.HTTPError, OSError, ValueError) as exc:
-        return str(exc) or type(exc).__name__
+        return _in_words(exc, host, port, "http")
     return None
 
 
@@ -235,5 +286,5 @@ async def _open_serial(cfg: dict[str, Any]) -> str | None:
     try:
         await asyncio.to_thread(_probe)
     except (OSError, ValueError) as exc:
-        return str(exc)
+        return _in_words(exc, "", serial_port, "serial")
     return None

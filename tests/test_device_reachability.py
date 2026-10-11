@@ -340,3 +340,68 @@ async def test_a_transport_fallback_port_matches_what_the_driver_dials(
         "id": "fb", "driver": cls.DRIVER_INFO["id"], "config": resolved_config,
     }).port
     assert reported == dialed["port"]
+
+
+# --- what a failure says ---------------------------------------------------
+
+async def test_an_os_error_reads_in_the_classifiers_words(drivers, monkeypatch):
+    """The raw "[Errno 64] Host is down" is OS text; the device card already
+    says the same thing in words an integrator acts on."""
+    import errno
+
+    async def refuse(*_args: Any, **_kwargs: Any) -> Any:
+        raise OSError(errno.EHOSTDOWN, "Host is down")
+
+    monkeypatch.setattr(asyncio, "open_connection", refuse)
+    drivers("acme_reach_down", "tcp", {"port": 4000})
+    device = DeviceConfig(id="d1", driver="acme_reach_down", name="D1", config={})
+    project = _project(device, connections={"d1": {"host": "10.9.8.7"}})
+
+    result = await _test(device, project)
+
+    assert result["success"] is False
+    assert result["error"] == "Can't reach 10.9.8.7:4000. Check the IP address and network."
+
+
+# --- a simulated device ------------------------------------------------------
+
+async def test_a_simulated_device_tests_the_simulator_and_says_so(drivers, listener, monkeypatch):
+    """While simulated, the device is connected to the simulator: testing its
+    real address timed out beside a device that read online."""
+    drivers("acme_reach_sim", "tcp", {"port": 9})
+    device = DeviceConfig(id="sim1", driver="acme_reach_sim", name="S1", config={})
+    project = _project(device, connections={"sim1": {"host": "10.255.255.1"}})
+    simulation = SimpleNamespace(
+        redirect_of=lambda device_id: {"host": "127.0.0.1", "port": listener.port}
+        if device_id == "sim1" else None,
+    )
+    monkeypatch.setattr(
+        devices_routes, "_get_engine",
+        lambda: SimpleNamespace(project=project, simulation=simulation),
+    )
+
+    result = await devices_routes.test_device_connection("sim1")
+
+    assert result["success"] is True, result
+    assert result["connection"]["port"] == listener.port
+    assert result["simulated"] is True
+    assert result["note"] == (
+        "This device is simulated, so the test reached the simulator, "
+        "not the equipment at 10.255.255.1:9."
+    )
+    assert listener.accepted == [1]
+
+
+def test_the_simulation_reports_where_a_redirected_device_connects():
+    from openavc.core.simulation import SimulationManager
+
+    live = SimpleNamespace(config={"host": "10.0.0.5", "port": 23})
+    manager = SimulationManager(
+        engine=SimpleNamespace(devices=SimpleNamespace(_devices={"tv1": live}))
+    )
+    assert manager.redirect_of("tv1") is None
+
+    manager._apply_sim_redirect(live, "tv1", 19007)
+
+    assert manager.redirect_of("tv1") == {"host": "127.0.0.1", "port": 19007}
+    assert manager.redirect_of("other") is None

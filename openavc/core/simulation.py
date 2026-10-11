@@ -323,6 +323,22 @@ class SimulationManager:
         not the equipment's (a learned config value is never saved from it)."""
         return device_id in self._original_configs
 
+    def redirect_of(self, device_id: str) -> dict[str, Any] | None:
+        """Where a redirected device connects now (the connection settings
+        the redirect wrote into its live config), or None when it is not
+        redirected. The connection test dials this instead of the device's
+        own address."""
+        if device_id not in self._original_configs:
+            return None
+        driver = self.engine.devices._devices.get(device_id)
+        if driver is None:
+            return None
+        return {
+            key: driver.config[key]
+            for key in ("host", "port", "transport", "ssl", "verify_ssl")
+            if key in driver.config
+        }
+
     async def start(self, device_ids: list[str] | None = None) -> dict:
         """Start simulation for the specified devices (or all devices).
 

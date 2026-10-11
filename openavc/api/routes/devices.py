@@ -338,8 +338,7 @@ async def test_device_connection(device_id: str) -> dict[str, Any]:
     answers with the address it tried.
     """
     _rate_limit_test(f"test_device:{device_id}")
-    from openavc.core.device_config import resolve_device_config
-    from openavc.core.device_reachability import check_reachability
+    from openavc.core.device_reachability import run_connection_test
 
     engine = _get_engine()
     if not engine.project:
@@ -348,9 +347,7 @@ async def test_device_connection(device_id: str) -> dict[str, Any]:
     device = next((d for d in engine.project.devices if d.id == device_id), None)
     if device is None:
         raise HTTPException(status_code=404, detail=f"Device '{device_id}' not found")
-    return await check_reachability(
-        resolve_device_config(device, engine.project), engine.project
-    )
+    return await run_connection_test(device, engine)
 
 
 @router.post("/devices/{device_id}/reconnect")

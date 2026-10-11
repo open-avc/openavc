@@ -687,13 +687,15 @@ export interface DeviceAddress {
 
 // POST /devices/{id}/test. `connection` is the address that was tried;
 // `note` says what a success did not prove (a UDP device has no connection
-// to open).
+// to open), or that a simulated device's test reached the simulator
+// (`simulated`).
 export interface DeviceConnectionTest {
   success: boolean;
   error: string | null;
   latency_ms: number | null;
   connection?: DeviceAddress;
   note?: string;
+  simulated?: boolean;
 }
 
 export interface DeviceInfo {

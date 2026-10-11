@@ -10,7 +10,7 @@ import { useLogStore } from "../../store/logStore";
 import * as api from "../../api/restClient";
 import { getAuditDeviceTarget } from "../../api/auditClient";
 import { useAuditStore } from "../../store/auditStore";
-import type { BridgePort, DeviceConfig, DeviceConnectionTest, DeviceInfo, DeviceSettingValue, DriverParamDef } from "../../api/types";
+import type { BridgePort, DeviceConfig, DeviceInfo, DeviceSettingValue, DriverParamDef } from "../../api/types";
 import { CommandParamForm } from "../../components/shared/CommandParamForm";
 import {
   commandConfirmMessage,
@@ -39,6 +39,7 @@ import { IrCodesEditor } from "./IrCodesEditor";
 import { ConfigTableEditor } from "./ConfigTableEditor";
 import { BridgeIrPort } from "./BridgeIrPort";
 import { parseApiError } from "../../api/errors";
+import { useConnectionTestResult } from "./useConnectionTestResult";
 
 export function DeviceDetail({
   deviceId,
@@ -67,7 +68,6 @@ export function DeviceDetail({
   const [confirmSend, setConfirmSend] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [testResult, setTestResult] = useState<DeviceConnectionTest | null>(null);
   const [testing, setTesting] = useState(false);
   // Why "Audit this device" could not start (a device on a serial port, say).
   const [auditRefusal, setAuditRefusal] = useState("");
@@ -106,6 +106,7 @@ export function DeviceDetail({
   // connect, so info fetched while the device was offline goes stale the
   // moment it comes up (and vice versa).
   const connected = Boolean(liveState[`device.${deviceId}.connected`]);
+  const [testResult, setTestResult] = useConnectionTestResult(deviceId, connected);
   useEffect(() => {
     refetchDeviceInfo();
   }, [refetchDeviceInfo, connected]);

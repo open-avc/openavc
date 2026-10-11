@@ -320,8 +320,7 @@ class DeviceToolsMixin:
         # The same test as the device page's Test Connection, at the address
         # the device manager dials: the driver's default port, the device's
         # config and the connections table, layered.
-        from openavc.core.device_config import resolve_device_config
-        from openavc.core.device_reachability import check_reachability
+        from openavc.core.device_reachability import run_connection_test
 
         device_id = input.get("device_id", "")
         engine = self._get_engine()
@@ -331,7 +330,7 @@ class DeviceToolsMixin:
         device = next((d for d in engine.project.devices if d.id == device_id), None)
         if device is None:
             return {"success": False, "error": f"Device '{device_id}' not found", "latency_ms": None}
-        return await check_reachability(resolve_device_config(device, engine.project), engine.project)
+        return await run_connection_test(device, engine)
 
     async def _get_device_settings(self, input: dict) -> Any:
         engine = self._get_engine()
