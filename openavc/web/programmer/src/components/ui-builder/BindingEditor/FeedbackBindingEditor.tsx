@@ -530,12 +530,14 @@ export function FeedbackBindingEditor({
                 )}
 
                 {/* Appearance editors */}
-                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
                   <span style={colorLabelStyle}>Background</span>
                   <InlineColorPicker
                     value={String(appearance.bg_color || "")}
                     onChange={(c) => handleUpdateStateAppearance(sk, { bg_color: c })}
                   />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
                   <span style={colorLabelStyle}>Text</span>
                   <InlineColorPicker
                     value={String(appearance.text_color || "")}
@@ -558,12 +560,15 @@ export function FeedbackBindingEditor({
                     value={String(appearance.icon || "")}
                     onChange={(v) => handleUpdateStateAppearance(sk, { icon: v || undefined })}
                   />
-                  {!!appearance.icon && (
-                    <InlineColorPicker clearable
-                      value={String(appearance.icon_color || "")}
-                      onChange={(c) => handleUpdateStateAppearance(sk, { icon_color: c || undefined })}
-                    />
-                  )}
+                </div>
+                )}
+                {showIconField && !!appearance.icon && (
+                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+                  <span style={colorLabelStyle}>Icon color</span>
+                  <InlineColorPicker clearable
+                    value={String(appearance.icon_color || "")}
+                    onChange={(c) => handleUpdateStateAppearance(sk, { icon_color: c || undefined })}
+                  />
                 </div>
                 )}
                 {showImageField && (
@@ -706,6 +711,8 @@ export function FeedbackBindingEditor({
                 value={styleActive.bg_color || ""}
                 onChange={(c) => handleChange({ style_active: { ...styleActive, bg_color: c } })}
               />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
               <span style={colorLabelStyle}>Text</span>
               <InlineColorPicker
                 value={styleActive.text_color || ""}
@@ -730,12 +737,15 @@ export function FeedbackBindingEditor({
                 value={styleActive.icon || ""}
                 onChange={(v) => handleChange({ style_active: { ...styleActive, icon: v || undefined } })}
               />
-              {styleActive.icon && (
-                <InlineColorPicker clearable
-                  value={styleActive.icon_color || ""}
-                  onChange={(c) => handleChange({ style_active: { ...styleActive, icon_color: c || undefined } })}
-                />
-              )}
+            </div>
+            )}
+            {showIconField && styleActive.icon && (
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+              <span style={colorLabelStyle}>Icon color</span>
+              <InlineColorPicker clearable
+                value={styleActive.icon_color || ""}
+                onChange={(c) => handleChange({ style_active: { ...styleActive, icon_color: c || undefined } })}
+              />
             </div>
             )}
             {showImageField && (
@@ -775,6 +785,8 @@ export function FeedbackBindingEditor({
                 value={styleInactive.bg_color || ""}
                 onChange={(c) => handleChange({ style_inactive: { ...styleInactive, bg_color: c } })}
               />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
               <span style={colorLabelStyle}>Text</span>
               <InlineColorPicker
                 value={styleInactive.text_color || ""}
@@ -799,12 +811,15 @@ export function FeedbackBindingEditor({
                 value={styleInactive.icon || ""}
                 onChange={(v) => handleChange({ style_inactive: { ...styleInactive, icon: v || undefined } })}
               />
-              {styleInactive.icon && (
-                <InlineColorPicker clearable
-                  value={styleInactive.icon_color || ""}
-                  onChange={(c) => handleChange({ style_inactive: { ...styleInactive, icon_color: c || undefined } })}
-                />
-              )}
+            </div>
+            )}
+            {showIconField && styleInactive.icon && (
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+              <span style={colorLabelStyle}>Icon color</span>
+              <InlineColorPicker clearable
+                value={styleInactive.icon_color || ""}
+                onChange={(c) => handleChange({ style_inactive: { ...styleInactive, icon_color: c || undefined } })}
+              />
             </div>
             )}
             {showImageField && (
