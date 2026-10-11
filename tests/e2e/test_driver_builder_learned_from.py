@@ -122,5 +122,8 @@ def test_a_learned_setting_with_labelled_choices_in_the_builder_and_add_device(
     expect(zones).to_be_visible(timeout=EXPECT_TIMEOUT)
     expect(zones.locator("option")).to_have_text(["Select...", "Two zones", "Four zones"])
     expect(zones).to_have_value("4")
-    expect(page.get_by_text("Filled in from the device when it connects.")).to_be_visible()
+    # The setting is marked beside its label, the sentence kept as the tag's tooltip.
+    marker = page.get_by_text("From the device", exact=True)
+    expect(marker).to_be_visible()
+    expect(marker).to_have_attribute("title", "Filled in from the device when it connects.")
     assert not errors, errors
