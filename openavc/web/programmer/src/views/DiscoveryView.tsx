@@ -34,6 +34,8 @@ import { showError } from "../store/toastStore";
 import {
   bannerDisplayText,
   mergePortLabels,
+  openPortLabel,
+  projectDeviceAtAddress,
   snmpCommunityField,
 } from "./discoveryViewHelpers";
 import { describeEvidence, EvidenceList } from "./discoveryEvidence";
@@ -277,7 +279,7 @@ export function DiscoveryPanel() {
         else if (r.status === "complete") setStatus("complete");
         else if (r.status === "partial") setStatus("partial");
       }
-      if (r.port_labels) setPortLabels(r.port_labels);
+      if (r.port_labels) setPortLabels(r.port_labels, r.port_drivers);
       if (r.warnings) setWarnings(r.warnings);
     }).catch(console.error);
     api.getSystemConfig().then((cfg) => {
@@ -332,7 +334,7 @@ export function DiscoveryPanel() {
     api.discoveryGetResults().then((r) => {
       if (dropped) return;
       setDevices(r.devices);
-      if (r.port_labels) setPortLabels(r.port_labels);
+      if (r.port_labels) setPortLabels(r.port_labels, r.port_drivers);
       if (r.warnings) setWarnings(r.warnings);
     }).catch(console.error);
     return () => { dropped = true; };
@@ -978,6 +980,15 @@ function DeviceCard({
     setAddedDevice(info);
     useProjectStore.getState().load().catch(console.error);
   }, []);
+  const portDrivers = useDiscoveryStore((s) => s.portDrivers);
+  // A device the project already connects to, found from the project itself
+  // so a reload still knows it was added.
+  const inProjectId = useProjectStore((s) =>
+    projectDeviceAtAddress(s.project, device.ip, device.hostname),
+  );
+  const inProjectName = useProjectStore((s) =>
+    inProjectId ? s.project?.devices.find((d) => d.id === inProjectId)?.name ?? null : null,
+  );
 
   const ident = device.identification;
   const state: DeviceState = ident?.state ?? "unknown";
@@ -995,10 +1006,6 @@ function DeviceCard({
       : device.device_name ??
         (device.manufacturer ? `${device.manufacturer} Device` : "Unknown Device");
   })();
-
-  const protocolTag = device.protocols.length > 0
-    ? device.protocols[0].replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
-    : null;
 
   // A banner is raw bytes off the wire, and the protocol chatter around it
   // was never text (see the banner helpers). Keep the ports whose greeting
@@ -1073,20 +1080,6 @@ function DeviceCard({
           </span>
         )}
 
-        {protocolTag && (
-          <span
-            style={{
-              fontSize: "var(--font-size-xs)",
-              padding: "2px 6px",
-              borderRadius: "var(--radius)",
-              background: "var(--accent-bg)",
-              color: "var(--bg-main)",
-            }}
-          >
-            {protocolTag}
-          </span>
-        )}
-
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); hidden ? onUnhide() : onHide(); }}
@@ -1130,6 +1123,15 @@ function DeviceCard({
                   Go to Device &rarr;
                 </button>
               )}
+            </div>
+          ) : inProjectId ? (
+            <div style={{ color: "var(--success)", display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
+              <span>In the project as "{inProjectName ?? inProjectId}".</span>
+              <button className="btn btn-sm btn-primary" onClick={() => {
+                useNavigationStore.getState().navigateTo("devices", { type: "device", id: inProjectId });
+              }}>
+                Go to Device &rarr;
+              </button>
             </div>
           ) : (
             <IdentificationSection
@@ -1187,16 +1189,17 @@ function DeviceCard({
             {device.firmware && <DetailRow label="Firmware" value={device.firmware} />}
             {device.serial_number && <DetailRow label="Serial Number" value={device.serial_number} />}
             <DetailRow label="Category" value={categoryLabel(device.category)} />
-            <DetailRow
-              label="Protocols"
-              value={device.protocols.length > 0 ? device.protocols.join(", ") : "None identified"}
-            />
           </div>
 
           <div>
             <strong>Open Ports:</strong>{" "}
             {device.open_ports.length > 0
-              ? device.open_ports.map((p) => `${p} (${portLabels[p] ?? "unknown"})`).join(", ")
+              ? device.open_ports
+                  .map((p) => `${p} (${openPortLabel(
+                    p, portLabels, portDrivers, ident?.driver_id ?? undefined,
+                    (id) => driverNameLookup.get(id)?.name,
+                  )})`)
+                  .join(", ")
               : "None detected"}
           </div>
 

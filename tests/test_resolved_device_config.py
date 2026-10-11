@@ -892,3 +892,34 @@ async def test_a_driver_with_no_mac_setting_gets_no_mac(
     result = await add_device(AddDeviceRequest(ip="192.0.2.63", driver_id="fake_disco_test"))
     saved = next(d for d in engine.project.devices if d.id == result["device_id"])
     assert "mac_address" not in saved.config
+
+
+@pytest.mark.parametrize(
+    ("scanned", "expected"),
+    [
+        # The maker and model the scan read, the maker added once.
+        ({"manufacturer": "Acme", "model": "WX-100"}, "Acme WX-100"),
+        ({"manufacturer": "Acme", "model": "Acme WX-100"}, "Acme WX-100"),
+        # No model read: the driver's name, never the address.
+        ({"manufacturer": "Acme"}, "Fake Discovery Device (test)"),
+        ({"manufacturer": "Acme", "device_name": "Lobby amp"}, "Fake Discovery Device (test)"),
+    ],
+)
+async def test_discovery_add_device_names_the_device_one_way(
+    tmp_path, noop_discovery_driver, monkeypatch, scanned, expected
+):
+    """A device added from a scan is named the same way whatever the scan
+    managed to read: one with a model was "WX-100" and one without was
+    "Acme (192.0.2.60)", side by side in the same project."""
+    from openavc.api import discovery as discovery_api
+    from openavc.api.discovery import AddDeviceRequest, add_device
+    from openavc.discovery.result import DiscoveredDevice
+
+    engine = _wire_add_device_env(tmp_path, monkeypatch)
+    discovery_api._engine.results["192.0.2.60"] = DiscoveredDevice(ip="192.0.2.60", **scanned)
+
+    result = await add_device(AddDeviceRequest(ip="192.0.2.60", driver_id="fake_disco_test"))
+
+    assert result["status"] == "ok"
+    assert result["name"] == expected
+    assert engine.project.devices[-1].name == expected

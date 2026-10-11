@@ -82,15 +82,22 @@ async def refresh_all_device_matches() -> None:
                 pass
 
 
-async def _build_port_labels(engine: DiscoveryEngine) -> dict[str, str]:
-    """Build port label map from baseline + driver hints + community catalog.
+async def _build_port_labels(
+    engine: DiscoveryEngine,
+) -> tuple[dict[str, str], dict[str, list[str]]]:
+    """Port labels for the device cards, and the drivers that claim each port.
 
-    The frontend uses this to display port descriptions next to open ports.
     Vendor-specific labels come from drivers (which declare ports via
     ``tcp_probe.port`` and ``port_open``) and from the community catalog
     for un-installed drivers. The baseline labels the universal generic
     ports (SSH, Telnet, HTTP, HTTPS, HTTP-alt) — these stay generic so
     they don't get stomped by a driver that happens to probe HTTP.
+
+    A port only one driver declares carries that driver's name. A port
+    several declare belongs to none of them in particular: it is labelled
+    by their shared manufacturer, or by the drivers themselves, and the
+    second map (port -> driver ids) lets a card name the device's own
+    driver when it is one of them.
     """
     from openavc.discovery.port_scanner import BASELINE_PORTS
 
@@ -108,25 +115,47 @@ async def _build_port_labels(engine: DiscoveryEngine) -> dict[str, str]:
     for port in BASELINE_PORTS:
         labels[str(port)] = baseline_labels.get(port, f"Port {port}")
 
-    # Loaded drivers: contribute their declared probe / open-port ports
-    # with the driver's display name. ``setdefault`` keeps the generic
-    # baseline label for shared ports (HTTP/HTTPS/etc.).
+    # port -> driver id -> (display name, manufacturer). Loaded drivers
+    # first, then the community catalog for drivers the user hasn't
+    # installed yet; a driver in both counts once.
+    claims: dict[int, dict[str, tuple[str, str]]] = {}
+
+    def claim(port: object, driver_id: str, name: str, manufacturer: str) -> None:
+        if not isinstance(port, int) or port in BASELINE_PORTS:
+            return
+        claims.setdefault(port, {}).setdefault(driver_id, (name, manufacturer))
+
     for hint in engine.discovery_hints:
         name = hint.driver_name or hint.driver_id
         if hint.tcp_probe is not None:
-            labels.setdefault(str(hint.tcp_probe.port), name)
+            claim(hint.tcp_probe.port, hint.driver_id, name, hint.manufacturer)
         for p in hint.port_open:
-            labels.setdefault(str(p), name)
+            claim(p, hint.driver_id, name, hint.manufacturer)
 
-    # Community catalog: fill in ports for drivers the user hasn't
-    # installed yet so the device card still labels them.
     community_drivers = await engine.community_index.get_drivers()
     for drv in community_drivers:
+        driver_id = str(drv.get("id") or "")
+        if not driver_id:
+            continue
         for p in drv.get("ports", []):
-            if isinstance(p, int):
-                labels.setdefault(str(p), drv.get("name", f"Port {p}"))
+            claim(p, driver_id, str(drv.get("name") or driver_id),
+                  str(drv.get("manufacturer") or ""))
 
-    return labels
+    port_drivers: dict[str, list[str]] = {}
+    for port, by_driver in claims.items():
+        port_drivers[str(port)] = sorted(by_driver)
+        names = [by_driver[d][0] for d in sorted(by_driver)]
+        makers = {by_driver[d][1] for d in by_driver}
+        if len(names) == 1:
+            labels[str(port)] = names[0]
+        elif len(makers) == 1 and "" not in makers:
+            labels[str(port)] = makers.pop()
+        elif len(names) == 2:
+            labels[str(port)] = f"{names[0]} or {names[1]}"
+        else:
+            labels[str(port)] = f"{len(names)} drivers"
+
+    return labels, port_drivers
 
 
 # --- Request models ---
@@ -288,7 +317,7 @@ async def get_results(
         devices.sort(key=lambda d: (d.get("category") or "zzz").lower())
     # Default: identified > possible > unknown (engine handles ordering)
 
-    port_labels = await _build_port_labels(engine)
+    port_labels, port_drivers = await _build_port_labels(engine)
 
     status = engine.get_status()
     return {
@@ -300,6 +329,7 @@ async def get_results(
         "total_devices": len(devices),
         "scan_duration_seconds": status["duration"],
         "port_labels": port_labels,
+        "port_drivers": port_drivers,
         "warnings": status["warnings"],
     }
 
@@ -389,6 +419,28 @@ def _sanitize_add_device_config(config: dict[str, Any]) -> dict[str, Any]:
     return clean
 
 
+def _discovered_device_name(discovered: Any, driver_id: str) -> str:
+    """The name a device added from a scan gets in the project.
+
+    Its maker and model as the scan read them, else its driver's name, so
+    devices added side by side read alike whatever each scan managed to
+    read. The name a device gave itself comes last: a factory default
+    ("DeviceName") is common there.
+    """
+    if discovered is not None and discovered.model:
+        maker = discovered.manufacturer or ""
+        if maker and maker.lower() not in discovered.model.lower():
+            return f"{maker} {discovered.model}"
+        return discovered.model
+    cls = get_driver_class(driver_id)
+    driver_name = (getattr(cls, "DRIVER_INFO", {}) or {}).get("name") if cls else None
+    if isinstance(driver_name, str) and driver_name.strip():
+        return driver_name.strip()
+    if discovered is not None and discovered.device_name:
+        return discovered.device_name
+    return driver_id
+
+
 # The setting a driver keeps a device's MAC address in, by name, the way
 # ``host`` is the setting the scanned address goes into.
 SCANNED_MAC_FIELD = "mac_address"
@@ -453,12 +505,7 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
             detail=f"Device '{device_id}' is already in the project",
         )
 
-    # Use provided name, or build one from discovery info
-    name = req.name
-    if not name and discovered:
-        name = discovered.model or discovered.device_name or f"{discovered.manufacturer or 'Device'} ({req.ip})"
-    if not name:
-        name = f"{req.driver_id} ({req.ip})"
+    name = req.name or _discovered_device_name(discovered, req.driver_id)
     # Sanitize: strip HTML, collapse whitespace, limit length
     name = re.sub(r"<[^>]+>", "", name)
     name = " ".join(name.split())[:128]

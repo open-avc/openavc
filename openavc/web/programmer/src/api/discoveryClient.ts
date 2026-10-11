@@ -57,6 +57,8 @@ export interface DiscoveryScanResult {
   total_devices: number;
   scan_duration_seconds: number;
   port_labels?: Record<string, string>;
+  /** The drivers that declare each port: port -> driver ids */
+  port_drivers?: Record<string, string[]>;
   /** Environment problems that kept scan phases from working */
   warnings?: string[];
 }

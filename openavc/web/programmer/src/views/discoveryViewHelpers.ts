@@ -27,6 +27,43 @@ export function mergePortLabels(dynamic: Record<number | string, string>): Recor
   return merged;
 }
 
+// The label beside one of a scanned device's open ports. A port several
+// drivers claim carries a shared label (their maker, or the drivers); on a
+// device identified as one of them it names that driver instead.
+export function openPortLabel(
+  port: number,
+  labels: Record<number, string>,
+  portDrivers: Record<string, string[]>,
+  identifiedDriverId: string | undefined,
+  driverName: (driverId: string) => string | undefined,
+): string {
+  if (identifiedDriverId && (portDrivers[String(port)] ?? []).includes(identifiedDriverId)) {
+    const name = driverName(identifiedDriverId);
+    if (name) return name;
+  }
+  return labels[port] ?? "unknown";
+}
+
+// The id of the project device that connects to a scanned address (its IP,
+// or the hostname the scan read), or null. A device's address is in the
+// project's connections table; an older project may still hold it in the
+// device's own config.
+export function projectDeviceAtAddress(
+  project: { devices: { id: string; config?: Record<string, unknown> }[];
+             connections?: Record<string, Record<string, unknown>> } | null | undefined,
+  ip: string,
+  hostname: string | null | undefined,
+): string | null {
+  if (!project) return null;
+  const wanted = new Set([ip.toLowerCase()]);
+  if (hostname) wanted.add(hostname.toLowerCase());
+  for (const d of project.devices) {
+    const host = project.connections?.[d.id]?.host ?? d.config?.host;
+    if (typeof host === "string" && wanted.has(host.trim().toLowerCase())) return d.id;
+  }
+  return null;
+}
+
 // The snmp_community field for a scan/save payload. The stored community is
 // a credential the config endpoint never returns, so a blank input means
 // "keep the stored value" and the field must be omitted entirely (undefined
