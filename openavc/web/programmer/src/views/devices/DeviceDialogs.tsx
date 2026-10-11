@@ -1536,7 +1536,7 @@ export function EditDeviceDialog({
 
         {driverInfo?.manufacturer_installed && (
           <p style={{ color: "var(--text-secondary)", marginBottom: "var(--space-md)" }}>
-            Use this product's built-in equipment for this device. Its device ID and existing programming
+            Use this product's hardware for this device. Its device ID and existing programming
             stay in the project. Review the controls for the new equipment before running the system.
           </p>
         )}

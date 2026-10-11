@@ -7,9 +7,9 @@ export function InstalledEquipment({ deviceId, name }: { deviceId: string; name:
   const [label, setLabel] = useState(name);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
-  return <section aria-label="Built-in equipment" style={{ padding: 14, background: "var(--bg-secondary)", borderRadius: 8 }}>
-    <strong>Built-in equipment</strong>
-    <p style={{ margin: "6px 0 12px", color: "var(--text-secondary)" }}>Installed by the manufacturer. Available in every project. Disable stops OpenAVC control in this project; it does not turn off the equipment.</p>
+  return <section aria-label="Product hardware" style={{ padding: 14, background: "var(--bg-secondary)", borderRadius: 8 }}>
+    <strong>Product hardware</strong>
+    <p style={{ margin: "6px 0 12px", color: "var(--text-secondary)" }}>The hardware of the product running this OpenAVC server. It is available in every project and cannot be removed. Disable stops OpenAVC control in this project; the product keeps operating.</p>
     <form onSubmit={async (event) => {
       event.preventDefault(); setSaving(true); setMessage("");
       try {

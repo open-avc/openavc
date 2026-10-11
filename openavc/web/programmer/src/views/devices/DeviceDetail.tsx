@@ -426,7 +426,7 @@ export function DeviceDetail({
           <button
             onClick={() => void handleAudit()}
             disabled={openingAudit || installed}
-            title={installed ? "Built-in equipment uses a local connection. Network audit is unavailable for this connection." : "Check this device in detail and write a report about it"}
+            title={installed ? "Product hardware uses a local connection. Network audit is unavailable for this connection." : "Check this device in detail and write a report about it"}
             style={{
               display: "flex",
               alignItems: "center",
@@ -1906,7 +1906,7 @@ function OrphanBanner({
       }}
     >
       <div style={{ fontWeight: 600, marginBottom: "var(--space-sm)", color: "#ef4444", fontSize: "var(--font-size-md)" }}>
-        {builtIn ? "Built-in equipment unavailable" : "Driver Not Installed"}
+        {builtIn ? "Product hardware unavailable" : "Driver Not Installed"}
       </div>
       <div style={{ fontSize: "var(--font-size-sm)", marginBottom: "var(--space-md)" }}>
         {builtIn ? <BuiltInEquipmentNotice /> : <>This device needs the driver "{driverId}" which is not installed.</>}

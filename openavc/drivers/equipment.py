@@ -197,7 +197,7 @@ class EquipmentDriver(BaseDriver):
             info = description["capabilities"]
             if local and self.config.get("integration") != info.get("id"):
                 raise ConnectionFaultError(
-                    "The built-in equipment model does not match the product firmware configuration.",
+                    "The product hardware model does not match the product firmware configuration.",
                     code="invalid_config",
                 )
             issues = python_driver_info_issues(info, overrides_set_device_setting=True)

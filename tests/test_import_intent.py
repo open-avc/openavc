@@ -59,7 +59,7 @@ async def test_import_intent_preserves_bindings_but_edit_cannot_replace_equipmen
     before = engine.project_path.read_bytes()
     rejected = await client.put("/api/project", json=document(builtin=builtin), headers={"If-Match": etag})
     assert rejected.status_code == 409
-    assert "cannot be removed or replaced" in rejected.json()["detail"]
+    assert "cannot be removed or assigned a different driver" in rejected.json()["detail"]
     assert engine.project_path.read_bytes() == before
     accepted = await client.put("/api/project?mode=import", json=document(builtin=builtin), headers={"If-Match": etag})
     assert accepted.status_code == 200
@@ -80,7 +80,7 @@ async def test_wrong_equipment_is_a_validation_reason_not_a_revision_conflict(ri
     before = engine.project_path.read_bytes()
     response = await client.put("/api/project?mode=import", json=document(builtin=True, model="acme_switcher"))
     assert response.status_code == 422
-    assert "different built-in equipment model" in response.json()["detail"]
+    assert "different product hardware model" in response.json()["detail"]
     assert engine.project_path.read_bytes() == before
     assert engine.installed_equipment.owns("local")
 

@@ -515,7 +515,7 @@ export function DeviceView() {
               </button>
               {[...selectedIds].some(id => !removableIds.has(id)) && (
                 <span role="status" style={{ color: "var(--text-secondary)" }}>
-                  Delete is unavailable while the selection includes built-in equipment or device details are loading.
+                  Delete is unavailable while the selection includes product hardware or device details are loading.
                 </span>
               )}
               <span style={{ color: "var(--border-color)" }}>|</span>

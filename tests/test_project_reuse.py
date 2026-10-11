@@ -129,5 +129,5 @@ def test_different_model_preserves_foreign_programming_without_using_host_hardwa
 
 
 def test_missing_manufacturer_model_is_not_guessed():
-    with pytest.raises(InstalledEquipmentError, match="no built-in equipment model"):
+    with pytest.raises(InstalledEquipmentError, match="no product hardware model"):
         InstalledEquipment({"device_id": "local", "identity": "unit-a", "name": "Amplifier"})

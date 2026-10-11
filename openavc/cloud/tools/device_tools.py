@@ -89,7 +89,7 @@ class DeviceToolsMixin:
         policy = getattr(engine, "installed_equipment", None)
         if policy and policy.manifest and input.get("driver") == policy.driver_id and not policy.owns(device_id):
             if input.get("config"):
-                return {"error": "Built-in equipment uses its manufacturer connection. Select it without connection overrides."}
+                return {"error": "Product hardware uses its manufacturer connection. Select it without connection overrides."}
             try:
                 await engine.reassign_installed_equipment(device_id, name=input.get("name"), enabled=input.get("enabled"))
             except ValueError as error:

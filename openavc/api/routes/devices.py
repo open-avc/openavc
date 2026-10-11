@@ -206,7 +206,7 @@ async def update_device(device_id: str, body: DeviceUpdateRequest) -> dict[str, 
     policy = engine.installed_equipment
     if policy.manifest and body.driver == policy.driver_id and not policy.owns(device_id):
         if body.config or body.child_entities is not None:
-            raise HTTPException(status_code=422, detail="Built-in equipment uses its manufacturer connection. Select it without connection overrides.")
+            raise HTTPException(status_code=422, detail="Product hardware uses its manufacturer connection. Select it without connection overrides.")
         name = _sanitize_device_name(body.name) if body.name is not None else None
         if name is not None and not name:
             raise HTTPException(status_code=422, detail="Device name cannot be blank")

@@ -9,7 +9,7 @@ from pathlib import Path
 def model_driver_id(model):
     """Model registration identity, independent of the physical unit and firmware build."""
     if not isinstance(model, str) or not model.strip():
-        raise InstalledEquipmentError("The product firmware has no built-in equipment model configured.")
+        raise InstalledEquipmentError("The product firmware has no product hardware model configured.")
     return "openavc_builtin_" + hashlib.sha256(model.encode("utf-8")).hexdigest()
 
 
@@ -47,7 +47,7 @@ class InstalledEquipment:
             isinstance(self.manifest.get("integration"), str)
             and self.manifest["integration"].strip()
         ):
-            raise InstalledEquipmentError("The product firmware has no built-in equipment model configured.")
+            raise InstalledEquipmentError("The product firmware has no product hardware model configured.")
 
         self.driver_id = model_driver_id(self.manifest["integration"]) if self.manifest else None
 
@@ -89,12 +89,12 @@ class InstalledEquipment:
                 continue
             if reassigned == before.id:
                 if sum(self.matches(device) for device in proposed.devices) != 1:
-                    raise InstalledEquipmentError("The project must retain its built-in equipment.")
+                    raise InstalledEquipmentError("The project must retain its product hardware.")
                 continue
             after = next((d for d in proposed.devices if d.id == before.id), None)
             if after is None or not self.matches(after):
                 raise InstalledEquipmentError(
-                    "This equipment is installed by the manufacturer and cannot be removed or replaced."
+                    "This is the hardware of the product running OpenAVC. It cannot be removed or assigned a different driver. Disable it to stop control in this project."
                 )
 
     def reassign(self, project, source_id, target_info, scripts_dir):
@@ -111,7 +111,7 @@ class InstalledEquipment:
         source = next((device for device in project.devices if device.id == source_id), None)
         target = next((device for device in project.devices if self.matches(device)), None)
         if source is None or target is None or source is target:
-            raise InstalledEquipmentError("Select an existing device to use this product's built-in equipment.")
+            raise InstalledEquipmentError("Select an existing device to use this product's hardware.")
         refs = find_device_references(project, target.id)
         scripts = find_script_references(project, scripts_dir, target.id)
         monitors = [monitor for monitor in project.monitors
@@ -121,10 +121,10 @@ class InstalledEquipment:
         if refs or scripts or monitors or variables or target.pending_settings or target.child_entities:
             raise InstalledEquipmentError(
                 f"'{target.name}' already has programming or saved settings. Keep using that device, "
-                "or move its programming and settings before assigning another device to the built-in equipment."
+                "or move its programming and settings before assigning another device to the product hardware."
             )
         if not target_info.get("connected"):
-            raise InstalledEquipmentError("Connect the built-in equipment before selecting it, so its available controls can be checked.")
+            raise InstalledEquipmentError("The connection to this product's hardware is unavailable. Check the product's status, then try again.")
         info = target_info.get("driver_info", {})
         commands = info.get("commands", {})
         groups = {group.id for group in project.device_groups if source_id in group.device_ids}
@@ -139,7 +139,7 @@ class InstalledEquipment:
                     command = value.get("command")
                     if isinstance(command, str) and command:
                         if command not in commands:
-                            raise InstalledEquipmentError(f"The built-in equipment does not provide command '{command}'. Select compatible equipment or update that programming first.")
+                            raise InstalledEquipmentError(f"The product hardware does not provide command '{command}'. Select compatible equipment or update that programming first.")
                         rules = commands[command].get("params", {})
                         params = value.get("params", {})
                         # Dynamic state references resolve when the program runs.
@@ -160,14 +160,14 @@ class InstalledEquipment:
         for key, value in source.pending_settings.items():
             definition = info.get("device_settings", {}).get(key)
             if definition is None:
-                raise InstalledEquipmentError(f"The built-in equipment does not provide saved setting '{key}'. Review the saved settings before assigning it.")
+                raise InstalledEquipmentError(f"The product hardware does not provide saved setting '{key}'. Review the saved settings before assigning it.")
             try:
                 validate_device_setting_value(key, definition, value)
             except ValueError as error:
                 raise InstalledEquipmentError(str(error)) from error
         for kind in source.child_entities:
             if kind not in info.get("child_entity_types", {}):
-                raise InstalledEquipmentError(f"The built-in equipment does not provide '{kind}' channels. Review the saved channel labels before assigning it.")
+                raise InstalledEquipmentError(f"The product hardware does not provide '{kind}' channels. Review the saved channel labels before assigning it.")
         source.driver = self.driver_id
         source.config = {"integration": self.manifest["integration"]}
         project.connections.pop(source.id, None)
@@ -178,7 +178,7 @@ class InstalledEquipment:
     def refuse_removal(self, device_id):
         if self.owns(device_id):
             raise InstalledEquipmentError(
-                "This equipment is installed by the manufacturer. Remove its program "
+                "This is the hardware of the product running OpenAVC. Remove its program "
                 "bindings if you do not want to use it; the equipment cannot be uninstalled."
             )
 
@@ -191,7 +191,7 @@ class InstalledEquipment:
                 DRIVER_INFO = {
                     **{key: value for key, value in EquipmentDriver.DRIVER_INFO.items() if key != "discovery"},
                     "id": self.driver_id,
-                    "name": "Built-in equipment",
+                    "name": "Product hardware",
                     "config_schema": {},
                     "default_config": {},
                 }
@@ -202,7 +202,7 @@ class InstalledEquipment:
                     if not self.config.get("url") or not self.config.get("token"):
                         await self.disconnect()
                         raise ConnectionFaultError(
-                            "The built-in equipment connection is not configured.",
+                            "The product hardware connection is not configured.",
                             code="invalid_config",
                         )
                     await super().connect()
@@ -214,8 +214,8 @@ class InstalledEquipment:
                         return await super()._request(path, payload)
                     except ConnectionFaultError as error:
                         messages = {
-                            "auth_failed": "The built-in equipment connection could not be authenticated.",
-                            "connection_refused": "The built-in equipment connection is unavailable.",
+                            "auth_failed": "The product hardware connection could not be authenticated.",
+                            "connection_refused": "The product hardware connection is unavailable.",
                         }
                         message = messages.get(error.fault_code)
                         if message is None:
@@ -242,13 +242,13 @@ class InstalledEquipment:
         for device in result.devices:
             if device.driver == self.driver_id and not self.matches(device):
                 raise InstalledEquipmentError(
-                    "This project uses a different built-in equipment model. "
+                    "This project uses a different product hardware model. "
                     "Open it on a matching product, or on a separate OpenAVC server to reassign the device."
                 )
         host = self.manifest
         matches = [device for device in result.devices if self.matches(device)]
         if len(matches) > 1:
-            raise InstalledEquipmentError("This project contains more than one reference to this product's built-in equipment.")
+            raise InstalledEquipmentError("This project contains more than one reference to this product's hardware.")
         # Only loading a project may change a remote reference into this
         # physical product's local reference. Ordinary edits retain protection.
         same_unit = [device for device in result.devices
@@ -309,7 +309,7 @@ class InstalledEquipment:
             result.devices.insert(0, reference)
         if local_id in result.connections:
             raise InstalledEquipmentError(
-                "Built-in equipment has no editable network connection. Remove this connection override."
+                "Product hardware has no editable network connection. Remove this connection override."
             )
         # A second representation of the same physical endpoint is not a peer.
         for device in result.devices:
@@ -318,7 +318,7 @@ class InstalledEquipment:
                 and device.config.get("identity") == host["identity"]
             ):
                 raise InstalledEquipmentError(
-                    "This product is already present as built-in equipment. Use its existing reference."
+                    "This product is already in the project. Use its existing device."
                 )
         return result
 

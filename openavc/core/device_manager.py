@@ -1930,7 +1930,7 @@ class DeviceManager:
         """
         if self.installed_equipment and self.installed_equipment.owns(device_id):
             log.warning(
-                f"[{device_id}] Built-in equipment authentication failed. "
+                f"[{device_id}] Product hardware authentication failed. "
                 "Automatic reconnect is paused. Check this product's OpenAVC "
                 "status, then press Reconnect."
             )

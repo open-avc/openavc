@@ -730,12 +730,12 @@ class Engine:
             )
 
     async def reassign_installed_equipment(self, device_id, *, name=None, enabled=None) -> str:
-        """Explicitly apply a product's built-in equipment to existing programming."""
+        """Explicitly apply a product's product hardware to existing programming."""
         async with self._reload_lock:
             proposed = self.project.model_copy(deep=True)
             target = next((device for device in proposed.devices if self.installed_equipment.matches(device)), None)
             if target is None:
-                raise ValueError("This server has no built-in equipment to assign.")
+                raise ValueError("This server has no product hardware to assign.")
             information = self.devices.get_device_info(target.id)
             previous_id = self.installed_equipment.reassign(proposed, device_id, information, self.project_path.parent / "scripts")
             selected = next(device for device in proposed.devices if device.id == device_id)

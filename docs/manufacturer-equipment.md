@@ -17,10 +17,11 @@ certificate trusted by the server. The advanced **Verify HTTPS certificate**
 setting controls this check for a remote connection. Turning it off accepts
 untrusted certificates for that connection.
 
-## Use the equipment hosting OpenAVC
+## Control the product running OpenAVC
 
-The product appears automatically as **Built-in equipment** in every project.
-Its connection and hardware integration are supplied by the manufacturer.
+The product running OpenAVC appears automatically in every project, marked
+**Product hardware**. This is the product itself, such as the audio channels of
+an amplifier running OpenAVC. Its manufacturer supplies the hardware connection.
 You can change its project label, use its controls, save declared device
 settings and label its channels. It cannot be uninstalled, duplicated or
 replaced with another driver.
@@ -30,26 +31,26 @@ the equipment. **Test** checks the local connection even while project control
 is disabled. Programmer, panels, automation and other device connections use
 the normal OpenAVC interfaces.
 
-When the product runs its local OpenAVC server, its SDK host must stop exporting
-the same hardware to other controllers. Normal server discovery for panels
+While OpenAVC runs on the product, the SDK prevents other OpenAVC servers from
+discovering or controlling that same hardware. Normal server discovery for panels
 remains available.
 
 ## Move a project
 
 Use the normal **Program > Export** and **Import** controls. A project from the
 same equipment model uses the receiving unit's local connection while retaining
-device IDs and programming. Connection credentials for built-in equipment are
+device IDs and programming. Connection credentials for product hardware are
 not stored in the project.
 
-On another product or a standalone server, an unavailable built-in integration
-keeps its programming and displays **Built-in equipment unavailable**. Choose
+If the new server cannot connect to the original product hardware, it retains
+the programming and displays **Product hardware unavailable**. Choose
 **Reassign Driver** on its device page to select compatible equipment.
 
-To use the receiving product's hardware, select **Built-in equipment**. OpenAVC
+To use the receiving product's hardware, select **Product hardware**. OpenAVC
 keeps the imported device's ID and checks declared commands, required parameters,
-saved settings and channel types. The receiving built-in reference must be
-connected and have no existing programming or saved settings. If it is already
-used, resolve those references before reassigning. Test the resulting controls
+saved settings and channel types. The receiving product hardware must be
+connected and have no existing programming or saved settings in the project.
+If it is already used, resolve those references before reassigning. Test the resulting controls
 and scripts against the replacement equipment.
 
 Project Import transfers programming. Use **Backups > Restore** when restoring
@@ -66,7 +67,7 @@ file:
   "device_id": "local",
   "identity": "acme-unit-001",
   "integration": "acme_amplifier",
-  "name": "Built-in amplifier",
+  "name": "Acme Amplifier",
   "connection": {
     "url": "https://127.0.0.1:9443",
     "token": "<locally provisioned endpoint credential>",
@@ -83,8 +84,8 @@ firmware permissions. Projects cannot select the endpoint or replace its
 credential. Local endpoint certificates are always verified.
 
 The normal OpenAVC data directory remains writable project storage. Keep it
-separate from the firmware-owned manifest and runtime. A server without the
-environment variable remains an ordinary installation.
+separate from the manifest and software installed by the manufacturer. A server
+without the environment variable remains an ordinary installation.
 
 If firmware owns updates, set `OPENAVC_FIRMWARE_HOST` to an absolute path containing:
 

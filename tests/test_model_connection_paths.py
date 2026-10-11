@@ -18,7 +18,7 @@ from tests.test_ai_device_tools_hardening import _pure_handler
 async def test_model_scoped_local_reference_uses_host_diagnostic(tmp_path, monkeypatch, model, door):
     manifest = tmp_path / 'host.json'
     manifest.write_text(json.dumps({'device_id': 'local', 'identity': 'unit-a', 'integration': model,
-                                    'name': 'Built-in equipment', 'connection': {}}))
+                                    'name': 'Product hardware', 'connection': {}}))
     monkeypatch.setenv('OPENAVC_EQUIPMENT_MANIFEST', str(manifest))
     monkeypatch.setattr(registry, '_DRIVER_REGISTRY', dict(registry._DRIVER_REGISTRY))
     monkeypatch.setattr(registry, '_RESERVED_DRIVERS', set(registry._RESERVED_DRIVERS))

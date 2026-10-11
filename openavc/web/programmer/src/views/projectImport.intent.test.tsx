@@ -28,7 +28,7 @@ describe("plain project import intent", () => {
   });
 
   it("shows the equipment refusal without adopting the rejected project", async () => {
-    const reason = "This project uses a different built-in equipment model.";
+    const reason = "This project uses a different product hardware model.";
     const reload = vi.fn();
     const adopt = vi.fn();
     const onError = vi.fn();

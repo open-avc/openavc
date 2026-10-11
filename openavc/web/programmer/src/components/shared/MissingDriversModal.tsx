@@ -198,7 +198,7 @@ export function MissingDriversModal({ missing, onClose, onInstalled }: MissingDr
 
       {unavailableBuiltIn.length > 0 && (
         <div style={{ marginBottom: "var(--space-md)", fontSize: "var(--font-size-sm)" }}>
-          <div style={{ fontWeight: 600 }}>Built-in equipment unavailable</div>
+          <div style={{ fontWeight: 600 }}>Product hardware unavailable</div>
           <ul>
             {unavailableBuiltIn.flatMap((m) => m.built_in_equipment!.device_names.map((name, index) => (
               <li key={`${m.driver_id}-${index}`}>{name}</li>

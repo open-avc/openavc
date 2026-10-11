@@ -128,9 +128,9 @@ def test_import_and_reassign_uses_existing_programming(server_factory, page, tmp
     page.get_by_role("button").filter(has_text="House amplifier").click()
     page.get_by_role("button", name="Reassign Driver", exact=True).click()
     dialog = page.get_by_role("dialog", name="Edit Device")
-    dialog.get_by_placeholder("Search drivers...").fill("Built-in equipment")
-    dialog.get_by_text("Built-in equipment", exact=True).click()
-    expect(dialog.get_by_text("Use this product's built-in equipment", exact=False)).to_be_visible()
+    dialog.get_by_placeholder("Search drivers...").fill("Product hardware")
+    dialog.get_by_text("Product hardware", exact=True).click()
+    expect(dialog.get_by_text("Use this product's hardware", exact=False)).to_be_visible()
     expect(dialog.get_by_text("Connection Settings", exact=True)).to_have_count(0)
     page.screenshot(path=str(tmp_path / "select-built-in.png"), full_page=True)
     with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith("/api/devices/amp")) as saved:
@@ -142,7 +142,7 @@ def test_import_and_reassign_uses_existing_programming(server_factory, page, tmp
     assert project["macros"] == before["macros"]
     assert project["devices"][0]["driver"] == model_driver_id("acme_amplifier_v2")
     page.wait_for_function("async () => (await (await fetch('/api/devices/amp')).json()).connected === true")
-    expect(page.get_by_role("region", name="Built-in equipment")).to_be_visible(timeout=15000)
+    expect(page.get_by_role("region", name="Product hardware")).to_be_visible(timeout=15000)
     expect(page.get_by_text("Driver Not Installed", exact=True)).to_have_count(0)
     page.screenshot(path=str(tmp_path / "reassigned-equipment.png"), full_page=True)
     page.get_by_role("button", name="Macros", exact=True).click()
