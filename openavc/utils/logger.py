@@ -100,6 +100,14 @@ class _ProactorResetFilter(logging.Filter):
         return "_call_connection_lost" not in record.getMessage()
 
 
+#: Libraries whose own logging is held above DEBUG (see _configure_root).
+_THIRD_PARTY_LEVELS: dict[str, int] = {
+    "httpx": logging.WARNING,
+    "httpcore": logging.WARNING,
+    "websockets": logging.INFO,
+}
+
+
 def _configure_root():
     """Configure the root logger once."""
     global _configured
@@ -157,6 +165,16 @@ def _configure_root():
     # INFO level drops every TX/RX before it reaches the buffer and the device
     # log stays empty.
     logging.getLogger("openavc.transport").setLevel(logging.DEBUG)
+
+    # The root sits at DEBUG for the in-app log, so every library's chatter
+    # would land there too. httpx logs each request it makes at INFO (the
+    # Simulator UI proxy alone is a line every few seconds, and a URL naming
+    # a device put it in that device's log); httpcore and websockets log a
+    # line per connection step or frame at DEBUG. The platform logs its own
+    # HTTP and WebSocket traffic where it matters, so hold these back to what
+    # a person needs to see.
+    for name, level in _THIRD_PARTY_LEVELS.items():
+        logging.getLogger(name).setLevel(level)
 
     # Drop the benign Windows proactor connection-reset tracebacks (see the
     # filter's docstring). Attached to the asyncio logger rather than a loop

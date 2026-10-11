@@ -8,23 +8,27 @@ function escapeRegExp(s: string): string {
 }
 
 /**
- * Predicate for the System Log Device filter. An entry belongs to a device
- * when the structured device field matches (driver/transport lines carry a
- * "[id] " prefix the server extracts), or when the message mentions the id
- * as a whole token — device lifecycle lines phrase it loosely, e.g.
- * "Failed to connect 'proj1'". Token boundaries exclude id characters so
- * "proj1" never matches "proj12" or "my-proj1".
+ * Which log entries belong to one device: the System Log's Device filter and
+ * the device page's log. An entry belongs to a device when the structured
+ * device field matches (driver/transport lines carry a "[id] " prefix the
+ * server extracts), or when a line of OpenAVC's own (a script's included)
+ * mentions the id as a whole token — device lifecycle lines phrase it
+ * loosely, e.g. "Failed to connect 'proj1'". Token boundaries exclude id
+ * characters so "proj1" never matches "proj12" or "my-proj1". A library's
+ * line never claims a device by mention: an HTTP client's request line can
+ * name one in a URL without being about it.
  */
 export function deviceFilterPredicate(
   deviceId: string,
-): (entry: Pick<LogEntry, "device" | "message">) => boolean {
+): (entry: Pick<LogEntry, "device" | "message" | "source">) => boolean {
   const id = deviceId.toLowerCase();
   const mention = new RegExp(
     `(^|[^a-z0-9_-])${escapeRegExp(id)}([^a-z0-9_-]|$)`,
     "i",
   );
   return (entry) =>
-    entry.device.toLowerCase() === id || mention.test(entry.message);
+    entry.device.toLowerCase() === id
+    || ((entry.source ?? "").startsWith("openavc") && mention.test(entry.message));
 }
 
 /**

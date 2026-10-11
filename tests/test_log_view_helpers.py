@@ -47,6 +47,9 @@ EXPECTED = {
     "substring_longer_id": False,
     "substring_prefixed_id": False,
     "id_with_underscore": True,
+    "mention_in_user_script": True,
+    # A third-party library's line never claims a device by mention
+    "library_url_mention": False,
 }
 
 
