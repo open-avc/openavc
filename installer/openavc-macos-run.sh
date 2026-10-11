@@ -259,6 +259,10 @@ installed_bind() {
 drop_earlier_installer_bind() {
     [ "$(installed_bind)" = "0.0.0.0" ] || return 0
     if "$PLISTBUDDY" -c "Delete :EnvironmentVariables:OPENAVC_BIND" "$DAEMON_PLIST" >/dev/null 2>&1; then
+        # launchd refuses a daemon plist that is not root's or that others can
+        # write, so the rewritten file gets what the .pkg's postinstall gives it.
+        chown root:wheel "$DAEMON_PLIST" 2>/dev/null || true
+        chmod 644 "$DAEMON_PLIST" 2>/dev/null || true
         echo "$LOG_TAG: removed OPENAVC_BIND=0.0.0.0, which earlier installers set, from $DAEMON_PLIST"
     else
         echo "$LOG_TAG: could not remove OPENAVC_BIND=0.0.0.0 from $DAEMON_PLIST"

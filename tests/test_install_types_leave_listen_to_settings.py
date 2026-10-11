@@ -234,6 +234,17 @@ def test_an_update_removes_the_bind_earlier_installers_set(mac):
     assert mac.installed() == INSTALLED
 
 
+def test_the_rewritten_launch_settings_stay_root_owned():
+    """launchd refuses a daemon plist that is not root's or that others can
+    write; the wrapper runs as root, so this is what a test run cannot show."""
+    script = MAC_WRAPPER.read_text(encoding="utf-8")
+    drop = script[script.index("drop_earlier_installer_bind() {"):]
+    drop = drop[:drop.index("\n}\n")]
+    deleted = drop[drop.index("Delete :EnvironmentVariables:OPENAVC_BIND"):]
+    assert 'chown root:wheel "$DAEMON_PLIST"' in deleted
+    assert 'chmod 644 "$DAEMON_PLIST"' in deleted
+
+
 def test_launchds_stale_copy_does_not_reach_the_server(mac):
     """Removed from the file, by the wrapper or an administrator, but still in
     what launchd loaded: a restart from Settings must not bring it back."""
