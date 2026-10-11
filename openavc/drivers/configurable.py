@@ -257,6 +257,11 @@ class ConfigurableDriver(BaseDriver):
         self._liveness_def: dict[str, Any] | None = None
         self._liveness_expect: re.Pattern[str] | None = None
         self._liveness_waiter: asyncio.Future[None] | None = None
+        # Messages a response rule read (it matched and applied, or a
+        # throttle held its writes), and the last one none did: the poll
+        # loop's unread-replies check (_parsed_count, BaseDriver._judge_reading).
+        self._parsed_messages = 0
+        self._last_unread = ""
         lv = self._definition.get("liveness")
         if isinstance(lv, dict) and isinstance(lv.get("send"), str) and lv["send"]:
             try:
@@ -2037,6 +2042,15 @@ class ConfigurableDriver(BaseDriver):
             self._compiled_responses or self._json_responses or self._osc_responses
         )
 
+    def _parsed_count(self) -> int | None:
+        """Messages this definition's response rules have read; None for a
+        definition with no rules (it reads nothing, so there is nothing to
+        judge)."""
+        return self._parsed_messages if self._reads_replies() else None
+
+    def _unread_sample(self) -> str:
+        return self._last_unread
+
     async def _liveness_probe(self) -> None:
         """Send the declared probe and wait for a qualifying reply.
 
@@ -2148,9 +2162,13 @@ class ConfigurableDriver(BaseDriver):
         # and no other rule in the driver moves.
         eligible = self._compiled_responses
         if self._json_responses and self._apply_json_responses(text):
+            self._parsed_messages += 1
             if not self._after_json_responses:
                 return
             eligible = self._after_json_responses
+            read_by_json = True
+        else:
+            read_by_json = False
 
         for (
             pattern, mappings, child_mappings, tstate, condition,
@@ -2215,6 +2233,8 @@ class ConfigurableDriver(BaseDriver):
                     self._resolve_child_mappings(match, child_mappings)
                     if child_mappings else []
                 )
+                if not read_by_json:
+                    self._parsed_messages += 1
                 # A throttled rule consumes its frame either way — falling
                 # through would let a later rule match the same frame. Inside
                 # its window the writes are held, not applied. Scoped per
@@ -2236,6 +2256,8 @@ class ConfigurableDriver(BaseDriver):
                 return  # Stop at first match
 
         log.debug(f"[{self.device_id}] Unmatched response: {text!r}")
+        if not read_by_json:
+            self._last_unread = text[:80]
         self._observe(UNMATCHED_RESPONSE, text=text)
 
     def _resolve_child_mappings(
@@ -2345,6 +2367,7 @@ class ConfigurableDriver(BaseDriver):
                 if not self._rule_applies(condition):
                     continue
                 matched = True
+                self._parsed_messages += 1
                 flat: list[tuple[str, Any]] = []
                 for mapping in mappings:
                     state_key = mapping.get("state")
@@ -2403,6 +2426,7 @@ class ConfigurableDriver(BaseDriver):
 
             if not matched:
                 log.debug(f"[{self.device_id}] Unmatched OSC: {address}")
+                self._last_unread = address[:80]
                 self._observe(
                     UNMATCHED_RESPONSE, address=address,
                     args=[value if is_flat_primitive(value) else repr(value)

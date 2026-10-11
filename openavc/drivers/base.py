@@ -730,6 +730,11 @@ class BaseDriver(ABC):
         # cannot, because a fault that persists writes the identical string
         # every cycle and would look untouched.
         self._last_error_writes: int = 0
+        # True while the poll loop's unread-replies check holds: polls in a
+        # row brought replies and the driver's rules read none of them
+        # (_parsed_count). The loop owns `last_error` meanwhile, so the
+        # stale-error clear leaves its sentence alone.
+        self._unread_replies_hold: bool = False
         # For a device that routes its commands through a bridge (e.g. an IR
         # device bound to a bridge's emitter port): a callable the DeviceManager
         # injects to reach the live bridge instance. None for a direct device.
@@ -2252,6 +2257,84 @@ class BaseDriver(ABC):
             f"reply.",
         )
 
+    def _parsed_count(self) -> int | None:
+        """How many received messages this driver's own rules have read on
+        this connection, or None when the platform cannot tell (the default:
+        a Python driver parses in its own code).
+
+        The poll loop compares it with the transport's receive count
+        (_io_counts): polls in a row that brought replies and moved this
+        count not at all mean something answers that the driver does not
+        understand, the wrong port or the wrong driver. Never a disconnect:
+        many drivers leave some replies unread by design (an acknowledgement,
+        a reply a rule does not need), so only "none at all" is a finding,
+        and it is reported, not acted on.
+        """
+        return None
+
+    def _unread_replies_message(self, cycles: int) -> str:
+        """The ``last_error`` sentence while the unread-replies check holds."""
+        return (
+            f"Something is answering on this connection, but this driver reads "
+            f"none of it: {cycles} polls in a row. Check the port, and that "
+            f"this driver matches the device."
+        )
+
+    def _judge_reading(
+        self, parse_pending: tuple[Any, int, int], cycles: int, limit: int,
+    ) -> int:
+        """Judge one poll cycle for the unread-replies check and return the
+        new count of cycles in a row that heard replies and read none.
+
+        A cycle that heard nothing says nothing about reading (that is the
+        silence check's business) and leaves the count as it was. At
+        ``limit`` the check holds: a warning in the log once, the sentence in
+        ``last_error`` every cycle while it holds (when the driver declares
+        the property). The first cycle that reads anything ends it.
+        """
+        transport, heard_before, parsed_before = parse_pending
+        now = self._io_counts()
+        parsed = self._parsed_count()
+        if now is None or now[0] is not transport or parsed is None:
+            return cycles
+        if now[2] <= heard_before:
+            return cycles
+        if parsed > parsed_before:
+            if self._unread_replies_hold:
+                self._unread_replies_hold = False
+                log.info(
+                    f"[{self.device_id}] The device's replies are read again"
+                )
+                if self.get_state(self.LAST_ERROR_PROPERTY) == (
+                    self._unread_replies_message(limit)
+                ):
+                    self._clear_stale_last_error()
+            return 0
+        cycles += 1
+        if cycles >= limit:
+            if not self._unread_replies_hold:
+                self._unread_replies_hold = True
+                sample = self._unread_sample()
+                log.warning(
+                    f"[{self.device_id}] Replies arrive but no response rule "
+                    f"reads any of them ({cycles} polls in a row)"
+                    + (f"; the last one was {sample!r}" if sample else "")
+                    + ". Check the port, and that this driver matches the "
+                    "device."
+                )
+            if self.LAST_ERROR_PROPERTY in self.DRIVER_INFO.get(
+                "state_variables", {}
+            ):
+                self.set_state(
+                    self.LAST_ERROR_PROPERTY,
+                    self._unread_replies_message(limit),
+                )
+        return cycles
+
+    def _unread_sample(self) -> str:
+        """The last reply no rule read, for the log line (empty: none kept)."""
+        return ""
+
     def _settle_answer(self, answered: bool) -> None:
         """Tell a reconnect loop waiting on a held connection how it ended."""
         waiter = self._answer_waiter
@@ -3170,6 +3253,12 @@ class BaseDriver(ABC):
         reconnect then holds the device offline until a poll is answered
         (connect(), _announce_held). Only cycles this loop ran are judged;
         a connect-time poll is not.
+
+        The same judgement, for a driver that reports what its own rules read
+        (_parsed_count), also asks whether a cycle that brought replies had
+        any of them read. ``max_missed_polls`` cycles in a row that read none
+        put a warning in the log and a sentence in ``last_error``
+        (_judge_reading), and nothing else: the connection stays up.
         """
         detach_emit_chain()  # a device-lifetime loop is a root, not a continuation
         try:
@@ -3198,6 +3287,15 @@ class BaseDriver(ABC):
         silent_polls = 0
         heard_cycles = 0
         pending: tuple[Any, bool, int] | None = None
+        # The unread-replies check (_parsed_count, _judge_reading): polls in
+        # a row that brought replies the driver's rules read none of. Judged
+        # like the silence check, when the next poll is due; reported, never
+        # a disconnect, so it also runs beside a liveness probe.
+        # `parse_pending` is the last poll's transport, receive count and
+        # parsed count when it began.
+        reading = self._parsed_count() is not None
+        unread_cycles = 0
+        parse_pending: tuple[Any, int, int] | None = None
 
         last_poll_exc: BaseException | None = None
         try:
@@ -3208,6 +3306,11 @@ class BaseDriver(ABC):
                 if remaining > 0:
                     await asyncio.sleep(remaining)
             while True:
+                if parse_pending is not None:
+                    unread_cycles = self._judge_reading(
+                        parse_pending, unread_cycles, max_dry_polls,
+                    )
+                    parse_pending = None
                 if pending is not None:
                     transport, sent, heard_before = pending
                     pending = None
@@ -3239,17 +3342,28 @@ class BaseDriver(ABC):
                         return
                 try:
                     errors_before = self._last_error_writes
-                    before = self._io_counts() if watching else None
+                    before = self._io_counts() if watching or reading else None
+                    parsed_before = self._parsed_count() if reading else None
                     await self.poll()
                     self._last_poll_success = time.monotonic()
                     dry_polls = 0
                     last_poll_exc = None
-                    if self._last_error_writes == errors_before:
+                    if (
+                        self._last_error_writes == errors_before
+                        and not self._unread_replies_hold
+                    ):
                         self._clear_stale_last_error()
                     if before is not None:
                         after = self._io_counts()
                         if after is not None and after[0] is before[0]:
-                            pending = (before[0], after[1] > before[1], before[2])
+                            if watching:
+                                pending = (
+                                    before[0], after[1] > before[1], before[2],
+                                )
+                            if parsed_before is not None:
+                                parse_pending = (
+                                    before[0], before[2], parsed_before,
+                                )
                 except (ConnectionError, TimeoutError, OSError) as exc:
                     refused = typed_fault_from_exc(
                         exc, host=self.config.get("host", ""), port=self.config.get("port"),
