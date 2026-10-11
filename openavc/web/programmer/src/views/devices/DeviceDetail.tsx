@@ -1827,6 +1827,32 @@ function ChildTroubleBanner({ headline, names }: { headline: string; names: stri
 }
 
 
+/** The Offline banner's last line: what happens next, and what to do. */
+export function offlineNextStep(reason: string | undefined, failed: boolean): string {
+  if (!failed) {
+    // Deliberately no attempt count. There's no ceiling to count toward, and
+    // a device left off over a weekend would show a number in the thousands,
+    // which tells the integrator nothing except that something looks broken.
+    return "Reconnecting automatically, and will keep trying until the device comes back.";
+  }
+  if (reason === "auth_failed") {
+    // Retrying a rejected login would only trip the device's brute-force
+    // lockout, so the server holds off on purpose.
+    return "Not retrying, so repeated sign-ins cannot lock OpenAVC out of the device. Fix the credentials with Edit, then press Reconnect.";
+  }
+  if (PERMANENT_OFFLINE_REASONS.has(reason ?? "")) {
+    // Stopped early on purpose, not out of attempts: the detail line above
+    // already names what to change. Saying "gave up" here would read as "we
+    // tried everything", sending the integrator hunting a network problem
+    // that isn't there.
+    return "Not retrying: this won't clear on its own. Fix the cause above, then press Reconnect.";
+  }
+  // Only a fault someone has to clear reaches `failed` now, and both branches
+  // above name one. A network fault never lands here: it retries for as long
+  // as the device is in the project.
+  return "Not retrying. Fix the cause above, then press Reconnect.";
+}
+
 function OfflineBanner({
   detail,
   reason,
@@ -1876,26 +1902,7 @@ function OfflineBanner({
             marginTop: "var(--space-xs)",
           }}
         >
-          {failed
-            ? reason === "auth_failed"
-              // Retrying a rejected login would only trip the device's
-              // brute-force lockout, so the server holds off on purpose.
-              ? "Not retrying: repeated logins can lock this PC out of the device. Fix the credentials in Edit Device, then press Reconnect."
-              : PERMANENT_OFFLINE_REASONS.has(reason ?? "")
-                // Stopped early on purpose, not out of attempts — the detail
-                // line above already names what to change. Saying "gave up"
-                // here would read as "we tried everything", sending the
-                // integrator hunting a network problem that isn't there.
-                ? "Not retrying: this won't clear on its own. Fix the cause above, then press Reconnect."
-                // Only a fault someone has to clear reaches `failed` now, and
-                // both branches above name one. A network fault never lands
-                // here: it retries for as long as the device is in the project.
-                : "Not retrying. Fix the cause above, then press Reconnect."
-            // Deliberately no attempt count. There's no ceiling to count
-            // toward, and a device left off over a weekend would show a number
-            // in the thousands — which tells the integrator nothing except
-            // that something looks broken.
-            : "Reconnecting automatically, and will keep trying until the device comes back."}
+          {offlineNextStep(reason, failed)}
         </div>
       </div>
     </div>
