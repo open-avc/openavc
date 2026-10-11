@@ -52,16 +52,30 @@ describe("State Changes", () => {
     expect(mocks.getStateHistory).toHaveBeenCalledWith(100, "device.amp.");
   });
 
-  it("picks up a change made while it is open", async () => {
+  it("follows the changes made while it is open, asking the server only once", async () => {
     const { rerender } = render(<DeviceStateLog deviceId="amp" />);
     await screen.findByText("power");
-    mocks.history = [
-      ...mocks.history,
-      { key: "device.amp.mute", old_value: null, new_value: true, source: "device", timestamp: T + 3 },
-    ];
     mocks.liveState = { ...mocks.liveState, "device.amp.mute": true };
     rerender(<DeviceStateLog deviceId="amp" />);
-    await waitFor(() => expect(screen.getByText("mute")).toBeTruthy(), { timeout: 3000 });
+    const mute = (await screen.findByText("mute")).closest("tr")!;
+    expect(within(mute).getByText("—")).toBeTruthy();
+    expect(within(mute).getByText("Yes")).toBeTruthy();
+    mocks.liveState = { ...mocks.liveState, "device.amp.level": 80 };
+    rerender(<DeviceStateLog deviceId="amp" />);
+    await screen.findByText("80");
+    // The history route shares a remote session's standard rate budget.
+    expect(mocks.getStateHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it("lists a change once when it reaches the socket after the history was read", async () => {
+    // The history already holds power -> on, but the live value still says off.
+    mocks.liveState = { "device.amp.level": 85.5, "device.amp.power": "off" };
+    const { rerender } = render(<DeviceStateLog deviceId="amp" />);
+    await screen.findByText("power");
+    mocks.liveState = { "device.amp.level": 85.5, "device.amp.power": "on" };
+    rerender(<DeviceStateLog deviceId="amp" />);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getAllByText("power")).toHaveLength(1);
   });
 
   it("says so when the device has changed nothing", async () => {

@@ -5,70 +5,88 @@ import { valueText } from "../../components/shared/booleanWords";
 
 /** Rows this tab shows: the device's most recent changes. */
 const MAX_ROWS = 100;
-/** The fewest milliseconds between two reads while the device keeps changing. */
-const REFRESH_MS = 1000;
 
-/** A fingerprint of one device's live values, so the tab knows to read the
- *  history again when one of them changes. */
-function deviceSignature(liveState: Record<string, unknown>, prefix: string): string {
-  const parts: string[] = [];
+type Row = { key: string; oldValue: unknown; newValue: unknown; timestamp: number };
+
+/** One device's live values, by full key. */
+function deviceValues(liveState: Record<string, unknown>, prefix: string): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(liveState)) {
-    if (key.startsWith(prefix)) parts.push(`${key}=${JSON.stringify(value)}`);
+    if (key.startsWith(prefix)) out[key] = value;
   }
-  return parts.join("\n");
+  return out;
 }
 
 /**
- * The device's recent state changes, from the server's change history (the
- * record State > Activity shows), so changes made before the tab was opened
- * are listed too, first values included. Read again whenever one of the
- * device's live values changes, at most once a second.
+ * The device's recent state changes. Opening the tab reads the server's
+ * change history for the device once (the record State > Activity shows), so
+ * changes made before it was opened are listed too, first values included;
+ * after that it follows the live values over the WebSocket. One request per
+ * opening: the history route shares the standard rate budget with the rest
+ * of a remote Programmer session.
  */
 export function DeviceStateLog({ deviceId }: { deviceId: string }) {
+  const liveState = useConnectionStore((s) => s.liveState);
   const devicePrefix = `device.${deviceId}.`;
-  const signature = useConnectionStore((s) => deviceSignature(s.liveState, devicePrefix));
-  const [entries, setEntries] = useState<
-    { key: string; oldValue: unknown; newValue: unknown; timestamp: number }[]
-  >([]);
+  const [entries, setEntries] = useState<Row[]>([]);
   const [loaded, setLoaded] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
-  const lastRead = useRef(0);
-  const readSeq = useRef(0);
+  const liveRef = useRef(liveState);
+  liveRef.current = liveState;
+  // The live values the next change is compared against; null until the
+  // history has been read, so nothing is listed twice.
+  const baseline = useRef<Record<string, unknown> | null>(null);
+  // The newest value the history listed for each key. The same change can
+  // reach the WebSocket a moment after the history was read; it is listed once.
+  const listedLast = useRef(new Map<string, unknown>());
 
   useEffect(() => {
+    let cancelled = false;
+    baseline.current = null;
     setEntries([]);
     setLoaded(false);
+    const start = (rows: Row[]) => {
+      listedLast.current = new Map(rows.map((r) => [r.key, r.newValue]));
+      baseline.current = deviceValues(liveRef.current, devicePrefix);
+      setEntries(rows);
+      setLoaded(true);
+    };
+    getStateHistory(MAX_ROWS, devicePrefix)
+      .then((history) => {
+        if (cancelled) return;
+        start(
+          history
+            .filter((e) => e.key.startsWith(devicePrefix))
+            .map((e) => ({
+              key: e.key.slice(devicePrefix.length),
+              oldValue: e.old_value,
+              newValue: e.new_value,
+              timestamp: e.timestamp,
+            })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) start([]);
+      });
+    return () => { cancelled = true; };
   }, [devicePrefix]);
 
   useEffect(() => {
-    const read = () => {
-      lastRead.current = Date.now();
-      const token = ++readSeq.current;
-      getStateHistory(MAX_ROWS, devicePrefix)
-        .then((history) => {
-          // Latest wins: an older read answering late must not replace a newer one.
-          if (token !== readSeq.current) return;
-          setEntries(
-            history
-              .filter((e) => e.key.startsWith(devicePrefix))
-              .map((e) => ({
-                key: e.key.slice(devicePrefix.length),
-                oldValue: e.old_value,
-                newValue: e.new_value,
-                timestamp: e.timestamp,
-              })),
-          );
-          setLoaded(true);
-        })
-        .catch(() => {
-          if (token === readSeq.current) setLoaded(true);
-        });
-    };
-    const handle = window.setTimeout(read, Math.max(0, lastRead.current + REFRESH_MS - Date.now()));
-    return () => window.clearTimeout(handle);
-  }, [signature, devicePrefix]);
-
-  useEffect(() => () => { readSeq.current++; }, []);
+    const prev = baseline.current;
+    if (prev === null) return;
+    const next = deviceValues(liveState, devicePrefix);
+    const rows: Row[] = [];
+    for (const [key, value] of Object.entries(next)) {
+      if (prev[key] === value) continue;
+      const short = key.slice(devicePrefix.length);
+      const alreadyListed = listedLast.current.has(short) && listedLast.current.get(short) === value;
+      listedLast.current.delete(short);
+      if (alreadyListed) continue;
+      rows.push({ key: short, oldValue: prev[key], newValue: value, timestamp: Date.now() / 1000 });
+    }
+    baseline.current = next;
+    if (rows.length > 0) setEntries((e) => [...e, ...rows].slice(-MAX_ROWS));
+  }, [liveState, devicePrefix]);
 
   // Tail the newest entry — keying on length stalls once the 100-row window
   // saturates; the newest entry's identity changes with every append.
