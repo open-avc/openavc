@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac as hmac_mod
+import ipaddress
 import itertools
 import json
 import secrets
@@ -147,6 +148,34 @@ def _client_proof(auth_key: str, server_nonce: str) -> str:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _beacon_targets() -> list[str]:
+    """Where the discovery beacon goes, by who can connect.
+
+    A peer that hears the beacon dials the address it came from, so it goes
+    only where this server accepts connections (Settings > Network > Accept
+    connections from): everywhere for any network, the chosen adapter's own
+    subnet broadcast for one adapter (a directed broadcast leaves through
+    that adapter, with its address as the source), and nowhere for this
+    computer only, where no peer could connect.
+    """
+    from openavc import config
+
+    plan = config.listen_plan()
+    if plan.local_only:
+        return []
+    if plan.mode != "adapter":
+        return ["255.255.255.255"]
+    targets: list[str] = []
+    for subnet in plan.network_subnets:
+        try:
+            target = str(ipaddress.ip_network(subnet, strict=False).broadcast_address)
+        except ValueError:
+            continue
+        if target not in targets:
+            targets.append(target)
+    return targets
+
 
 def get_or_create_instance_id(project_path: Path) -> str:
     """Return a persistent instance UUID, creating one on first run."""
@@ -630,7 +659,13 @@ class ISCManager:
 
     def get_status(self) -> dict[str, Any]:
         """ISC status summary."""
+        from openavc import config
+
         connected = sum(1 for p in self._peers.values() if p.connected)
+        # Other systems reach this one on the web port, so with this
+        # computer only (Settings > Network > Accept connections from) no
+        # peer can connect in, and the beacon is not sent.
+        plan = config.listen_plan()
         return {
             "enabled": True,
             "instance_id": self.instance_id,
@@ -639,6 +674,14 @@ class ISCManager:
             "connected_count": connected,
             "shared_patterns": self._shared_patterns,
             "auth_key_set": bool(self._auth_key),
+            "accepts_peers": not plan.local_only,
+            "accepts_peers_note": (
+                ""
+                if not plan.local_only
+                else (plan.problem.message if plan.problem else
+                      "Other OpenAVC systems can't reach this one: it accepts "
+                      "connections from this computer only.")
+            ),
         }
 
     # ------------------------------------------------------------------
@@ -911,9 +954,8 @@ class ISCManager:
                 # don't linger forever and inflate peer_count.
                 self._prune_stale_peers()
                 if self._discovery_transport:
-                    self._discovery_transport.sendto(
-                        beacon, ("255.255.255.255", DISCOVERY_PORT),
-                    )
+                    for target in _beacon_targets():
+                        self._discovery_transport.sendto(beacon, (target, DISCOVERY_PORT))
                 await asyncio.sleep(BEACON_INTERVAL)
         except asyncio.CancelledError:
             return

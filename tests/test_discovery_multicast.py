@@ -220,7 +220,7 @@ def _mdns_announcement_packet() -> bytes:
 
 class TestAdvertiserResilience:
     async def test_start_does_not_raise_when_network_down(self, monkeypatch):
-        def boom():
+        def boom(interface_ips=None):
             raise OSError(errno.EADDRNOTAVAIL, "no network")
 
         monkeypatch.setattr(mdns_advertiser, "_create_advertiser_socket", boom)
@@ -239,7 +239,7 @@ class TestAdvertiserResilience:
         attempts = {"n": 0}
         mock_sock = MagicMock()
 
-        def fake_create():
+        def fake_create(interface_ips=None):
             attempts["n"] += 1
             if attempts["n"] == 1:
                 raise OSError(errno.EADDRNOTAVAIL, "no network yet")
@@ -269,7 +269,7 @@ class TestAdvertiserResilience:
         await adv.stop()
 
     async def test_stop_during_retry_cancels_cleanly(self, monkeypatch):
-        def boom():
+        def boom(interface_ips=None):
             raise OSError("still no network")
 
         monkeypatch.setattr(mdns_advertiser, "_create_advertiser_socket", boom)

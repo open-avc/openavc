@@ -236,13 +236,19 @@ def _parse_query_questions(data: bytes) -> list[tuple[str, int]]:
 # --- Socket ---
 
 
-def _create_advertiser_socket() -> tuple[socket.socket, list[str]]:
+def _create_advertiser_socket(
+    interface_ips: list[str] | None = None,
+) -> tuple[socket.socket, list[str]]:
     """Create a UDP socket for mDNS advertisement.
 
     Similar to _create_mdns_socket() in mdns_scanner.py but with
     IP_MULTICAST_LOOP disabled to avoid receiving own announcements.
     The group is joined once per interface IP with INADDR_ANY as the
     fallback (see ``discovery.multicast``).
+
+    ``interface_ips`` limits the joins to those addresses, with no
+    INADDR_ANY fallback: Settings > Network > Accept connections from named
+    one adapter, and the others must not be told this server exists.
 
     Returns ``(socket, joined_interface_ips)``. Raises OSError when the
     group could not be joined on any interface (e.g. no network yet).
@@ -254,7 +260,12 @@ def _create_advertiser_socket() -> tuple[socket.socket, list[str]]:
         sock.bind(("", MDNS_PORT))
 
         # Join multicast group (required to receive queries)
-        joined = join_group_on_interfaces(sock, MDNS_ADDR)
+        joined = join_group_on_interfaces(
+            sock,
+            MDNS_ADDR,
+            interface_ips=interface_ips,
+            allow_any=interface_ips is None,
+        )
         if not joined:
             raise OSError(f"could not join {MDNS_ADDR} on any interface")
 
@@ -291,6 +302,7 @@ class MDNSAdvertiser:
         *,
         tls_enabled: bool = False,
         tls_port: int = 0,
+        interface_ips: list[str] | None = None,
     ):
         # The DNS label is sanitised (no spaces, ASCII only); the TXT `name`
         # keeps the project's own name, which is what a panel app displays.
@@ -301,6 +313,8 @@ class MDNSAdvertiser:
         self._version = version
         self._tls_enabled = tls_enabled
         self._tls_port = tls_port
+        # None: every adapter. A list: only those (one adapter chosen).
+        self._interface_ips = list(interface_ips) if interface_ips is not None else None
 
         self._sock: socket.socket | None = None
         self._running = False
@@ -338,7 +352,7 @@ class MDNSAdvertiser:
         """One startup attempt. Returns False on environment failure."""
         try:
             self._hostname = _sanitize_hostname(socket.gethostname())
-            self._sock, self._joined_ips = _create_advertiser_socket()
+            self._sock, self._joined_ips = _create_advertiser_socket(self._interface_ips)
         except OSError as exc:
             log.warning(
                 "mDNS advertiser: cannot start yet (%s) — will retry", exc,

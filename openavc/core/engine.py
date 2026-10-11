@@ -1951,12 +1951,14 @@ class Engine:
         """Start mDNS service advertisement if enabled in system config."""
         # Live system-config read (not an import-time constant) so a PATCH
         # /system/config toggle is honored on reconcile.
-        from openavc.system_config import get_system_config
-        if not get_system_config().get("discovery", "advertise", True):
+        if not self._mdns_wanted():
             return
         try:
             from openavc.discovery.mdns_advertiser import MDNSAdvertiser
 
+            # Announce only where panels can connect: on the chosen adapter
+            # alone, or every adapter for any network.
+            plan = config.listen_plan()
             instance_id = self.instance_id
             self.mdns_advertiser = MDNSAdvertiser(
                 instance_name=self.project.project.name,
@@ -1965,16 +1967,28 @@ class Engine:
                 version=__version__,
                 tls_enabled=config.TLS_ENABLED,
                 tls_port=config.TLS_PORT,
+                interface_ips=(
+                    list(plan.network_addresses) if plan.mode == "adapter" else None
+                ),
             )
             await self.mdns_advertiser.start()
         except Exception:
             log.exception("mDNS advertiser: failed to start — continuing without advertisement")
             self.mdns_advertiser = None
 
+    def _mdns_wanted(self) -> bool:
+        """Advertise is on, and something on the network can connect: with
+        this computer only (or a chosen adapter that is missing) there is
+        nothing to announce."""
+        from openavc.system_config import get_system_config
+
+        if not get_system_config().get("discovery", "advertise", True):
+            return False
+        return not config.listen_plan().local_only
+
     async def _reconcile_mdns(self) -> None:
         """Start or stop the mDNS advertiser to match the live system config."""
-        from openavc.system_config import get_system_config
-        should_run = bool(get_system_config().get("discovery", "advertise", True))
+        should_run = self._mdns_wanted()
         if should_run and not self.mdns_advertiser:
             await self._start_mdns_advertiser()
         elif not should_run and self.mdns_advertiser:

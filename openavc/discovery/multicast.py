@@ -62,13 +62,19 @@ def join_group_on_interfaces(
     group: str,
     control_ip: str = "",
     interface_ips: list[str] | None = None,
+    allow_any: bool = True,
 ) -> list[str]:
     """Join an IPv4 multicast group, preferring explicit per-interface joins.
 
     Args:
         control_ip: When set, join via this interface only (multi-NIC
             pinning — unchanged legacy behavior).
-        interface_ips: Override the interface enumeration (tests).
+        interface_ips: Override the interface enumeration (tests, and the
+            mDNS advertiser when Accept connections from names one adapter).
+        allow_any: Fall back to INADDR_ANY when no per-interface join
+            succeeds. Off for a list that is a restriction rather than a
+            guess: INADDR_ANY means the default interface, which may be the
+            very network that was left out.
 
     Returns the interface IPs the join succeeded on (``ANY_INTERFACE`` for
     the INADDR_ANY fallback). An empty list means every join failed — the
@@ -97,7 +103,7 @@ def join_group_on_interfaces(
         except OSError as exc:
             log.debug("Could not join %s via %s: %s", group, ip, exc)
 
-    if joined:
+    if joined or not allow_any:
         return joined
 
     try:
