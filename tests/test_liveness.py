@@ -180,6 +180,26 @@ async def test_watchdog_hung_probe_counts_as_miss() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_missed_probe_says_why_in_the_log(caplog) -> None:
+    """A timeout has no text of its own, so the log line said nothing after
+    the colon."""
+    drv = _make_driver()
+    drv.probe_hangs = True
+    with caplog.at_level("WARNING", logger="openavc.drivers.base"):
+        drv._start_health_loop()
+        await asyncio.sleep(0.5)
+    assert "Liveness probe failed (1/2): no answer within 0.05 s" in caplog.text
+
+    caplog.clear()
+    drv = _make_driver()
+    drv.probe_raises = ConnectionError()
+    with caplog.at_level("WARNING", logger="openavc.drivers.base"):
+        drv._start_health_loop()
+        await asyncio.sleep(0.5)
+    assert "Liveness probe failed (1/2): ConnectionError" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_watchdog_stops_on_disconnect() -> None:
     drv = _make_driver()
     drv._start_health_loop()

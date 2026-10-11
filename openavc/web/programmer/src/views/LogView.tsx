@@ -224,7 +224,7 @@ function SystemLogTab() {
       >
         {filtered.length === 0 ? (
           <div style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--text-muted)" }}>
-            No log entries yet. System activity will appear here.
+            {emptyLogText("system", entries.length > 0)}
           </div>
         ) : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -394,7 +394,7 @@ function StateChangeTab() {
       >
         {filtered.length === 0 ? (
           <div style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--text-muted)" }}>
-            No state changes recorded yet. Interact with the system to see live updates.
+            {emptyLogText("state", entries.length > 0)}
           </div>
         ) : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -454,6 +454,18 @@ const selectStyle: React.CSSProperties = {
   border: "1px solid var(--border-color)",
   fontSize: "var(--font-size-sm)",
 };
+
+/** What an empty list says: nothing logged yet, or a filter hiding what is. */
+export function emptyLogText(tab: "system" | "state", hasEntries: boolean): string {
+  if (tab === "system") {
+    return hasEntries
+      ? "No log entries match these filters."
+      : "No log entries yet. System activity will appear here.";
+  }
+  return hasEntries
+    ? "No state changes match this device filter."
+    : "No state changes recorded yet. Interact with the system to see live updates.";
+}
 
 function actionBtnStyle(highlighted: boolean): React.CSSProperties {
   return {

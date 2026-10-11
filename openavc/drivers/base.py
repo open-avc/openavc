@@ -2115,9 +2115,15 @@ class BaseDriver(ABC):
                     # A held device is already shown offline: its misses are
                     # expected, and a device that stays down for hours would
                     # otherwise warn twice on every retry.
+                    # The probe's deadline raises a timeout with no text.
+                    why = str(exc) or (
+                        f"no answer within {timeout:g} s"
+                        if isinstance(exc, (asyncio.TimeoutError, TimeoutError))
+                        else type(exc).__name__
+                    )
                     (log.debug if self._held else log.warning)(
                         f"[{self.device_id}] Liveness probe failed "
-                        f"({self._health_failures}/{max_failures}): {exc}"
+                        f"({self._health_failures}/{max_failures}): {why}"
                     )
                     if self._health_failures >= max_failures:
                         if self._held:
