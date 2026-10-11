@@ -19,6 +19,18 @@ from openavc.simulator.self_signed_tls import wants_tls
 logger = logging.getLogger(__name__)
 
 
+#: The error mode every simulator offers whether or not its driver declares
+#: one: the device stops responding. A driver that declares its own mode with
+#: this name, or any mode with the ``no_response`` behaviour, keeps its own
+#: instead, so a device never lists the same failure twice.
+BUILTIN_ERROR_MODES: dict[str, dict] = {
+    "communication_timeout": {
+        "behavior": "no_response",
+        "description": "Device stops responding",
+    },
+}
+
+
 class BaseSimulator(ABC):
     """Abstract base for device simulators."""
 
@@ -162,17 +174,32 @@ class BaseSimulator(ABC):
 
     @property
     def available_errors(self) -> dict[str, dict]:
-        """All defined error modes with descriptions."""
-        return dict(self._error_modes)
+        """Every error mode this device offers: the declared ones, then the
+        built-in ones the declared set does not already cover."""
+        return self._offered_error_modes()
+
+    def _offered_error_modes(self) -> dict[str, dict]:
+        # Worked out on every read rather than at construction: the YAML
+        # auto-generator merges a driver's declared modes in after __init__.
+        modes = dict(self._error_modes)
+        if any(
+            isinstance(m, dict) and m.get("behavior") == "no_response"
+            for m in modes.values()
+        ):
+            return modes
+        for name, mode in BUILTIN_ERROR_MODES.items():
+            modes.setdefault(name, {**mode, "builtin": True})
+        return modes
 
     def inject_error(self, mode: str) -> None:
         """Activate an error mode."""
-        if mode not in self._error_modes:
+        modes = self._offered_error_modes()
+        if mode not in modes:
             logger.warning("Unknown error mode '%s' on %s", mode, self.device_id)
             return
         self._active_errors.add(mode)
         # Apply state changes defined by the error mode
-        state_changes = self._error_modes[mode].get("set_state", {})
+        state_changes = modes[mode].get("set_state", {})
         for key, value in state_changes.items():
             self.set_state(key, value)
         self._notify_change("error", {
@@ -199,10 +226,18 @@ class BaseSimulator(ABC):
 
     def has_error_behavior(self, behavior: str) -> bool:
         """Check if any active error has the given behavior (e.g., 'no_response')."""
+        modes = self._offered_error_modes()
         for mode in self._active_errors:
-            if self._error_modes.get(mode, {}).get("behavior") == behavior:
+            if modes.get(mode, {}).get("behavior") == behavior:
                 return True
         return False
+
+    @property
+    def _silenced(self) -> bool:
+        """True while a ``no_response`` mode is active. The device then sends
+        nothing at all, unsolicited messages included: a controller that
+        counts any byte as proof of life would otherwise read it as alive."""
+        return self.has_error_behavior("no_response")
 
     # ── Protocol Log ──
 
@@ -271,8 +306,11 @@ class BaseSimulator(ABC):
             "state": self.state,
             "active_errors": list(self._active_errors),
             "available_errors": {
-                k: {"description": v.get("description", "")}
-                for k, v in self._error_modes.items()
+                k: {
+                    "description": v.get("description", ""),
+                    **({"builtin": True} if v.get("builtin") else {}),
+                }
+                for k, v in self._offered_error_modes().items()
             },
         }
         # Whether this simulator terminates TLS. The platform reads it when it

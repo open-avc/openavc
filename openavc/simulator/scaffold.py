@@ -219,7 +219,9 @@ class {class_name}({base_class}):
             "command_response": 0.05,
         }},
         "error_modes": {{
-            # Add error modes relevant to this device, e.g.:
+            # "communication_timeout" (the device stops responding) is
+            # offered without being declared. Add the ones particular to
+            # this device, e.g.:
             # "no_signal": {{
             #     "description": "No input signal detected",
             # }},

@@ -15,8 +15,8 @@ driver's ``transport:`` field names. Nothing here defines ``start`` or
 ``stop``, so mixing it in never fights the class it is mixed into.
 
 Mix into a :class:`~openavc.simulator.base.BaseSimulator` — the pipeline reads
-``log_protocol``, ``has_error_behavior``, ``_delays`` and ``_network_layer``
-from it.
+``log_protocol``, ``has_error_behavior``, ``_silenced``, ``_delays`` and
+``_network_layer`` from it.
 """
 
 from __future__ import annotations
@@ -78,14 +78,23 @@ class DatagramServerMixin:
     def send_datagram(self, data: bytes, addr: tuple[str, int]) -> None:
         """Answer one datagram, applying the ``corrupt_response`` error mode.
 
-        Replies go through here; unsolicited pushes send on the transport
-        directly, because a device that garbles its answers still emits clean
-        notifications.
+        Replies go through here; unsolicited pushes go through
+        :meth:`push_datagram`, because a device that garbles its answers
+        still emits clean notifications.
         """
-        if not self._udp_transport:
+        if not self._udp_transport or self._silenced:
             return
         if self.has_error_behavior("corrupt_response"):
             data = corrupt_bytes(data)
+        self._udp_transport.sendto(data, addr)
+        self.log_protocol("out", data)
+
+    def push_datagram(self, data: bytes, addr: tuple[str, int] | None = None) -> None:
+        """Send one unsolicited datagram, to ``addr`` or the last peer heard
+        from. Nothing is sent while the device is not responding."""
+        addr = addr or self._last_client_addr
+        if not self._udp_transport or not addr or self._silenced:
+            return
         self._udp_transport.sendto(data, addr)
         self.log_protocol("out", data)
 

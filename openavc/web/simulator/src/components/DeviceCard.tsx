@@ -54,7 +54,10 @@ export function DeviceCard({ device, expandAll }: {
   // cheapest wrong answer here is a card that hides content behind no control.
   const [clipped, setClipped] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
-  const errors = Object.entries(device.available_errors);
+  // The driver's own modes first, then the ones every simulator offers.
+  const errors = Object.entries(device.available_errors).sort(
+    ([, a], [, b]) => Number(!!a.builtin) - Number(!!b.builtin),
+  );
 
   // Runs after every render, which is what we want: state arrives from the
   // simulator continuously, and a device that grows a new property mid-session

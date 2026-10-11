@@ -164,6 +164,8 @@ class HTTPServerMixin:
         """
         from aiohttp import ClientSession, ClientTimeout
 
+        if self._silenced:
+            return None
         data = body.encode("utf-8") if isinstance(body, str) else body
         try:
             async with ClientSession(timeout=ClientTimeout(total=10)) as session:
@@ -190,7 +192,7 @@ class HTTPServerMixin:
         ``close``, say). No-op with no subscribers — device state is
         authoritative either way, the driver resyncs by polling.
         """
-        if not self._sse_clients:
+        if not self._sse_clients or self._silenced:
             return
         frame = f"event: {event}\ndata: {data}\n\n" if event else f"data: {data}\n\n"
         for queue in list(self._sse_clients):
@@ -288,6 +290,10 @@ class HTTPServerMixin:
             and path.split("?")[0] in self.sse_paths
             and "text/event-stream" in request.headers.get("Accept", "")
         ):
+            if self._silenced:
+                self.log_protocol("in", f"GET {path} (event-stream)")
+                await asyncio.sleep(30)
+                return web.Response(status=504, text="Gateway Timeout")
             return await self._serve_sse(request, path)
 
         headers = dict(request.headers)

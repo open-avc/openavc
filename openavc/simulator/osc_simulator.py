@@ -80,12 +80,8 @@ class OSCDispatchMixin(DatagramServerMixin):
         self, address: str, args: list[tuple[str, Any]] | None = None
     ) -> None:
         """Send an unsolicited OSC message to the last known client."""
-        if not self._udp_transport or not self._last_client_addr:
-            return
         from openavc.transport.osc_codec import osc_encode_message
-        data = osc_encode_message(address, args)
-        self._udp_transport.sendto(data, self._last_client_addr)
-        self.log_protocol("out", data)
+        self.push_datagram(osc_encode_message(address, args))
 
 
 class OSCSimulator(OSCDispatchMixin, BaseSimulator):

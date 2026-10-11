@@ -28,7 +28,7 @@ class NetworkConditions:
     """Jitter as a percentage of latency (0-100). Randomizes actual delay."""
 
     drop_rate_pct: float = 0.0
-    """Percentage of messages silently dropped (0-50)."""
+    """Percentage of messages silently dropped (0-100)."""
 
     instability: str = "off"
     """Connection instability level: off, low, medium, high."""

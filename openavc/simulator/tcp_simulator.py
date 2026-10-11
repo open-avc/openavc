@@ -82,8 +82,11 @@ class TCPSimulator(BaseSimulator):
         """Send unsolicited data to all connected clients.
 
         Use for push notifications (e.g., state change notifications,
-        subscription updates).
+        subscription updates). Nothing is sent while the device is not
+        responding.
         """
+        if self._silenced:
+            return
         dead = []
         for client_id, writer in self._clients.items():
             try:
@@ -97,6 +100,8 @@ class TCPSimulator(BaseSimulator):
 
     async def push_to(self, client_id: str, data: bytes) -> None:
         """Send data to a specific client."""
+        if self._silenced:
+            return
         writer = self._clients.get(client_id)
         if writer:
             try:
@@ -145,6 +150,26 @@ class TCPSimulator(BaseSimulator):
         logger.info("%s stopped", self.name)
 
     # ── Internal ──
+
+    async def _wait_out_silence(
+        self, reader: asyncio.StreamReader, client_id: str,
+    ) -> bool:
+        """Hold a client that connected while the device is not responding.
+
+        What it sends is read and logged and nothing is answered; the
+        greeting and sign-in wait until the mode clears, so a client still
+        connected then is greeted and signs in as usual. False when the
+        client leaves, or the simulator stops, first.
+        """
+        while self._running and self._silenced:
+            try:
+                raw = await asyncio.wait_for(reader.read(4096), timeout=0.2)
+            except asyncio.TimeoutError:
+                continue
+            if not raw:
+                return False
+            self.log_protocol("in", raw, client_id)
+        return self._running
 
     async def _read_messages(
         self, reader: asyncio.StreamReader,
@@ -258,6 +283,9 @@ class TCPSimulator(BaseSimulator):
         line_buffer: bytearray = bytearray()
 
         try:
+            if not await self._wait_out_silence(reader, client_id):
+                return
+
             # Send greeting if defined
             greeting = await self.on_client_connected(client_id)
             if greeting:
@@ -317,7 +345,8 @@ class TCPSimulator(BaseSimulator):
                     if response and self.has_error_behavior("corrupt_response"):
                         response = corrupt_bytes(response)
 
-                    if response:
+                    # The mode may have started during the delays above.
+                    if response and not self._silenced:
                         writer.write(response)
                         await writer.drain()
                         self.log_protocol("out", response, client_id)

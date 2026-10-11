@@ -123,7 +123,9 @@ export interface DeviceInfo {
   running: boolean;
   state: Record<string, unknown>;
   active_errors: string[];
-  available_errors: Record<string, { description: string }>;
+  /** Every error mode the device offers. `builtin` marks one every simulator
+   *  offers whether or not its driver declares it. */
+  available_errors: Record<string, { description: string; builtin?: boolean }>;
   controls?: ControlDef[];
   push_state: boolean;
   /** v0.5.0 child entities: { child_type: { padded_id: { label, config } } }.

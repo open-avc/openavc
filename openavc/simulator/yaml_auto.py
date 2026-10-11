@@ -525,6 +525,8 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             return raw.decode("utf-8", errors="replace").strip("\r\n")
 
         async def emit(data: bytes) -> None:
+            if self._silenced:
+                return
             writer.write(data)
             await writer.drain()
             self.log_protocol("out", data, client_id)
@@ -765,6 +767,8 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
 
     def _emit_push_tcp(self, payload: bytes) -> None:
         """Dial each registered subscriber and push one framed notification."""
+        if self._silenced:
+            return
         framed = self._wrap_push_tcp_frame(payload)
         for target in list(self._push_tcp_subscribers):
             task = asyncio.ensure_future(self._dial_push_tcp(target, framed))
@@ -2697,9 +2701,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             and (push_text := self._format_state_reply(key, value)) is not None
         ):
             delimiter = self._get_delimiter()
-            push_data = (push_text + delimiter).encode()
-            self._udp_transport.sendto(push_data, self._last_client_addr)
-            self.log_protocol("out", push_data)
+            self.push_datagram((push_text + delimiter).encode())
 
         # Explicit `notifications:` templates (simulator: section), delivered
         # on whatever channel this device pushes on.
@@ -2746,7 +2748,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         # notifications on that channel ONLY — real devices with a dedicated
         # notice feed never send those frames on the control connection.
         if self._push_multicast:
-            if self._mcast_sock is not None:
+            if self._mcast_sock is not None and not self._silenced:
                 try:
                     self._mcast_sock.sendto(data, self._push_multicast)
                     self.log_protocol("out", data)
@@ -2774,9 +2776,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         elif self._is_udp and not self._is_osc:
             # Connectionless: the device can only push to a peer it has
             # heard from, so the last sender is the subscriber.
-            if self._last_client_addr and self._udp_transport:
-                self._udp_transport.sendto(data, self._last_client_addr)
-                self.log_protocol("out", data)
+            self.push_datagram(data)
         elif self._clients:
             asyncio.ensure_future(self.push(data))
 
@@ -2850,9 +2850,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             else:
                 osc_value = value
 
-        data = osc_encode_message(addr, [(tag, osc_value)])
-        self._udp_transport.sendto(data, self._last_client_addr)
-        self.log_protocol("out", data)
+        self.push_datagram(osc_encode_message(addr, [(tag, osc_value)]))
 
     def _script_reply(self, key: str) -> str | None:
         """A script handler's ``reply(key)``: the text this device sends to

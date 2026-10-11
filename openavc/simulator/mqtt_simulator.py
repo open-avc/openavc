@@ -377,6 +377,10 @@ class MQTTSimulator(BaseSimulator):
     async def _write(
         self, client_id: str, writer: asyncio.StreamWriter, data: bytes
     ) -> None:
+        # Every packet the broker sends goes out here, CONNACK and PINGRESP
+        # included: a device that stops responding answers none of them.
+        if self._silenced:
+            return
         try:
             writer.write(data)
             await writer.drain()

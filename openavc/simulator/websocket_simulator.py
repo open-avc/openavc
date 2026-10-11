@@ -66,8 +66,9 @@ class WebSocketSimulator(BaseSimulator):
     # ── Send helpers ──
 
     async def send(self, client: web.WebSocketResponse, text: str) -> None:
-        """Send one text frame to a single client. Silently drops if it closed."""
-        if client.closed:
+        """Send one text frame to a single client. Silently drops if it closed,
+        or while the device is not responding."""
+        if client.closed or self._silenced:
             return
         try:
             await client.send_str(text)
@@ -139,6 +140,11 @@ class WebSocketSimulator(BaseSimulator):
             # Not a WebSocket upgrade — a probe/health GET. Answer plainly so
             # the caller sees the port is alive without a protocol error.
             return web.Response(status=426, text="Upgrade Required")
+        if self._silenced:
+            # A device that stops responding does not complete the upgrade.
+            self.log_protocol("in", "<ws connect>")
+            await asyncio.sleep(30)
+            return web.Response(status=504, text="Gateway Timeout")
         await ws.prepare(request)
         self._clients.add(ws)
         self.log_protocol("in", "<ws connect>", client_id=_client_id(ws))

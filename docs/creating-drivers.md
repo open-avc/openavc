@@ -3866,9 +3866,9 @@ simulator:
       'false': 'Amt0'
 
   error_modes:
-    communication_timeout:
-      behavior: no_response
-      description: "Device stops responding to all commands"
+    garbled_response:
+      behavior: corrupt_response
+      description: "Corrupted data on the wire"
 ```
 
 **Key sections:**
@@ -3882,7 +3882,7 @@ simulator:
 | `notifications` | Optional overrides for the push format on state changes |
 | `command_handlers` | How the simulator responds to commands |
 | `state_machines` | Devices that take time to change state (projector warm-up, cooldown) |
-| `error_modes` | Failure scenarios for testing error handling |
+| `error_modes` | Failure scenarios for testing error handling. Every simulator already offers `communication_timeout` ("Device stops responding"); declare the ones particular to the device |
 
 **Control types:** `power`, `slider`, `toggle`, `select`, `matrix`, `indicator`, `meters`, `presets`, `group`.
 

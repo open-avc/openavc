@@ -71,7 +71,7 @@ The Simulator UI shows your virtual devices and lets you interact with them from
 
 **Network conditions** dropdown in the header lets you simulate degraded network connections (latency, packet drops, jitter) using presets from "Perfect" to "Barely Working."
 
-**Error injection** on each device card lets you toggle error conditions (communication timeout, corrupted data, device-specific errors) to test how your macros and triggers handle failures.
+**Error injection** on each device card lets you toggle error conditions (corrupted data, device-specific errors) to test how your macros and triggers handle failures. Every device offers **Device stops responding**: the device accepts connections but sends nothing, no replies and no unsolicited updates, until you turn it off. Use it to test how OpenAVC reports a device that hangs, and that the device comes back once it answers again.
 
 ## How It Works
 
