@@ -311,3 +311,31 @@ async def test_a_project_load_never_refuses(camera_engine):
     assert resp.status_code == 200, resp.text
     assert [d.id for d in engine.project.devices] == ["cam1"]
     assert engine.devices.get_driver("cam1") is not None
+
+
+async def test_put_connection_refuses_a_blank_required_field(camera_engine):
+    """One device's connection row is refused blank the way PATCH refuses it."""
+    client, engine = camera_engine
+    with_model = client.patch(
+        "/api/devices/cam1", json={"config": {"host": "10.0.0.50", "model": "w12"}},
+    )
+    assert with_model.status_code == 200, with_model.text
+    resp = client.put("/api/connections/cam1", json={"port": 5500, "password": "stored"})
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "IP Address is required."
+    assert load_project(engine.project_path).connections["cam1"]["host"] == "10.0.0.50"
+
+    resp = client.put(
+        "/api/connections/cam1", json={"host": "10.0.0.60", "password": "stored"},
+    )
+    assert resp.status_code == 200, resp.text
+
+
+async def test_the_whole_table_connection_routes_never_refuse(camera_engine):
+    """Replacing or importing the whole table is a whole-project kind of save."""
+    client, engine = camera_engine
+    resp = client.put("/api/connections", json={"cam1": {"port": 5500}})
+    assert resp.status_code == 200, resp.text
+    resp = client.post("/api/connections/import", json={"cam1": {"port": 5501}})
+    assert resp.status_code == 200, resp.text
+    assert load_project(engine.project_path).connections["cam1"] == {"port": 5501}

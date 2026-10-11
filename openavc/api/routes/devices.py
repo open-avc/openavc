@@ -1137,8 +1137,20 @@ async def update_connection(device_id: str, request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail="Connection overrides must be a JSON object")
 
     def mutate(project):
-        if not any(d.id == device_id for d in project.devices):
+        device = next((d for d in project.devices if d.id == device_id), None)
+        if device is None:
             raise HTTPException(status_code=404, detail=f"Device '{device_id}' not found")
+        # One device's connection is refused blank the way PATCH refuses it.
+        # The bulk replace and the import below are whole-table operations,
+        # like a project save, and never refuse. See core/required_config.py.
+        missing = missing_for_driver(
+            device.driver, merged_device_config(device.driver, device.config, overrides),
+        )
+        if missing:
+            raise HTTPException(
+                status_code=422,
+                detail=required_sentence([label for _key, label in missing]),
+            )
         project.connections[device_id] = overrides
 
     # The connections-section diff hot-swaps the device — and, if this is a

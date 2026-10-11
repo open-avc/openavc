@@ -6,7 +6,7 @@ import type { DeviceConfig, DriverInfo } from "../../api/types";
 import { DeviceSettingsSetupDialog, hasDriverSetupSettings } from "../../components/shared/DeviceSettingsSetupDialog";
 import { Modal } from "../../components/shared/Modal";
 import { normalizeOptionList } from "../../components/shared/paramOptions";
-import { buildConfigFromForm, configFieldKind, splitConnectionFields, SERIAL_PICKER_FIELDS, IR_PICKER_FIELDS, prefillConfigValues, type ConnectionMode } from "./deviceConfigCoerce";
+import { buildConfigFromForm, configFieldKind, splitConnectionFields, CONNECTION_FIELDS, SERIAL_PICKER_FIELDS, IR_PICKER_FIELDS, prefillConfigValues, type ConnectionMode } from "./deviceConfigCoerce";
 import { parseApiError } from "../../api/errors";
 import { booleanWord } from "../../components/shared/booleanWords";
 
@@ -384,6 +384,42 @@ function applyConnMode(
     }
   }
   return v;
+}
+
+const LINE_SETTINGS = ["baudrate", "bytesize", "parity", "stopbits", "flow_control"];
+
+// The form a device starts from when Edit Device picks another driver: the new
+// driver's defaults, keeping what belongs to the device rather than to its
+// driver. That is where it is (its IP address, the serial port it is plugged
+// into and that line's settings, the bridge port it is wired to) when the new
+// driver offers the same connection, and a username or password the new
+// driver also asks for. The new driver's own default wins for the rest, the
+// network port included: another driver often speaks another protocol on
+// another port.
+export function carryOnDriverChange(
+  form: Record<string, string>,
+  connection: ConnMode,
+  oldInfo: DriverInfo | undefined,
+  newInfo: DriverInfo | undefined,
+): Record<string, string> {
+  let next = prefillConfigValues(newInfo?.default_config, newInfo?.config_schema);
+  const keep = (key: string) => {
+    if ((form[key] ?? "").trim() !== "") next[key] = form[key];
+  };
+  const newSchema = (newInfo?.config_schema ?? {}) as Record<string, unknown>;
+  const newIr = driverIrCapable(newInfo);
+  const newSerial = !newIr && driverSerialCapable(newInfo);
+  if (connection === "network" && !newIr && (driverNetworkCapable(newInfo) || "host" in newSchema)) {
+    keep("host");
+  } else if (connection === "serial" && newSerial) {
+    next = applyConnMode(next, "serial", newInfo);
+    ["port", "usb_serial", ...LINE_SETTINGS].forEach(keep);
+  } else if (connection === "bridge" && (newIr ? driverIrCapable(oldInfo) : newSerial && !driverIrCapable(oldInfo))) {
+    next = applyConnMode(next, "bridge", newInfo);
+    ["bridge", "bridge_port", ...(newIr ? [] : LINE_SETTINGS)].forEach(keep);
+  }
+  ["username", "password"].filter((key) => key in newSchema).forEach(keep);
+  return next;
 }
 
 // The picker's mode, held by the dialog: the required check asks it which
@@ -1266,26 +1302,28 @@ export function EditDeviceDialog({
   const [drivers, setDrivers] = useState<DriverInfo[]>([]);
   const [deviceName, setDeviceName] = useState(device.name);
   const [selectedDriver, setSelectedDriver] = useState(device.driver);
-  // The typed values the form's text came from, so a key the driver's schema
-  // does not describe keeps its type on save (buildConfigFromForm).
-  const [configOriginals, setConfigOriginals] = useState<Record<string, unknown>>(() => {
+  // The device as saved: what the form opens with, and returns to when the
+  // device's own driver is picked again. `connection` is its connections row.
+  const [stored] = useState(() => {
     // Merge device.config with connection table overrides (host, port, etc.)
-    const conn = useProjectStore.getState().project?.connections?.[device.id] ?? {};
-    return { ...device.config, ...conn };
-  });
-  const [configValues, setConfigValues] = useState<Record<string, string>>(() => {
-    const vals: Record<string, string> = {};
-    for (const [k, v] of Object.entries(configOriginals)) {
+    const connection = useProjectStore.getState().project?.connections?.[device.id] ?? {};
+    const originals: Record<string, unknown> = { ...device.config, ...connection };
+    const values: Record<string, string> = {};
+    for (const [k, v] of Object.entries(originals)) {
       if (v != null && typeof v === "object") {
         // Pretty-print so object fields (e.g. a command map) are editable as
         // readable JSON in the multi-line textarea.
-        vals[k] = JSON.stringify(v, null, 2);
+        values[k] = JSON.stringify(v, null, 2);
       } else {
-        vals[k] = String(v ?? "");
+        values[k] = String(v ?? "");
       }
     }
-    return vals;
+    return { connection, originals, values };
   });
+  // The typed values the form's text came from, so a key the driver's schema
+  // does not describe keeps its type on save (buildConfigFromForm).
+  const [configOriginals, setConfigOriginals] = useState<Record<string, unknown>>(stored.originals);
+  const [configValues, setConfigValues] = useState<Record<string, string>>(stored.values);
   const [error, setError, errorRef] = useDialogError();
   const [saving, setSaving] = useState(false);
 
@@ -1308,16 +1346,24 @@ export function EditDeviceDialog({
     (k) => !hiddenRawConfigKeys(driverInfo).has(k),
   );
 
-  // When driver changes, pre-fill config from driver's default_config
+  // Another driver starts from its own defaults, keeping the device's address
+  // and login (carryOnDriverChange); the device's own driver brings back what
+  // is saved.
   const handleDriverChange = (newDriver: string) => {
+    if (newDriver === selectedDriver) return;
     setSelectedDriver(newDriver);
-    if (newDriver !== device.driver) {
-      const newDriverInfo = drivers.find((d) => d.id === newDriver);
-      setConfigOriginals(newDriverInfo?.default_config ?? {});
-      setConfigValues(
-        prefillConfigValues(newDriverInfo?.default_config, newDriverInfo?.config_schema),
-      );
+    if (newDriver === device.driver) {
+      setConfigOriginals(stored.originals);
+      setConfigValues(stored.values);
+      return;
     }
+    const newDriverInfo = drivers.find((d) => d.id === newDriver);
+    setConfigOriginals(newDriverInfo?.default_config ?? {});
+    setConfigValues(
+      carryOnDriverChange(
+        configValues, requiredConnection(driverInfo, connMode), driverInfo, newDriverInfo,
+      ),
+    );
   };
 
   const handleSave = async () => {
@@ -1340,6 +1386,13 @@ export function EditDeviceDialog({
         return;
       }
       const config = built.config;
+      // The server merges a device's connection settings into what it has,
+      // so one the form no longer holds (another connection picked, a field
+      // cleared, another driver chosen) is sent as null, which removes it.
+      // What is saved is what the form shows.
+      for (const key of Object.keys(stored.connection)) {
+        if (CONNECTION_FIELDS.has(key) && !(key in config)) config[key] = null;
+      }
 
       const updateData: Record<string, unknown> = {
         name: deviceName || device.id,

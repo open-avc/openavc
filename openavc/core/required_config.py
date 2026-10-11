@@ -5,10 +5,11 @@ A ``config_schema`` field may say ``required: true``. The Add and Edit Device
 dialogs refuse to save one left blank (``buildConfigFromForm`` in
 ``web/programmer/src/views/devices/deviceConfigCoerce.ts``, the same rule), and
 so do the server doors that change one device's settings: ``PATCH
-/api/devices/{id}`` and the AI's add and update device tools. Each answers with
-the field's label: "Model is required."
+/api/devices/{id}``, ``PUT /api/connections/{id}`` and the AI's add and update
+device tools. Each answers with the field's label: "Model is required."
 
-A whole-project save and a project load never ask. One older device with a
+A whole-project save, a project load and the whole-table connection routes
+(``PUT /api/connections``, the import) never ask. One older device with a
 blank field must not block every other edit or stop a project opening; that
 device fails to connect and says why on its card, as before.
 
