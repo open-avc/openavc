@@ -468,6 +468,14 @@ answers: *%(early)s*
 has no Enter key: `auto_send` is the only way it sends, and the pause is the
 only way it sends a code shorter than `digits`. The review answers:
 *%(never)s*
+
+For a PIN, `mask_display: true` shows a dot for each digit typed; `$value` is
+still the digits. It needs the display, which `show_display` leaves on.
+
+To lock the whole panel rather than one page, offer the panel lock instead of a
+keypad: a PIN a person sets in the UI Builder's Panel Settings (Lock Code (PIN),
+stored as `ui.settings.lock_code`, which no tool writes) puts a lock screen over
+the panel when it opens, and again after its idle timeout when one is set.
 """
 
 MATRIX_INTRO = """\

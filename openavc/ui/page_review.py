@@ -231,7 +231,7 @@ HONORED_PROPERTIES: dict[str, frozenset[str]] = {
     "image": frozenset({"label", "object_fit", "src"}),
     "keypad": frozenset({
         "auto_send", "auto_send_delay_ms", "digits", "keypad_style", "label",
-        "show_display",
+        "mask_display", "show_display",
     }),
     "label": frozenset({
         "display_decimals", "icon", "icon_color", "icon_position", "icon_size",

@@ -174,6 +174,7 @@ export const HONORED_PROPERTIES: Record<string, string[]> =
     "digits",
     "keypad_style",
     "label",
+    "mask_display",
     "show_display"
   ],
   "label": [

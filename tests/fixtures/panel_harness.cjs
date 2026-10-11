@@ -4179,6 +4179,41 @@ const tests = {
         assert(el.textContent.includes('Blank All'),
             `and its own label, got "${el.textContent}"`);
     },
+
+    // --- a PIN pad shows a dot per digit, and sends the digits ---------------
+
+    masked_keypad_draws_dots_and_sends_the_digits() {
+        const mount = (extra) => {
+            const app = mkApp();
+            const sent = [];
+            app.send = (m) => sent.push(m);
+            renderProject(app, project({
+                elements: [Object.assign({ id: 'pin', type: 'keypad', label: 'PIN', digits: 4 }, extra)],
+                placements: { pin: { x: 5, y: 5, w: 25, h: 60 } },
+            }));
+            const el = app.root.querySelector('[data-element-id="pin"]');
+            const press = (k) => [...el.querySelectorAll('.keypad-key')]
+                .find(b => b.getAttribute('aria-label') === k).click();
+            return { el, sent, press, display: () => el.querySelector('.keypad-display').textContent };
+        };
+
+        let m = mount({ mask_display: true });
+        for (const k of ['Key 1', 'Key 2', 'Key 3']) m.press(k);
+        assert(m.display() === '•••',
+            `masked: a dot per digit, got "${m.display()}"`);
+        m.press('Clear');
+        assert(m.display() === '', `masked: Clear empties it, got "${m.display()}"`);
+        for (const k of ['Key 4', 'Key 2']) m.press(k);
+        m.press('Enter');
+        const submit = m.sent.find(s => s.type === 'ui.submit');
+        assert(submit && submit.value === '42',
+            `masked: the digits are what is sent, got ${JSON.stringify(m.sent)}`);
+        assert(m.display() === '', `masked: empty after sending, got "${m.display()}"`);
+
+        m = mount({});
+        for (const k of ['Key 1', 'Key 2']) m.press(k);
+        assert(m.display() === '12', `not masked: the digits, got "${m.display()}"`);
+    },
 };
 
 const results = {};

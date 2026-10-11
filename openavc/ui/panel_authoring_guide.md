@@ -324,7 +324,7 @@ element second.
 | gauge | `arc_angle`, `display_decimals`, `label`, `max`, `min`, `unit`, `zones` |
 | group | `label`, `label_position` |
 | image | `label`, `object_fit`, `src` |
-| keypad | `auto_send`, `auto_send_delay_ms`, `digits`, `keypad_style`, `label`, `show_display` |
+| keypad | `auto_send`, `auto_send_delay_ms`, `digits`, `keypad_style`, `label`, `mask_display`, `show_display` |
 | label | `display_decimals`, `text` (+ the shared icon set) |
 | level_meter | `label`, `max`, `min`, `orientation` |
 | list | `item_height`, `items`, `label`, `list_style`, `options` |
@@ -364,6 +364,14 @@ answers: *pin (keypad) sends what has been typed 200 ms after the last key press
 has no Enter key: `auto_send` is the only way it sends, and the pause is the
 only way it sends a code shorter than `digits`. The review answers:
 *dial (keypad) uses the phone layout, which has no Enter key, and auto_send is off, so nothing typed on it is ever sent. Turn auto_send on, or use the numeric layout.*
+
+For a PIN, `mask_display: true` shows a dot for each digit typed; `$value` is
+still the digits. It needs the display, which `show_display` leaves on.
+
+To lock the whole panel rather than one page, offer the panel lock instead of a
+keypad: a PIN a person sets in the UI Builder's Panel Settings (Lock Code (PIN),
+stored as `ui.settings.lock_code`, which no tool writes) puts a lock screen over
+the panel when it opens, and again after its idle timeout when one is set.
 
 ## The matrix, which is configured entirely inside `matrix_config`
 

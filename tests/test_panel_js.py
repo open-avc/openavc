@@ -236,6 +236,8 @@ SCENARIOS = [
     # Clearing a ui.<id>.* override hands the element back to its look as it
     # stands now.
     "cleared_override_returns_to_what_the_look_shows_now",
+    # A PIN pad shows a dot per digit typed and sends the digits.
+    "masked_keypad_draws_dots_and_sends_the_digits",
 ]
 
 

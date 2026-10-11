@@ -5434,6 +5434,9 @@ class PanelApp {
         const autoSendDelay = element.auto_send_delay_ms ?? 1500;
         const keypadStyle = element.keypad_style || 'numeric';
         const showDisplay = element.show_display !== false;
+        // A PIN pad: the display shows a dot per digit typed. Only what is
+        // drawn changes; the entry submitted is the digits themselves.
+        const maskDisplay = element.mask_display === true;
 
         this.applyStyle(el, this.getThemedStyle(element.type, element.style));
 
@@ -5469,7 +5472,8 @@ class PanelApp {
         let autoSendTimer = null;
 
         const updateDisplay = () => {
-            if (displayEl) displayEl.textContent = buffer || '';
+            if (!displayEl) return;
+            displayEl.textContent = maskDisplay ? '•'.repeat(buffer.length) : buffer;
         };
 
         const doSubmit = () => {

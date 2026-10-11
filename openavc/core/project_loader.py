@@ -456,6 +456,7 @@ class UIElement(_ForwardCompatModel):
     auto_send_delay_ms: int | None = None
     keypad_style: str | None = None  # keypad: numeric/phone
     show_display: bool | None = None  # keypad: show digit buffer display
+    mask_display: bool | None = None  # keypad: the display shows a dot per digit
     label_position: str | None = None  # group: label position
     list_style: str | None = None  # list: static/selectable/multi_select/action
     item_height: float | None = None  # list: row height in rem (see icon_size)

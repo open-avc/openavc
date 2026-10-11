@@ -1183,6 +1183,18 @@ export function BasicProperties({
               Show digit display above keys
             </label>
           </FieldRow>
+          {(element.show_display ?? true) && (
+            <FieldRow label="Mask Display">
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={element.mask_display ?? false}
+                  onChange={(e) => onChange({ mask_display: e.target.checked })}
+                />
+                Show a dot for each digit typed
+              </label>
+            </FieldRow>
+          )}
         </>
       )}
 

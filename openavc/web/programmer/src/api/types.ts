@@ -269,6 +269,7 @@ export interface UIElement {
   auto_send_delay_ms?: number;
   keypad_style?: string;
   show_display?: boolean;
+  mask_display?: boolean;
   // Group
   label_position?: string;
   // List

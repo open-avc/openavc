@@ -121,7 +121,7 @@ Validate also asks the device's driver whether each command you have chosen has 
 | **Fader** | Mixing console style fader with handle | Audio volume, lighting level |
 | **Container** | A labelled frame that really holds things: whatever you put inside moves, resizes and hides with it | "Audio Controls", "Display Settings" section |
 | **Clock** | Time, date, countdown, elapsed, meeting timer | Current time display, meeting countdown |
-| **Keypad** | Numeric 0-9 pad with display | TV channel entry, passcode input |
+| **Keypad** | Numeric 0-9 pad with display. Mask Display shows a dot for each digit typed | TV channel entry, PIN entry |
 | **List** | Scrollable list (static, selectable, multi-select, action) | Source list, room schedule, preset recall |
 | **Matrix** | Routing: a wall of destination tiles, a list of dropdowns, or a crosspoint grid | Video/audio switcher routing |
 | **Custom Control** | A page you wrote yourself, running inside the element's box | Seating map, rack diagram, a control nothing else covers |
