@@ -28,6 +28,7 @@ import type {
 } from "../../api/driverClient";
 import { commandShapeMismatch } from "./liveTestHelpers";
 import { valueText } from "../shared/booleanWords";
+import { BUILTIN_CONFIG_KEYS } from "./configSchemaHelpers";
 
 // Re-pause cadence while devices stay paused. The server expires a pause
 // after its TTL (device_manager.PAUSE_TTL, 10 min) so an abandoned pause
@@ -252,20 +253,12 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
   // isn't a baseline transport key). Surface these so users can fill in
   // credentials or instance tags without wiring up a real device first.
   const customConfigFields = useMemo(() => {
-    const builtin = new Set([
-      "host",
-      "port",
-      "baudrate",
-      "parity",
-      "poll_interval",
-      "inter_command_delay",
-    ]);
     const schema = (draft.config_schema ?? {}) as Record<
       string,
       { label?: string; secret?: boolean; type?: string }
     >;
     return Object.entries(schema)
-      .filter(([k]) => !builtin.has(k))
+      .filter(([k]) => !BUILTIN_CONFIG_KEYS.has(k))
       .map(([key, def]) => ({
         key,
         label: def.label ?? key,

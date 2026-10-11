@@ -36,17 +36,16 @@ function draftWith(commands: DriverDefinition["commands"]): DriverDefinition {
 
 describe("macFieldOptions", () => {
   it("lists config fields, each once, and says which the device also reports", () => {
+    // Not the connection fields: a MAC address is never read from them.
     const options = macFieldOptions(draftWith({}));
     expect(options.map((o) => o.value)).toEqual([
-      "host",
       "mac_address",
       "udp_port",
-      "port",
     ]);
-    expect(options[1].label).toBe(
+    expect(options[0].label).toBe(
       "mac_address (config field, learned from the device once connected)",
     );
-    expect(options[2].label).toBe("udp_port (config field)");
+    expect(options[1].label).toBe("udp_port (config field)");
   });
 });
 
@@ -103,7 +102,7 @@ describe("Send over UDP", () => {
     fireEvent.click(screen.getByText("wake"));
     fireEvent.click(screen.getByLabelText("A Wake-on-LAN magic packet"));
     const written = onUpdate.mock.calls[0][0].commands.wake.udp;
-    expect(written).toEqual({ port: 9, magic_packet: "host" });
+    expect(written).toEqual({ port: 9, magic_packet: "mac_address" });
   });
 
   it("a magic-packet command offers the MAC picker and no broadcast box", () => {

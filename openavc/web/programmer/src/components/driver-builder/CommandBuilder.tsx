@@ -9,6 +9,7 @@ import type {
 import { EnumValuesEditor } from "../shared/EnumValuesEditor";
 import { readableKey } from "../shared/paramLabel";
 import { IdRenameInput, type RenameResult } from "./IdRenameInput";
+import { BUILTIN_CONFIG_KEYS } from "./configSchemaHelpers";
 import { ValueConversionFields } from "./ValueConversionFields";
 import { OscArgsEditor } from "./OscArgsEditor";
 import { WireValueMapEditor } from "./WireValueMapEditor";
@@ -909,7 +910,7 @@ export function macFieldOptions(
       ...Object.keys(draft.config_schema ?? {}),
       ...Object.keys(draft.default_config ?? {}),
     ]),
-  );
+  ).filter((k) => !BUILTIN_CONFIG_KEYS.has(k));
   return configKeys.map((k) => ({
     value: k,
     label: stateKeys.has(k)

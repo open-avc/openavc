@@ -77,6 +77,6 @@ def test_the_child_reading_row_stays_one_line(server, page: Page):
     page.locator('[data-testid="child-expand-001"]').click()
     child = page.locator('[data-testid="child-row-001"]')
     expect(child).to_be_visible(timeout=EXPECT_TIMEOUT)
-    level = child.locator('tr:has(td:text-is("level"))')
+    level = child.locator('tr:has(td[title="level"])')
     expect(level).to_be_visible(timeout=EXPECT_TIMEOUT)
     _assert_one_line(page, level, "Child Entities")

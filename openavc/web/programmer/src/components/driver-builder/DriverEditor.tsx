@@ -35,6 +35,7 @@ import { LivenessEditor } from "./LivenessEditor";
 import { FrameParserEditor } from "./FrameParserEditor";
 import { SendFrameEditor } from "./SendFrameEditor";
 import { ConfigSchemaEditor } from "./ConfigSchemaEditor";
+import { BUILTIN_CONFIG_KEYS } from "./configSchemaHelpers";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { IssueList } from "./IssueList";
 import {
@@ -235,15 +236,7 @@ export function DriverEditor({
   const pollingQueryCount = (draft.polling?.queries ?? []).length;
   const settingCount = Object.keys(draft.device_settings ?? {}).length;
   const configFieldCount = Object.keys(draft.config_schema ?? {}).filter(
-    (k) =>
-      ![
-        "host",
-        "port",
-        "baudrate",
-        "parity",
-        "poll_interval",
-        "inter_command_delay",
-      ].includes(k),
+    (k) => !BUILTIN_CONFIG_KEYS.has(k),
   ).length;
   const derivedFieldCount = Object.keys(draft.config_derived ?? {}).length;
   const bridgeEnabled = draft.bridge !== undefined;

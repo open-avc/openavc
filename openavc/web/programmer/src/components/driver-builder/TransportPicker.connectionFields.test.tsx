@@ -77,3 +77,18 @@ describe("switching the transport", () => {
     });
   });
 });
+
+// The connection fields are now in every new driver, so a picker that offers
+// the driver's config fields, and starts on the first one, must not offer
+// them: a roster sized by "host", or a Wake-on-LAN MAC read from it.
+describe("pickers over a driver's config fields", () => {
+  it("leave the connection fields out of the Wake-on-LAN MAC choices", async () => {
+    const { macFieldOptions } = await import("./CommandBuilder");
+    const options = macFieldOptions({
+      state_variables: {},
+      config_schema: { ...connectionFieldsFor("tcp"), mac_address: { type: "string", label: "MAC" } },
+      default_config: { port: 23 },
+    } as never);
+    expect(options.map((o) => o.value)).toEqual(["mac_address"]);
+  });
+});

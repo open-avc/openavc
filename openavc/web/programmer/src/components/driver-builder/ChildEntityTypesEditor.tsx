@@ -15,6 +15,7 @@ import {
   sanitizeTypeId,
 } from "./childEntityTypesHelpers";
 import { IdRenameInput, type RenameResult } from "./IdRenameInput";
+import { BUILTIN_CONFIG_KEYS } from "./configSchemaHelpers";
 import { ValueConversionFields } from "./ValueConversionFields";
 
 interface ChildEntityTypesEditorProps {
@@ -230,7 +231,7 @@ export function ChildEntityTypesEditor({
                       ...Object.keys(draft.config_schema ?? {}),
                       ...Object.keys(draft.default_config ?? {}),
                     ]),
-                  )}
+                  ).filter((k) => !BUILTIN_CONFIG_KEYS.has(k))}
                   stateFields={Object.keys(draft.state_variables ?? {})}
                   onUpdate={(partial) => updateType(name, partial)}
                 />

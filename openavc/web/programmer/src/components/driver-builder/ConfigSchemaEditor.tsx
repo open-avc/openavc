@@ -4,6 +4,7 @@ import type { DriverDefinition } from "../../api/types";
 import { IdRenameInput, type RenameResult } from "./IdRenameInput";
 import {
   type ConfigFieldDef as ConfigField,
+  BUILTIN_CONFIG_KEYS,
   NUMERIC_CONFIG_TYPES,
   applyConfigFieldTypeChange,
   applyConfigSecretToggle,
@@ -32,10 +33,7 @@ export function ConfigSchemaEditor({ draft, onUpdate }: ConfigSchemaEditorProps)
 
   const schema = (draft.config_schema ?? {}) as Record<string, ConfigField>;
   const defaultConfig = draft.default_config ?? {};
-  const builtinKeys = new Set([
-    "host", "port", "baudrate", "parity", "poll_interval", "inter_command_delay",
-  ]);
-  const fieldNames = Object.keys(schema).filter((k) => !builtinKeys.has(k));
+  const fieldNames = Object.keys(schema).filter((k) => !BUILTIN_CONFIG_KEYS.has(k));
   const stateVariableNames = Object.keys(draft.state_variables ?? {}).sort();
 
   const addField = () => {

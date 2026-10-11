@@ -6,6 +6,13 @@
 
 import type { EnumOption } from "../../api/types";
 
+/** Config keys the Builder owns rather than listing as Configuration Fields:
+ *  the connection fields its transport writes, and the settings the
+ *  Connection tab edits directly. */
+export const BUILTIN_CONFIG_KEYS: ReadonlySet<string> = new Set([
+  "host", "port", "baudrate", "parity", "poll_interval", "inter_command_delay",
+]);
+
 export interface ConfigFieldDef {
   type: string;
   label: string;

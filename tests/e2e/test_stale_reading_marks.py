@@ -96,10 +96,10 @@ def test_an_unreachable_device_says_its_readings_are_the_last_ones_heard(
 
     # The expanded reading gets the words, and the child's own platform keys
     # do not.
-    level = child.locator('tr:has(td:text-is("level"))')
+    level = child.locator('tr:has(td[title="level"])')
     expect(level).to_contain_text("-6.5")
     expect(level.locator('[data-testid="last-heard"]')).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )
-    online = child.locator('tr:has(td:text-is("online"))')
+    online = child.locator('tr:has(td[title="online"])')
     assert online.locator('[data-testid="last-heard"]').count() == 0

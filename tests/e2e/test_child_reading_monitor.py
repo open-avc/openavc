@@ -61,7 +61,7 @@ def test_a_child_reading_can_be_watched_from_the_table_it_is_read_in(
 
     page.locator('[data-testid="child-expand-001"]').click()
     row = page.locator('[data-testid="child-row-001"]')
-    level = row.locator('tr:has(td:text-is("level"))')
+    level = row.locator('tr:has(td[title="level"])')
     expect(level).to_be_visible(timeout=EXPECT_TIMEOUT)
 
     # The control exists at all — it did not.
