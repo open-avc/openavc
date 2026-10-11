@@ -40,7 +40,7 @@ class ProjectToolsMixin:
                 {"id": g.id, "name": g.name, "device_ids": g.device_ids}
                 for g in p.device_groups
             ],
-            "variables": [v.model_dump(mode="json") for v in p.variables],
+            "variables": [v.model_dump(mode="json", exclude_none=True) for v in p.variables],
             "macros": [
                 {
                     "id": m.id, "name": m.name, "step_count": len(m.steps),

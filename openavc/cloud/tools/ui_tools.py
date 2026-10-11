@@ -966,7 +966,10 @@ class UIToolsMixin:
         page_id = input.get("page_id", "")
         for p in engine.project.ui.pages:
             if p.id == page_id:
-                return p.model_dump(mode="json")
+                # Unset fields left out: an element carries some sixty optional
+                # ones, and a page sent with every one as null ran to four times
+                # its size.
+                return p.model_dump(mode="json", exclude_none=True)
         return {"error": f"UI page '{page_id}' not found"}
 
     async def _add_ui_page(self, input: dict) -> Any:

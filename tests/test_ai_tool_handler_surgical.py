@@ -273,6 +273,55 @@ async def test_get_ui_page(handler, mock_agent, mock_engine):
     assert result["layouts"][0]["primary"] is True
 
 
+def _nones(value, path="") -> list[str]:
+    """Every place a None sits in a tool's answer."""
+    if value is None:
+        return [path]
+    if isinstance(value, dict):
+        return [p for k, v in value.items() for p in _nones(v, f"{path}.{k}")]
+    if isinstance(value, list):
+        return [p for i, v in enumerate(value) for p in _nones(v, f"{path}[{i}]")]
+    return []
+
+
+@pytest.mark.asyncio
+async def test_get_ui_page_leaves_out_what_is_not_set(handler, mock_engine):
+    """An element has some sixty optional fields. Sent as nulls they were most of
+    every page the AI read, and it re-reads each one on every later step."""
+    from openavc.core.project_loader import UIPage
+
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        result = await handler._get_ui_page({"page_id": "main"})
+
+    assert _nones(result) == []
+    assert result["elements"][0]["label"] == "System On"
+    # Nothing was lost: what came back reads as the same page.
+    page = next(p for p in mock_engine.project.ui.pages if p.id == "main")
+    assert UIPage.model_validate(result).model_dump() == page.model_dump()
+
+
+@pytest.mark.asyncio
+async def test_get_macro_leaves_out_what_is_not_set(handler, mock_engine):
+    from openavc.core.project_loader import MacroConfig
+
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        result = await handler._get_macro({"macro_id": "all_off"})
+
+    assert _nones(result) == []
+    assert result["steps"][1] == {"action": "delay", "seconds": 2.0, "skip_if_offline": False}
+    macro = next(m for m in mock_engine.project.macros if m.id == "all_off")
+    assert MacroConfig.model_validate(result).model_dump() == macro.model_dump()
+
+
+@pytest.mark.asyncio
+async def test_project_summary_variables_leave_out_what_is_not_set(handler, mock_engine):
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        result = await handler._get_project_summary({})
+
+    assert _nones(result["variables"]) == []
+    assert result["variables"][1]["default"] is False
+
+
 @pytest.mark.asyncio
 async def test_get_ui_page_not_found(handler, mock_agent, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):

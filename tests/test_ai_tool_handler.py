@@ -121,6 +121,37 @@ async def test_get_device_info(handler, mock_agent, mock_devices):
 
 
 @pytest.mark.asyncio
+async def test_get_device_info_sends_the_command_table_once(handler, mock_devices):
+    """The table is both `commands` and a key of `driver_info`, the whole driver
+    record: a fifth of a matrix switcher's answer, sent twice."""
+    commands = {"power_on": {"label": "Power On"}, "power_off": {"label": "Power Off"}}
+    driver_record = {"id": "acme_widget", "name": "Acme Widget", "commands": commands}
+    mock_devices.get_device_info.return_value = {
+        "id": "w1", "driver": "acme_widget", "commands": commands,
+        "driver_info": driver_record,
+    }
+
+    info = await handler._get_device_info({"device_id": "w1"})
+
+    assert info["commands"] == commands
+    assert info["driver_info"] == {"id": "acme_widget", "name": "Acme Widget"}
+    # The driver's own record is left alone; the device page reads it too.
+    assert driver_record["commands"] is commands
+
+
+@pytest.mark.asyncio
+async def test_get_device_info_keeps_a_command_table_that_differs(handler, mock_devices):
+    mock_devices.get_device_info.return_value = {
+        "id": "w1", "commands": {"a": {}},
+        "driver_info": {"id": "acme_widget", "commands": {"b": {}}},
+    }
+
+    info = await handler._get_device_info({"device_id": "w1"})
+
+    assert info["driver_info"]["commands"] == {"b": {}}
+
+
+@pytest.mark.asyncio
 async def test_send_device_command(handler, mock_agent, mock_devices, mock_events):
     msg = _make_tool_call_msg("send_device_command", {
         "device_id": "projector",

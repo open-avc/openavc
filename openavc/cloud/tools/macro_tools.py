@@ -97,7 +97,9 @@ class MacroToolsMixin:
         macro_id = input.get("macro_id", "")
         for m in engine.project.macros:
             if m.id == macro_id:
-                return m.model_dump(mode="json")
+                # Unset fields left out, as for a UI page: a step carries every
+                # action's optional fields, nearly all null.
+                return m.model_dump(mode="json", exclude_none=True)
         return {"error": f"Macro '{macro_id}' not found"}
 
     async def _list_triggers(self, input: dict) -> Any:

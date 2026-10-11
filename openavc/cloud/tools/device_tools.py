@@ -49,7 +49,16 @@ class DeviceToolsMixin:
 
     async def _get_device_info(self, input: dict) -> Any:
         device_id = input.get("device_id", "")
-        return self._devices.get_device_info(device_id)
+        info = self._devices.get_device_info(device_id)
+        # `commands` is the driver's own command table, and `driver_info` is
+        # the whole driver record with that same table inside it. Sent once.
+        driver_info = info.get("driver_info")
+        if isinstance(driver_info, dict) and driver_info.get("commands") == info.get("commands"):
+            info = {
+                **info,
+                "driver_info": {k: v for k, v in driver_info.items() if k != "commands"},
+            }
+        return info
 
     async def _update_device(self, input: dict) -> Any:
         engine = self._get_engine()
