@@ -13,6 +13,8 @@ Click the **play button** at the bottom of the sidebar. A confirmation dialog ex
 3. The Simulator UI opens in a new browser tab
 4. Your drivers reconnect and start talking to virtual hardware
 
+If you close the Simulator UI tab, click **Open Simulator UI**, just above the stop button, to open it again.
+
 Click the **stop button** (same location) to stop simulation and restore real device connections.
 
 ### Standalone

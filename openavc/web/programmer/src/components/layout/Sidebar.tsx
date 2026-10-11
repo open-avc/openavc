@@ -18,6 +18,7 @@ import {
   Settings,
   PlayCircle,
   StopCircle,
+  ExternalLink,
   Loader2,
   LogOut,
   AlertTriangle,
@@ -129,6 +130,8 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const updateAvailable = String(useConnectionStore((s) => s.liveState["system.update_available"]) ?? "");
   const dirty = useProjectStore((s) => s.dirty);
   const simulationActive = Boolean(useConnectionStore((s) => s.liveState["system.simulation_active"]));
+  const simulatorPath =
+    String(useConnectionStore((s) => s.liveState["system.simulation_ui_url"]) ?? "") || "/simulator/";
   const [simBusy, setSimBusy] = useState(false);
   const [showSimConfirm, setShowSimConfirm] = useState(false);
 
@@ -203,6 +206,17 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
     } finally {
       setSimBusy(false);
     }
+  };
+
+  // Opens the Simulator UI again while simulation runs: its tab may have been
+  // closed. The window name is the one startSimulation used, so a tab that is
+  // still open is reused rather than joined by a second one. Synchronous in
+  // the click, so a popup blocker allows it.
+  const openSimulatorUi = () => {
+    const url = new URL(`${getTunnelPrefix()}${simulatorPath}`, window.location.href).href;
+    attachSimulatorHandshake();
+    const tab = window.open(url, "openavc-simulator");
+    if (!tab) showError(`The browser blocked the Simulator UI tab. Open ${url} manually.`);
   };
 
   return (
@@ -282,6 +296,17 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
         </button>
       ))}
       <div className={styles.spacer} />
+      {simulationActive && (
+        <button
+          className={styles.navItem}
+          onClick={openSimulatorUi}
+          aria-label="Open Simulator UI"
+          style={{ color: "#22c55e", marginBottom: "var(--space-xs)" }}
+        >
+          <ExternalLink size={20} />
+          <span className={styles.tooltip}>Open Simulator UI</span>
+        </button>
+      )}
       <button
         className={styles.navItem}
         disabled={simBusy}
@@ -337,6 +362,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
               <li>Devices will disconnect from real hardware</li>
               <li>Only drivers with simulation support will respond</li>
               <li>IP addresses and ports from your project are assumed correct</li>
+              <li>The Simulator UI opens in a new browser tab</li>
               <li>Stop simulation to reconnect to real devices</li>
             </ul>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
