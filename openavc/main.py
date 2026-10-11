@@ -142,11 +142,11 @@ async def _initialize_engine(app: FastAPI) -> None:
             log.warning("  This computer only in Settings > Network > Accept connections from.")
             log.warning("=" * 60)
 
+        from openavc.system_config import get_system_config
         from openavc.updater.host import get_firmware_host
         firmware_host = get_firmware_host()
         if not firmware_host:
             # Check if automatic rollback is needed (failed update crash detection)
-            from openavc.system_config import get_system_config
             from openavc.updater.rollback import check_rollback_needed
             data_dir = get_system_config().data_dir
             if check_rollback_needed(data_dir):

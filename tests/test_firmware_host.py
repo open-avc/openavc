@@ -247,7 +247,9 @@ async def test_actual_startup_leaves_generic_updater_state_untouched(
         patch(
             "openavc.system_config.get_system_config",
             return_value=SimpleNamespace(data_dir=data),
-        ),
+        ) as system_config,
+        patch("openavc.listen.ListenWatcher") as watcher,
+        patch("openavc.listen_safety_net.tick", new_callable=AsyncMock) as safety_tick,
         patch.object(main.engine, "start", new=AsyncMock()) as start,
         patch.object(main.discovery_engine, "load_driver_hints_from_registry"),
         patch.object(main.discovery_engine, "load_discovery_companions_from_dirs"),
@@ -267,7 +269,13 @@ async def test_actual_startup_leaves_generic_updater_state_untouched(
         ),
         patch.object(main.os, "_exit", side_effect=AssertionError("No process exit")),
     ):
+        watcher.return_value.run = AsyncMock()
         await main._initialize_engine(app)
+        await app.state.listen_watcher
+        # Firmware ownership only changes updater behavior. The network
+        # watcher's later tick must still read the server configuration.
+        await watcher.call_args.kwargs["on_tick"]()
+        assert safety_tick.await_args.args[0] is system_config.return_value
     assert app.state.engine_ready and app.state.engine_error is None
     start.assert_awaited_once()
     assert files(data) == original
