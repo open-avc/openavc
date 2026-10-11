@@ -117,9 +117,20 @@ audit_manager = AuditManager(engine.devices, discovery_engine)
 async def _initialize_engine(app: FastAPI) -> None:
     """Run engine initialization in the background so HTTP serves immediately."""
     try:
+        # Who can connect: main() resolved it before binding, and a server
+        # started some other way resolves it here. It feeds a warning and the
+        # banner, so it never blocks startup.
+        try:
+            plan = config.listen_plan()
+        except Exception:
+            log.exception("Could not resolve who can connect")
+            plan = None
+
         # Warn if server is network-exposed without authentication
-        plan = config.listen_plan()
-        if plan.reaches_network and not config.PROGRAMMER_PASSWORD and not config.API_KEY:
+        if (
+            plan is not None and plan.reaches_network
+            and not config.PROGRAMMER_PASSWORD and not config.API_KEY
+        ):
             log.warning("=" * 60)
             where = (
                 "any network" if plan.mode == "any"
@@ -280,7 +291,9 @@ async def _initialize_engine(app: FastAPI) -> None:
         log.info(f"  Programmer:  {scheme}://localhost:{port}/programmer")
         log.info(f"  REST API:    {scheme}://localhost:{port}/api")
         local_ip = str(engine.get_status().get("local_ip") or "")
-        if plan.problem is not None:
+        if plan is None:
+            pass
+        elif plan.problem is not None:
             # The chosen adapter is missing, so this listens on loopback
             # only. One sentence, the same one every surface shows.
             log.warning(f"  LAN access:  none. {plan.problem.message}")

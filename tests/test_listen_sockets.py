@@ -263,6 +263,8 @@ class TestPushListeners:
             await pushes.ensure(own)
             assert pushes.serves(own)
             server, _task = pushes._servers[own]
+            # The sender's address gates delivery: no header may stand in for it.
+            assert server.config.proxy_headers is False
             while not server.started:
                 await asyncio.sleep(0.02)
             async with httpx.AsyncClient(timeout=2.0) as client:

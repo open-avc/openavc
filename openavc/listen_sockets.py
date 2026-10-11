@@ -26,8 +26,8 @@ The options match what asyncio sets on its own listening sockets:
 exited is accepted while a live listener is still refused; never on Windows,
 where the option lets a second socket take a port another one is using.
 
-**Device updates on the web port** (Settings decision: HTTP push keeps working
-whoever may open the panel). A device that posts to ``/api/push/`` reaches
+**Device updates on the web port** keep arriving whoever may open the panel:
+device control does not get worse because the panel was limited. A device that posts to ``/api/push/`` reaches
 this computer on the address that routes to it, or the control interface;
 when the choice does not listen there, :class:`PushListeners` binds that one
 address too and serves ``/api/push/`` alone on it, which already accepts only
@@ -267,6 +267,10 @@ class PushListeners:
             push_only_app(),
             lifespan="off",
             log_level="warning",
+            # The registry admits a push by its sender's address, so that
+            # address is the socket peer and nothing a header can rewrite:
+            # a device connects here directly, never through a proxy.
+            proxy_headers=False,
             **options,
         )))
         task = asyncio.create_task(server.serve(sockets=[sock]))

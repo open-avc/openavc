@@ -253,7 +253,9 @@ def test_every_listener_pins_the_peers():
             and node.func.attr in {"Config", "run"}
         ):
             listeners.append(node)
-    assert len(listeners) >= 4, "the four listeners main.py starts"
+    # The HTTPS listener, the HTTP listener (_main_http_config, served alone
+    # or beside the port-80 one) and the auxiliary redirect listeners.
+    assert len(listeners) >= 3, "the listener configs main.py builds"
     for call in listeners:
         pinned = [
             kw for kw in call.keywords
