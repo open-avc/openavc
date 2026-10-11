@@ -133,8 +133,16 @@ def test_mirrors_resolve_to_the_defaults_value():
         assert getattr(config, name) == DEFAULTS[section][key], name
 
 
-def test_the_default_bind_address_is_loopback():
-    """The specific lie this file was written to prevent: OpenAVC listens on
-    loopback until someone opts out, and config.py must not imply otherwise."""
+def test_a_run_from_source_listens_on_this_computer_until_someone_opts_out():
+    """The specific lie this file was written to prevent, in its current form:
+    who can connect is not a mirrored constant (``config.listen_plan()``), its
+    from-source default is this computer only, and the rollback mirror's
+    written default says the same."""
+    from openavc import listen
+
     assert DEFAULTS["network"]["bind_address"] == "127.0.0.1"
-    assert config.BIND_ADDRESS == "127.0.0.1"
+    assert DEFAULTS["network"]["accept_connections_from"] == ""
+    assert not hasattr(config, "BIND_ADDRESS")
+    assert listen.default_mode("git_dev") == "this_computer"
+    assert listen.default_mode("unknown") == "this_computer"
+    assert listen.default_mode("windows_installer") == "any"

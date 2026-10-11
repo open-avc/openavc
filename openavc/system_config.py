@@ -220,6 +220,21 @@ def get_seed_project_path() -> Path | None:
 DEFAULTS: dict[str, Any] = {
     "network": {
         "http_port": 8080,
+        # Settings > Network > Accept connections from: "any" (every network
+        # this computer is on), "adapter" (the one in accept_connections_adapter,
+        # plus this computer) or "this_computer". Empty until the server first
+        # starts, which writes the install type's default: "any" on every
+        # installed system, "this_computer" on a run from source. The rule,
+        # and what each choice listens on, is openavc/listen.py.
+        "accept_connections_from": "",
+        # The adapter for "adapter", by identity: {"name": ..., "mac": ...},
+        # matched MAC first, then name, at every start. Never an address: an
+        # address changes with DHCP, the adapter does not.
+        "accept_connections_adapter": {},
+        # Written for a rollback only, never read: what accept_connections_from
+        # meant to releases that knew one listen address ("0.0.0.0",
+        # "127.0.0.1", or the adapter's address when it was last chosen or
+        # started). openavc/listen.py keeps it current.
         "bind_address": "127.0.0.1",
         "control_interface": "",
         # Trust the X-Forwarded-For header for the client IP only when behind a
@@ -360,6 +375,8 @@ REMOVED_KEYS: tuple[tuple[str, str], ...] = (
 # Mapping: (section, key) -> (env_var, type)
 ENV_OVERRIDES: dict[tuple[str, str], tuple[str, type]] = {
     ("network", "http_port"): ("OPENAVC_PORT", int),
+    # Also holds accept_connections_from and accept_connections_adapter: see
+    # parse_bind_variable, applied after this table in load().
     ("network", "bind_address"): ("OPENAVC_BIND", str),
     ("network", "control_interface"): ("OPENAVC_CONTROL_INTERFACE", str),
     ("network", "trust_forwarded_for"): ("OPENAVC_TRUST_FORWARDED_FOR", bool),
@@ -586,6 +603,26 @@ def migrate_legacy_project_dir(
         )
 
 
+# OPENAVC_BIND predates the listen choice and keeps its meaning: "0.0.0.0"
+# accepts any network, a loopback spelling this computer only, and any other
+# value is that one address (an adapter choice by address, which only the
+# environment can make). It holds both keys of the choice, and bind_address.
+BIND_VARIABLE = "OPENAVC_BIND"
+_BIND_KEYS = ("accept_connections_from", "accept_connections_adapter")
+_ANY_SPELLINGS = ("", "0.0.0.0", "::", "[::]", "*")
+_LOOPBACK_SPELLINGS = ("127.0.0.1", "::1", "[::1]", "localhost")
+
+
+def parse_bind_variable(raw: str) -> tuple[str, dict[str, str]]:
+    """``OPENAVC_BIND`` as the listen choice: ``(mode, adapter identity)``."""
+    value = raw.strip()
+    if value in _ANY_SPELLINGS:
+        return "any", {}
+    if value.lower() in _LOOPBACK_SPELLINGS:
+        return "this_computer", {}
+    return "adapter", {"address": value.strip("[]")}
+
+
 def _parse_env_value(raw: str, target_type: type) -> Any:
     """Parse an environment variable string to the target type."""
     if target_type is bool:
@@ -703,6 +740,13 @@ class SystemConfig:
                 if parsed is not None:
                     self._data[section][key] = parsed
                     self._env_held[(section, key)] = env_var
+        raw_bind = os.environ.get(BIND_VARIABLE)
+        if raw_bind is not None:
+            mode, adapter = parse_bind_variable(raw_bind)
+            self._data["network"]["accept_connections_from"] = mode
+            self._data["network"]["accept_connections_adapter"] = adapter
+            for key in _BIND_KEYS:
+                self._env_held[("network", key)] = BIND_VARIABLE
 
         self._loaded = True
 

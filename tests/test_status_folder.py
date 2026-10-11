@@ -66,8 +66,9 @@ def test_the_tray_reads_the_address_the_server_records(data_dir, monkeypatch):
     main._write_server_address()
 
     written = json.loads((data_dir / "status" / "server.json").read_text(encoding="utf-8"))
-    assert written == {"http_port": 8090, "tls_enabled": True, "tls_port": 8444}
-    assert tray_mod._get_server_config() == written
+    ports = {"http_port": 8090, "tls_enabled": True, "tls_port": 8444}
+    assert {k: written[k] for k in ports} == ports
+    assert tray_mod._get_server_config() == ports
 
 
 def test_the_tray_reads_the_startup_error_the_server_records(data_dir, monkeypatch):
@@ -91,21 +92,64 @@ def test_the_tray_reads_the_startup_error_the_server_records(data_dir, monkeypat
 
 
 def test_a_start_records_the_address_and_clears_the_last_error(data_dir, monkeypatch):
-    """main() writes where it listens once it knows the port is free, before serving."""
+    """main() writes where it listens once its sockets are bound, before serving."""
+    from openavc import listen, listen_sockets
+    from tests.listen_helpers import ETHERNET, plan_for
+
     monkeypatch.setattr(config, "HTTP_PORT", 8090)
     monkeypatch.setattr(config, "TLS_ENABLED", False)
     monkeypatch.setattr(config, "PORT80_REDIRECT", False)
-    monkeypatch.setattr(main, "_preflight_port", lambda port, retries: None)
+    chosen = plan_for("adapter", ETHERNET)
+    monkeypatch.setattr(listen, "start", lambda: chosen)
+    bound = []
+
+    def bind(plan, port, retries=1):
+        bound.append(port)
+        return ["sockets"], plan.without(["10.20.30.5"])
+
+    monkeypatch.setattr(listen_sockets, "bind_for_plan", bind)
     served = []
-    monkeypatch.setattr(main.uvicorn, "run", lambda *a, **k: served.append(k["port"]))
+    monkeypatch.setattr(main.uvicorn.Server, "run", lambda self, sockets: served.append(sockets))
     main._write_startup_error("port_in_use", "an earlier failure")
 
     main.main()
 
-    assert served == [8090]
+    assert bound == [8090]
+    assert served == [["sockets"]]
     assert not (data_dir / "status" / "startup-error.json").exists()
     recorded = json.loads((data_dir / "status" / "server.json").read_text(encoding="utf-8"))
     assert recorded["http_port"] == 8090
+    # Where it really listens: the bind refused the adapter's address, so
+    # loopback only, and the sentence the tray shows says why.
+    assert recorded["listen"] == {
+        "mode": "adapter",
+        "addresses": ["127.0.0.1"],
+        "problem": (
+            "Not accepting connections from the network: "
+            "the Ethernet adapter isn't connected."
+        ),
+    }
+    listen_sockets.push_listeners.reset()
+
+
+def test_a_port_in_use_is_recorded_for_the_tray(data_dir, monkeypatch):
+    from openavc import listen, listen_sockets
+    from openavc.listen_sockets import ListenBindError
+    from tests.listen_helpers import plan_for
+
+    monkeypatch.setattr(config, "HTTP_PORT", 8090)
+    monkeypatch.setattr(config, "TLS_ENABLED", False)
+    monkeypatch.setattr(listen, "start", lambda: plan_for("any"))
+
+    def bind(plan, port, retries=1):
+        raise ListenBindError("in_use", "0.0.0.0", port, OSError(10048, "in use"))
+
+    monkeypatch.setattr(listen_sockets, "bind_for_plan", bind)
+    with pytest.raises(SystemExit):
+        main.main()
+    error = json.loads((data_dir / "status" / "startup-error.json").read_text(encoding="utf-8"))
+    assert error["error"] == "port_in_use"
+    assert error["message"].startswith("HTTP port 8090 is already in use.")
 
 
 def test_the_folder_every_account_can_read_carries_only_these(data_dir, monkeypatch):
@@ -118,7 +162,7 @@ def test_the_folder_every_account_can_read_carries_only_these(data_dir, monkeypa
     status = data_dir / "status"
     assert sorted(p.name for p in status.iterdir()) == ["server.json", "startup-error.json"]
     assert set(json.loads((status / "server.json").read_text(encoding="utf-8"))) == {
-        "http_port", "tls_enabled", "tls_port",
+        "http_port", "tls_enabled", "tls_port", "listen",
     }
     assert set(json.loads((status / "startup-error.json").read_text(encoding="utf-8"))) == {
         "error", "message", "timestamp",

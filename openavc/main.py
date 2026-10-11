@@ -118,12 +118,17 @@ async def _initialize_engine(app: FastAPI) -> None:
     """Run engine initialization in the background so HTTP serves immediately."""
     try:
         # Warn if server is network-exposed without authentication
-        if config.BIND_ADDRESS in ("0.0.0.0", "::") and not config.PROGRAMMER_PASSWORD and not config.API_KEY:
+        plan = config.listen_plan()
+        if plan.reaches_network and not config.PROGRAMMER_PASSWORD and not config.API_KEY:
             log.warning("=" * 60)
-            log.warning("  WARNING: Server is bound to %s with NO authentication.", config.BIND_ADDRESS)
+            where = (
+                "any network" if plan.mode == "any"
+                else f"the {plan.adapter_name or 'chosen'} network"
+            )
+            log.warning("  WARNING: Accepting connections from %s with NO authentication.", where)
             log.warning("  Anyone on the network can access and control devices.")
-            log.warning("  Set OPENAVC_PROGRAMMER_PASSWORD or OPENAVC_API_KEY,")
-            log.warning("  or bind to 127.0.0.1 (OPENAVC_BIND=127.0.0.1).")
+            log.warning("  Set an admin password (open the Programmer), or choose")
+            log.warning("  This computer only in Settings > Network > Accept connections from.")
             log.warning("=" * 60)
 
         # Check if automatic rollback is needed (failed update crash detection)
@@ -241,6 +246,20 @@ async def _initialize_engine(app: FastAPI) -> None:
 
         engine.events.on("system.restart_requested", _on_restart_requested)
 
+        # Follow the chosen adapter: back, gone, or on a new DHCP address,
+        # the server restarts through the same path and listens again where
+        # the choice now points (openavc/listen.py).
+        from openavc import listen
+
+        async def _restart_to_follow_adapter(_reason: str) -> None:
+            await engine.events.emit(
+                "system.restart_requested", {"mode": "graceful", "source": "listen"}
+            )
+
+        app.state.listen_watcher = asyncio.create_task(
+            listen.ListenWatcher(_restart_to_follow_adapter).run()
+        )
+
         app.state.engine_ready = True
         if config.TLS_ENABLED:
             scheme = "https"
@@ -253,19 +272,25 @@ async def _initialize_engine(app: FastAPI) -> None:
         log.info(f"  Programmer:  {scheme}://localhost:{port}/programmer")
         log.info(f"  REST API:    {scheme}://localhost:{port}/api")
         local_ip = str(engine.get_status().get("local_ip") or "")
-        if config.loopback_only():
+        if plan.problem is not None:
+            # The chosen adapter is missing, so this listens on loopback
+            # only. One sentence, the same one every surface shows.
+            log.warning(f"  LAN access:  none. {plan.problem.message}")
+        elif plan.local_only:
             # Every URL below this point is built from a LAN address, and the
-            # kernel refuses all of them on a loopback bind. Saying so is the
-            # only useful line here: this banner is the sole instruction a
-            # manual/checkout run ever gets, and the Dashboard's Panel Access
-            # card already tells the same truth from the other side.
+            # kernel refuses all of them on a loopback-only listener. Saying
+            # so is the only useful line here: this banner is the sole
+            # instruction a manual/checkout run ever gets, and the Dashboard's
+            # Panel Access card already tells the same truth from the other
+            # side.
             log.info(
-                f"  LAN access:  none -- bound to {config.BIND_ADDRESS} "
-                "(local only). Set the bind address to 0.0.0.0 in "
-                "Settings > Network and restart to reach it from the network."
+                "  LAN access:  none. Accepting connections from this computer "
+                "only; change Settings > Network > Accept connections from and "
+                "restart to reach it from the network."
             )
         elif local_ip and local_ip != "127.0.0.1":
-            log.info(f"  LAN access:  {scheme}://{local_ip}:{port}/panel")
+            only = f"  ({plan.adapter_name} only)" if plan.mode == "adapter" else ""
+            log.info(f"  LAN access:  {scheme}://{local_ip}:{port}/panel{only}")
             if runtime_flags.port80_active:
                 log.info(f"  Short URL:   http://{local_ip}/panel")
             certified = _certified_host_for(local_ip) if config.TLS_ENABLED else None
@@ -305,6 +330,12 @@ async def lifespan(app: FastAPI):
     init_task = asyncio.create_task(_initialize_engine(app))
 
     yield
+
+    watcher = getattr(app.state, "listen_watcher", None)
+    if watcher is not None:
+        watcher.cancel()
+    from openavc.listen_sockets import push_listeners
+    await push_listeners.stop()
 
     # Shutdown: wait for init to finish (or cancel if still running)
     if not init_task.done():
@@ -740,15 +771,19 @@ def _clear_startup_error() -> None:
 
 
 def _write_server_address() -> None:
-    """Record the ports this server listens on, for the tray app.
+    """Record where this server listens, for the tray app and the menu bar.
 
     The tray cannot read system.json, and it cannot ask the server without
     already knowing the port. These are the values the server binds,
-    environment overrides included, rewritten at every start, so a port
-    changed in Settings reaches the tray with the restart that applies it.
+    environment overrides included, rewritten at every start once the
+    sockets are bound, so a port or a listen choice changed in Settings
+    reaches the tray with the restart that applies it. ``listen`` carries the
+    addresses listened on and, when the chosen adapter is missing, the
+    sentence that says so.
     """
     import json as _json
     from openavc.utils.fileio import atomic_write_text
+    plan = config.listen_plan()
     try:
         status_dir = _status_dir()
         status_dir.mkdir(parents=True, exist_ok=True)
@@ -756,43 +791,14 @@ def _write_server_address() -> None:
             "http_port": config.HTTP_PORT,
             "tls_enabled": config.TLS_ENABLED,
             "tls_port": config.TLS_PORT,
+            "listen": {
+                "mode": plan.mode,
+                "addresses": list(plan.hosts),
+                "problem": plan.problem.message if plan.problem else None,
+            },
         }))
     except OSError:
         pass
-
-
-def _preflight_port(port: int, *, retries: int) -> "OSError | None":
-    """Try to bind to (BIND_ADDRESS, port). Return None on success, last error otherwise.
-
-    During cloud-driven restart the dying parent's listening socket can take a
-    moment to free after `os._exit(0)`; the retry loop tolerates that brief
-    window. Normal startup uses retries=1 to surface a clean "port in use"
-    error immediately.
-    """
-    import socket as _sock
-    import time as _time
-    last_err: "OSError | None" = None
-    for attempt in range(retries):
-        test = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
-        # Mirror the listening socket uvicorn actually binds (asyncio sets
-        # SO_REUSEADDR on POSIX). Without it the pre-flight is stricter than
-        # the real bind and false-fails on a port still in TIME_WAIT from a
-        # just-exited server — exactly the rapid-restart case (crash recovery,
-        # in-place updates) the appliance supervisor relies on. SO_REUSEADDR
-        # still refuses a port held by a live listener, so a genuine "another
-        # copy is running" conflict is still caught.
-        if os.name != "nt":
-            test.setsockopt(_sock.SOL_SOCKET, _sock.SO_REUSEADDR, 1)
-        try:
-            test.bind((config.BIND_ADDRESS, port))
-            test.close()
-            return None
-        except OSError as err:
-            last_err = err
-            test.close()
-            if attempt < retries - 1:
-                _time.sleep(0.5)
-    return last_err
 
 
 def _certified_host_for(host: str) -> str | None:
@@ -961,34 +967,9 @@ def _build_redirect_app(target_port: int, scheme: str = "https"):
     from starlette.responses import RedirectResponse, Response
     from starlette.routing import Route
 
+    from openavc.transport import http_listener
+
     _BAD_HOST_CHARS = (" ", "/", "\\", "@", "<", ">", "\"", "'")
-
-    async def _push_passthrough(request: Request) -> Response:
-        """Serve inbound device push directly instead of redirecting.
-
-        Devices delivering push callbacks (webhooks, GENA NOTIFY) speak
-        plain HTTP, don't follow redirects, and won't trust the self-signed
-        certificate a redirect would send them to — so the push registry is
-        served in-process on this listener too (it's process-global; see
-        openavc/transport/http_listener.py).
-        """
-        from openavc.transport import http_listener
-
-        device_id = request.path_params["device_id"]
-        label = request.path_params.get("label") or ""
-        body = await request.body()
-        status = await http_listener.dispatch(
-            device_id,
-            label,
-            http_listener.HTTPPushRequest(
-                body=body,
-                method=request.method,
-                headers={k.lower(): v for k, v in request.headers.items()},
-                source_ip=request.client.host if request.client else "",
-                label=label,
-            ),
-        )
-        return Response(status_code=status)
 
     async def _handler(request: Request) -> Response:
         host_header = request.headers.get("host", "")
@@ -1023,17 +1004,10 @@ def _build_redirect_app(target_port: int, scheme: str = "https"):
             headers={"Cache-Control": "no-store"},
         )
 
+    # Device push is served here rather than redirected: see
+    # http_listener.push_routes.
     return Starlette(routes=[
-        Route(
-            "/api/push/{device_id}",
-            _push_passthrough,
-            methods=["POST", "NOTIFY"],
-        ),
-        Route(
-            "/api/push/{device_id}/{label}",
-            _push_passthrough,
-            methods=["POST", "NOTIFY"],
-        ),
+        *http_listener.push_routes(),
         Route(
             "/{path:path}",
             _handler,
@@ -1082,24 +1056,24 @@ def _build_http_listener_app(main_app, redirect_app):
 
 
 def _make_aux_redirect_server(app, port: int):
-    """Build a best-effort auxiliary redirect listener.
+    """Build a best-effort auxiliary redirect listener on the listen plan's
+    addresses (the ones the main listener settled on).
 
-    Returns (server, None) ready to serve, or (None, err) when the port is
-    already taken — auxiliary listeners never block startup.
+    Returns (serve coroutine, None) ready to run, or (None, err) when a socket
+    cannot be bound — auxiliary listeners never block startup.
 
-    Only the main server installs signal handlers; otherwise the servers race
-    to register signal.signal handlers and the last one overrides the rest.
+    Only the main server installs signal handlers (``listen_sockets.quiet_server``).
     Auxiliary listeners cancel via the FIRST_COMPLETED logic in the runners
     when the main server shuts down.
     """
-    import contextlib as _contextlib
+    from openavc import listen_sockets
 
-    err = _preflight_port(port, retries=1)
-    if err is not None:
-        return None, err
+    try:
+        sockets, _ = listen_sockets.bind_for_plan(config.listen_plan(), port, fallback=False)
+    except listen_sockets.ListenBindError as exc:
+        return None, exc.err
     aux_config = uvicorn.Config(
         app,
-        host=config.BIND_ADDRESS,
         port=port,
         log_level="warning",  # quiet: every redirect logs an info line otherwise
         # This listener serves the real app to loopback clients, panel
@@ -1109,14 +1083,8 @@ def _make_aux_redirect_server(app, port: int):
         ws_max_size=_WS_MAX_SIZE,
         forwarded_allow_ips=_FORWARDED_ALLOW_IPS,
     )
-    server = uvicorn.Server(aux_config)
-
-    @_contextlib.contextmanager
-    def _no_signals():
-        yield
-
-    server.capture_signals = _no_signals
-    return server, None
+    server = listen_sockets.quiet_server(uvicorn.Server(aux_config))
+    return server.serve(sockets=sockets), None
 
 
 async def _serve_until_first_exit(tasks: list) -> None:
@@ -1148,13 +1116,15 @@ def _harden_tls_context(context) -> None:
     tls_module.harden_tls_context(context)
 
 
-async def _run_tls() -> None:
+async def _run_tls(sockets: list) -> None:
     """Run the TLS listener (and optional HTTP redirect listener) concurrently.
 
-    On TLS-config failure, writes a startup-error file and exits non-zero with
-    the same shape as the existing port-in-use error so the tray app and other
+    ``sockets`` are the HTTPS port's, already bound by ``main()``. On
+    TLS-config failure, writes a startup-error file and exits non-zero with
+    the same shape as the port-in-use error so the tray app and other
     monitors can surface the cause.
     """
+    from openavc import listen_sockets
     from openavc import tls as tls_module
     from openavc.system_config import get_system_config
 
@@ -1172,10 +1142,10 @@ async def _run_tls() -> None:
         print(f"\n*** {msg} ***\n", file=sys.stderr)
         _write_startup_error("tls_error", msg)
         raise SystemExit(1) from exc
+    listen_sockets.push_listeners.use_tls(str(cert_path), str(key_path))
 
     main_config = uvicorn.Config(
         "openavc.main:app",
-        host=config.BIND_ADDRESS,
         port=config.TLS_PORT,
         ssl_certfile=str(cert_path),
         ssl_keyfile=str(key_path),
@@ -1201,17 +1171,17 @@ async def _run_tls() -> None:
             tls_module.cloud_cert_holder()
         )
     main_server = uvicorn.Server(main_config)
-    tasks: list[asyncio.Task] = [asyncio.create_task(main_server.serve())]
+    tasks: list[asyncio.Task] = [asyncio.create_task(main_server.serve(sockets=sockets))]
     if config.TLS_PORT == 80:
         runtime_flags.port80_active = True
 
     if config.TLS_REDIRECT_HTTP:
-        redirect_server, redirect_err = _make_aux_redirect_server(
+        redirect_serve, redirect_err = _make_aux_redirect_server(
             _build_http_listener_app(app, _build_redirect_app(config.TLS_PORT)),
             config.HTTP_PORT,
         )
-        if redirect_server is not None:
-            tasks.append(asyncio.create_task(redirect_server.serve()))
+        if redirect_serve is not None:
+            tasks.append(asyncio.create_task(redirect_serve))
             if config.HTTP_PORT == 80:
                 runtime_flags.port80_active = True
         else:
@@ -1229,11 +1199,11 @@ async def _run_tls() -> None:
         and config.TLS_PORT != 80
         and not (config.TLS_REDIRECT_HTTP and config.HTTP_PORT == 80)
     ):
-        server80, err80 = _make_aux_redirect_server(
+        serve80, err80 = _make_aux_redirect_server(
             _build_redirect_app(config.TLS_PORT), 80
         )
-        if server80 is not None:
-            tasks.append(asyncio.create_task(server80.serve()))
+        if serve80 is not None:
+            tasks.append(asyncio.create_task(serve80))
             runtime_flags.port80_active = True
         else:
             log.warning(
@@ -1245,32 +1215,34 @@ async def _run_tls() -> None:
     await _serve_until_first_exit(tasks)
 
 
-async def _run_http() -> None:
-    """Run the plain-HTTP listener plus the port-80 convenience redirect.
-
-    Only used when the port-80 redirect is enabled with HTTPS off — the
-    single-listener path in __main__ stays untouched otherwise.
-    """
-    main_config = uvicorn.Config(
+def _main_http_config() -> "uvicorn.Config":
+    return uvicorn.Config(
         "openavc.main:app",
-        host=config.BIND_ADDRESS,
         port=config.HTTP_PORT,
         reload=False,
         log_level="info",
         ws_max_size=_WS_MAX_SIZE,
         forwarded_allow_ips=_FORWARDED_ALLOW_IPS,
     )
-    main_server = uvicorn.Server(main_config)
-    tasks: list[asyncio.Task] = [asyncio.create_task(main_server.serve())]
+
+
+async def _run_http(sockets: list) -> None:
+    """Run the plain-HTTP listener plus the port-80 convenience redirect.
+
+    Only used when the port-80 redirect is enabled with HTTPS off; the
+    single-listener path in ``main()`` serves alone otherwise.
+    """
+    main_server = uvicorn.Server(_main_http_config())
+    tasks: list[asyncio.Task] = [asyncio.create_task(main_server.serve(sockets=sockets))]
     if config.HTTP_PORT == 80:
         runtime_flags.port80_active = True
 
     if config.HTTP_PORT != 80:
-        server80, err80 = _make_aux_redirect_server(
+        serve80, err80 = _make_aux_redirect_server(
             _build_redirect_app(config.HTTP_PORT, scheme="http"), 80
         )
-        if server80 is not None:
-            tasks.append(asyncio.create_task(server80.serve()))
+        if serve80 is not None:
+            tasks.append(asyncio.create_task(serve80))
             runtime_flags.port80_active = True
         else:
             log.warning(
@@ -1283,48 +1255,50 @@ async def _run_http() -> None:
 
 
 def main():
-    # The pre-flight port is whichever port we'll actually bind primary.
-    # When TLS is on with redirect, the HTTP redirect listener is best-effort
-    # and pre-flighted inside _run_tls (logs a warning, never blocks startup).
+    from openavc import listen, listen_sockets
+
+    # Who can connect, settled and resolved against the adapters present now
+    # (openavc/listen.py), before anything binds.
+    plan = listen.start()
+
+    # The main listener's port. When TLS is on with redirect, the HTTP
+    # redirect listener is best-effort and bound inside _run_tls (logs a
+    # warning, never blocks startup).
     _primary_port = config.TLS_PORT if config.TLS_ENABLED else config.HTTP_PORT
     _primary_label = "HTTPS port" if config.TLS_ENABLED else "HTTP port"
     _env_var_hint = "OPENAVC_TLS_PORT" if config.TLS_ENABLED else "OPENAVC_PORT"
 
+    # During a restart the previous process can hold the port for a moment
+    # after it exits; the bind retries through that window.
     _retries = 20 if os.environ.get("OPENAVC_RESTARTING") == "1" else 1
-    _err = _preflight_port(_primary_port, retries=_retries)
-    if _err is not None:
-        msg = (
-            f"{_primary_label} {_primary_port} is already in use.\n"
-            f"Another application (or another copy of OpenAVC) is using this port.\n\n"
-            f"To fix this, change the port in Settings > Network,\n"
-            f"or set the {_env_var_hint} environment variable."
-        )
+    try:
+        sockets, plan = listen_sockets.bind_for_plan(plan, _primary_port, retries=_retries)
+    except listen_sockets.ListenBindError as exc:
+        msg = exc.message(_primary_label, _env_var_hint)
         print(f"\n*** {msg} ***\n")
-        _write_startup_error("port_in_use", msg)
+        _write_startup_error(exc.error_type, msg)
         raise SystemExit(1)
+    listen.set_current(plan)
+    if plan.problem is not None:
+        log.warning(plan.problem.message)
     # Clear the restart marker so a future startup error isn't masked by
     # repeated retries.
     os.environ.pop("OPENAVC_RESTARTING", None)
 
     _clear_startup_error()
     _write_server_address()
+    listen_sockets.push_listeners.enable(config.HTTP_PORT)
 
     if config.TLS_ENABLED:
-        asyncio.run(_run_tls())
+        asyncio.run(_run_tls(sockets))
     elif config.PORT80_REDIRECT:
-        asyncio.run(_run_http())
+        asyncio.run(_run_http(sockets))
     else:
         if config.HTTP_PORT == 80:
             runtime_flags.port80_active = True
-        uvicorn.run(
-            "openavc.main:app",
-            host=config.BIND_ADDRESS,
-            port=config.HTTP_PORT,
-            reload=False,
-            log_level="info",
-            ws_max_size=_WS_MAX_SIZE,
-            forwarded_allow_ips=_FORWARDED_ALLOW_IPS,
-        )
+        # Server.run picks uvicorn's event loop (uvloop where installed), as
+        # uvicorn.run did before the sockets were bound here.
+        uvicorn.Server(_main_http_config()).run(sockets=sockets)
 
 if __name__ == "__main__":
     main()

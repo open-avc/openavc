@@ -33,6 +33,7 @@ from openavc.api import rest
 from openavc.core.engine import Engine
 from openavc.core.project_loader import load_project
 from openavc.main import app
+from tests.listen_helpers import use_bind
 
 EMPTY_PROJECT = {
     "project": {"id": "advertised_urls", "name": "Advertised URLs"},
@@ -53,12 +54,12 @@ LAN_IP = "192.168.1.20"
 class TestWhatCountsAsLocalOnly:
     @pytest.mark.parametrize("bind", ["127.0.0.1", "::1", "[::1]", "localhost", " 127.0.0.1 "])
     def test_every_spelling_of_loopback(self, bind, monkeypatch):
-        monkeypatch.setattr(config, "BIND_ADDRESS", bind)
+        use_bind(bind)
         assert config.loopback_only() is True
 
     @pytest.mark.parametrize("bind", ["0.0.0.0", "::", LAN_IP])
     def test_anything_reachable_is_not(self, bind, monkeypatch):
-        monkeypatch.setattr(config, "BIND_ADDRESS", bind)
+        use_bind(bind)
         assert config.loopback_only() is False
 
 
@@ -73,11 +74,13 @@ class _Exited(BaseException):
     clean startup."""
 
 
-def _banner(monkeypatch, caplog, bind: str, local_ip: str = LAN_IP) -> list[str]:
+def _banner(monkeypatch, caplog, bind: str, local_ip: str = LAN_IP, before=None) -> list[str]:
     """Run the real startup banner and return the lines it logged."""
     import openavc.main as main
 
-    monkeypatch.setattr(config, "BIND_ADDRESS", bind)
+    use_bind(bind)
+    if before is not None:
+        before()
     monkeypatch.setattr(config, "TLS_ENABLED", False)
     monkeypatch.setattr(config, "HTTP_PORT", 8080)
 
@@ -116,9 +119,31 @@ class TestTheStartupBannerConsultsTheBind:
             "the kernel refuses this address on a loopback bind — printing it "
             "is an instruction that cannot be followed"
         )
-        assert "127.0.0.1" in lan[0] and "0.0.0.0" in lan[0], (
-            "say what it is bound to and what to change it to"
+        assert "this computer only" in lan[0] and "Accept connections from" in lan[0], (
+            "say who can connect and where to change it"
         )
+
+    def test_one_adapter_advertises_its_address_and_says_only(self, monkeypatch, caplog):
+        lines = _banner(monkeypatch, caplog, LAN_IP)
+        assert any(
+            f"LAN access:  http://{LAN_IP}:8080/panel  (Ethernet only)" in ln for ln in lines
+        )
+
+    def test_a_missing_adapter_says_why_in_the_same_words_as_everywhere(
+        self, monkeypatch, caplog
+    ):
+        from openavc import listen
+        from tests.listen_helpers import ETHERNET, plan_for
+
+        def missing(*_a, **_k):
+            listen.set_current(plan_for("adapter", ETHERNET, adapters=[]))
+
+        lines = _banner(monkeypatch, caplog, "0.0.0.0", before=missing)
+        lan = [ln for ln in lines if "LAN access" in ln]
+        assert lan == [
+            "  LAN access:  none. Not accepting connections from the network: "
+            "the Ethernet adapter isn't connected."
+        ]
 
     def test_the_localhost_urls_are_untouched_by_either(self, monkeypatch, caplog):
         """Those are the ones that always work."""
@@ -157,7 +182,7 @@ async def claimed(monkeypatch):
 
 async def _network(engine, monkeypatch, *, bind: str, hostname: str, ips=None) -> dict:
     ips = [LAN_IP] if ips is None else ips
-    monkeypatch.setattr(config, "BIND_ADDRESS", bind)
+    use_bind(bind)
     monkeypatch.setattr(
         engine,
         "refresh_network_info",
@@ -307,7 +332,7 @@ class TestTheCertificateCoversTheNameTheHostAdvertises:
         single-label sanitizer — so the CA install bought nothing."""
         monkeypatch.setattr(socket, "gethostname", lambda: "Sams-MacBook-Air.local")
 
-        hostnames, _ = tls.collect_local_identifiers("127.0.0.1")
+        hostnames, _ = tls.collect_local_identifiers([])
 
         assert "Sams-MacBook-Air.local" in hostnames
         assert "Sams-MacBook-Airlocal" not in hostnames
@@ -318,7 +343,7 @@ class TestTheCertificateCoversTheNameTheHostAdvertises:
         prints, so it is the name that gets typed."""
         monkeypatch.setattr(socket, "gethostname", lambda: "openavc")
 
-        hostnames, _ = tls.collect_local_identifiers("127.0.0.1")
+        hostnames, _ = tls.collect_local_identifiers([])
 
         assert "openavc" in hostnames
         assert "openavc.local" in hostnames
@@ -330,5 +355,5 @@ class TestTheCertificateCoversTheNameTheHostAdvertises:
 
         for raw in ("openavc", "Sams-MacBook-Air.local", "box.corp.example.com"):
             monkeypatch.setattr(socket, "gethostname", lambda raw=raw: raw)
-            hostnames, _ = tls.collect_local_identifiers("127.0.0.1")
+            hostnames, _ = tls.collect_local_identifiers([])
             assert resolvable_hostname(raw) in hostnames, raw

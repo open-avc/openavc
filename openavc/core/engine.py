@@ -252,6 +252,17 @@ class Engine:
         except Exception:  # never block startup on the decision
             log.exception("Could not settle the Panel access default")
 
+        # Same for who can connect: the install type's default is written
+        # before the first save can write an empty choice. main() has normally
+        # settled it already, before binding; this covers a server started
+        # some other way. The rule is openavc/listen.py.
+        try:
+            from openavc import listen
+
+            listen.current()
+        except Exception:  # never block startup on the decision
+            log.exception("Could not settle who can connect")
+
         sys_config.ensure_file()
 
         # Convert an admin password or API key stored as typed (an install
@@ -2152,10 +2163,21 @@ class Engine:
         }
         if include_sensitive:
             local_ip, hostname, all_ips = self._detect_network_info()
+            # Who can connect (openavc/listen.py). With one adapter chosen,
+            # only its addresses are offered as somewhere to open the panel.
+            plan = config.listen_plan()
+            if plan.mode == "adapter":
+                all_ips = [ip for ip in all_ips if ip in plan.network_addresses] or list(
+                    plan.network_addresses
+                )
+                local_ip = all_ips[0] if all_ips else "127.0.0.1"
             status["hostname"] = hostname
             status["local_ip"] = local_ip
             status["local_ips"] = all_ips
-            status["bind_address"] = config.BIND_ADDRESS
+            # The one address an earlier client reads: 0.0.0.0, 127.0.0.1
+            # (also a chosen adapter that is missing), or the adapter's.
+            status["bind_address"] = plan.legacy_bind
+            status["listen"] = plan.to_dict()
         if self.isc:
             status["isc_peers"] = sum(
                 1 for p in self.isc._peers.values() if p.connected

@@ -19,11 +19,13 @@ subscription's callback.
   127.0.0.1 while the simulator POSTs from a real interface). The gate is a
   sanity check, not authentication — the trust model is the AV VLAN, same
   as UDP device control (documented in the IT network guide).
-- **No socket of its own**: requests arrive on the normal web port(s). When
-  HTTPS is enabled with the HTTP->HTTPS redirect, the redirect listener
-  passes ``/api/push/`` through to this registry instead of redirecting —
-  devices POST plain HTTP and don't follow redirects or trust our
-  self-signed certificate.
+- **The web port**: requests arrive on the normal web port(s). When HTTPS
+  is enabled with the HTTP->HTTPS redirect, the redirect listener passes
+  ``/api/push/`` through to this registry instead of redirecting — devices
+  POST plain HTTP and don't follow redirects or trust our self-signed
+  certificate. When Settings > Network > Accept connections from leaves out
+  the address a device reaches us on, ``subscribe`` has
+  ``listen_sockets.push_listeners`` listen on that address for pushes only.
 
 ``callback_url()`` builds the URL a driver registers with its device: the
 server address **as seen from that device** (honoring the
@@ -155,6 +157,14 @@ async def subscribe(
     sub = HTTPListenerSubscription(device_id, label, source_ips, callback, name)
     _registry.add(sub)
     log.debug("[%s] Push listener registered at %s", name, sub.path)
+    # The callback names the address the device reaches us on; when Accept
+    # connections from leaves that address out, listen there for pushes only.
+    from openavc.listen_sockets import push_listeners
+
+    try:
+        await push_listeners.ensure(_local_ip_for(source_ip))
+    except Exception:  # never fail a driver's subscription over it
+        log.exception("[%s] Could not listen for device updates", name)
     return sub
 
 
@@ -265,6 +275,51 @@ def _local_ip_for(device_host: str) -> str:
 def close_all() -> None:
     """Drop every subscription (used by tests and engine shutdown)."""
     _registry.close_all()
+
+
+async def _push_endpoint(request: Any) -> Any:
+    """Serve one inbound push request outside the main app.
+
+    Devices delivering push callbacks (webhooks, GENA NOTIFY) speak plain
+    HTTP, don't follow redirects, and won't trust the self-signed certificate
+    a redirect would send them to, so the HTTP-port redirect listener serves
+    the registry in-process instead of redirecting, and so does the push-only
+    listener ``openavc/listen_sockets.py`` opens on a device-facing address.
+    """
+    from starlette.responses import Response
+
+    device_id = request.path_params["device_id"]
+    label = request.path_params.get("label") or ""
+    body = await request.body()
+    status = await dispatch(
+        device_id,
+        label,
+        HTTPPushRequest(
+            body=body,
+            method=request.method,
+            headers={k.lower(): v for k, v in request.headers.items()},
+            source_ip=request.client.host if request.client else "",
+            label=label,
+        ),
+    )
+    return Response(status_code=status)
+
+
+def push_routes() -> list[Any]:
+    """The two ``/api/push/`` routes, for a listener other than the main app."""
+    from starlette.routing import Route
+
+    return [
+        Route("/api/push/{device_id}", _push_endpoint, methods=["POST", "NOTIFY"]),
+        Route("/api/push/{device_id}/{label}", _push_endpoint, methods=["POST", "NOTIFY"]),
+    ]
+
+
+def push_only_app() -> Any:
+    """An app that answers ``/api/push/`` and nothing else (404)."""
+    from starlette.applications import Starlette
+
+    return Starlette(routes=push_routes())
 
 
 def callback_urls_for(device_id: str, device_host: str) -> list[str]:

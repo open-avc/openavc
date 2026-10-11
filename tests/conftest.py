@@ -177,6 +177,10 @@ def _reset_global_state():
     from openavc.core.plugin_loader import _PLUGIN_CLASS_REGISTRY, _REGISTRY_LOCK
     with _REGISTRY_LOCK:
         _PLUGIN_CLASS_REGISTRY.clear()
+    # The listen plan is resolved once per process; a test that set one
+    # (tests/listen_helpers.py) must not leave it for the next.
+    from openavc import listen
+    listen.reset()
 
 
 @pytest.fixture(autouse=True)

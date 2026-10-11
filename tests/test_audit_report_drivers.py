@@ -42,6 +42,7 @@ from openavc.core.device_traffic import get_traffic_recorder
 from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.drivers.registry import _DRIVER_REGISTRY
 from openavc.utils.log_redaction import get_secret_registry
+from tests.listen_helpers import use_bind
 
 PASSWORD = "hunter22"
 USERNAME = "operator7"
@@ -378,9 +379,8 @@ def test_limits_for_traffic_the_audit_could_not_keep():
 
 def test_a_push_the_device_never_sent_is_a_limit_naming_where(monkeypatch):
     """The driver asked the device to send its events to OpenAVC, and none
-    came: the report says where it asked, and why when OpenAVC listens only
-    on this machine."""
-    from openavc import config
+    came: the report says where it asked, and why when nothing on this
+    computer listens on that address."""
 
     url = "http://192.168.1.20:8080/api/push/audit-x"
     heard = SimpleNamespace(channel="http_listener", direction="rx")
@@ -388,13 +388,22 @@ def test_a_push_the_device_never_sent_is_a_limit_naming_where(monkeypatch):
         index=0, choice=SimpleNamespace(identity={"name": "Acme Speaker"}, driver_id="x"),
         listens=[_limit_attempt(callbacks=[url])],
     )
-    monkeypatch.setattr(config, "BIND_ADDRESS", "127.0.0.1")
+    use_bind("127.0.0.1")
     [limit] = _driver_limits(SimpleNamespace(runs=[run], no_driver=False))
     assert limit["id"] == "push_never_arrived" and limit["callbacks"] == [url]
     assert limit["text"].startswith(f"Acme Speaker asked the device to send its events to {url}")
-    assert "listening on 127.0.0.1 only" in limit["text"]
+    assert "OpenAVC is not listening on 192.168.1.20" in limit["text"]
 
-    monkeypatch.setattr(config, "BIND_ADDRESS", "0.0.0.0")
+    use_bind("0.0.0.0")
+    [limit] = _driver_limits(SimpleNamespace(runs=[run], no_driver=False))
+    assert "firewall" in limit["text"]
+
+    # This computer only, with device updates received on that address by
+    # their own listener: reachable, so the reason is the firewall's.
+    from openavc.listen_sockets import push_listeners
+
+    use_bind("127.0.0.1")
+    monkeypatch.setattr(push_listeners, "serves", lambda host: True)
     [limit] = _driver_limits(SimpleNamespace(runs=[run], no_driver=False))
     assert "firewall" in limit["text"]
 

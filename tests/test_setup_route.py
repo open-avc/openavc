@@ -17,11 +17,11 @@ from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 import openavc.api.auth as auth_mod
-from openavc import config
 from openavc.core.engine import Engine
 from openavc.core.project_loader import load_project
 from openavc.main import app
 from openavc.api import rest
+from tests.listen_helpers import use_bind
 
 
 EMPTY_PROJECT = {
@@ -163,7 +163,7 @@ async def test_multi_homed_lists_every_leg(claimed, monkeypatch):
     # Explicit: the screen only offers a LAN address when the server is bound
     # to one, and the default bind in a test process is loopback. The rule
     # itself is pinned in tests/test_advertised_urls.py.
-    monkeypatch.setattr(config, "BIND_ADDRESS", "0.0.0.0")
+    use_bind("0.0.0.0")
     monkeypatch.setattr(
         claimed,
         "refresh_network_info",

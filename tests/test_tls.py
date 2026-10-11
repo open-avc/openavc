@@ -17,6 +17,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
 from openavc import tls
+from tests.listen_helpers import plan_for
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +31,7 @@ def _make_config(**overrides):
         "TLS_AUTO_GENERATE": True,
         "TLS_CERT_FILE": "",
         "TLS_KEY_FILE": "",
-        "BIND_ADDRESS": "127.0.0.1",
+        "listen_plan": lambda: plan_for("this_computer"),
     }
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -168,7 +169,7 @@ def test_load_or_generate_reuses_existing(tmp_path):
 
 
 def test_load_or_generate_regenerates_on_ip_change(tmp_path, monkeypatch):
-    cfg = _make_config(BIND_ADDRESS="0.0.0.0")
+    cfg = _make_config(listen_plan=lambda: plan_for("any"))
 
     monkeypatch.setattr(
         tls,
@@ -360,16 +361,14 @@ def test_read_cert_info_expired_warning(tmp_path):
 
 
 def test_collect_local_identifiers_loopback_bind():
-    """Loopback-only bind keeps LAN IPs out of the cert."""
-    _, ips = tls.collect_local_identifiers("127.0.0.1")
+    """This computer only keeps LAN IPs out of the cert."""
+    _, ips = tls.collect_local_identifiers([])
     assert "127.0.0.1" in ips
     for ip in ips:
         assert ip in ("127.0.0.1", "::1"), f"unexpected ip {ip} for loopback bind"
 
 
-def test_collect_local_identifiers_wide_open(monkeypatch):
-    """Wide-open bind adds every LAN IPv4 from ifaddr."""
-
+def _fake_ifaddr(monkeypatch, *addresses):
     class _IPInfo:
         def __init__(self, ip):
             self.ip = ip
@@ -382,11 +381,23 @@ def test_collect_local_identifiers_wide_open(monkeypatch):
             self.ips = ips
 
     fake_module = SimpleNamespace(
-        get_adapters=lambda: [_Adapter([_IPInfo("192.168.1.50"), _IPInfo("127.0.0.1")])],
+        get_adapters=lambda: [_Adapter([_IPInfo(a) for a in addresses])],
     )
     monkeypatch.setitem(sys.modules, "ifaddr", fake_module)
 
-    _, ips = tls.collect_local_identifiers("0.0.0.0")
+
+def test_collect_local_identifiers_one_adapter(monkeypatch):
+    """One adapter chosen: its address is in the cert, the others are not."""
+    _fake_ifaddr(monkeypatch, "192.168.1.50", "10.20.30.5", "127.0.0.1")
+    _, ips = tls.collect_local_identifiers(["10.20.30.5"])
+    assert "10.20.30.5" in ips and "127.0.0.1" in ips
+    assert "192.168.1.50" not in ips
+
+
+def test_collect_local_identifiers_wide_open(monkeypatch):
+    """Any network adds every LAN IPv4 from ifaddr."""
+    _fake_ifaddr(monkeypatch, "192.168.1.50", "127.0.0.1")
+    _, ips = tls.collect_local_identifiers(None)
     assert "192.168.1.50" in ips
     assert "127.0.0.1" in ips
     assert "169.254.99.1" not in ips
@@ -400,7 +411,7 @@ def test_collect_local_identifiers_hostname_sanitized(monkeypatch):
     nothing illegal for DNS reaches a SAN entry.
     """
     monkeypatch.setattr(socket, "gethostname", lambda: "Sam's Pi 4")
-    hostnames, _ = tls.collect_local_identifiers("127.0.0.1")
+    hostnames, _ = tls.collect_local_identifiers([])
 
     sanitized = [h for h in hostnames if h != "localhost"]
     assert sanitized, "expected a sanitized hostname alongside 'localhost'"

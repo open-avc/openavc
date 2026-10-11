@@ -163,11 +163,18 @@ async def setup_status(
     # of its own (a chroot answers "localhost").
     mdns_name = resolvable_hostname(hostname) or None
 
-    # A loopback-bound server serves NOTHING on any of the addresses below --
-    # the kernel refuses the connection -- and this screen's whole job is
-    # telling somebody which URL to open. So the address it offers is the one
-    # that works, and the page says why the others are missing.
-    local_only = config.loopback_only()
+    # A server accepting connections from this computer only serves NOTHING
+    # on any of the addresses below -- the kernel refuses the connection --
+    # and this screen's whole job is telling somebody which URL to open. So
+    # the address it offers is the one that works, and the page says why the
+    # others are missing. With one adapter chosen, only its addresses work.
+    plan = config.listen_plan()
+    local_only = plan.local_only
+    if plan.mode == "adapter" and not local_only:
+        all_ips = [ip for ip in all_ips if ip in plan.network_addresses] or list(
+            plan.network_addresses
+        )
+        local_ip = all_ips[0]
 
     # Prefer the routable IP; fall back to mDNS when there is a usable name.
     if local_only:
@@ -195,7 +202,9 @@ async def setup_status(
     payload["network"] = {
         "online": online,
         "local_only": local_only,
-        "bind_address": config.BIND_ADDRESS,
+        "bind_address": plan.legacy_bind,
+        "listen_label": plan.label,
+        "listen_problem": plan.problem.message if plan.problem else None,
         "ip": local_ip if online else None,
         "ips": ips,
         "hostname": mdns_name,
@@ -421,8 +430,10 @@ _PAGE = """<!DOCTYPE html>
       // answer, and nobody is standing here to correct it. A loopback bind
       // has the opposite problem -- there is exactly one address and it is
       // not on the network -- so say that instead of listing alternates.
-      var tail = net.local_only
-        ? ' This controller is set to local-only access (bound to ' + net.bind_address + '), so nothing else on the network can reach it. To open it from another machine, set the bind address to 0.0.0.0 in Settings > Network and restart.'
+      var tail = net.listen_problem
+        ? ' ' + net.listen_problem + ' Only this device can open it until then.'
+        : net.local_only
+        ? ' This controller accepts connections from this computer only, so nothing else on the network can reach it. To open it from another machine, change Accept connections from in Settings > Network and restart.'
         : (others.length
           ? ' This controller is on more than one network -- if that address does not open, try the others listed below.'
           : '');

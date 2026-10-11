@@ -53,8 +53,9 @@ def _app_listener_calls(tree):
 def test_every_app_listener_caps_ws_frame_size():
     tree = ast.parse(MAIN_PY.read_text(encoding="utf-8"))
     calls = list(_app_listener_calls(tree))
-    # TLS listener, plain-HTTP listener, and the default single-listener run().
-    assert len(calls) >= 3, f"expected >=3 openavc.main:app listeners, found {len(calls)}"
+    # The TLS listener, and the plain-HTTP one (_main_http_config, which the
+    # single-listener start and the port-80 start both serve).
+    assert len(calls) >= 2, f"expected >=2 openavc.main:app listeners, found {len(calls)}"
     for call in calls:
         kwargs = {kw.arg for kw in call.keywords}
         assert "ws_max_size" in kwargs, (

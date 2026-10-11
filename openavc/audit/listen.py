@@ -146,13 +146,30 @@ def push_heard(sandbox: Any) -> bool:
     )
 
 
+def unreachable_push_hosts(urls: list[str]) -> list[str]:
+    """The callback addresses in ``urls`` nothing on this computer listens on.
+
+    Settings > Network > Accept connections from can leave out the address a
+    device reaches OpenAVC on; ``listen_sockets.push_listeners`` then listens
+    there for device updates alone, and this is empty unless that failed."""
+    from urllib.parse import urlsplit
+
+    from openavc.listen_sockets import push_listeners
+
+    hosts: list[str] = []
+    for url in urls:
+        host = urlsplit(url).hostname or ""
+        if host and host not in hosts and not push_listeners.serves(host):
+            hosts.append(host)
+    return hosts
+
+
 def push_unheard_text(name: str, urls: list[str], *, listening: bool = False) -> str:
     """What to say when a driver asked the device to send its events to
     OpenAVC and none came: where it asked, and the likeliest reason. The
     report says it of the whole audit; the listen step says it while still
-    listening, when OpenAVC is bound to this machine and none can come."""
-    from openavc import config
-
+    listening, when nothing listens on the callback address and none can
+    come."""
     where = urls[0] if len(urls) == 1 else f"{urls[0]} and {len(urls) - 1} more"
     if listening:
         text = (
@@ -164,11 +181,12 @@ def push_unheard_text(name: str, urls: list[str], *, listening: bool = False) ->
             f"{name} asked the device to send its events to {where}, and none arrived while "
             "the audit ran, so the driver saw only what it asked for itself."
         )
-    if config.loopback_only():
+    unreachable = unreachable_push_hosts(urls)
+    if unreachable:
         text += (
-            f" OpenAVC is listening on {config.BIND_ADDRESS} only, so the device cannot "
-            "reach it: set the Bind address in Settings > Network to 0.0.0.0, restart, "
-            "and run the audit again."
+            f" OpenAVC is not listening on {unreachable[0]}, so the device cannot "
+            "deliver them. Check that no other program uses that port, restart "
+            "OpenAVC, and run the audit again."
         )
     else:
         text += (
@@ -578,16 +596,14 @@ class ListenPass:
     def push_status(self) -> dict[str, Any]:
         """The callbacks the driver asked the device to send its events to,
         whether any came, and what the step says when none has: at once when
-        OpenAVC listens on this machine only (none can come), otherwise when
-        the window ends with none heard, as the report does."""
-        from openavc import config
-
+        nothing listens on the callback address (none can come), otherwise
+        when the window ends with none heard, as the report does."""
         urls = self.sandbox.push_callbacks()
         heard = push_heard(self.sandbox)
         text = ""
         if urls and not heard:
             listening = self.status in (CONNECTING, LISTENING, NOT_CONNECTED)
-            if not listening or config.loopback_only():
+            if not listening or unreachable_push_hosts(urls):
                 name = self.run.choice.identity.get("name") or self.run.choice.driver_id
                 text = push_unheard_text(name, urls, listening=listening)
         return {"callbacks": urls, "heard": heard, "text": text}

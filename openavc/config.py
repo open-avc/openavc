@@ -75,7 +75,6 @@ _cfg = _load_config_values()
 
 # Network
 HTTP_PORT: int = _cfg.get("network", "http_port")
-BIND_ADDRESS: str = _cfg.get("network", "bind_address")
 # Only honor X-Forwarded-For when explicitly fronted by a trusted reverse
 # proxy. Default False: use the real TCP peer so the client IP can't be
 # spoofed to bypass rate limiting or the localhost exemption.
@@ -87,8 +86,15 @@ TRUSTED_PROXIES: list = _cfg.get("network", "trusted_proxies")
 # Port-80 convenience redirect (typed URLs drop the port). Best-effort bind.
 PORT80_REDIRECT: bool = _cfg.get("network", "port80_redirect")
 
-# Loopback binds, by every spelling the setting accepts.
-_LOOPBACK_BINDS = ("127.0.0.1", "::1", "[::1]", "localhost")
+def listen_plan():
+    """Who can connect, resolved to the addresses the web listeners bind:
+    an ``openavc.listen.ListenPlan``. Not a mirrored constant: the choice names
+    an adapter, its addresses are found at start, and a missing one leaves the
+    server on this computer only (``openavc/listen.py``). Like the listeners
+    themselves it changes with a restart."""
+    from openavc import listen
+
+    return listen.current()
 
 
 def loopback_only() -> bool:
@@ -96,16 +102,13 @@ def loopback_only() -> bool:
 
     THE question every surface that prints a LAN URL has to ask first: the
     startup banner, the setup screen, and the Dashboard's Panel Access card
-    (which asks its own copy of it, over ``/api/status.bind_address``). On a
-    loopback-bound instance a ``http://<lan ip>:<port>/panel`` is refused by
-    the kernel, so printing one is an instruction that cannot be followed.
-
-    A function rather than a mirrored constant so it follows a monkeypatched
-    ``BIND_ADDRESS``, and because the answer is only ever wanted at display
-    time. Like the bind itself it takes a restart to change -- ``uvicorn``
-    was handed this value at startup.
+    (which asks its own copy of it, over ``/api/status``). On a server that
+    accepts connections from this computer only, a
+    ``http://<lan ip>:<port>/panel`` is refused by the kernel, so printing one
+    is an instruction that cannot be followed. True as well for a chosen
+    adapter that is missing, which listens on this computer only.
     """
-    return BIND_ADDRESS.strip() in _LOOPBACK_BINDS
+    return listen_plan().local_only
 
 # HTTPS / TLS
 TLS_ENABLED: bool = _cfg.get("tls", "enabled")

@@ -179,8 +179,12 @@ async def get_tls_status() -> dict[str, Any]:
     warnings = list(info.warnings)
     # Hostname-mismatch: compare cert SANs against the host's current identifiers.
     try:
-        bind_address = sys_cfg.get("network", "bind_address", "0.0.0.0")
-        hostnames, ips = tls_module.collect_local_identifiers(bind_address)
+        # The addresses this server is listening on now, not the saved
+        # choice: a change waiting for a restart has not moved the listener.
+        from openavc import listen
+        hostnames, ips = tls_module.collect_local_identifiers(
+            listen.certificate_addresses(listen.current())
+        )
         all_current = set(hostnames) | set(ips)
         all_current.discard("127.0.0.1")
         all_current.discard("localhost")

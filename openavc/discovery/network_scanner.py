@@ -137,6 +137,73 @@ def get_network_adapters() -> list[dict[str, Any]]:
     return adapters
 
 
+# Adapters that never carry a network a person would choose, and that Windows
+# lists with a link-local address only: Wi-Fi Direct's "Local Area Connection*"
+# entries and the Bluetooth network adapter. Only consulted for an adapter with
+# no usable address, which is the only way one of them reaches the list below.
+_NOT_A_NETWORK_PATTERNS = re.compile(r"bluetooth|local area connection\*", re.IGNORECASE)
+
+
+def get_adapter_inventory() -> list[dict[str, Any]]:
+    """One entry per physical adapter, every IPv4 address it holds, and the
+    adapters that hold none (unplugged, waiting for DHCP).
+
+        [{"name": "Ethernet", "mac": "aa:bb:...", "addresses":
+          [{"ip": "10.20.30.5", "subnet": "10.20.30.0/24"}], "link": True,
+          "has_address": True}, ...]
+
+    ``get_network_adapters`` lists addresses, so an adapter with two appears
+    twice and one with none does not appear at all. A choice of adapter has to
+    stay visible while its adapter is unplugged, so this list keeps those, from
+    psutil, with the same virtual-adapter filter by OS name. ``link`` is False
+    when the adapter is not connected; an unplugged adapter on Windows still
+    reports its static address, and that address cannot be listened on.
+    """
+    inventory: dict[tuple[str, str], dict[str, Any]] = {}
+    for entry in get_network_adapters():
+        key = (entry["name"], entry.get("mac", ""))
+        item = inventory.setdefault(key, {
+            "name": entry["name"],
+            "mac": entry.get("mac", ""),
+            "addresses": [],
+            "link": False,
+        })
+        item["addresses"].append({"ip": entry["ip"], "subnet": entry["subnet"]})
+        item["link"] = item["link"] or bool(entry.get("link", True))
+
+    try:
+        import psutil
+
+        stats = psutil.net_if_stats()
+        for name, addrs in psutil.net_if_addrs().items():
+            if any(item["name"] == name for item in inventory.values()):
+                continue
+            mac = next((a.address for a in addrs if a.family == psutil.AF_LINK), "")
+            if not mac or _VIRTUAL_ADAPTER_PATTERNS.search(name):
+                continue
+            if _NOT_A_NETWORK_PATTERNS.search(name):
+                continue
+            if any(
+                a.family == socket.AF_INET and a.address.startswith("127.")
+                for a in addrs
+            ):
+                continue
+            st = stats.get(name)
+            inventory[(name, mac)] = {
+                "name": name,
+                "mac": mac,
+                "addresses": [],
+                "link": bool(st and st.isup),
+            }
+    except (ImportError, OSError, RuntimeError) as exc:
+        log.debug("Adapters without an address unavailable: %s", exc)
+
+    result = list(inventory.values())
+    for item in result:
+        item["has_address"] = bool(item["addresses"])
+    return result
+
+
 def get_interface_ips() -> list[str]:
     """Non-loopback, non-link-local IPv4 addresses of connected physical adapters.
 

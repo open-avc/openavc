@@ -23,7 +23,7 @@ import ssl
 import stat
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -99,7 +99,7 @@ class CertInfo:
 # ---------------------------------------------------------------------------
 
 
-def collect_local_identifiers(bind_address: str) -> tuple[list[str], list[str]]:
+def collect_local_identifiers(addresses: Sequence[str] | None) -> tuple[list[str], list[str]]:
     """Return (hostnames, ips) for inclusion in the cert's SubjectAlternativeName.
 
     Always includes "localhost", every name the OS hostname makes reachable
@@ -113,9 +113,12 @@ def collect_local_identifiers(bind_address: str) -> tuple[list[str], list[str]]:
     return, so installing the CA still left the machine's own advertised name
     warning. Labels are now scrubbed individually and the dots kept.
 
-    When ``bind_address`` is wide-open ("0.0.0.0" or "::"), every non-loopback
-    IPv4 from ``ifaddr.get_adapters()`` is added so phones on the LAN connecting
-    by IP find a matching SAN.
+    ``addresses`` are the network addresses the server accepts connections
+    on beyond loopback (``listen.certificate_addresses``): the chosen
+    adapter's, or none for this computer only. ``None`` means every network
+    (Accept connections from: any network), and then every non-loopback IPv4
+    from ``ifaddr.get_adapters()`` is added so phones on the LAN connecting by
+    IP find a matching SAN.
 
     "::1" is added whenever IPv6 is detected on any adapter.
     """
@@ -132,7 +135,10 @@ def collect_local_identifiers(bind_address: str) -> tuple[list[str], list[str]]:
 
     ips: list[str] = ["127.0.0.1"]
     has_ipv6 = False
-    wide_open = bind_address in ("0.0.0.0", "::", "")
+    wide_open = addresses is None
+    for addr in addresses or ():
+        if addr and not addr.startswith("127.") and addr not in ips:
+            ips.append(addr)
 
     try:
         import ifaddr
@@ -446,7 +452,11 @@ def load_or_generate(config: Any, data_dir: Path) -> tuple[Path, Path]:
             "Enable auto_generate or provide cert_file + key_file.",
         )
 
-    return _load_or_generate_auto(data_dir, getattr(config, "BIND_ADDRESS", "127.0.0.1"))
+    from openavc import listen
+
+    listen_plan = getattr(config, "listen_plan", None)
+    addresses = listen.certificate_addresses(listen_plan()) if listen_plan else []
+    return _load_or_generate_auto(data_dir, addresses)
 
 
 def _load_provided(cert_path: Path, key_path: Path) -> tuple[Path, Path]:
@@ -506,8 +516,10 @@ def _ensure_chain_includes_ca(cert_path: Path, ca_path: Path) -> None:
     log.info("Added the CA to the served certificate chain at %s", cert_path)
 
 
-def _load_or_generate_auto(data_dir: Path, bind_address: str) -> tuple[Path, Path]:
-    hostnames, ips = collect_local_identifiers(bind_address)
+def _load_or_generate_auto(
+    data_dir: Path, addresses: Sequence[str] | None
+) -> tuple[Path, Path]:
+    hostnames, ips = collect_local_identifiers(addresses)
     tls_dir = data_dir / "tls"
     cert_path = tls_dir / "server.crt"
     key_path = tls_dir / "server.key"
