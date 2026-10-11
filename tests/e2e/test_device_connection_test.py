@@ -3,8 +3,9 @@
 The server resolves the address the way the device manager does (here the host
 and port sit in the project's connections table, where the IDE saves them),
 and the result line says where it went: "Connected to 127.0.0.1:<port> (N ms)",
-or "Could not connect to <address>: <reason>". A listener in this process
-stands in for the device, so the test also sees the connection arrive.
+or the server's sentence for the failure, which names the address once when
+the address is what failed. A listener in this process stands in for the
+device, so the test also sees the connection arrive.
 """
 
 from __future__ import annotations
@@ -71,13 +72,28 @@ def test_a_success_names_the_address_it_reached(server_factory, listener, page: 
     assert accepted, "the test reported a connection the listener never saw"
 
 
-def test_a_failure_names_the_address_and_what_to_do(server_factory, page: Page):
+def test_a_refused_port_names_the_address_once(server_factory, page: Page):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    server = server_factory(project_overrides={
+        "connections": {"ctrl1": {"host": "127.0.0.1", "port": port}},
+    })
+    _press_test_connection(page, server.base_url)
+    line = page.get_by_text(f"Connection refused on 127.0.0.1:{port}.")
+    expect(line).to_be_visible(timeout=EXPECT_TIMEOUT)
+    assert line.inner_text().count("127.0.0.1") == 1, line.inner_text()
+
+
+def test_a_missing_port_says_what_to_do(server_factory, page: Page):
     """No port in the device's settings and none from its driver."""
     server = server_factory(project_overrides={
         "connections": {"ctrl1": {"host": "127.0.0.1"}},
     })
     _press_test_connection(page, server.base_url)
-    expect(page.get_by_text(
-        "Could not connect to 127.0.0.1: No port is set for this device, "
-        "and its driver does not supply one."
-    )).to_be_visible(timeout=EXPECT_TIMEOUT)
+    line = page.get_by_text(
+        "No port is set for this device, and its driver does not supply one."
+    )
+    expect(line).to_be_visible(timeout=EXPECT_TIMEOUT)
+    assert "127.0.0.1" not in line.inner_text(), line.inner_text()

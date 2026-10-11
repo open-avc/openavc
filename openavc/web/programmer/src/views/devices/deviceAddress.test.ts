@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatDeviceAddress } from "./deviceAddress";
+import { connectionTestText, formatDeviceAddress } from "./deviceAddress";
 
 describe("formatDeviceAddress", () => {
   it("joins a network host and port", () => {
@@ -33,5 +33,42 @@ describe("formatDeviceAddress", () => {
     expect(
       formatDeviceAddress({ transport: "tcp", host: "10.0.0.5", port: null, bridge: "" }),
     ).toBe("10.0.0.5");
+  });
+});
+
+describe("connectionTestText", () => {
+  const at = { transport: "tcp", host: "192.168.4.250", port: 4321, bridge: "" };
+
+  it("names the address it reached", () => {
+    expect(
+      connectionTestText({ success: true, error: null, latency_ms: 70, connection: at }),
+    ).toBe("Connected to 192.168.4.250:4321 (70 ms)");
+  });
+
+  it("names the bridge a success went through", () => {
+    expect(
+      connectionTestText(
+        { success: true, error: null, latency_ms: 9, connection: { ...at, bridge: "itach" } },
+        (id) => (id === "itach" ? "Rack iTach" : id),
+      ),
+    ).toBe("Connected to 192.168.4.250:4321 through Rack iTach (9 ms)");
+  });
+
+  it("shows a failure as the server's sentence, which names the address once", () => {
+    const error = "Can't reach 192.168.4.250:4321. Check the IP address and network.";
+    expect(
+      connectionTestText({ success: false, error, latency_ms: null, connection: at }),
+    ).toBe(error);
+  });
+
+  it("shows a settings problem without an address in front of it", () => {
+    const error =
+      "No port is set for this device, and its driver does not supply one. " +
+      "Enter the port in the device's Connection Settings.";
+    expect(
+      connectionTestText({
+        success: false, error, latency_ms: null, connection: { ...at, port: null },
+      }),
+    ).toBe(error);
   });
 });

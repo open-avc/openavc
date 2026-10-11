@@ -31,7 +31,7 @@ import { DEVICE_STALE_TITLE, LastHeard, staleValueStyle } from "./staleReading";
 import { normalizeOptionList, parseStateOptionList, settingValueText } from "../../components/shared/paramOptions";
 import { DevicePanelSlot, ContextActionRenderer } from "../../components/plugins/PluginExtensions";
 import { findDeviceReferences, validateSettingValue } from "./deviceUtils";
-import { formatDeviceAddress } from "./deviceAddress";
+import { connectionTestText } from "./deviceAddress";
 import { isSecretConfigField } from "./deviceConfigCoerce";
 import { BooleanOptions } from "../../components/shared/BooleanOptions";
 import { readingText, valueText } from "../../components/shared/booleanWords";
@@ -730,20 +730,10 @@ export function DeviceDetail({
             color: testResult.success ? "var(--color-success)" : "var(--color-error)",
           }}
         >
-          {(() => {
-            const address = formatDeviceAddress(
-              testResult.connection,
-              (id) => project?.devices.find((d) => d.id === id)?.name || id,
-            );
-            if (testResult.success) {
-              return address
-                ? `Connected to ${address} (${testResult.latency_ms} ms)`
-                : `Connected (${testResult.latency_ms} ms)`;
-            }
-            return address
-              ? `Could not connect to ${address}: ${testResult.error}`
-              : `Connection failed: ${testResult.error}`;
-          })()}
+          {connectionTestText(
+            testResult,
+            (id) => project?.devices.find((d) => d.id === id)?.name || id,
+          )}
           {testResult.note && (
             <div style={{ marginTop: "var(--space-xs)", color: "var(--text-muted)" }}>
               {testResult.note}

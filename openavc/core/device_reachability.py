@@ -25,8 +25,11 @@ device's ``connected`` and ``offline_reason`` state.
 
 A failure the operating system reports (host down, refused, no route) is
 worded by ``core/connection_fault``, the same sentence the device card shows,
-never the raw OS text. While a device is simulated it is connected to the
-simulator, so :func:`run_connection_test` tests the simulator and says so.
+never the raw OS text. The ``error`` is the whole sentence a person reads:
+one about the address names it once, and a device that sends through a
+bridge also names the bridge, whose address is the one in the sentence.
+While a device is simulated it is connected to the simulator, so
+:func:`run_connection_test` tests the simulator and says so.
 """
 
 from __future__ import annotations
@@ -42,6 +45,7 @@ from openavc.core.connection_fault import (
     no_address_message,
     NO_RESPONSE,
     TRANSPORT_DISCONNECTED,
+    _endpoint,
     classify_connection_fault,
 )
 from openavc.core.device_config import connection_of, resolve_device_config
@@ -106,6 +110,7 @@ async def check_reachability(resolved: dict[str, Any], project: Any) -> dict[str
     """
     conn = connection_of(resolved)
     address = conn.address()
+    bridge = None
     if conn.bridge:
         bridge = next(
             (d for d in getattr(project, "devices", None) or [] if d.id == conn.bridge), None
@@ -143,7 +148,7 @@ async def check_reachability(resolved: dict[str, Any], project: Any) -> dict[str
         note = None
 
     if error is not None:
-        return _failure(error, address)
+        return _failure(_sent_through(error, bridge), address)
     result: dict[str, Any] = {
         "success": True,
         "error": None,
@@ -158,17 +163,28 @@ async def check_reachability(resolved: dict[str, Any], project: Any) -> dict[str
 def _in_words(exc: BaseException, host: str, port: Any, transport: str) -> str:
     """The classifier's sentence for a failed probe, the one the device card
     shows. Its fallbacks describe a connection that dropped while in use,
-    which a test never had, so those keep the error's own text."""
+    which a test never had, so those keep the error's own text, after the
+    address it was dialing."""
     fault = classify_connection_fault(
         last_error=None, exc=exc, host=host, port=port, transport=transport,
     )
     if fault.code in (NO_RESPONSE, TRANSPORT_DISCONNECTED):
-        return str(exc) or type(exc).__name__
+        return f"Could not connect to {_endpoint(host, port)}: {str(exc) or type(exc).__name__}"
     return fault.message
 
 
 def _failure(error: str, address: dict[str, Any]) -> dict[str, Any]:
     return {"success": False, "error": error, "latency_ms": None, "connection": address}
+
+
+def _sent_through(error: str, bridge: Any) -> str:
+    """``error`` followed by the bridge a device sends through, when it has
+    one: the address in the sentence is then the bridge's."""
+    if bridge is None:
+        return error
+    if not error.rstrip().endswith((".", "!", "?")):
+        error = error.rstrip() + "."
+    return f"{error} This device sends through the bridge '{bridge.name or bridge.id}'."
 
 
 async def _through_bridge(bridge: Any, project: Any, address: dict[str, Any]) -> dict[str, Any]:
@@ -181,6 +197,8 @@ async def _through_bridge(bridge: Any, project: Any, address: dict[str, Any]) ->
         )
     result = await check_reachability(resolved, project)
     result["connection"] = {**result["connection"], "bridge": bridge.id}
+    if not result["success"]:
+        result["error"] = _sent_through(result["error"], bridge)
     return result
 
 
@@ -214,7 +232,10 @@ async def _open_tcp(host: str, port: Any, cfg: dict[str, Any]) -> str | None:
             timeout=_CONNECT_TIMEOUT_S,
         )
     except asyncio.TimeoutError:
-        return f"Connection timed out ({_CONNECT_TIMEOUT_S:g}s)"
+        return (
+            f"No answer from {_endpoint(host, port)} within {_CONNECT_TIMEOUT_S:g} s. "
+            "Check the IP address and network."
+        )
     except OSError as exc:
         return _in_words(exc, host, port, "tcp")
     writer.close()

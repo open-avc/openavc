@@ -370,6 +370,97 @@ async def test_an_os_error_reads_in_the_classifiers_words(drivers, monkeypatch):
     assert result["error"] == "Can't reach 10.9.8.7:4000. Check the IP address and network."
 
 
+async def test_a_timeout_names_the_address(drivers, monkeypatch):
+    """The page shows the error as it is, so every failure about the
+    address names it: the timeout used to rely on a prefix the page added."""
+    from openavc.core import device_reachability
+
+    async def hang(*_args: Any, **_kwargs: Any) -> Any:
+        await asyncio.sleep(10)
+
+    monkeypatch.setattr(asyncio, "open_connection", hang)
+    monkeypatch.setattr(device_reachability, "_CONNECT_TIMEOUT_S", 0.05)
+    drivers("acme_reach_slow", "tcp", {"port": 4000})
+    device = DeviceConfig(id="d2", driver="acme_reach_slow", name="D2", config={})
+    project = _project(device, connections={"d2": {"host": "10.9.8.7"}})
+
+    result = await _test(device, project)
+
+    assert result["error"] == (
+        "No answer from 10.9.8.7:4000 within 0.05 s. Check the IP address and network."
+    )
+
+
+async def test_an_unexplained_error_names_the_address(drivers, monkeypatch):
+    """The classifier's fallbacks keep the error's own text, which says
+    nothing about where the test was dialing."""
+    async def odd(*_args: Any, **_kwargs: Any) -> Any:
+        raise OSError("stop here")
+
+    monkeypatch.setattr(asyncio, "open_connection", odd)
+    drivers("acme_reach_odd", "tcp", {"port": 4000})
+    device = DeviceConfig(id="d3", driver="acme_reach_odd", name="D3", config={})
+    project = _project(device, connections={"d3": {"host": "10.9.8.7"}})
+
+    result = await _test(device, project)
+
+    assert result["error"] == "Could not connect to 10.9.8.7:4000: stop here"
+
+
+def _host_down(monkeypatch) -> None:
+    import errno
+
+    async def down(*_args: Any, **_kwargs: Any) -> Any:
+        raise OSError(errno.EHOSTDOWN, "Host is down")
+
+    monkeypatch.setattr(asyncio, "open_connection", down)
+
+
+async def test_a_failed_ir_device_names_the_bridge_it_sends_through(drivers, monkeypatch):
+    """The address in the sentence is the bridge's, which the integrator
+    never entered on this device."""
+    _host_down(monkeypatch)
+    drivers("acme_reach_down_bridge", "tcp", {"port": 4998}, bridge={"ports": [
+        {"id": "ir1", "kind": "ir"},
+    ]})
+    drivers("acme_reach_down_ir", "tcp", {})
+    bridge = DeviceConfig(id="br2", driver="acme_reach_down_bridge", name="Rack Bridge", config={})
+    ir = DeviceConfig(id="tv3", driver="acme_reach_down_ir", name="TV", config={})
+    project = _project(bridge, ir, connections={
+        "br2": {"host": "10.9.8.6"},
+        "tv3": {"bridge": "br2", "bridge_port": "ir1"},
+    })
+
+    result = await _test(ir, project)
+
+    assert result["error"] == (
+        "Can't reach 10.9.8.6:4998. Check the IP address and network. "
+        "This device sends through the bridge 'Rack Bridge'."
+    )
+
+
+async def test_a_failed_serial_pass_through_names_the_bridge(drivers, monkeypatch):
+    _host_down(monkeypatch)
+    drivers("acme_reach_pt_bridge", "tcp", {"port": 4998}, bridge={"ports": [
+        {"id": "s1", "kind": "serial", "passthrough_port": 4999},
+    ]})
+    drivers("acme_reach_pt_dev", "serial", {})
+    bridge = DeviceConfig(id="br3", driver="acme_reach_pt_bridge", name="Rack Bridge", config={})
+    dev = DeviceConfig(id="pj", driver="acme_reach_pt_dev", name="Projector", config={})
+    project = _project(bridge, dev, connections={
+        "br3": {"host": "10.9.8.6"},
+        "pj": {"bridge": "br3", "bridge_port": "s1"},
+    })
+
+    result = await _test(dev, project)
+
+    assert result["connection"]["bridge"] == "br3"
+    assert result["error"] == (
+        "Can't reach 10.9.8.6:4999. Check the IP address and network. "
+        "This device sends through the bridge 'Rack Bridge'."
+    )
+
+
 # --- a simulated device ------------------------------------------------------
 
 async def test_a_simulated_device_tests_the_simulator_and_says_so(drivers, listener, monkeypatch):
