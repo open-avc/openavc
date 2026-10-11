@@ -152,7 +152,8 @@ describe("a child that has stopped answering", () => {
     await userEvent.click(await screen.findByTestId("child-expand-01"));
     const row = screen.getByTestId("child-row-01");
 
-    for (const prop of ["online", "label", "offline_reason", "offline_detail"]) {
+    // The label is the row's own column, not an expanded reading.
+    for (const prop of ["online", "offline_reason", "offline_detail"]) {
       const tr = readingRow(row, prop);
       expect(within(tr).queryByTestId("last-heard")).toBeNull();
     }

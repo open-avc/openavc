@@ -657,7 +657,7 @@ async def test_offline_reason_auth_failed_from_permission_denied(dm, core):
 
     assert state.get("device.sw.offline_reason") == "auth_failed"
     detail = state.get("device.sw.offline_detail")
-    assert detail and "Authentication failed" in detail
+    assert detail and detail.startswith("The device refused the login.")
 
 
 async def test_set_offline_reason_direct(dm, core):

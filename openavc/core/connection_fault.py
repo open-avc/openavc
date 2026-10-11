@@ -80,9 +80,12 @@ _DRIVER_FAULT_CODES = frozenset({
 # message of its own. Branch-specific wording in classify_connection_fault()
 # stays richer (endpoint interpolation, transport-specific hints).
 _DEFAULT_MESSAGES = {
+    # What the device refused, never where to fix it: the device page shows
+    # the next step under an auth_failed fault (edit, then Reconnect). The key
+    # fact stays, because the page cannot know a device signs in with one.
     AUTH_FAILED: (
-        "Authentication failed. Check the username and password, or "
-        "install the OpenAVC key on the device."
+        "The device refused the login. A device that signs in with a key "
+        "needs the OpenAVC key installed on it."
     ),
     CONNECTION_REFUSED: (
         "Connection refused on {where}. Is the service enabled and the "
@@ -741,11 +744,7 @@ def classify_connection_fault(
 
     # 4. Authentication failed.
     if _has_any(hay, _AUTH_SIGS):
-        return ConnectionFault(
-            AUTH_FAILED,
-            "Authentication failed. Check the username and password, or "
-            "install the OpenAVC key on the device.",
-        )
+        return ConnectionFault(AUTH_FAILED, _DEFAULT_MESSAGES[AUTH_FAILED])
 
     # 5. Port closed / service off.
     if _has_refused(chain) or err_no == errno.ECONNREFUSED or _has_any(hay, _REFUSED_SIGS):

@@ -3271,7 +3271,7 @@ async def connect(self) -> None:
 from openavc.drivers.base import BaseDriver, ConnectionFaultError
 
 raise ConnectionFaultError(
-    f"Login rejected for {host}:{port} — check the username and password.",
+    f"The device at {host}:{port} refused the username and password.",
     code="auth_failed",
 )
 ```
@@ -3308,6 +3308,8 @@ async def poll(self) -> None:
 Why both matter: the stashed reason is **cleared at the start of every `connect()` attempt**, on purpose, so one attempt's failure can't be blamed on the previous one. `no_response` is therefore accurate for exactly as long as it takes auto-reconnect to try again, which is now a matter of seconds. If the retry fails without a typed fault of its own, the platform falls back to classifying the raw transport error and the card changes to the generic `transport_disconnected` — "the connection dropped, retrying", when the truth is "the device is up and has stopped answering". So raise the typed fault from your handshake too (`_post_connect`), and the accurate reason survives every retry instead of one window.
 
 **`auth_failed` also changes the retry policy.** The platform treats a credential rejection as non-transient: it tries once per user action, then pauses auto-reconnect until the credentials change (editing the device or pressing Reconnect tries again). That holds once connected too: a typed `auth_failed` raised from `poll()` or from your liveness probe takes the device offline on the first one, without counting toward the missed-poll or missed-probe limit, and a driver that logs in again on its connection and is refused can raise it, or call `self._force_disconnect("auth_failed", message)` from a background task. Text that merely reads like a refusal (a raw `401 Unauthorized`) is still counted as a missed poll, because an expired session looks the same; if your device's refusal is certain, raise the typed fault. This protects devices with brute-force lockouts, where every failed login counts toward blocking the controller's IP address. So classify precisely — raise `auth_failed` only for a genuine credential rejection, never a transport failure — and never send a login you know can't succeed: if the config has no password and the device requires one, raise the typed fault before contacting the device at all.
+
+**What an `auth_failed` sentence says.** The device page adds the next step under it (edit the credentials, then press Reconnect), so the sentence says what the device refused, or which credential is missing: "The projector refused the PJLink password (PJLINK ERRA).", "The camera needs a username and password and none is entered." Don't say where to fix it ("in this device's settings", "under Edit Device", "check the username and password", "press Reconnect"): the card would give two instructions. A fact about the device itself still belongs, because the device page cannot know it: "ONVIF users are created in the camera's web interface."
 
 **Other reasons that stop the retry loop.** `host_key_rejected`, `tls_cert_untrusted`, `invalid_config`, and `client_missing` are treated the same way, just less strictly: they get a couple of attempts (a device rebooting mid-scan can briefly present one) and then auto-reconnect stops, because nothing about retrying can clear them — someone has to change a setting, trust a certificate, or install a client. The device card says so, and Reconnect starts a fresh attempt.
 

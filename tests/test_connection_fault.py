@@ -30,6 +30,15 @@ from openavc.core.connection_fault import (
 )
 
 
+
+# Under an auth_failed fault the device page says what to do next (fix the
+# credentials with Edit, then Reconnect), so the sentence says what the device
+# refused and never where to fix it. The key fact stays: the page cannot say it.
+AUTH_SENTENCE = (
+    "The device refused the login. A device that signs in with a key needs "
+    "the OpenAVC key installed on it."
+)
+
 def _wrap(outer_msg: str, cause: BaseException) -> BaseException:
     """Build a ConnectionError with a real ``__cause__`` chain, the way the
     transports wrap an OSError before it reaches the device manager."""
@@ -54,7 +63,7 @@ def test_auth_failed_ssh_permission_denied():
         host="169.254.100.100", port=22, transport="ssh",
     )
     assert fault.code == AUTH_FAILED
-    assert "Authentication failed" in fault.message
+    assert fault.message == AUTH_SENTENCE
 
 
 def test_auth_failed_bare_permission_denied_tcp():
@@ -403,7 +412,7 @@ def test_typed_fault_empty_message_uses_taxonomy_default():
         last_error="", exc=exc, host="h", port=23, transport="tcp",
     )
     assert fault.code == AUTH_FAILED
-    assert "Authentication failed" in fault.message
+    assert fault.message == AUTH_SENTENCE
 
 
 def test_invalid_config_typed_fault_surfaces_verbatim():

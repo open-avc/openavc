@@ -432,6 +432,48 @@ def test_value_map_hits_boolean_state_values():
     assert sim._dispatch_command(b"MUTE?") == b"Amt1\r\n"
 
 
+# A device that reports a boolean as lowercase true/false: a rule capturing
+# (true|false) never matches Python's True, so a pushed change (and a query's
+# answer) the simulator rendered as "True" was dropped by the driver.
+ACME_AMP = {
+    "id": "acme_amp",
+    "name": "Acme Amp",
+    "transport": "tcp",
+    "delimiter": "\\n",
+    "state_variables": {"alarm": {"type": "boolean"}},
+    "child_entity_types": {
+        "channel": {
+            "label": "Channel",
+            "id_format": {"type": "integer", "min": 1, "max": 4},
+            "state_variables": {"mute": {"type": "boolean", "label": "Mute"}},
+            "instances": {"count": 2},
+        },
+    },
+    "commands": {"query_alarm": {"send": "get /acme/alarm"}},
+    "responses": [
+        {"match": "^/acme/alarm (true|false)$", "set": {"alarm": "$1"}},
+        {
+            "match": r"^/acme/ch/(\d+)/mute (true|false)$",
+            "child_set": [{"type": "channel", "id": "$1", "state": {"mute": "$2"}}],
+        },
+    ],
+}
+
+
+def test_a_boolean_goes_out_the_way_the_drivers_rule_reads_it():
+    sim = _make_sim(ACME_AMP)
+    assert sim._format_state_reply("alarm", True) == "/acme/alarm true"
+    assert sim._format_state_reply("alarm", False) == "/acme/alarm false"
+    sim.set_state("alarm", True)
+    assert sim._dispatch_command(b"get /acme/alarm") == b"/acme/alarm true\n"
+
+
+def test_a_childs_boolean_goes_out_the_way_the_drivers_rule_reads_it():
+    sim = _make_sim(ACME_AMP)
+    assert sim._format_state_reply("channel.1.mute", True) == "/acme/ch/1/mute true"
+    assert sim._format_state_reply("channel.2.mute", False) == "/acme/ch/2/mute false"
+
+
 # ===========================================================================
 # Canonical mappings: response rules (the form the Driver Builder persists)
 # feed the same query-reply machinery as the set: shorthand

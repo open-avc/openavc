@@ -3199,18 +3199,18 @@ class ChildStateResponse:
         if value_str in self.value_map:
             return fill_template(self.value_map[value_str], {"child_id": wire_id})
         if self.template:
-            wire = value_to_wire(value, self.conversion)
             lines = []
             for template, rule, id_map in (
                 (self.template, self.template_rule, self.id_wire_map),
                 *self.alternates,
             ):
                 cid = child_id if id_map is None else id_map.get(str(child_id), str(child_id))
-                lines.append((
-                    fill_template(template, {"child_id": cid, "value": wire}),
-                    _value_text(template, wire),
-                    rule,
-                ))
+                for wire in _wire_forms(value, self.conversion):
+                    lines.append((
+                        fill_template(template, {"child_id": cid, "value": wire}),
+                        _value_text(template, wire),
+                        rule,
+                    ))
             return _first_read_back(lines)
         return None
 
@@ -3282,8 +3282,6 @@ class StateResponse:
         if value_str in self.value_map:
             return self.value_map[value_str]
 
-        wire = value_to_wire(value, self.conversion)
-
         # Use template
         if self.template:
             return _first_read_back([
@@ -3291,10 +3289,11 @@ class StateResponse:
                 for template, rule in (
                     (self.template, self.template_rule), *self.alternates
                 )
+                for wire in _wire_forms(value, self.conversion)
             ])
 
         # Fallback
-        return str(wire)
+        return str(value_to_wire(value, self.conversion))
 
 
 # A response rule's ``match:`` compiled the way the driver reads it
@@ -3310,6 +3309,22 @@ def _rule_pattern(pattern: str, group: int) -> _ReadBack:
         return re.compile(pattern), group
     except re.error:
         return None
+
+
+def _wire_forms(value: Any, conversion: dict | None) -> list[Any]:
+    """The ways a value can go out, the simulator's own rendering first.
+
+    A boolean has three: Python's ``True``, the ``true`` most devices send,
+    and ``1``. A rule written for the device's lowercase ``(true|false)``
+    never reads back ``True``, so a change pushed from the Simulator UI was
+    dropped by the driver. _first_read_back takes the first form the rule
+    reads back; with none, the first (today's) rendering still goes out."""
+    wire = value_to_wire(value, conversion)
+    if not isinstance(value, bool):
+        return [wire]
+    forms = [wire, str(value).lower(), "1" if value else "0"]
+    return [form for index, form in enumerate(forms)
+            if str(form) not in {str(f) for f in forms[:index]}]
 
 
 def _value_text(template: str, wire: Any) -> str:

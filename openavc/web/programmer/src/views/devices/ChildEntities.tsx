@@ -1129,9 +1129,14 @@ function ChildEntityList({
                       <tbody>
                         {/* Dynamic children carry their own discovered control
                             set in entry.schema; static children fall back to
-                            the type-level schema (same for every sibling). */}
-                        {Object.keys(entry.schema ?? schema.state_variables).map(
-                          (prop) => (
+                            the type-level schema (same for every sibling).
+                            The reserved `label` is left out: the row's Label
+                            column shows the child's name (the project's, else
+                            the one the device reports), and the key can still
+                            hold the driver's placeholder for it. */}
+                        {Object.keys(entry.schema ?? schema.state_variables)
+                          .filter((prop) => prop !== "label")
+                          .map((prop) => (
                             <ReadingRow
                               key={prop}
                               prop={prop}
@@ -1145,8 +1150,7 @@ function ChildEntityList({
                               onMonitorsChange={onMonitorsChange}
                               stale={stale}
                             />
-                          ),
-                        )}
+                          ))}
                       </tbody>
                     </table>
                   </div>
