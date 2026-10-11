@@ -1,4 +1,4 @@
-"""Private checks for firmware update ownership using disposable host files."""
+"""Firmware update ownership checks using disposable host files."""
 
 import json
 import os
@@ -307,6 +307,7 @@ async def test_optional_update_caller_reports_firmware_ownership(
 
 
 @pytest.mark.parametrize("malformed", [False, True])
+@pytest.mark.skipif(os.name != "posix", reason="The prestart helper is a POSIX shell entry point")
 def test_linux_prestart_helper_keeps_markers_without_server_environment(
     tmp_path, monkeypatch, malformed
 ):
@@ -336,6 +337,7 @@ def test_linux_prestart_helper_keeps_markers_without_server_environment(
     assert files(data) == original and files(app) == {"keep": b"current firmware"}
 
 
+@pytest.mark.skipif(os.name != "posix", reason="The application wrapper is a POSIX shell entry point")
 def test_macos_wrapper_bypasses_updates_and_still_launches_server(
     tmp_path, monkeypatch
 ):

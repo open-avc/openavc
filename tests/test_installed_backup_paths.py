@@ -68,6 +68,29 @@ def test_rejected_restore_writes_neither_project_nor_assets(host, zipped):
             for p in host.parent.rglob("*") if p.is_file()} == before
 
 
+@pytest.mark.parametrize("forbidden", [False, True])
+def test_large_backup_uses_the_same_restore_path_and_hardware_protection(host, forbidden):
+    path, data = backup(host, True, forbidden=forbidden)
+    # Whitespace is valid project JSON; its byte length must not give an
+    # embedded installation a different project capacity from a normal one.
+    raw = json.dumps(data).encode() + b" " * (11 * 1024 * 1024)
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("project.avc", raw)
+        archive.writestr("state.json", b'{"saved": 42}')
+    original = host.read_bytes()
+    if forbidden:
+        with pytest.raises(InstalledEquipmentError, match="identity and mapping"):
+            restore_from_backup(path, host)
+        assert host.read_bytes() == original
+        assert not (host.parent / "state.json").exists()
+    else:
+        restore_from_backup(path, host)
+        assert host.read_bytes() == raw
+        assert json.loads((host.parent / "state.json").read_text()) == {"saved": 42}
+        composed = InstalledEquipment.from_environment().compose(ProjectConfig(**data))
+        assert next(device for device in composed.devices if device.id == "local").driver == DRIVER
+
+
 @pytest.mark.asyncio
 async def test_api_rejects_before_stopping_persistence_for_named_project(host, monkeypatch):
     path, _ = backup(host, True, forbidden=True)

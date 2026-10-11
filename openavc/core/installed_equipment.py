@@ -26,10 +26,6 @@ def validate_backup(path):
         with zipfile.ZipFile(path) as archive:
             if "project.avc" not in archive.namelist():
                 raise ValueError("Backup ZIP does not contain project.avc")
-            if archive.getinfo("project.avc").file_size > 10 * 1024 * 1024:
-                raise InstalledEquipmentError(
-                    "The project exceeds the maximum backup project size of 10 MiB."
-                )
             raw = archive.read("project.avc")
     elif path.name.endswith(".avc.bak"):
         raw = path.read_bytes()
