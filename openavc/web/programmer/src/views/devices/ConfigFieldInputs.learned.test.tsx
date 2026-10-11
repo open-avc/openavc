@@ -48,17 +48,19 @@ function Harness() {
 }
 
 describe("ConfigFieldInputs: fields the device fills in", () => {
-  it("says a learned field is filled in from the device", () => {
+  it("marks a learned field beside its label, without a second sentence", () => {
     render(<Harness />);
+    // One marker per learned field, beside its label.
+    const marks = screen.getAllByText("From the device");
+    expect(marks).toHaveLength(2);
+    expect(marks[0]).toHaveAttribute("title", "Filled in from the device when it connects.");
     const model = screen.getByLabelText("Model");
-    expect(model).toHaveAccessibleDescription("Filled in from the device when it connects.");
+    expect(model).toHaveAccessibleDescription("From the device");
+    // The driver's own description is left to say what it says.
     const mac = screen.getByLabelText("MAC Address");
-    expect(mac).toHaveAccessibleDescription(
-      "For Wake-on-LAN. Filled in from the device when it connects.",
-    );
-    expect(screen.getByLabelText("Zone")).not.toHaveAccessibleDescription(
-      "Filled in from the device when it connects.",
-    );
+    expect(mac).toHaveAccessibleDescription("For Wake-on-LAN. From the device");
+    expect(screen.queryByText(/Filled in from the device when it connects/)).toBeNull();
+    expect(screen.getByLabelText("Zone")).not.toHaveAccessibleDescription();
   });
 
   it("offers a listed blank entry instead of the Select placeholder", () => {

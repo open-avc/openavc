@@ -552,8 +552,9 @@ config_schema:
   within `min` and `max`, a non-empty string, a boolean. Anything else is
   left alone and noted once in the device log.
 - The device keeps running; nothing reconnects. The device page shows the new
-  value, and the field carries the note "Filled in from the device when it
-  connects."
+  value, and the device form marks the field **From the device** beside its
+  label. Write the field's `description` for what the setting is: the form
+  adds no sentence of its own.
 - A field a child roster is built from (`instances` `count_from` or
   `ids_from`) rebuilds that roster as soon as it is saved, the way **Refresh
   from Device** does. A count roster that already follows the device through

@@ -67,40 +67,66 @@ export function ConfigFieldInputs({
           : defaultVal != null && defaultVal !== "" ? String(defaultVal)
           : label;
         // A field the driver fills in from what the device reports, once it
-        // connects to the real equipment.
-        const learnedNote = schema.learned_from
-          ? "Filled in from the device when it connects."
-          : "";
+        // connects to the real equipment: marked beside its label. The
+        // driver's own description says what it says about it.
+        const learned = Boolean(schema.learned_from);
         const selectOptions = normalizeOptionList(values ?? []);
         // An enum that lists its own blank entry ("Detect automatically")
         // needs no "Select..." placeholder beside it.
         const listsBlank = selectOptions.some((o) => o.value === "");
         const fieldId = `${idPrefix}-${key}`;
-        const helpId = description || learnedNote ? `${fieldId}-help` : undefined;
-        const labelled = { id: fieldId, "aria-describedby": helpId, "aria-required": isRequired || undefined };
+        const helpId = description ? `${fieldId}-help` : undefined;
+        const learnedId = learned ? `${fieldId}-learned` : undefined;
+        const describedBy = [helpId, learnedId].filter(Boolean).join(" ") || undefined;
+        const labelled = { id: fieldId, "aria-describedby": describedBy, "aria-required": isRequired || undefined };
 
         return (
           <div key={key} style={{ marginBottom: "var(--space-sm)" }}>
-            <label
-              htmlFor={kind === "table" ? undefined : fieldId}
+            <div
               style={{
-                display: "block",
-                fontSize: "var(--font-size-sm)",
-                color: "var(--text-secondary)",
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-xs)",
                 marginBottom: "var(--space-xs)",
               }}
             >
-              {label}
-              {isRequired && (
-                <span aria-hidden="true" style={{ color: "var(--error, #f44336)", marginLeft: 2 }}>*</span>
+              <label
+                htmlFor={kind === "table" ? undefined : fieldId}
+                style={{
+                  display: "block",
+                  fontSize: "var(--font-size-sm)",
+                  color: "var(--text-secondary)",
+                }}
+              >
+                {label}
+                {isRequired && (
+                  <span aria-hidden="true" style={{ color: "var(--error, #f44336)", marginLeft: 2 }}>*</span>
+                )}
+              </label>
+              {learned && (
+                <span
+                  id={learnedId}
+                  title="Filled in from the device when it connects."
+                  style={{
+                    display: "inline-block",
+                    padding: "0 6px",
+                    borderRadius: 999,
+                    fontSize: "var(--font-size-xs)",
+                    lineHeight: "16px",
+                    color: "var(--accent)",
+                    border: "1px solid var(--accent)",
+                  }}
+                >
+                  From the device
+                </span>
               )}
-            </label>
+            </div>
             {kind === "boolean" ? (
               <button
                 type="button"
                 id={fieldId}
                 aria-pressed={configValues[key] === "true"}
-                aria-describedby={helpId}
+                aria-describedby={describedBy}
                 onClick={() =>
                   setConfigValues((v) => ({
                     ...v,
@@ -202,11 +228,9 @@ export function ConfigFieldInputs({
                 style={{ width: "100%" }}
               />
             )}
-            {(description || learnedNote) && (
+            {description && (
               <div id={helpId} style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
                 {description}
-                {description && learnedNote ? " " : ""}
-                {learnedNote}
               </div>
             )}
           </div>
