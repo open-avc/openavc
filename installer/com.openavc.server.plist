@@ -38,8 +38,10 @@
         <string>/Library/Logs/OpenAVC</string>
         <key>OPENAVC_PROJECT</key>
         <string>/Library/Application Support/OpenAVC/projects/default/project.avc</string>
-        <key>OPENAVC_BIND</key>
-        <string>0.0.0.0</string>
+        <!-- No OPENAVC_BIND: who can connect is Settings > Network > Accept
+             connections from, every network on an installed system until
+             someone changes it, and a value here would lock that setting.
+             The run wrapper removes the 0.0.0.0 earlier installers set. -->
         <!-- Secure by default: reachable by panels, but the admin/Programmer
              surface requires a credential set on first visit. -->
         <key>OPENAVC_ALLOW_ANONYMOUS</key>

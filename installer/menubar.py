@@ -46,6 +46,8 @@ POLL_INTERVAL = 5  # seconds
 SERVICE_LABEL = "com.openavc.server"
 DATA_DIR = Path("/Library/Application Support/OpenAVC")
 SYSTEM_JSON = DATA_DIR / "system.json"
+# Where the server records, at every start, where it listens (openavc/main.py).
+SERVER_ADDRESS_FILE = DATA_DIR / "status" / "server.json"
 DAEMON_PLIST = "/Library/LaunchDaemons/com.openavc.server.plist"
 # Uninstaller shipped inside the app bundle. The menu item runs it elevated so
 # users don't have to find a Terminal command to remove the background service.
@@ -91,6 +93,20 @@ def _get_server_config() -> dict:
             pass
 
     return result
+
+
+def _get_listen_problem() -> str:
+    """The server's own sentence when it is not accepting connections from the
+    network it was given (the chosen adapter is unplugged or has no address),
+    or "". Recorded at every start, so it changes when the server restarts on
+    the adapter coming back.
+    """
+    try:
+        data = json.loads(SERVER_ADDRESS_FILE.read_text(encoding="utf-8"))
+        problem = data.get("listen", {}).get("problem")
+    except (json.JSONDecodeError, OSError, AttributeError, TypeError, ValueError):
+        return ""
+    return problem if isinstance(problem, str) else ""
 
 
 def _base_url(cfg: dict) -> str:
@@ -196,7 +212,10 @@ class OpenAVCMenuBar(rumps.App):
             devices = health.get("devices", {})
             total, connected = devices.get("total", 0), devices.get("connected", 0)
             label = f"v{version} - Running" if version else "Running"
-            if total:
+            problem = _get_listen_problem()
+            if problem:
+                label += f" - {problem}"
+            elif total:
                 label += f" - {connected}/{total} devices online"
             self._status_item.title = label
         else:
@@ -211,7 +230,9 @@ class OpenAVCMenuBar(rumps.App):
 
     def _check_updates(self, _) -> None:
         _api_get("/api/system/updates/check", self._cfg, timeout=15)
-        webbrowser.open(f"{self._base}/programmer#/updates")
+        # '#updates', not '#/updates': the IDE matches the bare view id after
+        # the '#', and anything else opens the Dashboard (as in tray.py).
+        webbrowser.open(f"{self._base}/programmer#updates")
 
     def _stop_and_quit(self, _) -> None:
         """Stop the server LaunchDaemon, then quit — the "shut the whole thing

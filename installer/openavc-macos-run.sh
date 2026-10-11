@@ -24,6 +24,15 @@ UPDATE_FILE="$DATA_DIR/apply-update.json"
 ROLLBACK_FILE="$DATA_DIR/apply-rollback"
 LOG_TAG="openavc-macos-run"
 PYTHON="${PYTHON:-/usr/bin/python3}"
+PLISTBUDDY="${PLISTBUDDY:-/usr/libexec/PlistBuddy}"
+# The LaunchDaemon's installed launch settings. Only the installed bundle's own
+# run reads or changes the real file; a sandbox run (OPENAVC_APP pointed
+# elsewhere, as the update tests do) names its own or leaves them alone.
+if [ "$APP" = "/Applications/OpenAVC.app" ]; then
+    DAEMON_PLIST="${OPENAVC_DAEMON_PLIST:-/Library/LaunchDaemons/com.openavc.server.plist}"
+else
+    DAEMON_PLIST="${OPENAVC_DAEMON_PLIST:-}"
+fi
 
 # launchd always runs this as root. A non-root run against the real installed
 # bundle therefore means a person started it by hand, or an old alias did —
@@ -226,10 +235,53 @@ handle_rollback() {
     echo "$LOG_TAG: rollback complete"
 }
 
+# Who can connect is Settings > Network > Accept connections from, and
+# OPENAVC_BIND in the launch settings holds it and locks it there. Every .pkg
+# before this one put OPENAVC_BIND=0.0.0.0 in them, and an in-app update never
+# replaces the installed file, so that one value is removed from it: the
+# setting's own default on an installed system is every network anyway. Any
+# other value was set by someone on purpose and stays.
+#
+# launchd keeps the environment it read from the file when it loaded the job
+# until it loads it again (a restart of the Mac, or the .pkg reinstalling
+# it), so a change to the file, this one or an administrator's, would not
+# reach the server through a restart from Settings or the menu bar. The
+# server is started with OPENAVC_BIND as the installed file holds it now.
+launch_settings_readable() {
+    [ -n "$DAEMON_PLIST" ] && [ -f "$DAEMON_PLIST" ] && [ -x "$PLISTBUDDY" ] &&
+        "$PLISTBUDDY" -c "Print :Label" "$DAEMON_PLIST" >/dev/null 2>&1
+}
+
+installed_bind() {
+    "$PLISTBUDDY" -c "Print :EnvironmentVariables:OPENAVC_BIND" "$DAEMON_PLIST" 2>/dev/null
+}
+
+drop_earlier_installer_bind() {
+    [ "$(installed_bind)" = "0.0.0.0" ] || return 0
+    if "$PLISTBUDDY" -c "Delete :EnvironmentVariables:OPENAVC_BIND" "$DAEMON_PLIST" >/dev/null 2>&1; then
+        echo "$LOG_TAG: removed OPENAVC_BIND=0.0.0.0, which earlier installers set, from $DAEMON_PLIST"
+    else
+        echo "$LOG_TAG: could not remove OPENAVC_BIND=0.0.0.0 from $DAEMON_PLIST"
+    fi
+}
+
+follow_installed_bind() {
+    local value
+    if value=$(installed_bind); then
+        export OPENAVC_BIND="$value"
+    else
+        unset OPENAVC_BIND
+    fi
+}
+
 FIRMWARE_HOST="${OPENAVC_FIRMWARE_HOST:-/etc/openavc-firmware-host.json}"
 if [ "${OPENAVC_FIRMWARE_HOST+x}" != x ] && [ ! -e "$FIRMWARE_HOST" ] && [ ! -L "$FIRMWARE_HOST" ]; then
     [ -f "$UPDATE_FILE" ] && handle_update
     [ -f "$ROLLBACK_FILE" ] && handle_rollback
+    if launch_settings_readable; then
+        drop_earlier_installer_bind
+        follow_installed_bind
+    fi
 fi
 
 # Always launch the server. exec so launchd tracks the server as the job's
