@@ -2918,7 +2918,7 @@ ip = self.local_address()
 local_addr = (ip, 0) if ip else None
 reader, writer = await asyncio.open_connection(host, port, local_addr=local_addr)
 ws = await websockets.connect(url, local_addr=local_addr)
-await loop.create_datagram_endpoint(factory, local_addr=(ip or "0.0.0.0", 0))
+await loop.create_datagram_endpoint(factory, remote_addr=(host, port), local_addr=local_addr)
 await udp.open(local_addr=ip)  # a UDPTransport you built yourself
 ```
 

@@ -1265,7 +1265,8 @@ class BaseDriver(ABC):
             local_addr = (ip, 0) if ip else None
             await asyncio.open_connection(host, port, local_addr=local_addr)
             await websockets.connect(url, local_addr=local_addr)
-            await loop.create_datagram_endpoint(factory, local_addr=(ip or "0.0.0.0", 0))
+            await loop.create_datagram_endpoint(
+                factory, remote_addr=(host, port), local_addr=local_addr)
             sock.bind((ip, 0))  # a raw socket, only when ip is not None
 
         ``host`` defaults to this device's host; pass another when the
