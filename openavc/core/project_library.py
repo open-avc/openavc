@@ -708,6 +708,10 @@ def open_from_library(
     from openavc.core.project_migration import migrate_project
     data, _ = migrate_project(data)
 
+    from openavc.core.installed_equipment import InstalledEquipment
+    policy = InstalledEquipment.from_environment()
+    policy.compose(ProjectConfig(**data), for_load=True)
+
     # Install bundled drivers/plugins from the original zip if present
     _install_bundled_from_library(project_id)
 
@@ -717,7 +721,7 @@ def open_from_library(
     data["project"]["created"] = now
     data["project"]["modified"] = now
 
-    project = ProjectConfig(**data)
+    project = policy.compose(ProjectConfig(**data), for_load=True)
     save_project(project_path, project)
 
     replace_scripts(scripts_dir, scripts)
@@ -738,6 +742,8 @@ def _install_bundled_from_library(project_id: str) -> None:
     if not bundle_path.exists():
         return
 
+    from openavc.core.installed_equipment import InstalledEquipmentError
+
     try:
         with zipfile.ZipFile(bundle_path, "r") as zf:
             _check_zip_safety(zf)
@@ -749,6 +755,8 @@ def _install_bundled_from_library(project_id: str) -> None:
             if installed_plugins:
                 log.info("Installed bundled plugins for '%s': %s",
                          project_id, ", ".join(installed_plugins))
+    except InstalledEquipmentError:
+        raise
     except Exception as e:
         log.warning("Failed to install bundled drivers/plugins for '%s': %s",
                     project_id, e)
@@ -988,6 +996,18 @@ def _import_avc(content: bytes, override_id: str | None) -> dict[str, Any]:
     }
 
 
+def _check_bundled_driver_identity(zf: zipfile.ZipFile) -> None:
+    """Refuse protected driver files before importing any part of the bundle."""
+    from openavc.drivers.driver_loader import require_mutable_driver_file
+
+    for member in zf.infolist():
+        if member.is_dir() or not member.filename.startswith("drivers/"):
+            continue
+        name = Path(member.filename).name
+        if name and not name.startswith("_"):
+            require_mutable_driver_file(name, zf.read(member))
+
+
 def _install_bundled_drivers(zf: zipfile.ZipFile) -> list[str]:
     """Install driver files bundled in a zip's drivers/ directory.
 
@@ -1003,6 +1023,7 @@ def _install_bundled_drivers(zf: zipfile.ZipFile) -> list[str]:
         load_python_driver_file,
     )
 
+    _check_bundled_driver_identity(zf)
     driver_repo = _DRIVER_REPO_DIR
     driver_repo.mkdir(exist_ok=True)
     installed: list[str] = []
@@ -1177,6 +1198,7 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
     buf = io.BytesIO(content)
     with zipfile.ZipFile(buf, "r") as zf:
         _check_zip_safety(zf)  # zip-bomb guard
+        _check_bundled_driver_identity(zf)
 
         avc_names = [n for n in zf.namelist() if n.endswith(".avc")]
         if not avc_names:

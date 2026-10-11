@@ -259,6 +259,7 @@ class DeviceManager:
     def __init__(self, state: StateStore, events: EventBus):
         self.state = state
         self.events = events
+        self.installed_equipment = None
         # What the loaded project says the retry interval should be, or None
         # when it says nothing. Set by the Engine wherever a project is
         # applied, so it follows a save or a cloud push without a restart.
@@ -475,11 +476,11 @@ class DeviceManager:
         # If this device routes through a bridge, let the bridge configure the
         # port (e.g. push serial baud/parity) before we open the connection, so
         # the transparent pass-through carries bytes at the right line settings.
-        await self._prepare_bridge_for(device_id, config)
-
         # Attempt connection
         try:
-            await driver.connect()
+            self._require_control_target(device_id)
+            await self._prepare_bridge_for(device_id, config)
+            await self._connect_driver(device_id, driver)
             if not await self._discard_if_superseded(device_id, driver):
                 return
             # Apply pending settings after successful connect
@@ -756,6 +757,7 @@ class DeviceManager:
         # and "Device 'x' is not connected" would send the author to look at
         # the network instead of at the name they typed.
         self._check_command_declared(driver, device_id, command)
+        self._require_control_target(device_id)
         # The connected-gate is skipped for commands the driver declares
         # available_offline — a handler that needs no live connection (e.g. a
         # Wake-on-LAN power_on) so a macro, panel button, or schedule can wake a
@@ -1019,6 +1021,13 @@ class DeviceManager:
         read from the record this manager was handed, never from the live
         driver, whose host a running simulation points at 127.0.0.1.
         """
+        info = self._device_info(device_id)
+        if self.installed_equipment:
+            info.update(self.installed_equipment.information(device_id))
+        return info
+
+    def _device_info(self, device_id: str) -> dict[str, Any]:
+        """Build metadata for active, disabled and missing-driver devices."""
         # Check if orphaned first
         if device_id in self._orphaned_devices:
             config = self._orphaned_devices[device_id]
@@ -1083,6 +1092,13 @@ class DeviceManager:
         }
 
     def list_devices(self) -> list[dict[str, Any]]:
+        items = self._list_devices()
+        if self.installed_equipment:
+            for item in items:
+                item.update(self.installed_equipment.information(item["id"]))
+        return items
+
+    def _list_devices(self) -> list[dict[str, Any]]:
         """List all devices with summary info (including orphaned and disabled)."""
         result = []
         seen = set()
@@ -1257,6 +1273,7 @@ class DeviceManager:
         driver = self._devices.get(device_id)
         if driver is None:
             raise DeviceNotFoundError(f"Device '{device_id}' not found")
+        self._require_control_target(device_id)
         if not self.accepts_commands(device_id):
             raise not_connected(device_id)
 
@@ -1356,6 +1373,10 @@ class DeviceManager:
 
         Returns a list of device IDs that were reconnected.
         """
+        from openavc.drivers.registry import is_reserved_driver
+        if is_reserved_driver(driver_id):
+            from openavc.core.installed_equipment import InstalledEquipmentError
+            raise InstalledEquipmentError("The manufacturer manages this integration. Use Reconnect to restore its connection.")
         reconnected: list[str] = []
 
         # Find active devices using this driver
@@ -1500,6 +1521,7 @@ class DeviceManager:
                 # a hand-edited file), and set_device_setting doesn't validate.
                 if key in defs:
                     value = validate_device_setting_value(key, defs[key], value)
+                self._require_control_target(device_id)
                 await driver.set_device_setting(key, value)
                 queued_values[key] = queued
                 sdef = defs.get(key)
@@ -1812,7 +1834,7 @@ class DeviceManager:
         # never meant to be reached. Answer the question the author is actually
         # asking before the classifier answers a different one correctly.
         gap = self.unsimulated_driver(device_id) if self.unsimulated_driver else None
-        fault = no_simulator_fault(gap) if gap else None
+        fault = no_simulator_fault() if gap else None
         if fault is None:
             fault = typed_fault_from_exc(exc, host=host, port=port)
         if fault is None and driver is not None:
@@ -1906,11 +1928,18 @@ class DeviceManager:
         one more try. ``reconnect_failed`` is set so the UI shows the
         not-retrying state.
         """
-        log.warning(
-            f"[{device_id}] Authentication failed — auto-reconnect paused so "
-            f"repeated logins can't trip the device's lockout. Update the "
-            f"device's credentials, or press Reconnect to try again."
-        )
+        if self.installed_equipment and self.installed_equipment.owns(device_id):
+            log.warning(
+                f"[{device_id}] Built-in equipment authentication failed. "
+                "Automatic reconnect is paused. Check this product's OpenAVC "
+                "status, then press Reconnect."
+            )
+        else:
+            log.warning(
+                f"[{device_id}] Authentication failed — auto-reconnect paused so "
+                f"repeated logins can't trip the device's lockout. Update the "
+                f"device's credentials, or press Reconnect to try again."
+            )
         self.state.set(
             f"device.{device_id}.reconnect_failed", True, source="device_manager"
         )
@@ -2219,6 +2248,19 @@ class DeviceManager:
             source="device_manager",
         )
 
+    def _simulation_gap(self, device_id: str) -> str | None:
+        return self.unsimulated_driver(device_id) if self.unsimulated_driver else None
+
+    def _require_control_target(self, device_id: str) -> None:
+        """A missing simulator must never fall through to physical control."""
+        gap = self._simulation_gap(device_id)
+        if gap is not None:
+            raise ConnectionError(no_simulator_fault().message)
+
+    async def _connect_driver(self, device_id: str, driver: Any) -> None:
+        self._require_control_target(device_id)
+        await driver.connect()
+
     def _start_reconnect(self, device_id: str) -> None:
         """Start a background reconnect loop for a device.
 
@@ -2227,6 +2269,8 @@ class DeviceManager:
         after the attempts a device-reported fault is allowed. The card
         already says what to set; editing the device or Reconnect retries.
         """
+        if self._simulation_gap(device_id) is not None:
+            return
         if device_id in self._reconnect_tasks:
             return  # Already reconnecting
         driver = self._devices.get(device_id)
@@ -2395,6 +2439,9 @@ class DeviceManager:
                 if driver is None:
                     log.debug(f"[{device_id}] Device removed, stopping reconnect")
                     return
+                if self._simulation_gap(device_id) is not None:
+                    self._set_offline_reason(device_id, driver)
+                    return
 
                 # Quiet by construction: the first few attempts are the
                 # interesting ones, then a heartbeat. This loop can run for
@@ -2433,6 +2480,10 @@ class DeviceManager:
                 except Exception:
                     log.debug(f"[{device_id}] stop_polling failed", exc_info=True)
 
+                if self._simulation_gap(device_id) is not None:
+                    self._set_offline_reason(device_id, driver)
+                    return
+
                 # Cheap reachability first for the transports whose connect is
                 # expensive. A device that is still absent costs one short
                 # socket here instead of an ssh subprocess every few seconds.
@@ -2458,7 +2509,7 @@ class DeviceManager:
                     # still opens, polls and probes as usual.
                     if getattr(driver, "_dropped_for_silence", False) is True:
                         driver._hold_next_connect = True
-                    await driver.connect()
+                    await self._connect_driver(device_id, driver)
                     if getattr(driver, "_held", False) is True:
                         if noisy:
                             log.info(
@@ -2587,7 +2638,7 @@ class DeviceManager:
                 pass
             try:
                 self._refresh_usb_serial_port(device_id, driver)
-                await driver.connect()
+                await self._connect_driver(device_id, driver)
                 log.info(f"Reconnected device: {device_id}")
                 # A bridge-routed device connect()s without raising even when
                 # its bridge is down — it has no transport of its own and comes
@@ -2662,7 +2713,7 @@ class DeviceManager:
             await driver.disconnect()
         except Exception:
             pass
-        await driver.connect()
+        await self._connect_driver(device_id, driver)
 
     async def pause_device(self, device_id: str, ttl: float | None = None) -> None:
         """Cleanly disconnect a device and suppress auto-reconnect (A81).
@@ -2768,7 +2819,7 @@ class DeviceManager:
         self._intentional_disconnect.discard(device_id)
         self.state.set(f"device.{device_id}.paused", False, source="device_manager")
         try:
-            await driver.connect()
+            await self._connect_driver(device_id, driver)
             log.info(f"Resumed device: {device_id}")
             # Mirror the reconnect-loop success path: drop the stale offline
             # reason and flush anything queued while the device was away.

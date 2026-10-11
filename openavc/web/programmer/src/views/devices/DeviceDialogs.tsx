@@ -972,7 +972,7 @@ export function AddDeviceDialog({
   const [setupDeviceId, setSetupDeviceId] = useState<string | null>(null);
 
   useEffect(() => {
-    api.listDrivers().then(setDrivers).catch(console.error);
+    api.listDrivers().then((items) => setDrivers(items.filter((item) => !item.manufacturer_installed))).catch(console.error);
   }, []);
 
   const driverInfo = drivers.find((d) => d.id === selectedDriver);
@@ -1359,6 +1359,10 @@ export function EditDeviceDialog({
     }
     const newDriverInfo = drivers.find((d) => d.id === newDriver);
     setConfigOriginals(newDriverInfo?.default_config ?? {});
+    if (newDriverInfo?.manufacturer_installed) {
+      setConfigValues({});
+      return;
+    }
     setConfigValues(
       carryOnDriverChange(
         configValues, requiredConnection(driverInfo, connMode), driverInfo, newDriverInfo,
@@ -1376,7 +1380,9 @@ export function EditDeviceDialog({
     setError("");
     try {
       const schema = (driverInfo?.config_schema ?? {}) as Record<string, Record<string, unknown>>;
-      const built = buildConfigFromForm(configValues, schema, configOriginals, {
+      const built = driverInfo?.manufacturer_installed
+        ? { ok: true as const, config: {} as Record<string, unknown> }
+        : buildConfigFromForm(configValues, schema, configOriginals, {
         defaults: driverInfo?.default_config,
         connection: requiredConnection(driverInfo, connMode),
       });
@@ -1391,7 +1397,7 @@ export function EditDeviceDialog({
       // cleared, another driver chosen) is sent as null, which removes it.
       // What is saved is what the form shows.
       for (const key of Object.keys(stored.connection)) {
-        if (CONNECTION_FIELDS.has(key) && !(key in config)) config[key] = null;
+        if (!driverInfo?.manufacturer_installed && CONNECTION_FIELDS.has(key) && !(key in config)) config[key] = null;
       }
 
       const updateData: Record<string, unknown> = {
@@ -1528,7 +1534,13 @@ export function EditDeviceDialog({
         </div>
 
 
-        {(serialCapable || driverIrCapable(driverInfo) || visibleConfigKeys.length > 0) && (
+        {driverInfo?.manufacturer_installed && (
+          <p style={{ color: "var(--text-secondary)", marginBottom: "var(--space-md)" }}>
+            Use this product's built-in equipment for this device. Its device ID and existing programming
+            stay in the project. Review the controls for the new equipment before running the system.
+          </p>
+        )}
+        {!driverInfo?.manufacturer_installed && (serialCapable || driverIrCapable(driverInfo) || visibleConfigKeys.length > 0) && (
           <div style={{ marginBottom: "var(--space-md)" }}>
             <div
               style={{

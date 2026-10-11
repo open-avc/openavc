@@ -41,6 +41,7 @@ for the next connection.
 from __future__ import annotations
 
 import asyncio
+import copy
 from typing import Any
 
 from openavc.core.device_config import apply_config_delta
@@ -152,8 +153,12 @@ class LearnedConfig:
         # (device, field, value) already logged as not accepted.
         self._refused: set[tuple[str, str, str]] = set()
         self._tasks: set[asyncio.Task] = set()
+        self._retry_handles: dict[str, asyncio.TimerHandle] = {}
+        self._retry_delays: dict[str, float] = {}
+        self._active = False
 
     def start(self) -> None:
+        self._active = True
         self._event_ids.append(
             self._engine.events.on(f"{_CONNECTED_EVENT}*", self._on_connected)
         )
@@ -163,6 +168,14 @@ class LearnedConfig:
                 self._watch_and_evaluate(device_id)
 
     def stop(self) -> None:
+        self._active = False
+        for task in self._tasks:
+            task.cancel()
+        self._tasks.clear()
+        for handle in self._retry_handles.values():
+            handle.cancel()
+        self._retry_handles.clear()
+        self._retry_delays.clear()
         for event_id in self._event_ids:
             self._engine.events.off(event_id)
         self._event_ids.clear()
@@ -238,21 +251,71 @@ class LearnedConfig:
             return {}
 
         engine.devices.merge_live_config(device_id, delta)
+        project_id = engine.project.project.id
+        applied: list[Any] = []
+
+        def still_current() -> bool:
+            return (engine.project is not None
+                    and engine.project.project.id == project_id
+                    and engine.devices.get_driver(device_id) is driver)
 
         def mutate(project: Any) -> None:
+            # A queued report belongs to the device that produced it, not a
+            # replacement with the same project device ID.
+            if not still_current():
+                return
+            device = next((d for d in project.devices if d.id == device_id), None)
+            if device is None:
+                return
+            applied.append((project, device, copy.deepcopy(device.config),
+                            copy.deepcopy(project.connections.get(device_id))))
             apply_config_delta(project, device_id, delta)
 
         def on_error() -> None:
-            # The save failed: put the live config back so it matches the
-            # project, and the next report tries again.
+            if not applied:
+                return
+            project, device, old_config, old_connection = applied.pop()
+            device.config = old_config
+            if old_connection is None:
+                project.connections.pop(device_id, None)
+            else:
+                project.connections[device_id] = old_connection
+            if not still_current():
+                return
             engine.devices.merge_live_config(device_id, previous)
+            # Identical state reports do not emit another state change. Retry
+            # the save independently, with one bounded timer per device.
+            if not self._active or not engine._running:
+                return
+            old_handle = self._retry_handles.pop(device_id, None)
+            if old_handle:
+                old_handle.cancel()
+            delay = self._retry_delays.get(device_id, 1.0)
+            self._retry_delays[device_id] = min(delay * 2, 30.0)
 
-        engine.schedule_bookkeeping_change(mutate, on_error=on_error)
+            def retry() -> None:
+                self._retry_handles.pop(device_id, None)
+                if self._active and engine._running and still_current():
+                    if self.evaluate(device_id):
+                        return
+                self._retry_delays.pop(device_id, None)
+
+            self._retry_handles[device_id] = asyncio.get_running_loop().call_later(delay, retry)
+
+        def on_saved() -> None:
+            if not applied or not self._active or not still_current():
+                return
+            handle = self._retry_handles.pop(device_id, None)
+            if handle:
+                handle.cancel()
+            self._retry_delays.pop(device_id, None)
+            if roster_fields(driver) & set(delta):
+                self._refresh_rosters(device_id, driver)
+
+        engine.schedule_bookkeeping_change(mutate, on_error=on_error, on_saved=on_saved)
         for field, value in delta.items():
             label = (schema.get(field) or {}).get("label") or field
             log.info("[%s] %s set to %s, as the device reports", device_id, label, value)
-        if roster_fields(driver) & set(delta):
-            self._refresh_rosters(device_id, driver)
         return delta
 
     def _refresh_rosters(self, device_id: str, driver: Any) -> None:
@@ -263,6 +326,8 @@ class LearnedConfig:
             return
 
         async def refresh() -> None:
+            if not self._active or self._engine.devices.get_driver(device_id) is not driver:
+                return
             try:
                 await driver.refresh_children()
             except NotImplementedError:

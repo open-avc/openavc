@@ -82,6 +82,7 @@ function statusToStep(status: string): UpdateStep | null {
 export function UpdatesView() {
   const liveState = useConnectionStore((s) => s.liveState);
   const [status, setStatus] = useState<UpdateStatus | null>(null);
+  const [statusLoadFailed, setStatusLoadFailed] = useState(false);
   const [checkResult, setCheckResult] = useState<UpdateCheckResult | null>(null);
   const [history, setHistory] = useState<UpdateHistoryEntry[]>([]);
   const [checking, setChecking] = useState(false);
@@ -104,16 +105,18 @@ export function UpdatesView() {
 
   // Load initial data
   useEffect(() => {
-    api.getUpdateStatus().then(setStatus).catch(console.error);
+    api.getUpdateStatus().then(setStatus).catch(() => setStatusLoadFailed(true));
     api.getUpdateHistory().then(setHistory).catch(console.error);
   }, []);
 
+  const firmwareManaged = status?.update_owner === "firmware";
+
   // Track live update state
-  const updateStatus = String(liveState["system.update_status"] ?? "idle");
+  const updateStatus = firmwareManaged ? "idle" : String(liveState["system.update_status"] ?? "idle");
   const updateProgress = Number(liveState["system.update_progress"] ?? 0);
-  const updateError = String(liveState["system.update_error"] ?? "");
-  const updateAvailable = String(liveState["system.update_available"] ?? "");
-  const stagedVersion = String(liveState["system.update_staged_version"] ?? status?.staged_version ?? "");
+  const updateError = firmwareManaged ? "" : String(liveState["system.update_error"] ?? "");
+  const updateAvailable = firmwareManaged ? "" : String(liveState["system.update_available"] ?? "");
+  const stagedVersion = firmwareManaged ? "" : String(liveState["system.update_staged_version"] ?? status?.staged_version ?? "");
   const currentVersion = String(liveState["system.version"] ?? status?.current_version ?? "");
 
   // Show progress modal when update is in progress
@@ -234,7 +237,7 @@ export function UpdatesView() {
         // "no update available" is not the same claim as "you're up to date".
         // An isolated system would otherwise be told it was current forever.
         showError("Could not check for updates: " + result.error);
-      } else if (!result.update_available) {
+      } else if (!result.update_available && result.update_owner !== "firmware") {
         showSuccess("You're up to date.");
       }
       // Refresh status
@@ -327,13 +330,31 @@ export function UpdatesView() {
               <span style={{ fontWeight: 600, color: "var(--accent)" }}>{"v" + stagedVersion}</span>
             </>}
 
-            <span style={{ color: "var(--text-secondary)" }}>Channel</span>
-            <span>{status?.update_channel ?? "stable"}</span>
+            {!firmwareManaged && <>
+              <span style={{ color: "var(--text-secondary)" }}>Channel</span>
+              <span>{status?.update_channel ?? "stable"}</span>
+            </>}
+            {firmwareManaged && status?.firmware_version && <>
+              <span style={{ color: "var(--text-secondary)" }}>Product firmware</span>
+              <span>{status.firmware_version}</span>
+            </>}
 
             <span style={{ color: "var(--text-secondary)" }}>Deployment</span>
-            <span>{deploymentLabel(status?.deployment_type ?? "")}</span>
+            <span>{firmwareManaged ? "Built into product firmware" : deploymentLabel(status?.deployment_type ?? "")}</span>
           </div>
         </div>
+
+        {statusLoadFailed && !status && (
+          <div style={{ ...cardStyle, marginBottom: "var(--space-xl)" }}>
+            Update settings could not be loaded. Reload this page to try again.
+          </div>
+        )}
+        {firmwareManaged && (
+          <div style={{ ...cardStyle, marginBottom: "var(--space-xl)" }}>
+            <div style={{ fontWeight: 500, marginBottom: "var(--space-sm)" }}>Product firmware updates</div>
+            <div style={{ fontSize: "var(--font-size-sm)", lineHeight: 1.6 }}>{status?.update_guidance}</div>
+          </div>
+        )}
 
         {/* Cloud-staged update */}
         {hasStaged && (
@@ -366,7 +387,7 @@ export function UpdatesView() {
         {/* Up to date message. A failed check disqualifies it the same way an
             update error does: the status still reads "no update available",
             but nothing has confirmed that, so the card below says so instead. */}
-        {!hasUpdate && !hasStaged && !hasDeferred && updateStatus === "idle" && !updateError && !checkResult?.error && (
+        {status && !firmwareManaged && !hasUpdate && !hasStaged && !hasDeferred && updateStatus === "idle" && !updateError && !checkResult?.error && (
           <div style={{ ...cardStyle, marginBottom: "var(--space-xl)", display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
             <CheckCircle size={20} style={{ color: "var(--color-success)", flexShrink: 0 }} />
             <div>
@@ -425,7 +446,7 @@ export function UpdatesView() {
         )}
 
         {/* Action buttons */}
-        <div style={{ display: "flex", gap: "var(--space-md)", marginBottom: "var(--space-xl)" }}>
+        {status && !firmwareManaged && <div style={{ display: "flex", gap: "var(--space-md)", marginBottom: "var(--space-xl)" }}>
           <button
             style={{ ...secondaryBtn, opacity: checking ? 0.7 : 1 }}
             onClick={handleCheck}
@@ -445,7 +466,7 @@ export function UpdatesView() {
               <span>{"Install v" + installTarget}</span>
             </button>
           )}
-        </div>
+        </div>}
 
         {/* Update History */}
         {history.length > 0 && (

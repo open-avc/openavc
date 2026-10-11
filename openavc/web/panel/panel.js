@@ -686,7 +686,7 @@ class PanelApp {
         // Derive WS path relative to page location so tunneled access works.
         const pathParts = location.pathname.split('/panel');
         const basePath = pathParts[0] || '';
-        const url = `${protocol}//${location.host}${basePath}/ws?client=panel&namespaces=device,var,ui,system,plugin`;
+        const url = `${protocol}//${location.host}${basePath}/ws?client=${this.embedded ? "preview" : "panel"}&namespaces=device,var,ui,system,plugin`;
 
         // When embedded in the Programmer IDE, attach the cached programmer
         // password as a Sec-WebSocket-Protocol so the handshake authenticates
@@ -707,6 +707,24 @@ class PanelApp {
         };
 
         this.ws.onclose = (event) => {
+            if (event.code === 4013 || event.code === 4014) {
+                this.setConnectionStatus(false);
+                for (const timer of Object.values(this.holdTimers)) clearInterval(timer);
+                this.holdTimers = {};
+                this._showWaitingScreen({ status: 'unavailable' });
+                const overlay = this._accessOverlay;
+                overlay.querySelector('.panel-access-title').textContent = event.code === 4014
+                    ? 'Preview sign-in required' : 'OpenAVC interface disabled';
+                overlay.querySelector('.panel-access-message').textContent = event.code === 4014
+                    ? 'Sign in to the Programmer to use Preview.'
+                    : 'This interface is disabled in product management.';
+                const retry = document.createElement('button');
+                retry.className = 'panel-access-submit';
+                retry.textContent = 'Try again';
+                retry.onclick = () => location.reload();
+                overlay.querySelector('.panel-access-container').appendChild(retry);
+                return;
+            }
             this.setConnectionStatus(false);
             // Clear all active hold-repeat timers — pointer-events: none
             // blocks release events, so timers would run indefinitely

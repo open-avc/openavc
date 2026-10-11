@@ -112,6 +112,7 @@ Full documentation is available at [docs.openavc.com](https://docs.openavc.com).
 - [Scripting Guide](https://docs.openavc.com/scripting-guide) - Python scripting API
 - [Creating Drivers](https://docs.openavc.com/creating-drivers) - Build drivers in YAML or Python
 - [Deployment](https://docs.openavc.com/deployment) - Production deployment and configuration
+- [OpenAVC Built into Equipment](docs/manufacturer-equipment.md) - Network equipment, permanent local hardware and project transfer
 
 ## Community
 

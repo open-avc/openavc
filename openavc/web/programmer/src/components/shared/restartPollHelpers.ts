@@ -14,30 +14,20 @@ export function healthProbeUrl(origin: string): string {
   return new URL("/api/health", origin).toString();
 }
 
-/**
- * Ordered, de-duplicated origins to probe for the restarted server.
- *
- * `configOrigin` is derived from the saved config (scheme + the configured
- * HTTP/HTTPS port) — authoritative for DIRECT access, where a port or protocol
- * change is a real address change the browser must follow. But behind a reverse
- * proxy or the cloud tunnel the config's internal port is not how the browser
- * reaches the server at all; there the CURRENT page origin is the only valid
- * address, and a settings restart leaves it unchanged.
- *
- * Probing both — current origin first, except on a protocol switch where the
- * old origin is going away — covers every deployment without having to detect
- * which one we're in: direct port/scheme changes still succeed via
- * `configOrigin`, proxy/tunnel restarts succeed via `currentOrigin`.
- */
-export function candidateOrigins(
-  configOrigin: string,
-  currentOrigin: string,
-  isProtocolSwitch: boolean,
-): string[] {
-  const ordered = isProtocolSwitch
-    ? [configOrigin]
-    : [currentOrigin, configOrigin];
-  return [...new Set(ordered)];
+/** Select one expected origin; an unrelated healthy listener is not a fallback. */
+export function restartOrigin(current: string, original: string | null, saved: string): string {
+  return original === current ? saved : current;
+}
+
+/** Configured listener on the same hostname, normalized for IPv6/default ports. */
+export function configuredOrigin(
+  config: { tls?: { enabled?: boolean; port?: number }; network?: { http_port?: number } } | null,
+  current: string,
+): string {
+  const url = new URL(current);
+  url.protocol = config?.tls?.enabled ? "https:" : "http:";
+  url.port = String(config?.tls?.enabled ? (config.tls.port ?? 8443) : (config?.network?.http_port ?? 8080));
+  return url.origin;
 }
 
 // Consecutive fetch failures before we consider that the browser might be

@@ -1108,8 +1108,8 @@ export function Canvas({
   // redirect's absolute localhost Location does not survive the cloud tunnel
   // (the iframe ends up pointing at http://localhost and fails to load).
   const iframeSrc = previewMode
-    ? `${tunnelPrefix}/panel/?page=${encodeURIComponent(page.id)}`
-    : `${tunnelPrefix}/panel/?page=${encodeURIComponent(page.id)}&edit=1`;
+    ? `${tunnelPrefix}/panel/?preview=1&page=${encodeURIComponent(page.id)}`
+    : `${tunnelPrefix}/panel/?preview=1&page=${encodeURIComponent(page.id)}&edit=1`;
 
   // dnd-kit reads the bounding rect of the element carrying data-canvas-grid for drop math.
   // In edit mode we attach it to the overlay grid; in preview mode there's no drop target.

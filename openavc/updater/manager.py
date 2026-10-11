@@ -38,6 +38,11 @@ class UpdateManager:
     Updates state keys via the state_store for real-time UI feedback.
     """
 
+    @property
+    def _firmware_host(self):
+        from openavc.updater.host import get_firmware_host
+        return get_firmware_host()
+
     def __init__(
         self,
         state_store=None,
@@ -66,6 +71,14 @@ class UpdateManager:
             from openavc import config as server_config
             project_path = Path(server_config.PROJECT_PATH)
         self._project_path = project_path
+
+        # Firmware history belongs to the product updater. Do not reconcile
+        # or consume generic updater records left in a reused data directory.
+        if self._firmware_host:
+            for key, value in self._firmware_host.status(__version__, self._deployment_type.value).items():
+                if key.startswith("update_") or key == "staged_version":
+                    self._set_state("system." + ("update_staged_version" if key == "staged_version" else key), value)
+            return
 
         # Load update history
         self._load_history()
@@ -438,6 +451,10 @@ class UpdateManager:
 
         Returns a dict with update info suitable for API response.
         """
+        if self._firmware_host:
+            return {**self._firmware_host.status(__version__, self._deployment_type.value),
+                    "update_available": False, "channel": "",
+                    "instructions": self._firmware_host.guidance}
         if channel is None:
             from openavc.system_config import get_system_config
             channel = get_system_config().get("updates", "channel", "stable")
@@ -505,6 +522,8 @@ class UpdateManager:
         If the cloud has staged an update (auto_restart=False) we route through
         apply_cloud_update with that staged URL instead of querying GitHub.
         """
+        if self._firmware_host:
+            return self._firmware_host.refusal()
         if self._update_in_progress:
             return {"success": False, "error": "Update already in progress"}
 
@@ -606,6 +625,8 @@ class UpdateManager:
         Unlike apply_update() which discovers artifacts from GitHub Releases,
         this method uses the exact URL and checksum the cloud platform provides.
         """
+        if self._firmware_host:
+            return self._firmware_host.refusal()
         if self._update_in_progress:
             return {"success": False, "error": "Update already in progress"}
 
@@ -736,6 +757,8 @@ class UpdateManager:
         Read-only on purpose — the file is the helper's, and clearing it here
         would cancel the retry it exists to schedule.
         """
+        if self._firmware_host:
+            return None
         path = self._deferred_path()
         if not path.exists():
             return None
@@ -771,6 +794,8 @@ class UpdateManager:
         ``auto_restart=False``. The next call to ``apply_update`` uses this
         target instead of polling GitHub.
         """
+        if self._firmware_host:
+            raise PermissionError(self._firmware_host.guidance)
         import json
         payload = {
             "target_version": target_version,
@@ -789,6 +814,8 @@ class UpdateManager:
 
     def get_staged_update(self) -> dict[str, Any] | None:
         """Return the staged-update record, or None if no update is staged."""
+        if self._firmware_host:
+            return None
         import json
         path = self._staged_path()
         if not path.exists():
@@ -808,6 +835,8 @@ class UpdateManager:
 
     def clear_staged_update(self) -> None:
         """Remove the staged-update marker (called after apply)."""
+        if self._firmware_host:
+            return
         try:
             self._staged_path().unlink(missing_ok=True)
         except OSError:
@@ -936,6 +965,8 @@ class UpdateManager:
 
     async def rollback(self) -> dict[str, Any]:
         """Rollback to the previous version."""
+        if self._firmware_host:
+            return self._firmware_host.refusal()
         from openavc.updater.rollback import (
             can_rollback, perform_rollback, rollback_target_version,
         )
@@ -998,6 +1029,8 @@ class UpdateManager:
 
     def get_status(self) -> dict[str, Any]:
         """Get current update status."""
+        if self._firmware_host:
+            return self._firmware_host.status(__version__, self._deployment_type.value)
         from openavc.updater.rollback import can_rollback
         from openavc.system_config import APP_DIR
 
@@ -1038,6 +1071,8 @@ class UpdateManager:
 
     async def start_auto_check(self, interval_hours: int = 24) -> None:
         """Start periodic background update checks."""
+        if self._firmware_host:
+            return
         if self._auto_check_task and not self._auto_check_task.done():
             return  # Already running
 
@@ -1153,6 +1188,9 @@ class UpdateManager:
         UTC. Keys: policy, maintenance_window_start, maintenance_window_end,
         maintenance_window_tz.
         """
+        if self._firmware_host:
+            await self._cancel_maintenance_task()
+            return
         policy = policy_config.get("policy")
         if policy not in ("auto", "manual"):
             if policy is not None:

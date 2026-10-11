@@ -69,7 +69,7 @@ Most of these settings are also in the Programmer under **Settings**, and changi
 | `auth.allow_anonymous` | `"false"` | None | Refuses the Programmer and the configuration API to anyone without the admin credential. Packaged installs already set this in the service environment; set it in the file too for a system installed any other way. |
 | `network.port80_redirect` | `false` | Settings > Network > **Short URLs** | Keeps port 80 closed. |
 | `network.trust_forwarded_for` | `false` | None | Leave `false` unless a reverse proxy is in front of OpenAVC. See [Behind a reverse proxy](#behind-a-reverse-proxy). |
-| `discovery.advertise` | `false` | Settings > Network > **Advertise on the network** | Stops the mDNS announcements on UDP 5353, which go out on every network adapter. Leave it on only where the OpenAVC Panel app's list of systems is used; a panel can always connect by address or by QR code. |
+| `discovery.advertise` | `false` | Settings > Network > **Advertise on the network** | Stops the mDNS announcements on UDP 5353, which use the IPv4 interfaces where the web server listens. Leave it on only where the OpenAVC Panel app's list of systems is used; a panel can always connect by address or by QR code. |
 | `isc.enabled` | `false` | None | Turns inter-system communication off for the whole machine, whatever the project says: no UDP 19872 traffic and no peer connections. If several OpenAVC systems do need to share state, leave it on and set a long random key under **Inter-System > Authentication** in each project, and keep the **Remote Command Allowlist** to the commands peers need. |
 | `cloud.enabled` | `false` | The **Cloud** page | No connection to OpenAVC Cloud. Pairing a system turns this on, and gives the cloud administrator-level control of it: see [What the cloud can do](it-network-guide.md#what-the-cloud-can-do). |
 | `updates.check_enabled` | `true` | Settings > Updates > **Check for updates** | Checks GitHub (`api.github.com`, HTTPS) for new releases once a day. Turn it off where outbound internet is blocked, and install updates from a file instead ([System Updates](updates.md)). |
@@ -222,7 +222,7 @@ A machine with one adapter on the AV network and another on the campus network i
 
 - **Settings > Network > Control interface:** pick the AV adapter. Device connections and discovery scans then use that adapter only.
 - **The web ports listen on every adapter.** Restrict them with the firewall rules above, allowing the AV network and, if the Programmer is used from there, the management network.
-- **Advertise on the network** announces on every adapter, whichever control interface is picked. Turn it off unless the Panel app's list of systems is used.
+- **Advertise on the network** announces on the IPv4 adapters where the web server listens, whichever control interface is picked. A localhost-only server does not advertise to network panels. Turn it off unless the Panel app's list of systems is used.
 
 ```
             Campus / management network

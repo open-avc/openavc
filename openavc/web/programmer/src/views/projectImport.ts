@@ -18,6 +18,8 @@ export interface ImportProjectDeps {
   forceReload: () => Promise<void>;
   /** True for a 409 version conflict (distinct user message). */
   isConflict: (e: unknown) => boolean;
+  /** Preserve the server's actionable reason for a refused import. */
+  errorMessage: (e: unknown) => string;
   onError: (message: string) => void;
 }
 
@@ -40,7 +42,7 @@ export async function importParsedProject(
     deps.onError(
       deps.isConflict(e)
         ? "Another session changed the project. Reload, then import again."
-        : "Could not import this file. It isn't a valid OpenAVC project.",
+        : deps.errorMessage(e),
     );
     return false;
   }

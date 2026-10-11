@@ -36,6 +36,22 @@ DEVICE_IP = "10.77.0.9"
 VENDOR_TYPE = "_acmewidget._tcp.local."
 
 
+def test_control_port_stays_associated_with_its_service():
+    result = MDNSResult(ip=DEVICE_IP, services={
+        "admin": MDNSService(service_type="_http._tcp.local.", port=8088),
+        "control": MDNSService(service_type=VENDOR_TYPE, port=10443),
+    })
+    evidence = result.to_evidence_records()
+    assert {item.data["source_id"]: item.data["port"] for item in evidence} == {
+        "_http._tcp.local.": 8088, VENDOR_TYPE: 10443,
+    }
+
+
+def test_single_service_evidence_retains_port():
+    result = MDNSResult(ip=DEVICE_IP, service_type=VENDOR_TYPE, port=10443)
+    assert result.to_evidence().data["port"] == 10443
+
+
 # ---------------------------------------------------------------------------
 # Packet builders
 # ---------------------------------------------------------------------------

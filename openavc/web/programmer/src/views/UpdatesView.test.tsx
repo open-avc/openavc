@@ -250,8 +250,9 @@ describe("UpdatesView failed check", () => {
 
   /** Press "Check for Updates" and let handleCheck settle. */
   async function pressCheck() {
+    const button = await screen.findByRole("button", { name: /Check for Updates/ });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /Check for Updates/ }));
+      fireEvent.click(button);
     });
   }
 
@@ -285,5 +286,41 @@ describe("UpdatesView failed check", () => {
 
     expect(await screen.findByText("You're up to date")).toBeInTheDocument();
     expect(screen.queryByText("Could not check for updates")).not.toBeInTheDocument();
+  });
+});
+
+describe("UpdatesView firmware ownership", () => {
+  beforeEach(() => {
+    liveState["system.update_status"] = "idle";
+    statusWith({});
+  });
+
+  it("shows firmware guidance without standalone controls or stale release claims", async () => {
+    statusWith({ update_owner: "firmware", firmware_version: "Fixture 1.2",
+      update_guidance: "Use the product's firmware update settings.", can_self_update: false });
+    liveState["system.update_available"] = "9.9.9";
+    render(<UpdatesView />);
+    expect(await screen.findByText("Use the product's firmware update settings.")).toBeInTheDocument();
+    expect(screen.getByText("Fixture 1.2")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Check for Updates|Install/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("You're up to date")).not.toBeInTheDocument();
+    expect(screen.queryByText("v9.9.9")).not.toBeInTheDocument();
+  });
+
+  it("waits for update ownership before exposing an action", async () => {
+    const status = await api.getUpdateStatus();
+    let finish!: (value: typeof status) => void;
+    vi.mocked(api.getUpdateStatus).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    render(<UpdatesView />);
+    expect(screen.queryByRole("button", { name: /Check for Updates/ })).not.toBeInTheDocument();
+    await act(async () => { finish(status); });
+    expect(await screen.findByRole("button", { name: /Check for Updates/ })).toBeInTheDocument();
+  });
+
+  it("explains when ownership settings cannot be loaded", async () => {
+    vi.mocked(api.getUpdateStatus).mockRejectedValueOnce(new Error("fixture failure"));
+    render(<UpdatesView />);
+    expect(await screen.findByText("Update settings could not be loaded. Reload this page to try again.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Check for Updates/ })).not.toBeInTheDocument();
   });
 });

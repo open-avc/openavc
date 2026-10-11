@@ -142,42 +142,45 @@ async def _initialize_engine(app: FastAPI) -> None:
             log.warning("  This computer only in Settings > Network > Accept connections from.")
             log.warning("=" * 60)
 
-        # Check if automatic rollback is needed (failed update crash detection)
-        from openavc.system_config import get_system_config
-        from openavc.updater.rollback import check_rollback_needed
-        data_dir = get_system_config().data_dir
-        if check_rollback_needed(data_dir):
-            from pathlib import Path
-            from openavc.updater.rollback import perform_rollback, restore_pre_update_data
-            # Restore user data from the pre-update backup BEFORE swapping the
-            # code back: the rolled-back code may predate the running version's
-            # project-format migrations, so the restore must run on this side.
-            restore_pre_update_data(data_dir, project_path=Path(config.PROJECT_PATH))
-            success = perform_rollback(data_dir, automatic=True)
-            if success:
-                # Windows: exit 42 tells NSSM not to restart (installer handles it)
-                # Linux: exit 0 triggers systemd restart, ExecStartPre applies rollback
-                exit_code = 42 if sys.platform == "win32" else 0
-                log.warning("Rollback initiated, exiting process (code %d)", exit_code)
-                os._exit(exit_code)
+        from openavc.updater.host import get_firmware_host
+        firmware_host = get_firmware_host()
+        if not firmware_host:
+            # Check if automatic rollback is needed (failed update crash detection)
+            from openavc.system_config import get_system_config
+            from openavc.updater.rollback import check_rollback_needed
+            data_dir = get_system_config().data_dir
+            if check_rollback_needed(data_dir):
+                from pathlib import Path
+                from openavc.updater.rollback import perform_rollback, restore_pre_update_data
+                # Restore user data from the pre-update backup BEFORE swapping the
+                # code back: the rolled-back code may predate the running version's
+                # project-format migrations, so the restore must run on this side.
+                restore_pre_update_data(data_dir, project_path=Path(config.PROJECT_PATH))
+                success = perform_rollback(data_dir, automatic=True)
+                if success:
+                    # Windows: exit 42 tells NSSM not to restart (installer handles it)
+                    # Linux: exit 0 triggers systemd restart, ExecStartPre applies rollback
+                    exit_code = 42 if sys.platform == "win32" else 0
+                    log.warning("Rollback initiated, exiting process (code %d)", exit_code)
+                    os._exit(exit_code)
 
-        # Defense in depth: drop any stale Linux apply-update.json left behind by
-        # a failed/aborted apply, so update-helper.sh (root, ExecStartPre) can't
-        # re-consume it on an unrelated restart. On systemd the helper runs
-        # before us, so this mainly covers non-systemd / crash-before-helper.
-        stale_apply = data_dir / "apply-update.json"
-        if stale_apply.exists():
-            try:
-                stale_apply.unlink()
-                log.warning("Removed stale apply-update.json at startup")
-            except OSError:
-                log.exception("Could not remove stale apply-update.json at startup")
+            # Defense in depth: drop any stale Linux apply-update.json left behind by
+            # a failed/aborted apply, so update-helper.sh (root, ExecStartPre) can't
+            # re-consume it on an unrelated restart. On systemd the helper runs
+            # before us, so this mainly covers non-systemd / crash-before-helper.
+            stale_apply = data_dir / "apply-update.json"
+            if stale_apply.exists():
+                try:
+                    stale_apply.unlink()
+                    log.warning("Removed stale apply-update.json at startup")
+                except OSError:
+                    log.exception("Could not remove stale apply-update.json at startup")
 
-        # Same defense for a leftover apply-rollback marker: one that survives
-        # to this point was never consumed by the pre-start wrapper, and would
-        # silently downgrade the install on a later unrelated restart.
-        from openavc.updater.rollback import clear_stale_rollback_marker
-        clear_stale_rollback_marker(data_dir)
+            # Same defense for a leftover apply-rollback marker: one that survives
+            # to this point was never consumed by the pre-start wrapper, and would
+            # silently downgrade the install on a later unrelated restart.
+            from openavc.updater.rollback import clear_stale_rollback_marker
+            clear_stale_rollback_marker(data_dir)
 
         await engine.start()
 
@@ -187,8 +190,9 @@ async def _initialize_engine(app: FastAPI) -> None:
         # any of it. Confirm here rather than on a timer — a timer measures
         # whether anybody restarted the box, and an appliance is restarted by
         # its own supervisor and power-cycled in the room it lives in.
-        from openavc.updater.rollback import confirm_startup
-        confirm_startup(data_dir)
+        if not firmware_host:
+            from openavc.updater.rollback import confirm_startup
+            confirm_startup(data_dir)
 
         # Load driver hints into discovery engine after drivers are registered
         discovery_engine.load_driver_hints_from_registry(list_registered_drivers())
@@ -350,31 +354,34 @@ async def lifespan(app: FastAPI):
     # Run engine initialization in background so HTTP is available immediately
     init_task = asyncio.create_task(_initialize_engine(app))
 
-    yield
-
-    watcher = getattr(app.state, "listen_watcher", None)
-    if watcher is not None:
-        watcher.cancel()
-    from openavc.listen_sockets import push_listeners
-    await push_listeners.stop()
-
-    # Shutdown: wait for init to finish (or cancel if still running)
-    if not init_task.done():
-        init_task.cancel()
-        try:
-            await init_task
-        except asyncio.CancelledError:
-            pass
-    # End an audit first: it holds project devices paused and its own
-    # listeners open, and both are released before the engine goes down.
     try:
-        await audit_manager.shutdown()
-    except Exception:
-        log.exception("Ending the device audit at shutdown failed")
-    if app.state.engine_ready:
-        await engine.stop()
-    await simulator_proxy.aclose_client()
-    log.info("OpenAVC stopped")
+        yield
+    finally:
+        watcher = getattr(app.state, "listen_watcher", None)
+        if watcher is not None:
+            watcher.cancel()
+        from openavc.listen_sockets import push_listeners
+        await push_listeners.stop()
+        # Shutdown: wait for init to finish (or cancel if still running)
+        if not init_task.done():
+            init_task.cancel()
+            try:
+                await init_task
+            except asyncio.CancelledError:
+                pass
+        # End an audit first: it holds project devices paused and its own
+        # listeners open, and both are released before the engine goes down.
+        try:
+            await audit_manager.shutdown()
+        except Exception:
+            log.exception("Ending the device audit at shutdown failed")
+        # Startup may acquire device/plugin clients before readiness.
+        # The cancelled initializer has unwound; tear down those resources too.
+        try:
+            await engine.stop()
+        finally:
+            await simulator_proxy.aclose_client()
+        log.info("OpenAVC stopped")
 
 
 # Create FastAPI app
@@ -453,6 +460,13 @@ from openavc.api.errors import (
 )
 
 app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
+
+from openavc.core.installed_equipment import InstalledEquipmentError
+
+
+@app.exception_handler(InstalledEquipmentError)
+async def installed_equipment_error(request, error):
+    return JSONResponse(status_code=409, content={"detail": str(error)})
 
 # The few errors that carry machine-readable fields put them *beside* the string
 # detail rather than inside it, so every client still finds a readable sentence
@@ -1293,39 +1307,46 @@ def main():
     # after it exits; the bind retries through that window.
     _retries = 20 if os.environ.get("OPENAVC_RESTARTING") == "1" else 1
     try:
-        sockets, plan = listen_sockets.bind_for_plan(plan, _primary_port, retries=_retries)
+        inherited = os.environ.get("OPENAVC_LISTEN_FD")
+        if inherited is not None:
+            sockets = listen_sockets.inherited_for_plan(inherited, plan, _primary_port)
+        else:
+            sockets, plan = listen_sockets.bind_for_plan(plan, _primary_port, retries=_retries)
     except listen_sockets.ListenBindError as exc:
         msg = exc.message(_primary_label, _env_var_hint)
         print(f"\n*** {msg} ***\n")
         _write_startup_error(exc.error_type, msg)
         raise SystemExit(1)
-    listen.set_current(plan)
-    if plan.problem is not None:
-        log.warning(plan.problem.message)
-    # A change that cut off the browser making it starts its clock now, when
-    # the server is listening on it (openavc/listen_safety_net.py).
-    from openavc import listen_safety_net
-    from openavc.system_config import get_system_config
+    try:
+        listen.set_current(plan)
+        if plan.problem is not None:
+            log.warning(plan.problem.message)
+        # A change that cut off the browser making it starts its clock now, when
+        # the server is listening on it (openavc/listen_safety_net.py).
+        from openavc import listen_safety_net
+        from openavc.system_config import get_system_config
 
-    listen_safety_net.note_listening(get_system_config().data_dir, plan.choice)
-    # Clear the restart marker so a future startup error isn't masked by
-    # repeated retries.
-    os.environ.pop("OPENAVC_RESTARTING", None)
+        listen_safety_net.note_listening(get_system_config().data_dir, plan.choice)
+        # Clear the restart marker so a future startup error isn't masked by
+        # repeated retries.
+        os.environ.pop("OPENAVC_RESTARTING", None)
 
-    _clear_startup_error()
-    _write_server_address()
-    listen_sockets.push_listeners.enable(config.HTTP_PORT)
+        _clear_startup_error()
+        _write_server_address()
+        listen_sockets.push_listeners.enable(config.HTTP_PORT)
 
-    if config.TLS_ENABLED:
-        asyncio.run(_run_tls(sockets))
-    elif config.PORT80_REDIRECT:
-        asyncio.run(_run_http(sockets))
-    else:
-        if config.HTTP_PORT == 80:
-            runtime_flags.port80_active = True
-        # Server.run picks uvicorn's event loop (uvloop where installed), as
-        # uvicorn.run did before the sockets were bound here.
-        uvicorn.Server(_main_http_config()).run(sockets=sockets)
+        if config.TLS_ENABLED:
+            asyncio.run(_run_tls(sockets))
+        elif config.PORT80_REDIRECT:
+            asyncio.run(_run_http(sockets))
+        else:
+            if config.HTTP_PORT == 80:
+                runtime_flags.port80_active = True
+            # Server.run picks uvicorn's event loop (uvloop where installed), as
+            # uvicorn.run did before the sockets were bound here.
+            uvicorn.Server(_main_http_config()).run(sockets=sockets)
+    finally:
+        listen_sockets.close_all(sockets)
 
 if __name__ == "__main__":
     main()

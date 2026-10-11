@@ -1,3 +1,5 @@
+import { InstalledEquipment } from "./InstalledEquipment";
+import { BuiltInEquipmentNotice } from "../../components/shared/BuiltInEquipmentNotice";
 import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Send, Pencil, Trash2, Wifi, WifiOff, Power, RefreshCw, Copy, Settings, Check, X, Loader2, Search, Pause, Play, AlertTriangle, ClipboardCheck } from "lucide-react";
 import { CopyButton } from "../../components/shared/CopyButton";
@@ -114,12 +116,14 @@ export function DeviceDetail({
   const connected = Boolean(liveState[`device.${deviceId}.connected`]);
   const webUiUrl = liveState[`device.${deviceId}.web_ui_url`];
   const [testResult, setTestResult] = useConnectionTestResult(deviceId, connected);
+  const runtimeEnabled = liveState[`device.${deviceId}.enabled`] === true;
   useEffect(() => {
     refetchDeviceInfo();
-  }, [refetchDeviceInfo, connected, webUiUrl]);
+  }, [refetchDeviceInfo, connected, webUiUrl, runtimeEnabled]);
 
   const deviceConfig = project?.devices.find((d) => d.id === deviceId);
   const isEnabled = deviceConfig?.enabled !== false;
+  const installed = deviceInfo?.ownership === "manufacturer";
 
   const handleDelete = useCallback(async () => {
     setDeleting(true);
@@ -383,6 +387,7 @@ export function DeviceDetail({
             size={12}
           />
           <h2 style={{ fontSize: "var(--font-size-xl)", flex: 1 }}>{deviceName}</h2>
+          {deviceInfo && <>
           <button
             onClick={handleToggleEnabled}
             title={isEnabled ? "Disable device" : "Enable device"}
@@ -399,6 +404,8 @@ export function DeviceDetail({
           >
             <Power size={14} /> {isEnabled ? "Enabled" : "Disabled"}
           </button>
+          </>}
+          {deviceInfo && <>
           <button
             onClick={handleTestConnection}
             disabled={testing}
@@ -418,8 +425,8 @@ export function DeviceDetail({
           </button>
           <button
             onClick={() => void handleAudit()}
-            disabled={openingAudit}
-            title="Check this device in detail and write a report about it"
+            disabled={openingAudit || installed}
+            title={installed ? "Built-in equipment uses a local connection. Network audit is unavailable for this connection." : "Check this device in detail and write a report about it"}
             style={{
               display: "flex",
               alignItems: "center",
@@ -433,6 +440,7 @@ export function DeviceDetail({
           >
             <ClipboardCheck size={14} /> Audit this device
           </button>
+          </>}
           {!connected && isEnabled && (
             <button
               onClick={handleReconnect}
@@ -453,6 +461,7 @@ export function DeviceDetail({
               <RefreshCw size={14} /> {reconnecting ? "Reconnecting..." : "Reconnect"}
             </button>
           )}
+          {deviceInfo && !installed && <>
           <button
             onClick={() => deviceConfig && onEdit(deviceConfig)}
             title="Edit device settings"
@@ -547,6 +556,7 @@ export function DeviceDetail({
               <Trash2 size={14} /> Delete
             </button>
           )}
+          </>}
         </div>
         <div style={{ marginLeft: 22, display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
           <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
@@ -660,9 +670,12 @@ export function DeviceDetail({
         />
       )}
 
+      {installed && <InstalledEquipment key={deviceId} deviceId={deviceId} name={deviceName} />}
+
       {/* Offline reason banner — actionable cause from device.<id>.offline_detail */}
       {!connected && isEnabled && !orphaned && !paused && !restarting && offlineDetail && (
         <OfflineBanner
+          installed={installed}
           detail={offlineDetail}
           reason={offlineReason}
           failed={reconnectFailed}
@@ -997,7 +1010,9 @@ export function DeviceDetail({
       </div>
 
       {/* Device Settings */}
-      <DeviceSettingsSection deviceId={deviceId} connected={connected} />
+      {isEnabled && runtimeEnabled && deviceInfo?.id === deviceId && !deviceInfo.orphaned && (
+        <DeviceSettingsSection key={`settings:${deviceId}`} deviceId={deviceId} connected={connected} />
+      )}
 
       {/* Commands & Responses — no-code protocol editor for the generic devices
           (driver opts in via DRIVER_INFO.inline_protocol). Writes commands /
@@ -1244,6 +1259,7 @@ function OptionFeedValue({ raw }: { raw: string }) {
 }
 
 function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; connected: boolean }) {
+  const liveState = useConnectionStore((s) => s.liveState);
   const devices = useProjectStore((s) => s.project?.devices);
   const pendingSettings = useMemo(() => {
     const dev = devices?.find((d) => d.id === deviceId);
@@ -1256,25 +1272,35 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
   const [saving, setSaving] = useState<string | null>(null);
   const [saveResult, setSaveResult] = useState<{ key: string; success: boolean; error?: string } | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const mounted = useRef(false);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadSettings = useCallback(() => {
+    if (!mounted.current) return;
     api.getDeviceSettings(deviceId).then((data) => {
+      if (!mounted.current) return;
       setSettings(data.settings);
       setLoaded(true);
-    }).catch(() => setLoaded(true));
+    }).catch(() => { if (mounted.current) setLoaded(true); });
   }, [deviceId]);
 
   useEffect(() => {
+    mounted.current = true;
     loadSettings();
     const interval = setInterval(loadSettings, 5000);
-    return () => clearInterval(interval);
+    return () => {
+      mounted.current = false;
+      clearInterval(interval);
+      if (refreshTimer.current !== null) clearTimeout(refreshTimer.current);
+    };
   }, [loadSettings]);
 
   const settingKeys = Object.keys(settings);
   if (!loaded || settingKeys.length === 0) return null;
 
   const handleStartEdit = (key: string) => {
-    const current = settings[key]?.current_value;
+    const stateKey = `device.${deviceId}.${String(settings[key]?.state_key ?? key)}`;
+    const current = stateKey in liveState ? liveState[stateKey] : settings[key]?.current_value;
     setEditingKey(key);
     setEditValue(current != null ? String(current) : String(settings[key]?.default ?? ""));
     setSaveResult(null);
@@ -1299,7 +1325,7 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
       setSaveResult({ key, success: true });
       setEditingKey(null);
       // Refresh settings to get updated current_value
-      setTimeout(loadSettings, 1000);
+      if (mounted.current) refreshTimer.current = setTimeout(loadSettings, 1000);
     } catch (e) {
       setSaveResult({ key, success: false, error: parseApiError(e) });
     } finally {
@@ -1344,7 +1370,8 @@ function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; conn
           const fieldType = String(def?.type ?? "string");
           const values = def?.values as unknown[] | undefined;
           const enumOptions = normalizeOptionList(values ?? []);
-          const currentValue = def?.current_value;
+          const stateKey = `device.${deviceId}.${String(def?.state_key ?? key)}`;
+          const currentValue = stateKey in liveState ? liveState[stateKey] : def?.current_value;
           const isPending = key in pendingSettings;
           const isEditing = editingKey === key;
           const isSaving = saving === key;
@@ -1746,11 +1773,13 @@ export function offlineNextStep(reason: string | undefined, failed: boolean): st
 }
 
 function OfflineBanner({
+  installed = false,
   detail,
   reason,
   failed,
   hint,
 }: {
+  installed?: boolean;
   detail: string;
   reason?: string;
   failed: boolean;
@@ -1787,15 +1816,17 @@ function OfflineBanner({
             {hint}
           </div>
         )}
-        <div
+        {reason !== "no_simulator" && (<div
           style={{
             fontSize: "var(--font-size-sm)",
             color: "var(--text-muted)",
             marginTop: "var(--space-xs)",
           }}
         >
-          {offlineNextStep(reason, failed)}
-        </div>
+          {installed && failed
+            ? "Automatic reconnect is paused. Check this product's OpenAVC status, then press Reconnect."
+            : offlineNextStep(reason, failed)}
+        </div>)}
       </div>
     </div>
   );
@@ -1818,10 +1849,14 @@ function OrphanBanner({
   // surface that fact inline rather than silently failing.
   const [match, setMatch] = useState<{ file_url: string; min_platform_version: string | null } | null>(null);
   const [lookupDone, setLookupDone] = useState(false);
+  const [builtIn, setBuiltIn] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setMatch(null);
+    setBuiltIn(false);
+    setLookupDone(false);
     if (!driverId) return;
     let cancelled = false;
     api
@@ -1829,6 +1864,7 @@ function OrphanBanner({
       .then((items) => {
         if (cancelled) return;
         const entry = items.find((m) => m.driver_id === driverId);
+        setBuiltIn(Boolean(entry?.built_in_equipment));
         if (entry?.community_match) {
           setMatch({
             file_url: entry.community_match.file_url,
@@ -1870,11 +1906,11 @@ function OrphanBanner({
       }}
     >
       <div style={{ fontWeight: 600, marginBottom: "var(--space-sm)", color: "#ef4444", fontSize: "var(--font-size-md)" }}>
-        Driver Not Installed
+        {builtIn ? "Built-in equipment unavailable" : "Driver Not Installed"}
       </div>
       <div style={{ fontSize: "var(--font-size-sm)", marginBottom: "var(--space-md)" }}>
-        This device needs the driver "{driverId}" which is not installed.
-        {lookupDone && !match && (
+        {builtIn ? <BuiltInEquipmentNotice /> : <>This device needs the driver "{driverId}" which is not installed.</>}
+        {lookupDone && !match && !builtIn && (
           <div style={{ marginTop: "var(--space-xs)", color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
             This driver isn't in the community catalog. Reassign the device to a different
             driver, or upload the driver file from the Drivers tab.
@@ -1905,7 +1941,7 @@ function OrphanBanner({
             {installing ? "Installing..." : "Install from Community"}
           </button>
         )}
-        {lookupDone && !match && onBrowseDrivers && (
+        {lookupDone && !match && !builtIn && onBrowseDrivers && (
           <button
             onClick={onBrowseDrivers}
             style={{

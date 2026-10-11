@@ -226,8 +226,11 @@ handle_rollback() {
     echo "$LOG_TAG: rollback complete"
 }
 
-[ -f "$UPDATE_FILE" ] && handle_update
-[ -f "$ROLLBACK_FILE" ] && handle_rollback
+FIRMWARE_HOST="${OPENAVC_FIRMWARE_HOST:-/etc/openavc-firmware-host.json}"
+if [ "${OPENAVC_FIRMWARE_HOST+x}" != x ] && [ ! -e "$FIRMWARE_HOST" ] && [ ! -L "$FIRMWARE_HOST" ]; then
+    [ -f "$UPDATE_FILE" ] && handle_update
+    [ -f "$ROLLBACK_FILE" ] && handle_rollback
+fi
 
 # Always launch the server. exec so launchd tracks the server as the job's
 # process (the wrapper itself is replaced, not left hanging around).

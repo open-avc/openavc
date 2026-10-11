@@ -449,26 +449,23 @@ def test_typed_fault_bridge_offline_not_declarable():
 
 # ── A device a running simulation could not simulate ────────────────────────
 #
-# Simulation redirects each device to a simulator it starts. A driver with no
-# simulator gets none, so that device alone keeps pointing at its real address
-# and fails there — and the classifier, reading a genuinely refused socket,
-# correctly answered a question the author was not asking ("is the port
-# right?"). It was; nothing was listening.
+# A selected device without a simulator stays offline. Its remedy must work
+# for ordinary drivers and protected manufacturer-owned equipment alike.
 
-def test_no_simulator_fault_names_the_driver_and_the_fix():
+def test_no_simulator_fault_names_an_available_remedy():
     from openavc.core.connection_fault import NO_SIMULATOR, no_simulator_fault
 
-    fault = no_simulator_fault("acme_widget")
+    fault = no_simulator_fault()
     assert fault.code == NO_SIMULATOR
-    assert "acme_widget" in fault.message
-    assert "_sim.py" in fault.message          # says what to add
-    assert "port" not in fault.message.lower()  # and does not blame the port
+    assert "Stop simulation" in fault.message
+    assert "_sim.py" not in fault.message
+    assert "port" not in fault.message.lower()
 
 
-def test_no_simulator_fault_reads_without_a_driver_id():
+def test_no_simulator_fault_does_not_require_a_driver_id():
     from openavc.core.connection_fault import no_simulator_fault
 
-    message = no_simulator_fault("").message
+    message = no_simulator_fault().message
     assert "''" not in message and "  " not in message
 
 
@@ -489,7 +486,7 @@ def test_the_simulation_gap_wins_over_a_refused_socket():
 
     manager.unsimulated_driver = lambda device_id: "acme_widget"
     assert manager._set_offline_reason("dev1", None, exc=exc) == NO_SIMULATOR
-    assert "acme_widget" in state.get("device.dev1.offline_detail")
+    assert "Stop simulation" in state.get("device.dev1.offline_detail")
 
 
 def test_a_simulated_device_is_left_to_the_normal_classifier():

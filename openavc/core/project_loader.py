@@ -861,6 +861,8 @@ def load_project(path: str | Path) -> ProjectConfig:
     # Persist migrated format so we don't re-migrate next time
     if was_migrated:
         log.info("Saving migrated project format to disk")
+        from openavc.core.installed_equipment import InstalledEquipment
+        project = InstalledEquipment.from_environment().compose(project, for_load=True)
         save_project(path, project)
 
     return project
@@ -1073,6 +1075,9 @@ def save_project(path: str | Path, project: ProjectConfig) -> None:
         project: The project configuration to save.
     """
     path = Path(path)
+
+    from openavc.core.installed_equipment import InstalledEquipment
+    project.devices = InstalledEquipment.from_environment().compose(project).devices
 
     # Auto-populate driver dependencies
     try:

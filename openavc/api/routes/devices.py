@@ -6,7 +6,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 
 from openavc.api._engine import _get_engine, _rate_limit_test
-from openavc.api.errors import api_error as _api_error
+from openavc.api.errors import StructuredApiError, api_error as _api_error
+from openavc.drivers.command_outcome import CommandOutcomeError
 from openavc.api.models import (
     ActionInvokeRequest,
     ChildEntityPatchRequest,
@@ -95,7 +96,8 @@ async def list_missing_drivers() -> dict[str, Any]:
 
     result: list[dict[str, Any]] = []
     for driver_id in missing_ids:
-        match = catalog_by_id.get(driver_id)
+        equipment = engine.installed_equipment.describe_missing_reference(driver_id, engine.project)
+        match = None if equipment else catalog_by_id.get(driver_id)
         community_match: dict[str, Any] | None = None
         if match and match.get("file"):
             community_match = {
@@ -106,11 +108,14 @@ async def list_missing_drivers() -> dict[str, Any]:
                 "file_url": f"{COMMUNITY_REPO_URL}/{match['file']}",
                 "min_platform_version": match.get("min_platform_version"),
             }
-        result.append({
+        entry = {
             "driver_id": driver_id,
             "device_ids": devices_per_driver.get(driver_id, []),
             "community_match": community_match,
-        })
+        }
+        if equipment:
+            entry["built_in_equipment"] = equipment
+        result.append(entry)
     return {"missing": result}
 
 
@@ -197,6 +202,16 @@ async def update_device(device_id: str, body: DeviceUpdateRequest) -> dict[str, 
     engine = _get_engine()
     if not engine.project:
         raise HTTPException(status_code=503, detail="No project loaded")
+
+    policy = engine.installed_equipment
+    if policy.manifest and body.driver == policy.driver_id and not policy.owns(device_id):
+        if body.config or body.child_entities is not None:
+            raise HTTPException(status_code=422, detail="Built-in equipment uses its manufacturer connection. Select it without connection overrides.")
+        name = _sanitize_device_name(body.name) if body.name is not None else None
+        if name is not None and not name:
+            raise HTTPException(status_code=422, detail="Device name cannot be blank")
+        await engine.reassign_installed_equipment(device_id, name=name, enabled=body.enabled)
+        return {"status": "updated", "device_id": device_id}
 
     # The edit is built inside apply_project_edit's mutate callback: the
     # engine copies the CURRENT project under the reconcile lock, so a
@@ -303,6 +318,7 @@ async def delete_device(device_id: str) -> dict[str, Any]:
     if not engine.project:
         raise HTTPException(status_code=503, detail="No project loaded")
 
+    engine.installed_equipment.refuse_removal(device_id)
     references: dict[str, Any] = {}
 
     def mutate(project):
@@ -369,6 +385,9 @@ async def test_device_connection(device_id: str) -> dict[str, Any]:
     device = next((d for d in engine.project.devices if d.id == device_id), None)
     if device is None:
         raise HTTPException(status_code=404, detail=f"Device '{device_id}' not found")
+    policy = getattr(engine, "installed_equipment", None)
+    if policy is not None and policy.owns(device_id):
+        return await policy.test_connection()
     return await run_connection_test(device, engine)
 
 
@@ -474,6 +493,11 @@ async def send_command(device_id: str, body: CommandRequest) -> dict[str, Any]:
         # 503 could not reach the device, 502 reached it and the exchange came
         # apart partway.
         raise _api_error(502, str(e), e)
+    except CommandOutcomeError as e:
+        raise StructuredApiError(
+            502 if e.outcome == "failed" else 409, str(e),
+            code="command_incomplete", outcome=e.outcome,
+        ) from e
     except Exception as e:
         # Where a driver's own failure lands, whatever it raised. A driver
         # ValueError -- a response its handler could not parse, a helper deep
@@ -638,6 +662,11 @@ async def invoke_device_action(
             raise _api_error(404, f"Device '{device_id}' not found", e)
         except ConnectionError as e:
             raise _api_error(503, f"Device '{device_id}' is not connected", e)
+        except CommandOutcomeError as e:
+            raise StructuredApiError(
+                502 if e.outcome == "failed" else 409, str(e),
+                code="command_incomplete", outcome=e.outcome,
+            ) from e
         except Exception as e:
             raise _api_error(
                 500, f"Failed to run action '{action_id}' on device '{device_id}'", e
@@ -707,6 +736,11 @@ async def set_device_setting(
         raise _api_error(503, f"Device '{device_id}' is not connected", e)
     except NotImplementedError as e:
         raise _api_error(501, f"Device '{device_id}' does not support writable settings", e)
+    except CommandOutcomeError as e:
+        raise StructuredApiError(
+            502 if e.outcome == "failed" else 409, str(e),
+            code="command_incomplete", outcome=e.outcome,
+        ) from e
     except Exception as e:
         raise _api_error(500, f"Failed to set '{setting_key}' on device '{device_id}'", e)
 

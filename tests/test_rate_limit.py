@@ -42,8 +42,8 @@ def _make_app(
     async def health():
         return {"ok": True}
 
-    @app.get("/api/devices")
-    async def devices():
+    @app.get("/api/project")
+    async def read_project():
         return []
 
     @app.get("/api/devices/{device_id}")
@@ -165,8 +165,8 @@ def test_classify_control():
 
 
 def test_classify_standard():
-    assert _classify("GET", "/api/devices") == "standard"
-    assert _classify("GET", "/api/devices/proj1") == "standard"
+    assert _classify("GET", "/api/project") == "standard"
+    assert _classify("GET", "/api/devices/proj1") == "control"
     assert _classify("GET", "/api/project") == "standard"
     assert _classify("GET", "/api/scripts/s1/source") == "standard"
     assert _classify("POST", "/api/macros/m1/execute") == "standard"
@@ -179,7 +179,7 @@ def test_requests_within_limit_pass():
     app = _make_app()
     client = TestClient(app)
     for _ in range(5):
-        r = client.get("/api/devices")
+        r = client.get("/api/project")
         assert r.status_code == 200
 
 
@@ -204,9 +204,9 @@ def test_standard_tier_limit():
     with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 3):
         _reset_state()
         for _ in range(3):
-            r = client.get("/api/devices")
+            r = client.get("/api/project")
             assert r.status_code == 200
-        r = client.get("/api/devices")
+        r = client.get("/api/project")
         assert r.status_code == 429
 
 
@@ -237,7 +237,7 @@ def test_strict_exceeded_blocks_only_strict():
         r = client.post("/api/cloud/pair")
         assert r.status_code == 429
         # Standard tier should still work
-        r = client.get("/api/devices")
+        r = client.get("/api/project")
         assert r.status_code == 200
         # Open tier should still work
         r = client.get("/api/status")
@@ -263,7 +263,7 @@ def test_auth_failure_throttles_every_tier_at_strict_rate():
         assert client.post("/api/devices/d1/command").status_code == 429
         # ...and so is the standard tier (brute-force protection
         # is no longer confined to strict-tier endpoints).
-        assert client.get("/api/devices").status_code == 429
+        assert client.get("/api/project").status_code == 429
 
 
 def test_brute_force_probing_throttled_at_strict_rate_not_standard():
@@ -297,7 +297,7 @@ def test_legit_strict_usage_does_not_trip_brute_force_counter():
         # Strict endpoint now blocked, but standard/open still work — the 200s
         # went to the strict window, not the brute-force counter.
         assert client.post("/api/cloud/pair").status_code == 429
-        assert client.get("/api/devices").status_code == 200
+        assert client.get("/api/project").status_code == 200
         assert client.get("/api/status").status_code == 200
 
 
@@ -307,8 +307,8 @@ def test_429_response_format():
 
     with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
         _reset_state()
-        client.get("/api/devices")
-        r = client.get("/api/devices")
+        client.get("/api/project")
+        r = client.get("/api/project")
         assert r.status_code == 429
         body = r.json()
         assert "detail" in body
@@ -325,8 +325,8 @@ def test_disabled_via_config(monkeypatch):
     with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
         _reset_state()
         # Should not be rate-limited even though limit is 1
-        client.get("/api/devices")
-        r = client.get("/api/devices")
+        client.get("/api/project")
+        r = client.get("/api/project")
         assert r.status_code == 200
 
 
@@ -338,11 +338,11 @@ def test_options_not_limited():
     with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
         _reset_state()
         # Exhaust the limit
-        client.get("/api/devices")
-        r = client.get("/api/devices")
+        client.get("/api/project")
+        r = client.get("/api/project")
         assert r.status_code == 429
         # OPTIONS should still work
-        r = client.options("/api/devices")
+        r = client.options("/api/project")
         assert r.status_code != 429
 
 
@@ -377,7 +377,7 @@ def test_control_tier_has_its_own_limit():
         assert client.post("/api/devices/d1/command").status_code == 429
         # Exceeding control does not block security or standard tiers
         assert client.post("/api/cloud/pair").status_code == 200
-        assert client.get("/api/devices").status_code == 200
+        assert client.get("/api/project").status_code == 200
 
 
 def test_tiers_are_independent():
@@ -393,7 +393,7 @@ def test_tiers_are_independent():
         r = client.get("/api/status")
         assert r.status_code == 429
         # Standard tier should still work
-        r = client.get("/api/devices")
+        r = client.get("/api/project")
         assert r.status_code == 200
 
 
@@ -409,7 +409,7 @@ def test_library_routes_are_standard_tier():
         assert client.get("/api/library").status_code == 200
         assert client.get("/api/library/abc").status_code == 200
         # Third hit on a sibling standard-tier path should be throttled
-        r = client.get("/api/devices")
+        r = client.get("/api/project")
         assert r.status_code == 429
 
 
@@ -422,7 +422,7 @@ def _req_with_xff(peer_host: str, xff: str | None) -> Request:
     scope = {
         "type": "http",
         "method": "GET",
-        "path": "/api/devices",
+        "path": "/api/project",
         "headers": headers,
         "client": (peer_host, 5555),
         "query_string": b"",
@@ -451,8 +451,8 @@ def _from_peer(app, host: str) -> TestClient:
 def _second_hit(client: TestClient, xff: str | None) -> int:
     """Status of the second standard-tier request with the limit at one."""
     headers = {"X-Forwarded-For": xff} if xff is not None else {}
-    assert client.get("/api/devices", headers=headers).status_code == 200
-    return client.get("/api/devices", headers=headers).status_code
+    assert client.get("/api/project", headers=headers).status_code == 200
+    return client.get("/api/project", headers=headers).status_code
 
 
 def test_xff_ignored_by_default(monkeypatch):
@@ -501,9 +501,9 @@ def test_spoofed_xff_localhost_does_not_exempt(monkeypatch):
     with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
         _reset_state()
         spoof = {"X-Forwarded-For": "127.0.0.1"}
-        assert client.get("/api/devices", headers=spoof).status_code == 200
+        assert client.get("/api/project", headers=spoof).status_code == 200
         # Second hit must still be throttled — the spoof did NOT exempt it.
-        assert client.get("/api/devices", headers=spoof).status_code == 429
+        assert client.get("/api/project", headers=spoof).status_code == 429
 
 
 def test_spoofed_xff_localhost_does_not_exempt_behind_a_proxy_either(monkeypatch):
@@ -552,7 +552,7 @@ def test_clients_behind_a_listed_proxy_get_their_own_buckets(monkeypatch):
         _reset_state()
         client = _from_peer(_make_app(standard_limit=1), "10.0.0.5")
         assert _second_hit(client, "198.51.100.20") == 429
-        assert client.get("/api/devices", headers={"X-Forwarded-For": "198.51.100.21"}).status_code == 200
+        assert client.get("/api/project", headers={"X-Forwarded-For": "198.51.100.21"}).status_code == 200
 
 
 def test_clients_behind_an_unlisted_proxy_share_its_bucket(monkeypatch):
@@ -562,5 +562,17 @@ def test_clients_behind_an_unlisted_proxy_share_its_bucket(monkeypatch):
     with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
         _reset_state()
         client = _from_peer(_make_app(standard_limit=1), "10.0.0.5")
-        assert client.get("/api/devices", headers={"X-Forwarded-For": "198.51.100.20"}).status_code == 200
-        assert client.get("/api/devices", headers={"X-Forwarded-For": "198.51.100.21"}).status_code == 429
+        assert client.get("/api/project", headers={"X-Forwarded-For": "198.51.100.20"}).status_code == 200
+        assert client.get("/api/project", headers={"X-Forwarded-For": "198.51.100.21"}).status_code == 429
+
+
+def test_device_metadata_reads_use_bounded_control_budget():
+    app = _make_app(standard_limit=1)
+    client = TestClient(app)
+    with patch("openavc.config.RATE_LIMIT_CONTROL_PER_MINUTE", 3), patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
+        _reset_state()
+        assert client.get("/api/project").status_code == 200
+        assert client.get("/api/project").status_code == 429
+        for _ in range(3):
+            assert client.get("/api/devices/proj1").status_code == 200
+        assert client.get("/api/devices/proj1").status_code == 429

@@ -36,12 +36,15 @@ from openavc.api.models import (
     DriverDefinitionRequest,
 )
 from openavc.api.routes.python_drivers import remove_python_companions
-from openavc.drivers.driver_loader import COMPANION_SUFFIXES
+from openavc.drivers.driver_loader import (
+    COMPANION_SUFFIXES, declared_driver_info, require_mutable_driver_file,
+)
 from openavc.utils.logger import get_logger
 from openavc.drivers.registry import (
     list_registered_drivers,
     register_driver,
     registered_driver_classes,
+    require_mutable_driver,
     unregister_driver,
 )
 
@@ -143,26 +146,8 @@ def _declared_min_platform_version(filename: str, content: bytes) -> str | None:
     a file whose floor can't be read is a file that is about to fail to load
     anyway, and that message is the useful one.
     """
-    if filename.endswith(".py"):
-        import tempfile
-
-        from openavc.drivers.python_info import (
-            ExtractError,
-            extract_python_driver_info_full,
-        )
-
-        with tempfile.TemporaryDirectory() as tmp:
-            probe = Path(tmp) / filename
-            try:
-                probe.write_bytes(content)
-                info, _unevaluated = extract_python_driver_info_full(probe)
-            # ValueError covers both ways the source can be unreadable: a
-            # decode failure, and null bytes that ast.parse refuses outright.
-            except (ExtractError, OSError, ValueError):
-                return None
-        value = info.get("min_platform_version")
-        return value if isinstance(value, str) and value else None
-    return _peek_min_platform_version(content)
+    value = declared_driver_info(filename, content).get("min_platform_version")
+    return value if isinstance(value, str) and value else None
 
 
 def _enforce_declared_floor(declared: object) -> None:
@@ -602,6 +587,8 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
     )
     from openavc.drivers.configurable import create_configurable_driver_class
 
+    require_mutable_driver(body.driver_id)
+
     # min_platform_version supplied by the caller. The YAML body itself is
     # checked again after download (see _enforce_min_platform_version) so
     # callers like /api/discovery/install-and-match — which don't carry the
@@ -643,6 +630,7 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
             resp.raise_for_status()
             yaml_text = resp.text
             _verify_against_catalog(hashes, url, resp.content)
+            require_mutable_driver_file(filename, resp.content)
             filepath.write_bytes(resp.content)
     except httpx.HTTPStatusError as e:
         raise HTTPException(status_code=502, detail=f"GitHub returned {e.response.status_code}")
@@ -786,6 +774,7 @@ async def upload_driver(request: Request) -> dict[str, Any]:
     # hand-imported from a partner's website is the same file the catalog
     # install would have refused, and the systems this protects are exactly the
     # ones that have not updated.
+    require_mutable_driver_file(filename, content)
     _enforce_declared_floor(_declared_min_platform_version(filename, content))
 
     filepath = driver_repo / filename
@@ -949,6 +938,8 @@ async def upload_driver_bundle(request: Request) -> dict[str, Any]:
             ),
         )
     main_name = mains[0]
+    for name, data in entries.items():
+        require_mutable_driver_file(name, data)
 
     # Same gate as the single-file door, and for the same reason — asked
     # before the write loop so a refused bundle leaves the tree untouched.
@@ -1079,6 +1070,7 @@ async def list_installed_community_drivers() -> dict[str, Any]:
 @router.delete("/drivers/installed/{driver_id}")
 async def uninstall_driver(driver_id: str) -> dict[str, Any]:
     """Uninstall a driver from driver_repo/ and unregister from memory."""
+    require_mutable_driver(driver_id)
 
     # Safety check: don't allow uninstalling if devices are using this driver
     engine = _get_engine()
@@ -1167,6 +1159,7 @@ async def uninstall_driver(driver_id: str) -> dict[str, Any]:
 @router.post("/drivers/installed/{driver_id}/update")
 async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
     """Update an installed community driver to a newer version."""
+    require_mutable_driver(driver_id)
     import httpx
     from openavc.drivers.driver_loader import (
         load_driver_file,
@@ -1269,6 +1262,7 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
     # Check before the swap below unregisters the driver and deletes the old
     # file: a failed update must leave the working driver in place.
     _verify_against_catalog(hashes, file_url, new_bytes)
+    require_mutable_driver_file(new_filename, new_bytes)
 
     # For YAML drivers, also enforce the version pulled from the file itself
     # so a caller that omits min_platform_version still can't install an

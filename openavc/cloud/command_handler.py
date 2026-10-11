@@ -328,6 +328,11 @@ class CommandHandler:
         and verifies against the provided checksum. Otherwise falls back to
         checking GitHub Releases independently.
         """
+        from openavc.updater.host import get_firmware_host
+        firmware_host = get_firmware_host()
+        if firmware_host:
+            await self._send_result(request_id, False, error="firmware_managed", result=firmware_host.guidance)
+            return
         target_version = payload.get("target_version", "")
         auto_restart = payload.get("auto_restart", True)
         update_url = payload.get("update_url", "")

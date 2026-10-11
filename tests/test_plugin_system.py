@@ -828,15 +828,21 @@ class TestPluginLoader:
         assert state.get("plugin.sample.missing") is None
 
     @pytest.mark.asyncio
-    async def test_platform_incompatible(self, loader, wired):
-        state, _ = wired
+    @pytest.mark.parametrize("platform_id,compatible", [
+        ("linux_arm64", True), ("linux_x64", False),
+        ("win_x64", False), ("unknown", False),
+    ])
+    async def test_platform_compatibility(self, loader, monkeypatch, platform_id, compatible):
+        monkeypatch.setattr(loader, "_platform_id", platform_id)
         register_plugin_class(PlatformPlugin)
         plugins_config = {
             "platform_only": {"enabled": True, "config": {}},
         }
         await loader.start_plugins(plugins_config)
-        assert "platform_only" in loader._incompatible_plugins
-        assert loader.get_plugin_status("platform_only") == "incompatible"
+        assert ("platform_only" in loader._incompatible_plugins) is not compatible
+        assert loader.get_plugin_status("platform_only") == ("running" if compatible else "incompatible")
+        if compatible:
+            await loader.stop_all()
 
     @pytest.mark.asyncio
     async def test_stop_all(self, loader):

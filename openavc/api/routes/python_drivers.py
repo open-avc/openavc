@@ -32,9 +32,9 @@ from openavc.api._engine import _get_engine
 from openavc.api.auth import require_claimed_auth
 from openavc.api.errors import api_error as _api_error
 from openavc.api.models import PythonDriverCreateRequest
-from openavc.drivers.driver_loader import driver_companions
+from openavc.drivers.driver_loader import driver_companions, require_mutable_driver_file
 from openavc.utils.logger import get_logger
-from openavc.drivers.registry import register_driver, unregister_driver
+from openavc.drivers.registry import register_driver, require_mutable_driver, unregister_driver
 
 log = get_logger(__name__)
 
@@ -168,6 +168,7 @@ async def save_python_driver_source(driver_id: str, body: dict) -> dict:
     """
     from openavc.drivers.driver_loader import python_source_syntax_error
 
+    require_mutable_driver(driver_id)
     filepath = _safe_driver_path(driver_id)
     source = body.get("source")
     if source is None:
@@ -176,6 +177,7 @@ async def save_python_driver_source(driver_id: str, body: dict) -> dict:
     if not filepath.exists():
         raise HTTPException(status_code=404, detail=f"Python driver '{driver_id}' not found")
 
+    require_mutable_driver_file(filepath.name, source.encode("utf-8"))
     syntax = python_source_syntax_error(source, filepath.name)
     if syntax and body.get("require_valid_syntax"):
         return {"status": "error", "driver_id": driver_id, "saved": False, **syntax}
@@ -197,7 +199,9 @@ async def create_python_driver(body: PythonDriverCreateRequest) -> dict:
     """Create a new Python driver file."""
     from openavc.system_config import DRIVER_REPO_DIR
 
+    require_mutable_driver(body.id)
     filepath = _safe_driver_path(body.id)
+    require_mutable_driver_file(filepath.name, body.source.encode("utf-8"))
 
     # Ensure driver_repo/ exists
     DRIVER_REPO_DIR.mkdir(parents=True, exist_ok=True)
@@ -225,6 +229,7 @@ async def create_python_driver(body: PythonDriverCreateRequest) -> dict:
 @router.delete("/python-drivers/{driver_id}", dependencies=[Depends(require_claimed_auth)])
 async def delete_python_driver(driver_id: str) -> dict:
     """Delete a Python driver file."""
+    require_mutable_driver(driver_id)
     filepath = _safe_driver_path(driver_id)
 
     if not filepath.exists():
@@ -260,6 +265,7 @@ async def delete_python_driver(driver_id: str) -> dict:
 @router.post("/python-drivers/{driver_id}/reload", dependencies=[Depends(require_claimed_auth)])
 async def reload_python_driver_endpoint(driver_id: str) -> dict:
     """Hot-reload a Python driver and reconnect affected devices."""
+    require_mutable_driver(driver_id)
     filepath = _safe_driver_path(driver_id)
 
     if not filepath.exists():
@@ -267,6 +273,7 @@ async def reload_python_driver_endpoint(driver_id: str) -> dict:
 
     from openavc.drivers.driver_loader import reload_python_driver
 
+    require_mutable_driver_file(filepath.name, filepath.read_bytes())
     result = reload_python_driver(filepath)
 
     if result["status"] == "error":

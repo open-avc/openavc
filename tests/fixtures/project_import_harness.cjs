@@ -30,6 +30,7 @@ function makeDeps(overrides) {
     reloadProject: async () => { calls.push("reload"); return {}; },
     forceReload: async () => { calls.push("forceReload"); },
     isConflict: (e) => Boolean(e && e.__conflict),
+    errorMessage: (e) => e.message || String(e),
     onError: (m) => { calls.push("error:" + m); },
     ...overrides,
   };
@@ -60,7 +61,7 @@ async function main() {
       pass: ok === false &&
         !calls.includes("reload") && !calls.includes("forceReload") &&
         calls.includes("save") &&
-        calls.some((c) => c.startsWith("error:") && c.includes("isn't a valid OpenAVC project")),
+        calls.some((c) => c.startsWith("error:") && c.includes("API 422: bad shape")),
       detail: calls,
     };
   }

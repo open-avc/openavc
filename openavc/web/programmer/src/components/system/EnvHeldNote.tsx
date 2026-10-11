@@ -55,9 +55,10 @@ function whereToChange(variable: string, deploymentType: string): ReactNode {
 
 /** The line under a field the environment holds. Renders nothing for a field
  *  it does not hold. */
-export function EnvHeldNote({ variable, deploymentType, style }: {
+export function EnvHeldNote({ variable, deploymentType, configurationOwner, style }: {
   variable: string | undefined;
   deploymentType: string;
+  configurationOwner?: "firmware";
   style?: CSSProperties;
 }) {
   if (!variable) return null;
@@ -78,11 +79,15 @@ export function EnvHeldNote({ variable, deploymentType, style }: {
     >
       <Lock size={12} style={{ flexShrink: 0, marginTop: 3 }} aria-hidden />
       <span>
+        {configurationOwner === "firmware" ? <>
+          This setting is managed by the product's firmware. Contact product support if it needs to change.
+        </> : <>
         Set by <code>{variable}</code> in this server's environment, so it can't be changed here.
         {where && <> {where}</>}{" "}
         <a href={ENV_SETTINGS_DOCS_URL} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
           Setting values in the environment
         </a>
+        </>}
       </span>
     </span>
   );

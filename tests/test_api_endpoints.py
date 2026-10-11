@@ -27,6 +27,7 @@ def _make_mock_engine():
     state.set_event_bus(events)
 
     engine = MagicMock()
+    engine.installed_equipment.owns.return_value = False
     engine.state = state
     engine.events = events
     mock_devices = MagicMock()

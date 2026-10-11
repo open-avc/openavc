@@ -923,3 +923,54 @@ async def test_discovery_add_device_names_the_device_one_way(
     assert result["status"] == "ok"
     assert result["name"] == expected
     assert engine.project.devices[-1].name == expected
+
+
+@pytest.mark.parametrize("override,expected", [({}, 10443), ({"port": 11443}, 11443)])
+async def test_discovery_control_port_reaches_project_and_runtime(
+    tmp_path, monkeypatch, noop_discovery_driver, override, expected
+):
+    from openavc.api import discovery as api
+    from openavc.discovery.mdns_scanner import MDNSResult
+    from openavc.discovery.result import DiscoveredDevice
+
+    engine = _wire_add_device_env(tmp_path, monkeypatch)
+    observed = MDNSResult(ip="192.0.2.70", service_type="_acme-control._tcp.local.", port=10443)
+    api._get_engine().results[observed.ip] = DiscoveredDevice(
+        ip=observed.ip, evidence_log=observed.to_evidence_records()
+    )
+    monkeypatch.setattr(noop_discovery_driver, "discovered_control_port",
+                        classmethod(lambda cls, evidence: evidence[0]["data"]["port"]), raising=False)
+    result = await api.add_device(api.AddDeviceRequest(ip=observed.ip, driver_id="fake_disco_test", config=override))
+    assert engine.project.connections[result["device_id"]]["port"] == expected
+    assert engine.devices.get_device_config(result["device_id"])["config"]["port"] == expected
+
+
+@pytest.mark.parametrize("port", [True, 0, -1, 65536, 10443.0, "10443"])
+async def test_discovery_invalid_resolved_port_does_not_modify_project(
+    tmp_path, monkeypatch, noop_discovery_driver, port
+):
+    from fastapi import HTTPException
+    from openavc.api import discovery as api
+    from openavc.discovery.result import DiscoveredDevice
+
+    engine = _wire_add_device_env(tmp_path, monkeypatch)
+    api._get_engine().results["192.0.2.70"] = DiscoveredDevice(ip="192.0.2.70")
+    monkeypatch.setattr(noop_discovery_driver, "discovered_control_port", classmethod(lambda cls, evidence: port), raising=False)
+    with pytest.raises(HTTPException) as caught:
+        await api.add_device(api.AddDeviceRequest(ip="192.0.2.70", driver_id="fake_disco_test"))
+    assert caught.value.status_code == 422
+    assert engine.project.devices == [] and engine.project.connections == {}
+
+
+async def test_advertised_admin_port_does_not_override_ordinary_driver(
+    tmp_path, monkeypatch, noop_discovery_driver
+):
+    from openavc.api import discovery as api
+    from openavc.discovery.mdns_scanner import MDNSResult
+    from openavc.discovery.result import DiscoveredDevice
+
+    engine = _wire_add_device_env(tmp_path, monkeypatch)
+    observed = MDNSResult(ip="192.0.2.70", service_type="_http._tcp.local.", port=8088)
+    api._get_engine().results[observed.ip] = DiscoveredDevice(ip=observed.ip, evidence_log=observed.to_evidence_records())
+    result = await api.add_device(api.AddDeviceRequest(ip=observed.ip, driver_id="fake_disco_test"))
+    assert engine.project.connections[result["device_id"]]["port"] == 5000

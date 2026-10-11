@@ -109,12 +109,14 @@ export class ConflictError extends Error {
 
 export async function saveProject(
   project: ProjectConfig,
-  etag?: string
+  etag?: string,
+  mode: "edit" | "import" = "edit",
 ): Promise<{ status: string; etag?: string }> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (etag) headers["If-Match"] = etag;
 
-  const res = await fetch(`${BASE}/project`, {
+  const suffix = mode === "import" ? "?mode=import" : "";
+  const res = await fetch(`${BASE}/project${suffix}`, {
     method: "PUT",
     headers,
     body: await stringifyProject(project),

@@ -114,7 +114,12 @@ async def get_system_version() -> dict[str, Any]:
     from openavc.version import __version__
     from openavc.system_config import get_system_config
     cfg = get_system_config()
+    from openavc.updater.host import get_firmware_host
+    firmware_host = get_firmware_host()
+    ownership = ({"update_owner": "firmware", "firmware_version": firmware_host.firmware_version,
+                  "update_guidance": firmware_host.guidance} if firmware_host else {})
     return {
+        **ownership,
         "version": __version__,
         "channel": cfg.get("updates", "channel", "stable"),
         "platform": plat.system().lower(),
@@ -274,6 +279,9 @@ async def get_system_config_endpoint() -> dict[str, Any]:
         "overrides": cfg.env_overrides(),
     }
     data[LISTEN_KEY] = _listen_block(cfg)
+    from openavc.updater.host import get_firmware_host
+    if get_firmware_host():
+        data[ENVIRONMENT_KEY]["configuration_owner"] = "firmware"
     return data
 
 
@@ -418,6 +426,8 @@ def _env_held_conflicts(cfg: Any, body: dict[str, Any]) -> list[str]:
     environment's value into system.json. The two credentials are stored as
     digests, so a sent value cannot be compared and any change is refused.
     """
+    from openavc.updater.host import get_firmware_host
+    firmware_host = get_firmware_host()
     conflicts: list[str] = []
     for section_name, section_data in list(body.items()):
         if not isinstance(section_data, dict):
@@ -429,6 +439,12 @@ def _env_held_conflicts(cfg: Any, body: dict[str, Any]) -> list[str]:
             credential = section_name == "auth" and key in ("programmer_password", "api_key")
             if not credential and section_data[key] == cfg.get(section_name, key):
                 del section_data[key]
+                continue
+            if firmware_host:
+                conflicts.append(
+                    f"{section_name}.{key} is managed by the product's firmware. "
+                    "Contact product support if this setting needs to change."
+                )
                 continue
             conflicts.append(
                 f"{section_name}.{key} is set by {var} in this server's environment, "
@@ -455,6 +471,11 @@ async def update_system_config(request: Request) -> dict[str, Any]:
 
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="Body must be a JSON object")
+
+    from openavc.updater.host import get_firmware_host
+    firmware_host = get_firmware_host()
+    if firmware_host and "updates" in body:
+        raise HTTPException(status_code=409, detail=firmware_host.guidance)
 
     # Validate TLS section against the proposed post-patch state.
     if "tls" in body and isinstance(body["tls"], dict):

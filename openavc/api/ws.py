@@ -105,7 +105,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     requested_type = query_params.get("client", "panel")
 
     # Only allow known client types
-    if requested_type not in ("panel", "programmer"):
+    if requested_type not in ("panel", "programmer", "preview"):
         await ws.close(code=4003, reason="Unknown client type")
         return
 
@@ -113,11 +113,11 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     is_authenticated = check_ws_auth(
         query_params, headers, cloud_session_secret(ws)
     )
-    if requested_type == "programmer" and not is_authenticated:
+    if requested_type in ("programmer", "preview") and not is_authenticated:
         await ws.close(code=4001, reason="Authentication required")
         return
     # Panel clients cannot escalate to programmer even if they have auth
-    client_type = requested_type if is_authenticated else "panel"
+    client_type = "programmer" if requested_type == "programmer" and is_authenticated else "panel"
 
     # The panel gate (openavc/api/panel_access.py): a credential, the box's
     # own screen, a cloud tunnel, an approved panel cookie, or the open mode. A

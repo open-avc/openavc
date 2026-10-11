@@ -306,6 +306,7 @@ export interface CommunityMatch {
 }
 
 export interface MissingDriver {
+  built_in_equipment?: { model: string; device_names: string[] };
   driver_id: string;
   device_ids: string[];
   community_match: CommunityMatch | null;

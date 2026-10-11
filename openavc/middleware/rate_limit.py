@@ -259,17 +259,14 @@ def _classify(method: str, path: str) -> str:
         if path.startswith("/api/backups/") and "/restore" in path:
             return "strict"
 
-    # Control tier: authenticated commissioning operations. Hot during normal
-    # setup from a remote Programmer, so they get their own high budget
-    # instead of draining (or being 429'd by) the strict security window.
-    # Reads are left on the standard budget — it is the writes that come in
-    # bursts (a volume ramp, a driver test loop), and none of these families
-    # is polled over HTTP (scan progress arrives over the WebSocket).
-    if method != "GET":
-        if path == "/api/project" and method == "PUT":
-            return "control"
-        if any(_under(path, root) for root in _CONTROL_ROOTS):
-            return "control"
+    # Device setup reads the description, children, settings and driver metadata
+    # after each write. These protected routes share the commissioning budget;
+    # otherwise normal Add/Edit exhausts the unrelated standard read window.
+    if path == "/api/project" and method == "PUT":
+        return "control"
+    roots = ("/api/devices", "/api/discovery", "/api/drivers") if method in ("GET", "HEAD") else _CONTROL_ROOTS
+    if any(_under(path, root) for root in roots):
+        return "control"
 
     # Everything else on /api/ is standard
     return "standard"

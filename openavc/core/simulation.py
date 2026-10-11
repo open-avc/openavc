@@ -743,11 +743,11 @@ class SimulationManager:
         """The driver id of a device this run has no simulator for, else None.
 
         Derived rather than recorded: a device is unsimulated exactly when a
-        run is active and it never got a port. That covers the start path and
+        run selected the device and it never got a port. That covers the start path and
         every later sync from one place, so a refusal cannot be missed by a
         call site that forgot to note it.
         """
-        if not self._active or device_id in self._sim_ports:
+        if not self._active or device_id in self._sim_ports or device_id not in self._sim_payloads:
             return None
         config = self.engine.devices.get_device_config(device_id)
         if config is None:
@@ -982,6 +982,13 @@ class SimulationManager:
             )
             redirected.append(device_id)
 
+        # A selected driver without a simulator is disconnected too. The
+        # manager's active simulation guard prevents its physical reconnect,
+        # including commands declared available while offline.
+        redirected.extend(
+            did for did in self._sim_payloads
+            if did not in self._sim_ports and did in dm._devices
+        )
         await self._reconnect_all(redirected, "to simulator")
 
     async def _reconnect_all(self, device_ids: list[str], what: str) -> None:
@@ -1002,6 +1009,7 @@ class SimulationManager:
         stopping simulation on a large project paid the same per-device wait
         as starting it)."""
         dm = self.engine.devices
+        dm.unsimulated_driver = None
 
         restored: list[str] = []
         for device_id, orig in self._original_configs.items():
@@ -1014,6 +1022,10 @@ class SimulationManager:
             log.info("Restored %s to %s:%s", device_id, orig["host"], orig["port"])
             restored.append(device_id)
 
+        restored.extend(
+            did for did in self._sim_payloads
+            if did not in self._original_configs and did in dm._devices
+        )
         await self._reconnect_all(restored, "to real device")
 
     async def sync(self) -> None:
@@ -1173,6 +1185,9 @@ class SimulationManager:
         if not cfg:
             return
         recorded = self._device_sim_payload(device_id, cfg)
+        # Selection precedes startup: a refused or unreachable simulator must
+        # not leave a newly added device eligible for a physical connection.
+        self._sim_payloads[device_id] = recorded
         payload = dict(recorded)
         payload.pop("device_id", None)  # carried in the URL path
         log.info("Simulation sync: adding %s (driver=%s)", device_id, payload["driver_id"])
@@ -1185,7 +1200,6 @@ class SimulationManager:
             )
             if resp.status == 200:
                 started_ok = True
-                self._sim_payloads[device_id] = recorded
                 data = await resp.json()
                 sim_port = data.get("port", 0)
                 if sim_port:
@@ -1219,6 +1233,11 @@ class SimulationManager:
             # leak the instance + one of only 500 sim ports.
             if started_ok and device_id not in self._sim_ports:
                 await self._best_effort_stop(sim_api, device_id)
+        finally:
+            if device_id not in self._sim_ports and not dm.is_connect_deferred(device_id):
+                # The manager disconnects existing hardware and publishes the
+                # missing-simulator reason; the active guard refuses a redial.
+                await self._reconnect_quietly(device_id)
 
     def _redirect_device_to_sim(
         self, device_id: str, sim_port: int, sim_tls: bool = False

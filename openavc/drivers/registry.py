@@ -28,11 +28,29 @@ log = get_logger(__name__)
 
 # Driver registry — maps driver ID strings to driver classes
 _DRIVER_REGISTRY: dict[str, type[BaseDriver]] = {}
+_RESERVED_DRIVERS = set()
+
+
+def reserve_driver(driver_class):
+    driver_id = driver_class.DRIVER_INFO["id"]
+    _DRIVER_REGISTRY[driver_id] = driver_class
+    _RESERVED_DRIVERS.add(driver_id)
+
+
+def is_reserved_driver(driver_id):
+    return driver_id in _RESERVED_DRIVERS
+
+
+def require_mutable_driver(driver_id):
+    if is_reserved_driver(driver_id):
+        from openavc.core.installed_equipment import InstalledEquipmentError
+        raise InstalledEquipmentError("This integration is installed by the manufacturer and cannot be replaced or uninstalled.")
 
 
 def register_driver(driver_class: type[BaseDriver]) -> None:
     """Register a driver class in the global registry."""
     driver_id = driver_class.DRIVER_INFO.get("id", "")
+    require_mutable_driver(driver_id)
     if driver_id:
         _DRIVER_REGISTRY[driver_id] = driver_class
         log.debug(f"Registered driver: {driver_id}")
@@ -40,6 +58,7 @@ def register_driver(driver_class: type[BaseDriver]) -> None:
 
 def unregister_driver(driver_id: str) -> bool:
     """Remove a driver class from the global registry. Returns True if removed."""
+    require_mutable_driver(driver_id)
     removed = _DRIVER_REGISTRY.pop(driver_id, None) is not None
     if removed:
         log.info(f"Unregistered driver: {driver_id}")
@@ -84,6 +103,23 @@ def get_driver_default_config(driver_id: str) -> dict[str, Any]:
         return {}
     defaults = cls.DRIVER_INFO.get("default_config", {}) or {}
     return dict(defaults)
+
+
+def get_driver_discovery_port(driver_id: str, evidence: list[dict[str, Any]]) -> int | None:
+    """Resolve a control port only when the selected driver explicitly opts in.
+
+    An mDNS fingerprint may describe an admin or media service. Never treat
+    an arbitrary advertised/open port as the selected driver's control port.
+    The resolver inspects already-collected evidence without network I/O.
+    """
+    cls = _DRIVER_REGISTRY.get(driver_id)
+    resolver = getattr(cls, "discovered_control_port", None)
+    if not callable(resolver):
+        return None
+    port = resolver(evidence)
+    if port is not None and (type(port) is not int or not 1 <= port <= 65535):
+        raise ValueError("The discovered control port is invalid. Add the device manually with its configured port.")
+    return port
 
 
 def get_driver_transport(driver_id: str) -> str:
@@ -165,6 +201,7 @@ def list_registered_drivers() -> list[dict[str, Any]]:
             "actions": driver_class.DRIVER_INFO.get("actions", []),
             "quick_actions": driver_class.DRIVER_INFO.get("quick_actions", []),
             "child_entity_types": driver_class.DRIVER_INFO.get("child_entity_types", {}),
+            "manufacturer_installed": is_reserved_driver(driver_class.DRIVER_INFO.get("id", "")),
         }
         for driver_class in _DRIVER_REGISTRY.values()
     ]

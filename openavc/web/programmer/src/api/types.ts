@@ -594,6 +594,7 @@ export interface DriverInfo {
   name: string;
   manufacturer: string;
   category: string;
+  manufacturer_installed?: boolean;
   /** The models the driver lists, per manufacturer. */
   compatible_models?: CommunityDriver["compatible_models"];
   description?: string;
@@ -699,6 +700,9 @@ export interface DeviceConnectionTest {
 }
 
 export interface DeviceInfo {
+  ownership?: "manufacturer";
+  physical_identity?: string;
+  permitted_actions?: string[];
   id: string;
   name: string;
   driver: string;

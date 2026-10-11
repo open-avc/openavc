@@ -70,15 +70,17 @@ def _project(*devices: DeviceConfig, connections: dict | None = None) -> SimpleN
 async def listener():
     """A TCP server on loopback that counts the connections it accepts."""
     accepted: list[int] = []
+    accepted_event = asyncio.Event()
 
     async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         accepted.append(1)
+        accepted_event.set()
         writer.close()
 
     server = await asyncio.start_server(handle, "127.0.0.1", 0)
     port = server.sockets[0].getsockname()[1]
     try:
-        yield SimpleNamespace(port=port, accepted=accepted)
+        yield SimpleNamespace(port=port, accepted=accepted, accepted_event=accepted_event)
     finally:
         server.close()
         await server.wait_closed()
@@ -103,6 +105,7 @@ async def test_host_from_the_connections_table_and_port_from_the_driver(drivers,
     assert result["connection"] == {
         "transport": "tcp", "host": "127.0.0.1", "port": listener.port, "bridge": "",
     }
+    await asyncio.wait_for(listener.accepted_event.wait(), timeout=5)
     assert listener.accepted == [1]
 
 
@@ -116,6 +119,7 @@ async def test_the_rest_door_dials_the_same_address(drivers, listener, monkeypat
 
     assert result["success"] is True, result
     assert result["connection"]["port"] == listener.port
+    await asyncio.wait_for(listener.accepted_event.wait(), timeout=5)
     assert listener.accepted == [1]
 
 
@@ -259,6 +263,7 @@ async def test_an_ir_device_tests_the_bridge_it_sends_through(drivers, listener)
     assert result["connection"] == {
         "transport": "tcp", "host": "127.0.0.1", "port": listener.port, "bridge": "br",
     }
+    await asyncio.wait_for(listener.accepted_event.wait(), timeout=5)
     assert listener.accepted == [1]
 
 

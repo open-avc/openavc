@@ -12,6 +12,15 @@
 # MUST exit 0 always. Non-zero exit from ExecStartPre permanently stops the
 # service (Restart=always does NOT retry ExecStartPre failures).
 
+
+# Firmware ownership must be checked before any update marker is consumed.
+# The explicit argument covers supervisors that do not pass the server environment.
+FIRMWARE_HOST="${3:-${OPENAVC_FIRMWARE_HOST:-/etc/openavc-firmware-host.json}}"
+if [ "${3+x}" = x ] || [ "${OPENAVC_FIRMWARE_HOST+x}" = x ] || [ -e "$FIRMWARE_HOST" ] || [ -L "$FIRMWARE_HOST" ]; then
+    echo "OpenAVC updates are managed through the product's firmware update settings."
+    exit 0
+fi
+
 DATA_DIR="${1:-/var/lib/openavc}"
 APP_DIR="${2:-/opt/openavc}"
 UPDATE_FILE="$DATA_DIR/apply-update.json"

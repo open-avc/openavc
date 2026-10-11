@@ -60,6 +60,41 @@ DRIVER_EXTENSION = ".avcdriver"
 COMPANION_SUFFIXES: tuple[str, ...] = ("_discovery.py", "_sim.py")
 
 
+def declared_driver_info(filename: str, content: bytes) -> dict[str, Any]:
+    """Read declarative metadata before writing a driver, without executing it.
+
+    Incomplete source remains saveable in Code. Dynamically computed metadata
+    cannot be established here; registration still enforces reserved identity.
+    This is a workflow guard, not a sandbox for imported Python code.
+    """
+    if filename.endswith(".py"):
+        from openavc.drivers.python_info import ExtractError, extract_python_driver_info_full
+
+        with tempfile.TemporaryDirectory() as tmp:
+            probe = Path(tmp) / Path(filename).name
+            try:
+                probe.write_bytes(content)
+                info, _opaque = extract_python_driver_info_full(probe)
+                return info
+            except (ExtractError, OSError, ValueError):
+                return {}
+    try:
+        info = yaml.safe_load(content)
+    except (yaml.YAMLError, ValueError):
+        return {}
+    return info if isinstance(info, dict) else {}
+
+
+def require_mutable_driver_file(filename: str, content: bytes) -> None:
+    """Refuse a protected filename or declared identity before filesystem writes."""
+    from openavc.drivers.registry import require_mutable_driver
+
+    require_mutable_driver(Path(filename).stem)
+    driver_id = declared_driver_info(filename, content).get("id")
+    if isinstance(driver_id, str):
+        require_mutable_driver(driver_id)
+
+
 def driver_companions(main_path: Path) -> list[Path]:
     """Existing simulator and discovery siblings belonging to this driver.
 
@@ -538,7 +573,10 @@ def load_builtin_drivers() -> int:
         DRIVER_DEFINITIONS_DIR,
         DRIVER_REPO_DIR,
     ]
-    loaded = load_all_drivers(driver_dirs)
+    from openavc.drivers.equipment import EquipmentDriver
+
+    register_driver(EquipmentDriver)
+    loaded = 1 + load_all_drivers(driver_dirs)
     if loaded:
         log.info(f"Loaded {loaded} driver(s) from definition/driver files")
     return loaded
@@ -558,6 +596,8 @@ def save_driver_definition(
     directory.mkdir(parents=True, exist_ok=True)
 
     driver_id = driver_def.get("id", "unknown")
+    from openavc.drivers.registry import require_mutable_driver
+    require_mutable_driver(driver_id)
     # Sanitize filename
     safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in driver_id)
     filepath = directory / f"{safe_id}{DRIVER_EXTENSION}"
@@ -616,6 +656,9 @@ def is_builtin_driver(
     precedence and is freely editable, so we only treat an id as a protected
     built-in when its only on-disk file is under the definitions tree.
     """
+    from openavc.drivers.registry import is_reserved_driver
+    if is_reserved_driver(driver_id):
+        return True
     builtin_match = False
     user_match = False
     for dir_path in directories:

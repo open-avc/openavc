@@ -433,6 +433,7 @@ class MDNSResult:
             service_type=self.service_type,
             txt=self.txt_records or None,
             instance_name=self.instance_name,
+            port=self.port,
         )
 
     def to_evidence_records(self) -> list:
@@ -450,6 +451,7 @@ class MDNSResult:
                 service_type=svc.service_type,
                 txt=svc.txt_records or None,
                 instance_name=svc.instance_name,
+                port=svc.port,
             )
             for svc in self.service_list()
             if svc.service_type

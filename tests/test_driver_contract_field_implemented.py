@@ -85,6 +85,7 @@ recording while the check could not tell the difference. It can.
 
 from __future__ import annotations
 
+import ast
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -368,6 +369,30 @@ def _anchors_by_block() -> dict[str | None, frozenset[str]]:
     }
 
 
+def _without_driver_declarations(source: str) -> str:
+    """A built-in driver's schema declares fields; it does not implement them.
+
+    Keep the rest of its code in the scan, including actual field reads.
+    """
+    lines = source.splitlines(keepends=True)
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "DRIVER_INFO"
+            for target in node.targets
+        ):
+            for index in range(node.lineno - 1, node.end_lineno):
+                lines[index] = "\n"
+    return "".join(lines)
+
+
+def test_driver_declarations_do_not_count_as_contract_implementation():
+    source = 'class Driver:\n    DRIVER_INFO = {"source_url": "https://example.invalid", "advanced": True}\n    def read(self, rule):\n        return rule.get("required")\n'
+    scanned = _without_driver_declarations(source)
+    assert "source_url" not in scanned
+    assert "advanced" not in scanned
+    assert 'rule.get("required")' in scanned
+
+
 @lru_cache(maxsize=1)
 def _runtime_source() -> tuple[str, ...]:
     """One string per file — scoping asks whether a SINGLE file holds both
@@ -380,7 +405,7 @@ def _runtime_source() -> tuple[str, ...]:
         if path.relative_to(REPO_ROOT).as_posix() not in NOT_AN_IMPLEMENTATION
     ]
     assert len(paths) > 100, "runtime source went missing — the search is wrong"
-    return tuple(path.read_text(encoding="utf-8") for path in paths)
+    return tuple(_without_driver_declarations(path.read_text(encoding="utf-8")) for path in paths)
 
 
 @lru_cache(maxsize=1)

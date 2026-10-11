@@ -119,6 +119,7 @@ export function connect(): void {
   };
 
   socket.onclose = (ev) => {
+    if (ev.code === 4013) { window.location.reload(); return; }
     socket = null;
     for (const handler of disconnectHandlers) {
       handler();

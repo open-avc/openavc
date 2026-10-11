@@ -133,6 +133,42 @@ def close_all(sockets: list[socket.socket]) -> None:
             sock.close()
 
 
+def inherited_for_plan(value: str, plan: Any, port: int) -> list[socket.socket]:
+    """Adopt a firmware supervisor's listeners only for the current listen plan.
+
+    The supervisor keeps its own copies until this process has exited, so its
+    readiness probes cannot accidentally reach an unrelated replacement listener.
+    Every selected address must be present; no extra address may be exposed.
+    """
+    descriptors = [int(item) for item in value.split(",")]
+    sockets: list[socket.socket] = []
+    try:
+        for descriptor in dict.fromkeys(descriptors):
+            sockets.append(socket.socket(fileno=descriptor))
+        if len(sockets) != len(descriptors):
+            raise RuntimeError("Inherited listeners must have distinct descriptors and addresses")
+        expected = {
+            (family, address)
+            for host in plan.hosts
+            for family, _, _, _, address in socket.getaddrinfo(
+                host, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE,
+            )
+        }
+        actual = set()
+        for listener in sockets:
+            if (listener.family not in {socket.AF_INET, socket.AF_INET6}
+                    or listener.type != socket.SOCK_STREAM
+                    or listener.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN) != 1):
+                raise RuntimeError("Inherited listener does not match the configured listening address")
+            actual.add((listener.family, listener.getsockname()))
+        if actual != expected or len(actual) != len(descriptors):
+            raise RuntimeError("Inherited listener does not match the configured listening address")
+        return sockets
+    except BaseException:
+        close_all(sockets)
+        raise
+
+
 def bind_for_plan(
     plan: Any,
     port: int,

@@ -68,6 +68,15 @@ export function DeviceView() {
 
   const stateVersion = useConnectionStore((s) => s.stateVersion);
   const deviceConfigs = devices ?? [];
+  const [removableIds, setRemovableIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let active = true;
+    setRemovableIds(new Set());
+    api.listDevices().then(items => {
+      if (active) setRemovableIds(new Set(items.filter(item => item.ownership !== "manufacturer").map(item => item.id)));
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [devices]);
 
   // Bridge topology: each bridge device, its advertised ports, and which
   // devices are bound to each port (from the connections table). Drives the
@@ -184,7 +193,7 @@ export function DeviceView() {
 
   const handleBulkDelete = useCallback(() => {
     const project = useProjectStore.getState().project;
-    if (!project || selectedIds.size === 0) return;
+    if (!project || selectedIds.size === 0 || [...selectedIds].some(id => !removableIds.has(id))) return;
     const allRefs: string[] = [];
     for (const id of selectedIds) {
       allRefs.push(...findDeviceReferences(project, id));
@@ -200,10 +209,11 @@ export function DeviceView() {
       </>
     );
     setBulkDeleteConfirm({ message });
-  }, [selectedIds]);
+  }, [selectedIds, removableIds]);
 
   const doBulkDelete = useCallback(async () => {
     setBulkDeleteConfirm(null);
+    if ([...selectedIds].some(id => !removableIds.has(id))) return;
     for (const id of selectedIds) {
       try {
         await api.deleteDevice(id);
@@ -215,7 +225,7 @@ export function DeviceView() {
     setSelectedIds(new Set());
     setBulkMode(false);
     reloadProject();
-  }, [selectedIds, selectedId, reloadProject]);
+  }, [selectedIds, removableIds, selectedId, reloadProject]);
 
   const handleBulkToggle = useCallback(
     async (enabled: boolean) => {
@@ -503,9 +513,15 @@ export function DeviceView() {
               >
                 Online
               </button>
+              {[...selectedIds].some(id => !removableIds.has(id)) && (
+                <span role="status" style={{ color: "var(--text-secondary)" }}>
+                  Delete is unavailable while the selection includes built-in equipment or device details are loading.
+                </span>
+              )}
               <span style={{ color: "var(--border-color)" }}>|</span>
               <button
                 onClick={handleBulkDelete}
+                disabled={selectedIds.size === 0 || [...selectedIds].some(id => !removableIds.has(id))}
                 style={{
                   padding: "2px var(--space-sm)",
                   borderRadius: "var(--border-radius)",
@@ -605,6 +621,7 @@ export function DeviceView() {
                     <input
                       type="checkbox"
                       data-bulk-cb=""
+                      title="Select device"
                       checked={isChecked}
                       onChange={() => toggleSelection(dev.id)}
                       style={{

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Download, ExternalLink, RefreshCw } from "lucide-react";
 import { Dialog } from "./Dialog";
-import { candidateOrigins, healthProbeUrl, shouldEnterCertError } from "./restartPollHelpers";
+import { healthProbeUrl, shouldEnterCertError } from "./restartPollHelpers";
 import * as api from "../../api/restClient";
 import { parseApiError } from "../../api/errors";
 
@@ -62,18 +62,11 @@ export function RestartProgressDialog({
       await new Promise((r) => setTimeout(r, INITIAL_WAIT_MS));
       if (cancelled) return;
 
-      // Step 3: poll until /api/health responds or we hit the cap. Probe the
-      // config-derived origin AND the current page origin — so a direct-access
-      // port/scheme change succeeds via config, while a restart behind a
-      // reverse proxy or the cloud tunnel (where config ports are internal and
-      // unreachable) succeeds via the current origin (see candidateOrigins).
+      // Step 3: poll only the expected public address. A second healthy
+      // listener on the configured internal port might be another server.
       setPhase("polling");
       const targetPath = new URL(targetUrl).pathname; // "/programmer"
-      const origins = candidateOrigins(
-        new URL(targetUrl).origin,
-        window.location.origin,
-        isProtocolSwitch,
-      );
+      const origins = [new URL(targetUrl).origin];
       let consecutiveFailures = 0;
       for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
         if (cancelled) return;

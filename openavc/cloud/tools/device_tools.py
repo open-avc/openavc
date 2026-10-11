@@ -86,6 +86,16 @@ class DeviceToolsMixin:
         device_id = input.get("device_id", "")
         from openavc.core.project_loader import DeviceConfig
 
+        policy = getattr(engine, "installed_equipment", None)
+        if policy and policy.manifest and input.get("driver") == policy.driver_id and not policy.owns(device_id):
+            if input.get("config"):
+                return {"error": "Built-in equipment uses its manufacturer connection. Select it without connection overrides."}
+            try:
+                await engine.reassign_installed_equipment(device_id, name=input.get("name"), enabled=input.get("enabled"))
+            except ValueError as error:
+                return {"error": str(error)}
+            return {"status": "updated", "device_id": device_id}
+
         # The edit is diffed against the live project, and the devices
         # reconcile hot-swaps the runtime device from the resolved
         # (connection-table-merged) config.
@@ -176,6 +186,10 @@ class DeviceToolsMixin:
         if not engine or not engine.project:
             return {"error": "No project loaded"}
         device_id = input.get("device_id", "")
+        try:
+            engine.installed_equipment.refuse_removal(device_id)
+        except ValueError as error:
+            return {"error": str(error)}
         # Collect impact before deleting
         impact = self._find_references("device", device_id)
 
@@ -363,6 +377,9 @@ class DeviceToolsMixin:
         device = next((d for d in engine.project.devices if d.id == device_id), None)
         if device is None:
             return {"success": False, "error": f"Device '{device_id}' not found", "latency_ms": None}
+        policy = getattr(engine, "installed_equipment", None)
+        if policy is not None and policy.owns(device_id):
+            return await policy.test_connection()
         return await run_connection_test(device, engine)
 
     async def _get_device_settings(self, input: dict) -> Any:

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Dialog } from "./Dialog";
+import { BuiltInEquipmentNotice } from "./BuiltInEquipmentNotice";
 import type { MissingDriver } from "../../api/deviceClient";
 import { installMissingDrivers } from "../../api/deviceClient";
 import { showSuccess, showError } from "../../store/toastStore";
@@ -13,7 +14,8 @@ interface MissingDriversModalProps {
 
 export function MissingDriversModal({ missing, onClose, onInstalled }: MissingDriversModalProps) {
   const installable = missing.filter((m) => m.community_match !== null);
-  const uncatalogued = missing.filter((m) => m.community_match === null);
+  const unavailableBuiltIn = missing.filter((m) => m.built_in_equipment);
+  const uncatalogued = missing.filter((m) => m.community_match === null && !m.built_in_equipment);
 
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(installable.map((m) => m.driver_id))
@@ -194,6 +196,18 @@ export function MissingDriversModal({ missing, onClose, onInstalled }: MissingDr
         </div>
       )}
 
+      {unavailableBuiltIn.length > 0 && (
+        <div style={{ marginBottom: "var(--space-md)", fontSize: "var(--font-size-sm)" }}>
+          <div style={{ fontWeight: 600 }}>Built-in equipment unavailable</div>
+          <ul>
+            {unavailableBuiltIn.flatMap((m) => m.built_in_equipment!.device_names.map((name, index) => (
+              <li key={`${m.driver_id}-${index}`}>{name}</li>
+            )))}
+          </ul>
+          <BuiltInEquipmentNotice />
+        </div>
+      )}
+
       {uncatalogued.length > 0 && (
         <div style={{ marginBottom: "var(--space-md)" }}>
           <div style={{ fontWeight: 600, marginBottom: "var(--space-xs)", fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
@@ -235,7 +249,7 @@ export function MissingDriversModal({ missing, onClose, onInstalled }: MissingDr
         >
           Skip
         </button>
-        <button
+        {(installable.length > 0 || unavailableBuiltIn.length === 0) && <button
           onClick={handleInstall}
           disabled={installing || selected.size === 0}
           style={{
@@ -251,7 +265,7 @@ export function MissingDriversModal({ missing, onClose, onInstalled }: MissingDr
           {installing
             ? "Installing..."
             : `Install ${selected.size > 0 ? selected.size : ""} driver${selected.size === 1 ? "" : "s"}`}
-        </button>
+        </button>}
       </div>
     </Dialog>
   );

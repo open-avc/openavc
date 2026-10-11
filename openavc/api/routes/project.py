@@ -1,7 +1,7 @@
 """Project, library, backup, and log REST API endpoints."""
 
 import json
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -304,12 +304,14 @@ async def dismiss_recovery_notice() -> dict[str, Any]:
 
 
 @router.put("/project")
-async def save_project_config(request: Request) -> dict[str, Any]:
+async def save_project_config(request: Request, mode: Literal["edit", "import"] = "edit") -> dict[str, Any]:
     """Save a full project configuration, then reload.
 
     Supports optimistic concurrency via If-Match header containing the
     ETag from a previous GET.  A mismatch means another client saved
-    since this client last loaded — returns 409 Conflict.
+    since this client last loaded — returns 409 Conflict. The Import action
+    passes mode=import to load a replacement project; ordinary saves retain
+    active built-in reference protections. Both paths validate before writing.
     """
     max_body = 10 * 1024 * 1024
     content_length = request.headers.get("content-length")
@@ -383,9 +385,20 @@ async def save_project_config(request: Request) -> dict[str, Any]:
     # increments the revision — checked here, two concurrent saves could
     # both pass and one edit would be silently lost.
     try:
-        new_revision = await engine.apply_project(
-            project, expected_revision=expected_rev
-        )
+        if mode == "import":
+            from openavc.core.installed_equipment import InstalledEquipmentError
+            from openavc.core.project_diff import ProjectOrigin
+
+            try:
+                new_revision = await engine.apply_project(
+                    project, expected_revision=expected_rev, origin=ProjectOrigin.LOAD
+                )
+            except InstalledEquipmentError as error:
+                raise HTTPException(status_code=422, detail=str(error)) from error
+        else:
+            new_revision = await engine.apply_project(
+                project, expected_revision=expected_rev
+            )
     except ProjectRevisionConflictError as e:
         # The engine's own sentence: it is the half that knows whether another
         # writer landed a save or the caller's token is simply from an earlier
@@ -581,6 +594,7 @@ async def export_library_project(project_id: str):
 async def import_library_project(request: Request) -> dict[str, Any]:
     """Upload a .avc or .zip file to the project library."""
     from openavc.core.project_library import ProjectExistsError, import_project
+    from openavc.core.installed_equipment import InstalledEquipmentError
 
     form = await request.form()
     upload = form.get("file")
@@ -596,6 +610,8 @@ async def import_library_project(request: Request) -> dict[str, Any]:
 
     try:
         result = import_project(content, filename, override_id)
+    except InstalledEquipmentError:
+        raise
     except ProjectExistsError as e:
         raise _api_error(
             409,
@@ -787,6 +803,9 @@ async def restore_backup(filename: str) -> dict[str, Any]:
     # Create a backup before restoring
     import asyncio
     await asyncio.to_thread(create_backup, engine.project_path, "Before restore")
+
+    from openavc.core.installed_equipment import validate_backup
+    validate_backup(backup_path)
 
     # Stop the state persister first so its pending debounced flush (up to a 1s
     # window) can't overwrite the state.json we're about to restore.

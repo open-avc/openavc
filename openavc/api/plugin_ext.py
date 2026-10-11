@@ -388,6 +388,14 @@ def _ext_prefix(plugin_id: str) -> str:
     return f"/api/plugins/{plugin_id}/ext"
 
 
+def _mark_interface_routes(app, previous, plugin_id, surface):
+    # Mark the actual mounted route objects, including short guest aliases.
+    # A URL resembling a plugin path is not an authority declaration.
+    for route in app.router.routes:
+        if id(route) not in previous:
+            route._sdk_plugin_surface = (surface, plugin_id)
+
+
 def mount_plugin_router(
     app, plugin_id: str, router, panel_paths=None, media_paths=None,
 ) -> None:
@@ -412,11 +420,13 @@ def mount_plugin_router(
     # Drop any previously-mounted routes for this plugin first so a
     # stop→start (e.g. config change) doesn't leave stale duplicates.
     unmount_plugin_router(app, plugin_id)
+    previous = {id(route) for route in app.router.routes}
     app.include_router(
         router,
         prefix=prefix,
         dependencies=[Depends(require_plugin_access(plugin_id))],
     )
+    _mark_interface_routes(app, previous, plugin_id, "ext")
     if parsed_media:
         _rate_limit.register_media_patterns(prefix, parsed_media)
     if parsed_panel:
@@ -457,7 +467,9 @@ def mount_plugin_guest_router(app, plugin_id: str, router, alias: str | None = N
     """
     prefix = _guest_prefix(plugin_id)
     unmount_plugin_guest_router(app, plugin_id)
+    previous = {id(route) for route in app.router.routes}
     app.include_router(router, prefix=prefix)
+    _mark_interface_routes(app, previous, plugin_id, "guest")
     log.info("Mounted plugin '%s' guest HTTP router at %s/*", plugin_id, prefix)
     if alias:
         _mount_guest_alias(app, plugin_id, router, alias)
@@ -507,7 +519,9 @@ def _mount_guest_alias(app, plugin_id: str, router, alias: str) -> None:
                 alias, plugin_id, getattr(r, "path", "?"),
             )
             return
+    previous = {id(route) for route in app.router.routes}
     app.include_router(router, prefix=f"/{alias}")
+    _mark_interface_routes(app, previous, plugin_id, "guest")
     _active_aliases[alias] = plugin_id
     _rate_limit.register_standard_prefix(f"/{alias}")
     log.info("Mounted plugin '%s' guest alias at /%s/*", plugin_id, alias)

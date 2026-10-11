@@ -259,7 +259,7 @@ def _clean_buckets():
 
 def test_tunneled_traffic_is_rate_limited():
     client = _loopback_client(_limited_app())
-    with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
+    with patch("openavc.config.RATE_LIMIT_CONTROL_PER_MINUTE", 1):
         assert client.get("/api/devices", headers=TUNNEL_HEADERS).status_code == 200
         assert client.get("/api/devices", headers=TUNNEL_HEADERS).status_code == 429
 
@@ -268,7 +268,7 @@ def test_console_traffic_is_still_exempt():
     """The exemption exists because the primary deployment is one person on the
     box. That must survive the fix."""
     client = _loopback_client(_limited_app())
-    with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 1):
+    with patch("openavc.config.RATE_LIMIT_CONTROL_PER_MINUTE", 1):
         for _ in range(5):
             assert client.get("/api/devices").status_code == 200
     assert TUNNEL_BUCKET_KEY not in _ip_buckets
@@ -289,7 +289,7 @@ def test_lan_client_cannot_claim_the_tunnel_bucket():
     """Believing the marker from any source would let any LAN client exhaust
     the tunnel's shared budget and take remote access down."""
     client = TestClient(_limited_app(), client=("203.0.113.9", 5555))
-    with patch("openavc.config.RATE_LIMIT_STANDARD_PER_MINUTE", 2):
+    with patch("openavc.config.RATE_LIMIT_CONTROL_PER_MINUTE", 2):
         assert client.get("/api/devices", headers=TUNNEL_HEADERS).status_code == 200
     assert TUNNEL_BUCKET_KEY not in _ip_buckets
     assert "203.0.113.9" in _ip_buckets

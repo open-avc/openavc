@@ -24,4 +24,9 @@ async def apply_tool_edit(engine, mutate) -> dict | None:
         await engine.apply_project_edit(mutate)
     except ToolEditError as e:
         return e.result
+    except ValueError as e:
+        from openavc.core.installed_equipment import InstalledEquipmentError
+        if isinstance(e, InstalledEquipmentError):
+            return {"error": str(e)}
+        raise
     return None

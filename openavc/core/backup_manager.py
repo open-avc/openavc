@@ -392,6 +392,8 @@ def restore_from_backup(backup_path: Path, project_file: Path) -> None:
     if not backup_path.exists():
         raise FileNotFoundError(f"Backup not found: {backup_path}")
 
+    from openavc.core.installed_equipment import validate_backup
+    validate_backup(backup_path)
     project_dir = project_file.parent
 
     with _project_save_lock:

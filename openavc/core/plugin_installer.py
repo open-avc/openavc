@@ -15,6 +15,8 @@ byte stream can do to us.
 """
 
 import asyncio
+import importlib
+import importlib.util
 import os
 import re
 import shutil
@@ -566,6 +568,18 @@ def _parse_native_deps(plugin_dir: Path) -> list[dict]:
     return []
 
 
+def _clear_installed_bytecode(plugin_dir: Path) -> None:
+    """Discard caches for replaced source, including PYTHONPYCACHEPREFIX.
+
+    A same-size update within one timestamp second otherwise reuses the old
+    code. Moving the old directory only removes an adjacent __pycache__, not
+    a cache outside that directory. Clear helpers too, including lazy imports.
+    """
+    for source in plugin_dir.rglob("*.py"):
+        Path(importlib.util.cache_from_source(str(source))).unlink(missing_ok=True)
+    importlib.invalidate_caches()
+
+
 def _register_installed_plugin(plugin_id: str, plugin_dir: Path) -> str | None:
     """Try to import and register a newly installed plugin.
 
@@ -579,6 +593,12 @@ def _register_installed_plugin(plugin_id: str, plugin_dir: Path) -> str | None:
     helper modules import via relative imports and can't collide with another
     plugin's same-named helpers in sys.modules (A388).
     """
+    try:
+        _clear_installed_bytecode(plugin_dir)
+    except OSError as exc:
+        return f"OpenAVC could not refresh cached plugin code. Check write access to the Python cache directory, then retry: {exc}"
+    # Refresh the whole package before loading the new entry and its helpers.
+    _purge_plugin_modules(f"plugin_{plugin_dir.name}")
     # Add .deps to sys.path. Append (don't insert at 0) so a bundled plugin
     # dependency can't shadow a stdlib or first-party module — .deps holds
     # extra packages plugins need, not overrides of ours.
@@ -747,6 +767,15 @@ async def update_plugin(plugin_id: str, file_url: str) -> dict[str, Any]:
         plugin_dir = PLUGIN_REPO_DIR / plugin_id
         if not plugin_dir.exists():
             raise ValueError(f"Plugin '{plugin_id}' is not installed")
+
+        # Refuse an unwritable cache before changing the working installation.
+        # Registration clears newly loaded/rollback caches again after install.
+        try:
+            _clear_installed_bytecode(plugin_dir)
+        except OSError as exc:
+            raise ValueError(
+                "OpenAVC could not refresh cached plugin code. Check write access to the Python cache directory, then retry."
+            ) from exc
 
         # Move the working copy aside (hidden name so list_installed_plugins
         # skips it). os.replace is an atomic same-dir rename.

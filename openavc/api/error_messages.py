@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from openavc.drivers.command_outcome import CommandOutcomeError
+
 if TYPE_CHECKING:
     from openavc.core.project_loader import ProjectConfig
     from openavc.core.state_store import StateStore
@@ -44,6 +46,9 @@ def friendly_error(exc: Exception, device: str = "", host: str = "") -> str:
     Returns:
         A human-readable error string with actionable guidance.
     """
+    if isinstance(exc, CommandOutcomeError):
+        return str(exc)
+
     device_label = f" '{device}'" if device else ""
     host_label = host or "the device"
 

@@ -61,6 +61,11 @@ export async function getRecentLogs(
 // --- System Updates ---
 
 export interface UpdateStatus {
+  update_owner?: "firmware";
+  firmware_version?: string;
+  update_guidance?: string;
+  update_check_available?: boolean;
+  host_configuration_valid?: boolean;
   current_version: string;
   deployment_type: string;
   can_self_update: boolean;
@@ -84,6 +89,11 @@ export interface UpdateStatus {
 }
 
 export interface UpdateCheckResult {
+  update_owner?: "firmware";
+  firmware_version?: string;
+  update_guidance?: string;
+  update_check_available?: boolean;
+  host_configuration_valid?: boolean;
   update_available: boolean;
   current_version: string;
   available_version?: string;
@@ -291,10 +301,15 @@ export interface SystemConfig {
    *  fields its environment holds (`"network.bind_address": "OPENAVC_BIND"`).
    *  The server runs with a held value whatever system.json says and refuses
    *  a change to one. */
-  _environment?: { deployment_type: string; overrides: Record<string, string> };
+  _environment?: { deployment_type: string; overrides: Record<string, string>; configuration_owner?: "firmware" };
 }
 
 export async function getSystemVersion(): Promise<{
+  update_owner?: "firmware";
+  firmware_version?: string;
+  update_guidance?: string;
+  update_check_available?: boolean;
+  host_configuration_valid?: boolean;
   version: string;
   channel: string;
   platform: string;

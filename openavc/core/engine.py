@@ -111,7 +111,12 @@ class Engine:
         self._panel_sweep_task: asyncio.Task | None = None
         # Panel interaction runtime (peer of the macro engine, see ui_events)
         self.ui_events = UIEventRuntime(self)
+        from openavc.core.installed_equipment import InstalledEquipment
+        self.installed_equipment = InstalledEquipment.from_environment()
+        self.installed_equipment.project_provider = lambda: self.project
+        self.installed_equipment.register()
         self.devices = DeviceManager(self.state, self.events)
+        self.devices.installed_equipment = self.installed_equipment
         # A driver reload re-adds its devices undialed and asks for a bring-up
         # round, so the simulation redirect lands before the first connect.
         self.devices.request_bringup = self._schedule_device_bringup
@@ -182,9 +187,9 @@ class Engine:
         self._reload_lock = asyncio.Lock()
 
         # Deferred bookkeeping persists (see persist_bookkeeping_change):
-        # queued (mutate, on_error) pairs and the task that flushes them
+        # queued mutation, rollback and saved callbacks and the task that flushes them
         # outside the reconcile lock.
-        self._bookkeeping_queue: list[tuple[Any, Any]] = []
+        self._bookkeeping_queue: list[tuple[Any, Any, Any]] = []
         self._bookkeeping_task: asyncio.Task | None = None
 
         # Device bring-up after a project change (see
@@ -335,7 +340,12 @@ class Engine:
         self.help.declare_keys()
 
         # Load project — with corruption recovery
-        self.project = self._load_project_safe()
+        loaded_project = self._load_project_safe()
+        self.project = self.installed_equipment.compose(loaded_project, for_load=True)
+        # Exports and backups read the saved project. Materialize a newly
+        # inserted host reference before any hardware or programming starts.
+        if self.project != loaded_project:
+            await save_project_async(self.project_path, self.project)
         # Whatever that had to do to get a project, say so. Published from the
         # record on disk rather than from this boot, so a notice nobody has
         # dismissed survives the restart that would otherwise bury it.
@@ -719,6 +729,27 @@ class Engine:
                 new_project, None, ProjectOrigin.EDIT, persist=True
             )
 
+    async def reassign_installed_equipment(self, device_id, *, name=None, enabled=None) -> str:
+        """Explicitly apply a product's built-in equipment to existing programming."""
+        async with self._reload_lock:
+            proposed = self.project.model_copy(deep=True)
+            target = next((device for device in proposed.devices if self.installed_equipment.matches(device)), None)
+            if target is None:
+                raise ValueError("This server has no built-in equipment to assign.")
+            information = self.devices.get_device_info(target.id)
+            previous_id = self.installed_equipment.reassign(proposed, device_id, information, self.project_path.parent / "scripts")
+            selected = next(device for device in proposed.devices if device.id == device_id)
+            values = selected.model_dump()
+            if name is not None:
+                values["name"] = name
+            if enabled is not None:
+                values["enabled"] = enabled
+            proposed.devices[proposed.devices.index(selected)] = type(selected).model_validate(values)
+            return await self._apply_project_locked(
+                proposed, None, ProjectOrigin.EDIT, persist=True,
+                reassigned_equipment=previous_id,
+            )
+
     def reload_persisted_state(self) -> None:
         """Re-apply state.json to the store and restart the persister.
 
@@ -750,6 +781,7 @@ class Engine:
         expected_revision: str | None,
         origin: ProjectOrigin,
         persist: bool,
+        reassigned_equipment: str | None = None,
     ) -> str:
         """Body of :meth:`apply_project`. Caller holds ``_reload_lock``."""
         if (
@@ -770,7 +802,13 @@ class Engine:
                 "Reload to see the latest changes."
             )
 
-        if persist:
+        if origin is ProjectOrigin.EDIT:
+            self.installed_equipment.validate_edit(self.project, new_project, reassigned=reassigned_equipment)
+        loaded_project = new_project
+        new_project = self.installed_equipment.compose(new_project, for_load=origin is ProjectOrigin.LOAD)
+        # A file reload can insert host equipment too. Preserve that reference
+        # on disk even when the caller did not request another project save.
+        if persist or new_project != loaded_project:
             # save_project stamps the derived dependency lists onto the
             # object in place, so after this await new_project matches the
             # bytes on disk exactly — no re-read or re-validation needed.
@@ -1061,7 +1099,8 @@ class Engine:
         """The config this device actually dials — driver defaults, project
         config, and the connection table layered, with bridge/USB bindings
         resolved. See ``core.device_config``."""
-        return resolve_device_config(device, self.project)
+        installed = self.installed_equipment.resolve(device)
+        return installed if installed is not None else resolve_device_config(device, self.project)
 
     def _schedule_device_bringup(self) -> None:
         """Ask for a device bring-up round, starting the worker if it is idle.
@@ -1276,7 +1315,7 @@ class Engine:
         })
         return revision
 
-    def schedule_bookkeeping_change(self, mutate, *, on_error=None) -> None:
+    def schedule_bookkeeping_change(self, mutate, *, on_error=None, on_saved=None) -> None:
         """Queue a bookkeeping persist to run outside the reconcile lock.
 
         Safe to call from anywhere — including event handlers awaited inline
@@ -1288,8 +1327,11 @@ class Engine:
         revision bump. Each ``mutate(project)`` is applied to whatever
         project object is current at flush time, so a project swap between
         schedule and flush can't resurrect stale state or drop the write.
+
+        ``on_saved`` runs outside the lock only after a successful save.
+        A callback failure cannot undo a file already written to disk.
         """
-        self._bookkeeping_queue.append((mutate, on_error))
+        self._bookkeeping_queue.append((mutate, on_error, on_saved))
         if self._bookkeeping_task is None or self._bookkeeping_task.done():
             self._bookkeeping_task = asyncio.create_task(
                 self._flush_bookkeeping()
@@ -1304,14 +1346,15 @@ class Engine:
                 if not self.project:
                     return
                 try:
-                    for mutate, _on_error in batch:
+                    for mutate, _on_error, _on_saved in batch:
                         mutate(self.project)
                     await save_project_async(self.project_path, self.project)
                     self._project_revision = self._new_revision()
                     revision = self._project_revision
                 except Exception as e:
                     log.error(f"Deferred project persist failed: {e}")
-                    for _mutate, on_error in batch:
+                    # Undo dependent changes in the reverse order they applied.
+                    for _mutate, on_error, _on_saved in reversed(batch):
                         if on_error is None:
                             continue
                         try:
@@ -1321,6 +1364,15 @@ class Engine:
                         except Exception:
                             log.exception("Bookkeeping on_error callback failed")
             if revision is not None:
+                for _mutate, _on_error, on_saved in batch:
+                    if on_saved is None:
+                        continue
+                    try:
+                        result = on_saved()
+                        if asyncio.iscoroutine(result):
+                            await result
+                    except Exception:
+                        log.exception("Bookkeeping on_saved callback failed")
                 await self.broadcast_ws({
                     "type": "project.reloaded",
                     "revision": revision,

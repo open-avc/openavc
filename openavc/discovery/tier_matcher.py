@@ -924,6 +924,7 @@ def evidence_mdns(
     service_type: str,
     txt: dict[str, str] | None = None,
     instance_name: str | None = None,
+    port: int | None = None,
 ) -> Evidence:
     """Build an Evidence record for an mDNS observation."""
     data: dict = {
@@ -934,6 +935,8 @@ def evidence_mdns(
         data["txt"] = dict(txt)
     if instance_name:
         data["instance"] = instance_name
+    if type(port) is int and 1 <= port <= 65535:
+        data["port"] = port
     return Evidence(
         tier=SignalTier.PASSIVE_LISTENER,
         source=f"mdns:{_normalize_service_type(service_type)}",

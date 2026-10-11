@@ -15,6 +15,7 @@ from openavc.utils.logger import get_logger
 from openavc.drivers.registry import (
     get_driver_class,
     get_driver_default_config,
+    get_driver_discovery_port,
     list_registered_drivers,
 )
 
@@ -512,7 +513,7 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
 
     # Layer the device's config so it lands in the project pre-filled,
     # not just at runtime:
-    #   driver defaults  <  discovery-provided host and MAC  <  request overrides
+    #   driver defaults < discovered host/MAC/control port < request overrides
     # Empty-string / None defaults are dropped so we don't write blanks
     # over fields the user can fill later (mirrors the manual Add Device
     # dialog's prefill behavior).
@@ -527,6 +528,13 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
     mac_field = _scanned_mac_field(req.driver_id)
     if mac_field and discovered and discovered.mac:
         config[mac_field] = discovered.mac
+    if discovered and "port" not in req.config:
+        try:
+            port = get_driver_discovery_port(req.driver_id, [ev.to_dict() for ev in discovered.evidence_log])
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if port is not None:
+            config["port"] = port
     config.update(_sanitize_add_device_config(req.config))
 
     # Split config into connection fields and protocol fields

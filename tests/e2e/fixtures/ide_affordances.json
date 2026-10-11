@@ -63,7 +63,7 @@
     "INPUT placeholder: Search devices...",
     "BUTTON All",
     "BUTTON Online 1",
-    "INPUT type: checkbox [hidden]",
+    "INPUT Select device [hidden]",
     "BUTTON Test Controllere2e_test_controller"
   ],
   "Devices > Discovery": [
@@ -90,6 +90,7 @@
     "BUTTON Browse Community",
     "BUTTON Check a device on the network and write a report about it",
     "INPUT placeholder: Search drivers...",
+    "CLICKABLE OpenAVC equipmentOpenAVC \u00b7 utility",
     "CLICKABLE IR DeviceGeneric \u00b7 utility",
     "CLICKABLE E2E Test ControllerPYOpenAVC \u00b7 controller"
   ],
@@ -112,7 +113,7 @@
     "INPUT placeholder: Search devices...",
     "BUTTON All",
     "BUTTON Online 1",
-    "INPUT type: checkbox",
+    "INPUT Select device",
     "BUTTON Test Controllere2e_test_controller",
     "BUTTON Disable device",
     "BUTTON Test device connection",
