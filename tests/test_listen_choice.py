@@ -72,6 +72,14 @@ class TestFindingTheAdapter:
     def test_nothing_matches_nothing(self):
         assert match_adapter({"name": "Ethernet 9", "mac": "00-00-00-00-00-01"}, [WIFI]) is None
 
+    def test_by_name_when_the_system_reports_no_mac(self):
+        """Appliance hardware lists its adapters without a MAC. An empty MAC
+        matches nothing, so the name decides."""
+        eth = Adapter("eth0", "", (("192.168.4.61", "192.168.4.0/22"),), True)
+        wlan = Adapter("wlan0", "", (("10.0.0.8", "10.0.0.0/24"),), True)
+        assert match_adapter({"name": "wlan0", "mac": ""}, [eth, wlan]) is wlan
+        assert match_adapter({"name": "eth1", "mac": ""}, [eth, wlan]) is None
+
 
 class TestWhatEachChoiceListensOn:
     def test_any_network_is_the_wildcard_alone(self):

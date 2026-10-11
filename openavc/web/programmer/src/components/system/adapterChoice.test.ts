@@ -39,6 +39,22 @@ describe("matchInterface", () => {
     expect(matchInterface({ address: "192.168.1.40" }, [ETHERNET, WIFI])).toBe(WIFI);
     expect(matchInterface({ address: "192.0.2.77" }, [ETHERNET, WIFI])).toBeUndefined();
   });
+
+  it("tells adapters apart by name when the system reports no MAC", () => {
+    // Appliance hardware lists its adapters without one.
+    const eth0: NetworkInterface = {
+      name: "eth0", mac: "",
+      addresses: [{ ip: "192.168.4.61", subnet: "192.168.4.0/22" }], link: true, has_address: true,
+    };
+    const wlan0: NetworkInterface = {
+      name: "wlan0", mac: "",
+      addresses: [{ ip: "10.0.0.8", subnet: "10.0.0.0/24" }], link: true, has_address: true,
+    };
+    const options = adapterOptions([eth0, wlan0], null);
+    expect(new Set(options.map((o) => o.value)).size).toBe(2);
+    expect(matchInterface({ name: "wlan0", mac: "" }, [eth0, wlan0])).toBe(wlan0);
+    expect(valueForIdentity({ name: "wlan0", mac: "" }, [eth0, wlan0])).toBe(options[1].value);
+  });
 });
 
 describe("the adapter list", () => {
