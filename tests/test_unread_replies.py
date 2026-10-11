@@ -30,6 +30,11 @@ _SENTENCE = (
     "of it: 3 polls in a row. Check the port, and that this driver matches "
     "the device."
 )
+_UNENDED_SENTENCE = (
+    "Something is answering on this connection, but none of its replies ends "
+    "the way this driver expects: 3 polls in a row. Check the port, and that "
+    "this driver matches the device."
+)
 _LOGGER = "openavc.drivers.base"
 
 
@@ -118,7 +123,7 @@ def _warnings(caplog) -> list[str]:
     return [
         r.getMessage() for r in caplog.records
         if r.name == _LOGGER and r.levelno == logging.WARNING
-        and "no response rule reads" in r.getMessage()
+        and r.getMessage().split("] ", 1)[-1].startswith("Replies arrive but")
     ]
 
 
@@ -144,6 +149,38 @@ async def test_replies_no_rule_reads_are_reported_and_the_device_stays_up(
         warnings = _warnings(caplog)
         assert len(warnings) == 1
         assert "'Username and/or password incorrect.'" in warnings[0]
+    finally:
+        await drv.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_replies_that_never_end_the_way_the_driver_frames_say_so(
+    talking_server, caplog,
+) -> None:
+    """Measured on an IP-to-serial bridge's control port: it answers every
+    line with an error ending in CR alone, and a driver framing on CR LF
+    never completes a message. Nothing can be quoted, so the warning and the
+    sentence say the replies do not end the way the driver expects, which
+    points at the line ending, the usual cause."""
+    caplog.set_level(logging.INFO, logger=_LOGGER)
+    port, state = talking_server
+    state["reply"] = b"ERR_0:0,001\n"
+    drv = _build(_acme(), port)
+    await drv.connect()
+    try:
+        assert await _until(
+            lambda: drv.get_state("last_error") == _UNENDED_SENTENCE, 3.0,
+        )
+        await asyncio.sleep(_INTERVAL * 4)
+        assert drv.get_state("last_error") == _UNENDED_SENTENCE
+        assert drv.get_state("connected") is True
+        warnings = _warnings(caplog)
+        assert len(warnings) == 1
+        assert "none of them ends the way this driver expects" in warnings[0]
+        assert "the last one was" not in warnings[0]
+        # A reply the rules read ends it and clears the sentence.
+        state["reply"] = b"PWR=ON\r"
+        assert await _until(lambda: not drv.get_state("last_error"), 3.0)
     finally:
         await drv.disconnect()
 

@@ -261,6 +261,7 @@ class ConfigurableDriver(BaseDriver):
         # throttle held its writes), and the last one none did: the poll
         # loop's unread-replies check (_parsed_count, BaseDriver._judge_reading).
         self._parsed_messages = 0
+        self._framed_messages = 0
         self._last_unread = ""
         lv = self._definition.get("liveness")
         if isinstance(lv, dict) and isinstance(lv.get("send"), str) and lv["send"]:
@@ -2048,6 +2049,10 @@ class ConfigurableDriver(BaseDriver):
         judge)."""
         return self._parsed_messages if self._reads_replies() else None
 
+    def _framed_count(self) -> int | None:
+        """Complete messages that reached the response rules, read or not."""
+        return self._framed_messages if self._reads_replies() else None
+
     def _unread_sample(self) -> str:
         return self._last_unread
 
@@ -2148,6 +2153,7 @@ class ConfigurableDriver(BaseDriver):
         text = data.decode("utf-8", errors="replace").strip()
         if not text:
             return
+        self._framed_messages += 1
 
         # JSON-body responses (multi-field): parse once, apply every json rule
         # key-scoped. Additive — if the body isn't a JSON object or none of the
@@ -2358,6 +2364,7 @@ class ConfigurableDriver(BaseDriver):
             return
 
         for address, args in messages:
+            self._framed_messages += 1
             matched = False
             for (
                 addr_pattern, mappings, child_mappings, tstate, condition,

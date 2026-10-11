@@ -735,6 +735,10 @@ class BaseDriver(ABC):
         # (_parsed_count). The loop owns `last_error` meanwhile, so the
         # stale-error clear leaves its sentence alone.
         self._unread_replies_hold: bool = False
+        # The sentence the check last wrote (it clears only its own), and the
+        # framed-message count when the current run of unread cycles began.
+        self._unread_sentence: str = ""
+        self._unread_run_framed_from: int | None = None
         # For a device that routes its commands through a bridge (e.g. an IR
         # device bound to a bridge's emitter port): a callable the DeviceManager
         # injects to reach the live bridge instance. None for a direct device.
@@ -2272,8 +2276,26 @@ class BaseDriver(ABC):
         """
         return None
 
-    def _unread_replies_message(self, cycles: int) -> str:
-        """The ``last_error`` sentence while the unread-replies check holds."""
+    def _framed_count(self) -> int | None:
+        """How many complete messages have reached this driver's response
+        rules on this connection, read or not; None when the platform cannot
+        tell. Bytes that arrive and never end the way the driver frames a
+        message (the wrong line ending, another protocol) count as received
+        but never as a message, which is how the unread-replies check tells
+        its two findings apart."""
+        return None
+
+    def _unread_replies_message(self, cycles: int, framed: bool = True) -> str:
+        """The ``last_error`` sentence while the unread-replies check holds:
+        ``framed`` False when no reply in the run ended the way this driver
+        frames a message."""
+        if not framed:
+            return (
+                f"Something is answering on this connection, but none of its "
+                f"replies ends the way this driver expects: {cycles} polls in "
+                f"a row. Check the port, and that this driver matches the "
+                f"device."
+            )
         return (
             f"Something is answering on this connection, but this driver reads "
             f"none of it: {cycles} polls in a row. Check the port, and that "
@@ -2281,7 +2303,8 @@ class BaseDriver(ABC):
         )
 
     def _judge_reading(
-        self, parse_pending: tuple[Any, int, int], cycles: int, limit: int,
+        self, parse_pending: tuple[Any, int, int, int | None], cycles: int,
+        limit: int,
     ) -> int:
         """Judge one poll cycle for the unread-replies check and return the
         new count of cycles in a row that heard replies and read none.
@@ -2290,9 +2313,11 @@ class BaseDriver(ABC):
         silence check's business) and leaves the count as it was. At
         ``limit`` the check holds: a warning in the log once, the sentence in
         ``last_error`` every cycle while it holds (when the driver declares
-        the property). The first cycle that reads anything ends it.
+        the property). The first cycle that reads anything ends it. When no
+        reply in the run ended the way the driver frames a message
+        (_framed_count did not move), both say so instead of naming a reply.
         """
-        transport, heard_before, parsed_before = parse_pending
+        transport, heard_before, parsed_before, framed_before = parse_pending
         now = self._io_counts()
         parsed = self._parsed_count()
         if now is None or now[0] is not transport or parsed is None:
@@ -2306,18 +2331,34 @@ class BaseDriver(ABC):
                     f"[{self.device_id}] The device's replies are read again"
                 )
                 if self.get_state(self.LAST_ERROR_PROPERTY) == (
-                    self._unread_replies_message(limit)
+                    self._unread_sentence
                 ):
                     self._clear_stale_last_error()
             return 0
+        if cycles == 0:
+            self._unread_run_framed_from = framed_before
         cycles += 1
         if cycles >= limit:
+            framed_now = self._framed_count()
+            framed = not (
+                framed_now is not None
+                and self._unread_run_framed_from is not None
+                and framed_now <= self._unread_run_framed_from
+            )
+            self._unread_sentence = self._unread_replies_message(limit, framed)
             if not self._unread_replies_hold:
                 self._unread_replies_hold = True
-                sample = self._unread_sample()
+                sample = self._unread_sample() if framed else ""
+                if framed:
+                    finding = "no response rule reads any of them"
+                else:
+                    finding = (
+                        "none of them ends the way this driver expects, so no "
+                        "response rule can read them"
+                    )
                 log.warning(
-                    f"[{self.device_id}] Replies arrive but no response rule "
-                    f"reads any of them ({cycles} polls in a row)"
+                    f"[{self.device_id}] Replies arrive but {finding} "
+                    f"({cycles} polls in a row)"
                     + (f"; the last one was {sample!r}" if sample else "")
                     + ". Check the port, and that this driver matches the "
                     "device."
@@ -2325,10 +2366,7 @@ class BaseDriver(ABC):
             if self.LAST_ERROR_PROPERTY in self.DRIVER_INFO.get(
                 "state_variables", {}
             ):
-                self.set_state(
-                    self.LAST_ERROR_PROPERTY,
-                    self._unread_replies_message(limit),
-                )
+                self.set_state(self.LAST_ERROR_PROPERTY, self._unread_sentence)
         return cycles
 
     def _unread_sample(self) -> str:
@@ -3291,11 +3329,11 @@ class BaseDriver(ABC):
         # a row that brought replies the driver's rules read none of. Judged
         # like the silence check, when the next poll is due; reported, never
         # a disconnect, so it also runs beside a liveness probe.
-        # `parse_pending` is the last poll's transport, receive count and
-        # parsed count when it began.
+        # `parse_pending` is the last poll's transport, receive count, parsed
+        # count and framed-message count when it began.
         reading = self._parsed_count() is not None
         unread_cycles = 0
-        parse_pending: tuple[Any, int, int] | None = None
+        parse_pending: tuple[Any, int, int, int | None] | None = None
         # A hold belongs to the connection that earned it: on a new one the
         # sentence a held check left in last_error clears after the first
         # clean poll, and comes back if the replies still go unread.
@@ -3348,6 +3386,7 @@ class BaseDriver(ABC):
                     errors_before = self._last_error_writes
                     before = self._io_counts() if watching or reading else None
                     parsed_before = self._parsed_count() if reading else None
+                    framed_before = self._framed_count() if reading else None
                     await self.poll()
                     self._last_poll_success = time.monotonic()
                     dry_polls = 0
@@ -3367,6 +3406,7 @@ class BaseDriver(ABC):
                             if parsed_before is not None:
                                 parse_pending = (
                                     before[0], before[2], parsed_before,
+                                    framed_before,
                                 )
                 except (ConnectionError, TimeoutError, OSError) as exc:
                     refused = typed_fault_from_exc(
