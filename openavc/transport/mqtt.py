@@ -32,6 +32,11 @@ TLS:
     - Optional client certificate (client_cert/client_key) — required by some
       devices for inbound connections.
 
+Reach devices through:
+    gmqtt dials without a local address, so while Settings pins device traffic
+    to one adapter the transport connects through :func:`_bound_client_class`,
+    gmqtt's client with its one dialing step done from that address.
+
 Protocol version:
     Defaults to MQTT 3.1.1, which is what the overwhelming majority of devices
     speak (a 5.0 CONNECT to a 3.1.1-only broker is rejected). Override with
@@ -40,6 +45,7 @@ Protocol version:
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import ssl
 import time
@@ -64,6 +70,45 @@ _CONNACK_MESSAGES = {
     4: "connection refused: bad username or password",
     5: "connection refused: not authorized",
 }
+
+
+_bound_client: type | None = None
+
+
+def _bound_client_class() -> type:
+    """gmqtt's ``Client``, dialing from the address in ``local_address``.
+
+    gmqtt 0.7.0 opens its connection in ``Client._create_connection`` through
+    ``MQTTConnection.create_connection``, which passes no local address to
+    ``loop.create_connection``. This override does the same four steps with
+    the address added; ``tests/test_reach_devices_own_connections.py`` fails if a gmqtt
+    upgrade changes either method, so the copy cannot drift silently.
+    """
+    global _bound_client
+    if _bound_client is None:
+        from gmqtt import Client
+        from gmqtt.mqtt.connection import MQTTConnection
+        from gmqtt.mqtt.protocol import MQTTProtocol
+
+        class BoundClient(Client):
+            local_address: str | None = None
+
+            async def _create_connection(self, host, port, ssl, clean_session, keepalive):
+                self._exit_reconnecting_state()
+                self._clear_topics_aliases()
+                loop = asyncio.get_running_loop()
+                transport, protocol = await loop.create_connection(
+                    MQTTProtocol, host, port, ssl=ssl,
+                    local_addr=(self.local_address, 0) if self.local_address else None,
+                )
+                connection = MQTTConnection(
+                    transport, protocol, clean_session, keepalive, logger=self._logger,
+                )
+                connection.set_handler(self)
+                return connection
+
+        _bound_client = BoundClient
+    return _bound_client
 
 
 class MQTTTransport:
@@ -96,6 +141,7 @@ class MQTTTransport:
         on_message: MessageHandler | None = None,
         on_disconnect: Callable[[], Any] | None = None,
         name: str | None = None,
+        local_address: str | None = None,
     ):
         """
         Args:
@@ -121,6 +167,8 @@ class MQTTTransport:
             on_disconnect: Called with no args on an unexpected disconnect, so
                 the device manager can drive its reconnect loop.
             name: Label for logs (defaults to ``host:port``).
+            local_address: The local IP the connection leaves from (Settings >
+                Network > Reach devices through), or None for the OS's choice.
         """
         self.host = host
         self.port = int(port)
@@ -141,6 +189,7 @@ class MQTTTransport:
         self._name = name or f"{host}:{self.port}"
         # The device id traffic is recorded under (core/device_traffic.py).
         self._traffic_name = name or ""
+        self.local_address = local_address or None
 
         self._client: Any = None  # gmqtt.Client
         self._connack_rc: int | None = None
@@ -177,7 +226,11 @@ class MQTTTransport:
         self._closing = False
         self._connack_rc = None
 
-        client = MQTTClient(self.client_id, clean_session=self.clean_session)
+        if self.local_address:
+            client = _bound_client_class()(self.client_id, clean_session=self.clean_session)
+            client.local_address = self.local_address
+        else:
+            client = MQTTClient(self.client_id, clean_session=self.clean_session)
         # The platform owns reconnect (device_manager backoff + offline_reason
         # classification). Disable gmqtt's own reconnect so a drop surfaces as
         # one on_disconnect and stays down until the platform reconnects.

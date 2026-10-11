@@ -104,14 +104,22 @@ async def probe_web_ui(
     its HTTPS page. A bare TCP handshake is signal enough here: these ports are
     web ports by convention, and the cost of a rare false positive (a button to
     a page that doesn't load) is low. Never raises — a probe is best-effort.
+    Dials from the adapter Reach devices through chose, as the device's own
+    connection does.
     """
     if not host:
         return None
+    from openavc.transport.endpoint import control_bind_address
+
+    bind = control_bind_address(host)
 
     async def _reachable(port: int) -> bool:
         try:
             reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(host, port), timeout
+                asyncio.open_connection(
+                    host, port, local_addr=(bind, 0) if bind else None,
+                ),
+                timeout,
             )
         except (OSError, asyncio.TimeoutError):
             return False

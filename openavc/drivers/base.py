@@ -1251,6 +1251,32 @@ class BaseDriver(ABC):
         if self._health_enabled():
             self._start_health_loop()
 
+    def local_address(self, host: str | None = None) -> str | None:
+        """The local IP a connection this driver opens to ``host`` leaves
+        from, or None to let the operating system choose.
+
+        Settings > Network > Reach devices through can pin device traffic to
+        one network adapter. Every connection the platform builds for a driver
+        follows it, and so does an ``httpx.AsyncClient`` the driver builds
+        itself. A socket, WebSocket or datagram endpoint the driver opens
+        itself asks here and binds to the answer::
+
+            ip = self.local_address()
+            local_addr = (ip, 0) if ip else None
+            await asyncio.open_connection(host, port, local_addr=local_addr)
+            await websockets.connect(url, local_addr=local_addr)
+            await loop.create_datagram_endpoint(factory, local_addr=(ip or "0.0.0.0", 0))
+            sock.bind((ip, 0))  # a raw socket, only when ip is not None
+
+        ``host`` defaults to this device's host; pass another when the
+        driver also talks to a second address. None when no adapter is
+        chosen, and for a host on this computer (a simulator, a local
+        service), which a socket bound to an adapter cannot reach.
+        """
+        from openavc.transport.endpoint import control_bind_address
+
+        return control_bind_address(self.config.get("host", "") if host is None else host)
+
     async def _create_transport(self, transport_type: str) -> None:
         """Build ``self.transport`` for the resolved transport type.
 
@@ -1268,12 +1294,12 @@ class BaseDriver(ABC):
         frame_parser = self._create_frame_parser()
         delimiter = self._resolve_delimiter()
 
-        # Control interface binding (if configured); never for a loopback
-        # host. The rule, and each transport's fallback port below, are in
-        # transport/endpoint.py so a connection test dials the same way.
-        from openavc.transport.endpoint import control_bind_address, implied_port
+        # Reach devices through (if an adapter is chosen); never for a
+        # loopback host. The rule, and each transport's fallback port below,
+        # are in transport/endpoint.py so a connection test dials the same way.
+        from openavc.transport.endpoint import implied_port
 
-        control_ip = control_bind_address(self.config.get("host", ""))
+        control_ip = self.local_address()
 
         if transport_type == "tcp":
             from openavc.transport.tcp import TCPTransport
@@ -1458,6 +1484,7 @@ class BaseDriver(ABC):
                     self.config.get("extra_ssh_options")),
                 legacy_algorithms=self.config.get(
                     "ssh_legacy_algorithms", True) is not False,
+                local_address=control_ip or None,
             )
             self.transport = await SSHTransport.create(
                 **self._transport_kwargs(transport_type, kwargs)
@@ -1491,6 +1518,7 @@ class BaseDriver(ABC):
                 on_message=self.on_mqtt_message,
                 on_disconnect=self._handle_transport_disconnect,
                 name=self.device_id,
+                local_address=control_ip or None,
             )
             self.transport = await MQTTTransport.create(
                 **self._transport_kwargs(transport_type, kwargs)
@@ -1799,14 +1827,15 @@ class BaseDriver(ABC):
     #: log instead of waking whatever real display owns that MAC.
     udp_redirect: tuple[str, int] | None = None
 
-    async def _open_udp(self) -> Any:
-        """An opened ad-hoc UDP socket for one side-send.
+    async def _open_udp(self, local_addr: str | None = None) -> Any:
+        """An opened ad-hoc UDP socket for one side-send, bound to
+        ``local_addr`` when Reach devices through chose an adapter.
 
         A method so the Driver Builder's dry run can hand back a transport
         that records instead of transmitting; nothing else overrides it.
         """
         udp = UDPTransport(name=self.device_id)
-        await udp.open(allow_broadcast=True)
+        await udp.open(allow_broadcast=True, local_addr=local_addr)
         return udp
 
     async def send_udp(
@@ -1847,7 +1876,8 @@ class BaseDriver(ABC):
         target = (host, port)
         if self.udp_redirect is not None:
             target = self.udp_redirect
-        udp = await self._open_udp()
+        # Bound for where it really goes: the simulator's redirect is local.
+        udp = await self._open_udp(local_addr=self.local_address(target[0]))
         try:
             await udp.send_to(bytes(payload), target[0], target[1])
         finally:
@@ -3129,11 +3159,15 @@ class BaseDriver(ABC):
         connection that has to time out via the watchdog.
 
         Returns True if a TCP connection can be opened within the timeout,
-        False otherwise.
+        False otherwise. Dials from :meth:`local_address`, as the driver's own
+        connection will.
         """
+        ip = self.local_address(host)
         try:
             reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(host, port),
+                asyncio.open_connection(
+                    host, port, local_addr=(ip, 0) if ip else None,
+                ),
                 timeout=timeout,
             )
             writer.close()

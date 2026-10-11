@@ -27,6 +27,10 @@ own ``httpx.AsyncClient`` is recorded the same way with nothing in the driver:
 :func:`capture_driver_clients` attaches :func:`traffic_event_hooks` to a
 client created by a driver's code, so both kinds of HTTP driver read alike in
 a device's traffic.
+
+Reach devices through: the same hook gives a driver's own client the adapter
+Settings chose for device traffic (:class:`ReachDevicesTransport`), as the
+platform's transport binds its own, again with nothing in the driver.
 """
 
 from __future__ import annotations
@@ -234,13 +238,14 @@ _OWNER_SEARCH_DEPTH = 12
 _original_client_init: Callable[..., None] | None = None
 
 
-def _owning_device(frame: Any) -> str | None:
-    """The device whose driver is creating a client, from the calling frames.
+def _owning_driver(frame: Any) -> Any:
+    """The driver creating a client, from the calling frames, or None.
 
-    The nearest ``self`` that is a driver names the device. A client the
+    The nearest ``self`` that is a driver is the owner. A client the
     platform's own HTTP transport creates is left alone (the transport
-    records its traffic itself), and so is one nothing driver-shaped created
-    (a route, the updater, the cloud agent, a plugin).
+    records its traffic and binds its connections itself), and so is one
+    nothing driver-shaped created (a route, the updater, the cloud agent, a
+    plugin).
     """
     from openavc.drivers.base import BaseDriver
 
@@ -251,7 +256,7 @@ def _owning_device(frame: Any) -> str | None:
         if isinstance(owner, HTTPClientTransport):
             return None
         if isinstance(owner, BaseDriver):
-            return owner.device_id or None
+            return owner
         frame = frame.f_back
     return None
 
@@ -265,16 +270,88 @@ def _already_recording(hooks: Any) -> bool:
     )
 
 
+#: The client settings httpx builds its own transport from. A client handed a
+#: ``transport=`` ignores all of them, so :class:`ReachDevicesTransport` builds
+#: its connections from exactly these, as the driver passed them.
+_TRANSPORT_SETTINGS = ("verify", "cert", "trust_env", "http1", "http2", "limits")
+
+
+class ReachDevicesTransport(httpx.AsyncBaseTransport):
+    """The transport a driver's own client gets while Settings > Network >
+    Reach devices through pins device traffic to one adapter.
+
+    Each request leaves from ``control_bind_address(<the request's host>)``
+    (``transport/endpoint.py``), asked when the request is made: a host on
+    this computer is never bound, a driver that talks to more than one device
+    binds each, and a DHCP renewal or a changed choice reaches the next
+    connection without the driver rebuilding its client. One connection pool
+    per local address, built with the TLS and pool settings the driver gave
+    its client (``verify``, ``cert``, ``trust_env``, ``http1``, ``http2``,
+    ``limits``), so a self-signed device the driver trusts with
+    ``verify=False`` still connects and ``verify=True`` still verifies.
+
+    Like any client given a transport, the client no longer picks up proxy
+    settings from the environment (``HTTP_PROXY`` and the like): device
+    traffic pinned to an adapter goes to the device, not through a proxy,
+    exactly as the platform's own HTTP transport does when pinned.
+    """
+
+    def __init__(self, settings: dict[str, Any] | None = None) -> None:
+        self._settings = dict(settings or {})
+        self._pools: dict[str | None, httpx.AsyncHTTPTransport] = {}
+
+    def pool_for(self, host: str) -> httpx.AsyncHTTPTransport:
+        """The connection pool a request to ``host`` goes through now."""
+        from openavc.transport.endpoint import control_bind_address
+
+        address = control_bind_address(host)
+        pool = self._pools.get(address)
+        if pool is None:
+            pool = httpx.AsyncHTTPTransport(local_address=address, **self._settings)
+            self._pools[address] = pool
+        return pool
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        return await self.pool_for(request.url.host).handle_async_request(request)
+
+    async def aclose(self) -> None:
+        pools, self._pools = list(self._pools.values()), {}
+        for pool in pools:
+            await pool.aclose()
+
+
+def _reach_devices_transport(driver: Any, kwargs: dict[str, Any]) -> ReachDevicesTransport | None:
+    """The transport for a client ``driver`` is building, or None to leave
+    the client as httpx builds it.
+
+    None when the driver chose its own way out (``transport=``, ``mounts=`` or
+    ``proxy=``: a test's ``MockTransport``, a proxy someone configured) and
+    when this device's own traffic is not bound (nothing pinned, or a device
+    on this computer), so with nothing pinned a driver's client is exactly
+    the one it asked for.
+    """
+    if any(kwargs.get(name) is not None for name in ("transport", "mounts", "proxy")):
+        return None
+    if driver.local_address() is None:
+        return None
+    return ReachDevicesTransport(
+        {name: kwargs[name] for name in _TRANSPORT_SETTINGS if name in kwargs}
+    )
+
+
 def capture_driver_clients() -> None:
-    """Record every ``httpx.AsyncClient`` a driver creates, under its device.
+    """Record every ``httpx.AsyncClient`` a driver creates, under its device,
+    and send it out through the adapter Reach devices through chose.
 
     Most Python HTTP drivers own their client (for a login session, cookies,
-    their own retries), which none of the platform's recording code sits in
-    the path of. Rather than ask each driver to pass hooks, the client's
-    constructor adds :func:`traffic_event_hooks` when a driver's code is
-    creating it, found from the calling frames (:func:`_owning_device`). A
-    client that already records is left as it is. Idempotent; called once
-    when the driver base class is imported.
+    their own retries), which none of the platform's recording or binding
+    code sits in the path of. Rather than ask each driver to pass hooks and a
+    transport, the client's constructor adds :func:`traffic_event_hooks` and,
+    while device traffic is pinned to one adapter,
+    :class:`ReachDevicesTransport`, when a driver's code is creating it, found
+    from the calling frames (:func:`_owning_driver`). A client that already
+    records is left as it is, and so is one given its own transport. Idempotent;
+    called once when the driver base class is imported.
     """
     global _original_client_init
     if _original_client_init is not None:
@@ -282,19 +359,34 @@ def capture_driver_clients() -> None:
     _original_client_init = httpx.AsyncClient.__init__
 
     def init(client: httpx.AsyncClient, *args: Any, **kwargs: Any) -> None:
+        frame = inspect.currentframe()
         try:
-            frame = inspect.currentframe()
-            device_id = _owning_device(frame.f_back if frame is not None else None)
-            hooks = kwargs.get("event_hooks")
-            if device_id and not _already_recording(hooks):
-                merged = {kind: list(fns or []) for kind, fns in (hooks or {}).items()}
-                for kind, fns in traffic_event_hooks(device_id).items():
-                    merged.setdefault(kind, []).extend(fns)
-                kwargs["event_hooks"] = merged
-        except Exception:  # recording must never cost a client
-            log.debug("Could not attach traffic recording to a client", exc_info=True)
+            driver = _owning_driver(frame.f_back if frame is not None else None)
+        except Exception:
+            log.debug("Could not find the driver creating a client", exc_info=True)
+            driver = None
         finally:
             frame = None
+        if driver is not None:
+            try:
+                hooks = kwargs.get("event_hooks")
+                if driver.device_id and not _already_recording(hooks):
+                    merged = {kind: list(fns or []) for kind, fns in (hooks or {}).items()}
+                    for kind, fns in traffic_event_hooks(driver.device_id).items():
+                        merged.setdefault(kind, []).extend(fns)
+                    kwargs["event_hooks"] = merged
+            except Exception:  # recording must never cost a client
+                log.debug("Could not attach traffic recording to a client", exc_info=True)
+            try:
+                transport = _reach_devices_transport(driver, kwargs)
+                if transport is not None:
+                    kwargs["transport"] = transport
+            except Exception:  # never cost a client; say the pin was missed
+                log.warning(
+                    f"[{driver.device_id}] Could not send this driver's own HTTP "
+                    f"client through the Reach devices through adapter",
+                    exc_info=True,
+                )
         _original_client_init(client, *args, **kwargs)
 
     init.__wrapped__ = _original_client_init  # type: ignore[attr-defined]

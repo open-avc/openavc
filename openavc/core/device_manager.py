@@ -2385,9 +2385,16 @@ class DeviceManager:
             return True
         if not host or port in (None, "", 0):
             return True
+        # From the adapter the connect itself will use (Reach devices through).
+        from openavc.transport.endpoint import control_bind_address
+
+        bind = control_bind_address(host)
         try:
             _, writer = await asyncio.wait_for(
-                asyncio.open_connection(host, int(port)), timeout=_PROBE_TIMEOUT
+                asyncio.open_connection(
+                    host, int(port), local_addr=(bind, 0) if bind else None,
+                ),
+                timeout=_PROBE_TIMEOUT,
             )
         except (OSError, asyncio.TimeoutError, ValueError):
             return False

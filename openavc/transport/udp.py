@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import socket
 from typing import Callable
 
 from openavc.core.device_traffic import RX, TX, record_traffic
@@ -142,6 +143,9 @@ class UDPTransport:
         Args:
             allow_broadcast: Allow sending broadcast datagrams.
             local_addr: Optional IP to bind to a specific network adapter.
+                Multicast sends leave through the same adapter: the bound
+                address alone does not choose the interface for a multicast
+                group, so it is also set as the socket's multicast interface.
         """
         loop = asyncio.get_running_loop()
         bind_addr = local_addr or "0.0.0.0"
@@ -155,6 +159,16 @@ class UDPTransport:
             local_addr=(bind_addr, 0),
             allow_broadcast=allow_broadcast,
         )
+        if local_addr:
+            sock = self._transport.get_extra_info("socket")
+            if sock is not None:
+                try:
+                    sock.setsockopt(
+                        socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
+                        socket.inet_aton(local_addr),
+                    )
+                except OSError as exc:  # unicast and broadcast still bound
+                    log.debug(f"[{self._name}] Multicast interface not set: {exc}")
         self._connected = True
         log.debug(f"[{self._name}] UDP socket opened (bound to {bind_addr})")
 

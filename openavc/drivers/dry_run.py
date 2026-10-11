@@ -172,7 +172,7 @@ def capture_command_transport(driver: Any, cmd_def: dict[str, Any]) -> CommandCa
         route, capture = "udp", CaptureTransport()
         udp = CaptureUdp()
 
-        async def _open_capture() -> CaptureUdp:
+        async def _open_capture(local_addr: str | None = None) -> CaptureUdp:
             return udp
 
         driver._open_udp = _open_capture

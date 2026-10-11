@@ -127,6 +127,7 @@ class SSHTransport:
         ssh_binary: str | None = None,
         extra_ssh_options: list[str] | None = None,
         legacy_algorithms: bool = True,
+        local_address: str | None = None,
     ):
         self.host = host
         self.port = int(port)
@@ -146,6 +147,8 @@ class SSHTransport:
         self._ssh_binary = ssh_binary
         self._extra_ssh_options = list(extra_ssh_options or [])
         self._legacy_algorithms = bool(legacy_algorithms)
+        # The local IP the connection leaves from (Reach devices through).
+        self._local_address = local_address or None
 
         self._proc: asyncio.subprocess.Process | None = None
         self._reader_task: asyncio.Task | None = None
@@ -186,6 +189,7 @@ class SSHTransport:
         ssh_binary: str | None = None,
         extra_ssh_options: list[str] | None = None,
         legacy_algorithms: bool = True,
+        local_address: str | None = None,
     ) -> "SSHTransport":
         """Spawn the ``ssh`` client and return a started transport.
 
@@ -200,7 +204,7 @@ class SSHTransport:
             connect_timeout=connect_timeout,
             inter_command_delay=inter_command_delay, name=name,
             ssh_binary=ssh_binary, extra_ssh_options=extra_ssh_options,
-            legacy_algorithms=legacy_algorithms,
+            legacy_algorithms=legacy_algorithms, local_address=local_address,
         )
         await transport._spawn()
         return transport
@@ -291,6 +295,10 @@ class SSHTransport:
         # compat list below rather than fighting it.
         for opt in self._extra_ssh_options:
             argv += ["-o", opt]
+        # The adapter Reach devices through chose, after the device's own
+        # options so a BindAddress set per device still wins.
+        if self._local_address:
+            argv += ["-o", f"BindAddress={self._local_address}"]
         if self._legacy_algorithms:
             for opt in LEGACY_SSH_ALGORITHMS:
                 argv += ["-o", opt]

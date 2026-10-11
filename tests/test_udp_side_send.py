@@ -96,6 +96,7 @@ class _CaptureUdp:
     def __init__(self) -> None:
         self.sent: list[tuple[bytes, str, int]] = []
         self.closed = 0
+        self.local_addr: str | None = None
 
     async def send_to(self, data: bytes, host: str, port: int) -> None:
         self.sent.append((bytes(data), host, port))
@@ -114,7 +115,8 @@ def _driver(config=None, definition=None):
     drv = cls("d1", cfg, state, events)
     capture = _CaptureUdp()
 
-    async def _open():
+    async def _open(local_addr=None):
+        capture.local_addr = local_addr
         return capture
 
     drv._open_udp = _open
@@ -366,7 +368,8 @@ def _python_driver(config=None):
     drv = _AcmePython("p1", {"host": "10.0.0.9", **(config or {})}, state, events)
     capture = _CaptureUdp()
 
-    async def _open():
+    async def _open(local_addr=None):
+        capture.local_addr = local_addr
         return capture
 
     drv._open_udp = _open

@@ -2908,6 +2908,22 @@ Everything else — the clean-slate reset, the connected declare and event, poll
 
 The device's credentials are masked when the traffic is shown, as on every other channel.
 
+**The network adapter a session you own leaves through.** On a computer connected to more than one network, Settings > Network > **Reach devices through** can send all device traffic out through one adapter. Every platform transport follows it.
+
+- **An `httpx` client** your driver creates follows it too, with nothing to add, and keeps the `verify`, `cert`, `limits` and other settings you gave it, so a device with a self-signed certificate still connects with `verify=False`. A client you give your own `transport=`, `mounts=` or `proxy=` is left exactly as you built it. That is also how a client that reaches a service on the internet rather than a device (a manufacturer's cloud API) stays off the chosen adapter, which may have no route to the internet.
+- **Anything else** (a socket, a websocket library, a datagram endpoint, a platform transport you build by hand) asks `self.local_address()` and binds to the answer. It returns the chosen adapter's address, or `None` when no adapter is chosen and for a device on this computer (a simulator, a local service), which a socket bound to an adapter cannot reach. Pass a host when the driver also talks to an address other than the device's own. `local_address()` is new in OpenAVC 0.37.0, and the check that computes `min_platform_version` reads only what a driver declares, not the methods it calls, so set `min_platform_version` to at least `"0.37.0"` yourself.
+
+```python
+ip = self.local_address()
+local_addr = (ip, 0) if ip else None
+reader, writer = await asyncio.open_connection(host, port, local_addr=local_addr)
+ws = await websockets.connect(url, local_addr=local_addr)
+await loop.create_datagram_endpoint(factory, local_addr=(ip or "0.0.0.0", 0))
+await udp.open(local_addr=ip)  # a UDPTransport you built yourself
+```
+
+`_verify_reachable`, `send_udp` and `wake_on_lan` already follow it.
+
 ```python
 async def _send_message(self, message: dict) -> None:
     frame = json.dumps(message)
@@ -3350,6 +3366,7 @@ These are available on every driver via the `BaseDriver` base class:
 | `await self.start_polling(15)` | Starts calling `self.poll()` every 15 seconds |
 | `await self.stop_polling()` | Stops the polling loop |
 | `await self._verify_reachable(host, port)` | Returns True if a TCP connection opens within the timeout |
+| `self.local_address(host=None)` | The local address a connection your driver opens itself binds to (Settings > Network > Reach devices through), or `None` — see "The network adapter a session you own leaves through" above |
 | `await self.transport.send(data)` | Send raw bytes to the device |
 | `await self.transport.send_and_wait(data, timeout=5)` | Send and wait for the next response — see below |
 | `await self.send_udp(payload, host=None, port=None, broadcast=False)` | One UDP datagram beside the transport, from a socket opened for the send; needs no connection — see "A datagram beside the transport" above |

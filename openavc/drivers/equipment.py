@@ -178,8 +178,11 @@ class EquipmentDriver(BaseDriver):
             headers = {"X-OpenAVC-Client": client}
             if local:
                 headers["Authorization"] = "Bearer " + self.config["token"]
+            # A product reached over the network leaves through the adapter
+            # Reach devices through chose; the local service is the product's own.
+            bind = None if local else self.local_address()
             self._sdk_http = aiohttp.ClientSession(
-                connector=aiohttp.TCPConnector(ssl=tls),
+                connector=aiohttp.TCPConnector(ssl=tls, local_addr=(bind, 0) if bind else None),
                 headers=headers,
                 auth=None if local else aiohttp.BasicAuth(self.config["username"], self.config["password"]),
                 timeout=aiohttp.ClientTimeout(total=2),
