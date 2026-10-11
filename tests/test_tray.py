@@ -14,6 +14,8 @@ the non-GUI behaviors that have silently broken before:
 - The tooltip's "Update available" line is driven by _update_available, which
   the status poll must populate from the /api/health payload (and clear when
   the server is down).
+- When the adapter Accept connections from names is missing, the tooltip says
+  so in the server's own sentence, read from the status folder at every poll.
 """
 
 import importlib.util
@@ -183,3 +185,84 @@ def test_startup_error_is_read_from_the_status_folder(status_dir, monkeypatch):
 
     assert tray._startup_error == "HTTP port 8080 is already in use."
     assert shown == ["HTTP port 8080 is already in use."]
+
+
+PROBLEM = "Not accepting connections from the network: the Ethernet adapter isn't connected."
+
+HEALTHY = {
+    "status": "healthy",
+    "version": "0.37.0",
+    "devices": {"total": 5, "connected": 3},
+}
+
+
+def _record(status_dir, **listen):
+    (status_dir / "server.json").write_text(json.dumps({
+        "http_port": 8080, "tls_enabled": False, "tls_port": 8443,
+        "listen": {"mode": "adapter", "addresses": ["127.0.0.1"], **listen},
+    }), encoding="utf-8")
+
+
+def test_the_tooltip_says_why_the_network_cannot_connect(status_dir, monkeypatch):
+    """The server's own sentence, ahead of the device count it replaces:
+    Windows cuts a tooltip off at 128 characters."""
+    _record(status_dir, problem=PROBLEM)
+    monkeypatch.setattr(tray_mod, "_api_get", lambda *a, **k: HEALTHY)
+    tray = OpenAVCTray()
+
+    _run_one_poll(tray, monkeypatch)
+
+    assert tray._build_tooltip() == f"OpenAVC v0.37.0 - Running - {PROBLEM}"
+
+
+def test_the_tooltip_counts_devices_while_the_network_can_connect(status_dir, monkeypatch):
+    _record(status_dir, problem=None)
+    monkeypatch.setattr(tray_mod, "_api_get", lambda *a, **k: HEALTHY)
+    tray = OpenAVCTray()
+
+    _run_one_poll(tray, monkeypatch)
+
+    assert tray._build_tooltip() == "OpenAVC v0.37.0 - Running - 3/5 devices online"
+
+
+def test_a_stopped_server_shows_no_listen_problem(status_dir, monkeypatch):
+    """The record is the last start's; a stopped server is just stopped."""
+    _record(status_dir, problem=PROBLEM)
+    monkeypatch.setattr(tray_mod, "_api_get", lambda *a, **k: None)
+    tray = OpenAVCTray()
+    tray._listen_problem = PROBLEM
+
+    _run_one_poll(tray, monkeypatch)
+
+    assert tray._listen_problem == ""
+    assert PROBLEM not in tray._build_tooltip()
+
+
+@pytest.mark.parametrize("content", [
+    "{not json", "[8080]", '{"http_port": 8080}', '{"listen": null}',
+    '{"listen": {"problem": 42}}', '{"listen": "adapter"}',
+])
+def test_no_listen_problem_from_a_record_without_one(status_dir, content):
+    (status_dir / "server.json").write_text(content, encoding="utf-8")
+    assert tray_mod._get_listen_problem() == ""
+
+
+def test_no_listen_problem_before_the_server_has_ever_started(status_dir):
+    assert tray_mod._get_listen_problem() == ""
+
+
+def test_a_port_changed_in_settings_reaches_the_tray_with_the_restart(status_dir, monkeypatch):
+    """The server records its ports at every start; the tray reads them at
+    every poll, so it follows without being restarted itself."""
+    asked = []
+    monkeypatch.setattr(tray_mod, "_api_get", lambda path, cfg, **k: asked.append(cfg["http_port"]))
+    tray = OpenAVCTray()
+    (status_dir / "server.json").write_text(
+        json.dumps({"http_port": 8090, "tls_enabled": False, "tls_port": 8443}),
+        encoding="utf-8",
+    )
+
+    _run_one_poll(tray, monkeypatch)
+
+    assert asked == [8090]
+    assert tray._base_url == "http://localhost:8090"

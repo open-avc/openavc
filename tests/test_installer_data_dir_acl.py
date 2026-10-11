@@ -53,12 +53,14 @@ def _commands(text: str) -> list[str]:
 
 
 def test_the_service_install_locks_the_folder_while_the_service_is_stopped():
+    """install-service.bat stops the service and never starts it; the installer
+    runs start-service.bat after it (test_installer_keeps_admin_settings.py)."""
     lines = _commands(INSTALL_SERVICE_BAT.read_text(encoding="utf-8"))
     call = 'call "%INSTALL_DIR%\\secure-data-dir.bat" "%DATA_DIR%"'
     stop = '"%INSTALL_DIR%\\nssm.exe" stop OpenAVC >nul 2>&1'
-    start = '"%INSTALL_DIR%\\nssm.exe" start OpenAVC'
     assert call in lines, "install-service.bat no longer runs secure-data-dir.bat"
-    assert lines.index(stop) < lines.index(call) < lines.index(start)
+    assert lines.index(stop) < lines.index(call)
+    assert not any(" start OpenAVC" in line for line in lines)
 
 
 def test_the_installer_ships_the_script_on_every_install():

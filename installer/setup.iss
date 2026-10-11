@@ -84,6 +84,7 @@ Source: "..\dist\openavc-tray\_internal\*"; DestDir: "{app}\_internal"; Flags: i
 ; them on silent upgrades when the registry Inno_SelectedComponents value is empty).
 Source: "nssm.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "install-service.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "start-service.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "secure-data-dir.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "uninstall-service.bat"; DestDir: "{app}"; Flags: ignoreversion
 ; Icon
@@ -100,8 +101,10 @@ Name: "{group}\Uninstall OpenAVC"; Filename: "{uninstallexe}"; Components: short
 Name: "{commonstartup}\OpenAVC Tray"; Filename: "{app}\openavc-tray.exe"; Components: tray
 
 [Run]
-; Install and start service (mandatory)
-Filename: "{app}\install-service.bat"; Parameters: """{app}"" ""{commonappdata}\OpenAVC"""; Flags: runhidden waituntilterminated; StatusMsg: "Installing and starting OpenAVC service..."
+; Install the service, put back the variables an administrator set on the
+; previous one, then start it (mandatory)
+Filename: "{app}\install-service.bat"; Parameters: """{app}"" ""{commonappdata}\OpenAVC"""; Flags: runhidden waituntilterminated; StatusMsg: "Installing OpenAVC service..."; BeforeInstall: RememberServiceEnvironment; AfterInstall: KeepAdministratorEnvironment
+Filename: "{app}\start-service.bat"; Parameters: """{app}"""; Flags: runhidden waituntilterminated; StatusMsg: "Starting OpenAVC service..."
 ; Launch tray app
 Filename: "{app}\openavc-tray.exe"; Flags: nowait postinstall skipifsilent; Components: tray; Description: "Launch OpenAVC system tray"
 ; Open Programmer IDE in browser
@@ -257,6 +260,157 @@ begin
       end;
     end;
   end;
+end;
+
+// The service's environment.
+//
+// install-service.bat removes and re-creates the service at every install and
+// update, with the installer's environment. Four of its variables are the
+// installer's, always: the data, log and project paths and
+// OPENAVC_SERVICE_MANAGED (NSSM restarts the server, so it must not start a
+// replacement itself). Every other variable on the service is the
+// administrator's, and an update keeps it: a proxy, a TLS setting,
+// OPENAVC_BIND set to the AV adapter's address. OPENAVC_ALLOW_ANONYMOUS gets
+// the installer's value (false) only when the service has none. An installed
+// server asks for the admin password with it unset as well, so keeping an
+// administrator's value opens nothing they did not open themselves.
+//
+// The one exception is OPENAVC_BIND=0.0.0.0, which every installer before
+// this one set on the service. It is dropped, not kept: it holds Settings >
+// Network > Accept connections from at every network, the setting's own
+// default on an installed system, and leaves it locked. Any other
+// OPENAVC_BIND value was set by someone on purpose, so it stays and keeps
+// holding that setting.
+//
+// The previous service's environment is read before the batch file removes
+// it, and the merged one is written before start-service.bat starts the new
+// one, so the server never starts on the installer's values in place of the
+// administrator's. The merge is done here because a value can hold any
+// character (OPENAVC_PROGRAMMER_PASSWORD) and the registry holds it exactly;
+// a batch file mangles % ! and ", and nssm's own listing is UTF-16.
+const
+  ServiceParametersKey = 'SYSTEM\CurrentControlSet\Services\OpenAVC\Parameters';
+  ServiceEnvironmentValue = 'AppEnvironmentExtra';
+  EarlierInstallerBind = '0.0.0.0';
+
+var
+  PreviousServiceEnvironment: String;
+
+// The variable's name, upper-cased (Windows names are case-insensitive), or
+// '' for an entry that is not NAME=value.
+function EnvironmentName(const Entry: String): String;
+var
+  Equals: Integer;
+begin
+  Result := '';
+  Equals := Pos('=', Entry);
+  if Equals > 1 then
+    Result := Uppercase(Copy(Entry, 1, Equals - 1));
+end;
+
+// Keep in step with the variables install-service.bat sets.
+function IsInstallerVariable(const Name: String): Boolean;
+begin
+  Result := (Name = 'OPENAVC_DATA_DIR') or (Name = 'OPENAVC_LOG_DIR') or
+    (Name = 'OPENAVC_PROJECT') or (Name = 'OPENAVC_SERVICE_MANAGED');
+end;
+
+// OPENAVC_BIND as earlier installers set it (see above).
+function IsEarlierInstallerBind(const Entry: String): Boolean;
+begin
+  Result := (EnvironmentName(Entry) = 'OPENAVC_BIND') and
+    (Copy(Entry, Pos('=', Entry) + 1, Length(Entry)) = EarlierInstallerBind);
+end;
+
+// A REG_MULTI_SZ value as read: entries separated by #0.
+procedure SplitEnvironment(const Joined: String; var Entries: TArrayOfString);
+var
+  Rest: String;
+  Separator: Integer;
+  Entry: String;
+begin
+  SetArrayLength(Entries, 0);
+  Rest := Joined;
+  while Rest <> '' do
+  begin
+    Separator := Pos(#0, Rest);
+    if Separator = 0 then
+    begin
+      Entry := Rest;
+      Rest := '';
+    end
+    else
+    begin
+      Entry := Copy(Rest, 1, Separator - 1);
+      Rest := Copy(Rest, Separator + 1, Length(Rest));
+    end;
+    if Entry <> '' then
+    begin
+      SetArrayLength(Entries, GetArrayLength(Entries) + 1);
+      Entries[GetArrayLength(Entries) - 1] := Entry;
+    end;
+  end;
+end;
+
+// The installer's fresh environment, with every administrator's variable from
+// the previous one in place of the installer's default or added after it.
+function MergeServiceEnvironment(const Previous, Fresh: String): String;
+var
+  Kept, Merged: TArrayOfString;
+  I, J: Integer;
+  Name: String;
+  Replaced: Boolean;
+begin
+  SplitEnvironment(Fresh, Merged);
+  SplitEnvironment(Previous, Kept);
+  for I := 0 to GetArrayLength(Kept) - 1 do
+  begin
+    Name := EnvironmentName(Kept[I]);
+    if (Name <> '') and not IsInstallerVariable(Name) and
+      not IsEarlierInstallerBind(Kept[I]) then
+    begin
+      Replaced := False;
+      for J := 0 to GetArrayLength(Merged) - 1 do
+      begin
+        if EnvironmentName(Merged[J]) = Name then
+        begin
+          Merged[J] := Kept[I];
+          Replaced := True;
+        end;
+      end;
+      if not Replaced then
+      begin
+        SetArrayLength(Merged, GetArrayLength(Merged) + 1);
+        Merged[GetArrayLength(Merged) - 1] := Kept[I];
+      end;
+    end;
+  end;
+  Result := '';
+  for I := 0 to GetArrayLength(Merged) - 1 do
+  begin
+    if I > 0 then
+      Result := Result + #0;
+    Result := Result + Merged[I];
+  end;
+end;
+
+procedure RememberServiceEnvironment();
+begin
+  if not RegQueryMultiStringValue(HKLM, ServiceParametersKey, ServiceEnvironmentValue,
+    PreviousServiceEnvironment) then
+    PreviousServiceEnvironment := '';
+end;
+
+procedure KeepAdministratorEnvironment();
+var
+  Fresh: String;
+begin
+  if PreviousServiceEnvironment = '' then
+    Exit;
+  if not RegQueryMultiStringValue(HKLM, ServiceParametersKey, ServiceEnvironmentValue, Fresh) then
+    Exit;
+  RegWriteMultiStringValue(HKLM, ServiceParametersKey, ServiceEnvironmentValue,
+    MergeServiceEnvironment(PreviousServiceEnvironment, Fresh));
 end;
 
 // Seed default project to data directory if not already present

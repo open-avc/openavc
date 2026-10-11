@@ -1,11 +1,12 @@
 """A setting the service's environment holds is reported as held, and cannot be
 changed through the config API.
 
-Every packaged install sets ``OPENAVC_BIND=0.0.0.0`` in its service
-environment, and ``SystemConfig.load`` applies the environment after
-system.json. So Settings > Network > Bind address saved ``127.0.0.1`` to the
-file, read back as saved, and after a restart the server was on every adapter
-again with the field showing ``0.0.0.0`` and nothing saying why.
+Packaged installs used to set ``OPENAVC_BIND=0.0.0.0`` in the service
+environment (Docker's image still does), and ``SystemConfig.load`` applies the
+environment after system.json. So Settings > Network > Bind address saved
+``127.0.0.1`` to the file, read back as saved, and after a restart the server
+was on every adapter again with the field showing ``0.0.0.0`` and nothing
+saying why. A variable someone sets on purpose still holds its field.
 
 Pinned here: which fields the config reports as held (only ones the environment
 actually overrode), what ``GET /api/system/config`` tells Settings, and what

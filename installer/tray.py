@@ -105,6 +105,20 @@ def _get_server_config() -> dict:
     return result
 
 
+def _get_listen_problem() -> str:
+    """The server's own sentence when it is not accepting connections from the
+    network it was given (the chosen adapter is unplugged or has no address),
+    or ''. Recorded with the ports at every start, so it changes when the
+    server restarts on the adapter coming back.
+    """
+    try:
+        data = json.loads(SERVER_ADDRESS_FILE.read_text(encoding='utf-8'))
+        problem = data.get('listen', {}).get('problem')
+    except (json.JSONDecodeError, OSError, AttributeError, TypeError, ValueError):
+        return ''
+    return problem if isinstance(problem, str) else ''
+
+
 def _get_port() -> int:
     """Back-compat shim: HTTP port only."""
     return _get_server_config()["http_port"]
@@ -201,6 +215,7 @@ class OpenAVCTray:
         self._version: str = ''
         self._device_info: str = ''
         self._update_available: str = ''
+        self._listen_problem: str = ''
         self._startup_error: str = ''
         self._error_shown: bool = False
 
@@ -230,6 +245,11 @@ class OpenAVCTray:
     def _poll_status(self):
         """Background thread that polls the server health endpoint."""
         while self._running:
+            # Read where the server listens at every poll, not once: a port
+            # changed in Settings is recorded when the restart applies it.
+            self._server_cfg = _get_server_config()
+            self._port = self._server_cfg["http_port"]
+            self._base_url = _base_url(self._server_cfg)
             health = _api_get('/api/health', self._server_cfg)
             if health and health.get('status') == 'healthy':
                 self._server_status = 'running'
@@ -248,10 +268,12 @@ class OpenAVCTray:
                 # up to date), so the tooltip can surface it without the tray
                 # itself hitting the network.
                 self._update_available = health.get('update_available', '') or ''
+                self._listen_problem = _get_listen_problem()
             else:
                 self._server_status = 'stopped'
                 self._device_info = ''
                 self._update_available = ''
+                self._listen_problem = ''
                 self._check_startup_error()
 
             time.sleep(POLL_INTERVAL)
@@ -311,7 +333,11 @@ class OpenAVCTray:
         parts = [title]
         if self._server_status == 'running':
             parts.append('Running')
-            if self._device_info:
+            # Ahead of the device count, which it replaces: Windows cuts a
+            # tooltip off at 128 characters.
+            if self._listen_problem:
+                parts.append(self._listen_problem)
+            elif self._device_info:
                 parts.append(self._device_info)
         elif self._startup_error:
             parts.append('Error - see popup')
