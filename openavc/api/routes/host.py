@@ -21,9 +21,24 @@ router = APIRouter()
 
 @router.get("/network/adapters")
 async def get_network_adapters() -> dict[str, Any]:
-    """List available network adapters for control interface selection."""
-    from openavc.discovery.network_scanner import get_network_adapters as _get_adapters
-    return {"adapters": _get_adapters()}
+    """This computer's network adapters, two ways.
+
+    ``adapters``: one entry per IPv4 address (the control interface picker
+    stores an address). ``interfaces``: one entry per adapter, every address
+    it holds, and the adapters that hold none (unplugged, waiting for DHCP),
+    for Accept connections from, which stores the adapter itself.
+    """
+    import asyncio
+
+    from openavc.discovery.network_scanner import (
+        get_adapter_inventory,
+        get_network_adapters as _get_adapters,
+    )
+
+    adapters, interfaces = await asyncio.gather(
+        asyncio.to_thread(_get_adapters), asyncio.to_thread(get_adapter_inventory)
+    )
+    return {"adapters": adapters, "interfaces": interfaces}
 
 
 @router.get("/system/serial-ports")

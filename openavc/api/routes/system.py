@@ -31,6 +31,10 @@ REDACTED = "***"
 # The key GET /api/system/config adds for the environment's overrides.
 ENVIRONMENT_KEY = "_environment"
 
+# The key it adds for who can connect as this server is running it: the
+# resolved choice, any problem, and the safety net while one is armed.
+LISTEN_KEY = "_listen"
+
 # Strong references to fire-and-forget tasks. asyncio only holds a weak
 # reference to a bare create_task(), so an unreferenced task can be garbage
 # collected mid-flight; keep it alive until it finishes.
@@ -269,7 +273,140 @@ async def get_system_config_endpoint() -> dict[str, Any]:
         "deployment_type": detect_deployment_type().value,
         "overrides": cfg.env_overrides(),
     }
+    data[LISTEN_KEY] = _listen_block(cfg)
     return data
+
+
+def _listen_block(cfg: Any) -> dict[str, Any]:
+    """Who can connect, as running: what the listeners bound (which can
+    differ from the saved choice until a restart, or when the chosen adapter
+    is missing), whether a restart is waiting, and the safety net."""
+    from openavc import listen, listen_safety_net
+
+    plan = listen.current()
+    running = plan.to_dict()
+    saved = listen.ListenChoice.from_config(cfg)
+    running["restart_needed"] = (
+        saved.mode != plan.choice.mode or saved.adapter != plan.choice.adapter
+    )
+    running["safety_net"] = listen_safety_net.status(cfg.data_dir)
+    return running
+
+
+def _listen_choice_from(cfg: Any, network: dict[str, Any], adapters: list) -> Any:
+    """The choice a PATCH or a preview asks for, validated: the mode, and for
+    one adapter an adapter this computer has (or the one already chosen).
+    Raises 422 naming what is wrong."""
+    from openavc import listen
+
+    mode = network.get(listen.MODE_KEY, cfg.stored("network", listen.MODE_KEY))
+    if mode not in listen.MODES:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                'Accept connections from is "any" (any network), "adapter" '
+                '(one network) or "this_computer" (this computer only).'
+            ),
+        )
+    if mode != listen.MODE_ADAPTER:
+        return listen.ListenChoice(mode=mode)
+    stored = cfg.stored("network", listen.ADAPTER_KEY) or {}
+    identity = network.get(listen.ADAPTER_KEY, stored)
+    if not isinstance(identity, dict):
+        raise HTTPException(
+            status_code=422,
+            detail='Choose the adapter as {"name": ..., "mac": ...}.',
+        )
+    identity = {
+        k: str(identity[k]).strip()
+        for k in ("name", "mac")
+        if isinstance(identity.get(k), str) and identity[k].strip()
+    }
+    if not identity:
+        raise HTTPException(
+            status_code=422,
+            detail="Choose which adapter to accept connections from.",
+        )
+    if identity != stored and listen.match_adapter(identity, adapters) is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"This computer has no adapter {identity.get('name') or identity.get('mac')}. "
+                "Choose one from the list."
+            ),
+        )
+    return listen.ListenChoice(mode=mode, adapter=identity)
+
+
+def _connection_facts(request: Request) -> tuple[str, bool]:
+    """The address of this computer the request arrived on, and whether it
+    came from this computer's own screen or the cloud tunnel (which keep
+    working under every choice)."""
+    server = request.scope.get("server")
+    through = str(server[0]) if server else ""
+    return through, is_local_console_request(request) or is_tunneled_request(request)
+
+
+def _engine_facts() -> tuple[list[str], bool]:
+    """What would stop working: approved panels by their last address, and
+    whether Inter-System is running."""
+    try:
+        engine = _get_engine()
+    except HTTPException:
+        return [], False
+    approved: list[str] = []
+    store = getattr(engine, "panel_devices", None)
+    if store is not None:
+        approved = [d.get("address") or "" for d in store.list_devices().get("approved", [])]
+    return approved, getattr(engine, "isc", None) is not None
+
+
+@router.post("/system/listen/preview")
+async def preview_listen(request: Request) -> dict[str, Any]:
+    """What saving a choice of who can connect would do, before it is saved:
+    the addresses a panel could open, whether this browser keeps its
+    connection (and so whether the safety net would be armed), and what
+    stops working. Body: ``{"accept_connections_from": ..., "accept_connections_adapter": {...}}``."""
+    import asyncio
+
+    from openavc import listen
+    from openavc.system_config import get_system_config
+
+    cfg = get_system_config()
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Body must be a JSON object")
+    adapters = await asyncio.to_thread(listen.list_adapters)
+    candidate = _listen_choice_from(cfg, body, adapters)
+    through, from_this_computer = _connection_facts(request)
+    approved, isc_on = _engine_facts()
+    result = await asyncio.to_thread(
+        listen.preview,
+        candidate,
+        adapters,
+        connected_through=through,
+        from_this_computer=from_this_computer,
+        approved_panel_addresses=approved,
+        isc_enabled=isc_on,
+    )
+    result["held_by"] = cfg.env_override("network", listen.MODE_KEY)
+    return result
+
+
+@router.post("/system/listen/confirm")
+async def confirm_listen() -> dict[str, Any]:
+    """Called by the Programmer when it loads. Keeps a change of who can
+    connect that the safety net was watching (it can only arrive through a
+    connection the new choice allows), and hands over, once, the sentence
+    saying the net went back. Either may be null."""
+    from openavc import listen, listen_safety_net
+    from openavc.system_config import get_system_config
+
+    data_dir = get_system_config().data_dir
+    return {
+        "kept": listen_safety_net.confirm(data_dir, listen.current().choice),
+        "went_back": listen_safety_net.take_notice(data_dir),
+    }
 
 
 def _env_held_conflicts(cfg: Any, body: dict[str, Any]) -> list[str]:
@@ -400,6 +537,37 @@ async def update_system_config(request: Request) -> dict[str, Any]:
     if conflicts:
         raise HTTPException(status_code=409, detail=" ".join(conflicts))
 
+    # Who can connect: validated as a pair, written as a pair. The adapter
+    # is kept only for "adapter", and the rollback mirror (bind_address) is
+    # never taken from a client: it is recomputed from the choice below.
+    from openavc import listen
+
+    network_body = body.get("network") if isinstance(body.get("network"), dict) else None
+    listen_choice = None
+    listen_adapters: list = []
+    if network_body is not None:
+        if listen.MIRROR_KEY in network_body:
+            # A client echoing what it read is dropped; a change is refused,
+            # because nothing reads this key any more.
+            if network_body.pop(listen.MIRROR_KEY) != cfg.get("network", listen.MIRROR_KEY):
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "The bind address is now Accept connections from: set "
+                        "network.accept_connections_from to \"any\", \"adapter\" "
+                        "or \"this_computer\" instead."
+                    ),
+                )
+        if listen.MODE_KEY in network_body or listen.ADAPTER_KEY in network_body:
+            import asyncio
+
+            listen_adapters = await asyncio.to_thread(listen.list_adapters)
+            listen_choice = _listen_choice_from(cfg, network_body, listen_adapters)
+            network_body[listen.MODE_KEY] = listen_choice.mode
+            network_body[listen.ADAPTER_KEY] = dict(listen_choice.adapter)
+        if not network_body:
+            del body["network"]
+
     # The admin password never goes through the generic loop below: it is
     # stored as a digest, so the typed value has exactly two destinations —
     # the hash, and the one-shot OS-sync request. Taken out here so no future
@@ -476,6 +644,11 @@ async def update_system_config(request: Request) -> dict[str, Any]:
         if "auth" not in updated_sections:
             updated_sections.append("auth")
 
+    safety_net = None
+    if listen_choice is not None:
+        listen.refresh_mirror(cfg, listen_adapters)
+        safety_net = _arm_or_disarm(cfg, request, listen_choice, listen_adapters)
+
     cfg.save()
 
     # If the admin password changed, re-sync the OS login on a Pi appliance
@@ -540,7 +713,36 @@ async def update_system_config(request: Request) -> dict[str, Any]:
         except Exception:  # noqa: BLE001 — state mirror must never fail the save
             pass
 
-    return {"status": "updated", "updated_sections": updated_sections}
+    result: dict[str, Any] = {"status": "updated", "updated_sections": updated_sections}
+    if listen_choice is not None:
+        result["safety_net"] = safety_net
+    return result
+
+
+def _arm_or_disarm(cfg: Any, request: Request, choice: Any, adapters: list) -> dict | None:
+    """Arm the safety net when this change cuts off the browser making it;
+    clear it otherwise. Returns its status, or None."""
+    from openavc import listen, listen_safety_net
+
+    plan = listen.current()
+    running = plan.choice
+    if choice.mode == running.mode and choice.adapter == running.adapter:
+        listen_safety_net.disarm(cfg.data_dir)
+        return None
+    through, from_this_computer = _connection_facts(request)
+    keeps = from_this_computer or listen.resolve(choice, adapters).serves(through)
+    if keeps:
+        listen_safety_net.disarm(cfg.data_dir)
+        return None
+    new_plan = listen.resolve(choice, adapters)
+    listen_safety_net.arm(
+        cfg.data_dir,
+        running,
+        choice,
+        previous_name=plan.adapter_name,
+        new_name=new_plan.adapter_name,
+    )
+    return listen_safety_net.status(cfg.data_dir)
 
 
 @router.post("/system/restart")

@@ -251,13 +251,21 @@ async def _initialize_engine(app: FastAPI) -> None:
         # the choice now points (openavc/listen.py).
         from openavc import listen
 
+        from openavc import listen_safety_net
+
         async def _restart_to_follow_adapter(_reason: str) -> None:
             await engine.events.emit(
                 "system.restart_requested", {"mode": "graceful", "source": "listen"}
             )
 
+        # The same ten-second tick checks the safety net's deadline: a change
+        # that cut off the browser making it goes back by itself unless the
+        # Programmer is opened through the new choice (listen_safety_net.py).
+        async def _safety_net_tick() -> None:
+            await listen_safety_net.tick(get_system_config(), _restart_to_follow_adapter)
+
         app.state.listen_watcher = asyncio.create_task(
-            listen.ListenWatcher(_restart_to_follow_adapter).run()
+            listen.ListenWatcher(_restart_to_follow_adapter, on_tick=_safety_net_tick).run()
         )
 
         app.state.engine_ready = True
@@ -1281,6 +1289,12 @@ def main():
     listen.set_current(plan)
     if plan.problem is not None:
         log.warning(plan.problem.message)
+    # A change that cut off the browser making it starts its clock now, when
+    # the server is listening on it (openavc/listen_safety_net.py).
+    from openavc import listen_safety_net
+    from openavc.system_config import get_system_config
+
+    listen_safety_net.note_listening(get_system_config().data_dir, plan.choice)
     # Clear the restart marker so a future startup error isn't masked by
     # repeated retries.
     os.environ.pop("OPENAVC_RESTARTING", None)

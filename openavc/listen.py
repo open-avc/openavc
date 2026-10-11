@@ -348,11 +348,18 @@ def _is_loopback(host: str) -> bool:
 
 
 def choice_label(mode: str, adapter_name: str = "") -> str:
+    """The choice as Settings lists it: "Any network", "Ethernet only"."""
     if mode == MODE_ANY:
         return LABEL_ANY
     if mode == MODE_THIS_COMPUTER:
         return LABEL_THIS_COMPUTER
     return f"{adapter_name} only" if adapter_name else "One network only"
+
+
+def choice_phrase(mode: str, adapter_name: str = "") -> str:
+    """The same, inside a sentence: "any network", "Ethernet only"."""
+    label = choice_label(mode, adapter_name)
+    return label if mode == MODE_ADAPTER else label[0].lower() + label[1:]
 
 
 def resolve(choice: ListenChoice, adapters: Iterable[Adapter]) -> ListenPlan:
@@ -436,7 +443,7 @@ def settle_choice(
     keeps winning at runtime and never reaches the file. The caller saves, or
     the next save writes it.
     """
-    stored = cfg.persisted_get("network", MODE_KEY)
+    stored = cfg.stored("network", MODE_KEY)
     settled = False
     if stored not in MODES:
         if stored not in (None, ""):
@@ -449,7 +456,7 @@ def settle_choice(
             mode, identity = MODE_ANY, {}
         else:
             mode, identity = convert_bind_address(
-                cfg.persisted_get("network", MIRROR_KEY), adapters
+                cfg.stored("network", MIRROR_KEY), adapters
             )
         cfg.persist_default("network", MODE_KEY, mode)
         cfg.persist_default("network", ADAPTER_KEY, identity)
@@ -475,12 +482,12 @@ def mirror_for(mode: str, identity: dict[str, Any], adapters: AdapterSource) -> 
 def refresh_mirror(cfg: Any, adapters: AdapterSource) -> None:
     """Recompute the rollback mirror from the choice in the FILE (never the
     environment's: an environment value never reaches system.json)."""
-    mode = cfg.persisted_get("network", MODE_KEY)
-    identity = cfg.persisted_get("network", ADAPTER_KEY) or {}
+    mode = cfg.stored("network", MODE_KEY)
+    identity = cfg.stored("network", ADAPTER_KEY) or {}
     if mode not in MODES:
         return
     value = mirror_for(mode, identity if isinstance(identity, dict) else {}, adapters)
-    if cfg.persisted_get("network", MIRROR_KEY) != value:
+    if cfg.stored("network", MIRROR_KEY) != value:
         cfg.persist_default("network", MIRROR_KEY, value)
 
 

@@ -952,6 +952,16 @@ class SystemConfig:
             return values[key]
         return default
 
+    def stored(self, section: str, key: str, default: Any = None) -> Any:
+        """The value ``save()`` would write for ``section.key``: the file, the
+        defaults under it and every change made since, never the
+        environment's. ``persisted_get`` answers what the file held when it
+        was loaded; this answers what it holds now."""
+        values = self._file_data.get(section)
+        if isinstance(values, dict) and key in values:
+            return values[key]
+        return default
+
     def persist_default(self, section: str, key: str, value: Any) -> None:
         """Write ``value`` to the persisted layer, and to the runtime view
         unless an environment override holds that key. For a decision the
