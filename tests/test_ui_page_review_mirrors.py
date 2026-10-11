@@ -85,7 +85,8 @@ def panel_method_bodies() -> dict[str, str]:
 
 @pytest.fixture(scope="module")
 def renderer_by_type(panel_method_bodies: dict[str, str]) -> dict[str, str]:
-    dispatch = dict(_DISPATCH.findall(panel_method_bodies["renderElement"]))
+    # renderElement registers what it draws; the per-type switch is its helper.
+    dispatch = dict(_DISPATCH.findall(panel_method_bodies["_renderElementOfType"]))
     assert len(dispatch) == len(HONORED_SHOW_SLOTS), (
         "the renderer dispatches "
         f"{sorted(dispatch)}, the review table covers {sorted(HONORED_SHOW_SLOTS)}"

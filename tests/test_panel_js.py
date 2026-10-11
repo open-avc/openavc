@@ -238,6 +238,10 @@ SCENARIOS = [
     "cleared_override_returns_to_what_the_look_shows_now",
     # A PIN pad shows a dot per digit typed and sends the digits.
     "masked_keypad_draws_dots_and_sends_the_digits",
+    # Every control takes a macro's ui.<id>.* overrides and gives them back,
+    # and its unavailable mark goes on the control itself.
+    "every_control_takes_its_overrides_and_gives_them_back",
+    "the_unavailable_mark_goes_on_the_control_itself",
 ]
 
 

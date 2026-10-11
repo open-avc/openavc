@@ -2430,6 +2430,15 @@ class PanelApp {
     }
 
     renderElement(element) {
+        const el = this._renderElementOfType(element);
+        // Every control is in the map: a macro or script can override any of
+        // them (ui.<id>.*), and the same entry is where the unavailable marks,
+        // a running macro's busy state and a press's failure claim find it.
+        if (el && element.id) this.elementMap[element.id] = { el, elementDef: element };
+        return el;
+    }
+
+    _renderElementOfType(element) {
         switch (element.type) {
             case 'button':        return this.renderButton(element);
             case 'label':         return this.renderLabel(element);
@@ -2503,9 +2512,6 @@ class PanelApp {
                 el.style.textShadow = '0 1px 0.2143rem rgba(0,0,0,0.8)';
             }
         }
-
-        // Register in element map for ui.* overrides
-        this.elementMap[element.id] = { el, elementDef: element };
 
         // Button mode: tap (default), toggle, hold_repeat, tap_hold
         // Press binding is an array of actions; mode properties come from the first action
@@ -3259,7 +3265,6 @@ class PanelApp {
         const staticItems = element.items || element.options || [];
         renderItems(staticItems);
 
-        this.elementMap[element.id] = { el, elementDef: element };
 
         // State-driven items binding
         const itemsBinding = element.bindings?.show?.items;
@@ -4198,7 +4203,6 @@ class PanelApp {
 
         el.appendChild(scrollWrap);
         if (legend) el.appendChild(legend);
-        this.elementMap[element.id] = { el, elementDef: element };
         // Where a destination with no lock_key remembers its lock. Hung on the
         // node so the state pass can read it, because that pass is what draws
         // every lock -- keyed or not -- from one place.
@@ -4568,7 +4572,6 @@ class PanelApp {
         }
 
         this.applyStyle(el, this.getThemedStyle(element.type, element.style));
-        this.elementMap[element.id] = { el, elementDef: element };
 
         // Value binding
         if (element.bindings?.show?.value) {
@@ -4687,7 +4690,6 @@ class PanelApp {
         el.appendChild(bar);
 
         this.applyStyle(el, this.getThemedStyle(element.type, element.style));
-        this.elementMap[element.id] = { el, elementDef: element };
 
         // Value binding
         if (element.bindings?.show?.value) {
@@ -5004,8 +5006,6 @@ class PanelApp {
             }
         });
 
-        this.elementMap[element.id] = { el, elementDef: element };
-
         // Value binding for state updates
         if (valueBinding) {
             faderBinding = {
@@ -5219,7 +5219,6 @@ class PanelApp {
         }
 
         this.applyStyle(el, this.getThemedStyle(element.type, element.style));
-        this.elementMap[element.id] = { el, elementDef: element };
         return el;
     }
 
@@ -5235,7 +5234,6 @@ class PanelApp {
         el.appendChild(display);
 
         this.applyStyle(el, this.getThemedStyle(element.type, element.style));
-        this.elementMap[element.id] = { el, elementDef: element };
 
         const mode = element.clock_mode || 'time';
         const defaultFormats = { time: 'h:mm A', date: 'MMM D, YYYY', datetime: 'MMM D, YYYY h:mm A', countdown: 'HH:mm:ss', elapsed: 'HH:mm:ss', meeting: 'mm:ss' };
@@ -5525,7 +5523,6 @@ class PanelApp {
         }
 
         el.appendChild(grid);
-        this.elementMap[element.id] = { el, elementDef: element };
         return el;
     }
 
@@ -6665,12 +6662,15 @@ class PanelApp {
             // that sets ui.<id>.* and then clears it can't visually revert the
             // element until a full page re-render (one-way-invariant violation).
             if (!entry._uiBase) {
+                const words = this._overrideWordsNode(el, elementDef);
                 entry._uiBase = {
                     backgroundColor: el.style.backgroundColor,
                     color: el.style.color,
                     opacity: el.style.opacity,
                     display: el.style.display,
-                    label: elementDef?.label,
+                    words,
+                    label: words ? this._ownText(words) : null,
+                    labelPath: elementDef?.type === 'label' ? ['text'] : ['label'],
                 };
                 entry._uiApplied = new Set();
             }
@@ -6686,8 +6686,7 @@ class PanelApp {
             // First, put back what a cleared override was covering.
             let cleared = false;
             if (!isSet(labelOverride) && applied.has('label')) {
-                this._setLabelText(el, base.label != null ? String(base.label) : '',
-                    ['label']);
+                this._writeOverrideWords(el, base.words, base.label, base.labelPath);
                 applied.delete('label');
                 cleared = true;
             }
@@ -6725,13 +6724,13 @@ class PanelApp {
             if (cleared) this._redrawElement(elementId);
 
             // Then every override still set, over whatever was drawn.
-            if (isSet(labelOverride)) {
+            if (isSet(labelOverride) && base.words) {
                 // Runtime words with no authored home. The editor refuses these
                 // and says which key is setting them: writing the element's own
                 // label here would be a silent no-op, because this override
                 // would still be covering it. Preserves the image layer and
                 // other element children.
-                this._setLabelText(el, String(labelOverride), null);
+                this._writeOverrideWords(el, base.words, String(labelOverride), null);
                 applied.add('label');
             }
             if (isSet(bgOverride)) {
@@ -6752,6 +6751,38 @@ class PanelApp {
                 applied.add('visible');
             }
         }
+    }
+
+    /**
+     * Where a control's words are, for a `ui.<id>.label` override: the caption
+     * on a control that carries one (a slider, a dropdown, a meter, a keypad),
+     * the control itself where its words are the control (a button, a page
+     * nav, a camera preset, a label). Null for a control with no words to
+     * replace -- an image, a clock, a frame, or a captioned control given no
+     * caption -- and the override draws nothing there.
+     */
+    _overrideWordsNode(el, elementDef) {
+        if (el._captionNode) return el._captionNode;
+        return PanelApp.OWN_WORDS_TYPES.has(elementDef?.type) ? el : null;
+    }
+
+    static get OWN_WORDS_TYPES() {
+        return new Set(['button', 'page_nav', 'camera_preset', 'label']);
+    }
+
+    /** The text a node draws itself, leaving icons and image layers out. */
+    _ownText(node) {
+        let text = '';
+        for (const child of node.childNodes) {
+            if (child.nodeType === Node.TEXT_NODE) text += child.nodeValue;
+        }
+        return text;
+    }
+
+    /** Write a control's words for an override, unless an edit holds them. */
+    _writeOverrideWords(el, node, text, path) {
+        if (this._textEdit && this._textEdit.el === el) return;
+        this._setLabelText(node, text, path);
     }
 
     evaluateVisibleWhen(b) {
@@ -8463,6 +8494,7 @@ class PanelApp {
      */
     _recordCaption(root, captionNode, path) {
         this._recordTextSource(root, path);
+        if (captionNode) root._captionNode = captionNode;
         if (this.editMode && captionNode) captionNode.dataset.avcTextHost = '1';
     }
 
@@ -8575,10 +8607,8 @@ class PanelApp {
     /**
      * The rendered node and the authored definition for an id.
      *
-     * Deliberately not `elementMap`: only eleven of the nineteen renderers
-     * register there, and `label` -- the type this feature exists for -- is not
-     * one of them. A page's elements are a flat array with parent references,
-     * so the def is a scan and the node is a query.
+     * A page's elements are a flat array with parent references, so the def
+     * is a scan and the node is a query.
      */
     _editableTarget(elementId) {
         // Document-scoped rather than #panel-root: an overlay page draws into

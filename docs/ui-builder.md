@@ -731,7 +731,7 @@ Add a **Set Variable or Control** step to a macro, pick the control from the
 
 | Property | Value | Effect |
 |----------|-------|--------|
-| **Label** | text | The words on the control, replacing the one it was given |
+| **Label** | text | The words on the control, or its caption on a slider, dropdown or meter, replacing the ones it was given. An image or a clock has none to replace |
 | **Visible** | Yes / No | Show or hide the control |
 | **Background colour** | a colour, e.g. `#e67e22` | Fills the control |
 | **Text colour** | a colour, e.g. `#ffffff` | Colours its words |

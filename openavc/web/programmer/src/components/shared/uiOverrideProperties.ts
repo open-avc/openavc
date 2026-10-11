@@ -24,7 +24,7 @@ export const UI_OVERRIDE_PROPERTIES: readonly UiOverrideProperty[] = [
     name: "label",
     label: "Label",
     type: "string",
-    hint: "The words on the control, replacing the one it was given.",
+    hint: "The words on the control, or its caption, replacing the ones it was given.",
   },
   {
     name: "visible",

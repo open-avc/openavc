@@ -4214,6 +4214,110 @@ const tests = {
         for (const k of ['Key 1', 'Key 2']) m.press(k);
         assert(m.display() === '12', `not masked: the digits, got "${m.display()}"`);
     },
+
+    // --- every control takes a macro's overrides, and gives them back --------
+    //
+    // The picker offers ui.<id>.* for every control on every page, and the
+    // panel answered them on ten of the nineteen types. On the captioned ones
+    // it did answer, a label override added its words beside the caption, and
+    // clearing it left the caption drawn twice.
+
+    every_control_takes_its_overrides_and_gives_them_back() {
+        const defs = [
+            { type: 'button', label: 'Cap' }, { type: 'label', text: 'Cap' },
+            { type: 'status_led', label: 'Cap' }, { type: 'slider', label: 'Cap' },
+            { type: 'page_nav', label: 'Cap', target_page: 'main' },
+            { type: 'select', label: 'Cap', options: [{ label: 'A', value: 'a' }] },
+            { type: 'text_input', label: 'Cap' }, { type: 'image', label: 'Cap' },
+            { type: 'camera_preset', label: 'Cap', preset_number: 1 },
+            { type: 'list', label: 'Cap', items: [{ label: 'Row', value: 'r' }] },
+            { type: 'matrix', label: 'Cap' }, { type: 'gauge', label: 'Cap' },
+            { type: 'level_meter', label: 'Cap' }, { type: 'fader', label: 'Cap' },
+            { type: 'group', label: 'Cap' }, { type: 'clock' }, { type: 'keypad', label: 'Cap' },
+            { type: 'plugin', label: 'Cap' }, { type: 'custom', label: 'Cap' },
+        ];
+        // A control with no words of its own for the label override to replace.
+        const wordless = new Set(['image', 'clock', 'plugin', 'custom']);
+        const text = (el) => el.textContent.replace(/\s+/g, ' ').trim();
+        for (const d of defs) {
+            const app = mkApp();
+            const id = `x_${d.type}`;
+            renderProject(app, project({
+                elements: [Object.assign({ id }, d)],
+                placements: { [id]: { x: 5, y: 5, w: 30, h: 30 } },
+            }));
+            app.state = {};
+            app.evaluateAllBindings();
+            const el = app.root.querySelector(`[data-element-id="${id}"]`);
+            const keys = ['bg_color', 'visible', 'label'].map(k => `ui.${id}.${k}`);
+            const before = { bg: el.style.backgroundColor, display: el.style.display, words: text(el) };
+
+            app.state[keys[0]] = '#ff0000';
+            app.state[keys[1]] = false;
+            app.state[keys[2]] = 'OVR';
+            app.evaluateAllBindings(keys);
+            assert(el.style.backgroundColor === 'rgb(255, 0, 0)',
+                `${d.type}: the colour override is drawn, got "${el.style.backgroundColor}"`);
+            assert(el.style.display === 'none', `${d.type}: the visible override hides it`);
+            if (wordless.has(d.type)) {
+                assert(text(el) === before.words,
+                    `${d.type}: no words to replace, so none are added, got "${text(el)}"`);
+            } else {
+                assert(text(el).includes('OVR') && !text(el).includes('Cap'),
+                    `${d.type}: the label override replaces its words, got "${text(el)}"`);
+            }
+
+            for (const k of keys) delete app.state[k];
+            app.evaluateAllBindings(keys);
+            assert(el.style.backgroundColor === before.bg && el.style.display === before.display,
+                `${d.type}: cleared, its own colour and display come back, got "${el.style.backgroundColor}" / "${el.style.display}"`);
+            assert(text(el) === before.words,
+                `${d.type}: cleared, its own words come back once, got "${text(el)}" for "${before.words}"`);
+        }
+    },
+
+    // The unavailable mark is styled on the control's box (.panel-element), so
+    // a mark on the part a binding draws into (an LED's dot, a slider's track,
+    // a dropdown's list) was never drawn.
+    the_unavailable_mark_goes_on_the_control_itself() {
+        const app = mkApp();
+        renderProject(app, project({
+            elements: [
+                { id: 'led', type: 'status_led', label: 'LED',
+                    bindings: { show: { look: { key: 'device.d.power', states: { on: { color: '#4caf50' } } } } } },
+                { id: 'sld', type: 'slider', label: 'Volume',
+                    bindings: { show: { value: { key: 'device.d.volume' } } } },
+                { id: 'sel', type: 'select', label: 'Input', options: [{ label: 'A', value: 'a' }],
+                    bindings: { show: { value: { key: 'device.d.input' } } } },
+                { id: 'txt', type: 'text_input', label: 'Title',
+                    bindings: { show: { value: { key: 'device.d.title' } } } },
+                { id: 'cam', type: 'camera_preset', label: 'Wide', preset_number: 1,
+                    action_devices: ['d'],
+                    bindings: { do: { press: [{ action: 'device.command', device: 'd', command: 'recall' }] } } },
+            ],
+            placements: {
+                led: { x: 5, y: 5, w: 20, h: 10 }, sld: { x: 30, y: 5, w: 30, h: 10 },
+                sel: { x: 5, y: 30, w: 30, h: 10 }, txt: { x: 5, y: 55, w: 30, h: 10 },
+                cam: { x: 40, y: 30, w: 20, h: 10 },
+            },
+        }));
+        app.state = { 'device.d.connected': false, 'device.d.volume': 40, 'device.d.input': 'a',
+            'device.d.title': 'Lecture' };
+        app.evaluateAllBindings();
+        const box = (id) => app.root.querySelector(`[data-element-id="${id}"]`);
+        for (const id of ['led', 'sld', 'sel', 'txt']) {
+            assert(box(id).classList.contains('device-offline'),
+                `${id}: the reading mark is on the control, got "${box(id).className}"`);
+        }
+        assert(box('cam').classList.contains('action-offline'),
+            `cam: a preset whose camera is away is marked, got "${box('cam').className}"`);
+        app.state['device.d.connected'] = true;
+        app.evaluateAllBindings(['device.d.connected']);
+        for (const id of ['led', 'sld', 'sel', 'txt', 'cam']) {
+            assert(!box(id).classList.contains('device-offline') && !box(id).classList.contains('action-offline'),
+                `${id}: back, and unmarked, got "${box(id).className}"`);
+        }
+    },
 };
 
 const results = {};
