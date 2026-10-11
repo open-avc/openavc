@@ -3296,6 +3296,10 @@ class BaseDriver(ABC):
         reading = self._parsed_count() is not None
         unread_cycles = 0
         parse_pending: tuple[Any, int, int] | None = None
+        # A hold belongs to the connection that earned it: on a new one the
+        # sentence a held check left in last_error clears after the first
+        # clean poll, and comes back if the replies still go unread.
+        self._unread_replies_hold = False
 
         last_poll_exc: BaseException | None = None
         try:

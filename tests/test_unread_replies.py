@@ -174,6 +174,27 @@ async def test_it_ends_on_the_first_cycle_a_reply_is_read(
 
 
 @pytest.mark.asyncio
+async def test_a_hold_ends_with_its_connection(talking_server, caplog) -> None:
+    """A reconnect starts the judgement again: the sentence a held check left
+    behind clears after the new connection's first clean poll, even before
+    anything is read (a silent reconnect is the silence check's to report)."""
+    caplog.set_level(logging.INFO, logger=_LOGGER)
+    port, state = talking_server
+    state["reply"] = b"Password: \r"
+    drv = _build(_acme(), port)
+    await drv.connect()
+    try:
+        assert await _until(lambda: drv.get_state("last_error") == _SENTENCE, 3.0)
+        await drv.disconnect()
+        state["reply"] = b""
+        await drv.connect()
+        assert await _until(lambda: not drv.get_state("last_error"), 3.0)
+        assert drv._unread_replies_hold is False
+    finally:
+        await drv.disconnect()
+
+
+@pytest.mark.asyncio
 async def test_some_replies_read_is_not_a_finding(talking_server, caplog) -> None:
     """A driver that reads one reply in two (acknowledgements no rule needs,
     a dialect the unit does not speak) is working: only none counts."""
