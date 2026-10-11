@@ -653,7 +653,7 @@ class BaseDriver(ABC):
     HEALTH_TIMEOUT_S: float = 5.0
     HEALTH_MAX_FAILURES: int = 2
     HEALTH_FAULT_MESSAGE: str = (
-        "Connected, but the device stopped answering keep-alive probes."
+        "The device stopped answering keep-alive probes."
     )
 
     #: Told about contract faults as they happen: ``observer(kind, detail)``,
@@ -2220,8 +2220,8 @@ class BaseDriver(ABC):
             )
         return ConnectionFault(
             NO_RESPONSE,
-            f"Connected, but the device stopped answering "
-            f"({cycles} poll cycles without a response).",
+            f"The device stopped answering: {cycles} polls in a row got no "
+            f"reply.",
         )
 
     def _settle_answer(self, answered: bool) -> None:
@@ -3295,8 +3295,8 @@ class BaseDriver(ABC):
                     if fault is None:
                         fault = ConnectionFault(
                             NO_RESPONSE,
-                            f"Connected, but the device stopped answering "
-                            f"({dry_polls} poll cycles without a response).",
+                            f"The device stopped answering: {dry_polls} polls "
+                            f"in a row failed.",
                         )
                     self._last_fault = fault
                     self._handle_transport_disconnect()

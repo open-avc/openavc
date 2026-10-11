@@ -3276,7 +3276,7 @@ The code becomes `offline_reason` verbatim and the message becomes `offline_deta
 For a failure with no exception to carry it — a keep-alive loop that stopped hearing replies — there is nothing for the classifier to read, so hand it the reason and tear the link down in one call:
 
 ```python
-self._force_disconnect("no_response", "Connected, but the device stopped answering status queries.")
+self._force_disconnect("no_response", "The device stopped answering status queries.")
 ```
 
 **Type the fault in *both* paths, or you lose the good reason on the next retry.** This is the mistake worth spelling out, because half of it is easy to miss. A driver typically notices a dead device two different ways, and authors reliably handle the first and forget the second:
@@ -3295,7 +3295,7 @@ async def poll(self) -> None:
         # (2) Something answered, but not this protocol. The path most
         #     drivers do type, because there is an obvious place to put it.
         raise ConnectionFaultError(
-            "Connected, but the reply was not in the expected format.",
+            "The device answered in a format this driver does not recognise.",
             code="no_response",
         )
 ```
@@ -3314,7 +3314,7 @@ Two things follow for a driver author. A `connect()` that is expensive (spawning
 
 ### The liveness probe
 
-Override `_liveness_probe()` when the link can die without the transport noticing and polling cannot tell: a push-mostly device you don't poll, a serial device, or one that streams data on its own so steadily that silence on the control channel never shows. A driver with a probe is not watched by the poll loop's silence check; the probe decides. The platform calls it every `HEALTH_INTERVAL_S` seconds (default 30) under a `HEALTH_TIMEOUT_S` deadline (default 5). Returning means the device answered; any exception is a miss. After `HEALTH_MAX_FAILURES` misses in a row (default 2) the platform drops the connection with `no_response` and `HEALTH_FAULT_MESSAGE`, then reconnects, and keeps the device offline until the probe returns. A reconnect is probed as soon as it opens, so return only when the device has answered, never because too little time has passed to call it silent. A typed `auth_failed` is not a miss: it drops the connection at once and stops the retries. All four are class attributes you can override.
+Override `_liveness_probe()` when the link can die without the transport noticing and polling cannot tell: a push-mostly device you don't poll, a serial device, or one that streams data on its own so steadily that silence on the control channel never shows. A driver with a probe is not watched by the poll loop's silence check; the probe decides. The platform calls it every `HEALTH_INTERVAL_S` seconds (default 30) under a `HEALTH_TIMEOUT_S` deadline (default 5). Returning means the device answered; any exception is a miss. After `HEALTH_MAX_FAILURES` misses in a row (default 2) the platform drops the connection with `no_response` and `HEALTH_FAULT_MESSAGE`, then reconnects, and keeps the device offline until the probe returns. A reconnect is probed as soon as it opens, so return only when the device has answered, never because too little time has passed to call it silent. A typed `auth_failed` is not a miss: it drops the connection at once and stops the retries. All four are class attributes you can override. `HEALTH_FAULT_MESSAGE` is shown under the device's **Offline** heading, so say what the device stopped doing ("The projector stopped answering status queries.") rather than opening with "Connected".
 
 ```python
 async def _liveness_probe(self) -> None:

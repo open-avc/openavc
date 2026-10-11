@@ -247,6 +247,22 @@ def test_tls_cert_untrusted_beats_generic_timeout_noise():
 
 # --- no_response -----------------------------------------------------------
 
+def test_no_platform_sentence_opens_with_connected():
+    """Each of these is shown under the device card's Offline heading, where a
+    sentence opening "Connected, but" contradicts the heading above it."""
+    from openavc.core.connection_fault import _DEFAULT_MESSAGES
+    from openavc.drivers.base import BaseDriver
+
+    classified = classify_connection_fault(
+        last_error="", exc=ConnectionError("no banner"), host="h", port=1,
+        transport="tcp",
+    )
+    sentences = [
+        *_DEFAULT_MESSAGES.values(), BaseDriver.HEALTH_FAULT_MESSAGE, classified.message,
+    ]
+    assert [s for s in sentences if s.lower().startswith("connected")] == []
+
+
 def test_no_response_tcp_at_non_cli_port():
     # TCP socket opens fine; the CLI banner never arrives. The driver's
     # post-connect timeout must classify as no_response, not unreachable.

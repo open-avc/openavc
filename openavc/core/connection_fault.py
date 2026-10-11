@@ -94,8 +94,8 @@ _DEFAULT_MESSAGES = {
         "device, then re-accept it."
     ),
     NO_RESPONSE: (
-        "Connected, but the device didn't respond as expected. Wrong "
-        "transport or protocol for this device?"
+        "The device didn't respond as expected. Check that the driver, "
+        "transport and port are right for this device."
     ),
     TLS_CERT_UNTRUSTED: (
         "Couldn't verify the TLS certificate for {where}. If the device uses "
@@ -770,8 +770,8 @@ def classify_connection_fault(
     if _has_any(hay, _NO_RESPONSE_SIGS):
         return ConnectionFault(
             NO_RESPONSE,
-            "Connected, but the device didn't respond as expected. Wrong "
-            "transport or protocol for this device?",
+            "The device didn't respond as expected. Check that the driver, "
+            "transport and port are right for this device.",
         )
 
     # 8. Weak timeout / unreachable signals with nothing more specific.

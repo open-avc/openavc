@@ -654,7 +654,9 @@ async def test_a_device_that_stops_answering_says_so(answering_server) -> None:
         assert await _until(lambda: drv.get_state("connected") is False, 3.0)
         assert drv.get_state("power") == "ON"
         assert drv.last_fault.code == "no_response"
-        assert "stopped answering" in drv.last_fault.message
+        assert drv.last_fault.message == (
+            "The device stopped answering: 3 polls in a row got no reply."
+        )
     finally:
         await drv.disconnect()
 
