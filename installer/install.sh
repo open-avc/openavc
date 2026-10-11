@@ -545,8 +545,8 @@ RestartSec=5
 Environment=OPENAVC_DATA_DIR=/var/lib/openavc
 Environment=OPENAVC_LOG_DIR=/var/log/openavc
 Environment=OPENAVC_PROJECT=/var/lib/openavc/projects/default/project.avc
-Environment=OPENAVC_BIND=0.0.0.0
 Environment=OPENAVC_ALLOW_ANONYMOUS=false
+Environment=OPENAVC_SERVICE_MANAGED=1
 NoNewPrivileges=true
 # CAP_NET_RAW lets the discovery ping sweep open an ICMP/raw socket under the
 # unprivileged user; NoNewPrivileges strips /bin/ping's file cap at exec.

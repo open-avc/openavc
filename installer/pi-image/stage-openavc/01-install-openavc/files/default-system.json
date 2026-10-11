@@ -1,7 +1,6 @@
 {
     "network": {
-        "http_port": 8080,
-        "bind_address": "0.0.0.0"
+        "http_port": 8080
     },
     "auth": {
         "programmer_password": "",

@@ -23,8 +23,12 @@ RestartSec=5
 Environment=OPENAVC_DATA_DIR=/var/lib/openavc
 Environment=OPENAVC_LOG_DIR=/var/log/openavc
 Environment=OPENAVC_PROJECT=/var/lib/openavc/projects/default/project.avc
-Environment=OPENAVC_BIND=0.0.0.0
-# Secure by default: bound to all interfaces so panels can reach it, but the
+# No OPENAVC_BIND: who can connect is Settings > Network > Accept connections
+# from, every network on an installed system until someone changes it, and a
+# value here would lock that setting. To hold it from outside Settings, set it
+# in an override (sudo systemctl edit openavc), which updates leave alone.
+#
+# Secure by default: reachable by panels on the network, but the
 # Programmer/admin surface requires a credential. A fresh install is
 # "unclaimed" — the first Programmer visit sets the admin password. The room
 # panel stays open. Set to "true" only if another auth layer fronts OpenAVC.
