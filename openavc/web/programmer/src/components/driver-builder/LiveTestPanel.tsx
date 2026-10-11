@@ -966,7 +966,7 @@ function ResultRow({ entry, isLast }: { entry: ResultEntry; isLast: boolean }) {
           <span style={{ color: "var(--text-muted)" }}>State changes:</span>{" "}
           {Object.entries(entry.state_changes).map(([k, v], i, arr) => (
             <span key={k}>
-              <span style={{ color: "var(--accent)" }}>{k}</span>={valueText(v, "null")}
+              <span style={{ color: "var(--accent)" }}>{k}</span>={valueText(v, "—")}
               {i < arr.length - 1 ? ", " : ""}
             </span>
           ))}

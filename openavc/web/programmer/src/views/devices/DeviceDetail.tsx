@@ -14,6 +14,7 @@ import type { BridgePort, DeviceConfig, DeviceInfo, DeviceSettingValue, DriverPa
 import { CommandParamForm } from "../../components/shared/CommandParamForm";
 import {
   commandConfirmMessage,
+  commandResultText,
   commandParamsBlocked,
   seedCommandParams,
   type CommandParamDefs,
@@ -31,8 +32,9 @@ import { DevicePanelSlot, ContextActionRenderer } from "../../components/plugins
 import { findDeviceReferences, validateSettingValue } from "./deviceUtils";
 import { formatDeviceAddress } from "./deviceAddress";
 import { BooleanOptions } from "../../components/shared/BooleanOptions";
-import { valueText } from "../../components/shared/booleanWords";
+import { readingText, valueText } from "../../components/shared/booleanWords";
 import { ChildEntities } from "./ChildEntities";
+import { DeviceStateLog } from "./DeviceStateLog";
 import { QuickActions } from "./QuickActions";
 import { InlineProtocolEditor } from "./InlineProtocolEditor";
 import { IrCodesEditor } from "./IrCodesEditor";
@@ -60,7 +62,9 @@ export function DeviceDetail({
   const update = useProjectStore((s) => s.update);
   const liveState = useConnectionStore((s) => s.liveState);
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
-  const [commandResult, setCommandResult] = useState<string | null>(null);
+  const [commandResult, setCommandResult] = useState<
+    { ok: boolean; text: string; detail?: string } | null
+  >(null);
   const [selectedCommand, setSelectedCommand] = useState("");
   const [commandParams, setCommandParams] = useState<Record<string, string>>({});
   const [sending, setSending] = useState(false);
@@ -105,11 +109,14 @@ export function DeviceDetail({
   // driver narrows its commands/actions to what the hardware reports at
   // connect, so info fetched while the device was offline goes stale the
   // moment it comes up (and vice versa).
+  // The same when the device's web page is found: the platform looks for it
+  // in the background after connect, and Open Web UI comes with the answer.
   const connected = Boolean(liveState[`device.${deviceId}.connected`]);
+  const webUiUrl = liveState[`device.${deviceId}.web_ui_url`];
   const [testResult, setTestResult] = useConnectionTestResult(deviceId, connected);
   useEffect(() => {
     refetchDeviceInfo();
-  }, [refetchDeviceInfo, connected]);
+  }, [refetchDeviceInfo, connected, webUiUrl]);
 
   const deviceConfig = project?.devices.find((d) => d.id === deviceId);
   const isEnabled = deviceConfig?.enabled !== false;
@@ -203,7 +210,10 @@ export function DeviceDetail({
 
   // Extract device state from flat liveState
   const prefix = `device.${deviceId}.`;
-  const stateEntries: [string, string][] = [];
+  // [key, the value as shown, the full value when rounding shortened it]
+  const stateEntries: [string, string, string | undefined][] = [];
+  const declaredReadings = (deviceInfo?.driver_info?.state_variables ?? {}) as
+    Record<string, { step?: unknown }>;
   let hiddenChildKeyCount = 0;
   const stateTerm = searchTerm.trim().toLowerCase();
   for (const [key, value] of Object.entries(liveState)) {
@@ -216,7 +226,8 @@ export function DeviceDetail({
         continue;
       }
     }
-    const valueStr = valueText(value);
+    const valueStr = readingText(value, declaredReadings[rest]);
+    const fullValue = valueText(value);
     if (
       stateTerm &&
       !rest.toLowerCase().includes(stateTerm) &&
@@ -224,7 +235,7 @@ export function DeviceDetail({
     ) {
       continue;
     }
-    stateEntries.push([rest, valueStr]);
+    stateEntries.push([rest, valueStr, fullValue !== valueStr ? fullValue : undefined]);
   }
 
   const deviceName = String(liveState[`device.${deviceId}.name`] ?? deviceId);
@@ -299,13 +310,14 @@ export function DeviceDetail({
         params[k] = v;
       }
       const result = await api.sendCommand(deviceId, selectedCommand, params);
-      setCommandResult(JSON.stringify(result, null, 2));
+      const def = commands[selectedCommand] as { label?: string } | undefined;
+      setCommandResult({ ok: true, ...commandResultText(def?.label || selectedCommand, result) });
     } catch (e) {
-      setCommandResult(parseApiError(e));
+      setCommandResult({ ok: false, text: parseApiError(e) });
     } finally {
       setSending(false);
     }
-  }, [deviceId, selectedCommand, commandParams]);
+  }, [deviceId, selectedCommand, commandParams, commands]);
 
   // Get param fields for selected command
   const commandDef = commands[selectedCommand] as Record<string, unknown> | undefined;
@@ -900,7 +912,7 @@ export function DeviceDetail({
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <tbody>
-                {stateEntries.map(([key, value]) => {
+                {stateEntries.map(([key, value, fullValue]) => {
                   const fullKey = `device.${deviceId}.${key}`;
                   const monitor = monitors.find((m) => m.key === fullKey);
                   // A value the device is no longer reporting. Only the
@@ -930,7 +942,7 @@ export function DeviceDetail({
                       </span>
                     </td>
                     <td
-                      title={stale ? DEVICE_STALE_TITLE : undefined}
+                      title={stale ? DEVICE_STALE_TITLE : fullValue}
                       style={{
                         padding: "var(--space-sm) var(--space-md)",
                         fontFamily: "var(--font-mono)",
@@ -1105,20 +1117,35 @@ export function DeviceDetail({
 
               {/* Result */}
               {commandResult !== null && (
-                <pre
-                  style={{
-                    background: "var(--bg-base)",
-                    padding: "var(--space-md)",
-                    borderRadius: "var(--border-radius)",
-                    fontSize: "var(--font-size-sm)",
-                    fontFamily: "var(--font-mono)",
-                    overflow: "auto",
-                    maxHeight: 200,
-                    whiteSpace: "pre-wrap",
-                  }}
-                >
-                  {commandResult}
-                </pre>
+                <div role="status" style={{ fontSize: "var(--font-size-sm)" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "var(--space-xs)",
+                      color: commandResult.ok ? "var(--color-success)" : "var(--color-error)",
+                    }}
+                  >
+                    {commandResult.ok ? <Check size={14} /> : <AlertTriangle size={14} />}
+                    <span>{commandResult.text}</span>
+                  </div>
+                  {commandResult.detail && (
+                    <pre
+                      style={{
+                        background: "var(--bg-base)",
+                        padding: "var(--space-md)",
+                        borderRadius: "var(--border-radius)",
+                        fontFamily: "var(--font-mono)",
+                        overflow: "auto",
+                        maxHeight: 200,
+                        whiteSpace: "pre-wrap",
+                        margin: "var(--space-xs) 0 0",
+                      }}
+                    >
+                      {commandResult.detail}
+                    </pre>
+                  )}
+                </div>
               )}
 
               {confirmSend !== null && (
@@ -1641,142 +1668,6 @@ function DeviceProtocolLog({ deviceId }: { deviceId: string }) {
     </div>
   );
 }
-
-function DeviceStateLog({ deviceId }: { deviceId: string }) {
-  const liveState = useConnectionStore((s) => s.liveState);
-  const prevStateRef = useRef<Record<string, unknown>>({});
-  const prevDeviceRef = useRef<string>(deviceId);
-  const [entries, setEntries] = useState<
-    { key: string; oldValue: unknown; newValue: unknown; timestamp: number }[]
-  >([]);
-  const listRef = useRef<HTMLDivElement>(null);
-
-  const devicePrefix = `device.${deviceId}.`;
-
-  // Track live state changes for this device
-  useEffect(() => {
-    // Switching devices must start a fresh log — accumulated rows and the
-    // previous-state snapshot belong to the old device, and diffing the new
-    // device's keys against them fabricates misleading change rows.
-    // (DeviceView also keys <DeviceDetail> by deviceId, so this is a
-    // defensive reset for any future keyless call site.)
-    if (prevDeviceRef.current !== deviceId) {
-      prevDeviceRef.current = deviceId;
-      prevStateRef.current = { ...liveState };
-      setEntries([]);
-      return;
-    }
-    const prev = prevStateRef.current;
-    const newEntries: typeof entries = [];
-    for (const [key, value] of Object.entries(liveState)) {
-      if (!key.startsWith(devicePrefix)) continue;
-      if (prev[key] !== value && prev[key] !== undefined) {
-        newEntries.push({
-          key: key.slice(devicePrefix.length),
-          oldValue: prev[key],
-          newValue: value,
-          timestamp: Date.now() / 1000,
-        });
-      }
-    }
-    prevStateRef.current = { ...liveState };
-    if (newEntries.length > 0) {
-      setEntries((prev) => [...prev, ...newEntries].slice(-100));
-    }
-  }, [liveState, devicePrefix, deviceId]);
-
-  // Tail the newest entry — keying on length stalls once the 100-row window
-  // saturates; the newest entry's identity changes with every append.
-  const newestEntry = entries[entries.length - 1];
-  useEffect(() => {
-    if (listRef.current) {
-      listRef.current.scrollTop = listRef.current.scrollHeight;
-    }
-  }, [newestEntry]);
-
-  const formatValue = (v: unknown) => {
-    // "—", not "null": a reading the device has not sent is the normal state of
-    // every variable until it does, and the word belongs to a debugger rather
-    // than to somebody commissioning a room. Same mark the Dashboard tile and
-    // the panel use for the same thing.
-    return valueText(v, "—");
-  };
-
-  return (
-    <div
-      ref={listRef}
-      style={{
-        background: "var(--bg-surface)",
-        borderRadius: "var(--border-radius)",
-        border: "1px solid var(--border-color)",
-        overflow: "auto",
-        maxHeight: 250,
-        fontFamily: "var(--font-mono)",
-        fontSize: "var(--font-size-sm)",
-      }}
-    >
-      {entries.length === 0 ? (
-        <div
-          style={{
-            padding: "var(--space-lg)",
-            color: "var(--text-muted)",
-            fontSize: "var(--font-size-sm)",
-            textAlign: "center",
-            fontFamily: "var(--font-primary, inherit)",
-          }}
-        >
-          No state changes yet. Interact with the device to see live updates.
-        </div>
-      ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid var(--border-color)", position: "sticky", top: 0, background: "var(--bg-surface)" }}>
-              <th style={devLogThStyle}>Time</th>
-              <th style={devLogThStyle}>Property</th>
-              <th style={devLogThStyle}>Old</th>
-              <th style={devLogThStyle}>New</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((e, i) => {
-              const time = new Date(e.timestamp * 1000);
-              return (
-                <tr key={i} style={{ borderBottom: "1px solid var(--border-color)" }}>
-                  <td style={devLogTdStyle}>
-                    {time.toLocaleTimeString(undefined, { hour12: false })}
-                  </td>
-                  <td style={{ ...devLogTdStyle, color: "var(--accent)" }}>{e.key}</td>
-                  <td style={{ ...devLogTdStyle, color: "var(--text-muted)" }}>
-                    {formatValue(e.oldValue)}
-                  </td>
-                  <td style={devLogTdStyle}>{formatValue(e.newValue)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
-
-const devLogThStyle: React.CSSProperties = {
-  padding: "var(--space-xs) var(--space-md)",
-  textAlign: "left",
-  fontWeight: 600,
-  color: "var(--text-secondary)",
-  fontSize: 11,
-  textTransform: "uppercase",
-  letterSpacing: "0.5px",
-};
-
-const devLogTdStyle: React.CSSProperties = {
-  padding: "var(--space-xs) var(--space-md)",
-  whiteSpace: "nowrap",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  maxWidth: 150,
-};
 
 // Offline reasons the server stops retrying on, because only a human can
 // clear them. Mirrors _PERMANENT_FAULT_CODES in openavc/core/connection_fault.py

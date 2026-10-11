@@ -57,8 +57,16 @@ vi.mock("@tanstack/react-virtual", () => ({
 
 import { ChildEntities } from "./ChildEntities";
 
+/** The expanded row for one reading, found by its key (the row shows the
+ *  reading's label, and keeps the key as the label's tooltip). */
+function readingRow(row: HTMLElement, prop: string): HTMLElement {
+  const cell = row.querySelector(`td[title="${prop}"]`);
+  if (!cell) throw new Error(`no reading row for ${prop}`);
+  return cell.closest("tr") as HTMLElement;
+}
+
 /** One channel, in whatever state the test needs it in. */
-function payload(state: Record<string, unknown>) {
+function payload(state: Record<string, unknown>, level: Record<string, unknown> = {}) {
   return {
     device_id: "amp",
     child_entity_types: {
@@ -67,7 +75,7 @@ function payload(state: Record<string, unknown>) {
         label_plural: "Channels",
         id_format: { type: "integer", min: 1, max: 8, pad_width: 2 },
         state_variables: {
-          level: { type: "number", label: "Output Level (dB)", unit: "dB" },
+          level: { type: "number", label: "Output Level (dB)", unit: "dB", ...level },
           online: { type: "boolean", label: "Online" },
           label: { type: "string", label: "Label" },
           offline_reason: { type: "string", label: "Fault" },
@@ -133,7 +141,7 @@ describe("a child that has stopped answering", () => {
     expect(within(row).getAllByText("-6.5").length).toBeGreaterThan(0);
     expect(within(row).getAllByTestId("last-heard").length).toBe(1);
 
-    const level = within(row).getByRole("row", { name: /^level/ });
+    const level = readingRow(row, "level");
     expect(within(level).getByTestId("last-heard")).toBeTruthy();
   });
 
@@ -145,7 +153,7 @@ describe("a child that has stopped answering", () => {
     const row = screen.getByTestId("child-row-01");
 
     for (const prop of ["online", "label", "offline_reason", "offline_detail"]) {
-      const tr = within(row).getByRole("row", { name: new RegExp(`^${prop}`) });
+      const tr = readingRow(row, prop);
       expect(within(tr).queryByTestId("last-heard")).toBeNull();
     }
   });
@@ -196,3 +204,33 @@ describe("an empty slot", () => {
     expect(document.querySelector('[data-stale="true"]')).toBeNull();
   });
 });
+
+// What the table shows a person: the driver's names for the readings, and a
+// fractional reading rounded to the precision its driver declares, not the
+// keys ("OUTPUT_SIGNAL_DETECT") and every digit a float conversion left.
+describe("how readings read", () => {
+  const RAW = -52.78131103515625;
+
+  it("heads each column with the reading's label, its key on hover", async () => {
+    mocks.listChildEntities.mockResolvedValue(payload(IN_SERVICE));
+    render(panel());
+    await screen.findByTestId("child-row-01");
+    const header = screen.getByTitle("level");
+    expect(header.textContent).toBe("Output Level (dB)");
+  });
+
+  it("rounds a reading to its declared step, the full value on hover", async () => {
+    mocks.listChildEntities.mockResolvedValue(payload({ ...IN_SERVICE, level: RAW }, { step: 0.5 }));
+    render(panel());
+    await screen.findByTestId("child-row-01");
+    const cell = screen.getByText("-52.8");
+    expect(cell.getAttribute("title")).toBe(String(RAW));
+    expect(screen.queryByText(String(RAW))).toBeNull();
+
+    await userEvent.click(screen.getByTestId("child-expand-01"));
+    const level = readingRow(screen.getByTestId("child-row-01"), "level");
+    expect(within(level).getByText("Output Level (dB)")).toBeTruthy();
+    expect(within(level).getByText("-52.8")).toBeTruthy();
+  });
+});
+

@@ -37,9 +37,10 @@ When you pick a USB adapter that reports a serial number, OpenAVC remembers that
 After adding a device, click it in the device list to open the detail panel:
 
 - **Connection status**: green dot = connected, red dot = disconnected
-- **Live state**: real-time values for all state variables (power, input, etc.)
-- **Command testing**: select a command from the dropdown, fill any parameters, click **Send**
+- **Live state**: real-time values for all state variables (power, input, etc.). A fractional reading is rounded to the precision its driver declares; hover it for the full value.
+- **Command testing**: select a command from the dropdown, fill any parameters, click **Send**. The line below says it was sent, and shows the device's answer when the driver returns one.
 - **Raw log**: see the bytes sent and received for debugging
+- **State Changes**: the device's recent changes, old and new value, including the ones made before you opened the tab
 
 Always test commands here before using them in macros. This confirms the device is responding and the driver is parsing responses correctly.
 

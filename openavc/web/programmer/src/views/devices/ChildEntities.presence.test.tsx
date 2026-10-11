@@ -353,8 +353,8 @@ describe("the column fallback", () => {
 
     await screen.findByTestId("child-row-a");
     // Not `offline_reason`, and not `online` beside the dot that says it.
-    expect(screen.queryByText("offline_reason")).toBeNull();
-    expect(screen.queryByText("online")).toBeNull();
+    expect(screen.queryByTitle("offline_reason")).toBeNull();
+    expect(screen.queryByTitle("online")).toBeNull();
     // The row still carries everything that matters.
     expect(screen.getAllByTestId("child-presence-dot")).toHaveLength(2);
   });
@@ -372,8 +372,8 @@ describe("the column fallback", () => {
     render(panel());
 
     await screen.findByTestId("child-row-a");
-    expect(screen.getByText("resolution")).toBeTruthy();
-    expect(screen.queryByText("offline_reason")).toBeNull();
+    expect(screen.getByTitle("resolution")).toBeTruthy();
+    expect(screen.queryByTitle("offline_reason")).toBeNull();
   });
 
   it("honours an explicit summary_fields even when it names a reserved key", async () => {
@@ -386,6 +386,6 @@ describe("the column fallback", () => {
     render(panel());
 
     await screen.findByTestId("child-row-a");
-    expect(screen.getByText("online")).toBeTruthy();
+    expect(screen.getByTitle("online")).toBeTruthy();
   });
 });

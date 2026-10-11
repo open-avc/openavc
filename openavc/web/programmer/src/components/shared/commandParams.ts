@@ -10,6 +10,7 @@
 import type { DriverParamDef } from "../../api/types";
 import { normalizeOptionList } from "./paramOptions";
 import { hasInvalidParams, hasMissingRequiredParams } from "./paramValidation";
+import { valueText } from "./booleanWords";
 
 export type CommandParamDefs = Record<string, Partial<DriverParamDef>>;
 
@@ -95,4 +96,24 @@ export function commandConfirmMessage(
   if (typeof confirm === "string" && confirm.trim()) return confirm;
   if (confirm === true) return `Send ${label}?`;
   return null;
+}
+
+/** What the device page says once a command has gone out: that it was sent,
+ *  and the device's answer when the driver hands one back. A short answer is
+ *  in the line; a structured one comes back as `detail`, shown below it. */
+export function commandResultText(
+  label: string,
+  response: { result?: unknown } | null | undefined,
+): { text: string; detail?: string } {
+  const result = response?.result;
+  if (result === true || result === null || result === undefined) {
+    return { text: `${label} sent.` };
+  }
+  if (typeof result === "object") {
+    return {
+      text: `${label} sent. The device answered:`,
+      detail: JSON.stringify(result, null, 2),
+    };
+  }
+  return { text: `${label} sent. The device answered: ${valueText(result)}` };
 }

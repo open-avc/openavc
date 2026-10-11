@@ -392,3 +392,15 @@ async def test_emit_events_per_key_event_still_delivered(wired):
     state.set("var.target", 7)
     await state.flush_pending_events()
     assert hits == [7]
+
+
+def test_get_history_narrowed_to_one_prefix(state):
+    """A device page asks for one device's changes, not the whole record: the
+    count applies after the narrowing, so a chatty neighbour cannot push them
+    out of the answer."""
+    state.set("device.amp.level", 1)
+    for n in range(5):
+        state.set("device.other.meter", n)
+    state.set("device.amp.mute", True)
+    mine = state.get_history(2, prefix="device.amp.")
+    assert [e["key"] for e in mine] == ["device.amp.level", "device.amp.mute"]

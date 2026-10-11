@@ -72,3 +72,32 @@ export function quotedValueText(value: unknown): string {
   if (typeof value === "boolean") return booleanWord(value);
   return JSON.stringify(value) ?? String(value);
 }
+
+/** The decimal places a step like 0.5 or 0.01 is written to. */
+function placesOf(step: number): number {
+  const text = String(step);
+  const dot = text.indexOf(".");
+  return dot < 0 ? 0 : text.length - dot - 1;
+}
+
+/**
+ * A device reading as a readout shows it: as `valueText`, except that a
+ * fractional number is rounded to the places of the step its driver declares
+ * for it, or to two places when it declares none (a very small reading keeps
+ * three significant digits rather than rounding to 0). The full value is for
+ * a tooltip; this is what a person reads.
+ */
+export function readingText(
+  value: unknown,
+  declared: { step?: unknown } | null | undefined,
+  empty = "",
+): string {
+  if (typeof value === "number" && Number.isFinite(value) && !Number.isInteger(value)) {
+    const step = declared?.step;
+    const places = typeof step === "number" && step > 0 ? placesOf(step) : 2;
+    const rounded = Number(value.toFixed(places));
+    if (rounded === 0 && places >= 2) return String(Number(value.toPrecision(3)));
+    return String(rounded);
+  }
+  return valueText(value, empty);
+}

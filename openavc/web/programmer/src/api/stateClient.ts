@@ -22,10 +22,12 @@ export async function getState(): Promise<Record<string, unknown>> {
 }
 
 export async function getStateHistory(
-  count = 50
+  count = 50,
+  prefix?: string,
 ): Promise<StateHistoryEntry[]> {
+  const narrow = prefix ? `&prefix=${encodeURIComponent(prefix)}` : "";
   return (
-    await request<{ history: StateHistoryEntry[] }>(`/state/history?count=${count}`)
+    await request<{ history: StateHistoryEntry[] }>(`/state/history?count=${count}${narrow}`)
   ).history;
 }
 

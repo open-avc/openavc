@@ -2084,7 +2084,7 @@ class DeviceManager:
         # Guard against a device removed while the probe was in flight, and don't
         # clobber a URL that arrived first (e.g. a discovery seed).
         if url and device_id in self._devices and device_id not in self._detected_web_ui_urls:
-            self._detected_web_ui_urls[device_id] = url
+            self._record_web_ui_url(device_id, url)
 
     def seed_web_ui_url(self, device_id: str, url: str) -> None:
         """Record a web UI URL detected outside the probe (e.g. from a discovery
@@ -2096,8 +2096,17 @@ class DeviceManager:
         driver = self._devices.get(device_id)
         if driver is None or driver.DRIVER_INFO.get("web_ui") is not None:
             return
-        if url:
-            self._detected_web_ui_urls.setdefault(device_id, url)
+        if url and device_id not in self._detected_web_ui_urls:
+            self._record_web_ui_url(device_id, url)
+
+    def _record_web_ui_url(self, device_id: str, url: str) -> None:
+        """Keep a detected web UI URL for ``get_device_info`` and publish it as
+        ``device.<id>.web_ui_url``. The probe finishes after a device page has
+        fetched the device's actions, so the state change is what tells that
+        page the Open Web UI action now exists. ``remove_device`` clears the
+        key with the rest of the device's state."""
+        self._detected_web_ui_urls[device_id] = url
+        self.state.set(f"device.{device_id}.web_ui_url", url, source="device_manager")
 
     def _bridge_routed_dependents(self, bridge_id: str) -> list[str]:
         """Live device ids that route their commands through ``bridge_id`` and

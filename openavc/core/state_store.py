@@ -271,8 +271,9 @@ class StateStore:
         """Return a complete copy of the state store."""
         return dict(self._store)
 
-    def get_history(self, count: int = 50) -> list[dict]:
-        """Return the ``count`` most recent state changes.
+    def get_history(self, count: int = 50, prefix: str | None = None) -> list[dict]:
+        """Return the ``count`` most recent state changes, only those to keys
+        starting with ``prefix`` when one is given.
 
         A count of 0 (or negative) returns an empty list. The naive
         ``[-count:]`` slice turns 0 into "everything" (``[-0:]`` is the whole
@@ -281,7 +282,10 @@ class StateStore:
         """
         if count <= 0:
             return []
-        entries = list(self._history)[-count:]
+        entries = list(self._history)
+        if prefix:
+            entries = [e for e in entries if e.key.startswith(prefix)]
+        entries = entries[-count:]
         return [
             {
                 "key": e.key,

@@ -353,7 +353,7 @@ function StateChangeTab() {
     return d.toLocaleTimeString(undefined, { hour12: false });
   };
 
-  const formatValue = (v: unknown) => valueText(v, "null");
+  const formatValue = (v: unknown) => valueText(v, "—");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: "var(--space-sm)" }}>

@@ -28,7 +28,8 @@ import type {
   ChildEntityTypeSchema,
   MonitorConfig,
 } from "../../api/types";
-import { valueText } from "../../components/shared/booleanWords";
+import { readingText, valueText } from "../../components/shared/booleanWords";
+import { paramLabel } from "../../components/shared/paramLabel";
 
 const ROW_HEIGHT = 36;
 // Initial estimate for an expanded row before it's measured: the collapsed
@@ -874,9 +875,10 @@ function ChildEntityList({
         {summaryFields.map((field) => (
           <div
             key={field}
-            style={{ ...headerCellStyle, flex: 1, fontFamily: "var(--font-mono)" }}
+            title={field}
+            style={{ ...headerCellStyle, flex: 1 }}
           >
-            {field}
+            {paramLabel(field, schema.state_variables[field])}
           </div>
         ))}
         <div style={{ ...headerCellStyle, width: 32 }}></div>
@@ -1044,12 +1046,13 @@ function ChildEntityList({
                     // A column of three values has no room for the words, so
                     // here the dimming carries it, next to the status mark on
                     // the same row that says why.
-                    const dim = stale && !CHILD_RESERVED_PROPS.has(field)
-                      && formatStateValue(liveS[field]) !== "";
+                    const fieldDef = (entry.schema ?? schema.state_variables)[field];
+                    const shown = formatStateValue(liveS[field], fieldDef);
+                    const dim = stale && !CHILD_RESERVED_PROPS.has(field) && shown !== "";
                     return (
                       <div
                         key={field}
-                        title={dim ? CHILD_STALE_TITLE : undefined}
+                        title={dim ? CHILD_STALE_TITLE : fullValueTitle(liveS[field], shown)}
                         style={{
                           flex: 1,
                           fontFamily: "var(--font-mono)",
@@ -1061,7 +1064,7 @@ function ChildEntityList({
                         }}
                         data-stale={dim ? "true" : undefined}
                       >
-                        {formatStateValue(liveS[field])}
+                        {shown}
                       </div>
                     );
                   })}
@@ -1132,6 +1135,7 @@ function ChildEntityList({
                             <ReadingRow
                               key={prop}
                               prop={prop}
+                              def={(entry.schema ?? schema.state_variables)[prop]}
                               value={liveS[prop]}
                               stateKey={`device.${deviceId}.${childType}.${entry.local_id_padded}.${prop}`}
                               declared={declarations.get(
@@ -1170,6 +1174,7 @@ function ChildEntityList({
  */
 function ReadingRow({
   prop,
+  def,
   value,
   stateKey,
   declared,
@@ -1178,6 +1183,8 @@ function ReadingRow({
   stale,
 }: {
   prop: string;
+  /** The reading's own declaration: its label and precision. */
+  def?: { label?: string; step?: unknown } | null;
   value: unknown;
   stateKey: string;
   declared: DeclaredReading | undefined;
@@ -1190,7 +1197,7 @@ function ReadingRow({
 }) {
   const [open, setOpen] = useState(false);
   const monitor = monitors.find((m) => m.key === stateKey);
-  const shown = formatStateValue(value);
+  const shown = formatStateValue(value, def);
   const dim = stale && !CHILD_RESERVED_PROPS.has(prop) && shown !== "";
   return (
     <Fragment>
@@ -1203,14 +1210,14 @@ function ReadingRow({
           style={{
             padding: "2px 8px",
             width: "30%",
-            fontFamily: "var(--font-mono)",
             color: "var(--text-secondary)",
           }}
+          title={prop}
         >
-          {prop}
+          {paramLabel(prop, def)}
         </td>
         <td
-          title={dim ? CHILD_STALE_TITLE : undefined}
+          title={dim ? CHILD_STALE_TITLE : fullValueTitle(value, shown)}
           style={{
             padding: "2px 8px",
             fontFamily: "var(--font-mono)",
@@ -1314,8 +1321,16 @@ function PresenceDot({ state }: { state: Record<string, unknown> }) {
 }
 
 
-function formatStateValue(v: unknown): string {
-  return valueText(v);
+/** A child's reading as its table shows it, rounded to the precision its
+ *  driver declares (see readingText). */
+function formatStateValue(v: unknown, def?: { step?: unknown } | null): string {
+  return readingText(v, def);
+}
+
+/** The full value, for a tooltip, when the table shows it rounded. */
+function fullValueTitle(v: unknown, shown: string): string | undefined {
+  const full = valueText(v);
+  return full !== shown ? full : undefined;
 }
 
 

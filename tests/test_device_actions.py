@@ -360,6 +360,35 @@ def test_seed_web_ui_url_first_writer_wins():
     assert dm._detected_web_ui_urls["dev1"] == "http://first"
 
 
+# The probe finishes in the background, after a device page has already
+# fetched the device's actions, and nothing said so: Open Web UI stayed missing
+# until something else refetched. The address it found is published as state,
+# which a page already watches.
+
+def test_a_seeded_web_ui_url_is_published_as_state():
+    dm = _dm_with_device({})
+    dm.seed_web_ui_url("dev1", "http://192.0.2.20")
+    assert dm.state.get("device.dev1.web_ui_url") == "http://192.0.2.20"
+
+
+def test_a_probed_web_ui_url_is_published_as_state(monkeypatch):
+    import asyncio
+
+    async def _found(host):
+        return f"http://{host}"
+
+    monkeypatch.setattr("openavc.core.web_ui_probe.probe_web_ui", _found)
+    dm = _dm_with_device({})
+    asyncio.run(dm._run_web_ui_probe("dev1", "192.0.2.20"))
+    assert dm.state.get("device.dev1.web_ui_url") == "http://192.0.2.20"
+
+
+def test_a_forced_web_ui_publishes_nothing():
+    dm = _dm_with_device({"web_ui": True})
+    dm.seed_web_ui_url("dev1", "http://192.0.2.20")
+    assert dm.state.get("device.dev1.web_ui_url") is None
+
+
 # --- Invoke endpoint -------------------------------------------------------
 
 

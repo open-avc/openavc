@@ -19,10 +19,10 @@ async def get_state() -> dict[str, Any]:
 
 
 @router.get("/state/history")
-async def get_state_history(count: int = 50) -> dict[str, Any]:
-    """Recent state change history."""
+async def get_state_history(count: int = 50, prefix: str | None = None) -> dict[str, Any]:
+    """Recent state change history, narrowed to keys starting with ``prefix``."""
     engine = _get_engine()
-    return {"history": engine.state.get_history(min(count, 10000))}
+    return {"history": engine.state.get_history(min(count, 10000), prefix=prefix)}
 
 
 @router.get("/state/{key:path}")
