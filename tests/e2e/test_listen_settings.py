@@ -19,7 +19,10 @@ Settings' to make, both starting on Any network:
 
 A restart here is the dev-mode one: the server spawns its replacement and
 exits. The replacement's process id is in the first server's log, which is
-how the test stops it.
+how the test stops it. The servers are started as a dev run whatever starts
+the suite: a server that sees `INVOCATION_ID` (systemd sets it for every
+process a service starts) leaves the restart to a service manager, and here
+there is none.
 """
 
 from __future__ import annotations
@@ -41,6 +44,9 @@ pytest.importorskip("playwright.sync_api")
 
 EXPECT_TIMEOUT = 15_000
 ANY_NETWORK = {"network": {"accept_connections_from": "any", "accept_connections_adapter": {}}}
+
+# Nothing here restarts the server but the server itself (main._is_service_managed).
+DEV_RUN = {"INVOCATION_ID": "", "OPENAVC_SERVICE_MANAGED": "0"}
 
 
 def _lan_address() -> str | None:
@@ -77,12 +83,26 @@ def _answers(url: str) -> bool:
         return False
 
 
-def _wait_for(condition, message: str, timeout: float = 45.0) -> None:
+def _tail(path, size: int = 2500) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")[-size:]
+    except OSError:
+        return "<none>"
+
+
+def _wait_for(condition, message: str, handle=None, timeout: float = 45.0) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if condition():
             return
         time.sleep(0.5)
+    if handle is not None:
+        server_log = _tail(handle.data_dir.parent / "server.log")
+        child_log = _tail(handle.data_dir / "logs" / "restart-child.log")
+        message += (
+            f"\n--- server.log ---\n{server_log}"
+            f"\n--- restart-child.log ---\n{child_log}"
+        )
     raise AssertionError(message)
 
 
@@ -142,7 +162,7 @@ def _open_settings(page: Page, base_url: str) -> None:
 def test_a_browser_on_this_computer_moves_to_127_0_0_1(server_factory, page: Page):
     if not _can_bind("127.0.0.2"):
         gates.skip_or_fail(gates.E2E, "this host cannot listen on a second loopback address")
-    handle = server_factory(bind="127.0.0.2", hold_bind=False, system_json=ANY_NETWORK)
+    handle = server_factory(bind="127.0.0.2", hold_bind=False, system_json=ANY_NETWORK, env=DEV_RUN)
     port = _port_of(handle.base_url)
     try:
         _open_settings(page, handle.base_url)
@@ -160,6 +180,8 @@ def test_a_browser_on_this_computer_moves_to_127_0_0_1(server_factory, page: Pag
         offer.get_by_role("button", name="Restart now").click()
 
         # The dialog waits where the new choice answers, and moves the page.
+        _wait_for(lambda: _answers(f"http://127.0.0.1:{port}/api/health"),
+                  "the server did not come back on 127.0.0.1", handle)
         page.wait_for_url(f"http://127.0.0.1:{port}/programmer**", timeout=60_000)
         assert _replacement_pid(handle), "the restart spawned no replacement this test can stop"
         status = _status(port)
@@ -175,7 +197,7 @@ def test_a_change_that_cuts_off_this_browser_asks_hands_over_and_is_kept(server_
     address = _lan_address()
     if address is None:
         gates.skip_or_fail(gates.E2E, "this host has no network address to open the Programmer at")
-    handle = server_factory(bind=address, hold_bind=False, system_json=ANY_NETWORK)
+    handle = server_factory(bind=address, hold_bind=False, system_json=ANY_NETWORK, env=DEV_RUN)
     port = _port_of(handle.base_url)
     try:
         _open_settings(page, handle.base_url)
@@ -202,7 +224,7 @@ def test_a_change_that_cuts_off_this_browser_asks_hands_over_and_is_kept(server_
         expect(page.get_by_text("may have refused the new configuration")).to_have_count(0)
 
         _wait_for(lambda: _answers(f"http://127.0.0.1:{port}/api/health"),
-                  "the server did not come back on 127.0.0.1")
+                  "the server did not come back on 127.0.0.1", handle)
         assert _replacement_pid(handle), "the restart spawned no replacement this test can stop"
         assert not _answers(f"http://{address}:{port}/api/health")
         assert (handle.data_dir / "listen-safety-net.json").exists()
