@@ -221,7 +221,7 @@ describe("an empty slot", () => {
 });
 
 describe("a device that is offline", () => {
-  it("says so on every child, and words the filter for it", async () => {
+  it("says so on every child, and offers no filter that would hide nothing", async () => {
     // the platform takes every registered child down with the parent.
     // "not answering" would send somebody to the endpoints; the fix is on the
     // device card above.
@@ -234,10 +234,9 @@ describe("a device that is offline", () => {
     const dot = within(row).getByTestId("child-presence-dot");
     expect(dot.getAttribute("data-trouble")).toBe("true");
 
-    const filter = screen.getByTestId("child-trouble-filter");
-    expect(filter.textContent).toContain(
-      "2 that are unavailable while the device is offline",
-    );
+    // Every child is down with the device, so "show only those" would show
+    // the same list; the device card above already says why.
+    expect(screen.queryByTestId("child-trouble-filter")).toBeNull();
   });
 });
 
@@ -270,6 +269,14 @@ describe("ordering", () => {
 describe("the trouble filter", () => {
   it("is not offered when there is nothing to filter to", async () => {
     mocks.listChildEntities.mockResolvedValue(payload(["a", "b"]));
+    render(panel());
+
+    await screen.findByTestId("child-row-a");
+    expect(screen.queryByTestId("child-trouble-filter")).toBeNull();
+  });
+
+  it("is not offered when every endpoint is down", async () => {
+    mocks.listChildEntities.mockResolvedValue(payload(["a", "b"], { a: true, b: true }));
     render(panel());
 
     await screen.findByTestId("child-row-a");

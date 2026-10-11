@@ -836,10 +836,11 @@ function ChildEntityList({
 
   return (
     <>
-      {/* Only offered when there is something to filter TO. A checkbox that
-          can only ever produce an empty list is noise on the 95% of devices
-          whose ports are all fine. */}
-      {downCount > 0 && (
+      {/* Only offered when it would narrow the list: with nothing down it can
+          only produce an empty list (noise on the 95% of devices whose ports
+          are all fine), and with everything down, as when the device itself
+          is offline, it would show the same list. */}
+      {downCount > 0 && downCount < entries.length && (
         <label
           data-testid="child-trouble-filter"
           style={{
