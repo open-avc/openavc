@@ -142,7 +142,7 @@ Order matters here. Build them in the order they appear:
 - **HTTP**: method, path, body, headers, query params. Every field supports `{placeholders}`.
 - **OSC**: address + a typed argument list (`f`/`i`/`s`/`h`/`d`/`T`/`F`/`N`).
 
-**Parameters** for each command let users fill in what to send. Each parameter has a type, optional required flag, label, help, default, and (numeric) min/max bounds, (enum) allowed values, or (free text) a `pattern` regex the value must match.
+**Parameters** for each command let users fill in what to send. Each parameter has a type, optional required flag, label, help, default, and (numeric) min/max bounds, (enum) allowed values, or (free text) a `pattern` regex the value must match. Renaming a parameter also renames its `{placeholder}` in that command's send string, path, body, headers, OSC address and arguments, and Sets State rows.
 
 **A parameter's label** is its name on every form that sends the command: the device page, a macro step, a button's action, Quick Actions and a device audit. With no label, the key is shown made readable: `input_id` reads "Input ID", and a last word that is a unit goes in brackets, so `timeout_ms` reads "Timeout (ms)" and `gain_db` "Gain (dB)". Give a parameter a label whenever that still reads poorly: a key like `value`, `src` or `ch` says little on a form. The Driver Builder's Validate lists each parameter with no label as a warning; a warning never stops the driver from saving or loading.
 
@@ -3736,9 +3736,9 @@ tells you what it supports — the checker cannot know whether an action's
 command exists, so it skips that reference and says so rather than guessing:
 
 ```
-my_driver.py: note: cross-reference not checked — 6 action/quick_action
-reference(s) into commands — commands is only partly visible (15 key(s) read,
-the rest merged or built at runtime)
+my_driver.py: note: cross-reference not checked: 6 action/quick_action
+reference(s) into commands, because commands is only partly visible (15 key(s)
+read, the rest merged or built at runtime)
 ```
 
 A skip is never a pass. It is the command telling you which of your

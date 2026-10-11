@@ -354,7 +354,11 @@ def _definition_invalid(errors: list[str], preamble: str | None = None) -> Struc
     problem to fix. The same list rides along in ``errors`` for anything that
     wants to render them individually.
     """
-    heading = preamble or f"{len(errors)} validation error(s) in driver definition"
+    heading = preamble or (
+        "The driver was not saved. Fix this first"
+        if len(errors) == 1
+        else "The driver was not saved. Fix these first"
+    )
     detail = f"{heading}:\n" + "\n".join(errors) if errors else heading
     return StructuredApiError(422, detail, errors=errors)
 
@@ -378,8 +382,8 @@ def _reject_unknown_keys(driver_def: dict[str, Any], cleanup: Path | None = None
     raise _definition_invalid(
         problems,
         preamble=(
-            f"{len(problems)} unrecognized key(s) in driver definition — "
-            "check the spelling against the driver contract"
+            "The driver was not imported. Check the spelling of these keys "
+            "against the driver format"
         ),
     )
 

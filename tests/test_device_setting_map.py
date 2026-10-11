@@ -410,7 +410,7 @@ def test_a_map_on_a_setting_with_no_write_is_refused():
     errors = validate_driver_definition(definition)
     assert errors == [
         "Device setting 'high_density': missing 'write' block (send / path / "
-        "address) — a device setting must be writable"
+        "address); a device setting must be writable"
     ]
 
 

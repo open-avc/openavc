@@ -32,9 +32,9 @@ describe("ApiError", () => {
     // machine-readable siblings (here, `errors`) are present.
     const err = new ApiError(
       422,
-      '{"detail":"2 validation error(s) in driver definition:\\na\\nb","errors":["a","b"]}',
+      '{"detail":"The driver was not saved. Fix these first:\\na\\nb","errors":["a","b"]}',
     );
-    expect(err.detail).toBe("2 validation error(s) in driver definition:\na\nb");
+    expect(err.detail).toBe("The driver was not saved. Fix these first:\na\nb");
   });
 
   it("falls back to the raw body when detail is not a string", () => {

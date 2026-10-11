@@ -83,3 +83,46 @@ def test_invalid_driver_definition_detail_lists_every_error(client) -> None:
     assert body["errors"], "the machine-readable half should carry the same errors"
     for message in body["errors"]:
         assert message in body["detail"]
+
+
+def test_a_refused_save_says_the_driver_was_not_saved(client) -> None:
+    """The Driver Builder shows the heading above the problems as it is."""
+    one = client.post(
+        "/api/driver-definitions",
+        json={
+            "id": "acme_widget", "name": "Acme Widget", "transport": "tcp",
+            "commands": {"set_level": {"send": "LVL {param1}\r", "params": {"lvl": {"type": "integer"}}}},
+        },
+    ).json()
+    assert len(one["errors"]) == 1, one
+    assert one["detail"] == "The driver was not saved. Fix this first:\n" + one["errors"][0]
+
+    several = client.post(
+        "/api/driver-definitions",
+        json={
+            "id": "acme_widget", "name": "Acme Widget", "transport": "tcp",
+            "commands": {
+                "set_level": {"send": "LVL {param1}\r", "params": {"lvl": {"type": "integer"}}},
+                "set_gain": {"send": "GAIN {param1}\r", "params": {"gain": {"type": "integer"}}},
+            },
+        },
+    ).json()
+    assert len(several["errors"]) > 1, several
+    assert several["detail"].startswith("The driver was not saved. Fix these first:\n")
+
+
+def test_an_import_with_a_misspelled_key_says_what_to_check() -> None:
+    from openavc.api.errors import StructuredApiError
+    from openavc.api.routes.drivers import _reject_unknown_keys
+
+    with pytest.raises(StructuredApiError) as raised:
+        _reject_unknown_keys({
+            "id": "acme_widget", "name": "Acme Widget", "transport": "tcp",
+            "commands": {}, "state_varibles": {},
+        })
+    detail = raised.value.detail
+    assert detail.startswith(
+        "The driver was not imported. Check the spelling of these keys against "
+        "the driver format:\n"
+    ), detail
+    assert "—" not in detail

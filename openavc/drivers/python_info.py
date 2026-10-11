@@ -136,7 +136,7 @@ def driver_info_ast(filepath: Path) -> ast.Dict:
     try:
         tree = ast.parse(source)
     except SyntaxError as e:
-        raise ExtractError(f"{filepath.name}: syntax error — {e}")
+        raise ExtractError(f"{filepath.name} has a syntax error: {e}")
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
             for item in node.body:
@@ -280,7 +280,7 @@ def python_driver_info_issues(
     if declares_setup and overrides_run_setup_action is False:
         issues.append(
             "declares a kind:'setup' action but does not override "
-            "run_setup_action — the wizard will 501 on launch"
+            "run_setup_action, so the wizard will 501 on launch"
         )
 
     # A config field's learned_from, from the same shared rule the YAML walk
@@ -321,7 +321,7 @@ def python_driver_info_issues(
         if settings and overrides_set_device_setting is False:
             issues.append(
                 "declares device_settings but does not override "
-                "set_device_setting — every write will 501"
+                "set_device_setting, so every write will 501"
             )
 
     # A command's confirm, from the same shared rule the YAML command walk
@@ -417,8 +417,8 @@ def python_driver_reference_skips(info: dict[str, Any]) -> list[str]:
         not isinstance(declared, dict) or UNEVALUATED_KEY in declared
     ):
         skips.append(
-            f"{len(settings)} device_settings state_key reference(s) — "
-            f"state_variables is computed"
+            f"{len(settings)} device_settings state_key reference(s), "
+            f"because state_variables is computed"
         )
 
     # The routing block, skipped whole when the sets it resolves against
@@ -454,8 +454,8 @@ def python_driver_reference_skips(info: dict[str, Any]) -> list[str]:
         ) + len(info.get("quick_actions") or [])
         if named:
             skips.append(
-                f"{named} action/quick_action reference(s) into commands — "
-                f"{target}"
+                f"{named} action/quick_action reference(s) into commands, "
+                f"because {target}"
             )
 
     return skips

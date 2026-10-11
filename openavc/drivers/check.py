@@ -97,7 +97,7 @@ def check_driver_file(path: Path) -> FileCheckResult:
         path,
         "unknown",
         errors=[
-            f"unsupported file type '{path.suffix or path.name}' — expected "
+            f"unsupported file type '{path.suffix or path.name}'; expected "
             f".avcdriver (YAML) or .py (Python)"
         ],
         readable=False,
@@ -109,7 +109,7 @@ def _check_yaml_driver(path: Path) -> FileCheckResult:
     try:
         driver_def = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:
-        result.errors.append(f"could not read as YAML — {exc}")
+        result.errors.append(f"could not read as YAML: {exc}")
         result.readable = False
         return result
     if not isinstance(driver_def, dict):
@@ -149,7 +149,7 @@ def _check_python_driver(path: Path) -> FileCheckResult:
     result.errors.extend(python_driver_info_issues(info))
 
     for skip in python_driver_reference_skips(info):
-        result.notes.append(f"cross-reference not checked — {skip}")
+        result.notes.append(f"cross-reference not checked: {skip}")
 
     if unevaluated:
         result.notes.append(

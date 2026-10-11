@@ -535,15 +535,21 @@ const errorsOf = (issues) => issues.filter((i) => i.severity === "error");
 {
   // An undeclared {token} in a command leaves a literal "{token}" on the
   // wire; a declared param or config field (including a computed one) is
-  // fine.
+  // fine. A command that declares params is the server's to refuse (its
+  // send string is checked there), so the Builder adds nothing for it and
+  // warns only for a command with no params.
   const issues = validate(
     baseDraft(
       "tcp",
       {
         set_vol: {
           label: "Vol",
-          send: "VOL {level} {ws} {typo}\\r",
+          send: "VOL {level} {ws} {other}\\r",
           params: { level: { type: "number" } },
+        },
+        set_mode: {
+          label: "Mode",
+          send: "MODE {ws} {typo}\\r",
         },
       },
       {

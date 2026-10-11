@@ -769,6 +769,18 @@ CASES: dict[str, Any] = {
     "on_connect_bad_mapping_osc_variant": _d(
         transport="osc", on_connect=[{"foo": 1}]
     ),
+    # --- {name} placeholders ---
+    "command_placeholder_names_nothing": _d(
+        commands={
+            "set_level": {
+                "send": "LVL {param1}\r",
+                "params": {"lvl": {"type": "integer"}},
+            }
+        }
+    ),
+    "response_placeholder_names_nothing": _d(
+        responses=[{"match": "ZONE {zone_count}", "set": {"power": "true"}}]
+    ),
 }
 
 
@@ -809,6 +821,44 @@ def test_cases_fixture_matches_case_table():
         "case inputs changed — regenerate the fixtures "
         "(python tests/test_driver_validation_messages.py --regen)"
     )
+
+
+def test_the_recorded_messages_carry_no_em_dash():
+    """The Driver Builder shows these to an author as they are."""
+    recorded = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    dashed = [m for messages in recorded.values() for m in messages if "\u2014" in m]
+    assert dashed == []
+
+
+def test_no_message_the_contract_check_can_emit_carries_an_em_dash():
+    """The corpus reaches only some rules, so read every string the
+    validators build: any literal that is not a docstring is message text."""
+    import ast
+
+    sources = [
+        _ROOT / "openavc" / "drivers" / name
+        for name in ("avcdriver_semantic.py", "python_info.py", "check.py")
+    ]
+    dashed = []
+    for path in sources:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        docstrings = {
+            id(node.body[0].value)
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.body
+            and isinstance(node.body[0], ast.Expr)
+            and isinstance(node.body[0].value, ast.Constant)
+        }
+        dashed += [
+            f"{path.name}:{node.lineno}: {node.value!r}"
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and "\u2014" in node.value
+            and id(node) not in docstrings
+        ]
+    assert dashed == []
 
 
 def _write_fixture(path: Path, payload: Any) -> None:

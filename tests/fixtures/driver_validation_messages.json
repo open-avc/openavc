@@ -94,10 +94,10 @@
   "child_entity_types.zone.id_format: unknown type 'uuid' (expected 'integer' or 'string')"
  ],
  "child_param_max_above_id_format": [
-  "commands.set_zone.params.zone: max 99 is above child_entity_types.zone.id_format.max (8) \u2014 the gate would accept an id the child type cannot have"
+  "commands.set_zone.params.zone: max 99 is above child_entity_types.zone.id_format.max (8), so the gate would accept an id the child type cannot have"
  ],
  "child_param_min_below_id_format": [
-  "commands.set_zone.params.zone: min 0 is below child_entity_types.zone.id_format.min (1) \u2014 the gate would accept an id the child type cannot have"
+  "commands.set_zone.params.zone: min 0 is below child_entity_types.zone.id_format.min (1), so the gate would accept an id the child type cannot have"
  ],
  "child_param_no_type": [
   "commands.set_zone.params.zone: a child_id param must declare 'child_type' (without it the id cannot be resolved to a child type and is coerced as a plain integer)"
@@ -184,7 +184,7 @@
   "child_entity_types: type name 'zone.a' must not contain dots (used as state key separator)"
  ],
  "child_type_name_with_glob": [
-  "child_entity_types: type name 'zone*' must not contain glob metacharacters (*) \u2014 they break state-change dispatch"
+  "child_entity_types: type name 'zone*' must not contain glob metacharacters (*); they break state-change dispatch"
  ],
  "command_confirm_bad_type": [
   "Command 'chk': 'confirm' must be a boolean or a message string"
@@ -207,6 +207,9 @@
  ],
  "command_param_offset_not_numeric": [
   "Command 'noop' param 'x': the type must be integer, number or float to use offset"
+ ],
+ "command_placeholder_names_nothing": [
+  "commands.set_level.send: '{param1}' resolves to nothing. It names no parameter of this command and no config field, so it would be sent to the device as written"
  ],
  "command_prefix_not_string": [
   "command_prefix: must be a string"
@@ -308,7 +311,7 @@
   "Device setting 'knob': min (10) is greater than max (1)"
  ],
  "device_setting_missing_write": [
-  "Device setting 'knob': missing 'write' block (send / path / address) \u2014 a device setting must be writable"
+  "Device setting 'knob': missing 'write' block (send / path / address); a device setting must be writable"
  ],
  "device_setting_not_mapping": [
   "Device setting 'knob': must be a mapping"
@@ -317,7 +320,7 @@
   "Device setting 'knob' write: args[0] unknown OSC type 'z' (expected one of f/i/s/h/d/T/F/N)"
  ],
  "device_setting_state_key_undeclared": [
-  "Device setting 'knob': state_key 'ghost' is not a declared state variable \u2014 the setting would never read back"
+  "Device setting 'knob': state_key 'ghost' is not a declared state variable, so the setting would never read back"
  ],
  "device_setting_unknown_type": [
   "Device setting 'knob': unknown type 'knob'"
@@ -338,7 +341,7 @@
   "polling.queries[0]: each_child type 'relay' is not a declared child_entity_type"
  ],
  "each_child_without_instances": [
-  "polling.queries[0]: each_child type 'zone' declares no instances: block \u2014 nothing would ever be polled"
+  "polling.queries[0]: each_child type 'zone' declares no instances: block, so nothing would ever be polled"
  ],
  "frame_parser_bad_endian": [
   "frame_parser: length_endian must be 'big' or 'little' (got 'mid')"
@@ -380,10 +383,10 @@
   "child_entity_types.zone.instances: count_from 'zone_count' is not a declared config field (config_schema / default_config / config_derived)"
  ],
  "instances_count_from_with_string_ids": [
-  "child_entity_types.zone.instances: 'count_from' requires integer ids (id_format.type is 'string' \u2014 use 'ids_from')"
+  "child_entity_types.zone.instances: 'count_from' requires integer ids (id_format.type is 'string'; use 'ids_from')"
  ],
  "instances_count_with_string_ids": [
-  "child_entity_types.zone.instances: 'count' requires integer ids (id_format.type is 'string' \u2014 use 'ids_from')"
+  "child_entity_types.zone.instances: 'count' requires integer ids (id_format.type is 'string'; use 'ids_from')"
  ],
  "instances_count_zero": [
   "child_entity_types.zone.instances: count must be an integer >= 1 (got 0)"
@@ -440,7 +443,7 @@
   "liveness: 'max_failures' must be an integer >= 1"
  ],
  "liveness_missing_send": [
-  "liveness: missing required 'send' (the probe payload \u2014 a raw protocol string, or an OSC address on osc)"
+  "liveness: missing required 'send' (the probe payload: a raw protocol string, or an OSC address on osc)"
  ],
  "liveness_not_mapping": [
   "liveness: must be a mapping"
@@ -470,7 +473,7 @@
   "Response 0: child_set[0]: must be a mapping"
  ],
  "osc_child_set_id_capture_ref": [
-  "Response 0: child_set[0]: OSC rules have no capture groups \u2014 use {segment: N} for the id, {arg: N} for values"
+  "Response 0: child_set[0]: OSC rules have no capture groups; use {segment: N} for the id, {arg: N} for values"
  ],
  "osc_child_set_id_map_bad_pairs": [
   "Response 0: child_set[0]: id map entries must be scalar wire id -> local id pairs"
@@ -503,7 +506,7 @@
   "Response 0: child_set[0]: state 'level' arg must be an integer >= 0 (got -2)"
  ],
  "osc_child_set_state_capture_ref": [
-  "Response 0: child_set[0]: state 'level' \u2014 OSC rules have no capture groups; use {arg: N}"
+  "Response 0: child_set[0]: state 'level': OSC rules have no capture groups; use {arg: N}"
  ],
  "osc_child_set_state_missing_arg_value": [
   "Response 0: child_set[0]: state 'level' needs {arg: N} or {value: ...}"
@@ -578,7 +581,7 @@
   "Command 'set' param 'b': type_from.param 'a' must itself be an options_from child_schema cascade"
  ],
  "polling_interval_inert": [
-  "polling.interval is not read by the runtime \u2014 remove the interval: key and set default_config.poll_interval instead",
+  "polling.interval is not read by the runtime. Remove the interval: key and set default_config.poll_interval instead",
   "polling: unknown key 'interval'"
  ],
  "polling_not_mapping": [
@@ -738,22 +741,22 @@
   "quick_actions: must be a list of command ids"
  ],
  "response_after_json_on_json_rule": [
-  "Response 0: after_json applies to regex rules \u2014 a json: true rule already reads the body"
+  "Response 0: after_json applies to regex rules; a json: true rule already reads the body"
  ],
  "response_after_json_on_osc_rule": [
-  "Response 1: after_json applies to regex rules \u2014 an OSC address rule never runs after a json rule"
+  "Response 1: after_json applies to regex rules; an OSC address rule never runs after a json rule"
  ],
  "response_after_json_without_a_json_rule": [
-  "Response 0: after_json has no effect \u2014 no response rule in this driver is json: true"
+  "Response 0: after_json has no effect: no response rule in this driver is json: true"
  ],
  "response_json_child_set_entry_not_mapping": [
   "Response 0: child_set[0]: must be a mapping"
  ],
  "response_json_child_set_id_is_capture_ref": [
-  "Response 0: child_set[0]: a json rule has no captures or address segments \u2014 id must be a literal child id (got '$1')"
+  "Response 0: child_set[0]: a json rule has no captures or address segments, so id must be a literal child id (got '$1')"
  ],
  "response_json_child_set_id_missing": [
-  "Response 0: child_set[0]: missing 'id' (a literal child id \u2014 a json body has no captures to route on, so write one entry per child)"
+  "Response 0: child_set[0]: missing 'id' (a literal child id: a json body has no captures to route on, so write one entry per child)"
  ],
  "response_json_child_set_id_not_an_integer": [
   "Response 0: child_set[0]: id 'main' is not an integer (zone declares integer ids)"
@@ -763,10 +766,10 @@
  ],
  "response_json_child_set_state_is_an_osc_arg": [
   "Response 0: child_set[0]: state 'level' needs a JSON path: \"a.b\" or {key: a.b}",
-  "Response 0: child_set[0]: state 'level' has ['arg'], which a json rule does not read \u2014 the spec is {key, type, map, contains}"
+  "Response 0: child_set[0]: state 'level' has ['arg'], which a json rule does not read; the spec is {key, type, map, contains}"
  ],
  "response_json_child_set_state_is_capture_ref": [
-  "Response 0: child_set[0]: state 'level' \u2014 a json rule has no capture groups; use a JSON path"
+  "Response 0: child_set[0]: state 'level': a json rule has no capture groups; use a JSON path"
  ],
  "response_json_child_set_state_missing": [
   "Response 0: child_set[0]: missing 'state' mapping (prop -> JSON path)"
@@ -786,6 +789,9 @@
  ],
  "response_osc_address_no_slash": [
   "Response 0: OSC address must start with '/'"
+ ],
+ "response_placeholder_names_nothing": [
+  "responses[0].match: '{zone_count}' resolves to nothing. It names no config field (only config values substitute here), so the pattern would look for it as written"
  ],
  "response_redos_pattern": [
   "Response 0: regex '(a+)+$' has a nested quantifier; this can cause catastrophic backtracking against hostile input"

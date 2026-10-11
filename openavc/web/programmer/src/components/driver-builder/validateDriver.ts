@@ -539,9 +539,14 @@ export function validateDriver(
   for (const [cmdName, cmd] of Object.entries(draft.commands ?? {})) {
     const declaredParams = new Set(Object.keys(cmd.params ?? {}));
 
-    // An undeclared {token} leaves a literal "{token}" on the wire.
+    // An undeclared {token} leaves a literal "{token}" on the wire. Once a
+    // command declares params, the server's rule checks its send, path, body,
+    // address and headers and refuses the save, so only what it does not
+    // read is checked here; a command with no params is checked whole.
     const seen = new Set<string>();
-    for (const wire of collectWireStrings(cmd)) {
+    const wires =
+      declaredParams.size > 0 ? collectWireStrings(cmd, { serverChecked: false }) : collectWireStrings(cmd);
+    for (const wire of wires) {
       let m: RegExpExecArray | null;
       const re = new RegExp(PLACEHOLDER_RE.source, "g");
       while ((m = re.exec(wire))) {
@@ -738,20 +743,27 @@ export function validateDriverSafely(
 }
 
 /** Concatenate every wire-format field that supports {placeholders}. */
-function collectWireStrings(cmd: DriverCommandDef): string[] {
+function collectWireStrings(
+  cmd: DriverCommandDef,
+  { serverChecked = true }: { serverChecked?: boolean } = {},
+): string[] {
   const out: string[] = [];
   const push = (s: string | undefined | null) => {
     if (s) out.push(s);
   };
 
-  push(cmd.send);
-  push(cmd.path);
-  push(cmd.body);
-  push(cmd.address);
+  // What the server's placeholder rule reads on a command that declares
+  // params (avcdriver_semantic.validate_substitutions).
+  if (serverChecked) {
+    push(cmd.send);
+    push(cmd.path);
+    push(cmd.body);
+    push(cmd.address);
 
-  if (cmd.headers) {
-    for (const [k, v] of Object.entries(cmd.headers)) {
-      out.push(`${k}: ${v}`);
+    if (cmd.headers) {
+      for (const [k, v] of Object.entries(cmd.headers)) {
+        out.push(`${k}: ${v}`);
+      }
     }
   }
   if (cmd.query_params) {

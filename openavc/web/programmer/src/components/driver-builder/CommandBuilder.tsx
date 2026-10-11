@@ -481,6 +481,9 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                   childTypes={Object.keys(draft.child_entity_types ?? {})}
                   stateKeys={Object.keys(draft.state_variables ?? {})}
                   onChange={(params) => updateCommand(name, { params })}
+                  onRename={(from, to, params) =>
+                    updateCommand(name, { params, ...renamePlaceholder(cmd, from, to) })
+                  }
                 />
 
                 <CommandSemanticsEditor
@@ -1340,11 +1343,55 @@ export function KeyValueList({
   );
 }
 
+/** The fields of `cmd` that name `{from}` (with or without a format spec),
+ *  rewritten to name `{to}`; fields that do not name it are left out. A
+ *  parameter belongs to its command, so only that command's own strings are
+ *  touched: what it sends, and what its Sets State rows write. */
+export function renamePlaceholder(
+  cmd: DriverCommandDef,
+  from: string,
+  to: string,
+): Partial<DriverCommandDef> {
+  const token = new RegExp(`\\{${from}(:[^{}]*)?\\}`, "g");
+  const swap = (text: string) => text.replace(token, (_m, spec?: string) => `{${to}${spec ?? ""}}`);
+  const out: Record<string, unknown> = {};
+  for (const field of ["send", "path", "body", "address"] as const) {
+    const text = cmd[field];
+    if (typeof text === "string" && swap(text) !== text) out[field] = swap(text);
+  }
+  const swapValues = <T,>(map: Record<string, T> | undefined) => {
+    if (!map) return undefined;
+    let changed = false;
+    const next: Record<string, T> = {};
+    for (const [k, v] of Object.entries(map)) {
+      const nv = typeof v === "string" ? (swap(v) as T) : v;
+      if (nv !== v) changed = true;
+      next[k] = nv;
+    }
+    return changed ? next : undefined;
+  };
+  const headers = swapValues(cmd.headers);
+  if (headers) out.headers = headers;
+  const query = swapValues(cmd.query_params);
+  if (query) out.query_params = query;
+  const sets = swapValues(cmd.sets);
+  if (sets) out.sets = sets;
+  const udp = swapValues(cmd.udp as Record<string, unknown> | undefined);
+  if (udp) out.udp = udp;
+  if (cmd.args?.some((a) => typeof a.value === "string" && swap(a.value) !== a.value)) {
+    out.args = cmd.args.map((a) =>
+      typeof a.value === "string" ? { ...a, value: swap(a.value) } : a,
+    );
+  }
+  return out as Partial<DriverCommandDef>;
+}
+
 export function ParamEditor({
   params,
   childTypes,
   stateKeys,
   onChange,
+  onRename,
 }: {
   params: Record<string, DriverParamDef>;
   /** Driver-declared child types — passed to ParamRow so the
@@ -1357,6 +1404,9 @@ export function ParamEditor({
    *  runtime rather than one declared up front. */
   stateKeys: string[];
   onChange: (params: Record<string, DriverParamDef>) => void;
+  /** A rename, with the renamed params: a command also renames the
+   *  parameter's placeholder in its own strings. Without it, onChange. */
+  onRename?: (from: string, to: string, params: Record<string, DriverParamDef>) => void;
 }) {
   const paramNames = Object.keys(params);
 
@@ -1392,7 +1442,8 @@ export function ParamEditor({
     for (const [k, v] of Object.entries(params)) {
       next[k === oldName ? trimmed : k] = v;
     }
-    onChange(next);
+    if (onRename) onRename(oldName, trimmed, next);
+    else onChange(next);
     return { ok: true };
   };
 

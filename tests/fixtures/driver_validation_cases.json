@@ -1992,6 +1992,27 @@
   },
   "transport": "tcp"
  },
+ "command_placeholder_names_nothing": {
+  "commands": {
+   "set_level": {
+    "params": {
+     "lvl": {
+      "type": "integer"
+     }
+    },
+    "send": "LVL {param1}\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "command_prefix_not_string": {
   "command_prefix": 2,
   "commands": {
@@ -7220,6 +7241,30 @@
    }
   },
   "transport": "osc"
+ },
+ "response_placeholder_names_nothing": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "match": "ZONE {zone_count}",
+    "set": {
+     "power": "true"
+    }
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
  },
  "response_redos_pattern": {
   "commands": {
