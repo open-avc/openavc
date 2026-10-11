@@ -401,7 +401,8 @@ def warn_if_api_key_is_sole_credential() -> bool:
     log.warning(
         "An API key is set with no Programmer password. The API is reachable "
         "with the X-API-Key header, but the Programmer cannot be opened in a "
-        "browser until a password is set. Set one in Settings > Security."
+        "browser until a password is set. Set one in Settings > Access > "
+        "Programmer login."
     )
     return True
 
@@ -631,7 +632,10 @@ async def require_claimed_auth(
     if not is_claimed():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Set an admin password before creating or editing code (Settings > Security).",
+            detail=(
+                "Creating or editing code needs a Programmer password. Set one "
+                "in Settings > Access > Programmer login."
+            ),
         )
     if programmer_auth_satisfied(request, credentials):
         return

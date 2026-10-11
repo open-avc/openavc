@@ -31,9 +31,11 @@ interface ScriptFileTreeProps {
   onSelectScript: (id: string) => void;
   onSelectDriver: (id: string) => void;
   onSelectUiFile: (path: string) => void;
-  onCreateScript: (id: string, file: string, description: string) => void;
+  /** Resolves true once created; false keeps the form open with what was typed. */
+  onCreateScript: (id: string, file: string, description: string) => Promise<boolean>;
   onCreateDriver: () => void;
-  onCreateUiFile: (path: string) => void;
+  /** Resolves true once created; false keeps the form open with what was typed. */
+  onCreateUiFile: (path: string) => Promise<boolean>;
   onImportDriver: () => void;
   onImportUiFiles: () => void;
   onExportDriver: (id: string) => void;
@@ -97,22 +99,22 @@ export function ScriptFileTree({
     !search || f.path.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleCreateScript = () => {
+  const handleCreateScript = async () => {
     if (!newId.trim()) return;
     const safeId = newId.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_");
     const file = `${safeId}.py`;
-    onCreateScript(safeId, file, newDesc.trim());
+    if (!(await onCreateScript(safeId, file, newDesc.trim()))) return;
     setNewId("");
     setNewDesc("");
     setShowCreate(false);
   };
 
-  const handleCreateUiFile = () => {
+  const handleCreateUiFile = async () => {
     const path = newUiPath.trim();
     // What may live in ui/ is the server's call, and its refusal names what was
     // wrong -- so only "you typed nothing" is answered here.
     if (!path) return;
-    onCreateUiFile(path);
+    if (!(await onCreateUiFile(path))) return;
     setNewUiPath("");
     setShowCreateUi(false);
   };

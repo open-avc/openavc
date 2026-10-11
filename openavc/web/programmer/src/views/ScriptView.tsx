@@ -545,8 +545,10 @@ export function ScriptView() {
         });
         await load();
         doSelect(id, "script");
+        return true;
       } catch (e) {
         showError(`Create failed: ${parseApiError(e)}`);
+        return false;
       }
     },
     [load, doSelect]
@@ -606,10 +608,12 @@ export function ScriptView() {
         useUiFilesStore.getState().bump();
         await loadUiFiles();
         doSelect(path, "ui");
+        return true;
       } catch (e) {
         // The server owns what may live in ui/, so its refusal is the message
         // worth showing — it names the rule that was broken.
         showError(parseApiError(e));
+        return false;
       }
     },
     [loadUiFiles, doSelect],
@@ -926,7 +930,7 @@ export function ScriptView() {
             onSelectUiFile={handleSelectUiFile}
             onCreateScript={handleCreateScript}
             onCreateDriver={() => setShowCreateDriver(true)}
-            onCreateUiFile={(path) => { void handleCreateUiFile(path); }}
+            onCreateUiFile={handleCreateUiFile}
             onImportDriver={() => driverFileInputRef.current?.click()}
             onImportUiFiles={() => uiFileInputRef.current?.click()}
             onExportDriver={handleExportDriver}

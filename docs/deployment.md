@@ -399,7 +399,7 @@ The Raspberry Pi image is ready to run the moment it boots. There is nothing to 
 
 What ships locked down on a fresh image:
 
-- **No usable OS password, and SSH off.** The `openavc` account is locked until you set the admin password in step 3, and `sshd` does not start. Enable SSH later from **Settings > Security** if you need remote console access.
+- **No usable OS password, and SSH off.** The `openavc` account is locked until you set the admin password in step 3, and `sshd` does not start. Enable SSH later from **Settings > Access** if you need remote console access.
 - **The admin surface is closed.** Until you complete step 3, the Programmer and REST API require the credential you are about to set. The device's own screen needs no approval and never shows a login. A tablet in the space waits for approval, which you give once from the Programmer after step 3.
 
 To set the IP, hostname, or WiFi without attaching a keyboard, see [Changing the device's network settings](#changing-the-devices-network-settings). To force the display back to the setup screen while a project is running, open `/setup?stay=1`.
@@ -481,8 +481,8 @@ That is deliberately limited to settings whose worst case is a panel that looks 
 The Pi appliance image ships with the operating-system login locked down:
 
 - There is **no default OS password**. The `openavc` Linux account is locked in the image, so there is no `openavc/openavc` shared login to exploit. The kiosk display still auto-starts (auto-login does not use a password).
-- The admin password you set on the first-run **Create admin password** screen becomes the OS console/SSH login for the `openavc` user as well — one credential for both. Changing it in **Settings > Security** re-syncs the OS login.
-- **SSH is off by default.** Enable it with the **Enable SSH** toggle in **Settings > Security** when you need remote console access; log in as `openavc` with the admin password. Turn it off from the same toggle.
+- The admin password you set on the first-run **Create admin password** screen becomes the OS console/SSH login for the `openavc` user as well — one credential for both. Changing it in **Settings > Access > Programmer login** re-syncs the OS login.
+- **SSH is off by default.** Enable it with the **Enable SSH** toggle in **Settings > Access** when you need remote console access; log in as `openavc` with the admin password. Turn it off from the same toggle.
 
 This applies only to the Pi appliance image. A generic Linux `install.sh` host runs OpenAVC as an unprivileged service account and does not manage the OS login or `sshd` — set those up yourself as usual.
 
@@ -498,12 +498,12 @@ A system updated from a version before Panel access existed keeps its panels con
 
 | Setting | Environment Variable | When to use it |
 |---------|---------------------|----------------|
-| `auth.programmer_password` | `OPENAVC_PROGRAMMER_PASSWORD` | **Set this when the server is network-accessible** and you want to prevent other people on the network from opening the Programmer IDE and modifying your project. The browser will prompt for a password. This is for humans logging in via a browser. Optionally set `auth.programmer_username` (`OPENAVC_PROGRAMMER_USERNAME`) to require a specific username; when it is unset, any username is accepted with the correct password. First-run setup and **Settings > Security** take a password of at least 8 characters. Stored as a salted scrypt hash, so it cannot be read back out of `system.json`; a plain password written into that file by hand still works and is converted to a hash on the next start. |
-| `auth.api_key` | `OPENAVC_API_KEY` | **Set this if you have third-party integrations** (control scripts, middleware, or external software) that connect to the OpenAVC REST API or WebSocket. Provide the key to those systems via the `X-API-Key` header. Not needed unless you are building custom integrations. Set a programmer password alongside it — a key on its own cannot open the Programmer in a browser. **Settings > Security** generates one on request; copy it before saving, because it is stored as a salted hash and cannot be read back. A key written into `system.json` by hand still works and is converted on the next start. |
+| `auth.programmer_password` | `OPENAVC_PROGRAMMER_PASSWORD` | **Set this when the server is network-accessible** and you want to prevent other people on the network from opening the Programmer IDE and modifying your project. The browser will prompt for a password. This is for humans logging in via a browser. Optionally set `auth.programmer_username` (`OPENAVC_PROGRAMMER_USERNAME`) to require a specific username; when it is unset, any username is accepted with the correct password. First-run setup and **Settings > Access > Programmer login** take a password of at least 8 characters. Stored as a salted scrypt hash, so it cannot be read back out of `system.json`; a plain password written into that file by hand still works and is converted to a hash on the next start. |
+| `auth.api_key` | `OPENAVC_API_KEY` | **Set this if you have third-party integrations** (control scripts, middleware, or external software) that connect to the OpenAVC REST API or WebSocket. Provide the key to those systems via the `X-API-Key` header. Not needed unless you are building custom integrations. Set a programmer password alongside it — a key on its own cannot open the Programmer in a browser. **Settings > Access** generates one on request; copy it before saving, because it is stored as a salted hash and cannot be read back. A key written into `system.json` by hand still works and is converted on the next start. |
 
 If the admin password is lost, set `auth.programmer_password` to `""` in `system.json` and restart. The instance returns to unclaimed and offers the "create admin password" screen again; nothing else is affected.
 
-If the API key is lost, generate a new one in **Settings > Security** and update whatever integrations use it. It cannot be read back out of `system.json` either.
+If the API key is lost, generate a new one in **Settings > Access** and update whatever integrations use it. It cannot be read back out of `system.json` either.
 
 If a system ends up with an API key and no password — from `OPENAVC_API_KEY`, or a hand-written `system.json` — the Programmer will not open in a browser. Set a password using the key you still hold:
 

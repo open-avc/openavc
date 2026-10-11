@@ -323,7 +323,7 @@ class TestTheStartupWarning:
         _store(password="", api_key="integration-key")
         with caplog.at_level(logging.WARNING, logger="openavc.api.auth"):
             auth.warn_if_api_key_is_sole_credential()
-        assert "Settings > Security" in caplog.text
+        assert "Settings > Access > Programmer login" in caplog.text
 
     def test_a_key_with_a_password_is_quiet(self, caplog):
         _store(password="commission123", api_key="integration-key")

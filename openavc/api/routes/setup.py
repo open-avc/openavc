@@ -466,7 +466,7 @@ _PAGE = """<!DOCTYPE html>
       var ssh = net.ssh || {};
       show('row-ssh', !!ssh.supported);
       if (ssh.supported) {
-        text('ssh-state', ssh.enabled ? (net.hostname ? 'ssh openavc@' + net.hostname : 'On') : 'Off (enable in Settings > Security)');
+        text('ssh-state', ssh.enabled ? (net.hostname ? 'ssh openavc@' + net.hostname : 'On') : 'Off (turn on in Settings > Access > SSH access)');
       }
     }
 

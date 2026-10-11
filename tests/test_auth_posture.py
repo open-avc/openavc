@@ -153,6 +153,13 @@ def test_code_endpoint_403_when_unclaimed_even_if_anonymous():
     assert r.status_code == 403
 
 
+def test_the_unclaimed_refusal_names_where_the_password_is_set():
+    _set_auth(programmer_password="", api_key="", allow_anonymous=True)
+    detail = TestClient(_claimed_auth_app()).post("/code").json()["detail"]
+    assert "Settings > Access > Programmer login" in detail
+    assert "Security" not in detail
+
+
 def test_code_endpoint_401_when_claimed_without_creds():
     _set_auth(programmer_password="secretpass123", allow_anonymous=False)
     client = TestClient(_claimed_auth_app())
