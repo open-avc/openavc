@@ -1050,7 +1050,9 @@ export function SystemSettingsView() {
         {/* Restart warning + action.
             - hasDirty: settings unsaved; user has to save first.
             - !hasDirty: settings saved; offer to restart in-app. */}
-        {(restartNeeded || listenNeedsRestart) && (
+        {/* Not once a restart has handed this page over: the server it would
+            ask can no longer be reached from here. */}
+        {(restartNeeded || listenNeedsRestart) && !restartSetup?.plan.cutOff && (
           <div style={warningBox} data-testid="restart-banner">
             <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: 2 }} />
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-md)", flexWrap: "wrap", flex: 1 }}>

@@ -278,6 +278,9 @@ describe("Accept connections from", () => {
     // server through (jsdom's here).
     expect(lines.textContent).toMatch(/http:\/\/10\.20\.30\.5:\d+\/programmer/);
     expect(screen.queryByText("Restart to apply changes?")).toBeNull();
+    // Nothing on this page can reach the server now, so nothing offers to
+    // restart it again.
+    expect(screen.queryByTestId("restart-banner")).toBeNull();
   });
 
   it("saves a change that keeps this browser and offers the usual restart", async () => {
