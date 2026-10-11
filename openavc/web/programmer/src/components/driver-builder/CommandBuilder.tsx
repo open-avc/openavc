@@ -1559,7 +1559,7 @@ function ParamRow({
             onChange={(e) =>
               onUpdate({ label: e.target.value || undefined })
             }
-            placeholder={readableKey(name)}
+            placeholder={readableKey(draftName.trim() || name)}
             style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
           />
         </div>
