@@ -132,7 +132,19 @@ begin
   Exec('taskkill.exe', '/F /IM openavc-tray.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
-// Add firewall rule during install, remove during uninstall.
+// The firewall's own rule store: one string value per rule, shaped
+// "v2.33|Action=Allow|Active=TRUE|Dir=In|App=...|Name=OpenAVC|". Its field
+// names are the same in every language; netsh's listing is printed in the
+// language Windows is installed in, so what is there is always read from here.
+const
+  FirewallRulesKey = 'SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules';
+  PluginRuleMarker = '|Name=OpenAVC plugin ';
+  NoInboundRule = 0;
+  ProgramRule = 1;
+  PortRule = 2;
+
+// Add the firewall rule during install, keep it on update, remove it during
+// uninstall.
 //
 // The rule is program-scoped with NO port list: inbound traffic is allowed
 // only while openavc-server.exe itself is listening on a port. That way
@@ -142,19 +154,66 @@ end;
 // nothing left open that the server isn't serving. A port a plugin's own
 // helper program listens on is not covered: that is a different executable,
 // so the server opens it as a rule of its own (RemovePluginFirewallRules).
-// The delete-first keeps upgrades from stacking rules and replaces the old
-// TCP-8080-only rule shipped by earlier installers.
+//
+// An update keeps the rule it finds and only points it at this program, so
+// what an administrator set on it (the addresses it allows, its profiles,
+// whether it is enabled) stays. The one exception is a rule under this name
+// with a port list: installers before 0.23.0 made it TCP 8080 only, which
+// would block HTTPS and every other port the server can use, so it is
+// replaced. With no rule, one is added that allows every address.
 
-procedure AddFirewallRule();
+// What the store holds under one inbound rule name.
+function InboundRuleKind(const RuleName: String): Integer;
+var
+  ValueNames: TArrayOfString;
+  RuleString: String;
+  I: Integer;
+begin
+  Result := NoInboundRule;
+  if not RegGetValueNames(HKLM, FirewallRulesKey, ValueNames) then
+    Exit;
+  for I := 0 to GetArrayLength(ValueNames) - 1 do
+  begin
+    if RegQueryStringValue(HKLM, FirewallRulesKey, ValueNames[I], RuleString) and
+      (Pos('|Name=' + RuleName + '|', RuleString) > 0) and
+      (Pos('|Dir=In|', RuleString) > 0) then
+    begin
+      if Pos('|LPort', RuleString) > 0 then
+      begin
+        Result := PortRule;
+        Exit;
+      end;
+      Result := ProgramRule;
+    end;
+  end;
+end;
+
+procedure KeepOrAddProgramRule(const RuleName, ProgramPath: String);
 var
   ResultCode: Integer;
+  Kind: Integer;
 begin
+  Kind := InboundRuleKind(RuleName);
+  if Kind = ProgramRule then
+  begin
+    // "set ... new" changes only the fields it names.
+    Exec('netsh.exe',
+      'advfirewall firewall set rule name="' + RuleName + '" dir=in new program="' + ProgramPath + '"',
+      '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exit;
+  end;
+  if Kind = PortRule then
+    Exec('netsh.exe',
+      'advfirewall firewall delete rule name="' + RuleName + '" dir=in',
+      '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec('netsh.exe',
-    'advfirewall firewall delete rule name="OpenAVC"',
+    'advfirewall firewall add rule name="' + RuleName + '" dir=in action=allow program="' + ProgramPath + '"',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Exec('netsh.exe',
-    'advfirewall firewall add rule name="OpenAVC" dir=in action=allow program="' + ExpandConstant('{app}\openavc-server.exe') + '"',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+procedure AddFirewallRule();
+begin
+  KeepOrAddProgramRule('OpenAVC', ExpandConstant('{app}\openavc-server.exe'));
 end;
 
 procedure RemoveFirewallRule();
@@ -169,13 +228,9 @@ end;
 // The server opens a port a plugin asks for as a rule of its own, named
 // "OpenAVC plugin <PROTOCOL> <port>" (openavc/system/firewall.py). Those rules
 // are scoped by port, not by program, so one left behind keeps that port open
-// for any program on this computer. They are found in the firewall's own rule
-// store, whose field names are the same in every language; netsh's listing is
-// printed in the language Windows is installed in. Deleting by name removes
-// every rule that carries it, so a name found twice is harmless.
-const
-  FirewallRulesKey = 'SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules';
-  PluginRuleMarker = '|Name=OpenAVC plugin ';
+// for any program on this computer. They are found in the rule store above.
+// Deleting by name removes every rule that carries it, so a name found twice
+// is harmless.
 
 procedure RemovePluginFirewallRules();
 var

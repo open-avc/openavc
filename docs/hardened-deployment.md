@@ -151,16 +151,30 @@ sudo firewall-cmd --list-all
 
 ### Windows
 
-The installer adds an inbound rule named **OpenAVC** that allows the server program from every address, and re-creates it at every update. Restrict it with a block rule of your own: Windows Firewall applies an explicit block rule ahead of any allow rule, and updates do not touch rules they did not create.
+The installer adds an inbound rule named **OpenAVC** that allows the server program from every address. Limit it to your networks, in an administrator PowerShell:
 
-The block rule lists every address except the networks you allow and `127.0.0.0/8` (loopback, which the machine's own screen uses). For `10.20.30.0/24`, in an administrator PowerShell:
+```powershell
+Set-NetFirewallRule -DisplayName OpenAVC -RemoteAddress 10.20.30.0/24
+Get-NetFirewallRule -DisplayName OpenAVC | Get-NetFirewallAddressFilter | Format-List RemoteAddress
+```
+
+**Expected:** `RemoteAddress : 10.20.30.0/255.255.255.0`. List more networks separated by commas: `-RemoteAddress 10.20.30.0/24,10.20.40.0/24`. Updates keep the addresses you set, from OpenAVC 0.37.0.
+
+Any other rule that allows 8080 or 8443 for every program, such as one another program added, still lets in every address it allows. This lists them:
+
+```powershell
+Get-NetFirewallPortFilter | Where-Object { $_.LocalPort -contains "8080" -or $_.LocalPort -contains "8443" } | Get-NetFirewallRule | Where-Object { $_.Enabled -eq "True" -and $_.Direction -eq "Inbound" -and $_.Action -eq "Allow" -and ($_ | Get-NetFirewallApplicationFilter).Program -eq "Any" } | Format-Table DisplayName, Profile
+```
+
+**Expected:** nothing, or only rules you meant to allow. Disable or remove any other.
+
+Before 0.37.0, every update reset the rule to every address. On those versions, add a block rule of your own instead: Windows Firewall applies a block rule ahead of any allow rule, and updates do not touch rules they did not create. It lists every address except your networks and `127.0.0.0/8`. For `10.20.30.0/24`:
 
 ```powershell
 New-NetFirewallRule -DisplayName "OpenAVC - block outside AV network" -Direction Inbound -Action Block -Protocol TCP -LocalPort 8080,8443 -RemoteAddress "0.0.0.0-10.20.29.255","10.20.31.0-126.255.255.255","128.0.0.0-255.255.255.255"
-Get-NetFirewallRule -DisplayName "OpenAVC*" | Format-Table DisplayName, Action, Enabled
 ```
 
-To allow a second network, split the ranges around it as well. On a domain-joined machine whose firewall policy does not merge local rules, the installer's rule has no effect: add an allow rule for TCP 8080 and 8443 from the AV network to the policy instead.
+A block rule added this way keeps working after you update. On a domain-joined machine whose firewall policy does not merge local rules, the installer's rule has no effect: add an allow rule for TCP 8080 and 8443 from the AV network to the policy instead.
 
 ### macOS
 
@@ -260,5 +274,5 @@ Run these after the system is configured, and again after each OpenAVC update.
 2. From a device on the AV network that has never been approved, open `http://<host>:8080/panel`. **Expected:** the browser moves to `https://`, and the page shows the waiting screen with a six-digit code.
 3. Open `https://<host>:8443/programmer`. **Expected:** no certificate warning (with your organization's certificate or the cloud's trusted certificate), and a sign-in prompt.
 4. In the Programmer, **Settings > Access** shows **Approved panels only**; **Settings > Network** shows **Advertise on the network** off and the AV adapter as **Control interface**; the **Cloud** page shows the system is not paired (unless it is meant to be); the **Inter-System** page says ISC is switched off for this whole system.
-5. List the firewall rules (`sudo ufw status`, `sudo firewall-cmd --list-all`, or `Get-NetFirewallRule -DisplayName "OpenAVC*"`). **Expected:** no rule allows 8080 or 8443 from every address, or on Windows the block rule is present and enabled.
+5. List the firewall rules (`sudo ufw status`, `sudo firewall-cmd --list-all`, or `Get-NetFirewallRule -DisplayName "OpenAVC*"`). **Expected:** no rule allows 8080 or 8443 from every address. On Windows, the **OpenAVC** rule lists only your networks (`Get-NetFirewallRule -DisplayName OpenAVC | Get-NetFirewallAddressFilter`), or the block rule is present and enabled.
 6. Signed in as an ordinary (non-administrator) account on the OpenAVC machine, try to read `system.json` (`type C:\ProgramData\OpenAVC\system.json` or `cat /var/lib/openavc/system.json`). **Expected:** access is denied.

@@ -1,32 +1,28 @@
-"""Windows Firewall for real: the rules the server opens, and the uninstaller.
+"""Windows Firewall for real: the rules the server opens, the installer's own
+rule, and the uninstaller.
 
-`test_plugin_declared_ports.py` stubs the firewall, as it must. These two do
-not: they add and remove real rules and run the uninstaller's own code against
-them. So they run only where the run says the machine is disposable --
+`test_plugin_declared_ports.py` stubs the firewall, as it must. These do not:
+they add and remove real rules and run the installer's own code against them.
+So they run only where the run says the machine is disposable --
 `OPENAVC_REQUIRE_HOST_FIREWALL=1`, which CI's Windows leg sets -- and never
 merely because a shell happens to be elevated. Every rule they make is on a port
-no plugin asks for, and both put back any OpenAVC plugin rule that was already
-there.
+no plugin asks for or under a name of its own, and they put back any OpenAVC
+plugin rule that was already there.
 """
 
 from __future__ import annotations
 
-import shutil
-import subprocess
 import sys
 import time
-from pathlib import Path
 
 import pytest
 
-from tests import gates
+from tests import gates, inno_harness
 
 pytestmark = pytest.mark.skipif(
     not gates.is_required(gates.HOST_FIREWALL),
     reason=f"changes the host firewall; set {gates.HOST_FIREWALL}=1 on a disposable machine",
 )
-
-SETUP_ISS = Path(__file__).resolve().parents[1] / "installer" / "setup.iss"
 
 # Ports no plugin declares, so nothing here can collide with a real rule.
 SERVER_PORT = 47991
@@ -34,6 +30,8 @@ UNINSTALL_UDP = 47992
 UNINSTALL_TCP = 47993
 DECOY_PORT = 47994
 DECOY_NAME = "OpenAVC firewall test decoy"
+# The installer's rule is "OpenAVC"; its code is run here under this name.
+PROGRAM_RULE = "OpenAVC installer rule test"
 
 
 def _host_reason() -> str | None:
@@ -47,14 +45,6 @@ def _host_reason() -> str | None:
     except (AttributeError, OSError) as exc:
         return f"elevation could not be checked ({exc})"
     return None
-
-
-def _iscc() -> str | None:
-    found = shutil.which("iscc")
-    if found:
-        return found
-    default = Path(r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe")
-    return str(default) if default.is_file() else None
 
 
 def _rule_count(name: str) -> int:
@@ -75,6 +65,33 @@ def _rule_count(name: str) -> int:
             if kind == winreg.REG_SZ and firewall._rule_string_name(value) == name:
                 count += 1
     return count
+
+
+def _rules(name: str) -> list[dict[str, list[str]]]:
+    """Every rule in the store with exactly this name, field by field. A
+    field can repeat (one LPort per port), so each holds a list."""
+    import winreg
+
+    from openavc.system import firewall
+
+    found = []
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, firewall._RULES_KEY) as key:
+        index = 0
+        while True:
+            try:
+                _, value, kind = winreg.EnumValue(key, index)
+            except OSError:
+                break
+            index += 1
+            if kind != winreg.REG_SZ or firewall._rule_string_name(value) != name:
+                continue
+            fields: dict[str, list[str]] = {}
+            for part in value.split("|")[1:]:
+                if "=" in part:
+                    field, text = part.split("=", 1)
+                    fields.setdefault(field, []).append(text)
+            found.append(fields)
+    return found
 
 
 def _ours_already_there() -> list[dict]:
@@ -141,61 +158,24 @@ def test_a_rule_the_server_opens_is_found_and_closed(host):
         firewall.sync(keep)
 
 
-def uninstall_harness(setup_iss: str) -> str:
-    """A setup script holding the installer's real [Code], that runs the
-    uninstaller's plugin-rule removal as soon as it starts, then stops.
-
-    Built from the whole [Code] section rather than one procedure copied out,
-    so this also compiles everything else in it on every push; CI otherwise
-    compiles setup.iss only when it builds a release.
-    """
-    code = setup_iss[setup_iss.index("[Code]"):]
-    assert "function InitializeSetup" not in code, (
-        "setup.iss now has its own InitializeSetup; give this harness another way in"
-    )
-    setup = setup_iss[setup_iss.index("[Setup]"):setup_iss.index("[Code]")]
-    privileges = next(
-        line for line in setup.splitlines() if line.startswith("PrivilegesRequired=")
-    )
-    arch = [line for line in setup.splitlines() if line.startswith("Architectures")]
-    return "\n".join([
-        '#define MyAppVersion "0.0.0"',
-        "[Setup]",
-        "AppName=OpenAVC uninstall check",
-        "AppVersion=0.0.0",
-        r"DefaultDirName={autopf}\OpenAVC uninstall check",
-        "Uninstallable=no",
-        privileges,
-        *arch,
-        "",
-        code.rstrip(),
-        "",
-        "function InitializeSetup(): Boolean;",
-        "begin",
-        "  RemovePluginFirewallRules();",
-        "  Result := False;",
-        "end;",
-        "",
-    ])
-
-
 def test_the_uninstaller_removes_every_plugin_rule_and_nothing_else(host, tmp_path):
     from openavc.system import firewall
 
-    iscc = _iscc()
-    gates.skip_or_fail(gates.HOST_FIREWALL, None if iscc else "Inno Setup (iscc) is not installed")
+    gates.skip_or_fail(
+        gates.HOST_FIREWALL, None if inno_harness.iscc() else "Inno Setup (iscc) is not installed",
+    )
 
     udp = firewall.rule_name(UNINSTALL_UDP, "udp")
     tcp = firewall.rule_name(UNINSTALL_TCP, "tcp")
     keep = _ours_already_there()
 
-    script = tmp_path / "uninstall_check.iss"
-    script.write_text(uninstall_harness(SETUP_ISS.read_text(encoding="utf-8")), encoding="utf-8")
-    built = subprocess.run(
-        [iscc, "/Q", f"/O{tmp_path}", "/Funinstall_check", str(script)],
-        capture_output=True, text=True, errors="replace", timeout=300,
+    exe = inno_harness.build(
+        inno_harness.code_harness(
+            inno_harness.SETUP_ISS.read_text(encoding="utf-8"),
+            "OpenAVC uninstall check", ["RemovePluginFirewallRules();"],
+        ),
+        tmp_path, "uninstall_check",
     )
-    assert built.returncode == 0, f"the installer's [Code] does not compile:\n{built.stdout}\n{built.stderr}"
 
     try:
         _add_rule(udp, "udp", UNINSTALL_UDP)
@@ -204,10 +184,7 @@ def test_the_uninstaller_removes_every_plugin_rule_and_nothing_else(host, tmp_pa
         _add_rule(DECOY_NAME, "udp", DECOY_PORT, description=udp)
         assert _rule_count(udp) == 2 and _rule_count(tcp) == 1 and _rule_count(DECOY_NAME) == 1
 
-        subprocess.run(
-            [str(tmp_path / "uninstall_check.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
-            capture_output=True, timeout=300,
-        )
+        inno_harness.run(exe)
         deadline = time.monotonic() + 30
         while (_rule_count(udp) or _rule_count(tcp)) and time.monotonic() < deadline:
             time.sleep(0.5)
@@ -220,3 +197,79 @@ def test_the_uninstaller_removes_every_plugin_rule_and_nothing_else(host, tmp_pa
         for name in (udp, tcp, DECOY_NAME):
             _netsh("delete", "rule", f"name={name}")
         firewall.sync(keep)
+
+
+def _names(app: list[str], program) -> bool:
+    """Whether a rule's App field is this program, however the path is spelt
+    (a runner's TEMP can be a short 8.3 path)."""
+    import os
+
+    return len(app) == 1 and os.path.exists(app[0]) and os.path.samefile(app[0], program)
+
+
+def test_an_update_keeps_the_rule_an_administrator_scoped(host, tmp_path):
+    """The installer's rule code, run under a name of its own: it adds the
+    rule where there is none, keeps one an administrator restricted and only
+    points it at the new program, and replaces the TCP-8080-only rule that
+    installers before 0.23.0 made."""
+    gates.skip_or_fail(
+        gates.HOST_FIREWALL, None if inno_harness.iscc() else "Inno Setup (iscc) is not installed",
+    )
+    old = tmp_path / "old" / "openavc-server.exe"
+    new = tmp_path / "new" / "openavc-server.exe"
+    for program in (old, new):
+        program.parent.mkdir()
+        program.write_bytes(b"")
+    exe = inno_harness.build(
+        inno_harness.code_harness(
+            inno_harness.SETUP_ISS.read_text(encoding="utf-8"),
+            "OpenAVC rule check", [f"KeepOrAddProgramRule('{PROGRAM_RULE}', '{new}');"],
+        ),
+        tmp_path, "rule_check",
+    )
+    lookalike = f"{PROGRAM_RULE} (TCP)"  # a longer name that starts with ours
+    try:
+        _add_rule(lookalike, "tcp", DECOY_PORT)
+        lookalike_before = _rules(lookalike)
+
+        inno_harness.run(exe)
+        [rule] = _rules(PROGRAM_RULE)
+        assert _names(rule["App"], new)
+        assert rule["Action"] == ["Allow"] and rule["Dir"] == ["In"] and rule["Active"] == ["TRUE"]
+        for field in rule:
+            assert not field.startswith(("LPort", "Protocol", "RA4", "RA6", "Profile")), (
+                f"a new rule is limited by {field}: {rule}"
+            )
+
+        ok, out = _netsh(
+            "set", "rule", f"name={PROGRAM_RULE}", "dir=in", "new", f"program={old}",
+            "remoteip=10.20.30.0/24", "profile=private", "enable=no",
+        )
+        assert ok, f"netsh could not scope the rule: {out}"
+        inno_harness.run(exe)
+        [rule] = _rules(PROGRAM_RULE)
+        assert _names(rule["App"], new), f"the kept rule does not name the new program: {rule}"
+        assert [ra for ra in rule.get("RA4", []) if ra.startswith("10.20.30.0")], (
+            f"the addresses the rule allowed were lost: {rule}"
+        )
+        assert rule["Profile"] == ["Private"]
+        assert rule["Active"] == ["FALSE"]
+        assert _rules(lookalike) == lookalike_before
+
+        _netsh("delete", "rule", f"name={PROGRAM_RULE}")
+        ok, out = _netsh(
+            "add", "rule", f"name={PROGRAM_RULE}", "dir=in", "action=allow",
+            "protocol=TCP", "localport=8080", f"program={old}",
+        )
+        assert ok, f"netsh could not add the old installers' rule: {out}"
+        inno_harness.run(exe)
+        [rule] = _rules(PROGRAM_RULE)
+        assert _names(rule["App"], new)
+        for field in rule:
+            assert not field.startswith(("LPort", "Protocol")), (
+                f"the TCP-8080-only rule was kept: {rule}"
+            )
+        assert _rules(lookalike) == lookalike_before
+    finally:
+        for name in (PROGRAM_RULE, lookalike):
+            _netsh("delete", "rule", f"name={name}")
