@@ -282,11 +282,11 @@ async def _initialize_engine(app: FastAPI) -> None:
         from openavc import reach_devices
 
         async def _safety_net_tick() -> None:
-            if reach_devices.choice():
-                try:
+            try:
+                if reach_devices.choice():
                     await asyncio.to_thread(reach_devices.refresh)
-                except Exception:  # the safety net below must still tick
-                    log.debug("Reach devices through: refresh failed", exc_info=True)
+            except Exception:  # the safety net below must still tick
+                log.debug("Reach devices through: refresh failed", exc_info=True)
             await listen_safety_net.tick(get_system_config(), _restart_to_follow_adapter)
 
         app.state.listen_watcher = asyncio.create_task(
