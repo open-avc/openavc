@@ -2172,9 +2172,8 @@ class BaseDriver(ABC):
                             )
                         else:
                             log.warning(
-                                f"[{self.device_id}] Device unresponsive — "
-                                f"dropping the connection so the platform can "
-                                f"reconnect"
+                                f"[{self.device_id}] Device stopped answering "
+                                f"liveness probes; disconnecting"
                             )
                         self._dropped_for_silence = True
                         self._force_disconnect(

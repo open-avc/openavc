@@ -200,6 +200,22 @@ async def test_a_missed_probe_says_why_in_the_log(caplog) -> None:
 
 
 @pytest.mark.asyncio
+async def test_the_drop_reads_plainly_in_the_log(caplog) -> None:
+    """The Log view shows this line beside the probe failures above it."""
+    drv = _make_driver()
+    drv.probe_raises = TimeoutError("no reply")
+    with caplog.at_level("WARNING", logger="openavc.drivers.base"):
+        drv._start_health_loop()
+        await asyncio.sleep(0.3)
+    drops = [
+        r.getMessage() for r in caplog.records
+        if r.name == "openavc.drivers.base" and r.levelname == "WARNING"
+        and "Liveness probe failed" not in r.getMessage()
+    ]
+    assert drops[0] == "[test_dev] Device stopped answering liveness probes; disconnecting"
+
+
+@pytest.mark.asyncio
 async def test_watchdog_stops_on_disconnect() -> None:
     drv = _make_driver()
     drv._start_health_loop()
