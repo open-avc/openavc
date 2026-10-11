@@ -131,6 +131,7 @@ MEASURE_JS = r"""
   const out = {};
   for (const el of document.querySelectorAll('[data-element-id]')) {
     const parts = {};
+    const families = {};
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
     let n;
     while ((n = walker.nextNode())) {
@@ -141,13 +142,16 @@ MEASURE_JS = r"""
       if (cs.display === 'none') continue;
       const key = (cls(p).split(/\s+/).filter(Boolean).pop() || p.tagName.toLowerCase());
       if (!(key in parts)) parts[key] = parseFloat(cs.fontSize);
+      if (!(key in families)) families[key] = cs.fontFamily;
     }
     for (const c of el.querySelectorAll('select, input:not([type=range])')) {
       parts[c.tagName.toLowerCase()] = parseFloat(getComputedStyle(c).fontSize);
+      families[c.tagName.toLowerCase()] = getComputedStyle(c).fontFamily;
     }
-    out[el.dataset.elementId] = { px: parseFloat(getComputedStyle(el).fontSize), parts };
+    out[el.dataset.elementId] = { px: parseFloat(getComputedStyle(el).fontSize), parts, families };
   }
-  return { rootPx, tokenPx, elements: out };
+  return { rootPx, tokenPx, bodyFamily: getComputedStyle(document.body).fontFamily,
+           elements: out };
 }
 """
 
@@ -202,6 +206,7 @@ def rendered(server_factory_module, page_module: Page) -> dict[str, Any]:
         measured = page.evaluate(MEASURE_JS)
         result["rootPx"] = measured["rootPx"]
         result["tokenPx"] = measured["tokenPx"]
+        result["bodyFamily"] = measured["bodyFamily"]
         result["elements"].update(measured["elements"])
     return result
 
@@ -265,4 +270,30 @@ def test_an_authored_size_reaches_every_text_inside_the_control(rendered, eid: s
         f"not follow (plain px, authored px): {stuck}. A font-size inside a control "
         f"must be em (or inherit), never rem or px -- see the header of "
         f"panel-elements.css."
+    )
+
+
+#: The readouts the element stylesheet draws in a fixed-width face on purpose,
+#: so a number's digits do not shift sideways as it changes.
+FIXED_WIDTH_READOUTS = {"slider-value", "keypad-display"}
+
+
+@pytest.mark.parametrize("eid", [s[0] for s in SPECIMENS])
+def test_every_text_inside_a_control_draws_in_the_panel_font(rendered, eid: str) -> None:
+    """The theme's font is set on the panel's body, and every text inherits it.
+
+    A button, a dropdown and a text box do not inherit a font from the page:
+    the browser's own stylesheet gives them one of their own (Arial, in
+    Chromium). So a keypad's keys, a dropdown and a text box drew in Arial
+    beside Inter labels, and in Arial under a theme with a serif face too."""
+    el = rendered["elements"][f"p_{eid}"]
+    assert el["families"], f"{eid} rendered no text to measure"
+    other = {
+        key: fam for key, fam in el["families"].items()
+        if fam != rendered["bodyFamily"] and key not in FIXED_WIDTH_READOUTS
+    }
+    assert not other, (
+        f"{eid}: these texts are not in the panel's font ({rendered['bodyFamily']}): "
+        f"{other}. A form control takes its font from the browser unless a rule "
+        f"says inherit -- see the form-control rule near the top of panel.css."
     )

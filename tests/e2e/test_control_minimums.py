@@ -374,14 +374,16 @@ def test_control_is_whole_at_its_recorded_minimum(panel_page, type_: str) -> Non
 #: Widths are text-driven -- a keypad column is as wide as the glyph on its key
 #: -- so the true answer moves with the font, and the font moves with the
 #: machine. The same specimens measured in Chromium on different machines give
-#: different widths: the matrix's spans 274..278. A test demanding the width be
-#: exact to the pixel is therefore asserting which machine ran it. Four is the
-#: widest disagreement actually measured, not a round number. Each floor is
+#: different widths: the matrix's spans 274..278, and the keypad's C key needs
+#: 99.25 in DejaVu Sans and macOS's default face but 95 in WenQuanYi Zen Hei. A
+#: test demanding the width be exact to the pixel is therefore asserting which
+#: machine ran it. Five is the widest disagreement actually measured, 4.25,
+#: rounded up to a whole pixel, not a round number. Each floor is
 #: recorded at the TOP of its range (control_minimums, "When two machines
 #: disagree"), so what this tolerates is one-directional -- a machine that needs
 #: LESS than the recorded number, never one that needs more.
 #:
-#: Heights used to need the same four: a line was `line-height: normal`, whose
+#: Heights used to need four of their own: a line was `line-height: normal`, whose
 #: height is the font's own, and the fader measured 99..102 across three
 #: machines. The panel's line height is a number now, and every height floor
 #: measures the same to the pixel on macOS (its default face and two CJK faces)
@@ -395,7 +397,7 @@ def test_control_is_whole_at_its_recorded_minimum(panel_page, type_: str) -> Non
 #: Either way the check still does its real job, which is catching a floor
 #: inflated far enough to make the Builder and the AI reject layouts that would
 #: render fine.
-WIDTH_TIGHTNESS_SLACK_PX = 4
+WIDTH_TIGHTNESS_SLACK_PX = 5
 HEIGHT_TIGHTNESS_SLACK_PX = 1
 
 

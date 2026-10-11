@@ -59,16 +59,20 @@ html, body {
     -webkit-tap-highlight-color: transparent;
 }
 
-/* Form controls do not inherit a line height: the browser's own stylesheet
-   gives them `font: -webkit-small-control`, which sets it back to `normal` and
-   with it the font-dependence the rule above removes. A matrix's preset button
-   and a list matrix's dropdown are not .panel-element, so the button reset
-   below does not reach them; this does. A rule that sets its own line height
-   (.panel-button, the matrix legend) is more specific and still wins. */
+/* Form controls do not inherit a font: the browser's own stylesheet gives them
+   `font: -webkit-small-control`, which sets the face to its own (Arial, in
+   Chromium) and the line height back to `normal`, and with it the
+   font-dependence the rule above removes. So a keypad's keys, a dropdown and a
+   text box drew in Arial beside the theme's face, whatever the theme set on the
+   body. A matrix's preset button and a list matrix's dropdown are not
+   .panel-element, so the button reset below does not reach them; this does. A
+   rule that sets its own face or line height (the fixed-width readouts,
+   .panel-button, the matrix legend) is more specific and still wins. */
 button,
 select,
 input,
 textarea {
+    font-family: inherit;
     line-height: inherit;
 }
 

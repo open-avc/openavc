@@ -61,9 +61,13 @@ every height below is the measured one, and none is marked.
 The widths still differ, because a glyph is as wide as its font draws it.
 ``fader``'s 88 is two over what all five of those need; it dates from when the
 panel's text default moved and the floors were re-measured on a Windows box,
-and nothing has measured a width there since. ``keypad``'s 98 is short for a
-CJK face on macOS -- its C key needs 100 in PingFang SC and 104 in Hiragino
-Sans -- while the Linux image's WenQuanYi Zen Hei needs 98. Re-measuring a width
+and nothing has measured a width there since. ``keypad``'s 100 is the C key's
+glyph in the panel's own face: 99.25 on macOS's default and with DejaVu Sans,
+99.75 in PingFang SC, 95 in WenQuanYi Zen Hei. It is short for one, Hiragino
+Sans forced on macOS, whose C needs 104. Its keys drew in the browser's face
+for a form control (Arial, Liberation Sans on Linux) until panel.css set them
+to inherit the panel's, which is why the keypad moved and its neighbours did
+not, and why it now follows a theme's font family too. Re-measuring a width
 locally and tightening it to what came back is how it goes short again -- the
 machine that needs the extra pixel is not the one you are on, and it will not
 be the one that notices.
@@ -576,8 +580,8 @@ RULES: dict[str, MinimumRule] = {
     "matrix": _MATRIX_CROSSPOINT,
     "level_meter": MinimumRule(13, 97, (_SEGMENT,)),
     "keypad": MinimumRule(
-        98, 268, (_KEY,),
-        note="98 wide on macOS and on the ubuntu CI runner alike: the columns "
+        100, 268, (_KEY,),
+        note="100 wide on macOS and on the ubuntu CI runner alike: the columns "
              "are the C key's glyph, a digit's, and the enter key's arrow, an "
              "icon of fixed em size. It used to be a font's return symbol, "
              "which few fonts carry, so each machine drew a different stand-in "

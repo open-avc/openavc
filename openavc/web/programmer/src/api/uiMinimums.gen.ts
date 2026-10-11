@@ -439,7 +439,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
     "note": ""
   },
   "keypad": {
-    "baseWidthPx": 98,
+    "baseWidthPx": 100,
     "baseHeightPx": 268,
     "internals": [
       {
@@ -457,7 +457,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
     "styleProperty": "",
     "styles": {},
     "styleDefault": "",
-    "note": "98 wide on macOS and on the ubuntu CI runner alike: the columns are the C key's glyph, a digit's, and the enter key's arrow, an icon of fixed em size. It used to be a font's return symbol, which few fonts carry, so each machine drew a different stand-in at a different width and this floor ran from 98 to 110. 268 tall on every machine measured: the label and the display are a line each, and a line is the panel's 1.2 whatever the font."
+    "note": "100 wide on macOS and on the ubuntu CI runner alike: the columns are the C key's glyph, a digit's, and the enter key's arrow, an icon of fixed em size. It used to be a font's return symbol, which few fonts carry, so each machine drew a different stand-in at a different width and this floor ran from 98 to 110. 268 tall on every machine measured: the label and the display are a line each, and a line is the panel's 1.2 whatever the font."
   },
   "select": {
     "baseWidthPx": 44,

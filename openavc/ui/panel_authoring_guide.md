@@ -50,7 +50,7 @@ the container instead when the element sits in one.
 |---|---|---|---|
 | fader | 88 x 175 px | 6.88% x 21.88% | fader-handle 44 x 44, fader-scale 42 wide (font-driven) |
 | level_meter | 13 x 97 px | 1.02% x 12.12% | meter-segment 2 tall |
-| keypad | 98 x 268 px | 7.66% x 33.5% | keypad-key 36 tall (font-driven) |
+| keypad | 100 x 268 px | 7.81% x 33.5% | keypad-key 36 tall (font-driven) |
 | select | 44 x 86 px | 3.44% x 10.75% | native control 47.6 tall (font-driven) |
 | text_input | 44 x 86 px | 3.44% x 10.75% | native control 47.6 tall (font-driven) |
 
@@ -170,7 +170,7 @@ whose value is whatever they typed, and nothing in this file sizes text.
 Where a floor is not what the shape of the control suggests.
 
 - **list** -- Row height does not change how wide a list has to be.
-- **keypad** -- 98 wide on macOS and on the ubuntu CI runner alike: the columns are the C key's glyph, a digit's, and the enter key's arrow, an icon of fixed em size. It used to be a font's return symbol, which few fonts carry, so each machine drew a different stand-in at a different width and this floor ran from 98 to 110. 268 tall on every machine measured: the label and the display are a line each, and a line is the panel's 1.2 whatever the font.
+- **keypad** -- 100 wide on macOS and on the ubuntu CI runner alike: the columns are the C key's glyph, a digit's, and the enter key's arrow, an icon of fixed em size. It used to be a font's return symbol, which few fonts carry, so each machine drew a different stand-in at a different width and this floor ran from 98 to 110. 268 tall on every machine measured: the label and the display are a line each, and a line is the panel's 1.2 whatever the font.
 
 ## Types with no floor at all
 
