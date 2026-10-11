@@ -168,6 +168,23 @@ def test_load_or_generate_reuses_existing(tmp_path):
     assert cert2.read_bytes() == first_bytes
 
 
+def test_choosing_one_adapter_puts_its_address_in_the_certificate(tmp_path, monkeypatch):
+    """The certificate made while this computer only was chosen names no LAN
+    address; choosing one adapter regenerates it with that adapter's, and
+    only that adapter's, address."""
+    from tests.listen_helpers import ETHERNET
+
+    _fake_ifaddr(monkeypatch, "10.20.30.5", "192.168.1.40")
+    cert1, _ = tls.load_or_generate(_make_config(), tmp_path)
+    assert "10.20.30.5" not in tls.read_cert_info(cert1).sans
+
+    cfg = _make_config(listen_plan=lambda: plan_for("adapter", ETHERNET))
+    cert2, _ = tls.load_or_generate(cfg, tmp_path)
+    sans = tls.read_cert_info(cert2).sans
+    assert "10.20.30.5" in sans
+    assert "192.168.1.40" not in sans
+
+
 def test_load_or_generate_regenerates_on_ip_change(tmp_path, monkeypatch):
     cfg = _make_config(listen_plan=lambda: plan_for("any"))
 

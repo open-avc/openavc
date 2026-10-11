@@ -162,7 +162,12 @@ async def subscribe(
     from openavc.listen_sockets import push_listeners
 
     try:
-        await push_listeners.ensure(_local_ip_for(source_ip))
+        if push_listeners.enabled:
+            import asyncio
+
+            # A device named by hostname is looked up here; off the loop.
+            host = await asyncio.to_thread(_local_ip_for, source_ip)
+            await push_listeners.ensure(host)
     except Exception:  # never fail a driver's subscription over it
         log.exception("[%s] Could not listen for device updates", name)
     return sub

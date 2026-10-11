@@ -200,6 +200,10 @@ class PushListeners:
         self._failed: dict[str, str] = {}
         self._lock: asyncio.Lock | None = None
 
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
+
     def enable(self, http_port: int) -> None:
         self._enabled = True
         self._http_port = http_port
