@@ -129,14 +129,22 @@ export function DriverEditor({
   // save-attempted flag so a previous editor's state doesn't bleed in.
   // A brand-new draft also opens on General — keeping the previous
   // driver's tab (e.g. Connection) makes an empty draft look broken.
-  // The server's issue list is dropped too: it describes the driver we just
-  // navigated away from, and showing those against the new one for the
-  // length of a round trip is worse than showing nothing.
+  // The server's issue list is dropped too when the draft changed with it: it
+  // describes the driver we just navigated away from, and showing those
+  // against the new one for the length of a round trip is worse than showing
+  // nothing. A first save changes the id but not the draft, so its list still
+  // applies, and nothing would ask again until the next edit.
+  const prevDraftKey = useRef(draftKey);
   useEffect(() => {
     setAttemptedSave(false);
-    setServerIssues([]);
+    if (prevDraftKey.current !== draftKey) setServerIssues([]);
     if (isNew) setActiveTab("general");
+    // draftKey is read, not watched: only a change of driver resets.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [originalId, isNew]);
+  useEffect(() => {
+    prevDraftKey.current = draftKey;
+  }, [draftKey]);
 
   useEffect(() => {
     const token = ++validateSeq.current;
@@ -251,8 +259,8 @@ export function DriverEditor({
   const isByteStream = ["tcp", "serial", "udp"].includes(draft.transport);
   const framingEnabled = !!(draft.command_prefix || draft.command_suffix);
 
-  const countMeta = (n: number, singular: string) =>
-    n === 0 ? "none" : `${n} ${n === 1 ? singular : `${singular}s`}`;
+  const countMeta = (n: number, singular: string, plural = `${singular}s`) =>
+    n === 0 ? "none" : `${n} ${n === 1 ? singular : plural}`;
 
   const labelStyle: React.CSSProperties = {
     display: "block",
@@ -930,7 +938,7 @@ export function DriverEditor({
             <CollapsibleSection
               title="Polling"
               subtitle="Periodic queries that keep state variables fresh on devices that don't push updates."
-              meta={countMeta(pollingQueryCount, "query")}
+              meta={countMeta(pollingQueryCount, "query", "queries")}
               defaultOpen={pollingQueryCount > 0}
               helpHref={DOCS.polling}
             >
