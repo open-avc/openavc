@@ -769,7 +769,11 @@ class PanelApp {
         this.statusEl.textContent = connected ? 'Connected' : 'Disconnected';
         this.statusEl.className = connected ? 'connected' : 'disconnected';
 
-        if (connected) {
+        if (connected && this.embedded) {
+            // The Builder's Preview reconnects every time it opens, and the
+            // IDE shows its own connection state: no flash over the page.
+            this.statusEl.classList.add('hidden');
+        } else if (connected) {
             this._statusHideTimer = setTimeout(() => {
                 this.statusEl.classList.add('hidden');
             }, 3000);

@@ -122,6 +122,8 @@ button.panel-element {
     z-index: 1000;
     opacity: 0.8;
     transition: opacity 0.3s;
+    /* It sits over the page's own controls; a tap goes through to them. */
+    pointer-events: none;
 }
 #connection-status.connected {
     background: var(--panel-success);

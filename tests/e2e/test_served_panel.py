@@ -199,6 +199,23 @@ def test_a_press_on_a_served_panel_reaches_the_instance(served_panel) -> None:
                 "var.last_press never became 'laptop' on the server")
 
 
+def test_the_connection_pill_never_takes_a_tap(served_panel) -> None:
+    """The pill in the top-right corner says the link is up or down. It sits
+    over the page's own controls while it shows, and a tap there must reach
+    the control under it."""
+    hit = served_panel.page.evaluate(
+        """() => {
+            const pill = document.getElementById('connection-status');
+            pill.className = 'connected';
+            const r = pill.getBoundingClientRect();
+            const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            return {drawn: r.width > 0 && r.height > 0, onPill: at === pill};
+        }"""
+    )
+    assert hit["drawn"], hit
+    assert not hit["onPill"], "a tap on the Connected pill lands on the pill"
+
+
 # ---------------------------------------------------------------------------
 # A route reaches the instance, values intact
 # ---------------------------------------------------------------------------

@@ -119,6 +119,7 @@ SCENARIOS = [
     "m010_m011_css_sanitizers",
     "m002_m003_overlay_cleanup",
     "m008_l006_offline_handling",
+    "connection_status_hides_at_once_in_preview",
     "l001_divide_by_zero_guards",
     "select_look_applies_matching_option_style",
     "select_look_registered_and_dispatched",

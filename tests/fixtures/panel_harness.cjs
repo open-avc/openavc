@@ -1488,6 +1488,24 @@ const tests = {
         assert(overlay.style.pointerEvents === '', 'overlay re-enabled on reconnect');
     },
 
+    // The "Connected" pill shows for 3 s on a real panel when the link comes
+    // back. In the Builder's Preview, which reconnects every time it opens, it
+    // sat over whatever control was in the top-right corner, so there it is
+    // hidden at once.
+    connection_status_hides_at_once_in_preview() {
+        const app = mkApp();
+        app.embedded = true;
+        app.setConnectionStatus(true);
+        assert(app.statusEl.classList.contains('hidden'), 'hidden at once in Preview');
+        assert(!app._statusHideTimer, 'no hide timer in Preview');
+        const panel = mkApp();
+        panel.embedded = false;
+        panel.setConnectionStatus(true);
+        assert(!panel.statusEl.classList.contains('hidden'), 'shown on a real panel');
+        assert(!!panel._statusHideTimer, 'hidden after a delay on a real panel');
+        window.clearTimeout(panel._statusHideTimer);
+    },
+
     // Select per-option styling (show.look.style_map) — the Appearance card
     // authors it and the docs promise it; the control must take the matched
     // option's colors and drop them when nothing matches.
