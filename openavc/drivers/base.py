@@ -1544,6 +1544,7 @@ class BaseDriver(ABC):
         # fresh attempt, announced as soon as it is up.
         self._held = False
         self._dropped_for_silence = False
+        self._unread_replies_hold = False
         self._settle_answer(False)
         self.set_state("connected", False)
         await self.events.emit(f"device.disconnected.{self.device_id}")
@@ -2177,7 +2178,7 @@ class BaseDriver(ABC):
                             )
                         self._dropped_for_silence = True
                         self._force_disconnect(
-                            NO_RESPONSE, self.HEALTH_FAULT_MESSAGE
+                            NO_RESPONSE, self._probe_fault_message()
                         )
                         return
                 else:
@@ -2301,6 +2302,21 @@ class BaseDriver(ABC):
             f"none of it: {cycles} polls in a row. Check the port, and that "
             f"this driver matches the device."
         )
+
+    def _probe_fault_message(self) -> str:
+        """What the card says when the liveness probe takes the device
+        offline. A probe that goes unanswered while the unread-replies check
+        holds on a connection that did receive replies is a device answering
+        in a language this driver does not read (the wrong port or the wrong
+        driver), so the check's sentence names the cause better than "stopped
+        answering" does."""
+        counts = self._io_counts()
+        if (
+            self._unread_replies_hold and self._unread_sentence
+            and counts is not None and counts[2] > 0
+        ):
+            return self._unread_sentence
+        return self.HEALTH_FAULT_MESSAGE
 
     def _judge_reading(
         self, parse_pending: tuple[Any, int, int, int | None], cycles: int,
@@ -3334,10 +3350,12 @@ class BaseDriver(ABC):
         reading = self._parsed_count() is not None
         unread_cycles = 0
         parse_pending: tuple[Any, int, int, int | None] | None = None
-        # A hold belongs to the connection that earned it: on a new one the
-        # sentence a held check left in last_error clears after the first
-        # clean poll, and comes back if the replies still go unread.
-        self._unread_replies_hold = False
+        # A verdict lasts while the automatic reconnect holds the device
+        # offline (the warning is logged once an episode, and the sentence
+        # stays in last_error); any other connection starts again, and the
+        # sentence a held check left behind clears after its first clean poll.
+        if not self._held:
+            self._unread_replies_hold = False
 
         last_poll_exc: BaseException | None = None
         try:

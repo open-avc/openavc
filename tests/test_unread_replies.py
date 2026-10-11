@@ -288,6 +288,85 @@ async def test_it_runs_beside_a_liveness_probe(talking_server, caplog) -> None:
         await drv.disconnect()
 
 
+def _probed() -> dict[str, Any]:
+    """A driver whose own keep-alive asks PWR? and expects PWR=, which the
+    wrong device never sends."""
+    return _acme(liveness={
+        "send": "PWR?\r", "expect": "PWR=", "interval": 0.5, "timeout": 0.2,
+        "max_failures": 2,
+    })
+
+
+@pytest.mark.asyncio
+async def test_a_probe_that_drops_a_device_answering_otherwise_names_why(
+    talking_server, caplog,
+) -> None:
+    """Measured with an IP-to-serial bridge behind a router driver that has
+    its own keep-alive: the probe went unanswered and the card said the
+    device stopped answering keep-alive probes, while it was answering every
+    poll. The card now carries the unread-replies sentence."""
+    caplog.set_level(logging.INFO, logger=_LOGGER)
+    port, state = talking_server
+    state["reply"] = b"Password: \r"
+    drv = _build(_probed(), port)
+    await drv.connect()
+    try:
+        assert await _until(lambda: drv.get_state("connected") is False, 5.0)
+        assert drv.last_fault.code == "no_response"
+        assert drv.last_fault.message == _SENTENCE
+    finally:
+        await drv.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_the_verdict_lasts_through_the_held_reconnect(
+    talking_server, caplog,
+) -> None:
+    """The automatic reconnect after that drop is held offline; it keeps the
+    verdict, so the log warns once an episode (not once a reconnect) and the
+    sentence stays in last_error and on the card."""
+    caplog.set_level(logging.INFO, logger=_LOGGER)
+    port, state = talking_server
+    state["reply"] = b"Password: \r"
+    drv = _build(_probed(), port)
+    await drv.connect()
+    try:
+        assert await _until(lambda: drv.get_state("connected") is False, 5.0)
+        drv._hold_next_connect = True
+        await drv.connect()
+        assert drv._held is True
+        assert drv._unread_replies_hold is True
+        await asyncio.sleep(_INTERVAL * 5)
+        assert drv.get_state("last_error") == _SENTENCE
+        assert await _until(lambda: drv.transport is None or not drv._held, 5.0)
+        assert drv.last_fault.message == _SENTENCE
+        assert len(_warnings(caplog)) == 1
+    finally:
+        await drv.disconnect()
+    assert drv._unread_replies_hold is False
+
+
+@pytest.mark.asyncio
+async def test_a_held_reconnect_into_silence_says_the_probe_went_unanswered(
+    talking_server, caplog,
+) -> None:
+    """The verdict is only named while replies arrive: a held connection that
+    hears nothing at all gets the probe's own sentence."""
+    port, state = talking_server
+    state["reply"] = b"Password: \r"
+    drv = _build(_probed(), port)
+    await drv.connect()
+    try:
+        assert await _until(lambda: drv.get_state("connected") is False, 5.0)
+        state["reply"] = b""
+        drv._hold_next_connect = True
+        await drv.connect()
+        assert await _until(lambda: drv.transport is None or not drv._held, 5.0)
+        assert drv.last_fault.message == drv.HEALTH_FAULT_MESSAGE
+    finally:
+        await drv.disconnect()
+
+
 @pytest.mark.asyncio
 async def test_a_cycle_that_hears_nothing_is_the_silence_checks(
     talking_server, caplog,
