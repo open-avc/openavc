@@ -316,6 +316,8 @@ def server_factory(tmp_path: Path, _install_test_driver):
         env: dict[str, str] | None = None,
         existing_system: bool = False,
         drivers: dict[str, str] | None = None,
+        hold_bind: bool = True,
+        system_json: dict[str, Any] | None = None,
     ) -> _ServerHandle:
         gen = _start_server(
             tmp_path / f"srv-{uuid.uuid4().hex[:8]}",
@@ -325,6 +327,8 @@ def server_factory(tmp_path: Path, _install_test_driver):
             env=env,
             existing_system=existing_system,
             drivers=drivers,
+            hold_bind=hold_bind,
+            system_json=system_json,
         )
         handle = next(gen)
         handles.append(handle)
@@ -351,6 +355,8 @@ def _start_server(
     env: dict[str, str] | None = None,
     existing_system: bool = False,
     drivers: dict[str, str] | None = None,
+    hold_bind: bool = True,
+    system_json: dict[str, Any] | None = None,
 ):
     """Boot one server. ``bind`` is loopback unless a test needs the instance
     to see the browser as a device on the network (a loopback peer is the
@@ -361,7 +367,11 @@ def _start_server(
     a first start creates is there before this start, which is what the
     Panel access default reads. ``drivers`` maps file names to driver source
     written into the server's ``driver_repo/`` before it boots, so a project
-    device can use one from the start."""
+    device can use one from the start. ``bind`` is also held through
+    ``OPENAVC_BIND``, which locks Settings > Network > Accept connections
+    from; ``hold_bind=False`` leaves the variable out so the choice comes from
+    ``system.json``, which ``system_json`` writes before the server boots.
+    ``bind`` is then only where the harness reaches the server."""
     lost = ""
     for attempt in range(_PORT_ATTEMPTS):
         # A start that lost its port may have run its engine first, and the
@@ -378,6 +388,8 @@ def _start_server(
                 env=env,
                 existing_system=existing_system,
                 drivers=drivers,
+                hold_bind=hold_bind,
+                system_json=system_json,
             )
             break
         except _PortLost as exc:
@@ -410,6 +422,8 @@ def _launch(
     env: dict[str, str] | None,
     existing_system: bool,
     drivers: dict[str, str] | None,
+    hold_bind: bool = True,
+    system_json: dict[str, Any] | None = None,
 ):
     """One start of one server in ``root``. Returns its handle and open log;
     raises ``_PortLost`` or ``RuntimeError`` with the log tail, having stopped
@@ -444,6 +458,9 @@ def _launch(
         encoding="utf-8",
     )
 
+    if system_json is not None:
+        (data_dir / "system.json").write_text(json.dumps(system_json), encoding="utf-8")
+
     control_file = root / "control.json"
     control_file.write_text(
         json.dumps({"seq": 1, "operations": []}), encoding="utf-8",
@@ -469,6 +486,11 @@ def _launch(
     }
     # PowerShell-launched parents sometimes leave OPENAVC_DATA_DIR pointed at
     # a session-scoped temp from the in-process test suite; force ours through.
+
+    # Not held: who can connect then comes from system.json, and Settings
+    # can change it.
+    if not hold_bind:
+        env.pop("OPENAVC_BIND", None)
 
     log_path = root / "server.log"
     log = open(log_path, "wb")
