@@ -371,6 +371,50 @@ def test_a_keypad_carrying_a_look_binding_is_told_it_does_nothing():
     assert "does not render" in ignored[0].message
 
 
+def test_a_pin_keypad_that_sends_after_its_first_digit_is_told_the_default():
+    """The field report: auto_send with a 200 ms delay sent a PIN after one key."""
+    page = _page(
+        [UIElement(id="pin", type="keypad", digits=4, auto_send=True,
+                   auto_send_delay_ms=200)],
+        {"pin": {"x": 0, "y": 0, "w": 20, "h": 40}},
+    )
+    findings, _ = review_page(page)
+    early = _of_kind(findings, "keypad_sends_early")
+    assert [f.message for f in early] == [
+        "pin (keypad) sends what has been typed 200 ms after the last key press, "
+        "shorter than the 1500 ms default, so a code can be sent before it is "
+        "finished. Set auto_send_delay_ms to 1500 or more; an entry of 4 digits "
+        "is sent as soon as the last one is pressed."
+    ]
+
+
+def test_a_phone_keypad_without_auto_send_is_told_it_never_sends():
+    page = _page(
+        [UIElement(id="dial", type="keypad", keypad_style="phone")],
+        {"dial": {"x": 0, "y": 0, "w": 20, "h": 40}},
+    )
+    findings, _ = review_page(page)
+    assert _kinds(findings) == ["keypad_never_sends"]
+
+
+def test_a_keypad_left_at_its_defaults_is_left_alone():
+    page = _page(
+        [
+            UIElement(id="numeric", type="keypad"),
+            UIElement(id="auto", type="keypad", digits=6, auto_send=True),
+            UIElement(id="one", type="keypad", digits=1, auto_send=True,
+                      auto_send_delay_ms=100),
+        ],
+        {
+            "numeric": {"x": 0, "y": 0, "w": 20, "h": 40},
+            "auto": {"x": 30, "y": 0, "w": 20, "h": 40},
+            "one": {"x": 60, "y": 0, "w": 20, "h": 40},
+        },
+    )
+    findings, _ = review_page(page)
+    assert _kinds(findings) == []
+
+
 def test_a_button_carrying_the_same_look_binding_is_left_alone():
     page = _page(
         [UIElement(id="btn", type="button", label="Power", bindings={

@@ -450,8 +450,10 @@ class UIElement(_ForwardCompatModel):
     start_key: str | None = None  # clock: elapsed timer start state key
     duration_minutes: int | None = None  # clock: meeting timer duration
     digits: int | None = None  # keypad: max input digits
-    auto_send: bool | None = None  # keypad: auto-submit after max digits
-    auto_send_delay_ms: int | None = None  # keypad: delay before auto-submit
+    # keypad: submit at `digits` keys, and after auto_send_delay_ms with no key press
+    auto_send: bool | None = None
+    # keypad: the wait after the last key before a shorter entry is submitted (1500)
+    auto_send_delay_ms: int | None = None
     keypad_style: str | None = None  # keypad: numeric/phone
     show_display: bool | None = None  # keypad: show digit buffer display
     label_position: str | None = None  # group: label position

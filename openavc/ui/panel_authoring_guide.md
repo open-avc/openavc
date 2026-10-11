@@ -346,6 +346,25 @@ element belongs to no layout, so there it is an element property and works.
 Four types draw an empty box when one particular thing is missing, and a write
 warns about each: a `custom` needs `custom_file`; a `image` needs `src`; a `label` needs `text` or a `show.value` binding; a `page_nav` needs `target_page`; a `select` needs `options` or a `show.items` binding.
 
+## When a keypad sends
+
+A keypad collects key presses and sends them as one `submit`, with the entry in
+`$value`. `digits` (default 4) is the most it takes.
+
+- The Enter key sends what has been typed.
+- With `auto_send` on, it also sends as soon as `digits` keys are pressed,
+  **and** `auto_send_delay_ms` (default 1500) after the last key press when
+  fewer are.
+
+So a fixed-length PIN wants `digits` set to its length and the delay left at the
+default. A shorter delay can send a code before it is finished. The review
+answers: *pin (keypad) sends what has been typed 200 ms after the last key press, shorter than the 1500 ms default, so a code can be sent before it is finished. Set auto_send_delay_ms to 1500 or more; an entry of 4 digits is sent as soon as the last one is pressed.*
+
+`keypad_style: "phone"` swaps Clear and Enter for `*` and `#`, so a phone pad
+has no Enter key: `auto_send` is the only way it sends, and the pause is the
+only way it sends a code shorter than `digits`. The review answers:
+*dial (keypad) uses the phone layout, which has no Enter key, and auto_send is off, so nothing typed on it is ever sent. Turn auto_send on, or use the numeric layout.*
+
 ## The matrix, which is configured entirely inside `matrix_config`
 
 A matrix is the one control whose settings do not live on the element. They live

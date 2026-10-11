@@ -58,6 +58,9 @@ from openavc.ui.page_review import (
     custom_page_findings,
     HONORED_SHOW_SLOTS,
     INERT_WITHOUT,
+    KEYPAD_DIGITS_DEFAULT,
+    KEYPAD_SEND_DELAY_DEFAULT_MS,
+    keypad_findings,
     MATRIX_CONFIG_KEYS,
     RENDERED_TYPES,
     STATE_ICON_TYPES,
@@ -445,6 +448,28 @@ Four types draw an empty box when one particular thing is missing, and a write
 warns about each: %(inert)s.
 """
 
+KEYPAD_INTRO = """\
+
+## When a keypad sends
+
+A keypad collects key presses and sends them as one `submit`, with the entry in
+`$value`. `digits` (default %(digits)s) is the most it takes.
+
+- The Enter key sends what has been typed.
+- With `auto_send` on, it also sends as soon as `digits` keys are pressed,
+  **and** `auto_send_delay_ms` (default %(delay)s) after the last key press when
+  fewer are.
+
+So a fixed-length PIN wants `digits` set to its length and the delay left at the
+default. A shorter delay can send a code before it is finished. The review
+answers: *%(early)s*
+
+`keypad_style: "phone"` swaps Clear and Enter for `*` and `#`, so a phone pad
+has no Enter key: `auto_send` is the only way it sends, and the pause is the
+only way it sends a code shorter than `digits`. The review answers:
+*%(never)s*
+"""
+
 MATRIX_INTRO = """\
 
 ## The matrix, which is configured entirely inside `matrix_config`
@@ -662,6 +687,27 @@ def _custom_page_section() -> str:
     return CUSTOM_PAGE_INTRO % {
         "kept": kept[0].message,
         "fileless": fileless[0].message,
+    }
+
+
+def _keypad_section() -> str:
+    """When a keypad sends, quoting the review's own sentences.
+
+    The runtime sends at ``digits`` keys and after a pause. Described as the
+    first half alone, a PIN pad was given a 200 ms pause and sent after one
+    digit. The defaults come from the review's constants, which mirror
+    panel.js.
+    """
+    early = keypad_findings({
+        "id": "pin", "type": "keypad", "digits": 4,
+        "auto_send": True, "auto_send_delay_ms": 200,
+    })
+    never = keypad_findings({"id": "dial", "type": "keypad", "keypad_style": "phone"})
+    return KEYPAD_INTRO % {
+        "digits": KEYPAD_DIGITS_DEFAULT,
+        "delay": KEYPAD_SEND_DELAY_DEFAULT_MS,
+        "early": early[0].message,
+        "never": never[0].message,
     }
 
 
@@ -1065,6 +1111,7 @@ def render() -> str:
             "structural": _and_list(sorted(STRUCTURAL_PROPERTIES)),
             "inert": _inert_list(),
         },
+        _keypad_section(),
         _matrix_section(),
         COMPARISON_INTRO,
         _custom_page_section(),

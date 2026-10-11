@@ -1470,6 +1470,58 @@ def content_findings(element: Mapping[str, Any]) -> list[Finding]:
     )]
 
 
+#: The keypad's defaults, as panel.js renderKeypad reads them (``digits ?? 4``,
+#: ``auto_send_delay_ms ?? 1500``). The delay is also the review's threshold:
+#: nobody has measured how long a person takes between two keys on a panel, so
+#: the one number with a claim to it is the platform's own default.
+KEYPAD_DIGITS_DEFAULT = 4
+KEYPAD_SEND_DELAY_DEFAULT_MS = 1500
+
+
+def keypad_findings(element: Mapping[str, Any]) -> list[Finding]:
+    """A keypad that never sends, or sends a code before it is finished.
+
+    With ``auto_send`` the panel sends at ``digits`` keys AND after
+    ``auto_send_delay_ms`` with no key press, which is how the phone layout
+    (no Enter key) sends an entry shorter than ``digits``. Two settings break
+    that: the phone layout with ``auto_send`` off has no way to send at all,
+    and a delay under the default can send after the first digit of a PIN --
+    the field report that named this check set it to 200 ms. With one digit
+    the delay never runs (the first key is the whole entry), so it is silent.
+    """
+    if element.get("type") != "keypad":
+        return []
+    el_id = str(element.get("id", "?"))
+    auto_send = bool(element.get("auto_send"))
+    if element.get("keypad_style") == "phone" and not auto_send:
+        return [Finding(
+            el_id,
+            "keypad_never_sends",
+            f"{el_id} (keypad) uses the phone layout, which has no Enter key, and "
+            f"auto_send is off, so nothing typed on it is ever sent. Turn auto_send "
+            f"on, or use the numeric layout.",
+        )]
+    digits = element.get("digits")
+    if digits is None:
+        digits = KEYPAD_DIGITS_DEFAULT
+    delay = element.get("auto_send_delay_ms")
+    if delay is None:
+        delay = KEYPAD_SEND_DELAY_DEFAULT_MS
+    if not auto_send or not isinstance(digits, int) or digits < 2:
+        return []
+    if not isinstance(delay, (int, float)) or delay >= KEYPAD_SEND_DELAY_DEFAULT_MS:
+        return []
+    return [Finding(
+        el_id,
+        "keypad_sends_early",
+        f"{el_id} (keypad) sends what has been typed {_num(delay)} ms after the last "
+        f"key press, shorter than the {KEYPAD_SEND_DELAY_DEFAULT_MS} ms default, so a "
+        f"code can be sent before it is finished. Set auto_send_delay_ms to "
+        f"{KEYPAD_SEND_DELAY_DEFAULT_MS} or more; an entry of {digits} digits is sent "
+        f"as soon as the last one is pressed.",
+    )]
+
+
 #: Which direction each axis routes, for a sentence that has to say which one it
 #: means without the reader counting the letters in "destinations".
 _MATRIX_AXIS_DIRECTION = {"sources": "route from", "destinations": "route to"}
@@ -2091,6 +2143,7 @@ def review_page(
         findings.extend(do_action_findings(dump))
         findings.extend(property_findings(dump))
         findings.extend(content_findings(dump))
+        findings.extend(keypad_findings(dump))
         findings.extend(matrix_findings(dump))
         key = bound_state_key(dump)
         if key and declared_range:
@@ -2302,6 +2355,7 @@ def review_master_element(
         + do_action_findings(dump)
         + property_findings(dump)
         + content_findings(dump)
+        + keypad_findings(dump)
         + matrix_findings(dump)
     )
     placements = dump.get("placements")

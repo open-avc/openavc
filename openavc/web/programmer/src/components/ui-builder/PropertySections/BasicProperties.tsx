@@ -1149,19 +1149,29 @@ export function BasicProperties({
           <FieldRow label="Auto Send">
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
               <input type="checkbox" checked={element.auto_send ?? false} onChange={(e) => onChange({ auto_send: e.target.checked })} />
-              Send after all digits entered
+              Send without Enter
             </label>
           </FieldRow>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+            {(element.keypad_style || "numeric") === "phone"
+              ? "The phone layout has no Enter key, so it sends only this way: as soon as Digits keys are pressed, or after the Send Delay with no key press."
+              : "Sends as soon as Digits keys are pressed, or after the Send Delay with no key press. With this off, Enter sends."}
+          </div>
           {(element.auto_send ?? false) && (
-            <FieldRow label="Send Delay">
-              <input
-                type="number"
-                value={element.auto_send_delay_ms ?? 1500}
-                onChange={(e) => onChange({ auto_send_delay_ms: e.target.value ? Number(e.target.value) : undefined })}
-                min={0} max={5000} step={100} style={{ flex: 1 }}
-              />
-              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>ms</span>
-            </FieldRow>
+            <>
+              <FieldRow label="Send Delay">
+                <input
+                  type="number"
+                  value={element.auto_send_delay_ms ?? 1500}
+                  onChange={(e) => onChange({ auto_send_delay_ms: e.target.value ? Number(e.target.value) : undefined })}
+                  min={0} max={5000} step={100} style={{ flex: 1 }}
+                />
+                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>ms</span>
+              </FieldRow>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+                How long after the last key press a shorter entry is sent. Under 1500 ms, a code can be sent before it is finished.
+              </div>
+            </>
           )}
           <FieldRow label="Show Display">
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>

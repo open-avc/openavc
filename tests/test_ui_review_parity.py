@@ -1495,6 +1495,44 @@ CASES["stress_test"] = _project([
 ])
 
 
+# Keypads: when one sends. With auto_send it sends at `digits` keys and after
+# the delay with no key press, so two settings break it -- a phone layout (no
+# Enter key) with auto_send off, and a delay under the 1500 ms default -- and
+# five neighbours must stay quiet: the default delay, exactly the default, one
+# digit (the first key is the whole entry), a numeric pad sent by its Enter key
+# whatever the delay says, and a phone pad that does send.
+CASES["keypads"] = _project([
+    _page(
+        "main",
+        [
+            {"id": "kp_short", "type": "keypad", "digits": 4,
+             "auto_send": True, "auto_send_delay_ms": 200},
+            {"id": "kp_zero", "type": "keypad",
+             "auto_send": True, "auto_send_delay_ms": 0},
+            {"id": "kp_phone_dead", "type": "keypad", "keypad_style": "phone"},
+            {"id": "kp_default", "type": "keypad", "digits": 6, "auto_send": True},
+            {"id": "kp_at_default", "type": "keypad",
+             "auto_send": True, "auto_send_delay_ms": 1500},
+            {"id": "kp_one_digit", "type": "keypad", "digits": 1,
+             "auto_send": True, "auto_send_delay_ms": 200},
+            {"id": "kp_enter", "type": "keypad", "auto_send_delay_ms": 200},
+            {"id": "kp_phone_sends", "type": "keypad", "keypad_style": "phone",
+             "auto_send": True},
+        ],
+        [_landscape({
+            "kp_short": _pct_box(1, 1, 20, 40),
+            "kp_zero": _pct_box(26, 1, 20, 40),
+            "kp_phone_dead": _pct_box(51, 1, 20, 40),
+            "kp_default": _pct_box(76, 1, 20, 40),
+            "kp_at_default": _pct_box(1, 51, 20, 40),
+            "kp_one_digit": _pct_box(26, 51, 20, 40),
+            "kp_enter": _pct_box(51, 51, 20, 40),
+            "kp_phone_sends": _pct_box(76, 51, 20, 40),
+        })],
+    ),
+])
+
+
 # A page that draws its own markup. Three shapes, and only two of them say
 # anything: a page carrying controls it will not draw, a page set to custom that
 # names no file (so it draws them after all), and the ordinary case -- a custom
@@ -1642,6 +1680,8 @@ def test_the_corpus_actually_exercises_every_check(verdicts) -> None:
         "binding_not_dispatched",
         "property_not_rendered",
         "nothing_to_draw",
+        "keypad_never_sends",
+        "keypad_sends_early",
         "unknown_element_type",
         "style_too_large",
         "too_small_to_draw",
@@ -1696,6 +1736,9 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "lbl_look_states", "lbl_look_binary",  # ...and so does show.look's state text
         "lbl_macro",                           # a macro-progress label needs no state key
         "custom_ok",                           # a custom control that names its page
+        "kp_default", "kp_at_default",         # a keypad that waits the default
+        "kp_one_digit",                        # ...or has no second key to wait for
+        "kp_enter", "kp_phone_sends",          # an Enter key, or auto_send on a phone pad
         "clean",                               # a custom page with nothing left on it
         "kept_btn", "kept_lbl", "orphan_btn",  # controls a custom page answers FOR
         "nav_clear",                           # beside a master, not on it

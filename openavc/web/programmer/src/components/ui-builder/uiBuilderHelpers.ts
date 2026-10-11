@@ -3381,6 +3381,8 @@ export interface ReviewFinding {
     | "binding_not_dispatched"
     | "property_not_rendered"
     | "nothing_to_draw"
+    | "keypad_never_sends"
+    | "keypad_sends_early"
     | "unknown_element_type"
     | "style_too_large"
     | "too_small_to_draw"
@@ -5273,6 +5275,55 @@ export function propertyFindings(el: UIElement): ReviewFinding[] {
   return findings;
 }
 
+/**
+ * The keypad's defaults, as panel.js renderKeypad reads them. The delay is also
+ * the review's threshold: nobody has measured how long a person takes between
+ * two keys on a panel, so the one number with a claim to it is the default.
+ * Hand-mirrored from page_review.py.
+ */
+const KEYPAD_DIGITS_DEFAULT = 4;
+const KEYPAD_SEND_DELAY_DEFAULT_MS = 1500;
+
+/**
+ * A keypad that never sends, or sends a code before it is finished.
+ *
+ * With `auto_send` the panel sends at `digits` keys AND after
+ * `auto_send_delay_ms` with no key press. The phone layout has no Enter key, so
+ * with `auto_send` off it cannot send at all; a delay under the default can
+ * send after a PIN's first digit. With one digit the delay never runs. Mirrors
+ * keypad_findings in page_review.py, pinned sentence for sentence.
+ */
+export function keypadFindings(el: UIElement): ReviewFinding[] {
+  if (el.type !== "keypad") return [];
+  const autoSend = Boolean(el.auto_send);
+  if (el.keypad_style === "phone" && !autoSend) {
+    return [{
+      elementId: el.id,
+      kind: "keypad_never_sends",
+      message:
+        `${el.id} (keypad) uses the phone layout, which has no Enter key, and ` +
+        `auto_send is off, so nothing typed on it is ever sent. Turn auto_send ` +
+        `on, or use the numeric layout.`,
+      key: `keypad_never_sends|${el.id}`,
+    }];
+  }
+  const digits = el.digits ?? KEYPAD_DIGITS_DEFAULT;
+  const delay = el.auto_send_delay_ms ?? KEYPAD_SEND_DELAY_DEFAULT_MS;
+  if (!autoSend || !Number.isInteger(digits) || digits < 2) return [];
+  if (typeof delay !== "number" || delay >= KEYPAD_SEND_DELAY_DEFAULT_MS) return [];
+  return [{
+    elementId: el.id,
+    kind: "keypad_sends_early",
+    message:
+      `${el.id} (keypad) sends what has been typed ${delay} ms after the last ` +
+      `key press, shorter than the ${KEYPAD_SEND_DELAY_DEFAULT_MS} ms default, so a ` +
+      `code can be sent before it is finished. Set auto_send_delay_ms to ` +
+      `${KEYPAD_SEND_DELAY_DEFAULT_MS} or more; an entry of ${digits} digits is sent ` +
+      `as soon as the last one is pressed.`,
+    key: `keypad_sends_early|${el.id}`,
+  }];
+}
+
 /** Which direction each axis routes, for a sentence that has to say which. */
 const MATRIX_AXIS_DIRECTION: Record<MatrixAxisName, string> = {
   sources: "route from",
@@ -5494,6 +5545,7 @@ export function reviewPage(page: UIPage, options: ReviewOptions = {}): ReviewFin
     findings.push(...doActionFindings(el));
     findings.push(...propertyFindings(el));
     findings.push(...contentFindings(el));
+    findings.push(...keypadFindings(el));
     findings.push(...matrixFindings(el));
   }
 
@@ -5694,6 +5746,7 @@ export function reviewMasterElement(
     ...doActionFindings(master),
     ...propertyFindings(master),
     ...contentFindings(master),
+    ...keypadFindings(master),
     ...matrixFindings(master),
   ];
   const placements = master.placements;
