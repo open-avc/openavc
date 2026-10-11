@@ -6,11 +6,14 @@ interface LoginProps {
   /** The session ended while the app was open, rather than this being a
    *  first sign-in. */
   expired?: boolean;
-  /** There were unsaved edits in the tab when the session ended. */
+  /** The instance started requiring a password while this tab, which never
+   *  signed in, was open (a password was just set in Settings). */
+  nowRequired?: boolean;
+  /** There were unsaved edits in the tab when the sign-in screen came up. */
   unsavedWork?: boolean;
 }
 
-export function Login({ onSuccess, expired, unsavedWork }: LoginProps) {
+export function Login({ onSuccess, expired, nowRequired, unsavedWork }: LoginProps) {
   // Empty, not "admin". The username is whatever the person who claimed this
   // controller chose, and the client has no way to learn it -- a prefill is
   // only ever right for the default, and when it is wrong it is invisible:
@@ -84,9 +87,13 @@ export function Login({ onSuccess, expired, unsavedWork }: LoginProps) {
         <div style={{ textAlign: "center", marginBottom: 8 }}>
           <h2 style={{ margin: 0, fontSize: 20 }}>OpenAVC Programmer</h2>
           <p style={{ marginTop: 4, fontSize: 13, opacity: 0.7 }}>
-            {expired ? "Your session ended. Sign in to continue." : "Sign in to continue"}
+            {expired
+              ? "Your session ended. Sign in to continue."
+              : nowRequired
+                ? "A password is now required. Sign in to continue."
+                : "Sign in to continue"}
           </p>
-          {expired && unsavedWork && (
+          {(expired || nowRequired) && unsavedWork && (
             <p style={{ marginTop: 8, fontSize: 13, color: "#8AB493" }}>
               Your unsaved changes are still open in this tab.
             </p>

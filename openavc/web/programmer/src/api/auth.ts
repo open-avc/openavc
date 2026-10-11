@@ -135,6 +135,22 @@ export function passwordTooShortToSave(typed: string): boolean {
  */
 export const AUTH_REQUIRED_EVENT = "openavc:auth-required";
 
+/** What AUTH_REQUIRED_EVENT carries: whether this tab held a session. */
+export interface AuthRequiredDetail {
+  /** False when the tab never signed in: the instance has just started
+   * requiring a password (set in Settings, here or elsewhere), so nothing
+   * of the user's ended. */
+  hadSession: boolean;
+}
+
+/** Drop the cached credential and bring up the sign-in screen, saying
+ * whether a session was held when the request was refused. */
+export function requestSignIn(): void {
+  const detail: AuthRequiredDetail = { hadSession: hasSession() };
+  clearSession();
+  window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT, { detail }));
+}
+
 /**
  * True when `url` is the session-mint endpoint — the one door whose 401 means
  * "that password is wrong", not "the credential you were holding is dead".
@@ -234,8 +250,7 @@ export function installFetchAuth(): void {
       res.status === 401 &&
       !isCredentialMintUrl(url, window.location.href)
     ) {
-      clearSession();
-      window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT));
+      requestSignIn();
     }
 
     return res;

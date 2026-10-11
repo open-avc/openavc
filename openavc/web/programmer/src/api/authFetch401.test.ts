@@ -131,3 +131,28 @@ describe("a 401 is the only status that ends a session", () => {
     expect(fired).toBe(0);
   });
 });
+
+describe("what the sign-in screen is told about the 401", () => {
+  async function detailOf(fn: () => Promise<unknown>): Promise<unknown> {
+    let detail: unknown;
+    const onFired = (e: Event) => { detail = (e as CustomEvent).detail; };
+    window.addEventListener(AUTH_REQUIRED_EVENT, onFired);
+    try {
+      await fn();
+    } finally {
+      window.removeEventListener(AUTH_REQUIRED_EVENT, onFired);
+    }
+    return detail;
+  }
+
+  it("says a session was held when one was", async () => {
+    setSessionToken("a-dead-token");
+    reply = new Response("{}", { status: 401 });
+    expect(await detailOf(() => fetch("/api/project"))).toEqual({ hadSession: true });
+  });
+
+  it("says none was held when the tab never signed in", async () => {
+    reply = new Response("{}", { status: 401 });
+    expect(await detailOf(() => fetch("/api/project"))).toEqual({ hadSession: false });
+  });
+});

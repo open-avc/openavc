@@ -57,3 +57,18 @@ describe("a session that ends while the app is open", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("a password set while the app is open", () => {
+  it("says a password is now required, not that a session ended", async () => {
+    await signInScreen();
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(AUTH_REQUIRED_EVENT, { detail: { hadSession: false } }),
+      );
+    });
+
+    expect(screen.getByText("A password is now required. Sign in to continue.")).toBeInTheDocument();
+    expect(screen.queryByText(/session ended/i)).not.toBeInTheDocument();
+  });
+});

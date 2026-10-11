@@ -18,6 +18,7 @@ import { useWebSocket } from "./hooks/useWebSocket";
 import { showInfo } from "./store/toastStore";
 import {
   AUTH_REQUIRED_EVENT,
+  type AuthRequiredDetail,
   hasSession,
   probeAuth,
 } from "./api/auth";
@@ -48,6 +49,7 @@ function App() {
   // flight when it appeared. Captured at the 401 rather than read at render,
   // so it describes the moment the session ended.
   const [expired, setExpired] = useState(false);
+  const [nowRequired, setNowRequired] = useState(false);
   const [unsavedWork, setUnsavedWork] = useState(false);
 
   // On first mount with no cached session, ask the server which screen to show:
@@ -73,11 +75,15 @@ function App() {
   // sign-in screen says the work is still here rather than leaving them to
   // guess.
   useEffect(() => {
-    const handler = () => {
+    const handler = (e: Event) => {
       setUnsavedWork(
         useProjectStore.getState().dirty || useDriverBuilderStore.getState().dirty,
       );
-      setExpired(true);
+      // A tab that never signed in had no session to end: the instance has
+      // just started requiring a password.
+      const hadSession = (e as CustomEvent<AuthRequiredDetail | undefined>).detail?.hadSession !== false;
+      setExpired(hadSession);
+      setNowRequired(!hadSession);
       setAuthState("needed");
     };
     window.addEventListener(AUTH_REQUIRED_EVENT, handler);
@@ -94,9 +100,11 @@ function App() {
     return (
       <Login
         expired={expired}
+        nowRequired={nowRequired}
         unsavedWork={unsavedWork}
         onSuccess={() => {
           setExpired(false);
+          setNowRequired(false);
           setUnsavedWork(false);
           setAuthState("ready");
         }}

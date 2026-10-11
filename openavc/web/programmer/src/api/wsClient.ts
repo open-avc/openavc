@@ -1,4 +1,4 @@
-import { AUTH_REQUIRED_EVENT, clearSession, getAuthSubprotocols, hasSession } from "./auth";
+import { getAuthSubprotocols, hasSession, requestSignIn } from "./auth";
 import { BASE } from "./base";
 
 type MessageHandler = (msg: Record<string, unknown>) => void;
@@ -39,8 +39,7 @@ function getWsUrl(): string {
 /** Clear cached credentials and ask the App to show the login screen. */
 function requestLogin(code: number): void {
   console.warn(`[WS] Connection rejected (code ${code}); requesting login`);
-  clearSession();
-  window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT));
+  requestSignIn();
 }
 
 /**
