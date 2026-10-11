@@ -19,9 +19,9 @@ variable now only appears where someone set it on purpose:
 - Docker: the image keeps 0.0.0.0 on purpose; the compose file's ports:
   decides who can connect, and Settings says so.
 
-The wrapper runs below are the real script under bash, with a stand-in for
-macOS's PlistBuddy that reads and writes a real plist. The real PlistBuddy is
-checked on a Mac.
+The wrapper runs below are the real script under bash against a real plist.
+On a Mac they use the real PlistBuddy; elsewhere a stand-in that reads and
+writes the plist the same way.
 """
 
 from __future__ import annotations
@@ -146,6 +146,8 @@ def main(argv):
 sys.exit(main(sys.argv[1:]))
 '''
 
+REAL_PLISTBUDDY = Path("/usr/libexec/PlistBuddy")
+
 INSTALLED = {
     "Label": "com.openavc.server",
     "EnvironmentVariables": {
@@ -173,14 +175,17 @@ def mac(tmp_path):
     server.chmod(0o755)
     data = tmp_path / "data"
     data.mkdir()
-    fake = tmp_path / "fake_plistbuddy.py"
-    fake.write_text(FAKE_PLISTBUDDY, encoding="utf-8")
-    plistbuddy = tmp_path / "PlistBuddy"
-    plistbuddy.write_bytes(
-        f'#!/bin/sh\nexec "{_bash_path(Path(sys.executable))}" "{_bash_path(fake)}" "$@"\n'
-        .encode("utf-8")
-    )
-    plistbuddy.chmod(0o755)
+    if sys.platform == "darwin" and REAL_PLISTBUDDY.exists():
+        plistbuddy = REAL_PLISTBUDDY
+    else:
+        fake = tmp_path / "fake_plistbuddy.py"
+        fake.write_text(FAKE_PLISTBUDDY, encoding="utf-8")
+        plistbuddy = tmp_path / "PlistBuddy"
+        plistbuddy.write_bytes(
+            f'#!/bin/sh\nexec "{_bash_path(Path(sys.executable))}" "{_bash_path(fake)}" "$@"\n'
+            .encode("utf-8")
+        )
+        plistbuddy.chmod(0o755)
     plist = tmp_path / "com.openavc.server.plist"
 
     class Mac:
