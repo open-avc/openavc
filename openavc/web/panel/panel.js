@@ -204,8 +204,8 @@ const FIRST_THEME_WAIT_MS = 1000;
 // is no longer there. Kept in step with what core/device_manager.py writes.
 const DEVICE_PLATFORM_PROPS = new Set([
     'connected', 'enabled', 'name', 'offline_detail', 'offline_reason',
-    'orphan_reason', 'orphaned', 'paused', 'reconnect_attempt', 'reconnect_failed',
-    'restarting',
+    'orphan_reason', 'orphaned', 'paused', 'paused_for', 'reconnect_attempt',
+    'reconnect_failed', 'restarting',
 ]);
 
 // The same set, for a child entity's reserved props. A child carries the

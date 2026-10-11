@@ -190,6 +190,11 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
         "audit runs and reconnects it when you finish."
     )).to_be_visible(timeout=EXPECT_TIMEOUT)
     dialog.get_by_role("button", name="Pause and continue").click()
+    # The device page behind the wizard names what holds the device.
+    paused_banner = page.get_by_text(
+        "Paused for a Device Audit. It reconnects when the audit finishes."
+    )
+    expect(paused_banner).to_be_visible(timeout=EXPECT_TIMEOUT)
 
     proceed = dialog.get_by_role("button", name="Continue")
     expect(proceed).to_be_enabled(timeout=CHECK_TIMEOUT)
@@ -394,4 +399,4 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     dialog.get_by_role("button", name="Finish").click()
     expect(dialog).to_be_hidden(timeout=EXPECT_TIMEOUT)
     assert _get(base, "/api/audit/sessions/current")["session"] is None
-    expect(page.get_by_text("Paused for driver testing")).to_be_hidden(timeout=EXPECT_TIMEOUT)
+    expect(paused_banner).to_be_hidden(timeout=EXPECT_TIMEOUT)

@@ -191,6 +191,7 @@ async def test_start_pauses_project_devices_and_finish_resumes_them(dm, core):
 
     session = await manager.start(TARGET, pause=[("widget1", "Lobby Widget")])
     assert state.get("device.widget1.paused") is True
+    assert state.get("device.widget1.paused_for") == "audit"
     assert driver.disconnect_calls == 1
     assert [p.to_dict() for p in session.paused] == [
         {"device_id": "widget1", "name": "Lobby Widget", "owned": True},
@@ -198,6 +199,7 @@ async def test_start_pauses_project_devices_and_finish_resumes_them(dm, core):
 
     await manager.finish(session.id)
     assert state.get("device.widget1.paused") is False
+    assert state.get("device.widget1.paused_for") is None
     assert state.get("device.widget1.connected") is True
     assert driver.connect_calls == 1
     kinds = [e.kind for e in session.timeline]
@@ -214,6 +216,7 @@ async def test_a_pause_the_audit_did_not_make_is_not_the_audits_to_resume(dm, co
 
     session = await manager.start(TARGET, pause=[("widget1", "Lobby Widget")])
     assert session.paused[0].owned is False
+    assert state.get("device.widget1.paused_for") == "live_test"
     await manager.finish(session.id)
     assert state.get("device.widget1.paused") is True
 
@@ -224,10 +227,10 @@ async def test_a_pause_that_fails_undoes_the_ones_before_it(dm, core, monkeypatc
     manager = AuditManager(dm)
     real = dm.pause_device
 
-    async def pause(device_id, ttl=None):
+    async def pause(device_id, ttl=None, **kwargs):
         if device_id == "broken":
             raise RuntimeError("the disconnect failed")
-        await real(device_id, ttl=ttl)
+        await real(device_id, ttl=ttl, **kwargs)
 
     monkeypatch.setattr(dm, "pause_device", pause)
     with pytest.raises(RuntimeError):
@@ -275,9 +278,9 @@ async def test_a_scan_is_refused_while_an_audit_is_starting(dm, core, monkeypatc
     release = asyncio.Event()
     real = dm.pause_device
 
-    async def slow_pause(device_id, ttl=None):
+    async def slow_pause(device_id, ttl=None, **kwargs):
         await release.wait()
-        await real(device_id, ttl=ttl)
+        await real(device_id, ttl=ttl, **kwargs)
 
     monkeypatch.setattr(dm, "pause_device", slow_pause)
     starting = asyncio.create_task(manager.start(TARGET, pause=[("widget1", "Lobby Widget")]))

@@ -195,6 +195,12 @@ if TYPE_CHECKING:
 # production device stays offline indefinitely with auto-reconnect suppressed.
 PAUSE_TTL = 600.0
 
+# Who holds a pause, published as ``device.<id>.paused_for`` so the device page
+# can name it: the Driver Builder's Live Test (through POST /devices/{id}/pause)
+# or a device audit. Set by the first pause and kept until the device resumes.
+PAUSED_FOR_LIVE_TEST = "live_test"
+PAUSED_FOR_AUDIT = "audit"
+
 
 # --- Confirming a pending device setting actually landed -------------------
 # A queued write used to be cleared the moment ``set_device_setting`` returned
@@ -334,6 +340,7 @@ class DeviceManager:
         device_config: dict[str, Any],
         carry_pause: float | None = None,
         *,
+        carry_pause_for: str | None = None,
         defer_connect: bool = False,
     ) -> None:
         """
@@ -345,6 +352,7 @@ class DeviceManager:
                 under (see ``update_device``). The driver is registered but not
                 connected, and the pause is re-armed for that long. Only the
                 remove-and-re-add paths pass it; a genuine add is never paused.
+            carry_pause_for: Who held that pause (``paused_for``), carried with it.
             defer_connect: Register the device but leave it on the deferred
                 list for :meth:`bring_up` to dial. The project reconcile uses
                 this so a save answers before the fleet is on the wire.
@@ -433,6 +441,9 @@ class DeviceManager:
         if carry_pause is not None:
             self._intentional_disconnect.add(device_id)
             self.state.set(f"device.{device_id}.paused", True, source="device_manager")
+            self.state.set(
+                f"device.{device_id}.paused_for", carry_pause_for, source="device_manager"
+            )
             self.state.set(f"device.{device_id}.connected", False, source="device_manager")
             self._schedule_pause_expiry(device_id, carry_pause)
             log.info(
@@ -722,6 +733,7 @@ class DeviceManager:
                 re-added device for :meth:`bring_up` to dial.
         """
         carry_pause = self._pause_remaining(device_id)
+        carry_pause_for = self.state.get(f"device.{device_id}.paused_for")
         if device_id in self._devices or device_id in self._orphaned_devices:
             await self.remove_device(device_id)
         elif device_id in self._device_configs:
@@ -735,7 +747,8 @@ class DeviceManager:
         if not new_config.get("enabled", True):
             carry_pause = None
         await self.add_device(
-            new_config, carry_pause=carry_pause, defer_connect=defer_connect
+            new_config, carry_pause=carry_pause, carry_pause_for=carry_pause_for,
+            defer_connect=defer_connect,
         )
 
     async def send_command(
@@ -1393,13 +1406,15 @@ class DeviceManager:
                 # two collisions — saving the driver from the Builder is what
                 # the panel's own user does next.
                 carry_pause = self._pause_remaining(device_id)
+                carry_pause_for = self.state.get(f"device.{device_id}.paused_for")
                 await self.remove_device(device_id)
                 # Registered, not dialed: the bring-up round below opens the
                 # connection, after the engine has re-applied any simulation
                 # redirect to the new instance. Dialing here sent a simulated
                 # device to its REAL address on every driver update.
                 await self.add_device(
-                    config, carry_pause=carry_pause, defer_connect=True
+                    config, carry_pause=carry_pause, carry_pause_for=carry_pause_for,
+                    defer_connect=True,
                 )
                 reconnected.append(device_id)
                 log.info(
@@ -2624,6 +2639,7 @@ class DeviceManager:
         if self.state.get(f"device.{device_id}.paused"):
             self._cancel_pause_expiry(device_id)
             self.state.set(f"device.{device_id}.paused", False, source="device_manager")
+            self.state.set(f"device.{device_id}.paused_for", None, source="device_manager")
         # Cancel any existing auto-reconnect task first
         await self._cancel_reconnect(device_id)
         self.state.set(f"device.{device_id}.reconnect_failed", None, source="device_manager")
@@ -2715,17 +2731,20 @@ class DeviceManager:
             pass
         await self._connect_driver(device_id, driver)
 
-    async def pause_device(self, device_id: str, ttl: float | None = None) -> None:
+    async def pause_device(
+        self, device_id: str, ttl: float | None = None, purpose: str = PAUSED_FOR_LIVE_TEST,
+    ) -> None:
         """Cleanly disconnect a device and suppress auto-reconnect (A81).
 
         Used by the driver test panel before it opens a competing TCP session
-        against the same host:port on single-session devices. The device stays
-        paused until ``resume_device`` is called — or until ``ttl`` seconds
-        pass without a re-pause (the panel keeps the pause alive while open),
-        at which point the device auto-resumes so a closed/crashed tab can't
-        strand it offline forever. ``device.<id>.paused`` is set so the UI can
-        surface the state. Re-pausing an already-paused device just resets
-        the TTL.
+        against the same host:port on single-session devices, and by a device
+        audit. The device stays paused until ``resume_device`` is called — or
+        until ``ttl`` seconds pass without a re-pause (the holder keeps the
+        pause alive while it runs), at which point the device auto-resumes so a
+        closed/crashed tab can't strand it offline forever.
+        ``device.<id>.paused`` is set so the UI can surface the state, and
+        ``device.<id>.paused_for`` names the holder (``purpose``). Re-pausing an
+        already-paused device just resets the TTL; the first holder's name stays.
         """
         if device_id not in self._devices:
             raise DeviceNotFoundError(f"Device '{device_id}' not found")
@@ -2738,6 +2757,8 @@ class DeviceManager:
             await driver.disconnect()
         except Exception as e:
             log.warning(f"pause_device: disconnect raised for {device_id}: {e}")
+        if not self.state.get(f"device.{device_id}.paused_for"):
+            self.state.set(f"device.{device_id}.paused_for", purpose, source="device_manager")
         self.state.set(f"device.{device_id}.paused", True, source="device_manager")
         self.state.set(f"device.{device_id}.connected", False, source="device_manager")
         self._schedule_pause_expiry(device_id, PAUSE_TTL if ttl is None else ttl)
@@ -2784,9 +2805,7 @@ class DeviceManager:
             self._pause_expiry_tasks.pop(device_id, None)
             self._pause_deadlines.pop(device_id, None)
             log.warning(
-                f"[{device_id}] Test-panel pause expired after {ttl:.0f}s "
-                f"without a resume — auto-resuming (the panel likely closed "
-                f"without cleanup)"
+                f"[{device_id}] Pause not renewed within {ttl:.0f} s; reconnecting"
             )
             await self.resume_device(device_id)
         except asyncio.CancelledError:
@@ -2818,6 +2837,7 @@ class DeviceManager:
         self._cancel_pause_expiry(device_id)
         self._intentional_disconnect.discard(device_id)
         self.state.set(f"device.{device_id}.paused", False, source="device_manager")
+        self.state.set(f"device.{device_id}.paused_for", None, source="device_manager")
         try:
             await self._connect_driver(device_id, driver)
             log.info(f"Resumed device: {device_id}")

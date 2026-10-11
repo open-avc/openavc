@@ -18,7 +18,8 @@ a bridge, cannot be audited.
 - Have someone at the device for the power and cable tests, if you run them.
 
 A device in your project that uses the same address is paused while the audit runs, and
-reconnects when you finish.
+reconnects when you finish. Its device page says it is paused for a Device Audit; pressing
+**Resume** there reconnects it, and the audit stops pausing it.
 
 ## Starting an Audit
 

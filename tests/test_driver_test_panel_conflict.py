@@ -417,6 +417,83 @@ async def test_disabling_a_paused_device_drops_the_pause(dm, core):
 
 
 # ---------------------------------------------------------------------------
+# Who holds the pause
+#
+# Live Test and a device audit both pause a project device, and the device page
+# names the one holding it (device.<id>.paused_for).
+# ---------------------------------------------------------------------------
+
+
+async def test_a_pause_names_who_holds_it(dm, core):
+    state, _ = core
+    await dm.add_device(dict(DEVICE_CFG))
+
+    await dm.pause_device("dev1", ttl=30)
+    assert state.get("device.dev1.paused_for") == "live_test"
+    await dm.resume_device("dev1")
+
+    await dm.pause_device("dev1", ttl=30, purpose="audit")
+    assert state.get("device.dev1.paused_for") == "audit"
+
+    dm._cancel_pause_expiry("dev1")
+    await asyncio.sleep(0)
+
+
+async def test_a_second_pause_keeps_the_first_holders_name(dm, core):
+    """Live Test re-pauses on a timer and an audit re-arms its own: the name
+    stays with whoever paused it first, which is the one whose resume ends it."""
+    state, _ = core
+    await dm.add_device(dict(DEVICE_CFG))
+
+    await dm.pause_device("dev1", ttl=30, purpose="audit")
+    await dm.pause_device("dev1", ttl=30)
+    assert state.get("device.dev1.paused_for") == "audit"
+
+    dm._cancel_pause_expiry("dev1")
+    await asyncio.sleep(0)
+
+
+async def test_resume_and_reconnect_clear_who_held_it(dm, core):
+    state, _ = core
+    await dm.add_device(dict(DEVICE_CFG))
+
+    await dm.pause_device("dev1", ttl=30, purpose="audit")
+    await dm.resume_device("dev1")
+    assert state.get("device.dev1.paused_for") is None
+
+    await dm.pause_device("dev1", ttl=30, purpose="audit")
+    await dm.reconnect_device("dev1")
+    assert state.get("device.dev1.paused_for") is None
+    await asyncio.sleep(0)
+
+
+async def test_an_expired_pause_clears_who_held_it(dm, core):
+    state, _ = core
+    await dm.add_device(dict(DEVICE_CFG))
+
+    await dm.pause_device("dev1", ttl=0.05, purpose="audit")
+    await asyncio.sleep(0.25)
+
+    assert state.get("device.dev1.paused") is False
+    assert state.get("device.dev1.paused_for") is None
+
+
+async def test_a_carried_pause_keeps_who_holds_it(dm, core):
+    state, _ = core
+    await dm.add_device(dict(DEVICE_CFG))
+    await dm.pause_device("dev1", ttl=30, purpose="audit")
+
+    await dm.update_device("dev1", {**DEVICE_CFG, "name": "Renamed"})
+    assert state.get("device.dev1.paused_for") == "audit"
+
+    await dm.reload_driver("mock_a81_tcp")
+    assert state.get("device.dev1.paused_for") == "audit"
+
+    dm._cancel_pause_expiry("dev1")
+    await asyncio.sleep(0)
+
+
+# ---------------------------------------------------------------------------
 # /driver-test-conflicts endpoint
 # ---------------------------------------------------------------------------
 

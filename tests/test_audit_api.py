@@ -50,7 +50,7 @@ class FakeDevices:
         self.paused: set[str] = set()
         self.calls: list[tuple[str, str]] = []
 
-    async def pause_device(self, device_id, ttl=None):
+    async def pause_device(self, device_id, ttl=None, purpose=None):
         from openavc.core.device_manager import DeviceNotFoundError
 
         if device_id not in self.running:

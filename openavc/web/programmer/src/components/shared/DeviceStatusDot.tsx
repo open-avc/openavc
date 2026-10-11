@@ -1,9 +1,14 @@
+import { pausedTitle } from "./pausedText";
+
 interface DeviceStatusDotProps {
   connected: boolean;
   orphaned?: boolean;
-  /** Paused for driver testing (device.<id>.paused) — auto-reconnect is
-   *  suspended, so show a distinct state instead of a plain "offline". */
+  /** Paused (device.<id>.paused) by Live Test or a Device Audit —
+   *  auto-reconnect is suspended, so show a distinct state instead of a plain
+   *  "offline". */
   paused?: boolean;
+  /** Who holds the pause (device.<id>.paused_for), named in the tooltip. */
+  pausedFor?: unknown;
   /** Away because a command restarted it (device.<id>.restarting) — absence
    *  we asked for, coming back on its own, so not the red a fault gets. */
   restarting?: boolean;
@@ -28,7 +33,7 @@ interface DeviceStatusDotProps {
 const ATTENTION = "var(--color-warning, #f59e0b)";
 
 export function DeviceStatusDot({
-  connected, orphaned, paused, restarting, size = 10,
+  connected, orphaned, paused, pausedFor, restarting, size = 10,
 }: DeviceStatusDotProps) {
   const color = orphaned
     ? ATTENTION
@@ -44,7 +49,7 @@ export function DeviceStatusDot({
     : restarting
       ? "Restarting"
       : paused
-        ? "Paused for driver testing"
+        ? pausedTitle(pausedFor)
         : connected
           ? "Connected"
           : "Disconnected";

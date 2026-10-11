@@ -27,6 +27,9 @@ export function DeviceListItem({
   const paused = useConnectionStore(
     (s) => s.liveState[`device.${deviceId}.paused`] as boolean | undefined
   );
+  const pausedFor = useConnectionStore(
+    (s) => s.liveState[`device.${deviceId}.paused_for`]
+  );
   const restarting = useConnectionStore(
     (s) => s.liveState[`device.${deviceId}.restarting`] as boolean | undefined
   );
@@ -52,6 +55,7 @@ export function DeviceListItem({
         connected={connected ?? false}
         orphaned={orphaned ?? false}
         paused={paused ?? false}
+        pausedFor={pausedFor}
         restarting={restarting ?? false}
       />
       <div style={{ minWidth: 0 }}>

@@ -194,7 +194,8 @@ class AuditObserver:
 # command changed or a value the device reported.
 PLATFORM_KEYS = frozenset({
     "connected", "name", "enabled", "offline_reason", "offline_detail", "paused",
-    "restarting", "web_ui_url", "orphaned", "orphan_reason", "reconnect_attempt",
+    "paused_for", "restarting", "web_ui_url", "orphaned", "orphan_reason",
+    "reconnect_attempt",
 })
 
 # What the platform writes for every child beside the driver's own values: its

@@ -92,7 +92,9 @@ class AuditNotFound(AuditError):
 class PauseControl(Protocol):
     """The device manager's pause surface, which is all a session touches."""
 
-    async def pause_device(self, device_id: str, ttl: float | None = None) -> None: ...
+    async def pause_device(
+        self, device_id: str, ttl: float | None = None, purpose: str = ...,
+    ) -> None: ...
     async def resume_device(self, device_id: str) -> None: ...
     def is_paused(self, device_id: str) -> bool: ...
 
@@ -551,14 +553,16 @@ class AuditManager:
             return
         if self._devices is None:
             raise AuditError("Project devices cannot be paused right now.")
-        from openavc.core.device_manager import DeviceNotFoundError
+        from openavc.core.device_manager import PAUSED_FOR_AUDIT, DeviceNotFoundError
 
         for device_id, name in pause:
             if any(p.device_id == device_id for p in session.paused):
                 continue
             owned = not self._devices.is_paused(device_id)
             try:
-                await self._devices.pause_device(device_id, ttl=self._pause_ttl)
+                await self._devices.pause_device(
+                    device_id, ttl=self._pause_ttl, purpose=PAUSED_FOR_AUDIT,
+                )
             except DeviceNotFoundError:
                 # In the project but not running (its driver is not installed,
                 # or it is disabled): it holds no connection to the device.
@@ -579,6 +583,8 @@ class AuditManager:
         then says it is running)."""
         if self._devices is None:
             return
+        from openavc.core.device_manager import PAUSED_FOR_AUDIT
+
         for held in list(session.paused):
             if not self._devices.is_paused(held.device_id):
                 session.paused.remove(held)
@@ -589,7 +595,9 @@ class AuditManager:
                 )
                 continue
             try:
-                await self._devices.pause_device(held.device_id, ttl=self._pause_ttl)
+                await self._devices.pause_device(
+                    held.device_id, ttl=self._pause_ttl, purpose=PAUSED_FOR_AUDIT,
+                )
             except Exception as exc:
                 log.info(
                     "Audit %s let go of %s: %s", session.id, held.device_id, exc,

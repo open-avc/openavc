@@ -4,6 +4,7 @@ import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "rea
 import { Send, Pencil, Trash2, Wifi, WifiOff, Power, RefreshCw, Copy, Settings, Check, X, Loader2, Search, Pause, Play, AlertTriangle, ClipboardCheck } from "lucide-react";
 import { CopyButton } from "../../components/shared/CopyButton";
 import { DeviceStatusDot } from "../../components/shared/DeviceStatusDot";
+import { pausedBannerText } from "../../components/shared/pausedText";
 import { useProjectStore } from "../../store/projectStore";
 import { SearchableSelect } from "../../components/shared/SearchableSelect";
 import { commandOptions } from "../../components/shared/pickerOptions";
@@ -245,9 +246,11 @@ export function DeviceDetail({
 
   const deviceName = String(liveState[`device.${deviceId}.name`] ?? deviceId);
   const orphaned = Boolean(liveState[`device.${deviceId}.orphaned`]);
-  // Paused for driver testing (device.<id>.paused) — auto-reconnect is
-  // suspended until a resume, a manual reconnect, or the server's pause TTL.
+  // Paused by Live Test or a Device Audit (device.<id>.paused; paused_for
+  // names which) — auto-reconnect is suspended until a resume, a manual
+  // reconnect, or the server's pause TTL.
   const paused = Boolean(liveState[`device.${deviceId}.paused`]);
+  const pausedFor = liveState[`device.${deviceId}.paused_for`];
   // Away because a command restarted it. `offline_reason` is deliberately null
   // for the whole window (core/device_manager.py), so the offline banner below
   // never fires and this one takes its place.
@@ -383,7 +386,8 @@ export function DeviceDetail({
           <DeviceStatusDot
             connected={connected}
             orphaned={Boolean(liveState[`device.${deviceId}.orphaned`])}
-            paused={Boolean(liveState[`device.${deviceId}.paused`])}
+            paused={paused}
+            pausedFor={pausedFor}
             restarting={restarting}
             size={12}
           />
@@ -611,9 +615,9 @@ export function DeviceDetail({
         </div>
       )}
 
-      {/* Paused banner — the device was paused for driver testing (Driver
-          Builder test panel). Auto-reconnect is suspended; offer Resume so a
-          pause left behind by a closed test session is recoverable here. */}
+      {/* Paused banner — Live Test or a Device Audit holds the device.
+          Auto-reconnect is suspended; offer Resume so a pause left behind by
+          a closed test is recoverable here. */}
       {paused && !orphaned && (
         <div
           style={{
@@ -630,10 +634,7 @@ export function DeviceDetail({
           }}
         >
           <Pause size={14} style={{ flexShrink: 0 }} />
-          <span style={{ flex: 1 }}>
-            Paused for driver testing. Auto-reconnect is suspended until the
-            test session resumes it (or it times out).
-          </span>
+          <span style={{ flex: 1 }}>{pausedBannerText(pausedFor)}</span>
           <button
             onClick={async () => {
               try {

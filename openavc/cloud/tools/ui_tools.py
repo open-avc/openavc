@@ -102,7 +102,8 @@ def _nothing_ran_note(engine: Any, element_id: str, action: str, dispatched: lis
 #: device_manager and connection_fault, not by the device.
 _PLATFORM_DEVICE_PROPERTIES = frozenset({
     "connected", "enabled", "host", "name", "offline_detail", "offline_reason",
-    "orphan_reason", "orphaned", "paused", "reconnect_attempt", "reconnect_failed",
+    "orphan_reason", "orphaned", "paused", "paused_for", "reconnect_attempt",
+    "reconnect_failed",
     "restarting", "online", "status", "last_seen", "error",
 })
 
