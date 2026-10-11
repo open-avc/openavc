@@ -1,0 +1,30 @@
+name: Manufacturer SDK compatibility
+
+on:
+  push:
+    paths:
+      - 'openavc/**'
+      - 'pyproject.toml'
+      - 'requirements*.txt'
+      - '.github/workflows/sdk-compatibility.yml'
+  pull_request:
+    paths:
+      - 'openavc/**'
+      - 'pyproject.toml'
+      - 'requirements*.txt'
+      - '.github/workflows/sdk-compatibility.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdk-compatibility-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sdk:
+    uses: open-avc/openavc-sdk/.github/workflows/compatibility.yml@ceb2e38ed785f609a32e1e8c9a2db4241704b633
+    with:
+      core-ref: ${{ github.sha }}
+      sdk-ref: main
