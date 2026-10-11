@@ -205,8 +205,10 @@ export function RestartProgressDialog({
             <RefreshCw size={20} style={{ animation: "spin 1s linear infinite" }} />
             <span>
               {phase === "starting" && "Asking the server to restart..."}
-              {phase === "waiting" && "Server is restarting. Reconnecting..."}
-              {phase === "polling" && "Waiting for the server to come back..."}
+              {phase === "waiting" && (cutOff ? "Server is restarting..." : "Server is restarting. Reconnecting...")}
+              {phase === "polling" && (cutOff
+                ? "Checking whether this browser can reach the new address..."
+                : "Waiting for the server to come back...")}
             </span>
           </div>
         )}
