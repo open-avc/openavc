@@ -74,8 +74,8 @@ export function ListenStep() {
       <p style={{ fontSize: "var(--font-size-sm)", margin: "0 0 var(--space-md)" }}>
         This does what adding the device to a space does: it connects, signs in if needed, runs
         the driver's start-up steps and asks the device for its status. It sends none of the
-        driver's commands. Once connected it listens for about a minute (at least 45 seconds
-        and three status polls); Keep listening adds more, up to five minutes in all.
+        driver's commands. Once connected it listens for 45 seconds or three status polls,
+        whichever takes longer; Keep listening adds more, up to five minutes in all.
       </p>
 
       {!listen ? (

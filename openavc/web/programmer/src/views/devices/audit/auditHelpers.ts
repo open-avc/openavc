@@ -862,7 +862,9 @@ export function driverLines(drivers: AuditReportDriver[]): SummaryLine[] {
         });
       }
       const answered = answerCounts(trials);
-      if (answered) lines.push({ label: `Did it happen${suffix}`, value: answered });
+      if (answered) {
+        lines.push({ label: `Did it happen${suffix}`, value: answered + readBackNote(trials) });
+      }
       for (const t of trials) {
         const r = t.restart;
         if (!r || r.back_after === null) continue;
@@ -969,6 +971,25 @@ export function movedText(m: AuditMovedValue): string {
 /** A value that kept changing, as a line reads it: "AC Line Voltage (7 times)". */
 export function movingText(m: AuditMovedValue): string {
   return m.times > 1 ? `${m.label} (${m.times} times)` : m.label;
+}
+
+/** How many of the commands the person did not answer Yes to were confirmed
+ *  by the device itself: every value the command sets read back, or a status
+ *  query's value came back (report.py `_command_confirmed`). Without it, a
+ *  "could not tell" sits beside a suggested Full support unexplained. */
+function readBackNote(trials: AuditCommandTrial[]): string {
+  const unsure = trials.filter((t) => t.answer && t.answer.answer !== "yes");
+  const read = unsure.filter(
+    (t) =>
+      (t.effects.length > 0 &&
+        t.effects.every((e) => e.outcome === "confirmed" || e.outcome === "already")) ||
+      t.query?.outcome === "reported",
+  ).length;
+  if (read === 0) return "";
+  if (read === unsure.length) {
+    return read === 1 ? "; the device read back what it set" : "; the device read back what each one set";
+  }
+  return `; the device read back what ${read} of them set`;
 }
 
 /** The buttons of "Did it happen?", in order. */

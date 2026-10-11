@@ -354,6 +354,34 @@ describe("the on-screen summary", () => {
     ]);
   });
 
+  it("says when the device confirmed a command the person could not see", () => {
+    // An amp's mute makes no sound in an empty room: the person can't tell,
+    // and the device's own read-back is what confirmed it, so the suggested
+    // confidence is full beside "could not tell".
+    const attempt = {
+      status: "done", error: "", started_at: 100, connected_at: 100.1, declared: 2,
+      reported: 2, offline: null, contract: { counts: {} }, unprompted_replies: { count: 0 },
+      drops: 0, reconnects: 0, traffic: { count: 9, sent: 4, received: 5, not_captured: false },
+    };
+    const confirmed = { outcome: "confirmed" };
+    const muted = (label: string, effects: unknown[]) => ({
+      command: label, label, error: "", sent_nothing: false, restart: null, effects, query: null,
+      answer: { answer: "cant_tell", note: "", at: 1 },
+    });
+    const run = { run: 0, driver: { id: "acme", name: "Acme", version: "1.0.0", modified: false },
+      attempts: [attempt],
+      commands: { trials: [muted("Mute", [confirmed]), muted("Unmute", [confirmed])], changed: [] },
+    } as unknown as AuditReportDriver;
+    expect(driverLines([run]).find((l) => l.label === "Did it happen")).toEqual({
+      label: "Did it happen", value: "2 could not tell; the device read back what each one set",
+    });
+    const one = { ...run, commands: { trials: [muted("Mute", [confirmed]), muted("Unmute", [])],
+      changed: [] } } as unknown as AuditReportDriver;
+    expect(driverLines([one]).find((l) => l.label === "Did it happen")?.value).toBe(
+      "2 could not tell; the device read back what 1 of them set",
+    );
+  });
+
   it("names the drivers a verdict points at, in its order, with each one's signals", () => {
     const port = { tier: "enrichment", source: "open_port:23", data: { kind: "open_port", value: 23 } };
     const vendor = {
