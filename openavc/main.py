@@ -276,7 +276,17 @@ async def _initialize_engine(app: FastAPI) -> None:
         # The same ten-second tick checks the safety net's deadline: a change
         # that cut off the browser making it goes back by itself unless the
         # Programmer is opened through the new choice (listen_safety_net.py).
+        # It also re-reads the Reach devices through adapter's address, off
+        # the event loop, so device traffic follows a DHCP renewal with no
+        # restart (openavc/reach_devices.py).
+        from openavc import reach_devices
+
         async def _safety_net_tick() -> None:
+            if reach_devices.choice():
+                try:
+                    await asyncio.to_thread(reach_devices.refresh)
+                except Exception:  # the safety net below must still tick
+                    log.debug("Reach devices through: refresh failed", exc_info=True)
             await listen_safety_net.tick(get_system_config(), _restart_to_follow_adapter)
 
         app.state.listen_watcher = asyncio.create_task(

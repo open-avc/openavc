@@ -499,9 +499,10 @@ class DiscoveryEngine:
         }
 
     def _get_control_interface(self) -> str:
-        """Read the control_interface setting from system config."""
-        from openavc.system_config import get_system_config
-        return get_system_config().get("network", "control_interface") or ""
+        """The address of the adapter chosen in Reach devices through, or ""
+        for every connected adapter (``openavc/reach_devices.py``)."""
+        from openavc import reach_devices
+        return reach_devices.address()
 
     def load_discovery_companions_from_dirs(
         self, directories: list[Path | str],
@@ -701,7 +702,8 @@ class DiscoveryEngine:
         return self._scan_task is not None and not self._scan_task.done()
 
     def get_subnets(self) -> list[str]:
-        """Auto-detect local subnets (filtered to control interface if set)."""
+        """Auto-detect local subnets (filtered to the Reach devices through
+        adapter when one is chosen)."""
         control_ip = self._get_control_interface()
         return get_local_subnets(interface_ip=control_ip or None)
 
@@ -782,11 +784,11 @@ class DiscoveryEngine:
             # Determine target subnets (filtered to control interface if set)
             control_ip = "" if ignore_control_interface else self._get_control_interface()
             if ignore_control_interface:
-                log.info("Scan requested with the control-interface pin ignored")
+                log.info("Scan requested with the Reach devices through adapter ignored")
             elif control_ip:
-                log.info("Control interface set to %s — filtering subnets to this adapter", control_ip)
+                log.info("Reach devices through %s: scanning that adapter's subnets only", control_ip)
             else:
-                log.info("No control interface set — scanning every adapter that has a link")
+                log.info("Reach devices through every connected adapter: scanning every adapter that has a link")
             targets = subnets if subnets else get_local_subnets(
                 interface_ip=control_ip or None
             )
@@ -810,15 +812,22 @@ class DiscoveryEngine:
                     )
                     if pinned is not None and not pinned.get("link", True):
                         raise ValueError(
-                            f"Control interface {control_ip} ({pinned['name']}) "
-                            "has no link. Connect its cable, or pick another "
-                            "adapter (or Auto) in Settings > Network."
+                            f"{pinned['name']} ({control_ip}), chosen in Settings > "
+                            "Network > Reach devices through, has no link. Connect "
+                            "its cable, or choose another adapter (or Every "
+                            "connected adapter) there."
                         )
+                    from openavc import reach_devices
+                    try:
+                        name = reach_devices.current().adapter_name
+                    except Exception:  # the sentence still names the address
+                        name = ""
                     raise ValueError(
-                        f"Control interface {control_ip} is set in Settings > "
-                        "Network but no adapter on this machine has that "
-                        "address. Pick a current adapter there (or Auto), or "
-                        "specify subnets manually."
+                        f"{name or 'The adapter'} chosen in Settings > Network > "
+                        f"Reach devices through isn't connected: no adapter on "
+                        f"this computer has {control_ip}. Choose a current adapter "
+                        "there (or Every connected adapter), or specify subnets "
+                        "manually."
                     )
                 raise ValueError("No subnets to scan. Specify subnets manually.")
 

@@ -13,7 +13,7 @@ types — may need the same group/port, so sockets are shared:
 - Multicast **groups** are joined on that socket per interface, refcounted per
   group, via the shared discovery join helper — which works on hosts whose
   routing table has no multicast route and honors the
-  ``network.control_interface`` pin.
+  Reach devices through adapter (``openavc/reach_devices.py``).
 - Incoming datagrams are demultiplexed by **source IP**: a subscription names
   its device's host and only receives frames from that host, so two devices
   multicasting to the same group each feed their own driver instance. A
@@ -263,9 +263,9 @@ class _Registry:
                 await listener.open()
                 self._listeners[port] = listener
 
-            from openavc.system_config import get_system_config
+            from openavc import reach_devices
 
-            control_ip = get_system_config().get("network", "control_interface")
+            control_ip = reach_devices.address()
             listener.join_group(group, control_ip or "", name)
 
             source_ips = await resolve_source_ips(source_ip, name)

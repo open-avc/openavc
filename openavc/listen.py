@@ -307,13 +307,16 @@ class ListenPlan:
         return choice_label(self.mode, self.adapter_name or self.choice.adapter.get("address", ""))
 
     def serves(self, host: str) -> bool:
-        """Whether a connection to this computer's ``host`` is accepted."""
+        """Whether a connection to this computer's ``host`` is accepted.
+
+        Exact: ``0.0.0.0`` accepts every address, but a listener bound to
+        ``127.0.0.1`` refuses a browser that opened ``127.0.0.2``, although
+        both are loopback.
+        """
         host = (host or "").strip().strip("[]")
-        if _is_loopback(host):
+        if self.mode == MODE_ANY or host.lower() == "localhost":
             return True
-        if self.mode == MODE_ANY:
-            return True
-        return host in self.network_addresses
+        return host in self.hosts
 
     def without(self, addresses: Iterable[str]) -> ListenPlan:
         """This plan with ``addresses`` refused by the bind. An adapter choice
@@ -518,6 +521,14 @@ def start(
         return found
 
     settle_choice(cfg, present, deployment_type)
+    # Reach devices through is settled here too: the same first start, the
+    # same adapter list (openavc/reach_devices.py).
+    from openavc import reach_devices
+
+    try:
+        reach_devices.settle(cfg, present)
+    except Exception:  # never block startup on the device-side choice
+        log.exception("Could not settle Reach devices through")
     choice = ListenChoice.from_config(cfg)
     plan = resolve(choice, present() if choice.mode == MODE_ADAPTER else [])
     set_current(plan)
@@ -586,6 +597,16 @@ def _in_subnets(address: str, subnets: Iterable[str]) -> bool:
     return False
 
 
+def keeps_connection(plan: ListenPlan, through: str, from_this_computer: bool) -> bool:
+    """Whether the person on a connection that reached this computer at
+    ``through`` can keep working under ``plan`` without walking anywhere: the
+    address still answers, or they are on this computer (its own screen, any
+    loopback address, the cloud tunnel), which always reaches ``127.0.0.1``.
+    The safety net is armed exactly when this is False."""
+    through = (through or "").strip().strip("[]")
+    return from_this_computer or _is_loopback(through) or plan.serves(through)
+
+
 def preview(
     candidate: ListenChoice,
     adapters: Iterable[Adapter],
@@ -605,7 +626,7 @@ def preview(
     """
     plan = resolve(candidate, adapters)
     through = (connected_through or "").strip().strip("[]")
-    keeps = from_this_computer or _is_loopback(through) or plan.serves(through)
+    keeps = keeps_connection(plan, through, from_this_computer)
 
     consequences: list[dict[str, Any]] = []
     approved = [a for a in approved_panel_addresses if a]
@@ -640,6 +661,10 @@ def preview(
         "label": plan.label,
         "panel_addresses": panel_addresses(plan),
         "connected_through": through,
+        # Whether the address this browser opened still answers. Can be false
+        # while the connection is kept: a browser on this computer at a
+        # loopback address the choice leaves out moves to 127.0.0.1.
+        "serves_this_address": plan.serves(through),
         "keeps_this_connection": keeps,
         "safety_net": not keeps,
         "problem": plan.problem.to_dict() if plan.problem else None,

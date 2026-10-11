@@ -282,8 +282,10 @@ class _StubSystemConfig:
         self._ci = control_interface
 
     def get(self, section: str, key: str):
-        assert (section, key) == ("network", "control_interface")
-        return self._ci
+        # Reach devices through, as OPENAVC_CONTROL_INTERFACE holds it: an
+        # address (or nothing), so no adapter is enumerated.
+        assert (section, key) == ("network", "reach_devices_through")
+        return {"address": self._ci} if self._ci else {}
 
 
 @pytest.fixture

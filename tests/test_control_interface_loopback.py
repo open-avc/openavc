@@ -16,8 +16,10 @@ from openavc.transport import tcp
 
 class _Pinned:
     def get(self, section: str, key: str) -> Any:
-        assert (section, key) == ("network", "control_interface")
-        return "192.0.2.77"
+        # Reach devices through, as OPENAVC_CONTROL_INTERFACE holds it: an
+        # address, so no adapter is enumerated.
+        assert (section, key) == ("network", "reach_devices_through")
+        return {"address": "192.0.2.77"}
 
 
 class _AcmeWidget(BaseDriver):

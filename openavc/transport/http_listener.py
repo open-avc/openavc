@@ -29,7 +29,7 @@ subscription's callback.
 
 ``callback_url()`` builds the URL a driver registers with its device: the
 server address **as seen from that device** (honoring the
-``network.control_interface`` pin), on the plain-HTTP web port whenever one
+Reach devices through adapter), on the plain-HTTP web port whenever one
 is reachable. All calls run on the event loop thread.
 """
 
@@ -229,7 +229,7 @@ def callback_url(device_host: str, path: str) -> str:
     """Build the callback URL a driver registers with its device.
 
     The host part is the server address **as the device sees it**: the
-    ``network.control_interface`` pin when configured, otherwise the local
+    Reach devices through adapter when one is chosen, otherwise the local
     address the OS would route toward ``device_host`` (a loopback device —
     the simulator redirect — gets a loopback URL). Scheme and port follow
     where a device can actually deliver: the plain-HTTP web port whenever it
@@ -249,11 +249,9 @@ def callback_url(device_host: str, path: str) -> str:
 
 def _local_ip_for(device_host: str) -> str:
     """The local address a device at ``device_host`` can reach us on."""
-    from openavc.system_config import get_system_config
+    from openavc import reach_devices
 
-    pinned = str(
-        get_system_config().get("network", "control_interface") or ""
-    ).strip()
+    pinned = reach_devices.address().strip()
     if pinned:
         return pinned
     host = (device_host or "").strip()

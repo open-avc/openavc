@@ -831,7 +831,7 @@ class TestEmptySubnetErrors:
             with pytest.raises(ValueError) as exc:
                 await self.engine.start_scan()
         assert "192.0.2.77" in str(exc.value)
-        assert "Settings > Network" in str(exc.value)
+        assert "Settings > Network > Reach devices through" in str(exc.value)
 
     @pytest.mark.asyncio
     async def test_pin_on_an_adapter_with_no_link_says_so(self):
@@ -845,8 +845,9 @@ class TestEmptySubnetErrors:
             with pytest.raises(ValueError) as exc:
                 await self.engine.start_scan()
         assert str(exc.value) == (
-            "Control interface 192.0.2.77 (Ethernet) has no link. Connect its "
-            "cable, or pick another adapter (or Auto) in Settings > Network."
+            "Ethernet (192.0.2.77), chosen in Settings > Network > Reach devices "
+            "through, has no link. Connect its cable, or choose another adapter "
+            "(or Every connected adapter) there."
         )
 
     @pytest.mark.asyncio

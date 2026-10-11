@@ -1338,9 +1338,9 @@ def verdict_sentence(
 
 def _control_interface() -> str:
     try:
-        from openavc.system_config import get_system_config
+        from openavc import reach_devices
 
-        return get_system_config().get("network", "control_interface") or ""
+        return reach_devices.address()
     except Exception:
         return ""
 

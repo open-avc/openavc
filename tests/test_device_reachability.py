@@ -280,8 +280,10 @@ async def test_a_device_whose_bridge_is_gone_says_so(drivers):
 
 class _Pinned:
     def get(self, section: str, key: str) -> Any:
-        assert (section, key) == ("network", "control_interface")
-        return "192.0.2.77"
+        # Reach devices through, as OPENAVC_CONTROL_INTERFACE holds it: an
+        # address, so no adapter is enumerated.
+        assert (section, key) == ("network", "reach_devices_through")
+        return {"address": "192.0.2.77"}
 
 
 async def test_a_pinned_control_interface_binds_the_test_too(drivers, monkeypatch):

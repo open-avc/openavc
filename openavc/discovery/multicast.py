@@ -10,7 +10,7 @@ interface hears its own VLAN's announcements.
 
 Used by the mDNS, SSDP, and AMX DDP scanners and the mDNS advertiser:
 
-- ``control_interface`` configured → join/send via that interface only
+- an adapter chosen in Reach devices through → join/send via that interface only
   (unchanged multi-NIC pinning behavior).
 - Otherwise → join the group once per non-loopback IPv4 interface address,
   tolerating per-interface failures; the INADDR_ANY join is the fallback,
@@ -87,7 +87,7 @@ def join_group_on_interfaces(
             return [control_ip]
         except OSError as exc:
             log.warning(
-                "Could not join %s via control interface %s: %s",
+                "Could not join %s via the Reach devices through adapter %s: %s",
                 group, control_ip, exc,
             )
             return []

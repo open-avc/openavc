@@ -44,14 +44,15 @@ def implied_port(transport: str, config: dict[str, Any]) -> int | None:
 def control_bind_address(host: Any) -> str | None:
     """The local IP a connection to ``host`` is bound to, or None.
 
-    Settings' control interface pins device traffic to one adapter. A device
-    on this machine (a simulator, a local service) is reached over loopback,
-    which a socket bound to an adapter's address cannot do (Windows refuses
-    the connect with WinError 1214), so a loopback host is never bound.
+    Settings' Reach devices through pins device traffic to one adapter
+    (``openavc/reach_devices.py``). A device on this machine (a simulator, a
+    local service) is reached over loopback, which a socket bound to an
+    adapter's address cannot do (Windows refuses the connect with WinError
+    1214), so a loopback host is never bound.
     """
-    from openavc.system_config import get_system_config
+    from openavc import reach_devices
 
-    control_ip = get_system_config().get("network", "control_interface")
+    control_ip = reach_devices.address()
     if not control_ip:
         return None
     name = str(host or "").strip().strip("[]").lower()

@@ -35,6 +35,10 @@ ENVIRONMENT_KEY = "_environment"
 # resolved choice, any problem, and the safety net while one is armed.
 LISTEN_KEY = "_listen"
 
+# And for Reach devices through, resolved: the chosen adapter's name, the
+# address device traffic binds to now, and whether it is connected.
+REACH_KEY = "_reach_devices"
+
 # Strong references to fire-and-forget tasks. asyncio only holds a weak
 # reference to a bare create_task(), so an unreferenced task can be garbage
 # collected mid-flight; keep it alive until it finishes.
@@ -258,8 +262,12 @@ async def get_display_idle(
 @router.get("/system/config")
 async def get_system_config_endpoint() -> dict[str, Any]:
     """Get current system configuration (redacts secrets)."""
+    from openavc import listen
     from openavc.system_config import get_system_config
     cfg = get_system_config()
+    # Settled first (a server started some other way settles on first ask),
+    # so the body below reads the choices as they will be saved.
+    listen.current()
     data = cfg.to_dict()
     # Redact sensitive values. The password is a digest now and still redacted:
     # a digest is offline-crackable, and handing one to every authenticated
@@ -282,6 +290,15 @@ async def get_system_config_endpoint() -> dict[str, Any]:
     from openavc.updater.host import get_firmware_host
     if get_firmware_host():
         data[ENVIRONMENT_KEY]["configuration_owner"] = "firmware"
+    # Reach devices through, resolved: the adapter's name and the address
+    # device traffic binds to now. PATCH ignores it.
+    import asyncio
+
+    from openavc import reach_devices
+    try:
+        data[REACH_KEY] = (await asyncio.to_thread(reach_devices.current, cfg)).to_dict()
+    except Exception:  # noqa: BLE001 — the rest of Settings still loads
+        data[REACH_KEY] = None
     return data
 
 
@@ -344,6 +361,47 @@ def _listen_choice_from(cfg: Any, network: dict[str, Any], adapters: list) -> An
             ),
         )
     return listen.ListenChoice(mode=mode, adapter=identity)
+
+
+def _reach_choice_from(cfg: Any, value: Any, adapters: list) -> dict[str, str]:
+    """The Reach devices through choice a PATCH asks for, validated: ``{}``
+    for every connected adapter, or an adapter this computer has (or the one
+    already chosen). Raises 422 naming what is wrong."""
+    from openavc import listen, reach_devices
+
+    if not isinstance(value, dict):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                'Choose the adapter to reach devices through as {"name": ..., '
+                '"mac": ...}, or {} for every connected adapter.'
+            ),
+        )
+    if not value:
+        return {}
+    identity = {
+        k: str(value[k]).strip()
+        for k in ("name", "mac")
+        if isinstance(value.get(k), str) and value[k].strip()
+    }
+    if not identity:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                'Choose the adapter to reach devices through as {"name": ..., '
+                '"mac": ...}, or {} for every connected adapter.'
+            ),
+        )
+    stored = reach_devices.clean_identity(cfg.stored("network", reach_devices.KEY))
+    if identity != stored and listen.match_adapter(identity, adapters) is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"This computer has no adapter {identity.get('name') or identity.get('mac')}. "
+                "Choose one from the list."
+            ),
+        )
+    return identity
 
 
 def _connection_facts(request: Request) -> tuple[str, bool]:
@@ -561,10 +619,11 @@ async def update_system_config(request: Request) -> dict[str, Any]:
     # Who can connect: validated as a pair, written as a pair. The adapter
     # is kept only for "adapter", and the rollback mirror (bind_address) is
     # never taken from a client: it is recomputed from the choice below.
-    from openavc import listen
+    from openavc import listen, reach_devices
 
     network_body = body.get("network") if isinstance(body.get("network"), dict) else None
     listen_choice = None
+    reach_choice: dict[str, str] | None = None
     listen_adapters: list = []
     if network_body is not None:
         if listen.MIRROR_KEY in network_body:
@@ -586,6 +645,37 @@ async def update_system_config(request: Request) -> dict[str, Any]:
             listen_choice = _listen_choice_from(cfg, network_body, listen_adapters)
             network_body[listen.MODE_KEY] = listen_choice.mode
             network_body[listen.ADAPTER_KEY] = dict(listen_choice.adapter)
+        # Reach devices through: the same adapter identity, validated the
+        # same way. Its rollback mirror (control_interface) is never taken
+        # from a client either.
+        if reach_devices.MIRROR_KEY in network_body:
+            if network_body.pop(reach_devices.MIRROR_KEY) != cfg.get(
+                "network", reach_devices.MIRROR_KEY
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "The control interface is now Reach devices through: set "
+                        "network.reach_devices_through to {} (every connected "
+                        'adapter) or {"name": ..., "mac": ...} instead.'
+                    ),
+                )
+        if reach_devices.KEY in network_body and (
+            network_body[reach_devices.KEY] is None
+            or network_body[reach_devices.KEY] == cfg.get("network", reach_devices.KEY)
+        ):
+            # A client echoing what it read (null is "not settled yet", never
+            # a choice): nothing to change or validate.
+            del network_body[reach_devices.KEY]
+        if reach_devices.KEY in network_body:
+            import asyncio
+
+            if not listen_adapters:
+                listen_adapters = await asyncio.to_thread(listen.list_adapters)
+            reach_choice = _reach_choice_from(
+                cfg, network_body[reach_devices.KEY], listen_adapters
+            )
+            network_body[reach_devices.KEY] = reach_choice
         if not network_body:
             del body["network"]
 
@@ -669,6 +759,10 @@ async def update_system_config(request: Request) -> dict[str, Any]:
     if listen_choice is not None:
         listen.refresh_mirror(cfg, listen_adapters)
         safety_net = _arm_or_disarm(cfg, request, listen_choice, listen_adapters)
+    if reach_choice is not None:
+        # Applies to the next connection or scan, with no restart.
+        reach_devices.refresh_mirror(cfg, listen_adapters)
+        reach_devices.refresh(cfg, listen_adapters)
 
     cfg.save()
 
@@ -751,7 +845,7 @@ def _arm_or_disarm(cfg: Any, request: Request, choice: Any, adapters: list) -> d
         listen_safety_net.disarm(cfg.data_dir)
         return None
     through, from_this_computer = _connection_facts(request)
-    keeps = from_this_computer or listen.resolve(choice, adapters).serves(through)
+    keeps = listen.keeps_connection(listen.resolve(choice, adapters), through, from_this_computer)
     if keeps:
         listen_safety_net.disarm(cfg.data_dir)
         return None

@@ -353,8 +353,8 @@ def _parse_cidr(cidr: str, min_prefix: int = 20) -> list[str]:
     if network.prefixlen < min_prefix:
         log.warning(
             "Subnet %s too large (/%d), skipping (limit is /%d). "
-            "Increase 'Max subnet size' in Discovery Settings, or set a specific "
-            "control interface in System Settings.",
+            "Increase 'Max subnet size' in Discovery Settings, or choose one "
+            "adapter in Settings > Network > Reach devices through.",
             cidr, network.prefixlen, min_prefix,
         )
         return []

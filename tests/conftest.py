@@ -181,6 +181,9 @@ def _reset_global_state():
     # (tests/listen_helpers.py) must not leave it for the next.
     from openavc import listen
     listen.reset()
+    # Same for the Reach devices through address it keeps.
+    from openavc import reach_devices
+    reach_devices.forget()
 
 
 @pytest.fixture(autouse=True)

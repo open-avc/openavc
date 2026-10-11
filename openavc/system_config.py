@@ -236,6 +236,14 @@ DEFAULTS: dict[str, Any] = {
         # "127.0.0.1", or the adapter's address when it was last chosen or
         # started). openavc/listen.py keeps it current.
         "bind_address": "127.0.0.1",
+        # Settings > Network > Reach devices through: {} for every connected
+        # adapter, or one adapter by identity ({"name": ..., "mac": ...}),
+        # the same shape as accept_connections_adapter. None until the server
+        # first starts, which converts control_interface. openavc/reach_devices.py.
+        "reach_devices_through": None,
+        # Written for a rollback only: the address reach_devices_through
+        # resolved to, the form earlier releases read. openavc/reach_devices.py
+        # keeps it current; nothing in this release reads it.
         "control_interface": "",
         # Trust the X-Forwarded-For header for the client IP only when behind a
         # known reverse proxy. Off by default so a client can't spoof its
@@ -378,6 +386,7 @@ ENV_OVERRIDES: dict[tuple[str, str], tuple[str, type]] = {
     # Also holds accept_connections_from and accept_connections_adapter: see
     # parse_bind_variable, applied after this table in load().
     ("network", "bind_address"): ("OPENAVC_BIND", str),
+    # Also holds reach_devices_through: see parse_control_interface_variable.
     ("network", "control_interface"): ("OPENAVC_CONTROL_INTERFACE", str),
     ("network", "trust_forwarded_for"): ("OPENAVC_TRUST_FORWARDED_FOR", bool),
     ("network", "trusted_proxies"): ("OPENAVC_TRUSTED_PROXIES", list),
@@ -623,6 +632,18 @@ def parse_bind_variable(raw: str) -> tuple[str, dict[str, str]]:
     return "adapter", {"address": value.strip("[]")}
 
 
+# OPENAVC_CONTROL_INTERFACE predates Reach devices through and keeps its
+# meaning: one address, or empty for every adapter. It holds the choice
+# (reach_devices_through) as well as control_interface.
+CONTROL_INTERFACE_VARIABLE = "OPENAVC_CONTROL_INTERFACE"
+
+
+def parse_control_interface_variable(raw: str) -> dict[str, str]:
+    """``OPENAVC_CONTROL_INTERFACE`` as the choice: ``{}`` or ``{"address": ...}``."""
+    value = raw.strip().strip("[]")
+    return {"address": value} if value else {}
+
+
 def _parse_env_value(raw: str, target_type: type) -> Any:
     """Parse an environment variable string to the target type."""
     if target_type is bool:
@@ -747,6 +768,12 @@ class SystemConfig:
             self._data["network"]["accept_connections_adapter"] = adapter
             for key in _BIND_KEYS:
                 self._env_held[("network", key)] = BIND_VARIABLE
+        raw_control = os.environ.get(CONTROL_INTERFACE_VARIABLE)
+        if raw_control is not None:
+            self._data["network"]["reach_devices_through"] = (
+                parse_control_interface_variable(raw_control)
+            )
+            self._env_held[("network", "reach_devices_through")] = CONTROL_INTERFACE_VARIABLE
 
         self._loaded = True
 
