@@ -513,6 +513,18 @@ A field named `mac_address` (a plain string, not `secret`) is filled in from Dis
 
 Types: `string`, `text`, `integer`, `number`, `float`, `boolean`, `enum`, `table`. For `enum`, add a `"values"` array; for `table`, add a `"columns"` map (see below). Each `values` entry is a plain value or a `{value, label}` pair: the Add Device dropdown shows the label, and the value is what is saved and what `{placeholders}` send. In the Driver Builder, **Allowed Values** takes one row per choice, with the label optional.
 
+`required: true` marks a field the driver cannot work without. Add Device and
+Edit Device refuse to save it blank and name it ("Model is required."), and a
+device edit through the REST API or the AI assistant is refused the same way.
+A field with a value in `default_config` is never blank, so mark `required` on
+a field only the integrator can answer: an IP address, a password, a model the
+device cannot report. A field counts only where it applies: `host` is asked of
+a device connected over the network, `port` of one connected over the network
+or a direct serial line, and neither of a device reached through a bridge. A
+`table` field is set up on the device page and is not checked. A project that
+already holds a device with the field blank still opens and saves; that device
+is asked for the field the next time it is edited.
+
 `advanced: true` collapses a field behind an **Advanced** group in the Add Device
 and Edit Device dialogs. Nothing changes about how the value is stored or read;
 it is purely where the field sits on screen. Use it for a setting that already

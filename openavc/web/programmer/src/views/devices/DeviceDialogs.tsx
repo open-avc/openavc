@@ -6,7 +6,7 @@ import type { DeviceConfig, DriverInfo } from "../../api/types";
 import { DeviceSettingsSetupDialog, hasDriverSetupSettings } from "../../components/shared/DeviceSettingsSetupDialog";
 import { Modal } from "../../components/shared/Modal";
 import { normalizeOptionList } from "../../components/shared/paramOptions";
-import { buildConfigFromForm, configFieldKind, splitConnectionFields, SERIAL_PICKER_FIELDS, IR_PICKER_FIELDS, prefillConfigValues } from "./deviceConfigCoerce";
+import { buildConfigFromForm, configFieldKind, splitConnectionFields, SERIAL_PICKER_FIELDS, IR_PICKER_FIELDS, prefillConfigValues, type ConnectionMode } from "./deviceConfigCoerce";
 import { parseApiError } from "../../api/errors";
 import { booleanWord } from "../../components/shared/booleanWords";
 
@@ -99,9 +99,7 @@ export function ConfigFieldInputs({
                 }}
               >
                 {label}
-                {isRequired && (
-                  <span aria-hidden="true" style={{ color: "var(--error, #f44336)", marginLeft: 2 }}>*</span>
-                )}
+                {isRequired && <RequiredMark />}
               </label>
               {learned && (
                 <span
@@ -321,7 +319,7 @@ export function primaryNetworkTransport(d: DriverInfo | undefined): string {
   return ts.find((x) => NETWORK_TRANSPORTS.includes(x)) || "tcp";
 }
 
-type ConnMode = "network" | "serial" | "bridge";
+type ConnMode = ConnectionMode;
 
 function inferConnMode(cv: Record<string, string>, d: DriverInfo | undefined): ConnMode {
   // An IR device is always bridged — there's no network/serial mode for it.
@@ -388,6 +386,50 @@ function applyConnMode(
   return v;
 }
 
+// The picker's mode, held by the dialog: the required check asks it which
+// connection fields apply, and a form switched to "Through a bridge" before a
+// bridge is picked cannot be told apart from a network one by its values.
+// Re-inferred when the driver changes (the dialog resets configValues then);
+// keyed on the id alone so per-keystroke edits don't reset the mode.
+function useConnectionMode(
+  configValues: Record<string, string>,
+  driverInfo: DriverInfo | undefined,
+): [ConnMode, (mode: ConnMode) => void] {
+  const [mode, setMode] = useState<ConnMode>(() => inferConnMode(configValues, driverInfo));
+  useEffect(() => {
+    setMode(inferConnMode(configValues, driverInfo));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driverInfo?.id]);
+  return [mode, setMode];
+}
+
+// The connection the required check reads: the picker's mode when the driver
+// has the picker, else the network.
+function requiredConnection(driverInfo: DriverInfo | undefined, mode: ConnMode): ConnMode {
+  return driverSerialCapable(driverInfo) || driverIrCapable(driverInfo) ? mode : "network";
+}
+
+// The dialogs' error line sits at the top of a form that scrolls, and the
+// button that is refused sits at the bottom: each refusal brings the line into
+// view, the same message pressed twice included.
+function useDialogError(): [string, (message: string) => void, React.RefObject<HTMLDivElement | null>] {
+  const [error, setErrorText] = useState("");
+  const [shown, setShown] = useState(0);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (shown > 0) ref.current?.scrollIntoView?.({ block: "nearest" });
+  }, [shown]);
+  const setError = (message: string) => {
+    setErrorText(message);
+    if (message) setShown((n) => n + 1);
+  };
+  return [error, setError, ref];
+}
+
+function RequiredMark() {
+  return <span aria-hidden="true" style={{ color: "var(--error, #f44336)", marginLeft: 2 }}>*</span>;
+}
+
 const pickerLabelStyle: React.CSSProperties = {
   display: "block",
   fontSize: "var(--font-size-sm)",
@@ -404,9 +446,11 @@ const pickerLabelStyle: React.CSSProperties = {
 function SerialPortPicker({
   value,
   onPick,
+  required = false,
 }: {
   value: string;
   onPick: (device: string, usbSerial: string) => void;
+  required?: boolean;
 }) {
   const [ports, setPorts] = useState<SerialPortInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -442,7 +486,7 @@ function SerialPortPicker({
 
   return (
     <div style={{ marginBottom: "var(--space-sm)" }}>
-      <label style={pickerLabelStyle}>Serial Port</label>
+      <label style={pickerLabelStyle}>Serial Port{required && <RequiredMark />}</label>
       <div style={{ display: "flex", gap: "var(--space-xs)" }}>
         {manual ? (
           <input
@@ -482,6 +526,8 @@ export function ConnectionModePicker({
   driverInfo,
   configValues,
   setConfigValues,
+  mode,
+  onModeChange,
   devices,
   drivers,
   selfId,
@@ -490,6 +536,9 @@ export function ConnectionModePicker({
   driverInfo: DriverInfo | undefined;
   configValues: Record<string, string>;
   setConfigValues: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  /** The dialog's mode (useConnectionMode). */
+  mode: ConnMode;
+  onModeChange: (mode: ConnMode) => void;
   devices: DeviceConfig[];
   drivers: DriverInfo[];
   selfId?: string;
@@ -497,15 +546,6 @@ export function ConnectionModePicker({
    *  yet reach a device through a bridge). */
   allowBridge?: boolean;
 }) {
-  const [mode, setMode] = useState<ConnMode>(() => inferConnMode(configValues, driverInfo));
-
-  // Re-infer when the driver changes (the parent resets configValues then).
-  // Depend only on the id so per-keystroke edits don't reset the mode.
-  useEffect(() => {
-    setMode(inferConnMode(configValues, driverInfo));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [driverInfo?.id]);
-
   const isIr = driverIrCapable(driverInfo);
   if (!driverSerialCapable(driverInfo) && !isIr) return null;
 
@@ -514,7 +554,7 @@ export function ConnectionModePicker({
 
   const switchMode = (next: ConnMode) => {
     if (next === mode) return;
-    setMode(next);
+    onModeChange(next);
     setConfigValues((v) => applyConnMode(v, next, driverInfo));
   };
 
@@ -569,12 +609,15 @@ export function ConnectionModePicker({
     });
   };
 
-  const field = (label: string, node: React.ReactNode) => (
+  const field = (label: string, node: React.ReactNode, required = false) => (
     <div style={{ marginBottom: "var(--space-sm)" }}>
-      <label style={pickerLabelStyle}>{label}</label>
+      <label style={pickerLabelStyle}>{label}{required && <RequiredMark />}</label>
       {node}
     </div>
   );
+  const schemaRequires = (key: string) =>
+    (driverInfo?.config_schema as Record<string, { required?: unknown }> | undefined)?.[key]
+      ?.required === true;
 
   const serialParams = (
     <>
@@ -642,8 +685,8 @@ export function ConnectionModePicker({
 
       {mode === "network" && (
         <>
-          {field("IP Address", <input value={configValues.host ?? ""} onChange={(e) => set("host", e.target.value)} placeholder="192.168.1.100" style={{ width: "100%" }} />)}
-          {field("Port", <input type="number" value={configValues.port ?? ""} onChange={(e) => set("port", e.target.value)} placeholder={String(driverInfo?.default_config?.port ?? "1-65535")} style={{ width: "100%" }} />)}
+          {field("IP Address", <input value={configValues.host ?? ""} onChange={(e) => set("host", e.target.value)} placeholder="192.168.1.100" aria-required={schemaRequires("host") || undefined} style={{ width: "100%" }} />, schemaRequires("host"))}
+          {field("Port", <input type="number" value={configValues.port ?? ""} onChange={(e) => set("port", e.target.value)} placeholder={String(driverInfo?.default_config?.port ?? "1-65535")} aria-required={schemaRequires("port") || undefined} style={{ width: "100%" }} />, schemaRequires("port"))}
         </>
       )}
 
@@ -654,6 +697,7 @@ export function ConnectionModePicker({
             onPick={(device, usbSerial) =>
               setConfigValues((v) => ({ ...v, port: device, usb_serial: usbSerial }))
             }
+            required={schemaRequires("port")}
           />
           {serialParams}
         </>
@@ -887,7 +931,7 @@ export function AddDeviceDialog({
     }
     return vals;
   });
-  const [error, setError] = useState("");
+  const [error, setError, errorRef] = useDialogError();
   const [isAdding, setIsAdding] = useState(false);
   const [setupDeviceId, setSetupDeviceId] = useState<string | null>(null);
 
@@ -896,6 +940,7 @@ export function AddDeviceDialog({
   }, []);
 
   const driverInfo = drivers.find((d) => d.id === selectedDriver);
+  const [connMode, setConnMode] = useConnectionMode(configValues, driverInfo);
   const configKeys = Object.keys((driverInfo?.config_schema ?? {}) as Record<string, unknown>);
   const serialCapable = driverSerialCapable(driverInfo);
   // The connection picker / IR Codes editor own these fields; keep them out of
@@ -919,7 +964,10 @@ export function AddDeviceDialog({
     }
 
     const schema = (driverInfo?.config_schema ?? {}) as Record<string, Record<string, unknown>>;
-    const built = buildConfigFromForm(configValues, schema, configOriginals);
+    const built = buildConfigFromForm(configValues, schema, configOriginals, {
+      defaults: driverInfo?.default_config,
+      connection: requiredConnection(driverInfo, connMode),
+    });
     if (!built.ok) {
       setError(built.error);
       return;
@@ -990,6 +1038,7 @@ export function AddDeviceDialog({
 
         {error && (
           <div
+            ref={errorRef}
             style={{
               background: "var(--color-error-bg)",
               color: "var(--color-error)",
@@ -1138,6 +1187,8 @@ export function AddDeviceDialog({
                 driverInfo={driverInfo}
                 configValues={configValues}
                 setConfigValues={setConfigValues}
+                mode={connMode}
+                onModeChange={setConnMode}
                 devices={devices ?? []}
                 drivers={drivers}
                 selfId={deviceId || undefined}
@@ -1235,7 +1286,7 @@ export function EditDeviceDialog({
     }
     return vals;
   });
-  const [error, setError] = useState("");
+  const [error, setError, errorRef] = useDialogError();
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -1243,6 +1294,7 @@ export function EditDeviceDialog({
   }, []);
 
   const driverInfo = drivers.find((d) => d.id === selectedDriver);
+  const [connMode, setConnMode] = useConnectionMode(configValues, driverInfo);
   // Show config fields from driver schema if available, otherwise from the device's existing config
   const schemaKeys = Object.keys((driverInfo?.config_schema ?? {}) as Record<string, unknown>);
   const existingKeys = Object.keys(configValues);
@@ -1278,7 +1330,10 @@ export function EditDeviceDialog({
     setError("");
     try {
       const schema = (driverInfo?.config_schema ?? {}) as Record<string, Record<string, unknown>>;
-      const built = buildConfigFromForm(configValues, schema, configOriginals);
+      const built = buildConfigFromForm(configValues, schema, configOriginals, {
+        defaults: driverInfo?.default_config,
+        connection: requiredConnection(driverInfo, connMode),
+      });
       if (!built.ok) {
         setError(built.error);
         setSaving(false);
@@ -1327,6 +1382,7 @@ export function EditDeviceDialog({
 
         {error && (
           <div
+            ref={errorRef}
             style={{
               background: "var(--color-error-bg)",
               color: "var(--color-error)",
@@ -1437,6 +1493,8 @@ export function EditDeviceDialog({
                 driverInfo={driverInfo}
                 configValues={configValues}
                 setConfigValues={setConfigValues}
+                mode={connMode}
+                onModeChange={setConnMode}
                 devices={devices ?? []}
                 drivers={drivers}
                 selfId={device.id}

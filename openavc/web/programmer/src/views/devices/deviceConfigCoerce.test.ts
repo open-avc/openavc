@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { buildConfigFromForm, coerceConfigValue, prefillConfigValues } from "./deviceConfigCoerce";
+import {
+  buildConfigFromForm,
+  coerceConfigValue,
+  missingRequiredFields,
+  prefillConfigValues,
+  requiredFieldsMessage,
+} from "./deviceConfigCoerce";
+
+// Nothing required, over the network: the case the coercion tests are about.
+const NONE = { defaults: {}, connection: "network" as const };
 
 // A driver's default_config is flattened into the dialog's string form when
 // the driver is picked, then coerced back on save. Whatever the driver
@@ -51,24 +60,24 @@ describe("buildConfigFromForm", () => {
   it.each([true, false])("keeps an undescribed %s a boolean", (value) => {
     const originals = { tcp_keepalive: value, enable_meters: false, port: 4321 };
     const form = { tcp_keepalive: String(value), enable_meters: "false", port: "4321" };
-    expect(buildConfigFromForm(form, schema, originals)).toEqual({
+    expect(buildConfigFromForm(form, schema, originals, NONE)).toEqual({
       ok: true,
       config: { tcp_keepalive: value, enable_meters: false, port: 4321 },
     });
   });
 
   it("keeps an undescribed text value that looks like a number as text", () => {
-    const result = buildConfigFromForm({ display_id: "1" }, {}, { display_id: "1" });
+    const result = buildConfigFromForm({ display_id: "1" }, {}, { display_id: "1" }, NONE);
     expect(result).toEqual({ ok: true, config: { display_id: "1" } });
   });
 
   it("keeps an edited undescribed text value as text", () => {
-    const result = buildConfigFromForm({ display_id: "2" }, {}, { display_id: "1" });
+    const result = buildConfigFromForm({ display_id: "2" }, {}, { display_id: "1" }, NONE);
     expect(result).toEqual({ ok: true, config: { display_id: "2" } });
   });
 
   it("reads an edited undescribed boolean as a boolean", () => {
-    const result = buildConfigFromForm({ tcp_keepalive: "false" }, {}, { tcp_keepalive: true });
+    const result = buildConfigFromForm({ tcp_keepalive: "false" }, {}, { tcp_keepalive: true }, NONE);
     expect(result).toEqual({ ok: true, config: { tcp_keepalive: false } });
   });
 
@@ -77,19 +86,116 @@ describe("buildConfigFromForm", () => {
       channels: { type: "enum", values: [{ value: "2", label: "2" }, { value: "4", label: "4" }] },
       input: { type: "enum", values: [1, 2, 3] },
     };
-    const result = buildConfigFromForm({ channels: "4", input: "2" }, enums, { channels: 4 });
+    const result = buildConfigFromForm({ channels: "4", input: "2" }, enums, { channels: 4 }, NONE);
     expect(result).toEqual({ ok: true, config: { channels: "4", input: 2 } });
   });
 
   it("names the field whose value does not parse", () => {
     const result = buildConfigFromForm(
-      { headers: "{" }, { headers: { type: "object", label: "Headers" } }, {},
+      { headers: "{" }, { headers: { type: "object", label: "Headers" } }, {}, NONE,
     );
     expect(result).toEqual({ ok: false, error: "Headers: must be valid JSON" });
   });
 
   it("leaves an empty value unset, except a cleared USB serial", () => {
-    const result = buildConfigFromForm({ host: "", usb_serial: "" }, {}, {});
+    const result = buildConfigFromForm({ host: "", usb_serial: "" }, {}, {}, NONE);
     expect(result).toEqual({ ok: true, config: { usb_serial: "" } });
+  });
+});
+
+// A config_schema field marked required is refused blank at Add and Edit
+// Device, named by its label. Only what the device would run with counts: a
+// driver default fills a field, and the connection picker's host and port are
+// asked only of the connection that uses them.
+describe("required config fields", () => {
+  const camera = {
+    host: { type: "string", required: true, label: "IP Address" },
+    port: { type: "integer", label: "VISCA Port" },
+    model: {
+      type: "enum",
+      required: true,
+      label: "Model",
+      values: [{ value: "i12", label: "IV-CAM-I12" }, { value: "p20", label: "IV-CAM-P20" }],
+    },
+  };
+  const defaults = { port: 5500 };
+
+  it("refuses a blank required field by its label", () => {
+    const result = buildConfigFromForm(
+      { host: "10.0.0.5", port: "5500", model: "" }, camera, defaults,
+      { defaults, connection: "network" },
+    );
+    expect(result).toEqual({ ok: false, error: "Model is required." });
+  });
+
+  it("accepts the field once it is filled", () => {
+    const result = buildConfigFromForm(
+      { host: "10.0.0.5", port: "5500", model: "i12" }, camera, defaults,
+      { defaults, connection: "network" },
+    );
+    expect(result).toEqual({ ok: true, config: { host: "10.0.0.5", port: 5500, model: "i12" } });
+  });
+
+  it("names every blank required field in one sentence", () => {
+    expect(missingRequiredFields({ host: " ", model: "" }, camera, defaults, "network")).toEqual([
+      "IP Address",
+      "Model",
+    ]);
+    expect(requiredFieldsMessage(["IP Address", "Model"])).toBe("IP Address and Model are required.");
+    expect(requiredFieldsMessage(["IP Address", "Password", "Model"])).toBe(
+      "IP Address, Password and Model are required.",
+    );
+  });
+
+  it("asks for the IP address only on a network connection", () => {
+    const form = { model: "i12" };
+    expect(missingRequiredFields(form, camera, defaults, "network")).toEqual(["IP Address"]);
+    expect(missingRequiredFields(form, camera, defaults, "serial")).toEqual([]);
+    expect(missingRequiredFields(form, camera, defaults, "bridge")).toEqual([]);
+  });
+
+  it("asks for the port on a network or serial connection, never through a bridge", () => {
+    const serialOnly = { port: { type: "string", required: true, label: "Serial Port" } };
+    expect(missingRequiredFields({}, serialOnly, {}, "serial")).toEqual(["Serial Port"]);
+    expect(missingRequiredFields({}, serialOnly, {}, "network")).toEqual(["Serial Port"]);
+    expect(missingRequiredFields({}, serialOnly, {}, "bridge")).toEqual([]);
+  });
+
+  it("never asks for the picker's other fields", () => {
+    const schema = {
+      baudrate: { type: "integer", required: true, label: "Baud Rate" },
+      bridge: { type: "string", required: true, label: "Bridge" },
+    };
+    expect(missingRequiredFields({}, schema, {}, "serial")).toEqual([]);
+    expect(missingRequiredFields({}, schema, {}, "bridge")).toEqual([]);
+  });
+
+  it("counts a driver default as filled", () => {
+    const schema = { port: { type: "integer", required: true, label: "Port" } };
+    expect(missingRequiredFields({ port: "" }, schema, { port: 23 }, "network")).toEqual([]);
+    expect(missingRequiredFields({ port: "" }, schema, { port: "" }, "network")).toEqual(["Port"]);
+  });
+
+  it("counts a secret that holds a value", () => {
+    const schema = { password: { type: "string", secret: true, required: true, label: "Password" } };
+    // A secret default is never pre-filled, but it is what the device runs with.
+    expect(missingRequiredFields({}, schema, { password: "admin" }, "network")).toEqual([]);
+    // The Edit form loads the stored value, shown masked.
+    expect(missingRequiredFields({ password: "s3cret" }, schema, {}, "network")).toEqual([]);
+    // Cleared, with no default to fall back on.
+    expect(missingRequiredFields({ password: "" }, schema, {}, "network")).toEqual(["Password"]);
+  });
+
+  it("does not ask for a table field, which is set up on the device page", () => {
+    const schema = { blocks: { type: "table", required: true, label: "Blocks" } };
+    expect(missingRequiredFields({}, schema, {}, "network")).toEqual([]);
+  });
+
+  it("treats false and 0 as values", () => {
+    const schema = {
+      enabled: { type: "boolean", required: true, label: "Enabled" },
+      level: { type: "integer", required: true, label: "Level" },
+    };
+    expect(missingRequiredFields({ enabled: "false", level: "0" }, schema, {}, "network")).toEqual([]);
   });
 });

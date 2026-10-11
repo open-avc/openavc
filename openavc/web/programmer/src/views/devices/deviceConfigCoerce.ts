@@ -189,17 +189,68 @@ function listedEnumValue(
   return { found: false };
 }
 
+// How the device connects, as the connection picker shows it. A driver
+// without the picker connects over the network.
+export type ConnectionMode = "network" | "serial" | "bridge";
+
+// The connection picker's fields a driver may require, and the connections
+// each applies to: no IP address is asked of a device wired by serial or
+// reached through a bridge. The picker's other fields (serial line settings,
+// the bridge binding) always show a value and are never refused. Mirrors
+// PICKER_FIELD_CONNECTIONS in openavc/core/required_config.py, the server's
+// half of this rule; keep the two in sync.
+const PICKER_FIELD_CONNECTIONS: Record<string, ConnectionMode[]> = {
+  host: ["network"],
+  port: ["network", "serial"],
+};
+
+const isBlank = (v: unknown) => v == null || (typeof v === "string" && v.trim() === "");
+
+// The label of each required field the form leaves blank, in schema order. A
+// field counts as filled when the form holds a value or the driver has a
+// default for it, which is what the device would run with. A table field is
+// set up on the device page, never in the dialog, so it is not asked here.
+export function missingRequiredFields(
+  values: Record<string, string>,
+  schema: Record<string, Record<string, unknown>>,
+  defaults: Record<string, unknown> | undefined,
+  connection: ConnectionMode,
+): string[] {
+  const missing: string[] = [];
+  for (const [key, field] of Object.entries(schema)) {
+    if (field?.required !== true || field.type === "table") continue;
+    if (SERIAL_PICKER_FIELDS.has(key) || IR_PICKER_FIELDS.has(key)) {
+      if (!PICKER_FIELD_CONNECTIONS[key]?.includes(connection)) continue;
+    }
+    if (isBlank(values[key]) && isBlank(defaults?.[key])) {
+      missing.push(String(field.label || key));
+    }
+  }
+  return missing;
+}
+
+// "Model is required." / "IP Address and Model are required." The server
+// words its refusal the same way (required_sentence).
+export function requiredFieldsMessage(labels: string[]): string {
+  if (labels.length === 1) return `${labels[0]} is required.`;
+  return `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]} are required.`;
+}
+
 // The Add and Edit dialogs' form back into a typed config: every key coerced
 // by its schema field, or, for a key the schema does not describe, by the
 // typed value it came from (`originals`). Empty normally means "unset, leave
 // alone", but an empty usb_serial is a deliberate clear (the user re-picked a
 // manual or no-serial port) and is kept so it overwrites a previously bound
-// adapter serial in the merge.
+// adapter serial in the merge. A required field left blank refuses the save
+// (`required`: the driver's default_config and the picker's connection).
 export function buildConfigFromForm(
   values: Record<string, string>,
   schema: Record<string, Record<string, unknown>>,
   originals: Record<string, unknown>,
+  required: { defaults: Record<string, unknown> | undefined; connection: ConnectionMode },
 ): { ok: true; config: Record<string, unknown> } | { ok: false; error: string } {
+  const missing = missingRequiredFields(values, schema, required.defaults, required.connection);
+  if (missing.length > 0) return { ok: false, error: requiredFieldsMessage(missing) };
   const config: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(values)) {
     if (val === "" && key !== "usb_serial") continue;

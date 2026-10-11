@@ -22,6 +22,11 @@ from openavc.api.models import (
 from openavc.core.device_manager import DeviceNotFoundError
 from openavc.core.project_loader import ChildEntityConfig, DeviceConfig
 from openavc.core.project_migration import CONNECTION_FIELDS
+from openavc.core.required_config import (
+    merged_device_config,
+    missing_for_driver,
+    required_sentence,
+)
 from openavc.drivers.base import (
     CommandParamError,
     CommandPartialError,
@@ -237,6 +242,23 @@ async def update_device(device_id: str, body: DeviceUpdateRequest) -> dict[str, 
                 del project.connections[device_id]
         else:
             new_config = existing.config
+
+        # A required field left blank is refused, the way the Edit Device
+        # dialog refuses it. Only an edit to the settings or the driver asks:
+        # renaming or disabling an older device that already has the gap
+        # must still work. See core/required_config.py.
+        if body.config is not None or body.driver is not None:
+            missing = missing_for_driver(
+                new_driver,
+                merged_device_config(
+                    new_driver, new_config, project.connections.get(device_id, {}),
+                ),
+            )
+            if missing:
+                raise HTTPException(
+                    status_code=422,
+                    detail=required_sentence([label for _key, label in missing]),
+                )
 
         # Rebuild by re-validating the existing record's full dump rather than
         # constructing a fresh DeviceConfig(...) that enumerates only the known

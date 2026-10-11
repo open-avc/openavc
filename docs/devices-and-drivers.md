@@ -13,8 +13,8 @@ Use the search box at the top of the device list to filter by name, ID, or drive
 3. Select a driver from the dropdown (e.g., "PJLink Class 1 Projector")
 4. Enter a Device ID (e.g., `projector_main`). This is the name used in macros and scripts, so keep it short and descriptive.
 5. Enter a display name (e.g., "Main Projector"). This is what appears in the UI.
-6. Configure connection settings (host, port, etc.). Defaults are pre-filled from the driver. A device that supports serial shows a connection picker with three choices: **Network (IP)**, **Direct serial** (pick a serial port detected on this server, including USB-to-serial adapters), or **Through a bridge** (route it over a serial-to-Ethernet bridge such as a Global Cache iTach). See [Connecting Devices Through a Bridge](connecting-through-a-bridge.md).
-7. Click **Add**
+6. Configure connection settings (host, port, etc.). Defaults are pre-filled from the driver. A device that supports serial shows a connection picker with three choices: **Network (IP)**, **Direct serial** (pick a serial port detected on this server, including USB-to-serial adapters), or **Through a bridge** (route it over a serial-to-Ethernet bridge such as a Global Cache iTach). See [Connecting Devices Through a Bridge](connecting-through-a-bridge.md). A field marked with a red asterisk is required: the device is not added until it is filled in, and the message names the field.
+7. Click **Add Device**
 
 The Device ID is permanent and referenced everywhere. Choose a convention and stick with it. Common patterns:
 

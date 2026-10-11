@@ -7,6 +7,11 @@ import httpx
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
 from openavc.core.device_manager import DeviceNotFoundError
 from openavc.core.event_references import dead_listeners, project_script_sources
+from openavc.core.required_config import (
+    merged_device_config,
+    missing_for_driver,
+    required_sentence,
+)
 from openavc.core.state_store import is_flat_primitive
 from openavc.drivers.base import DeviceSettingValueError
 from openavc.utils.paths import is_safe_script_filename, safe_path_within
@@ -20,6 +25,20 @@ _DEAD_LISTENER_NOTE = (
     "nothing sends can never fire, and nothing else will report it. Emit it from a macro "
     "step, a control action or another script, or listen for the event that does happen."
 )
+
+
+def _refuse_missing_required(driver_id: str, merged: dict) -> None:
+    """Refuse a device whose driver requires a field ``merged`` leaves blank.
+
+    The sentence is the one the Add and Edit Device dialogs show; the keys are
+    what to send back in ``config``. See core/required_config.py.
+    """
+    missing = missing_for_driver(driver_id, merged)
+    if missing:
+        raise ToolEditError({
+            "error": required_sentence([label for _key, label in missing]),
+            "missing_config": [key for key, _label in missing],
+        })
 
 
 def _dead_listener_warnings(engine: Any, script_id: str, source: str) -> list[str]:
@@ -113,6 +132,17 @@ class DeviceToolsMixin:
                     del project.connections[device_id]
             else:
                 new_config = existing.config
+
+            # The same refusal as the Edit Device dialog and the REST door,
+            # asked only when the settings or the driver change.
+            if "config" in input or "driver" in input:
+                driver_id = input.get("driver", existing.driver)
+                _refuse_missing_required(
+                    driver_id,
+                    merged_device_config(
+                        driver_id, new_config, project.connections.get(device_id, {}),
+                    ),
+                )
 
             # Re-validate the existing record's full dump instead of building a
             # fresh DeviceConfig from scratch. The base model is extra='allow', so
@@ -220,6 +250,9 @@ class DeviceToolsMixin:
         def mutate(project):
             if any(d.id == device_id for d in project.devices):
                 raise ToolEditError({"error": f"Device '{device_id}' already exists"})
+            _refuse_missing_required(
+                driver_id, merged_device_config(driver_id, protocol_config, conn_overrides),
+            )
             project.devices.append(new_device)
             if conn_overrides:
                 project.connections[device_id] = conn_overrides
