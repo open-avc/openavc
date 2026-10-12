@@ -449,6 +449,19 @@ class TestWhatTheCardSays:
         choose(ETHERNET.identity(), [ETHERNET, WIFI])
         assert _in_words(_unreachable(), DEVICE, 8080, "tcp") == SENTENCE
 
+    def test_an_http_connection_test_says_it_too(self, choose):
+        import httpx
+
+        from openavc.core.device_reachability import _in_words
+
+        choose(ETHERNET.identity(), [ETHERNET, WIFI])
+        timeout = httpx.ConnectTimeout("")
+        assert _in_words(timeout, DEVICE, 8080, "http") == SENTENCE
+        choose(ETHERNET.identity(), [ETHERNET_LL])
+        assert _in_words(timeout, DEVICE, 8080, "http").startswith(
+            f"Could not connect to {DEVICE}:8080"
+        )
+
     async def test_a_connection_test_that_times_out_says_it_too(self, choose, monkeypatch):
         from openavc.core import device_reachability
 

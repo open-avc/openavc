@@ -856,9 +856,11 @@ def link_local_fault(host: str, port: object = None) -> ConnectionFault | None:
     the adapter chosen in Reach devices through holds no 169.254 address of
     its own; None otherwise.
 
-    Asked only after a failure classified ``unreachable``, by the device card
-    (``DeviceManager._set_offline_reason``) and the connection test, so both
-    say the same sentence. The code stays ``unreachable``: the device cannot
+    Asked only after a connection failed: by the device card
+    (``DeviceManager._set_offline_reason``) for a failure classified
+    ``unreachable``, and by the connection test for any failure with nothing
+    more specific, so both say the same sentence. The code stays
+    ``unreachable``: the device cannot
     be reached from the chosen adapter, and an address added to it later is
     picked up by the next retry.
     """

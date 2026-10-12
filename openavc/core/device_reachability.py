@@ -170,7 +170,9 @@ def _in_words(exc: BaseException, host: str, port: Any, transport: str) -> str:
     fault = classify_connection_fault(
         last_error=None, exc=exc, host=host, port=port, transport=transport,
     )
-    if fault.code == UNREACHABLE:
+    # A test that failed with nothing more specific never connected (httpx's
+    # connect timeout lands in the fallback), so all three can be the reason.
+    if fault.code in (UNREACHABLE, NO_RESPONSE, TRANSPORT_DISCONNECTED):
         fault = link_local_fault(host, port) or fault
     if fault.code in (NO_RESPONSE, TRANSPORT_DISCONNECTED):
         return f"Could not connect to {_endpoint(host, port)}: {str(exc) or type(exc).__name__}"
