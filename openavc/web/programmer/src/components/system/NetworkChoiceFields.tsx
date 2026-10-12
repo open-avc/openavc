@@ -101,10 +101,12 @@ export function AcceptConnectionsField({
   urlFacts: PanelUrlFacts;
   onChange: (mode: ListenMode, adapter: AdapterIdentity) => void;
 }) {
+  // In Docker the compose file holds the choice (OPENAVC_BIND, or the
+  // address ports: publishes on), so the field is locked there and shows
+  // what the container runs.
   const docker = deploymentType === "docker";
   const options = adapterOptions(interfaces, mode === "adapter" ? adapter : null, runningName);
-  const value = docker ? LISTEN_ANY : listenValue(mode, adapter, interfaces);
-  const shownMode: ListenMode = docker ? "any" : mode;
+  const value = listenValue(mode, adapter, interfaces);
   const name = adapterName(adapter, interfaces, runningName);
   const panelUrls = (preview?.panel_addresses ?? [])
     .map((ip) => panelBase(ip, urlFacts))
@@ -136,7 +138,7 @@ export function AcceptConnectionsField({
         </select>
       </EnvLock>
       <span style={helpText} data-testid="accept-connections-help">
-        {listenHelp(shownMode, name)}
+        {listenHelp(mode, name)}
       </span>
       {!changed && problem && (
         <span style={warnLine} role="status" data-testid="accept-connections-problem">
@@ -177,9 +179,11 @@ export function AcceptConnectionsField({
         >
           <Lock size={12} style={{ flexShrink: 0, marginTop: 3 }} aria-hidden />
           <span>
-            In Docker, choose the host address in the compose file's <code>ports:</code> setting.{" "}
+            In Docker, choose this in the compose file: <code>OPENAVC_BIND</code> under{" "}
+            <code>environment:</code> with host networking, or the host address in <code>ports:</code> with
+            published ports.{" "}
             <a href={DOCKER_PORTS_DOCS_URL} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
-              Docker ports
+              Docker
             </a>
           </span>
         </span>

@@ -19,7 +19,7 @@ The Programmer IDE is a web-based design environment with these sidebar sections
 - **AI Assistant**: AI-powered help and automation (requires cloud connection)
 - **Cloud**: Cloud platform connection and monitoring
 - **Log**: Real-time system log and state changes
-- **Settings**: Server configuration (port, bind address, panel access, logging)
+- **Settings**: Server configuration (port, who can connect, panel access, logging)
 - **Updates**: Check for and install OpenAVC updates
 
 At the bottom of the sidebar, the **Simulate Devices** button (play icon) starts the device simulator so you can test your project without real hardware. See [Device Simulator](simulator.md) for details.
@@ -56,7 +56,7 @@ The Dashboard is the landing page of the Programmer IDE, giving you a system sta
 - **Active triggers**: lists triggers that are currently enabled so you can see what automation is running
 - **Cloud status**: shows whether the system is paired to OpenAVC Cloud and the connection state
 - **Uptime**: how long the server has been running since last restart
-- **Panel Access**: shows the URLs you can use to open the Panel UI on tablets, phones, or other devices on the network (e.g., `http://192.168.1.100:8080/panel`). If the server is bound to localhost only, it tells you how to enable network access in Settings. In a cloud remote session those addresses are on the space's network and cannot reach you, so the card points you to Remote Panel in the cloud portal instead.
+- **Panel Access**: shows the URLs you can use to open the Panel UI on tablets, phones, or other devices on the network (e.g., `http://192.168.1.100:8080/panel`). With one adapter chosen under Accept connections from, it shows only that adapter's addresses; with This computer only, it tells you where to change that in Settings. In a cloud remote session those addresses are on the space's network and cannot reach you, so the card points you to Remote Panel in the cloud portal instead.
 - **Panels**: every tablet, phone or browser that has asked to open the panel. A device waiting for approval shows its code, the kind of device it is and its address, with **Approve** and **Deny**; an approved panel shows its name and when it was last seen, with **Rename** and **Revoke**. While a panel is waiting, a notice with the same **Approve** and **Deny** appears at the top of every view. With Panel access set to **Anyone on the network** (Settings > Access), the card says so instead. See [Approve the Panel](panel-app.md#4-approve-the-panel)
 - **Monitored readings**: anything you tagged with **Monitor** shows its live value here — a variable, or a reading off a device such as lamp hours, a DSP temperature, or a fault flag. Where you set limits, a reading outside them is flagged; where you did not, the value is shown without any judgement. See [Variables and State](variables-and-state.md#monitor-a-reading)
 - **ISC status**: if Inter-System Communication is enabled, shows connected peer instances
@@ -122,7 +122,8 @@ This tab is essential for debugging bindings and triggers. If a button feedback 
 
 The Settings view configures the server itself: networking, authentication, and logging. Changes here are saved to `system.json` in the data directory and persist across restarts and updates.
 
-- **Bind address**: controls whether OpenAVC accepts connections from other devices on the network. `0.0.0.0` allows access from tablets, phones, and other computers; `127.0.0.1` restricts to this machine only. The packaged installs (Windows, macOS, Docker, Linux install script) come set to `0.0.0.0`; an install from source starts at `127.0.0.1`.
+- **Accept connections from**: who can open the panel and the Programmer. **Any network** (the default on an installed system), one network adapter, listed by name and address, or **This computer only** (the default on an install from source). The lines under it say who can connect and the addresses panels open at. A change takes a restart. If it would cut off the browser you are using, Settings says where to open the Programmer instead, and OpenAVC goes back to the previous choice if nobody opens the Programmer that way within 10 minutes. In Docker it is set in the compose file and shown here locked.
+- **Reach devices through**: on a computer connected to more than one network, the adapter that device control and discovery scans use. **Every connected adapter** by default.
 - **Port**: HTTP port (default 8080)
 - **Programmer password**: protects the Programmer IDE and API when the server is network-accessible
 - **API key**: for third-party integrations connecting via REST or WebSocket

@@ -25,6 +25,11 @@ REPO = Path(__file__).resolve().parents[1]
 DOC = REPO / "docs" / "hardened-deployment.md"
 SETTINGS_VIEW = REPO / "openavc" / "web" / "programmer" / "src" / "views" / "SystemSettingsView.tsx"
 SIDEBAR = REPO / "openavc" / "web" / "programmer" / "src" / "components" / "layout" / "Sidebar.tsx"
+# The Settings view, and the Network section's two adapter fields it renders.
+SETTINGS_SOURCES = (
+    SETTINGS_VIEW,
+    REPO / "openavc" / "web" / "programmer" / "src" / "components" / "system" / "NetworkChoiceFields.tsx",
+)
 
 TEXT = DOC.read_text(encoding="utf-8")
 
@@ -104,8 +109,22 @@ def test_the_profile_produces_the_posture_it_describes(tmp_path, monkeypatch):
     assert cfg.get("network", "port80_redirect") is False
 
 
-def test_every_environment_variable_maps_to_the_setting_the_page_names():
-    by_setting = {f"{s}.{k}": var for (s, k), (var, _) in ENV_OVERRIDES.items()}
+def _held_by_environment(tmp_path, monkeypatch) -> dict[str, str]:
+    """Every field each variable holds, from a real load with all of them set.
+    A variable can hold more than the key it was made for: OPENAVC_BIND holds
+    Accept connections from, OPENAVC_CONTROL_INTERFACE Reach devices through."""
+    samples = {bool: "true", int: "1", list: "10.20.30.5", str: "10.20.30.5"}
+    for env_var, target_type in ENV_OVERRIDES.values():
+        monkeypatch.setenv(env_var, samples[target_type])
+    cfg = SystemConfig()
+    cfg._data_dir = tmp_path
+    cfg._file_path = tmp_path / "system.json"
+    cfg.load()
+    return cfg.env_overrides()
+
+
+def test_every_environment_variable_maps_to_the_setting_the_page_names(tmp_path, monkeypatch):
+    by_setting = _held_by_environment(tmp_path, monkeypatch)
     known = set(by_setting.values())
     for name in set(re.findall(r"OPENAVC_[A-Z0-9_]+", TEXT)):
         assert name in known, f"{name} is not an environment override"
@@ -125,7 +144,7 @@ def test_every_environment_variable_maps_to_the_setting_the_page_names():
     sorted(set(re.findall(r"Settings > [A-Za-z]+ > \*\*([^*]+)\*\*", TEXT))),
 )
 def test_settings_labels_named_on_the_page_exist(label):
-    assert label in SETTINGS_VIEW.read_text(encoding="utf-8")
+    assert any(label in source.read_text(encoding="utf-8") for source in SETTINGS_SOURCES)
 
 
 @pytest.mark.parametrize(

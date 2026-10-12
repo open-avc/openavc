@@ -45,6 +45,8 @@ Ensure port 8080 is accessible from:
 - Programmer workstations (Programmer IDE)
 - Any external integrations using the REST API
 
+On a computer connected to more than one network, Settings > Network > **Accept connections from** chooses which of them can reach port 8080: see [More than one network adapter](hardened-deployment.md#more-than-one-network-adapter).
+
 For multi-instance setups using ISC auto-discovery, allow UDP broadcast on port 19872 within the same subnet. For cross-subnet ISC, configure peer addresses manually and allow TCP on each instance's HTTP port.
 
 ### Host firewall: handled for you
@@ -106,8 +108,9 @@ System-level configuration controls the server itself: networking, authenticatio
 {
     "network": {
         "http_port": 8080,
-        "bind_address": "127.0.0.1",
-        "control_interface": "",
+        "accept_connections_from": "any",
+        "accept_connections_adapter": {},
+        "reach_devices_through": {},
         "trust_forwarded_for": false,
         "trusted_proxies": [],
         "backend_module": ""
@@ -163,7 +166,8 @@ System-level configuration controls the server itself: networking, authenticatio
 
 A few keys deserve a note:
 
-- `auth.allow_anonymous` controls whether an instance with no credentials serves the Programmer IDE openly. The default `"auto"` means a from-source development checkout runs open, while every packaged install (Windows, macOS, Linux, Docker, Pi) requires the first-run setup screen to set an admin password before the IDE is reachable. Set `true` or `false` to force either behavior. Setting `true` opens the full admin surface to everyone who can reach the instance, not just the Programmer IDE but the configuration API, including the ability to set or overwrite the admin credential, change the bind address, and disable TLS. Open an instance only where reachability is already restricted (bind to localhost, or front it with an authenticating reverse proxy) rather than trusting the network to be friendly.
+- `network.accept_connections_from` is **Accept connections from** in Settings > Network: `"any"`, `"adapter"` (the adapter in `network.accept_connections_adapter`, as `{"name", "mac"}`, plus this computer) or `"this_computer"`. When the file has no value, the server writes the default at its next start: `"any"` on an installed system, `"this_computer"` on a run from source. `network.reach_devices_through` is **Reach devices through**: `{}` for every connected adapter, or one adapter as `{"name", "mac"}`. Choose both in Settings, which lists the adapters by name. The server also writes `network.bind_address` and `network.control_interface`, for an earlier version to read after a rollback; editing them changes nothing.
+- `auth.allow_anonymous` controls whether an instance with no credentials serves the Programmer IDE openly. The default `"auto"` means a from-source development checkout runs open, while every packaged install (Windows, macOS, Linux, Docker, Pi) requires the first-run setup screen to set an admin password before the IDE is reachable. Set `true` or `false` to force either behavior. Setting `true` opens the full admin surface to everyone who can reach the instance, not just the Programmer IDE but the configuration API, including the ability to set or overwrite the admin credential, change who can connect, and disable TLS. Open an instance only where reachability is already restricted (This computer only under Accept connections from, or an authenticating reverse proxy in front of it) rather than trusting the network to be friendly.
 - `auth.programmer_username` is optional. When empty, any username is accepted with the correct password. Set it to require a specific username at the login prompt.
 - `discovery.advertise` controls the mDNS advertisement that lets panel apps find this server on the network. Set to `false` to hide the server from discovery (devices then connect by IP address).
 - `panels.access` decides who can open the room panel. `approved`, the default, makes a new tablet or browser wait until it is approved once in the Programmer (or with the admin password typed on the panel); `open` admits anyone who can reach the port. The screen on the device itself, a panel opened through OpenAVC Cloud and the Programmer's own preview never need approval. The same setting is **Panel access** under Settings > Access, and a change applies at once.
@@ -175,8 +179,8 @@ A few keys deserve a note:
 | system.json path | Environment Variable | Default |
 |---|---|---|
 | `network.http_port` | `OPENAVC_PORT` | `8080` |
-| `network.bind_address` | `OPENAVC_BIND` | `127.0.0.1` |
-| `network.control_interface` | `OPENAVC_CONTROL_INTERFACE` | `""` |
+| `network.accept_connections_from` | `OPENAVC_BIND` (`0.0.0.0`, `127.0.0.1`, or one of this computer's addresses) | `any` installed, `this_computer` from source |
+| `network.reach_devices_through` | `OPENAVC_CONTROL_INTERFACE` (one of this computer's addresses) | `{}` |
 | `network.trust_forwarded_for` | `OPENAVC_TRUST_FORWARDED_FOR` | `false` |
 | `network.trusted_proxies` | `OPENAVC_TRUSTED_PROXIES` (comma-separated) | `[]` |
 | `auth.programmer_username` | `OPENAVC_PROGRAMMER_USERNAME` | `""` |
@@ -204,7 +208,7 @@ You can also read and modify system configuration through the REST API:
 - `GET /api/system/config` returns the current configuration (sensitive fields redacted)
 - `PATCH /api/system/config` updates individual sections and saves to disk
 
-> **Bind address security:** The packaged installs — Windows installer, macOS installer, Docker, and the Linux install script — pre-configure `0.0.0.0` (network-accessible) since these deployments typically serve touch panels on other devices. A from-source installation defaults to `127.0.0.1` (localhost only); to allow network access, set `bind_address` to `0.0.0.0` in system.json or via the `OPENAVC_BIND` environment variable. To force localhost-only on a packaged install, set `OPENAVC_BIND=127.0.0.1` instead. When bound to `0.0.0.0` without authentication configured, the server logs a prominent warning at startup. A localhost-only server says so where it would otherwise print a LAN address: the startup banner's `LAN access` line and the `/setup` screen both report local-only access and name the setting to change, rather than offering an address nothing on the network can open.
+> **Who can connect:** an installed system accepts connections from any network, so touch panels on other devices can reach it, and a from-source run from this computer only. Change it in Settings > Network > **Accept connections from**. When it reaches a network and no admin password or API key is set, the server logs a warning at startup. With This computer only, the startup banner's `LAN access` line and the `/setup` screen say so and name the setting, rather than offering an address nothing on the network can open.
 
 ## Updates
 
@@ -244,15 +248,18 @@ Type=exec
 User=openavc
 Group=openavc
 WorkingDirectory=/opt/openavc
+ExecStartPre=-+/opt/openavc/update-helper.sh /var/lib/openavc
+ExecStartPre=-+/opt/openavc/firewall-sync.sh /var/lib/openavc
 ExecStart=/opt/openavc/venv/bin/python -m openavc.main
 Restart=always
 RestartSec=5
 Environment=OPENAVC_DATA_DIR=/var/lib/openavc
 Environment=OPENAVC_LOG_DIR=/var/log/openavc
 Environment=OPENAVC_PROJECT=/var/lib/openavc/projects/default/project.avc
-Environment=OPENAVC_BIND=0.0.0.0
+Environment=OPENAVC_ALLOW_ANONYMOUS=false
+Environment=OPENAVC_SERVICE_MANAGED=1
 NoNewPrivileges=true
-AmbientCapabilities=CAP_NET_RAW
+AmbientCapabilities=CAP_NET_RAW CAP_NET_BIND_SERVICE
 ProtectSystem=strict
 ReadWritePaths=/var/lib/openavc /var/log/openavc -/opt/openavc/driver_repo -/opt/openavc/plugin_repo
 ProtectHome=true
@@ -488,7 +495,7 @@ This applies only to the Pi appliance image. A generic Linux `install.sh` host r
 
 ## Authentication
 
-Packaged installs (Windows, macOS, Linux, Docker, Pi) start unclaimed: the first person to open the Programmer IDE sees a setup screen that sets the admin password, so a shipped controller is never left open on the network. A from-source development checkout runs open by default; set a programmer password before making it network-accessible (`0.0.0.0`). To run an instance intentionally open (for example behind your own SSO reverse proxy), set `auth.allow_anonymous` to `true` and restrict reachability at the proxy.
+Packaged installs (Windows, macOS, Linux, Docker, Pi) start unclaimed: the first person to open the Programmer IDE sees a setup screen that sets the admin password, so a shipped controller is never left open on the network. A from-source development checkout runs open by default; set a programmer password before letting it accept connections from the network. To run an instance intentionally open (for example behind your own SSO reverse proxy), set `auth.allow_anonymous` to `true` and restrict reachability at the proxy.
 
 The Panel UI never asks an end user for a password. Who may open it is **Panel access** (Settings > Access). With **Approved panels only**, the default, a new tablet or browser waits on a screen showing a six-digit code until you approve it once, from the notice in the Programmer, from the Dashboard's **Panels** list (from the office through OpenAVC Cloud too), or with the admin password typed on the panel; it then stays approved until revoked. With **Anyone on the network**, any device that can reach the port opens the panel. The device's own screen, a panel opened through OpenAVC Cloud and the Programmer's preview never wait.
 
@@ -637,7 +644,7 @@ Platform notes:
 - Communication is HTTP by default, suitable for isolated AV VLANs.
 - HTTPS is available as a built-in opt-in (see the HTTPS section above). Auto-generated self-signed cert by default, or supply your own cert/key for environments with an internal CA. Reverse-proxy TLS is still supported for deployments that prefer it.
 - ISC (inter-system communication) uses a shared auth key for system-to-system traffic, and switches to `wss://` automatically when peers advertise HTTPS.
-- Packaged installs bind to all interfaces (`0.0.0.0`) so panels on other devices can connect; set a Programmer password (the first-run prompt) on any networked deployment, and an API key as well if you have integrations. A from-source install binds to localhost only until you change it.
+- Packaged installs accept connections from any network so panels on other devices can connect; set a Programmer password (the first-run prompt) on any networked deployment, and an API key as well if you have integrations. A from-source install accepts connections from this computer only until you change it. Settings > Network > **Accept connections from** narrows either to one adapter.
 
 ## See Also
 

@@ -435,7 +435,7 @@ _PAGE = """<!DOCTYPE html>
         : net.local_only
         ? ' This controller accepts connections from this computer only, so nothing else on the network can reach it. To open it from another machine, change Accept connections from in Settings > Network and restart.'
         : (others.length
-          ? ' This controller is on more than one network -- if that address does not open, try the others listed below.'
+          ? ' This controller is on more than one network. If that address does not open, try the others listed below.'
           : '');
       var where = net.local_only
         ? 'From a browser on this device, open '

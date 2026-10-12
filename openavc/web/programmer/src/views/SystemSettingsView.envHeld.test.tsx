@@ -135,15 +135,32 @@ describe("A field the environment holds", () => {
     expect(noteBeside(listenField())?.textContent).toContain(sentence);
   });
 
-  it("is fixed at Any network in Docker, with the compose file named instead", async () => {
+  it("is locked in Docker, with the compose file named instead", async () => {
     served.config = withEnvironment("docker", HELD_BY_BIND);
     await renderSettings();
     expect(listenField()).toBeDisabled();
     expect(listenField().value).toBe("any");
-    expect(screen.getByTestId("accept-connections-docker").textContent).toContain(
-      "In Docker, choose the host address in the compose file's ports: setting.",
+    const docker = screen.getByTestId("accept-connections-docker");
+    expect(docker.textContent).toContain(
+      "In Docker, choose this in the compose file: OPENAVC_BIND under environment: with host networking, or the host address in ports: with published ports.",
     );
+    expect(docker.querySelector("a")?.getAttribute("href")).toContain("hardened-deployment/#docker");
     expect(noteBeside(listenField())).toBeNull();
+  });
+
+  it("shows what the container runs in Docker, not Any network", async () => {
+    // The standard compose file uses host networking, where OPENAVC_BIND in
+    // its environment: is what limits who can connect.
+    served.config = {
+      ...withEnvironment("docker", HELD_BY_BIND),
+      network: { ...(BASE.network as object), accept_connections_from: "this_computer", bind_address: "127.0.0.1" },
+    };
+    await renderSettings();
+    expect(listenField()).toBeDisabled();
+    expect(listenField().selectedOptions[0]?.textContent).toBe("This computer only");
+    expect(screen.getByTestId("accept-connections-help").textContent).toBe(
+      "Only this computer's own screen and browser can open the panel and the Programmer.",
+    );
   });
 
   it("locks Reach devices through when OPENAVC_CONTROL_INTERFACE holds it", async () => {

@@ -16,8 +16,9 @@ variable now only appears where someone set it on purpose:
   put there, and starts the server with OPENAVC_BIND as the installed file
   holds it now, because launchd keeps what it loaded until the job is loaded
   again.
-- Docker: the image keeps 0.0.0.0 on purpose; the compose file's ports:
-  decides who can connect, and Settings says so.
+- Docker: the image keeps 0.0.0.0 on purpose; the compose file decides who
+  can connect (OPENAVC_BIND under environment: with host networking, ports:
+  with bridge networking), and Settings says so.
 
 The wrapper runs below are the real script under bash against a real plist.
 On a Mac they use the real PlistBuddy; elsewhere a stand-in that reads and
@@ -103,7 +104,7 @@ def test_the_launch_settings_leave_who_can_connect_to_settings():
 
 def test_the_docker_image_keeps_every_address():
     """Inside a bridge-networked container only 0.0.0.0 is reachable through
-    the published port; the host's compose file decides who can connect."""
+    the published port; the compose file decides who can connect."""
     lines = DOCKERFILE.read_text(encoding="utf-8").splitlines()
     assert "ENV OPENAVC_BIND=0.0.0.0" in lines
 

@@ -36,7 +36,7 @@ The fastest way to get started on Windows.
 
 After installation, open **http://localhost:8080/programmer** in your browser to start building.
 
-> The Windows installer pre-configures OpenAVC to accept connections from other devices on the network (tablets, phones, other PCs). If you only need local access, no configuration changes are needed.
+> OpenAVC accepts connections from tablets, phones and other computers on any network this PC is on. To limit that to one network, or to this PC only, change **Accept connections from** in Settings > Network.
 
 ## macOS Installer
 
@@ -56,7 +56,7 @@ The fastest way to get started on a Mac.
 
 After installation, open **http://localhost:8080/programmer** in your browser to start building.
 
-> Like the Windows installer, the macOS installer pre-configures OpenAVC to accept connections from other devices on the network. If you only need local access, no configuration changes are needed.
+> OpenAVC accepts connections from other devices on any network this Mac is on. To limit that, change **Accept connections from** in Settings > Network.
 
 ## Docker
 
@@ -69,7 +69,7 @@ docker compose up -d
 
 The compose file ships with `network_mode: host` and `cap_add: NET_RAW` so device discovery and mDNS can reach AV equipment on your LAN. Don't strip those out -- discovery won't work without them.
 
-The container binds to `0.0.0.0` by default (network-accessible). Access at **http://\<host-ip\>:8080/programmer**.
+The container accepts connections from any network the host is on ([Docker](hardened-deployment.md#docker) says how to limit that). Access at **http://\<host-ip\>:8080/programmer**.
 
 For serial/USB device passthrough, add `devices: ["/dev/ttyUSB0:/dev/ttyUSB0"]` to the compose file.
 
@@ -103,11 +103,11 @@ sudo systemctl status openavc    # Check status
 sudo journalctl -u openavc -f    # View logs
 ```
 
-Access at **http://localhost:8080/programmer**, or **http://&lt;server-ip&gt;:8080/programmer** from another device. The installed service listens on all network interfaces so tablets and panels can reach it.
+Access at **http://localhost:8080/programmer**, or **http://&lt;server-ip&gt;:8080/programmer** from another device. The installed service accepts connections from any network the machine is on, so tablets and panels can reach it.
 
 The first time you open the Programmer, you choose an admin username (prefilled with `admin`) and password. They protect the Programmer and the control API, and you'll enter both on the Programmer's sign-in screen. A tablet or browser that opens the room panel at `/panel` waits until you approve it once in the Programmer; nobody enters a password on the panel. You can change them later in **Settings > Security**.
 
-To bind to localhost only (no network access) instead, set `Environment=OPENAVC_BIND=127.0.0.1` with `sudo systemctl edit openavc` and restart the service.
+To accept connections from one network only, or from this machine only, change **Accept connections from** in Settings > Network.
 
 ## Raspberry Pi Image
 
@@ -176,7 +176,7 @@ With the venv still activated:
 python -m openavc.main
 ```
 
-This starts the OpenAVC server on port 8080, bound to localhost only.
+This starts the OpenAVC server on port 8080, accepting connections from this computer only.
 
 ## Access the Web Interface
 
@@ -223,7 +223,7 @@ The sidebar has these sections:
 - **AI Assistant.** AI-powered help and automation (requires cloud connection).
 - **Cloud.** Cloud platform connection and monitoring.
 - **Log.** Real-time system log and state changes.
-- **Settings.** Server configuration (port, bind address, logging).
+- **Settings.** Server configuration (port, who can connect, logging).
 - **Updates.** Check for and install OpenAVC updates.
 
 At the bottom of the sidebar, the **Simulate Devices** button (play icon) starts the device simulator so you can test without real hardware.
@@ -244,11 +244,11 @@ In the Device View, select the projector and use the command testing panel. Choo
 
 Navigate to http://localhost:8080/panel in another tab. This is what end users see on a touchscreen. Press the buttons and watch commands flow through the system.
 
-**Accessing from a tablet or phone:** The packaged installs (Windows Installer, macOS Installer, Docker, the Linux Install Script, and the Raspberry Pi image) accept network connections out of the box, so the panel URL works from any device on the same network. Only an install from source starts bound to the local machine. To open it up on a source install:
+**Accessing from a tablet or phone:** The packaged installs (Windows Installer, macOS Installer, Docker, the Linux Install Script, and the Raspberry Pi image) accept connections from any network, so the panel URL works from any device on the same network. An install from source starts at **This computer only**. To open it up on a source install:
 
-1. Go to **Settings** in the Programmer IDE sidebar
-2. Change the **bind address** to `0.0.0.0`
-3. Save and restart the server
+1. Go to **Settings > Network** in the Programmer IDE
+2. Set **Accept connections from** to **Any network**, or to the adapter on the tablet's network
+3. Save, then click **Restart now**
 4. The **Dashboard** will show the panel URL with your machine's IP address (e.g., `http://192.168.1.100:8080/panel`) that you can open on any device on the same network
 5. Open it on the tablet. The panel shows **Waiting for approval** with a six-digit code; approve it from the notice that appears in the Programmer, or from the Dashboard's **Panels** list, and the panel loads. Approve each device once; it stays approved.
 
@@ -259,7 +259,7 @@ These environment variables override the corresponding `system.json` settings, a
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OPENAVC_PORT` | `8080` | HTTP server port |
-| `OPENAVC_BIND` | `127.0.0.1` | Bind address (`0.0.0.0` for network access) |
+| `OPENAVC_BIND` | (none) | Who can connect, in place of Settings > Network > Accept connections from: `0.0.0.0` any network, `127.0.0.1` this computer only, or one of this computer's addresses |
 | `OPENAVC_PROGRAMMER_PASSWORD` | (none) | Password for Programmer IDE access |
 | `OPENAVC_API_KEY` | (none) | API key for REST/WebSocket integrations |
 | `OPENAVC_LOG_LEVEL` | `info` | Log level (debug, info, warning, error) |

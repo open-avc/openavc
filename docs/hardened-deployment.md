@@ -76,7 +76,7 @@ Most of these settings are also in the Programmer under **Settings**, and changi
 
 Two more depend on the site:
 
-- **Settings > Network > Control interface.** On a machine with more than one network adapter, pick the AV adapter. See [More than one network adapter](#more-than-one-network-adapter).
+- **Settings > Network > Accept connections from** and **Reach devices through.** On a machine with more than one network adapter, choose the AV adapter in both. See [More than one network adapter](#more-than-one-network-adapter).
 - **Settings > Devices > Retry every.** OpenAVC retries an offline device every 5 seconds by default. On a network whose monitoring flags repeated connection attempts, raise it (30 or 60 seconds). This one is saved with the project.
 
 ### Setting values in the environment instead
@@ -93,18 +93,17 @@ A value in the service's environment takes precedence over `system.json` and ove
 | `OPENAVC_PORT80_REDIRECT` | `network.port80_redirect` |
 | `OPENAVC_TRUST_FORWARDED_FOR` | `network.trust_forwarded_for` |
 | `OPENAVC_TRUSTED_PROXIES` | `network.trusted_proxies` (comma-separated) |
-| `OPENAVC_BIND` | `network.bind_address` |
-| `OPENAVC_CONTROL_INTERFACE` | `network.control_interface` |
+| `OPENAVC_BIND` | `network.accept_connections_from`: `0.0.0.0` for any network, `127.0.0.1` for this computer only, or one of this computer's addresses for that adapter only |
+| `OPENAVC_CONTROL_INTERFACE` | `network.reach_devices_through`: one of this computer's addresses |
 | `OPENAVC_MDNS_ADVERTISE` | `discovery.advertise` |
 | `OPENAVC_CLOUD_ENABLED` | `cloud.enabled` |
 | `OPENAVC_UPDATE_CHECK` | `updates.check_enabled` |
 | `OPENAVC_PROGRAMMER_PASSWORD` | the admin password, for a system provisioned before anyone opens it |
 
-- **Linux:** `sudo systemctl edit openavc`, then add the variables under `[Service]` as `Environment=NAME=value` lines. The file this creates is kept across updates.
+- **Linux:** `sudo systemctl edit openavc`, then add the variables under `[Service]` as `Environment=NAME=value` lines. The file this creates is kept across updates. Delete a line there to remove that variable. Apply the change with `sudo systemctl restart openavc`.
 - **Docker:** the `environment:` section of the compose file.
-- **Windows and macOS:** use `system.json`. The installer rewrites the service's environment each time it runs, and on Windows every update runs it.
-
-Every packaged install sets `OPENAVC_BIND=0.0.0.0` (listen on every adapter) and `OPENAVC_ALLOW_ANONYMOUS=false` in its service environment, so on those systems **Bind address** in Settings is locked and `network.bind_address` in `system.json` has no effect. Change the bind address with `OPENAVC_BIND` on Linux and Docker; on Windows and macOS, restrict access with the firewall instead.
+- **Windows:** in an administrator command prompt, run `"C:\Program Files\OpenAVC\nssm.exe" edit OpenAVC`. On the **Environment** tab, add or delete `NAME=value` lines, then click **Edit service**. Restart the service to apply the change: **Restart Service** in the OpenAVC tray menu, or `Restart-Service OpenAVC` in an administrator PowerShell. From OpenAVC 0.37.0, updates keep the variables you set there.
+- **macOS:** the `EnvironmentVariables` section of `/Library/LaunchDaemons/com.openavc.server.plist`, edited with `sudo`. Stop and start the service (the commands above) to apply a change; `OPENAVC_BIND` is read from the file at each start of the server, so for that one **Service > Restart** in the menu bar is enough. Updates keep the file; running the `.pkg` installer again replaces it.
 
 ---
 
@@ -178,16 +177,19 @@ A block rule added this way keeps working after you update. On a domain-joined m
 
 ### macOS
 
-The macOS application firewall allows or blocks a program, not an address. Restrict 8080 and 8443 at the network: an access list on the switch, or the firewall between VLANs.
+The macOS application firewall allows or blocks a program, not an address. Restrict 8080 and 8443 at the network: an access list on the switch, or the firewall between VLANs. On a Mac with more than one network adapter, **Accept connections from** keeps the other networks out (see [More than one network adapter](#more-than-one-network-adapter)).
 
 ### Docker
 
-With host networking (the single-system compose file), the host's firewall applies and the Linux rules above are what to use. Ports that Docker publishes (the multi-system compose file) are routed before ufw sees them, so publish each port on the host's AV address instead of on every address:
+In Docker, who can connect is set in the compose file, and Settings shows it locked.
 
-```yaml
-ports:
-  - "10.20.30.5:8081:8080"
-```
+- **Host networking** (the single-system compose file): set `OPENAVC_BIND` under `environment:` to the host's AV address, or to `127.0.0.1` for this computer only. The host's firewall applies too, and the Linux rules above are what to use.
+- **Published ports** (the multi-system compose file): Docker routes them before ufw sees them, so publish each port on the host's AV address instead of on every address:
+
+  ```yaml
+  ports:
+    - "10.20.30.5:8081:8080"
+  ```
 
 ### Plugin ports
 
@@ -202,12 +204,7 @@ If nginx, Caddy, HAProxy or another proxy is in front of OpenAVC:
 1. Have the proxy set `X-Forwarded-For` to the client's address. In nginx that is `proxy_set_header X-Forwarded-For $remote_addr;`. Caddy sets it by default.
 2. Set `network.trust_forwarded_for` to `true`. Unless the proxy reaches OpenAVC over loopback, also list it in `network.trusted_proxies`, as an address or a range: `["10.20.30.5"]`, or `OPENAVC_TRUSTED_PROXIES=10.20.30.5`. That means a proxy on another machine, and any proxy in front of Docker with published ports, which arrives from the Docker network: list that network's range, which `docker network inspect <network> --format '{{(index .IPAM.Config 0).Subnet}}'` prints. OpenAVC reads `X-Forwarded-For` only from loopback and these proxies.
 3. Make the proxy the only way to reach OpenAVC.
-   - **Proxy on the same machine, Linux or Docker with host networking:** set `OPENAVC_BIND=127.0.0.1`.
-   - **Proxy on the same machine, Docker with published ports:** publish on loopback, `"127.0.0.1:8081:8080"`.
-   - **Proxy on the same machine, Windows:** a block rule for every address except loopback:
-     ```powershell
-     New-NetFirewallRule -DisplayName "OpenAVC - block all but loopback" -Direction Inbound -Action Block -Protocol TCP -LocalPort 8080,8443 -RemoteAddress "0.0.0.0-126.255.255.255","128.0.0.0-255.255.255.255"
-     ```
+   - **Proxy on the same machine:** set Settings > Network > **Accept connections from** to **This computer only**. In Docker, set `OPENAVC_BIND=127.0.0.1` under `environment:` with host networking, or publish on loopback, `"127.0.0.1:8081:8080"`, with published ports.
    - **Proxy on another machine:** allow 8080 and 8443 from the proxy's address only.
 
 Without step 1, every request through a proxy on the same machine arrives from the machine itself, so OpenAVC treats it as the machine's own screen: panels connect without approval, sign-in attempts are not rate-limited, and the host network settings, on a system that offers them, open without the admin password. Without the `network.trusted_proxies` entry, OpenAVC counts every client of a proxy that is not on loopback as the proxy, so one client's failed sign-ins slow down sign-in for all of them.
@@ -218,11 +215,15 @@ Behind a proxy every panel needs approval, including a browser on the OpenAVC ma
 
 ## More than one network adapter
 
-A machine with one adapter on the AV network and another on the campus network is the usual arrangement.
+A machine with one adapter on the AV network and another on the campus network is the usual arrangement. In Settings > Network:
 
-- **Settings > Network > Control interface:** pick the AV adapter. Device connections and discovery scans then use that adapter only.
-- **The web ports listen on every adapter.** Restrict them with the firewall rules above, allowing the AV network and, if the Programmer is used from there, the management network.
-- **Advertise on the network** announces on the IPv4 adapters where the web server listens, whichever control interface is picked. A localhost-only server does not advertise to network panels. Turn it off unless the Panel app's list of systems is used.
+- **Accept connections from:** choose the AV adapter. Panels and browsers on the AV network can open the panel and the Programmer, and nothing on the campus network can reach the sign-in page. The machine's own screen, the tray or menu bar app, and remote access through OpenAVC Cloud keep working. If the Programmer is also used from the management network, leave this at **Any network** and allow only the AV and management networks with the firewall rules above.
+- **Reach devices through:** choose the AV adapter. Device connections and discovery scans then use that adapter only.
+- **Advertise on the network** announces only where Accept connections from allows, and not at all for This computer only. Turn it off unless the Panel app's list of systems is used.
+
+Both choices name the adapter, not its address, so a new address from DHCP is followed. If the chosen adapter is unplugged or has no address when OpenAVC starts, OpenAVC accepts connections from this computer only, says so on the Dashboard and in Settings, and listens on the adapter again when it comes back.
+
+Before OpenAVC 0.37.0, the web ports listen on every adapter whatever Settings says, and Reach devices through is called Control interface. On those versions, restrict the web ports with the firewall rules above.
 
 ```
             Campus / management network
@@ -273,6 +274,6 @@ Run these after the system is configured, and again after each OpenAVC update.
 1. From a computer outside the allowed networks, open `http://<host>:8080/panel` and `https://<host>:8443/panel`. **Expected:** neither connects (the attempt times out or is refused).
 2. From a device on the AV network that has never been approved, open `http://<host>:8080/panel`. **Expected:** the browser moves to `https://`, and the page shows the waiting screen with a six-digit code.
 3. Open `https://<host>:8443/programmer`. **Expected:** no certificate warning (with your organization's certificate or the cloud's trusted certificate), and a sign-in prompt.
-4. In the Programmer, **Settings > Access** shows **Approved panels only**; **Settings > Network** shows **Advertise on the network** off and the AV adapter as **Control interface**; the **Cloud** page shows the system is not paired (unless it is meant to be); the **Inter-System** page says ISC is switched off for this whole system.
+4. In the Programmer, **Settings > Access** shows **Approved panels only**; **Settings > Network** shows **Advertise on the network** off and, on a machine with more than one adapter, the AV adapter under **Accept connections from** and **Reach devices through**; the **Cloud** page shows the system is not paired (unless it is meant to be); the **Inter-System** page says ISC is switched off for this whole system.
 5. List the firewall rules (`sudo ufw status`, `sudo firewall-cmd --list-all`, or `Get-NetFirewallRule -DisplayName "OpenAVC*"`). **Expected:** no rule allows 8080 or 8443 from every address. On Windows, the **OpenAVC** rule lists only your networks (`Get-NetFirewallRule -DisplayName OpenAVC | Get-NetFirewallAddressFilter`), or the block rule is present and enabled.
 6. Signed in as an ordinary (non-administrator) account on the OpenAVC machine, try to read `system.json` (`type C:\ProgramData\OpenAVC\system.json` or `cat /var/lib/openavc/system.json`). **Expected:** access is denied.

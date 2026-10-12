@@ -87,9 +87,11 @@ ENV OPENAVC_LOG_DIR=/data/logs
 # Every address inside the container, on purpose and unlike the other
 # installs: with bridge networking only 0.0.0.0 is reachable through the
 # published port, and the container's own address is not stable. Who can
-# connect is chosen on the host, by the address the compose file's ports:
-# publishes on, and Settings > Network > Accept connections from says so
-# instead of offering the choice.
+# connect is chosen in the compose file: OPENAVC_BIND under environment: with
+# host networking (the standard compose file), or the address ports:
+# publishes on with bridge networking. Settings > Network > Accept
+# connections from shows what the container runs and says so instead of
+# offering the choice.
 ENV OPENAVC_BIND=0.0.0.0
 # Secure by default: the admin surface requires a credential (first run sets
 # it via the Programmer); the room panel stays open. Override only behind your
