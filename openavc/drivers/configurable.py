@@ -34,7 +34,7 @@ from openavc.drivers.base import (
     UnknownDeviceSettingError,
     normalize_and_validate_command_params as _normalize_and_validate_command_params,
 )
-from openavc.drivers.child_ids import coerce_child_local_id
+from openavc.drivers.child_ids import coerce_child_local_id, page_starts
 from openavc.drivers.spec import DEFAULT_LINE_GAP_S, LINE_GAP_TRANSPORTS
 from openavc.drivers.inline_protocol import (
     derive_command_params,
@@ -511,6 +511,14 @@ class ConfigurableDriver(BaseDriver):
             return ""
         parts = []
         for cm in child_mappings:
+            if "list" in cm:
+                # One reply writes a whole list, so a list is one scope; a
+                # device that answers a page at a time gets one per page.
+                parts.append(
+                    f"{cm['type']}:list:"
+                    f"{ConfigurableDriver._list_page(cm['list'], match)}"
+                )
+                continue
             id_kind, id_val = cm["id"]
             raw: Any = id_val
             if id_kind == "group":
@@ -520,6 +528,22 @@ class ConfigurableDriver(BaseDriver):
                     raw = None
             parts.append(f"{cm['type']}:{raw}")
         return "|".join(parts)
+
+    @staticmethod
+    def _list_page(spec: dict[str, Any], match: re.Match[str]) -> str:
+        """Where a list reply's page begins: the start capture, else the first
+        item's id, else the fixed start."""
+        kind, value = spec["start"]
+        try:
+            if spec["id_group"] is not None:
+                text = match.group(spec["group"]) or ""
+                first = spec["element"].search(text)
+                return str(first.group(spec["id_group"])) if first else ""
+            if kind == "group":
+                return str(match.group(value))
+        except (IndexError, re.error):
+            return ""
+        return str(value)
 
     def _merge_config_protocol(self) -> None:
         """Merge device-config-authored ``commands`` / ``responses`` /
@@ -1028,7 +1052,9 @@ class ConfigurableDriver(BaseDriver):
         unchanged; an ``{each_child: <type>, send: <template>}`` dict yields
         one query per registered child of that type with ``{child_id}``
         substituted (the unpadded local id). ``{child_id:spec}`` format specs
-        work too (``{child_id:02d}`` zero-pads for padded-address protocols);
+        work too (``{child_id:02d}`` zero-pads for padded-address protocols),
+        and ``page_size: N`` sends it once per page of N children instead
+        (``child_ids.page_starts``) for a list read that answers a page;
         other ``{placeholders}`` pass through untouched for the downstream
         config substitution. A ``{send: <string>}`` dict is a plain query that
         only exists in dict form so it can carry ``when:``. Either dict form may
@@ -1049,9 +1075,12 @@ class ConfigurableDriver(BaseDriver):
                         f"+ 'send'; skipping"
                     )
                     return []
+                children = page_starts(
+                    self.list_children(ctype), query.get("page_size")
+                )
                 return [
                     self._safe_substitute(template, {"child_id": local_id})
-                    for local_id in self.list_children(ctype)
+                    for local_id in children
                 ]
             send = query.get("send")
             if isinstance(send, str) and send:
@@ -2278,6 +2307,9 @@ class ConfigurableDriver(BaseDriver):
         roster."""
         writes: list[tuple[str, Any, dict[str, Any]]] = []
         for cm in child_mappings:
+            if "list" in cm:
+                writes.extend(self._resolve_child_list(match, cm))
+                continue
             ctype = cm["type"]
             id_kind, id_val = cm["id"]
             if id_kind == "group":
@@ -2289,51 +2321,129 @@ class ConfigurableDriver(BaseDriver):
                     continue
             else:
                 raw_id = id_val
-            id_map = cm.get("id_map")
-            if id_map is not None:
-                mapped_id = id_map.get(str(raw_id).strip())
-                if mapped_id is None:
-                    log.debug(
-                        f"[{self.device_id}] child_set: {ctype} wire id "
-                        f"{raw_id!r} not in the id map — skipping"
-                    )
-                    continue
-                raw_id = mapped_id
-            local_id = self._coerce_child_local_id(ctype, raw_id)
-            if local_id is None:
-                continue
-            if not self.is_child_registered(ctype, local_id):
+            write = self._child_write(ctype, raw_id, cm, match, "child_set")
+            if write is not None:
+                writes.append(write)
+        return writes
+
+    def _child_write(
+        self,
+        ctype: str,
+        raw_id: Any,
+        cm: dict[str, Any],
+        match: re.Match[str],
+        form: str,
+    ) -> tuple[str, Any, dict[str, Any]] | None:
+        """One child's ``(child type, local id, updates)`` from a wire id and
+        the match its props read their captures from (the rule's match for
+        ``child_set``, one item's for ``child_list``). None when the id cannot
+        be placed (outside the id map, not that kind of id, not registered) or
+        nothing was read."""
+        id_map = cm.get("id_map")
+        if id_map is not None:
+            mapped_id = id_map.get(str(raw_id).strip())
+            if mapped_id is None:
                 log.debug(
-                    f"[{self.device_id}] child_set: {ctype} {local_id!r} not "
-                    f"registered — skipping"
+                    f"[{self.device_id}] {form}: {ctype} wire id "
+                    f"{raw_id!r} not in the id map — skipping"
                 )
-                self._observe(CHILD_UNREGISTERED, child_type=ctype, local_id=local_id)
+                return None
+            raw_id = mapped_id
+        local_id = self._coerce_child_local_id(ctype, raw_id)
+        if local_id is None:
+            return None
+        if not self.is_child_registered(ctype, local_id):
+            log.debug(
+                f"[{self.device_id}] {form}: {ctype} {local_id!r} not "
+                f"registered — skipping"
+            )
+            self._observe(CHILD_UNREGISTERED, child_type=ctype, local_id=local_id)
+            return None
+        updates: dict[str, Any] = {}
+        for pm in cm["props"]:
+            value_type = pm.get("type", "string")
+            if "value" in pm:
+                updates[pm["prop"]] = self._convert_declared(
+                    pm["value"], value_type
+                )
                 continue
-            updates: dict[str, Any] = {}
-            for pm in cm["props"]:
-                value_type = pm.get("type", "string")
-                if "value" in pm:
-                    updates[pm["prop"]] = self._convert_declared(
-                        pm["value"], value_type
-                    )
-                    continue
+            try:
+                raw_value = match.group(pm.get("group", 0))
+            except (IndexError, re.error):
+                continue
+            if raw_value is None:
+                continue
+            value_map = pm.get("map")
+            if value_map and raw_value in value_map:
+                updates[pm["prop"]] = self._convert_declared(
+                    value_map[raw_value], value_type
+                )
+            else:
+                updates[pm["prop"]] = self._read_converted(
+                    raw_value, value_type, pm, self._convert_value
+                )
+        return (ctype, local_id, updates) if updates else None
+
+    def _resolve_child_list(
+        self, match: re.Match[str], cm: dict[str, Any]
+    ) -> list[tuple[str, Any, dict[str, Any]]]:
+        """Spread one reply's list across children (``child_list:``).
+
+        With a separator the list is split on it and every item, trimmed, has
+        to match the element whole; an item that does not still holds its
+        place, so the items after it keep their children. Without one the
+        element is found along the list one after another. An item names its
+        child by its own id capture, or by its place counted from ``start``
+        (a number, or the rule's capture when the reply says where its page
+        begins). Each item is then written exactly as a ``child_set`` entry
+        would be: id map, id coercion, unregistered ids skipped."""
+        spec = cm["list"]
+        ctype = cm["type"]
+        try:
+            text = match.group(spec["group"])
+        except (IndexError, re.error):
+            return []
+        if not text:
+            return []
+        element: re.Pattern[str] = spec["element"]
+        items: list[re.Match[str] | None]
+        if spec["separator"] is not None:
+            items = [
+                element.fullmatch(part.strip())
+                for part in text.split(spec["separator"])
+            ]
+        else:
+            # An empty match places nothing and is not a place in the list.
+            items = [m for m in element.finditer(text) if m.end() > m.start()]
+        id_group = spec["id_group"]
+        start = 0
+        if id_group is None:
+            kind, value = spec["start"]
+            if kind == "group":
                 try:
-                    raw_value = match.group(pm.get("group", 0))
+                    start = int(str(match.group(value)).strip())
+                except (IndexError, re.error, TypeError, ValueError):
+                    # The reply does not say where its list begins: placing
+                    # it anyway could write one page over another.
+                    return []
+            else:
+                start = value
+        writes: list[tuple[str, Any, dict[str, Any]]] = []
+        for place, item in enumerate(items):
+            if item is None:
+                continue
+            if id_group is None:
+                raw_id: Any = start + place
+            else:
+                try:
+                    raw_id = item.group(id_group)
                 except (IndexError, re.error):
                     continue
-                if raw_value is None:
+                if raw_id is None:
                     continue
-                value_map = pm.get("map")
-                if value_map and raw_value in value_map:
-                    updates[pm["prop"]] = self._convert_declared(
-                        value_map[raw_value], value_type
-                    )
-                else:
-                    updates[pm["prop"]] = self._read_converted(
-                        raw_value, value_type, pm, self._convert_value
-                    )
-            if updates:
-                writes.append((ctype, local_id, updates))
+            write = self._child_write(ctype, raw_id, cm, item, "child_list")
+            if write is not None:
+                writes.append(write)
         return writes
 
     def _read_converted(

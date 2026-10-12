@@ -123,7 +123,8 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   childEntityType: new Set(["dynamic", "id_format", "instances", "label", "label_field", "label_plural", "state_variables", "summary_fields"]),
   childInstances: new Set(["count", "count_from", "count_from_state", "ids", "ids_from", "label", "presence"]),
   childSetEntry: new Set(["id", "state", "type"]),
-  eachChildQuery: new Set(["each_child", "query_for", "send", "when"]),
+  childListEntry: new Set(["element", "group", "id", "separator", "start", "state", "type"]),
+  eachChildQuery: new Set(["each_child", "page_size", "query_for", "send", "when"]),
   queryEntry: new Set(["query_for", "send", "when"]),
   paramEntry: new Set(["child_type", "decimals", "default", "description", "help", "label", "map", "max", "min", "offset", "options_from", "options_state", "pattern", "required", "scale", "secret", "trim", "type", "type_from", "unit", "values"]),
   oscArg: new Set(["type", "value"]),
@@ -132,7 +133,7 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   actionEntry: new Set(["availability", "command", "confirm", "icon", "id", "kind", "label", "params", "url", "visible_when"]),
   visibleWhenCondition: new Set(["key", "operator", "value"]),
   mappingEntry: new Set(["arg", "contains", "group", "json_path", "key", "map", "state", "type", "value"]),
-  responseEntry: new Set(["address", "after_json", "child_set", "json", "mappings", "match", "only_when", "require", "set", "throttle"]),
+  responseEntry: new Set(["address", "after_json", "child_list", "child_set", "json", "mappings", "match", "only_when", "require", "set", "throttle"]),
   pushSession: new Set(["close_event", "event", "header", "key", "pattern"]),
   pushRegisterEntry: new Set(["command", "each_child", "when"]),
   authBlock: new Set(["failure_pattern", "line_ending", "password_field", "password_prompt", "skip_if_empty", "success_pattern", "timeout_seconds", "type", "username_field", "username_prompt"]),
@@ -547,6 +548,53 @@ export interface DriverChildSetEntry {
 }
 
 /**
+ * Spreads a list in one matched reply across many children of one type: a
+ * matrix that answers every tie or every mute in one line. The rule's capture
+ * `group` holds the list; `element` is the regex for one item of it. With
+ * `separator` the list is split on it, each item trimmed and matched whole,
+ * and an item that does not match still takes its place in the order; without
+ * one, `element` is found again and again along the list (items written side
+ * by side). Each item names its child either by its place in the list
+ * (counting from `start`) or by a capture of its own (`id`). `state` reads the
+ * item's own captures. A one-item list is a list too, so this rule also reads
+ * the device's answer about a single child in the same shape. An id the roster
+ * does not hold is skipped.
+ */
+export interface DriverChildListEntry {
+  /** A declared child_entity_types name. */
+  type: string;
+  /** Which capture of the rule's match holds the list. Default 1. */
+  group?: number | string;
+  /**
+   * Regex for one item of the list. Its captures are what id and state refer
+   * to ($1 is the item's first capture, not the rule's).
+   */
+  element: string;
+  /**
+   * Text between items (a comma, a space). Leave it out when the items are
+   * written side by side.
+   */
+  separator?: string;
+  /**
+   * The item's capture holding the child id ($1, $2, ...), or {group, map} to
+   * translate a wire id to the local child id. Leave it out to name children
+   * by their place in the list.
+   */
+  id?: string | DriverChildSetIdSpec;
+  /**
+   * By place in the list: the first item's child id, as a number or as a
+   * capture of the rule's match ($2) when the reply says where it starts.
+   * Default 1. Not used with id.
+   */
+  start?: number | string;
+  /**
+   * Child property -> the item's capture ($1), a literal, or {group, map,
+   * type} to translate the captured text.
+   */
+  state: Record<string, unknown>;
+}
+
+/**
  * A response must declare match (regex), address (OSC), or json: true (JSON-
  * body).
  */
@@ -583,6 +631,13 @@ export interface DriverResponseDef {
    * "json", requires platform 0.34.0.
    */
   child_set?: DriverChildSetEntry[];
+  /**
+   * Regex rules only. Spread a list in one reply across many children (every
+   * output's tie in one line). Takes the place of child_set on the rule (a
+   * rule has one or the other); set/mappings may sit beside it. Requires
+   * platform 0.37.0.
+   */
+  child_list?: DriverChildListEntry;
   /**
    * Optional. Writes this rule at most once per this many seconds. The first
    * matching frame applies at once; frames inside the window are held, and the
@@ -653,6 +708,14 @@ export interface DriverEachChildQuery {
    * state instead of leaving it unmodeled. Requires platform 0.24.0.
    */
   query_for?: string;
+  /**
+   * Send one query per this many children instead of one per child, for a
+   * device whose list read answers a page of children starting at the one
+   * asked for (16 outputs a read). {child_id} is the first child of each page:
+   * with a roster of 1-32 and page_size 16 the query goes out for 1 and 17.
+   * Pair it with a child_list response rule. Requires platform 0.37.0.
+   */
+  page_size?: number;
 }
 
 /**
@@ -676,7 +739,9 @@ export interface DriverQueryEntry {
   when?: string;
   /**
    * State variable the device reports in answer to this query. Must name a
-   * declared state variable. Requires platform 0.24.0.
+   * declared state variable, or <child_type>.<variable> for a list read that a
+   * child_list rule spreads across every child (the simulator then answers
+   * with every child in the list). Requires platform 0.24.0.
    */
   query_for?: string;
 }

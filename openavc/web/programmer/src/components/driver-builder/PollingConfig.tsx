@@ -2,11 +2,15 @@ import { Plus, Trash2 } from "lucide-react";
 import type { DriverDefinition } from "../../api/types";
 import {
   buildQueryEntry,
+  carryQueryExtras,
   gateFieldNames,
   isEachChild,
+  listReadOptions,
+  queryPageSize,
   queryQueryFor,
   queryWhen,
   querySend,
+  withPageSize,
   type QueryEntry,
 } from "./queryEntryHelpers";
 
@@ -23,6 +27,7 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
   const childTypeNames = Object.keys(draft.child_entity_types ?? {});
   const gateFields = gateFieldNames(draft);
   const stateVarNames = Object.keys(draft.state_variables ?? {});
+  const listReads = listReadOptions(draft);
   const defaultConfig = (draft.default_config ?? {}) as Record<string, unknown>;
   const pollIntervalRaw = defaultConfig.poll_interval;
   const pollInterval =
@@ -52,7 +57,9 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
 
   const updateQuery = (index: number, value: PollQuery) => {
     const next = [...queries];
-    next[index] = value;
+    // An edit of the send, scope, gate or pairing keeps the entry's other
+    // keys (a page size) where the new shape can hold them.
+    next[index] = carryQueryExtras(queries[index], value);
     updatePolling({ queries: next });
   };
 
@@ -219,12 +226,14 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
                 // Device-level variables on a plain query; the child type's
                 // own variables on a per-child query (each child answers
                 // from its own state).
+                // A query sent once may also be a list read that a
+                // child_list rule spreads across every child.
                 const reportOptions = eachChild
                   ? Object.keys(
                       draft.child_entity_types?.[query.each_child]
                         ?.state_variables ?? {},
                     )
-                  : stateVarNames;
+                  : [...stateVarNames, ...listReads];
                 if (reportOptions.length === 0) return null;
                 return (
                   <select
@@ -253,6 +262,22 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
                   </select>
                 );
               })()}
+              {eachChild && (
+                <input
+                  type="number"
+                  min={2}
+                  value={queryPageSize(query) ?? ""}
+                  onChange={(e) => {
+                    const n = parseInt(e.target.value, 10);
+                    const next = [...queries];
+                    next[i] = withPageSize(query, Number.isNaN(n) ? undefined : n);
+                    updatePolling({ queries: next });
+                  }}
+                  placeholder="1 each"
+                  title="Children one reply covers. Set it for a list read that answers a page of children starting at the one asked for: the query then goes out once per page. Leave blank to send it once per child."
+                  style={{ width: 70, fontSize: "var(--font-size-sm)" }}
+                />
+              )}
               <button
                 onClick={() => removeQuery(i)}
                 style={{ padding: "2px", color: "var(--text-muted)" }}

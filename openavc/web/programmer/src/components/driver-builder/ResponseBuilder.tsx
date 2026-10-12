@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import type {
   DriverChildEntityType,
+  DriverChildListEntry,
   DriverChildSetEntry,
   DriverDefinition,
   DriverResponseDef,
@@ -20,6 +21,9 @@ import {
   childIdFromParts,
   childIdMap,
   childIdToText,
+  childListValueFromParts,
+  childListValueMap,
+  childListValueToText,
   declaredStateType,
   getJsonRows,
   getMappings,
@@ -33,8 +37,10 @@ import {
   oscChildPropFromText,
   oscChildPropToText,
   parseRequireText,
+  refOrNumberFromText,
   renameValueMapKey,
   requireToList,
+  withChildList,
   type JsonRuleRow,
 } from "./responseBuilderHelpers";
 import { parseApiError } from "../../api/errors";
@@ -734,6 +740,15 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
               }}
             />
           )}
+          {!isJson &&
+            draft.transport !== "osc" &&
+            Object.keys(draft.child_entity_types ?? {}).length > 0 && (
+              <ChildListEditor
+                value={resp.child_list}
+                childTypes={draft.child_entity_types ?? {}}
+                onChange={(list) => updateResponse(i, withChildList(resp, list))}
+              />
+            )}
         </div>
         );
       })}
@@ -1093,6 +1108,261 @@ function ChildSetEditor({
         }}
       >
         + Route to Child Entities
+      </button>
+    </div>
+  );
+}
+
+/** Spread a list in one reply across children (`child_list:`): which capture
+ *  holds the list, the pattern for one item, what separates items, how an
+ *  item names its child (its place from a first child, or a capture of its
+ *  own), and which of the item's captures each child property reads. Regex
+ *  rules only; offered when the driver declares child_entity_types. */
+function ChildListEditor({
+  value,
+  childTypes,
+  onChange,
+}: {
+  value: DriverChildListEntry | undefined;
+  childTypes: Record<string, DriverChildEntityType>;
+  onChange: (list: DriverChildListEntry | undefined) => void;
+}) {
+  const typeNames = Object.keys(childTypes);
+  if (!value) {
+    return (
+      <button
+        onClick={() =>
+          onChange({
+            type: typeNames[0] ?? "",
+            element: "(\\d+)",
+            separator: ",",
+            state: {},
+          })
+        }
+        style={{
+          fontSize: "var(--font-size-sm)",
+          color: "var(--accent)",
+          padding: "var(--space-xs) 0",
+          display: "block",
+        }}
+      >
+        + Spread a List Across Child Entities
+      </button>
+    );
+  }
+  const props = Object.keys(childTypes[value.type]?.state_variables ?? {});
+  const byId = value.id !== undefined;
+  const set = (patch: Partial<DriverChildListEntry>) => {
+    const next: DriverChildListEntry = { ...value, ...patch };
+    for (const key of Object.keys(patch) as (keyof DriverChildListEntry)[]) {
+      if (patch[key] === undefined) delete next[key];
+    }
+    onChange(next);
+  };
+  const small: React.CSSProperties = { fontSize: "11px", color: "var(--text-muted)" };
+  const mono = (width: number): React.CSSProperties => ({
+    width,
+    fontFamily: "var(--font-mono)",
+    fontSize: "var(--font-size-sm)",
+  });
+  const row: React.CSSProperties = {
+    display: "flex",
+    gap: "var(--space-sm)",
+    alignItems: "center",
+    marginBottom: "var(--space-xs)",
+  };
+  const stateEntries = Object.entries(value.state ?? {});
+  return (
+    <div
+      style={{
+        marginTop: "var(--space-sm)",
+        padding: "var(--space-sm)",
+        background: "var(--bg-hover)",
+        borderRadius: "var(--border-radius)",
+      }}
+      data-testid="child-list-editor"
+    >
+      <div style={{ ...row, justifyContent: "space-between" }}>
+        <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>
+          Spread a list in the reply across child entities:
+        </span>
+        <button
+          onClick={() => onChange(undefined)}
+          title="Remove the list"
+          style={{ padding: "2px", color: "var(--text-muted)" }}
+        >
+          <Trash2 size={12} />
+        </button>
+      </div>
+      <div style={row}>
+        <select
+          value={value.type}
+          onChange={(e) => set({ type: e.target.value, state: {} })}
+          style={{ fontSize: "var(--font-size-sm)" }}
+        >
+          {typeNames.map((t) => (
+            <option key={t} value={t}>
+              {childTypes[t]?.label || t}
+            </option>
+          ))}
+        </select>
+        <span style={small}>list in</span>
+        <input
+          value={value.group === undefined ? "" : String(value.group)}
+          onChange={(e) => set({ group: refOrNumberFromText(e.target.value) })}
+          placeholder="$1"
+          title="Which capture of this rule's pattern holds the list ($1 when left blank)"
+          style={mono(50)}
+        />
+        <span style={small}>items separated by</span>
+        <input
+          value={value.separator ?? ""}
+          onChange={(e) => set({ separator: e.target.value || undefined })}
+          placeholder="side by side"
+          title="The text between two items, such as a comma. Leave it blank when the items are written one after another with nothing between them."
+          style={mono(90)}
+        />
+      </div>
+      <div style={row}>
+        <span style={small}>One item</span>
+        <input
+          value={value.element}
+          onChange={(e) => set({ element: e.target.value })}
+          placeholder="(\d+)>(\d+)"
+          title="The pattern for one item of the list. Its captures are what the child ID and the properties below read: $1 is the item's first capture."
+          style={{ ...mono(0), flex: 1 }}
+        />
+      </div>
+      <div style={row}>
+        <span style={small}>Each item is the child</span>
+        <select
+          value={byId ? "id" : "place"}
+          onChange={(e) =>
+            e.target.value === "id"
+              ? set({ id: "$1", start: undefined })
+              : set({ id: undefined })
+          }
+          style={{ fontSize: "var(--font-size-sm)" }}
+        >
+          <option value="place">at its place in the list</option>
+          <option value="id">its own capture names</option>
+        </select>
+        {byId ? (
+          <input
+            value={childIdToText(value.id)}
+            onChange={(e) =>
+              set({
+                id: childIdFromParts(e.target.value, childIdMap(value.id)) as
+                  | string
+                  | { group: number; map: Record<string, string | number> },
+              })
+            }
+            placeholder="$2"
+            title="Which of the item's captures holds the child ID"
+            style={mono(60)}
+          />
+        ) : (
+          <>
+            <span style={small}>first child</span>
+            <input
+              value={value.start === undefined ? "" : String(value.start)}
+              onChange={(e) => set({ start: refOrNumberFromText(e.target.value) })}
+              placeholder="1"
+              title="The child ID of the first item: a number, or a capture of this rule's pattern ($2) when the reply says where its list starts"
+              style={mono(60)}
+            />
+          </>
+        )}
+      </div>
+      {byId && /^\$\d+$/.test(childIdToText(value.id)) && (
+        <WireIdMapRows
+          idMap={childIdMap(value.id)}
+          onChange={(map) =>
+            set({
+              id: childIdFromParts(childIdToText(value.id), map) as
+                | string
+                | { group: number; map: Record<string, string | number> },
+            })
+          }
+        />
+      )}
+      {stateEntries.map(([prop, expr], si) => (
+        <div key={si} style={{ marginBottom: 2 }}>
+          <div style={{ ...row, marginBottom: 0 }}>
+            <select
+              value={prop}
+              onChange={(e) => {
+                const nextState: Record<string, unknown> = {};
+                for (const [k, v] of stateEntries) {
+                  nextState[k === prop ? e.target.value : k] = v;
+                }
+                set({ state: nextState });
+              }}
+              style={{ flex: 1, fontSize: "var(--font-size-sm)" }}
+            >
+              <option value="">Select property...</option>
+              {props.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+            <span style={small}>=</span>
+            <input
+              value={childListValueToText(expr)}
+              onChange={(e) =>
+                set({
+                  state: {
+                    ...value.state,
+                    [prop]: childListValueFromParts(e.target.value, childListValueMap(expr)),
+                  },
+                })
+              }
+              placeholder="$1 or literal"
+              title="One of the item's captures ($1) or a literal value; coerced by the property's declared type"
+              style={mono(110)}
+            />
+            <button
+              onClick={() => {
+                const nextState = { ...value.state };
+                delete nextState[prop];
+                set({ state: nextState });
+              }}
+              style={{ padding: "2px", color: "var(--text-muted)" }}
+            >
+              <Trash2 size={10} />
+            </button>
+          </div>
+          {/^\$\d+$/.test(childListValueToText(expr)) && (
+            <ValueMapEditor
+              mapping={{
+                group: 0,
+                state: prop,
+                map: childListValueMap(expr),
+              }}
+              onChange={(updated) =>
+                set({
+                  state: {
+                    ...value.state,
+                    [prop]: childListValueFromParts(
+                      childListValueToText(expr),
+                      updated.map as Record<string, string> | undefined,
+                    ),
+                  },
+                })
+              }
+            />
+          )}
+        </div>
+      ))}
+      <button
+        onClick={() => {
+          const unused = props.find((p) => !(p in (value.state ?? {})));
+          set({ state: { ...value.state, [unused ?? ""]: "$1" } });
+        }}
+        style={{ fontSize: "11px", color: "var(--accent)", padding: "2px 0" }}
+      >
+        + Property
       </button>
     </div>
   );

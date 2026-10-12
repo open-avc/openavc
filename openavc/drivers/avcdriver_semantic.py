@@ -20,7 +20,7 @@ import difflib as _difflib
 import re
 from typing import Any, Callable
 
-from openavc.drivers.child_ids import declared_child_ids
+from openavc.drivers.child_ids import declared_child_ids, page_starts
 from openavc.drivers.spec import (
     ACTION_KINDS,
     AUTH_TRANSPORTS,
@@ -59,6 +59,151 @@ from openavc.drivers.spec import (
     platform_requirements,
 )
 from openavc.utils.regex_safety import regex_safety_error as _regex_redos_error
+
+def _capture_number(ref: Any) -> int | None:
+    """``"$2"`` or ``2`` as 2; None for anything else, a bool included."""
+    if isinstance(ref, bool):
+        return None
+    if isinstance(ref, int):
+        return ref
+    if isinstance(ref, str) and re.fullmatch(r"\$\d+", ref):
+        return int(ref[1:])
+    return None
+
+
+def _group_count(pattern: Any) -> int | None:
+    """Capture groups in a pattern, or None when it does not compile as
+    written (a {config} placeholder substituted at runtime, say)."""
+    if not isinstance(pattern, str) or not pattern:
+        return None
+    try:
+        return re.compile(pattern).groups
+    except re.error:
+        return None
+
+
+def _child_list_errors(
+    where: str, spec: Any, pattern: Any, child_types_map: dict[str, Any],
+) -> list[str]:
+    """The shape of a regex rule's ``child_list:`` block. A malformed one
+    would never write a child, so every reference is checked against the
+    pattern it counts: ``group`` and ``start`` the rule's own captures, ``id``
+    and ``state`` the item's (``element``)."""
+    errors: list[str] = []
+    if not isinstance(spec, dict):
+        return [f"{where}: must be a mapping"]
+    ctype = spec.get("type")
+    tdef = child_types_map.get(ctype) if isinstance(ctype, str) else None
+    if not isinstance(tdef, dict):
+        return [f"{where}: type {ctype!r} is not a declared child_entity_type"]
+    outer_groups = _group_count(pattern)
+
+    def ref_in(label: str, ref: Any, groups: int | None, of: str) -> None:
+        number = _capture_number(ref)
+        if number is None or number < 1:
+            errors.append(f"{where}: {label} must be a capture ref ($1, $2, ...)")
+        elif groups is not None and number > groups:
+            errors.append(
+                f"{where}: {label} ${number} exceeds the {groups} group(s) of {of}"
+            )
+
+    ref_in("group", spec.get("group", 1), outer_groups, "the rule's match")
+    element = spec.get("element")
+    element_groups: int | None = None
+    if not isinstance(element, str) or not element:
+        errors.append(f"{where}: missing 'element' (the regex for one item of the list)")
+    else:
+        try:
+            compiled = re.compile(element)
+        except re.error as e:
+            errors.append(f"{where}: element is not a valid regex: {e}")
+        else:
+            element_groups = compiled.groups
+            redos = _regex_redos_error(f"{where}: element", element)
+            if redos:
+                errors.append(redos)
+            elif compiled.fullmatch(""):
+                errors.append(
+                    f"{where}: element matches empty text, so it cannot tell "
+                    f"one item from the next"
+                )
+    separator = spec.get("separator")
+    if separator is not None and (not isinstance(separator, str) or not separator):
+        errors.append(f"{where}: separator must be the text between items")
+    cid = spec.get("id")
+    if cid is not None:
+        id_format = tdef.get("id_format")
+        id_type = id_format.get("type", "integer") if isinstance(id_format, dict) else "integer"
+        if isinstance(cid, dict):
+            ref_in("id group", cid.get("group"), element_groups, "the element")
+            id_map = cid.get("map")
+            if id_map is not None and (
+                not isinstance(id_map, dict)
+                or not id_map
+                or any(
+                    isinstance(v, bool) or not isinstance(v, (str, int))
+                    for v in id_map.values()
+                )
+            ):
+                errors.append(
+                    f"{where}: id map must be a non-empty mapping of wire id "
+                    f"-> local child id"
+                )
+            elif isinstance(id_map, dict) and id_type == "integer":
+                for value in id_map.values():
+                    try:
+                        int(str(value).strip())
+                    except ValueError:
+                        errors.append(
+                            f"{where}: id map value {value!r} is not an integer "
+                            f"({ctype} declares integer ids)"
+                        )
+                        break
+        else:
+            ref_in("id", cid, element_groups, "the element")
+        if "start" in spec:
+            errors.append(
+                f"{where}: start counts places in the list, and with id each "
+                f"item names its own child; remove one of them"
+            )
+    else:
+        id_format = tdef.get("id_format")
+        if isinstance(id_format, dict) and id_format.get("type") == "string":
+            errors.append(
+                f"{where}: {ctype} has string ids, so an item cannot be named "
+                f"by its place in the list; give id: $N"
+            )
+        start = spec.get("start", 1)
+        if isinstance(start, str):
+            ref_in("start", start, outer_groups, "the rule's match")
+        elif isinstance(start, bool) or not isinstance(start, int):
+            errors.append(
+                f"{where}: start must be the first item's child id or a capture "
+                f"ref of the rule's match"
+            )
+    state_map = spec.get("state")
+    if not isinstance(state_map, dict) or not state_map:
+        errors.append(f"{where}: missing 'state' mapping (prop -> $N or literal)")
+        return errors
+    writable = _child_writable_props(tdef)
+    for prop, expr in state_map.items():
+        if prop not in writable:
+            errors.append(
+                f"{where}: state prop '{prop}' is not declared in "
+                f"child_entity_types.{ctype}.state_variables"
+            )
+        if isinstance(expr, str) and expr.startswith("$"):
+            ref_in(f"state '{prop}'", expr, element_groups, "the element")
+        elif isinstance(expr, dict):
+            if "group" in expr:
+                ref_in(f"state '{prop}' group", expr.get("group"), element_groups, "the element")
+            elif "value" not in expr:
+                errors.append(
+                    f"{where}: state '{prop}' needs a group (the item's capture) "
+                    f"or a value"
+                )
+    return errors
+
 
 def _child_writable_props(type_def: Any) -> set[str]:
     """Every property a driver may write on a child of this type.
@@ -905,6 +1050,26 @@ def validate_driver_definition(
                     f"Response {i}: after_json has no effect: no response "
                     f"rule in this driver is json: true"
                 )
+        # `child_list:` spreads a list a regex capture holds. A json body and
+        # an OSC message have no capture to hold one, and a rule with
+        # child_set beside it would write the one-item form twice: child_list
+        # already reads a list of one.
+        if "child_list" in resp:
+            if resp.get("json"):
+                errors.append(
+                    f"Response {i}: child_list works on text rules (match:) "
+                    f"only; a json: true rule routes to children with child_set"
+                )
+            elif "address" in resp:
+                errors.append(
+                    f"Response {i}: child_list works on text rules (match:) "
+                    f"only; an OSC rule routes to children with child_set"
+                )
+            elif resp.get("child_set") is not None:
+                errors.append(
+                    f"Response {i}: has both child_set and child_list; keep "
+                    f"child_list, which also reads a list of one item"
+                )
         # A `set:` value on a regex or OSC rule is a capture reference ("$1")
         # or a static — never a {group, map} spec. That spec shape IS valid in
         # two neighbouring places (inside `child_set: … state:`, and on a
@@ -1197,6 +1362,14 @@ def validate_driver_definition(
             err = _regex_redos_error(f"Response {i}", pattern)
             if err:
                 errors.append(err)
+
+        if resp.get("child_list") is not None:
+            errors.extend(
+                _child_list_errors(
+                    f"Response {i}: child_list", resp["child_list"], pattern,
+                    child_types_map,
+                )
+            )
 
         # Validate child_set (route captures into child-entity state). A
         # misdeclared entry would silently never write child state, so
@@ -2369,6 +2542,15 @@ def validate_driver_definition(
         if isinstance(_block, dict):
             query_config_fields.update(_block.keys())
 
+    # (child type, variable) pairs a child_list rule fills: what a list read
+    # (a plain query naming <type>.<var>, or a paged per-child query) reports.
+    list_filled: set[tuple[str, str]] = set()
+    for resp in responses:
+        spec = resp.get("child_list") if isinstance(resp, dict) else None
+        if isinstance(spec, dict) and isinstance(spec.get("state"), dict):
+            for prop in spec["state"]:
+                list_filled.add((spec.get("type"), prop))
+
     def _validate_each_child(name: str, entries: Any, allow_osc_dict: bool) -> None:
         errors.ctx = name
         if not isinstance(entries, list):
@@ -2424,10 +2606,70 @@ def validate_driver_definition(
                             f"{name}[{i}]: query_for '{qf}' is not a state "
                             f"variable of child type {_ec!r}"
                         )
+                    elif "page_size" in q and (_ec, qf) not in list_filled:
+                        errors.append(
+                            f"{name}[{i}]: a paged query reads a list, and no "
+                            f"child_list rule fills '{qf}' on {_ec!r}"
+                        )
+                elif "." in qf:
+                    # <child type>.<variable>: a list read sent once whose
+                    # reply a child_list rule spreads across every child.
+                    _lt, _, _lv = qf.partition(".")
+                    _lt_def = child_types_map.get(_lt)
+                    _lt_vars = (
+                        _lt_def.get("state_variables")
+                        if isinstance(_lt_def, dict) else None
+                    )
+                    if not isinstance(_lt_def, dict):
+                        errors.append(
+                            f"{name}[{i}]: query_for '{qf}': '{_lt}' is not a "
+                            f"declared child_entity_type"
+                        )
+                    elif not (isinstance(_lt_vars, dict) and _lv in _lt_vars):
+                        errors.append(
+                            f"{name}[{i}]: query_for '{qf}': '{_lv}' is not a "
+                            f"state variable of child type '{_lt}'"
+                        )
+                    elif (_lt, _lv) not in list_filled:
+                        errors.append(
+                            f"{name}[{i}]: query_for '{qf}' names a child "
+                            f"variable, and no child_list rule fills it; a "
+                            f"query sent once reports a child only through a "
+                            f"list"
+                        )
                 elif qf not in declared_vars:
+                    # Two child types can share a variable name, so a bare
+                    # child variable on a query sent once says nothing about
+                    # which children it reports.
+                    _owners = sorted(
+                        t for t, d in child_types_map.items()
+                        if isinstance(d, dict)
+                        and isinstance(d.get("state_variables"), dict)
+                        and qf in d["state_variables"]
+                    )
+                    if _owners:
+                        errors.append(
+                            f"{name}[{i}]: query_for '{qf}' is a child "
+                            f"variable; on a query sent once, name its child "
+                            f"type too: '{_owners[0]}.{qf}'"
+                        )
+                    else:
+                        errors.append(
+                            f"{name}[{i}]: query_for '{qf}' is not a declared "
+                            f"state variable"
+                        )
+            # `page_size: N` sends a per-child query once per N children.
+            if "page_size" in q:
+                _page = q.get("page_size")
+                if "each_child" not in q:
                     errors.append(
-                        f"{name}[{i}]: query_for '{qf}' is not a declared "
-                        f"state variable"
+                        f"{name}[{i}]: page_size applies to a per-child query "
+                        f"(each_child)"
+                    )
+                elif isinstance(_page, bool) or not isinstance(_page, int) or _page < 2:
+                    errors.append(
+                        f"{name}[{i}]: page_size must be a whole number, 2 or "
+                        f"more (how many children one reply covers)"
                     )
             if "each_child" not in q:
                 if allow_osc_dict and "address" in q:
@@ -2862,7 +3104,8 @@ def _poll_lines(
     Counted the way ConfigurableDriver._expand_query expands them: a string
     is one line, a ``{send}`` entry one line while its ``when:`` field is
     truthy, an ``each_child`` entry one line per child the declaration
-    registers (none while the roster is empty). A roster the device resizes
+    registers (none while the roster is empty), or one per page of
+    ``page_size`` children. A roster the device resizes
     (``count_from_state``) is counted at its config field, which is what the
     runtime builds before the first report and what a matrix of that size
     reports anyway.
@@ -2882,7 +3125,7 @@ def _poll_lines(
             lines += 1 if isinstance(entry.get("send"), str) else 0
             continue
         ids = declared_child_ids(_config_sized(child_types.get(child_type)), config)
-        lines += len(ids) if ids else 0
+        lines += len(page_starts(ids, entry.get("page_size"))) if ids else 0
     return lines
 
 

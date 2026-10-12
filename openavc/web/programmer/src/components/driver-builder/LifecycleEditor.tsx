@@ -3,14 +3,18 @@ import type { DriverDefinition } from "../../api/types";
 import { OscArgsEditor } from "./OscArgsEditor";
 import {
   buildQueryEntry,
+  carryQueryExtras,
   gateFieldNames,
   isEachChild,
   isOpaque,
   isOscItem,
+  listReadOptions,
   queryArgs,
+  queryPageSize,
   queryQueryFor,
   queryWhen,
   querySend,
+  withPageSize,
   type QueryEntry,
 } from "./queryEntryHelpers";
 
@@ -48,9 +52,12 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
   const removeItem = (i: number) => update(items.filter((_, idx) => idx !== i));
   const updateItem = (i: number, value: ConnectStep) => {
     const next = [...items];
-    next[i] = value;
+    // Keep the step's other keys (a page size) where the new shape holds them.
+    next[i] = carryQueryExtras(items[i], value);
     update(next);
   };
+  const stateVarNames = Object.keys(draft.state_variables ?? {});
+  const listReads = listReadOptions(draft);
 
   const transport = draft.transport;
   const placeholder =
@@ -217,6 +224,53 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
                     </option>
                   ))}
                 </select>
+              )}
+              {transport !== "osc" && !opaque && (() => {
+                // As on a poll query: a device-level variable (or a list
+                // read a child_list rule spreads) on a step sent once, the
+                // child type's own variables on a per-child step.
+                const reportOptions = eachChild
+                  ? Object.keys(
+                      draft.child_entity_types?.[childKey]?.state_variables ?? {},
+                    )
+                  : [...stateVarNames, ...listReads];
+                if (reportOptions.length === 0) return null;
+                return (
+                  <select
+                    value={queryFor}
+                    onChange={(e) =>
+                      updateItem(
+                        i,
+                        buildQueryEntry(send, childKey, when, args, e.target.value),
+                      )
+                    }
+                    title="Which state variable the device's reply reports, which lets the simulator answer this step without guessing"
+                    style={{ width: 150, fontSize: "var(--font-size-sm)" }}
+                  >
+                    <option value="">Reports (none)</option>
+                    {reportOptions.map((v) => (
+                      <option key={v} value={v}>
+                        Reports {v}
+                      </option>
+                    ))}
+                  </select>
+                );
+              })()}
+              {eachChild && !opaque && (
+                <input
+                  type="number"
+                  min={2}
+                  value={queryPageSize(item) ?? ""}
+                  onChange={(e) => {
+                    const n = parseInt(e.target.value, 10);
+                    const next = [...items];
+                    next[i] = withPageSize(item, Number.isNaN(n) ? undefined : n);
+                    update(next);
+                  }}
+                  placeholder="1 each"
+                  title="Children one reply covers. Set it for a list read that answers a page of children starting at the one asked for: the step then goes out once per page. Leave blank to send it once per child."
+                  style={{ width: 70, fontSize: "var(--font-size-sm)" }}
+                />
               )}
               <button
                 onClick={() => removeItem(i)}

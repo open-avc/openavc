@@ -133,6 +133,37 @@ def declared_child_ids(
     return None
 
 
+def page_starts(ids: list[Any], page_size: Any) -> list[Any]:
+    """The children a per-child query with ``page_size`` is sent for.
+
+    A device's list read answers ``page_size`` consecutive children starting at
+    the one asked for (a matrix's view of 16 outputs from output 17), so a
+    query goes out for the lowest id and then for the first id at or past the
+    end of the page before it: ids 1-32 at 16 give 1 and 17, and a roster with
+    gaps still asks for each stretch the pages cover. Ids that are not all
+    whole numbers are paged by their place in the roster. No ``page_size``
+    (or one below 2) is one query per child, the ids as given.
+
+    One rule for the runtime that sends the queries, the simulator that
+    answers them and the validator that counts them.
+    """
+    if (
+        isinstance(page_size, bool)
+        or not isinstance(page_size, int)
+        or page_size < 2
+    ):
+        return list(ids)
+    if not ids or not all(isinstance(i, int) and not isinstance(i, bool) for i in ids):
+        return list(ids)[::page_size]
+    starts: list[Any] = []
+    next_start: int | None = None
+    for local_id in sorted(ids):
+        if next_start is None or local_id >= next_start:
+            starts.append(local_id)
+            next_start = local_id + page_size
+    return starts
+
+
 def child_id_range_error(
     type_def: dict[str, Any] | None, value: int | str,
 ) -> str | None:

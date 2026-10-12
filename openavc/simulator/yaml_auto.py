@@ -55,7 +55,7 @@ from openavc.drivers.compiled_protocol import (
     state_var_default,
     value_to_wire,
 )
-from openavc.drivers.child_ids import coerce_child_local_id
+from openavc.drivers.child_ids import coerce_child_local_id, page_starts
 from openavc.drivers.inline_protocol import (
     derive_state_vars_from_responses,
     normalize_config_commands,
@@ -366,8 +366,10 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         # set_child_entities() after construction.
         self._child_roster: dict[str, list[str]] = {}
         self._child_state_responses: dict[tuple[str, str], ChildStateResponse] = {}
-        self._child_query_handlers: list[ChildQueryHandler] = []
+        self._child_list_answers: dict[tuple[str, str], ChildListAnswer] = {}
+        self._child_query_handlers: list[ChildQueryHandler | ListQueryHandler] = []
         self._build_child_state_responses()
+        self._build_child_list_answers()
         self._seed_declared_children()
         self._adopt_dotted_state_children()
         self._build_child_query_handlers()
@@ -2042,6 +2044,10 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                     continue
                 query_text = query.get("send", "")
                 qf = query.get("query_for")
+                if isinstance(qf, str) and "." in qf:
+                    # A list read (<child type>.<variable>) is answered
+                    # from every child: _build_list_query_handlers.
+                    continue
                 if isinstance(qf, str) and qf:
                     declared = qf
             else:
@@ -2081,7 +2087,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             qf = entry.get("query_for")
             send = entry.get("send", "")
             if (
-                isinstance(qf, str) and qf
+                isinstance(qf, str) and qf and "." not in qf
                 and isinstance(send, str) and send
                 and "address" not in entry
             ):
@@ -2413,19 +2419,177 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 if sr.id_wire_map is None:
                     sr.id_wire_map = wire_id_map
 
-    def _build_child_query_handlers(self) -> None:
-        """One handler per (each_child query x rostered child). Declared
-        semantics only: the entry's ``query_for`` names which child variable
-        the reply reports — without it there is nothing to derive."""
-        self._child_query_handlers = []
+    def _build_child_list_answers(self) -> None:
+        """Read each ``child_list`` rule back into how the device writes the
+        list, per child variable it fills: the reply with the list (and the
+        page's start) as slots, one item with the value (and its child id)
+        as slots. A variable a rule fills from a static, or a rule whose
+        patterns the emitter cannot model (a lookaround), gets nothing, and
+        a list read for it goes unanswered."""
+        child_types = self._child_types()
+        for resp in self._driver_def.get("responses") or []:
+            spec = resp.get("child_list") if isinstance(resp, dict) else None
+            pattern = resp.get("match") if isinstance(resp, dict) else None
+            if not isinstance(spec, dict) or not isinstance(pattern, str):
+                continue
+            ctype = spec.get("type")
+            element = spec.get("element")
+            state_map = spec.get("state")
+            if (
+                ctype not in child_types
+                or not isinstance(element, str)
+                or not isinstance(state_map, dict)
+            ):
+                continue
+            list_group = _ref_number(spec.get("group", 1))
+            cid = spec.get("id")
+            id_group = _ref_number(cid.get("group") if isinstance(cid, dict) else cid)
+            id_wire_map: dict[str, str] | None = None
+            if isinstance(cid, dict) and isinstance(cid.get("map"), dict) and cid["map"]:
+                id_wire_map = {str(v): str(k) for k, v in cid["map"].items()}
+            raw_start = spec.get("start", 1)
+            start_group = _ref_number(raw_start) if isinstance(raw_start, str) else None
+            start = raw_start if isinstance(raw_start, int) and not isinstance(raw_start, bool) else 1
+            if list_group is None or (cid is not None and id_group is None):
+                continue
+            outer_slots = {list_group: "{list}"}
+            if cid is None and start_group is not None:
+                outer_slots[start_group] = "{start}"
+            outer = emit_template_multi(pattern, outer_slots)
+            if outer is None:
+                continue
+            for var, expr in state_map.items():
+                key = (ctype, var)
+                if key in self._child_list_answers:
+                    continue
+                value_words: dict[str, str] | None = None
+                if isinstance(expr, str) and expr.startswith("$"):
+                    group = _ref_number(expr)
+                elif isinstance(expr, dict) and "group" in expr:
+                    group = _ref_number(expr.get("group"))
+                    if isinstance(expr.get("map"), dict) and expr["map"]:
+                        value_words = {}
+                        for word, value in expr["map"].items():
+                            norm = str(value).lower() if isinstance(value, bool) else str(value)
+                            value_words.setdefault(norm, str(word))
+                else:
+                    continue
+                if group is None or group == id_group:
+                    continue
+                item_slots = {group: "{value}"}
+                if id_group is not None:
+                    item_slots[id_group] = "{child_id}"
+                item = emit_template_multi(element, item_slots)
+                if item is None:
+                    continue
+                self._child_list_answers[key] = ChildListAnswer(
+                    ctype, var, outer, item, _rule_pattern(element, group),
+                    spec.get("separator") or "", cid is None, start,
+                    value_words, id_wire_map,
+                    conversion_of(self._child_vars(ctype).get(var)),
+                )
+
+    def _list_entries(self) -> list[Any]:
+        """The poll queries and start-up entries, in that order."""
         entries: list[Any] = []
         polling = self._driver_def.get("polling")
         if isinstance(polling, dict) and isinstance(polling.get("queries"), list):
             entries += polling["queries"]
         if isinstance(self._driver_def.get("on_connect"), list):
             entries += self._driver_def["on_connect"]
-        for q in entries:
+        return entries
+
+    def _build_list_query_handlers(self) -> None:
+        """Handlers for list reads: a query sent once whose ``query_for`` is
+        ``<child type>.<variable>``, and each page of a paged per-child query,
+        for every variable a ``child_list`` rule fills."""
+        for q in self._list_entries():
+            if not isinstance(q, dict):
+                continue
+            template = q.get("send")
+            qf = q.get("query_for")
+            if not (isinstance(template, str) and template and isinstance(qf, str)):
+                continue
+            ctype = q.get("each_child")
+            if ctype is None:
+                ctype, _, var = qf.partition(".")
+                if not var or (ctype, var) not in self._child_list_answers:
+                    continue
+                wire = self._query_wire_line(template)
+                if wire:
+                    self._child_query_handlers.append(ListQueryHandler(
+                        re.compile(f"^{re.escape(wire)}$"), ctype, var,
+                    ))
+                continue
+            page = q.get("page_size")
+            if (
+                not isinstance(page, int) or isinstance(page, bool) or page < 2
+                or (ctype, qf) not in self._child_list_answers
+            ):
+                continue
+            roster = [int(c) if c.isdigit() else c for c in self._child_roster.get(ctype, [])]
+            for first in page_starts(roster, page):
+                wire = self._query_wire_line(
+                    safe_substitute(template, {"child_id": first})
+                )
+                if wire:
+                    self._child_query_handlers.append(ListQueryHandler(
+                        re.compile(f"^{re.escape(wire)}$"), ctype, qf,
+                        str(first), page,
+                    ))
+
+    def _execute_list_query_handler(self, handler: ListQueryHandler) -> bytes | None:
+        """Answer a list read with every child it covers, from each child's
+        own state. By place, the list runs without a gap from its first child
+        (a child the roster lacks reads as its variable's default, the way a
+        device lists outputs nobody configured); by id, it lists the rostered
+        children the read covers."""
+        answer = self._child_list_answers.get((handler.child_type, handler.response_var))
+        if answer is None:
+            return None
+        ctype, var = handler.child_type, handler.response_var
+        roster = self._child_roster.get(ctype, [])
+        ids: list[str]
+        if answer.by_place:
+            numbers = sorted(int(c) for c in roster if c.isdigit())
+            first = int(handler.first) if handler.first and handler.first.isdigit() else (
+                answer.start if handler.first is None else None
+            )
+            if first is None or not numbers:
+                return None
+            last = numbers[-1] if handler.count is None else min(
+                numbers[-1], first + handler.count - 1
+            )
+            ids = [str(n) for n in range(first, last + 1)]
+            start: int | str = first
+        else:
+            ids = list(roster)
+            if handler.first is not None and handler.count is not None and handler.first.isdigit():
+                low = int(handler.first)
+                ids = [c for c in ids if c.isdigit() and low <= int(c) < low + handler.count]
+            start = handler.first or ""
+        if not ids:
+            return None
+        var_def = self._child_vars(ctype).get(var) or {}
+        items = []
+        for cid in ids:
+            key = f"{ctype}.{cid}.{var}"
+            value = self._state[key] if key in self._state else state_var_default(var_def)
+            items.append(answer.render_item(cid, value))
+        return (answer.render(start, items) + self._get_delimiter()).encode()
+
+    def _build_child_query_handlers(self) -> None:
+        """One handler per (each_child query x rostered child). Declared
+        semantics only: the entry's ``query_for`` names which child variable
+        the reply reports — without it there is nothing to derive. List reads
+        (``_build_list_query_handlers``) come first: a paged query's page
+        names its first child the way a per-child query does."""
+        self._child_query_handlers = []
+        self._build_list_query_handlers()
+        for q in self._list_entries():
             if not isinstance(q, dict) or "each_child" not in q:
+                continue
+            if "page_size" in q:
                 continue
             ctype = q.get("each_child")
             template = q.get("send")
@@ -2450,8 +2614,12 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                     response_var=qf,
                 ))
 
-    def _execute_child_query_handler(self, handler: ChildQueryHandler) -> bytes | None:
+    def _execute_child_query_handler(
+        self, handler: ChildQueryHandler | ListQueryHandler
+    ) -> bytes | None:
         """Answer a per-child query from the addressed child's own state."""
+        if isinstance(handler, ListQueryHandler):
+            return self._execute_list_query_handler(handler)
         resp = self._child_state_responses.get(
             (handler.child_type, handler.response_var)
         )
@@ -3176,6 +3344,82 @@ class ChildQueryHandler:
         self.response_var = response_var  # a child state variable
 
 
+class ListQueryHandler:
+    """Auto-generated handler for a list read: a query sent once whose
+    ``query_for`` names ``<child type>.<variable>``, or one page of a paged
+    per-child query. Answered with every child the reply covers, in the shape
+    of the driver's ``child_list`` rule."""
+
+    def __init__(
+        self,
+        pattern: re.Pattern,
+        child_type: str,
+        response_var: str,
+        first: str | None = None,
+        count: int | None = None,
+    ):
+        self.pattern = pattern
+        self.child_type = child_type
+        self.response_var = response_var
+        self.first = first    # the page's first child (unpadded); None = the whole list
+        self.count = count    # children on a page; None = the whole list
+
+
+class ChildListAnswer:
+    """How the device writes one child variable as a list, read back from a
+    ``child_list`` response rule: the reply around the list, one item, the
+    text between items, and how an item names its child."""
+
+    def __init__(
+        self,
+        child_type: str,
+        var: str,
+        outer: str,
+        item: str,
+        item_rule: _ReadBack,
+        separator: str,
+        by_place: bool,
+        start: int,
+        value_words: dict[str, str] | None,
+        id_wire_map: dict[str, str] | None,
+        conversion: dict | None,
+    ):
+        self.child_type = child_type
+        self.var = var
+        self.outer = outer            # e.g. "Vgp0*Out{start} {list}Vid"
+        self.item = item              # e.g. "{value:02d}" or "{value}>{child_id}"
+        self.item_rule = item_rule    # the element, compiled, and the value's group
+        self.separator = separator
+        self.by_place = by_place      # items named by place, from start
+        self.start = start            # the first place when the reply says nothing
+        self.value_words = value_words  # value -> the device's word, from a map
+        self.id_wire_map = id_wire_map  # local id -> wire id
+        self.conversion = conversion
+
+    def render_item(self, child_id: str, value: Any) -> str:
+        wire_id = child_id
+        if self.id_wire_map is not None:
+            wire_id = self.id_wire_map.get(str(child_id), str(child_id))
+        if self.value_words is not None:
+            key = str(value).lower() if isinstance(value, bool) else str(value)
+            word = self.value_words.get(key)
+            if word is not None:
+                return fill_template(self.item, {"value": word, "child_id": wire_id})
+        return _first_read_back([
+            (
+                fill_template(self.item, {"value": wire, "child_id": wire_id}),
+                _value_text(self.item, wire),
+                self.item_rule,
+            )
+            for wire in _wire_forms(value, self.conversion)
+        ])
+
+    def render(self, start: int | str, items: list[str]) -> str:
+        return fill_template(
+            self.outer, {"list": self.separator.join(items), "start": start}
+        )
+
+
 class ChildStateResponse:
     """Reply formatting for one (child type, state variable) pair, derived
     from the driver's child_set: response rules. The template carries a
@@ -3316,6 +3560,17 @@ class StateResponse:
 
         # Fallback
         return str(value_to_wire(value, self.conversion))
+
+
+def _ref_number(ref: Any) -> int | None:
+    """``"$2"`` or ``2`` as 2; None for anything else."""
+    if isinstance(ref, bool):
+        return None
+    if isinstance(ref, int):
+        return ref if ref >= 1 else None
+    if isinstance(ref, str) and re.fullmatch(r"\$\d+", ref):
+        return int(ref[1:]) or None
+    return None
 
 
 # A response rule's ``match:`` compiled the way the driver reads it

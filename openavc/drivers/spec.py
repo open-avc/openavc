@@ -1133,6 +1133,102 @@ DEFS = {
         'required': ('type', 'id', 'state'),
         'extra': False,
     },
+    'childListEntry': {
+        'type': 'object',
+        'doc': "Spreads a list in one matched reply across many children of one type: a matrix that answers every tie or every mute in one line. The rule's capture `group` holds the list; `element` is the regex for one item of it. With `separator` the list is split on it, each item trimmed and matched whole, and an item that does not match still takes its place in the order; without one, `element` is found again and again along the list (items written side by side). Each item names its child either by its place in the list (counting from `start`) or by a capture of its own (`id`). `state` reads the item's own captures. A one-item list is a list too, so this rule also reads the device's answer about a single child in the same shape. An id the roster does not hold is skipped.",
+        'fields': {
+            'type': {
+                'type': 'string',
+                'doc': 'A declared child_entity_types name.',
+            },
+            'group': {
+                'doc': "Which capture of the rule's match holds the list. Default 1.",
+                'one_of': (
+                    {
+                        'type': 'integer',
+                        'min': 1,
+                    },
+                    {
+                        'type': 'string',
+                        'pattern': '^\\$\\d+$',
+                    },
+                ),
+            },
+            'element': {
+                'type': 'string',
+                'min_len': 1,
+                'doc': "Regex for one item of the list. Its captures are what id and state refer to ($1 is the item's first capture, not the rule's).",
+            },
+            'separator': {
+                'type': 'string',
+                'min_len': 1,
+                'doc': 'Text between items (a comma, a space). Leave it out when the items are written side by side.',
+            },
+            'id': {
+                'doc': "The item's capture holding the child id ($1, $2, ...), or {group, map} to translate a wire id to the local child id. Leave it out to name children by their place in the list.",
+                'one_of': (
+                    {
+                        'type': 'string',
+                        'pattern': '^\\$\\d+$',
+                    },
+                    {
+                        'type': 'object',
+                        'fields': {
+                            'group': {
+                                'doc': "Which of the item's captures holds the wire id.",
+                                'one_of': (
+                                    {
+                                        'type': 'integer',
+                                        'min': 1,
+                                    },
+                                    {
+                                        'type': 'string',
+                                        'pattern': '^\\$\\d+$',
+                                    },
+                                ),
+                            },
+                            'map': {
+                                'type': 'object',
+                                'min_props': 1,
+                                'doc': "Wire id -> local child id translation. An id the map doesn't cover is skipped.",
+                                'extra': {
+                                    'one_of': (
+                                        {
+                                            'type': 'string',
+                                        },
+                                        {
+                                            'type': 'integer',
+                                        },
+                                    ),
+                                },
+                            },
+                        },
+                        'required': ('group',),
+                        'extra': False,
+                    },
+                ),
+            },
+            'start': {
+                'doc': "By place in the list: the first item's child id, as a number or as a capture of the rule's match ($2) when the reply says where it starts. Default 1. Not used with id.",
+                'one_of': (
+                    {
+                        'type': 'integer',
+                    },
+                    {
+                        'type': 'string',
+                        'pattern': '^\\$\\d+$',
+                    },
+                ),
+            },
+            'state': {
+                'type': 'object',
+                'min_props': 1,
+                'doc': "Child property -> the item's capture ($1), a literal, or {group, map, type} to translate the captured text.",
+            },
+        },
+        'required': ('type', 'element', 'state'),
+        'extra': False,
+    },
     'eachChildQuery': {
         'type': 'object',
         'doc': 'Per-child query template: expands to one query per registered child of the named type, substituting {child_id} with the unpadded local ID.',
@@ -1157,6 +1253,12 @@ DEFS = {
                 'doc': "State variable each reply reports, from the child type's state_variables. Lets the auto-generated simulator answer the query from that child's own state instead of leaving it unmodeled.",
                 'since': '0.24.0',
             },
+            'page_size': {
+                'type': 'integer',
+                'min': 2,
+                'doc': "Send one query per this many children instead of one per child, for a device whose list read answers a page of children starting at the one asked for (16 outputs a read). {child_id} is the first child of each page: with a roster of 1-32 and page_size 16 the query goes out for 1 and 17. Pair it with a child_list response rule.",
+                'since': '0.37.0',
+            },
         },
         'required': ('each_child', 'send'),
         'extra': False,
@@ -1176,7 +1278,7 @@ DEFS = {
             },
             'query_for': {
                 'type': 'string',
-                'doc': 'State variable the device reports in answer to this query. Must name a declared state variable.',
+                'doc': 'State variable the device reports in answer to this query. Must name a declared state variable, or <child_type>.<variable> for a list read that a child_list rule spreads across every child (the simulator then answers with every child in the list).',
                 'since': '0.24.0',
             },
         },
@@ -1673,6 +1775,11 @@ DEFS = {
                 'items': {
                     'ref': 'childSetEntry',
                 },
+            },
+            'child_list': {
+                'ref': 'childListEntry',
+                'doc': 'Regex rules only. Spread a list in one reply across many children (every output\'s tie in one line). Takes the place of child_set on the rule (a rule has one or the other); set/mappings may sit beside it.',
+                'since': '0.37.0',
             },
             'throttle': {
                 'type': 'number',

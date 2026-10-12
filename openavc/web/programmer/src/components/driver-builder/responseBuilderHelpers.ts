@@ -4,6 +4,7 @@
 // Mirrors configSchemaHelpers.ts / deviceSettingsHelpers.ts.
 
 import type {
+  DriverChildListEntry,
   DriverResponseDef,
   DriverResponseMapping,
 } from "../../api/types";
@@ -114,6 +115,10 @@ export function buildResponse(
     ...(original.require !== undefined ? { require: original.require } : {}),
     ...(original.after_json !== undefined
       ? { after_json: original.after_json }
+      : {}),
+    ...(original.only_when !== undefined ? { only_when: original.only_when } : {}),
+    ...(original.child_list !== undefined
+      ? { child_list: original.child_list }
       : {}),
   };
   // OSC responses use mappings + address; child_set rides along (the id is
@@ -531,4 +536,77 @@ export function jsonChildPropFromText(text: string, original: unknown): unknown 
     if (Object.keys(extra).length > 0) return { key, ...extra };
   }
   return key;
+}
+
+// ── child_list (a list in one reply, spread across children) ──
+// The runtime half is compile_child_list + ConfigurableDriver._resolve_child_list
+// (compiled_protocol.py / configurable.py). `group` and `start` count the
+// rule's own captures; `id` and every state value count the item's (element).
+
+/** A capture-ref-or-number input (`group`, `start`): "$2" stays a capture
+ *  ref, a whole number becomes a number, blank means the default. */
+export function refOrNumberFromText(text: string): string | number | undefined {
+  const trimmed = text.trim();
+  if (!trimmed) return undefined;
+  if (/^\$\d+$/.test(trimmed)) return trimmed;
+  if (/^-?\d+$/.test(trimmed)) return parseInt(trimmed, 10);
+  return trimmed;
+}
+
+/** The text shown for a child_list state value: "$1" for a capture (with or
+ *  without a value map), the literal otherwise. */
+export function childListValueToText(expr: unknown): string {
+  if (expr !== null && typeof expr === "object") {
+    const group = (expr as { group?: unknown }).group;
+    if (group !== undefined) {
+      const text = String(group);
+      return text.startsWith("$") ? text : `$${text}`;
+    }
+    const value = (expr as { value?: unknown }).value;
+    return String(value ?? "");
+  }
+  return String(expr ?? "");
+}
+
+/** The value map on a child_list state value, if it has one. */
+export function childListValueMap(
+  expr: unknown,
+): Record<string, string> | undefined {
+  if (expr !== null && typeof expr === "object") {
+    const map = (expr as { map?: unknown }).map;
+    if (map !== null && typeof map === "object") {
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(map as Record<string, unknown>)) {
+        out[k] = String(v);
+      }
+      return out;
+    }
+  }
+  return undefined;
+}
+
+/** Rebuild a child_list state value from its text and value map: a capture
+ *  ref with map rows becomes {group, map}; a capture ref alone stays "$N";
+ *  anything else is a literal, and a map means nothing for a literal. */
+export function childListValueFromParts(
+  text: string,
+  map: Record<string, string> | undefined,
+): unknown {
+  const refMatch = /^\$(\d+)$/.exec(text.trim());
+  if (refMatch && map && Object.keys(map).length > 0) {
+    return { group: parseInt(refMatch[1], 10), map };
+  }
+  if (refMatch) return text.trim();
+  return text;
+}
+
+/** A rule with its child_list replaced, or removed when `list` is undefined. */
+export function withChildList(
+  resp: DriverResponseDef,
+  list: DriverChildListEntry | undefined,
+): DriverResponseDef {
+  const next: DriverResponseDef = { ...resp };
+  if (list) next.child_list = list;
+  else delete next.child_list;
+  return next;
 }

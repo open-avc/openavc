@@ -38,6 +38,7 @@ DEF_TS_NAMES: dict[str, str] = {
     "mappingEntry": "DriverResponseMapping",
     "responseEntry": "DriverResponseDef",
     "childSetEntry": "DriverChildSetEntry",
+    "childListEntry": "DriverChildListEntry",
     "eachChildQuery": "DriverEachChildQuery",
     "queryEntry": "DriverQueryEntry",
     "actionEntry": "DriverActionDef",
@@ -223,6 +224,17 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
         lambda: spec.DEFS["childSetEntry"],
         {
             "id": _D(type="string | number | DriverChildSetIdSpec"),
+            "state": _D(type="Record<string, unknown>"),
+        },
+        _D(),
+    ),
+    (
+        "DriverChildListEntry",
+        lambda: spec.DEFS["childListEntry"],
+        {
+            "group": _D(type="number | string"),
+            "id": _D(type="string | DriverChildSetIdSpec"),
+            "start": _D(type="number | string"),
             "state": _D(type="Record<string, unknown>"),
         },
         _D(),

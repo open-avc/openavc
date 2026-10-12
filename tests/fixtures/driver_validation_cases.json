@@ -684,6 +684,912 @@
   },
   "transport": "tcp"
  },
+ "child_list_beside_child_set": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)",
+     "separator": ",",
+     "state": {
+      "level": "$1"
+     },
+     "type": "zone"
+    },
+    "child_set": [
+     {
+      "id": 1,
+      "state": {
+       "level": 1
+      },
+      "type": "zone"
+     }
+    ],
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "child_list_by_place_on_string_ids": {
+  "child_entity_types": {
+   "bus": {
+    "id_format": {
+     "type": "string"
+    },
+    "instances": {
+     "ids": [
+      "a",
+      "b"
+     ]
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)",
+     "separator": ",",
+     "state": {
+      "level": "$1"
+     },
+     "type": "bus"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "child_list_element_invalid": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+",
+     "separator": ",",
+     "state": {
+      "level": "$1"
+     },
+     "type": "zone"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "child_list_element_matches_empty": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d*)",
+     "separator": ",",
+     "state": {
+      "level": "$1"
+     },
+     "type": "zone"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "child_list_group_exceeds": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)",
+     "group": "$2",
+     "separator": ",",
+     "state": {
+      "level": "$1"
+     },
+     "type": "zone"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "child_list_id_exceeds_element": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)",
+     "id": "$2",
+     "separator": ",",
+     "state": {
+      "level": "$1"
+     },
+     "type": "zone"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "child_list_id_map_empty": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)>(\\d+)",
+     "id": {
+      "group": 2,
+      "map": {}
+     },
+     "separator": ",",
+     "state": {
+      "level": "$1"
+     },
+     "type": "zone"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "child_list_missing_element": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_list": {
+     "state": {
+      "level": "$1"
+     },
+     "type": "zone"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "child_list_missing_state": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)",
+     "type": "zone"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "child_list_not_mapping": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_list": "zone",
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "child_list_on_json_rule": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)",
+     "separator": ",",
+     "state": {
+      "level": "$1"
+     },
+     "type": "zone"
+    },
+    "json": true,
+    "set": {
+     "power": "p"
+    }
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "child_list_on_osc_rule": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "address": "/levels",
+    "child_list": {
+     "element": "(\\d+)",
+     "separator": ",",
+     "state": {
+      "level": "$1"
+     },
+     "type": "zone"
+    }
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "osc"
+ },
+ "child_list_separator_empty": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)",
+     "separator": "",
+     "state": {
+      "level": "$1"
+     },
+     "type": "zone"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "child_list_start_beside_id": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)>(\\d+)",
+     "id": "$2",
+     "separator": ",",
+     "start": 1,
+     "state": {
+      "level": "$1"
+     },
+     "type": "zone"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "child_list_start_not_a_number": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)",
+     "separator": ",",
+     "start": 1.5,
+     "state": {
+      "level": "$1"
+     },
+     "type": "zone"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "child_list_state_prop_undeclared": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)",
+     "separator": ",",
+     "state": {
+      "gain": "$1"
+     },
+     "type": "zone"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "child_list_state_ref_exceeds": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)",
+     "separator": ",",
+     "state": {
+      "level": "$3"
+     },
+     "type": "zone"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "child_list_state_spec_without_group": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)",
+     "separator": ",",
+     "state": {
+      "level": {
+       "map": {
+        "1": 1
+       }
+      }
+     },
+     "type": "zone"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "child_list_unknown_type": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)",
+     "separator": ",",
+     "state": {
+      "level": "$1"
+     },
+     "type": "relay"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "child_param_max_above_id_format": {
   "child_entity_types": {
    "zone": {
@@ -6549,6 +7455,217 @@
   },
   "transport": "tcp"
  },
+ "query_entry_page_size_below_two": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    {
+     "each_child": "zone",
+     "page_size": 1,
+     "send": "L{child_id}?"
+    }
+   ]
+  },
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)",
+     "separator": ",",
+     "state": {
+      "level": "$1"
+     },
+     "type": "zone"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "query_entry_page_size_without_each_child": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    {
+     "page_size": 16,
+     "query_for": "power",
+     "send": "LEVELS?"
+    }
+   ]
+  },
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)",
+     "separator": ",",
+     "state": {
+      "level": "$1"
+     },
+     "type": "zone"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "query_entry_paged_query_for_no_list_rule": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    {
+     "each_child": "zone",
+     "page_size": 16,
+     "query_for": "level",
+     "send": "L{child_id}?"
+    }
+   ]
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "query_entry_query_for_bare_child_var": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    {
+     "query_for": "level",
+     "send": "LEVELS?"
+    }
+   ]
+  },
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)",
+     "separator": ",",
+     "state": {
+      "level": "$1"
+     },
+     "type": "zone"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "query_entry_query_for_each_child_not_child_var": {
   "child_entity_types": {
    "zone": {
@@ -6608,6 +7725,158 @@
     }
    ]
   },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "query_entry_query_for_list_no_list_rule": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    {
+     "query_for": "zone.level",
+     "send": "LEVELS?"
+    }
+   ]
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "query_entry_query_for_list_unknown_type": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    {
+     "query_for": "bus.level",
+     "send": "LEVELS?"
+    }
+   ]
+  },
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)",
+     "separator": ",",
+     "state": {
+      "level": "$1"
+     },
+     "type": "zone"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "query_entry_query_for_list_unknown_var": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    {
+     "query_for": "zone.gain",
+     "send": "LEVELS?"
+    }
+   ]
+  },
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)",
+     "separator": ",",
+     "state": {
+      "level": "$1"
+     },
+     "type": "zone"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
   "state_variables": {
    "power": {
     "label": "Power",

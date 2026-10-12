@@ -944,6 +944,28 @@ responses:
 
 Everything else about the rule is unchanged: `require:`, `only_when:` and `throttle:` apply as they do to any json rule, a flat `set:` can sit alongside, and an ID that isn't registered is skipped quietly. A driver using it needs `min_platform_version: "0.34.0"`.
 
+**A list in one reply** (`child_list:`, platform 0.37.0). A matrix often answers every output's tie, or every output's mute, in one line. `child_list:` on a regex rule spreads that list across the children. `group` is the capture holding the list (default `$1`), `element` the pattern for one item, `separator` the text between items (leave it out when the items are written side by side), and `state` reads each item's own captures. An item names its child by its place in the list, counting from `start` (default 1), or by a capture of its own (`id`). `group` and `start` count the rule's captures; `id` and `state` count the item's.
+
+```yaml
+responses:
+  # "Ties 3,1,2,4": output 1 has input 3, output 2 has input 1, and so on.
+  - match: '^Ties (.+)$'
+    child_list: { type: output, element: '(\d+)', separator: ',', state: { input: $1 } }
+  # "VID 3>1,5>2": each item names its own output.
+  - match: '^VID (.+)$'
+    child_list: { type: output, element: '(\d+)>(\d+)', separator: ',', id: $2, state: { input: $1 } }
+  # "Mut0120": one digit per output, written side by side, both mutes in each digit.
+  - match: '^Mut(\d+)$'
+    child_list:
+      type: output
+      element: '(\d)'
+      state:
+        video_mute: { group: 1, map: { "0": "false", "1": "true", "2": "false", "3": "true" } }
+        audio_mute: { group: 1, map: { "0": "false", "1": "false", "2": "true", "3": "true" } }
+```
+
+With a separator, an item that does not match still holds its place, so the items after it keep their children. A list of one item is still a list, so the same rule reads the device's answer about a single child. A rule takes `child_list` or `child_set`, not both, and a flat `set:` can sit beside it. An ID that isn't registered is skipped. Keep `element` to character classes and alternations (no lookarounds) so the simulator can write the reply.
+
 Poll each child with an `each_child:` entry in `polling.queries` (also allowed in `on_connect`). It expands to one query per registered child, substituting `{child_id}` with the unpadded local ID — format specs work, so `{child_id:02d}` zero-pads for padded-address protocols:
 
 ```yaml
@@ -955,6 +977,20 @@ polling:
 ```
 
 `query_for:` on an `each_child` entry names which of the **child type's** state variables the reply reports (requires platform 0.24.0). It drives the device simulator: with the pairing declared, the auto-generated simulator models every child's state independently and answers each expanded query from that child's own values — without it, per-child queries go unanswered in simulation unless you script them by hand.
+
+A query sent once that asks for a list names the child variable with its type, `query_for: output.input`, and the simulator answers it with every child, in the shape of the `child_list` rule that fills that variable. A device that answers a page of children starting at the one asked for (16 outputs a read, say) takes a per-child entry with `page_size:`. It goes out once per page, for the page's first child, and `start` reads where the page begins from the reply (platform 0.37.0):
+
+```yaml
+responses:
+  - match: '^Page(\d+) ((?:\d\d ?)+)$'
+    child_list: { type: output, group: $2, element: '(\d\d)', start: $1, state: { input: $1 } }
+polling:
+  queries:
+    - { send: "TIES?\r", query_for: output.input }                                         # the whole list
+    - { each_child: output, page_size: 16, send: "PAGE? {child_id}\r", query_for: input }  # outputs 1, 17, 33 ...
+```
+
+A reply that does not say where its list starts (an optional `start` capture that did not match) writes nothing, so one page is never written over another.
 
 ##### Gating a query on a config field (`when:`)
 
@@ -1338,7 +1374,7 @@ A `set:` value on a `match:` rule is always one of those two — a capture refer
 - `mappings[].group`: Which regex capture group (1-based).
 - `mappings[].state`: Which state variable to update.
 - `mappings[].type` (optional): How to convert the captured text: `string`, `integer`, `float`, `boolean`. Leave it out and the state variable's own declared type is used, which is normally what you want.
-- `mappings[].map` (optional): A lookup table. If the captured value is a key in this object, the mapped value is used instead. The mapped value is then converted with `type` just like an unmapped capture, so the stored state matches its declared type regardless of transport. A mapped value of `null` leaves the variable empty instead, whatever its type, so a device's "no reading" code can map straight to empty: `map: { "--": null }` (platform 0.37.0+). The same holds for a `map:` or a literal in `child_set:`, on a `json: true` rule and on an OSC rule.
+- `mappings[].map` (optional): A lookup table. If the captured value is a key in this object, the mapped value is used instead. The mapped value is then converted with `type` just like an unmapped capture, so the stored state matches its declared type regardless of transport. A mapped value of `null` leaves the variable empty instead, whatever its type, so a device's "no reading" code can map straight to empty: `map: { "--": null }` (platform 0.37.0+). The same holds for a `map:` or a literal in `child_set:` and `child_list:`, on a `json: true` rule and on an OSC rule.
 
 **One rule can use both forms.** When a response line has one field that needs a value map and several that don't, put the mapped field in `mappings:` and the plain ones in `set:` — both are applied. There is no need to rewrite the whole rule in the verbose form just because one field needs a map:
 
@@ -1511,7 +1547,7 @@ If the device's auth scheme isn't a prompt-and-response Telnet login (for exampl
 
 - `queries`: Command strings sent each cycle.
 
-A query may also be written in mapping form to carry extra semantics: `{ send: "V\r", when: enable_meters }` gates it on a config field (see `when:` under child polling), and `{ send: "V\r", query_for: volume }` names the state variable the reply reports so the device simulator answers the query with that variable's current value instead of guessing from command names (requires platform 0.24.0; `query_for` must name a declared state variable).
+A query may also be written in mapping form to carry extra semantics: `{ send: "V\r", when: enable_meters }` gates it on a config field (see `when:` under child polling), and `{ send: "V\r", query_for: volume }` names the state variable the reply reports so the device simulator answers the query with that variable's current value instead of guessing from command names (requires platform 0.24.0; `query_for` must name a declared state variable, or `<child type>.<variable>` for a list read, see `child_list:` under child entities).
 
 The poll cadence is **not** set in the `polling` block — it comes from `default_config.poll_interval` (in seconds), which device config can override per-instance. Set `poll_interval: 0` to disable polling. A top-level `polling.interval` is inert (the runtime never reads it) and is rejected by the community-catalog build, so don't add one.
 

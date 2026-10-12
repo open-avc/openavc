@@ -15,6 +15,7 @@ import type {
  *   { send, when }                                  gated on a config field
  *   { send, query_for }                             declared state pairing
  *   { each_child, send, when }                      both
+ *   { each_child, send, page_size }                 one query per page of children
  *   { address, args }                               OSC message with typed args
  *   { address, args, when }                         OSC args, gated
  *
@@ -24,9 +25,11 @@ import type {
  *
  * `query_for: <state_var>` names the state variable the reply reports, so the
  * auto-generated simulator answers the query without name-guessing. On the
- * plain `{send}` form it names a device-level variable; on an `each_child`
- * form it names one of that child type's state variables (each child answers
- * from its own state). The OSC args form doesn't carry one.
+ * plain `{send}` form it names a device-level variable, or
+ * `<child type>.<variable>` for a list read a `child_list` rule spreads across
+ * every child; on an `each_child` form it names one of that child type's state
+ * variables (each child answers from its own state). The OSC args form
+ * doesn't carry one.
  *
  * OSC on_connect items with arguments are keyed on `address` (paired with
  * `args`); every other form keys the wire content on `send` (or is a bare
@@ -131,6 +134,48 @@ export function buildQueryEntry(
     return entry;
   }
   return send;
+}
+
+/** `page_size` on a per-child entry: one query per page of that many children
+ *  (a list read that answers a page from the child asked for). */
+export function queryPageSize(q: QueryEntry): number | undefined {
+  if (isEachChild(q) && typeof q.page_size === "number") return q.page_size;
+  return undefined;
+}
+
+/** An entry with its `page_size` set, or removed when `size` is not 2 or
+ *  more. Only a per-child entry takes one. */
+export function withPageSize(q: QueryEntry, size: number | undefined): QueryEntry {
+  if (!isEachChild(q)) return q;
+  const next: DriverEachChildQuery = { ...q };
+  if (size !== undefined && Number.isInteger(size) && size >= 2) {
+    next.page_size = size;
+  } else {
+    delete next.page_size;
+  }
+  return next;
+}
+
+/** Keys an edit of the send, scope, gate or pairing must not lose: what
+ *  `buildQueryEntry` does not take as a part is copied from the entry being
+ *  replaced, where the new shape can hold it. */
+export function carryQueryExtras(prev: QueryEntry, next: QueryEntry): QueryEntry {
+  return withPageSize(next, queryPageSize(prev));
+}
+
+/** The `<child type>.<variable>` pairs a query sent once can report: the
+ *  child variables a `child_list` rule spreads from one reply. */
+export function listReadOptions(draft: DriverDefinition): string[] {
+  const out: string[] = [];
+  for (const resp of draft.responses ?? []) {
+    const list = resp.child_list;
+    if (!list || typeof list.state !== "object" || list.state === null) continue;
+    for (const prop of Object.keys(list.state)) {
+      const name = `${list.type}.${prop}`;
+      if (!out.includes(name)) out.push(name);
+    }
+  }
+  return out;
 }
 
 /** Config fields a `when:` gate can name — declared in either block, deduped.

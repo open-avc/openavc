@@ -90,6 +90,26 @@ def _child_resp(**entry: Any) -> dict[str, Any]:
     )
 
 
+def _list_resp(**spec: Any) -> dict[str, Any]:
+    """A definition with a child_list response against declared child types."""
+    return _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        responses=[{"match": r"LEVELS (.+)", "child_list": spec}],
+    )
+
+
+_LIST = {"type": "zone", "element": r"(\d+)", "separator": ",", "state": {"level": "$1"}}
+
+
+def _list_read(**query: Any) -> dict[str, Any]:
+    """A definition with a list rule filling zone.level and one poll query."""
+    return _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        responses=[{"match": r"LEVELS (.+)", "child_list": dict(_LIST)}],
+        polling={"queries": [query]},
+    )
+
+
 def _osc_child_resp(**entry: Any) -> dict[str, Any]:
     return _d(
         transport="osc",
@@ -312,6 +332,58 @@ CASES: dict[str, Any] = {
     "child_set_missing_state": _child_resp(type="zone", id="$1"),
     "child_set_state_prop_undeclared": _child_resp(type="zone", id="$1", state={"gain": "$2"}),
     "child_set_state_ref_exceeds": _child_resp(type="zone", id="$1", state={"level": "$9"}),
+    # --- child_list (a list in one reply, spread across children) ---
+    "child_list_beside_child_set": _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        responses=[{
+            "match": r"LEVELS (.+)",
+            "child_list": dict(_LIST),
+            "child_set": [{"type": "zone", "id": 1, "state": {"level": 1}}],
+        }],
+    ),
+    "child_list_on_json_rule": _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        responses=[{"json": True, "set": {"power": "p"}, "child_list": dict(_LIST)}],
+    ),
+    "child_list_on_osc_rule": _d(
+        transport="osc",
+        child_entity_types=dict(_CHILD_TYPES),
+        responses=[{"address": "/levels", "child_list": dict(_LIST)}],
+    ),
+    "child_list_not_mapping": _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        responses=[{"match": r"LEVELS (.+)", "child_list": "zone"}],
+    ),
+    "child_list_unknown_type": _list_resp(**{**_LIST, "type": "relay"}),
+    "child_list_group_exceeds": _list_resp(**{**_LIST, "group": "$2"}),
+    "child_list_missing_element": _list_resp(type="zone", state={"level": "$1"}),
+    "child_list_element_invalid": _list_resp(**{**_LIST, "element": r"(\d+"}),
+    "child_list_element_matches_empty": _list_resp(**{**_LIST, "element": r"(\d*)"}),
+    "child_list_separator_empty": _list_resp(**{**_LIST, "separator": ""}),
+    "child_list_id_exceeds_element": _list_resp(**{**_LIST, "id": "$2"}),
+    "child_list_id_map_empty": _list_resp(
+        **{**_LIST, "element": r"(\d+)>(\d+)", "id": {"group": 2, "map": {}}}
+    ),
+    "child_list_start_beside_id": _list_resp(
+        **{**_LIST, "element": r"(\d+)>(\d+)", "id": "$2", "start": 1}
+    ),
+    "child_list_by_place_on_string_ids": _d(
+        child_entity_types={
+            "bus": {
+                "id_format": {"type": "string"},
+                "state_variables": {"level": {"type": "number", "label": "Level"}},
+                "instances": {"ids": ["a", "b"]},
+            }
+        },
+        responses=[{"match": r"LEVELS (.+)", "child_list": {**_LIST, "type": "bus"}}],
+    ),
+    "child_list_start_not_a_number": _list_resp(**{**_LIST, "start": 1.5}),
+    "child_list_missing_state": _list_resp(type="zone", element=r"(\d+)"),
+    "child_list_state_prop_undeclared": _list_resp(**{**_LIST, "state": {"gain": "$1"}}),
+    "child_list_state_spec_without_group": _list_resp(
+        **{**_LIST, "state": {"level": {"map": {"1": 1}}}}
+    ),
+    "child_list_state_ref_exceeds": _list_resp(**{**_LIST, "state": {"level": "$3"}}),
     # --- OSC child_set ---
     "osc_child_set_not_list": _d(
         transport="osc",
@@ -429,6 +501,27 @@ CASES: dict[str, Any] = {
     "on_connect_query_for_on_address": _d(
         transport="osc",
         on_connect=[{"address": "/status", "query_for": "power"}],
+    ),
+    # A list read names its child variable with the type, and a child_list
+    # rule has to fill it; a bare child variable says nothing about which type.
+    "query_entry_query_for_bare_child_var": _list_read(send="LEVELS?", query_for="level"),
+    "query_entry_query_for_list_unknown_type": _list_read(send="LEVELS?", query_for="bus.level"),
+    "query_entry_query_for_list_unknown_var": _list_read(send="LEVELS?", query_for="zone.gain"),
+    "query_entry_query_for_list_no_list_rule": _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        polling={"queries": [{"send": "LEVELS?", "query_for": "zone.level"}]},
+    ),
+    "query_entry_page_size_without_each_child": _list_read(
+        send="LEVELS?", page_size=16, query_for="power"
+    ),
+    "query_entry_page_size_below_two": _list_read(
+        each_child="zone", send="L{child_id}?", page_size=1
+    ),
+    "query_entry_paged_query_for_no_list_rule": _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        polling={"queries": [
+            {"each_child": "zone", "send": "L{child_id}?", "page_size": 16, "query_for": "level"},
+        ]},
     ),
     "command_sets_child_var_neither": _d(
         child_entity_types=dict(_CHILD_TYPES),

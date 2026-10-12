@@ -93,6 +93,63 @@
  "child_id_format_unknown_type": [
   "child_entity_types.zone.id_format: unknown type 'uuid' (expected 'integer' or 'string')"
  ],
+ "child_list_beside_child_set": [
+  "Response 0: has both child_set and child_list; keep child_list, which also reads a list of one item"
+ ],
+ "child_list_by_place_on_string_ids": [
+  "Response 0: child_list: bus has string ids, so an item cannot be named by its place in the list; give id: $N"
+ ],
+ "child_list_element_invalid": [
+  "Response 0: child_list: element is not a valid regex: missing ), unterminated subpattern at position 0"
+ ],
+ "child_list_element_matches_empty": [
+  "Response 0: child_list: element matches empty text, so it cannot tell one item from the next"
+ ],
+ "child_list_group_exceeds": [
+  "Response 0: child_list: group $2 exceeds the 1 group(s) of the rule's match"
+ ],
+ "child_list_id_exceeds_element": [
+  "Response 0: child_list: id $2 exceeds the 1 group(s) of the element"
+ ],
+ "child_list_id_map_empty": [
+  "Response 0: child_list: id map must be a non-empty mapping of wire id -> local child id"
+ ],
+ "child_list_missing_element": [
+  "Response 0: child_list: missing 'element' (the regex for one item of the list)"
+ ],
+ "child_list_missing_state": [
+  "Response 0: child_list: missing 'state' mapping (prop -> $N or literal)"
+ ],
+ "child_list_not_mapping": [
+  "Response 0: child_list: must be a mapping"
+ ],
+ "child_list_on_json_rule": [
+  "Response 0: child_list works on text rules (match:) only; a json: true rule routes to children with child_set"
+ ],
+ "child_list_on_osc_rule": [
+  "Response 0: child_list works on text rules (match:) only; an OSC rule routes to children with child_set"
+ ],
+ "child_list_separator_empty": [
+  "Response 0: child_list: separator must be the text between items"
+ ],
+ "child_list_start_beside_id": [
+  "Response 0: child_list: start counts places in the list, and with id each item names its own child; remove one of them"
+ ],
+ "child_list_start_not_a_number": [
+  "Response 0: child_list: start must be the first item's child id or a capture ref of the rule's match"
+ ],
+ "child_list_state_prop_undeclared": [
+  "Response 0: child_list: state prop 'gain' is not declared in child_entity_types.zone.state_variables"
+ ],
+ "child_list_state_ref_exceeds": [
+  "Response 0: child_list: state 'level' $3 exceeds the 1 group(s) of the element"
+ ],
+ "child_list_state_spec_without_group": [
+  "Response 0: child_list: state 'level' needs a group (the item's capture) or a value"
+ ],
+ "child_list_unknown_type": [
+  "Response 0: child_list: type 'relay' is not a declared child_entity_type"
+ ],
  "child_param_max_above_id_format": [
   "commands.set_zone.params.zone: max 99 is above child_entity_types.zone.id_format.max (8), so the gate would accept an id the child type cannot have"
  ],
@@ -722,11 +779,32 @@
  "push_unknown_type": [
   "push: missing or unknown 'type' (supported: multicast, sse, tcp_listener, http_listener)"
  ],
+ "query_entry_page_size_below_two": [
+  "polling.queries[0]: page_size must be a whole number, 2 or more (how many children one reply covers)"
+ ],
+ "query_entry_page_size_without_each_child": [
+  "polling.queries[0]: page_size applies to a per-child query (each_child)"
+ ],
+ "query_entry_paged_query_for_no_list_rule": [
+  "polling.queries[0]: a paged query reads a list, and no child_list rule fills 'level' on 'zone'"
+ ],
+ "query_entry_query_for_bare_child_var": [
+  "polling.queries[0]: query_for 'level' is a child variable; on a query sent once, name its child type too: 'zone.level'"
+ ],
  "query_entry_query_for_each_child_not_child_var": [
   "polling.queries[0]: query_for 'power' is not a state variable of child type 'zone'"
  ],
  "query_entry_query_for_empty": [
   "polling.queries[0]: 'query_for' must name a state variable"
+ ],
+ "query_entry_query_for_list_no_list_rule": [
+  "polling.queries[0]: query_for 'zone.level' names a child variable, and no child_list rule fills it; a query sent once reports a child only through a list"
+ ],
+ "query_entry_query_for_list_unknown_type": [
+  "polling.queries[0]: query_for 'bus.level': 'bus' is not a declared child_entity_type"
+ ],
+ "query_entry_query_for_list_unknown_var": [
+  "polling.queries[0]: query_for 'zone.gain': 'gain' is not a state variable of child type 'zone'"
  ],
  "query_entry_query_for_undeclared_var": [
   "polling.queries[0]: query_for 'ghost' is not a declared state variable"

@@ -1103,7 +1103,8 @@ class CompiledProtocol:
     Three separate tables:
 
     1. ``responses`` — regex rules for TCP/serial/UDP/HTTP data
-       (pattern, flat state mappings, compiled child_set entries, throttle)
+       (pattern, flat state mappings, compiled child_set entries plus a
+       compiled child_list entry, throttle)
     2. ``osc_responses`` — OSC address rules (address, mappings, child_set,
        throttle)
     3. ``json_responses`` — JSON-body rules applied together from one parsed
@@ -1330,6 +1331,118 @@ def compile_child_set(
                 }
             )
     return compiled
+
+
+def _capture_ref(raw: Any) -> int | None:
+    """``"$3"`` or ``3`` as the capture number, None for anything else."""
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int):
+        return raw if raw >= 1 else None
+    if isinstance(raw, str) and raw.startswith("$"):
+        try:
+            group = int(raw[1:])
+        except ValueError:
+            return None
+        return group if group >= 1 else None
+    return None
+
+
+def compile_child_list(
+    resp: dict[str, Any],
+    child_types: dict[str, Any],
+    device_id: str = "",
+) -> dict[str, Any] | None:
+    """Compile a regex response entry's ``child_list:`` block: one reply
+    carrying a list, spread across the children of one type.
+
+    The result rides in the rule's child-mapping list beside any compiled
+    ``child_set`` entries (the validator refuses both on one rule), told apart
+    by its ``list`` key, so every table that walks child mappings carries it
+    unchanged. ``props`` has the child_set shape, with capture numbers that
+    count the item's own captures, so value conversion attaches to it the
+    same way. None for a malformed block, logged; the loader reports the
+    same shape up-front.
+    """
+    raw = resp.get("child_list")
+    if not isinstance(raw, dict):
+        return None
+    ctype = raw.get("type")
+    tdef = child_types.get(ctype)
+    if not isinstance(tdef, dict):
+        log.warning(
+            f"[{device_id}] child_list: unknown child type {ctype!r}; skipping"
+        )
+        return None
+    group = _capture_ref(raw.get("group", 1))
+    if group is None:
+        log.warning(
+            f"[{device_id}] child_list: group {raw.get('group')!r} is not a "
+            f"capture ref; skipping"
+        )
+        return None
+    try:
+        element = re.compile(str(raw.get("element") or ""))
+    except re.error as e:
+        log.warning(f"[{device_id}] child_list: invalid element pattern: {e}")
+        return None
+    if not element.pattern:
+        log.warning(f"[{device_id}] child_list: missing element; skipping")
+        return None
+    separator = raw.get("separator")
+    separator = separator if isinstance(separator, str) and separator else None
+    id_group: int | None = None
+    id_map: dict[str, Any] | None = None
+    cid = raw.get("id")
+    if isinstance(cid, dict):
+        id_group = _capture_ref(cid.get("group"))
+        raw_map = cid.get("map")
+        if isinstance(raw_map, dict) and raw_map:
+            id_map = {str(k): v for k, v in raw_map.items()}
+    elif cid is not None:
+        id_group = _capture_ref(cid)
+    if cid is not None and id_group is None:
+        log.warning(
+            f"[{device_id}] child_list: id {cid!r} is not a capture ref of "
+            f"the item; skipping"
+        )
+        return None
+    start: tuple[str, int] = ("literal", 1)
+    raw_start = raw.get("start", 1)
+    if isinstance(raw_start, str):
+        start_group = _capture_ref(raw_start)
+        if start_group is None:
+            log.warning(
+                f"[{device_id}] child_list: start {raw_start!r} is not a number "
+                f"or a capture ref; skipping"
+            )
+            return None
+        start = ("group", start_group)
+    elif isinstance(raw_start, int) and not isinstance(raw_start, bool):
+        start = ("literal", raw_start)
+    # The same prop shapes as child_set's: a capture ref, a static, or the
+    # {group, map, type} long form. Reused rather than repeated, so the two
+    # read a value the same way.
+    probe = compile_child_set(
+        {"child_set": [{"type": ctype, "id": 0, "state": raw.get("state")}]},
+        child_types,
+        device_id,
+    )
+    if not probe:
+        log.warning(f"[{device_id}] child_list: no usable state; skipping")
+        return None
+    return {
+        "type": ctype,
+        "list": {
+            "group": group,
+            "element": element,
+            "separator": separator,
+            "id_group": id_group,
+            "start": start,
+        },
+        "id_map": id_map,
+        "props": probe[0]["props"],
+    }
 
 
 def compile_osc_child_set(
@@ -1688,6 +1801,9 @@ def compile_driver(
                         })
 
             child_mappings = compile_child_set(resp, child_types, device_id)
+            child_list = compile_child_list(resp, child_types, device_id)
+            if child_list is not None:
+                child_mappings.append(child_list)
             entry = (
                 pattern,
                 mappings,
