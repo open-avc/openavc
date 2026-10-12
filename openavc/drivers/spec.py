@@ -665,7 +665,7 @@ FIELDS = {
     },
     'on_connect': {
         'type': 'array',
-        'doc': 'Commands sent immediately after connect, before polling. Strings for TCP/serial/UDP; {address, args} mappings for OSC (args carry typed OSC values for a value-setting bring-up message); {each_child, send} templates expand to one query per registered child. Any mapping entry may add when: <config_field> to run only while that field is on, and a {send} entry may add query_for: <state_var> to name the state variable its reply reports.',
+        'doc': "Commands sent immediately after connect, before polling. Strings for TCP/serial/UDP; {address, args} mappings for OSC (args carry typed OSC values for a value-setting bring-up message); {each_child, send} templates expand to one query per registered child. Any mapping entry may add when: <config_field> to run only while that field is on, or when_state: to run only while the device's state allows (a reconnect to a unit in standby leaves it there), and a {send} entry may add query_for: <state_var> to name the state variable its reply reports.",
         'items': {
             'one_of': (
                 {
@@ -693,6 +693,9 @@ FIELDS = {
                             'type': 'string',
                             'doc': 'Config field gating this entry: it runs only while that field is truthy. Must name a field declared in config_schema / default_config.',
                             'since': '0.23.0',
+                        },
+                        'when_state': {
+                            'ref': 'whenStateGate',
                         },
                     },
                     'required': ('address',),
@@ -722,6 +725,10 @@ FIELDS = {
                         },
                     ),
                 },
+            },
+            'when_state': {
+                'ref': 'whenStateGate',
+                'doc': "Hold the whole poll while the device's state is outside this gate (a matrix that any command wakes, left in standby). A cycle that sends nothing is not counted as a missed poll.",
             },
         },
         'not_': {"required": ["interval"]},
@@ -1229,6 +1236,42 @@ DEFS = {
         'required': ('type', 'element', 'state'),
         'extra': False,
     },
+    'whenStateGate': {
+        'type': 'object',
+        'min_props': 1,
+        'doc': "Run only while the device's own state allows: state variable -> the value it must hold, or a list of values it may hold. Every variable named must hold. A variable the device has not reported yet does not hold the entry back, so a first connect still reads it. Device-level state variables only; each value must suit the variable's type (and enum). A response rule must set the variable back, since a command's sets: is never applied at runtime. Nothing is sent while the gate is shut, so nothing notices a device that goes away meanwhile.",
+        'since': '0.37.0',
+        'extra': {
+            'one_of': (
+                {
+                    'type': 'string',
+                },
+                {
+                    'type': 'number',
+                },
+                {
+                    'type': 'boolean',
+                },
+                {
+                    'type': 'array',
+                    'min_items': 1,
+                    'items': {
+                        'one_of': (
+                            {
+                                'type': 'string',
+                            },
+                            {
+                                'type': 'number',
+                            },
+                            {
+                                'type': 'boolean',
+                            },
+                        ),
+                    },
+                },
+            ),
+        },
+    },
     'eachChildQuery': {
         'type': 'object',
         'doc': 'Per-child query template: expands to one query per registered child of the named type, substituting {child_id} with the unpadded local ID.',
@@ -1248,6 +1291,9 @@ DEFS = {
                 'doc': 'Config field gating this entry: it runs only while that field is truthy. Must name a field declared in config_schema / default_config.',
                 'since': '0.23.0',
             },
+            'when_state': {
+                'ref': 'whenStateGate',
+            },
             'query_for': {
                 'type': 'string',
                 'doc': "State variable each reply reports, from the child type's state_variables. Lets the auto-generated simulator answer the query from that child's own state instead of leaving it unmodeled.",
@@ -1265,7 +1311,7 @@ DEFS = {
     },
     'queryEntry': {
         'type': 'object',
-        'doc': 'A plain query in mapping form so it can carry extra semantics a bare string cannot: when: gates it on a config field (arm a chatty subscription behind an integrator checkbox), and query_for: names the state variable the reply reports so the auto-generated simulator answers it without name-guessing. At least one of the two must be present — a mapping with only send: is just a string query written the long way.',
+        'doc': "A plain query in mapping form so it can carry extra semantics a bare string cannot: when: gates it on a config field (arm a chatty subscription behind an integrator checkbox), when_state: gates it on the device's own state (leave a unit in standby), and query_for: names the state variable the reply reports so the auto-generated simulator answers it without name-guessing. At least one of the three must be present — a mapping with only send: is just a string query written the long way.",
         'fields': {
             'send': {
                 'type': 'string',
@@ -1275,6 +1321,9 @@ DEFS = {
                 'type': 'string',
                 'doc': 'Config field gating this entry. Must name a field declared in config_schema / default_config.',
                 'since': '0.23.0',
+            },
+            'when_state': {
+                'ref': 'whenStateGate',
             },
             'query_for': {
                 'type': 'string',
@@ -1289,6 +1338,9 @@ DEFS = {
             },
             {
                 'required': ('query_for',),
+            },
+            {
+                'required': ('when_state',),
             },
         ),
         'extra': False,

@@ -463,6 +463,34 @@ async def test_inter_command_delay(echo_server):
     await transport.close()
 
 
+async def test_wait_idle_waits_out_every_write_queued_ahead(echo_server):
+    """``wait_idle`` returns only once every write already under way or
+    waiting has gone out and slept its delay. A state-gated poll line waits
+    here before it decides to send, so the answer to a command sent just
+    before it is read first; the lock being fair is what makes one acquire
+    enough, and this pins it."""
+    import asyncio
+    import time
+    server, port = echo_server
+
+    transport = await TCPTransport.create(
+        "127.0.0.1", port,
+        on_data=lambda d: None,
+        on_disconnect=lambda: None,
+        delimiter=b"\r",
+        inter_command_delay=0.1,
+    )
+    start = time.monotonic()
+    first = asyncio.create_task(transport.send(b"a\r"))
+    await asyncio.sleep(0)
+    second = asyncio.create_task(transport.send(b"b\r"))
+    await asyncio.sleep(0)
+    await transport.wait_idle()
+    assert first.done() and second.done()
+    assert time.monotonic() - start >= 0.18
+    await transport.close()
+
+
 # --- Concurrent sends are serialized ---
 
 

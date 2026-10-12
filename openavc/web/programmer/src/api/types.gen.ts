@@ -124,8 +124,8 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   childInstances: new Set(["count", "count_from", "count_from_state", "ids", "ids_from", "label", "presence"]),
   childSetEntry: new Set(["id", "state", "type"]),
   childListEntry: new Set(["element", "group", "id", "separator", "start", "state", "type"]),
-  eachChildQuery: new Set(["each_child", "page_size", "query_for", "send", "when"]),
-  queryEntry: new Set(["query_for", "send", "when"]),
+  eachChildQuery: new Set(["each_child", "page_size", "query_for", "send", "when", "when_state"]),
+  queryEntry: new Set(["query_for", "send", "when", "when_state"]),
   paramEntry: new Set(["child_type", "decimals", "default", "description", "help", "label", "map", "max", "min", "offset", "options_from", "options_state", "pattern", "required", "scale", "secret", "trim", "type", "type_from", "unit", "values"]),
   oscArg: new Set(["type", "value"]),
   udpSendEntry: new Set(["broadcast", "host", "magic_packet", "payload", "port"]),
@@ -177,6 +177,18 @@ export type DriverDiscoveryExtractRule = string | { regex: string; group?: numbe
  * {all:[...]} (AND) group. key may use $id for the device's own id.
  */
 export type DriverVisibleWhen = DriverVisibleWhenCondition | { any: DriverVisibleWhenCondition[] } | { all: DriverVisibleWhenCondition[] };
+
+/**
+ * Run only while the device's own state allows: state variable -> the value it
+ * must hold, or a list of values it may hold. Every variable named must hold.
+ * A variable the device has not reported yet does not hold the entry back, so
+ * a first connect still reads it. Device-level state variables only; each
+ * value must suit the variable's type (and enum). A response rule must set the
+ * variable back, since a command's sets: is never applied at runtime. Nothing
+ * is sent while the gate is shut, so nothing notices a device that goes away
+ * meanwhile.
+ */
+export type DriverWhenState = Record<string, string | number | boolean | (string | number | boolean)[]>;
 
 /** One typed OSC argument (type tag + value; see OSC_ARG_TYPES). */
 export interface DriverOscArg {
@@ -702,6 +714,7 @@ export interface DriverEachChildQuery {
    * platform 0.23.0.
    */
   when?: string;
+  when_state?: DriverWhenState;
   /**
    * State variable each reply reports, from the child type's state_variables.
    * Lets the auto-generated simulator answer the query from that child's own
@@ -721,9 +734,10 @@ export interface DriverEachChildQuery {
 /**
  * A plain query in mapping form so it can carry extra semantics a bare string
  * cannot: when: gates it on a config field (arm a chatty subscription behind
- * an integrator checkbox), and query_for: names the state variable the reply
+ * an integrator checkbox), when_state: gates it on the device's own state
+ * (leave a unit in standby), and query_for: names the state variable the reply
  * reports so the auto-generated simulator answers it without name-guessing. At
- * least one of the two must be present — a mapping with only send: is just a
+ * least one of the three must be present — a mapping with only send: is just a
  * string query written the long way.
  */
 export interface DriverQueryEntry {
@@ -737,6 +751,7 @@ export interface DriverQueryEntry {
    * config_schema / default_config. Requires platform 0.23.0.
    */
   when?: string;
+  when_state?: DriverWhenState;
   /**
    * State variable the device reports in answer to this query. Must name a
    * declared state variable, or <child_type>.<variable> for a list read that a
@@ -760,6 +775,7 @@ export interface DriverOscConnectItem {
    * platform 0.23.0.
    */
   when?: string;
+  when_state?: DriverWhenState;
 }
 
 export interface DriverVisibleWhenCondition {
@@ -1794,8 +1810,10 @@ export interface DriverDefinition {
    * TCP/serial/UDP; {address, args} mappings for OSC (args carry typed OSC
    * values for a value-setting bring-up message); {each_child, send} templates
    * expand to one query per registered child. Any mapping entry may add when:
-   * <config_field> to run only while that field is on, and a {send} entry may
-   * add query_for: <state_var> to name the state variable its reply reports.
+   * <config_field> to run only while that field is on, or when_state: to run
+   * only while the device's state allows (a reconnect to a unit in standby
+   * leaves it there), and a {send} entry may add query_for: <state_var> to
+   * name the state variable its reply reports.
    */
   on_connect?: (string | DriverEachChildQuery | DriverQueryEntry | DriverOscConnectItem | Record<string, unknown>)[];
   /**
@@ -1803,7 +1821,7 @@ export interface DriverDefinition {
    * and rejected by the catalog validator; set the cadence via
    * default_config.poll_interval instead.
    */
-  polling: { queries?: (string | DriverEachChildQuery | DriverQueryEntry)[] };
+  polling: { queries?: (string | DriverEachChildQuery | DriverQueryEntry)[]; when_state?: DriverWhenState };
   auth?: DriverAuthDef;
   liveness?: DriverLivenessDef;
   push?: DriverPushDef;

@@ -172,6 +172,16 @@ class UDPTransport:
         self._connected = True
         log.debug(f"[{self._name}] UDP socket opened (bound to {bind_addr})")
 
+    async def wait_idle(self) -> None:
+        """Return once every write already under way or waiting has gone out,
+        the ``inter_command_delay`` after each included (the lock is fair, so
+        taking it once waits for all of them). A caller about to decide
+        whether to send (a driver's state-gated poll line) waits here first,
+        so the answer to a command that just went out has had its chance to
+        arrive."""
+        async with self._send_lock:
+            pass
+
     async def send(self, data: bytes) -> None:
         """Send a UDP datagram to the default target host and port.
 

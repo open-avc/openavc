@@ -41,6 +41,7 @@ DEF_TS_NAMES: dict[str, str] = {
     "childListEntry": "DriverChildListEntry",
     "eachChildQuery": "DriverEachChildQuery",
     "queryEntry": "DriverQueryEntry",
+    "whenStateGate": "DriverWhenState",
     "actionEntry": "DriverActionDef",
     "visibleWhen": "DriverVisibleWhen",
     "visibleWhenCondition": "DriverVisibleWhenCondition",
@@ -518,7 +519,7 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
             )),
             "polling": _D(req=True, type=(
                 "{ queries?: (string | DriverEachChildQuery | "
-                "DriverQueryEntry)[] }"
+                "DriverQueryEntry)[]; when_state?: DriverWhenState }"
             )),
             "frame_parser": _D(type=_FRAME_SHAPE),
             "send_frame": _D(type=_FRAME_SHAPE),
@@ -578,6 +579,10 @@ ALIASES: tuple[tuple[str, str, Callable[[], str]], ...] = (
         "DriverVisibleWhenCondition | { any: DriverVisibleWhenCondition[] } "
         "| { all: DriverVisibleWhenCondition[] }",
         lambda: spec.DEFS["visibleWhen"]["doc"],
+    ),    (
+        "DriverWhenState",
+        "Record<string, string | number | boolean | (string | number | boolean)[]>",
+        lambda: spec.DEFS["whenStateGate"]["doc"],
     ),
 )
 

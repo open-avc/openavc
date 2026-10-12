@@ -154,6 +154,13 @@ class OSCTransport:
             return self._on_data(data)
         return None
 
+    async def wait_idle(self) -> None:
+        """Return once the active socket has no write under way (its
+        ``wait_idle``)."""
+        active = self._tcp if self._tcp_mode else self._udp
+        if active is not None:
+            await active.wait_idle()
+
     async def send(self, data: bytes) -> None:
         """Send raw bytes via the active socket (SLIP-framed in TCP mode)."""
         if self._tcp_mode:

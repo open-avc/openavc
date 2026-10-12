@@ -521,7 +521,7 @@
   "Driver definition must be a mapping"
  ],
  "on_connect_bad_mapping_osc_variant": [
-  "on_connect[0]: mapping entries must be {each_child, send} or {send, when} or {send, query_for} or {address, args}"
+  "on_connect[0]: mapping entries must be {each_child, send} or {send, when} or {send, when_state} or {send, query_for} or {address, args}"
  ],
  "on_connect_query_for_on_address": [
   "on_connect[0]: 'query_for' is only valid on a plain {send} or each_child query entry"
@@ -645,7 +645,7 @@
   "polling: must be a mapping"
  ],
  "polling_query_bad_mapping": [
-  "polling.queries[0]: mapping entries must be {each_child, send} or {send, when} or {send, query_for}"
+  "polling.queries[0]: mapping entries must be {each_child, send} or {send, when} or {send, when_state} or {send, query_for}"
  ],
  "polling_when_not_string": [
   "polling.queries[0]: 'when' must name a config field"
@@ -951,5 +951,35 @@
  ],
  "unsupported_transport": [
   "Unsupported transport: carrier_pigeon"
+ ],
+ "when_state_boolean_quoted": [
+  "polling: when_state.standby is a boolean; write true or false without quotes, not 'false'"
+ ],
+ "when_state_child_variable": [
+  "polling.queries[0]: when_state 'level' is a child variable; the gate reads the device's own state variables only"
+ ],
+ "when_state_empty_list": [
+  "polling.queries[0]: when_state.power lists no values"
+ ],
+ "when_state_enum_unknown_value": [
+  "polling: when_state.power value 'sleep' is not one of its values (on, standby)"
+ ],
+ "when_state_integer_wrong_type": [
+  "on_connect[0]: when_state.mode is a whole number; '2' is not one"
+ ],
+ "when_state_not_mapping": [
+  "polling.queries[0]: when_state must map a state variable to the value it must hold, or to a list of values"
+ ],
+ "when_state_number_wrong_type": [
+  "polling: when_state.temp is a number; True is not one"
+ ],
+ "when_state_string_bare_boolean": [
+  "polling: when_state.power value True is not text; YAML reads a bare true, false, on, off, yes or no as a boolean. Put it in quotes."
+ ],
+ "when_state_string_not_text": [
+  "polling: when_state.power holds text; put 1 in quotes"
+ ],
+ "when_state_undeclared_variable": [
+  "polling.queries[0]: when_state 'standby' is not a declared state variable"
  ]
 }

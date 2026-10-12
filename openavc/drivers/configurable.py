@@ -227,6 +227,9 @@ class ConfigurableDriver(BaseDriver):
         # poll after a connect skips because start-up has just sent them.
         self._start_up_lines: set[str] = set()
         self._first_poll_skips: set[str] | None = None
+        # Whether the last poll was held back by polling.when_state, so the
+        # log says once when the poll pauses and once when it resumes.
+        self._poll_held = False
 
         # Telnet/serial login handshake state. Active only during
         # _perform_auth_handshake() — outside that window on_data_received
@@ -870,6 +873,8 @@ class ConfigurableDriver(BaseDriver):
                             data = osc_encode_message(address, args)
                         else:
                             continue
+                        if await self._line_gate_shut(None, item):
+                            continue
                         await self.transport.send(data)
                         if line:
                             self._start_up_lines.add(line)
@@ -902,6 +907,10 @@ class ConfigurableDriver(BaseDriver):
                     for query in self._expand_query(raw):
                         try:
                             await self._pace_line()
+                            # A step's when_state gate is judged again once
+                            # the step before it has been answered.
+                            if await self._line_gate_shut(None, raw):
+                                continue
                             await self._dispatch_query(query)
                             self._start_up_lines.add(query)
                         except ConnectionFaultError as e:
@@ -1025,15 +1034,95 @@ class ConfigurableDriver(BaseDriver):
                 code="auth_failed",
             )
 
+    def _state_gate_open(self, gate: Any) -> bool:
+        """Whether a ``when_state:`` gate lets its entry (or the whole poll)
+        run now.
+
+        ``when_state: {<state var>: <value>}`` or ``{<state var>: [<values>]}``:
+        every variable named must hold one of its values. A variable the
+        device has not reported yet (unset since start-up) does not hold the
+        entry back, so a first connect still asks the device for the state the
+        gate reads. Values compare in the variable's declared type. A gate
+        that is not a mapping opens, as a malformed ``only_when`` does.
+        """
+        if not isinstance(gate, dict) or not gate:
+            return True
+        declared = self._definition.get("state_variables") or {}
+        for var, wanted in gate.items():
+            actual = self.get_state(var)
+            if actual is None:
+                continue
+            var_def = declared.get(var)
+            var_type = (
+                var_def.get("type", "string") if isinstance(var_def, dict) else "string"
+            )
+            values = wanted if isinstance(wanted, list) else [wanted]
+            allowed = [
+                compiled_protocol.coerce_json_value(v, var_type) for v in values
+            ]
+            if compiled_protocol.coerce_json_value(actual, var_type) not in allowed:
+                return False
+        return True
+
+    def _poll_gate_shut(self, polling: dict[str, Any]) -> bool:
+        """Whether ``polling.when_state`` holds the poll back now. Says so in
+        the log once when the poll pauses and once when it resumes."""
+        held = not self._state_gate_open(polling.get("when_state"))
+        if held != self._poll_held:
+            self._poll_held = held
+            if held:
+                log.info(
+                    f"[{self.device_id}] Polling paused: the device state is "
+                    f"outside {polling.get('when_state')!r}"
+                )
+            else:
+                log.info(f"[{self.device_id}] Polling resumed")
+        return held
+
+    async def _line_gate_shut(
+        self, gates: dict[str, Any] | None, entry: Any,
+    ) -> str | None:
+        """Judge the ``when_state`` gates again just before a line goes out:
+        ``"poll"`` when the whole poll's gate has shut (``gates`` is the
+        polling block; None for start-up), ``"entry"`` when this entry's has,
+        else None.
+
+        A gated line first waits for the transport to finish any write under
+        way (a command somebody sent, and its ``inter_command_delay``), so a
+        reply to it that shuts the gate is read before the decision; between
+        the decision and the send nothing yields. Without an
+        ``inter_command_delay`` the line follows a command at once, and only
+        a reply that has already arrived counts.
+        """
+        poll_gate = gates.get("when_state") if gates is not None else None
+        entry_gate = entry.get("when_state") if isinstance(entry, dict) else None
+        if not poll_gate and not entry_gate:
+            return None
+        wait_idle = getattr(self.transport, "wait_idle", None)
+        if wait_idle is not None:
+            await wait_idle()
+        if gates is not None and self._poll_gate_shut(gates):
+            return "poll"
+        if isinstance(entry, dict) and not self._state_gate_open(
+            entry.get("when_state")
+        ):
+            return "entry"
+        return None
+
     def _query_enabled(self, query: dict[str, Any]) -> bool:
-        """Whether a ``when:``-gated polling/on_connect entry should run.
+        """Whether a ``when:``- or ``when_state:``-gated polling/on_connect
+        entry should run.
 
         ``when: <config_field>`` runs the entry only while that config field is
         truthy. It exists so a device whose chatty stream must be *armed* by the
         queries themselves (a per-channel ``subscribe`` to a level meter, say)
         can offer that as an integrator checkbox instead of forcing the choice
-        on every site. An entry with no ``when`` always runs.
+        on every site. ``when_state:`` runs it only while the device's own
+        state allows (_state_gate_open): a unit that any command wakes from
+        standby is left in standby. An entry with neither always runs.
         """
+        if not self._state_gate_open(query.get("when_state")):
+            return False
         field = query.get("when")
         if field is None:
             return True
@@ -1058,8 +1147,9 @@ class ConfigurableDriver(BaseDriver):
         other ``{placeholders}`` pass through untouched for the downstream
         config substitution. A ``{send: <string>}`` dict is a plain query that
         only exists in dict form so it can carry ``when:``. Either dict form may
-        declare ``when: <config_field>`` to run only while that field is truthy.
-        Anything else is skipped with a warning.
+        declare ``when: <config_field>`` to run only while that field is truthy,
+        and ``when_state:`` to run only while the device's state allows
+        (_state_gate_open). Anything else is skipped with a warning.
         """
         if isinstance(query, str):
             return [query]
@@ -3025,6 +3115,14 @@ class ConfigurableDriver(BaseDriver):
         polling = self._definition.get("polling", {})
         queries = polling.get("queries", [])
 
+        # The whole poll waits while the device's own state says so
+        # (polling.when_state): a unit that any command wakes is left in
+        # standby. A cycle that sends nothing is neither silent nor unread to
+        # BaseDriver._poll_loop, so the connection stays up meanwhile.
+        if self._poll_gate_shut(polling):
+            self._first_poll_skips = None
+            return
+
         transport_type = self._definition.get("transport")
         is_osc = transport_type == "osc"
         is_http = transport_type == "http"
@@ -3039,13 +3137,24 @@ class ConfigurableDriver(BaseDriver):
         skips = self._first_poll_skips
         self._first_poll_skips = None
 
+        cycle_held = False
         for raw_query in queries:
+            if cycle_held:
+                break
             # each_child entries expand to one query per registered child.
             for query in self._expand_query(raw_query):
                 if skips and query in skips:
                     continue
                 try:
                     if is_osc:
+                        # A reply read since the cycle began can shut a
+                        # when_state gate: judged again before each line.
+                        gate = await self._line_gate_shut(polling, raw_query)
+                        if gate == "poll":
+                            cycle_held = True
+                            break
+                        if gate:
+                            continue
                         commands = self._definition.get("commands", {})
                         if query in commands:
                             await self.send_command(query)
@@ -3060,6 +3169,16 @@ class ConfigurableDriver(BaseDriver):
                         # the raw string. Shared with on_connect via
                         # _dispatch_query so the two paths can't drift apart.
                         await self._pace_line()
+                        # A reply read since the cycle began (Enter Standby's
+                        # answer, or the gated query's own) can shut a
+                        # when_state gate, and every line sent after it would
+                        # undo it: judged again just before each line goes out.
+                        gate = await self._line_gate_shut(polling, raw_query)
+                        if gate == "poll":
+                            cycle_held = True
+                            break
+                        if gate:
+                            continue
                         await self._dispatch_query(query)
                 except (ConnectionError, TimeoutError, OSError) as exc:
                     # Transport-level failure: propagate so BaseDriver._poll_loop's

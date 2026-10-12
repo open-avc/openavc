@@ -241,6 +241,97 @@ PLATFORM_SUBSTITUTIONS = frozenset(
     {"child_id", "push_callback_url", "listener_port", "push_session"}
 )
 
+def _when_state_errors(
+    where: str, gate: Any, driver_def: dict[str, Any]
+) -> list[str]:
+    """A ``when_state:`` gate: device-level state variables, each with a value
+    (or a list of values) its declared type and enum allow.
+
+    The gate reads the device's own state at runtime; a name that is not a
+    device-level variable never holds a value, so the entry would run as if
+    ungated forever, and a value the variable can never take shuts it for
+    good. Both are refused here, where the author can see them.
+    """
+    if not isinstance(gate, dict) or not gate:
+        return [
+            f"{where}: when_state must map a state variable to the value it "
+            f"must hold, or to a list of values"
+        ]
+    raw_vars = driver_def.get("state_variables")
+    declared = raw_vars if isinstance(raw_vars, dict) else {}
+    raw_types = driver_def.get("child_entity_types")
+    child_types = raw_types if isinstance(raw_types, dict) else {}
+    errors: list[str] = []
+    for var, wanted in gate.items():
+        var_def = declared.get(var)
+        if not isinstance(var_def, dict):
+            owners = sorted(
+                t for t, d in child_types.items()
+                if isinstance(d, dict)
+                and isinstance(d.get("state_variables"), dict)
+                and var in d["state_variables"]
+            )
+            if owners or (isinstance(var, str) and "." in var):
+                errors.append(
+                    f"{where}: when_state '{var}' is a child variable; the "
+                    f"gate reads the device's own state variables only"
+                )
+            else:
+                errors.append(
+                    f"{where}: when_state '{var}' is not a declared state "
+                    f"variable"
+                )
+            continue
+        values = wanted if isinstance(wanted, list) else [wanted]
+        if not values:
+            errors.append(f"{where}: when_state.{var} lists no values")
+            continue
+        vtype = var_def.get("type", "string")
+        enum_values: list[str] | None = None
+        if vtype == "enum" and isinstance(var_def.get("values"), list):
+            enum_values = [
+                str(v.get("value")) if isinstance(v, dict) else str(v)
+                for v in var_def["values"]
+                if not isinstance(v, dict) or "value" in v
+            ]
+        for value in values:
+            if vtype == "boolean":
+                if not isinstance(value, bool):
+                    errors.append(
+                        f"{where}: when_state.{var} is a boolean; write true "
+                        f"or false without quotes, not {value!r}"
+                    )
+            elif vtype == "integer":
+                if isinstance(value, bool) or not isinstance(value, int):
+                    errors.append(
+                        f"{where}: when_state.{var} is a whole number; "
+                        f"{value!r} is not one"
+                    )
+            elif vtype in ("number", "float"):
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    errors.append(
+                        f"{where}: when_state.{var} is a number; {value!r} is "
+                        f"not one"
+                    )
+            elif isinstance(value, bool):
+                errors.append(
+                    f"{where}: when_state.{var} value {value!r} is not text; "
+                    f"YAML reads a bare true, false, on, off, yes or no as a "
+                    f"boolean. Put it in quotes."
+                )
+            elif not isinstance(value, str):
+                errors.append(
+                    f"{where}: when_state.{var} holds text; put {value!r} in "
+                    f"quotes"
+                )
+            elif enum_values is not None and value not in enum_values:
+                errors.append(
+                    f"{where}: when_state.{var} value '{value}' is not one of "
+                    f"its values ({', '.join(enum_values)})"
+                )
+    return errors
+
+
 def _json_contains_errors(where: str, spec: dict[str, Any]) -> list[str]:
     """``contains`` on a json mapping spec asks a yes/no question of the value
     at ``key`` (membership, a key, a substring), so it takes a scalar to look
@@ -2574,6 +2665,11 @@ def validate_driver_definition(
                         f"config field (config_schema / default_config / "
                         f"config_derived)"
                     )
+            # `when_state:` gates the entry on the device's own state.
+            if "when_state" in q:
+                errors.extend(
+                    _when_state_errors(f"{name}[{i}]", q.get("when_state"), driver_def)
+                )
             # `query_for: <state_var>` declares which state variable the
             # reply reports (drives the auto-generated simulator). On a plain
             # {send} entry it names a device-level variable; on an each_child
@@ -2680,7 +2776,7 @@ def validate_driver_definition(
                 errors.append(
                     f"{name}[{i}]: mapping entries must be "
                     f"{{each_child, send}} or {{send, when}} or "
-                    f"{{send, query_for}}"
+                    f"{{send, when_state}} or {{send, query_for}}"
                     + (" or {address, args}" if allow_osc_dict else "")
                 )
                 continue
@@ -2723,6 +2819,13 @@ def validate_driver_definition(
         _validate_each_child(
             "polling.queries", polling_def.get("queries"), allow_osc_dict=False
         )
+        if "when_state" in polling_def:
+            errors.ctx = "polling"
+            errors.extend(
+                _when_state_errors(
+                    "polling", polling_def.get("when_state"), driver_def
+                )
+            )
     _validate_each_child(
         "on_connect", driver_def.get("on_connect"), allow_osc_dict=True
     )
@@ -3105,7 +3208,9 @@ def _poll_lines(
     is one line, a ``{send}`` entry one line while its ``when:`` field is
     truthy, an ``each_child`` entry one line per child the declaration
     registers (none while the roster is empty), or one per page of
-    ``page_size`` children. A roster the device resizes
+    ``page_size`` children. A ``when_state:`` gate, on an entry or on the
+    whole poll, is counted as sent: the device's state is not known here, and
+    the poll is as long as it gets while the gate is open. A roster the device resizes
     (``count_from_state``) is counted at its config field, which is what the
     runtime builds before the first report and what a matrix of that size
     reports anyway.

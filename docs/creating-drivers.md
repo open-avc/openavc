@@ -1012,6 +1012,28 @@ on_connect:
 
 `when:` works on entries in both `on_connect` and `polling.queries`, with or without `each_child` (the plain `{ send: ..., when: ... }` form exists so a one-off query can be gated too). The field must be one you declared in `config_schema` or `default_config` — a name that doesn't exist is a load error rather than a query that silently never runs. Pair a metering stream with `throttle:` on its response rules and `cloud_priority: low` on the state variables it feeds.
 
+##### Holding a query back on the device's state (`when_state:`, platform 0.37.0)
+
+Some devices wake from standby at any command they receive, so polling them would wake them every interval. `when_state:` sends an entry only while the device's own state variables hold the values you give. On `polling` it holds back the whole poll; on an `on_connect` or `polling.queries` entry it holds back that entry, so a reconnect to a unit in standby leaves it there.
+
+```yaml
+responses:
+  - match: '^STANDBY$'
+    set: { standby: "true" }
+  - match: '^AWAKE$'
+    set: { standby: "false" }
+
+polling:
+  when_state: { standby: false }
+  queries:
+    - "STATUS?\r"
+    - { send: "PICTURE?\r", when_state: { power: ["on", "warming"] } }
+```
+
+Each key is one of the device's state variables (not a child's), with the value it must hold or a list of the values it may hold, and every key must hold. Quote a word YAML reads as a boolean (`"on"`). A variable the device has not reported yet holds nothing back, so the first connect still asks for it. The gate is checked again before each line goes out, so a reply that puts the device in standby stops the rest of that poll. A gated line waits for a command sent just before it and its `inter_command_delay`, so set `inter_command_delay` to give the device time to answer the command that puts it in standby.
+
+A response rule has to set the variable back when the device leaves the state, because a command's `sets:` is never applied at runtime: read the reply to the wake command, or the notice the device sends. While a poll is held nothing is sent, so the device stays connected, and nothing notices a unit that is switched off or unplugged in the meantime. Say so in the help of the command that puts the device in that state.
+
 Per-child **writes** need nothing new — declare a command with a `child_id` parameter (see `commands`) and the platform validates and substitutes the ID (as the unpadded local ID; use a format spec like `{channel:02d}` in the send string / OSC address when the wire wants zero-padding). Validation here means both halves: the value has to be the kind of id the type declares, **and** it has to fall inside the `min`/`max` of that type's `id_format`. An id outside the declared range is refused before anything reaches the wire, with a message naming the parameter and the range (`'set_zone_level': 'zone' must be between 1 and 32, got 99`) — so declaring an honest `id_format` is what buys you the check. Per-child values that the device persists (a zone volume, an output mute) are modeled as child state variables plus a `child_id` command, not as `device_settings` — a device setting's `state_key` is flat and can't address a child. The IDE's per-child "Refresh from Device" re-derives the roster from config automatically.
 
 Python drivers declare the same block in `DRIVER_INFO` and register instances at runtime with `self.register_child(type, local_id, initial_state=...)`, update them with `set_child_state` / `set_children_state_batch`, and remove them with `deregister_child`. For a **dynamic** type, pass the discovered control schema when registering:
@@ -1546,8 +1568,9 @@ If the device's auth scheme isn't a prompt-and-response Telnet login (for exampl
 ```
 
 - `queries`: Command strings sent each cycle.
+- `when_state`: Optional. Holds back the whole poll while the device reports a state (see `when_state:` under child polling).
 
-A query may also be written in mapping form to carry extra semantics: `{ send: "V\r", when: enable_meters }` gates it on a config field (see `when:` under child polling), and `{ send: "V\r", query_for: volume }` names the state variable the reply reports so the device simulator answers the query with that variable's current value instead of guessing from command names (requires platform 0.24.0; `query_for` must name a declared state variable, or `<child type>.<variable>` for a list read, see `child_list:` under child entities).
+A query may also be written in mapping form to carry extra semantics: `{ send: "V\r", when: enable_meters }` gates it on a config field (see `when:` under child polling), `{ send: "V\r", when_state: { standby: false } }` holds it back while the device reports a state (see `when_state:` there too), and `{ send: "V\r", query_for: volume }` names the state variable the reply reports so the device simulator answers the query with that variable's current value instead of guessing from command names (requires platform 0.24.0; `query_for` must name a declared state variable, or `<child type>.<variable>` for a list read, see `child_list:` under child entities).
 
 The poll cadence is **not** set in the `polling` block — it comes from `default_config.poll_interval` (in seconds), which device config can override per-instance. Set `poll_interval: 0` to disable polling. A top-level `polling.interval` is inert (the runtime never reads it) and is rejected by the community-catalog build, so don't add one.
 
@@ -1555,7 +1578,7 @@ The poll cadence is **not** set in the `polling` block — it comes from `defaul
 
 A line in both `on_connect` and `polling` is sent once at connect: the first poll, which runs as soon as `on_connect` finishes, skips it, unless start-up could not send it.
 
-**A device that answers nothing goes offline.** On `tcp`, `udp` and `osc`, a driver that polls and declares any `responses` rule is watched for silence: when three polls in a row send something and nothing at all comes back before the next one is due, the device goes offline with *Not responding* (`no_response`), and the card says whether anything answered on that connection. Anything the device sends counts as an answer, a reply no rule matches included, so a poll query only has to be something the device answers in every state (standby, warm-up, idle). After that, the reconnects keep the device offline until it answers a poll, so a device that never answers stays offline instead of reading connected for three polls of every retry. `max_missed_polls` in the device config changes the count. The check is off for a driver with a `liveness` block (the probe decides instead), for one with no response rules, and for now on `serial`.
+**A device that answers nothing goes offline.** On `tcp`, `udp` and `osc`, a driver that polls and declares any `responses` rule is watched for silence: when three polls in a row send something and nothing at all comes back before the next one is due, the device goes offline with *Not responding* (`no_response`), and the card says whether anything answered on that connection. Anything the device sends counts as an answer, a reply no rule matches included, so a poll query only has to be something the device answers in every state (standby, warm-up, idle). After that, the reconnects keep the device offline until it answers a poll, so a device that never answers stays offline instead of reading connected for three polls of every retry. `max_missed_polls` in the device config changes the count. A poll held back by `when_state:` sends nothing and is not counted. The check is off for a driver with a `liveness` block (the probe decides instead), for one with no response rules, and for now on `serial`.
 
 **Replies that no rule reads are reported.** On the same transports, when three polls in a row bring replies and none of them matches a `responses` rule, the log gets one warning naming the last reply, and a declared `last_error` state variable holds "Something is answering on this connection, but this driver reads none of it" until a reply is read again. When no reply ever ends with the driver's `delimiter` (a device that ends its lines with CR alone, read by a driver that frames on CR LF), both say instead that none of the replies ends the way the driver expects. The device stays connected. This is what a driver pointed at the wrong port sees (a telnet login prompt, another product's protocol). Replies a rule leaves unread on purpose, such as acknowledgements, are fine as long as something in each poll is read. It runs beside a `liveness` block too: when that block's probe then takes the device offline, the card shows the same sentence instead of saying the device stopped answering, and the warning is not repeated on each automatic reconnect.
 

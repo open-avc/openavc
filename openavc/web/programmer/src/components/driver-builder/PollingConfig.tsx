@@ -1,18 +1,23 @@
-import { Plus, Trash2 } from "lucide-react";
-import type { DriverDefinition } from "../../api/types";
+import { Filter, Plus, Trash2 } from "lucide-react";
+import type { DriverDefinition, DriverWhenState } from "../../api/types";
 import {
   buildQueryEntry,
   carryQueryExtras,
+  firstGateValue,
   gateFieldNames,
   isEachChild,
   listReadOptions,
   queryPageSize,
   queryQueryFor,
   queryWhen,
+  queryWhenState,
   querySend,
+  stateGateVariables,
   withPageSize,
+  withWhenState,
   type QueryEntry,
 } from "./queryEntryHelpers";
+import { WhenStateEditor } from "./WhenStateEditor";
 
 interface PollingConfigProps {
   draft: DriverDefinition;
@@ -45,6 +50,24 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
 
   const updatePolling = (partial: Record<string, unknown>) => {
     onUpdate({ polling: { ...polling, ...partial } });
+  };
+
+  const gateVariables = stateGateVariables(draft);
+
+  const updatePollGate = (gate: DriverWhenState | undefined) => {
+    const next: Record<string, unknown> = { ...polling };
+    if (gate) {
+      next.when_state = gate;
+    } else {
+      delete next.when_state;
+    }
+    onUpdate({ polling: next as DriverDefinition["polling"] });
+  };
+
+  const setQueryGate = (index: number, gate: DriverWhenState | undefined) => {
+    const next = [...queries];
+    next[index] = withWhenState(queries[index], gate);
+    updatePolling({ queries: next });
   };
 
   const addQuery = () => {
@@ -106,6 +129,31 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
         </div>
       </div>
 
+      {gateVariables.length > 0 && (
+        <div style={{ marginBottom: "var(--space-lg)" }}>
+          <label style={labelStyle}>Pause Polling</label>
+          <div
+            style={{
+              fontSize: "11px",
+              color: "var(--text-muted)",
+              marginBottom: "var(--space-xs)",
+            }}
+          >
+            Poll only while the device reports a state, for a unit that any
+            command wakes from standby. A response rule must set the variable
+            again when the device leaves that state, or polling stays paused.
+            Nothing is sent while paused, so a device that goes offline
+            meanwhile is not noticed.
+          </div>
+          <WhenStateEditor
+            draft={draft}
+            gate={polling.when_state}
+            onChange={updatePollGate}
+            lead="Poll only while"
+          />
+        </div>
+      )}
+
       <div>
         <label style={labelStyle}>Poll Queries</label>
         <div
@@ -137,13 +185,13 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
           const send = querySend(query);
           const when = queryWhen(query);
           const queryFor = queryQueryFor(query);
+          const stateGate = queryWhenState(query);
           return (
+            <div key={i} style={{ marginBottom: "var(--space-xs)" }}>
             <div
-              key={i}
               style={{
                 display: "flex",
                 gap: "var(--space-sm)",
-                marginBottom: "var(--space-xs)",
                 alignItems: "center",
               }}
             >
@@ -279,12 +327,43 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
                   style={{ width: 70, fontSize: "var(--font-size-sm)" }}
                 />
               )}
+              {gateVariables.length > 0 && (
+                <button
+                  onClick={() =>
+                    setQueryGate(
+                      i,
+                      stateGate
+                        ? undefined
+                        : { [gateVariables[0].name]: firstGateValue(gateVariables[0]) },
+                    )
+                  }
+                  aria-label={stateGate ? "Remove the state condition" : "Send only while the device reports a state"}
+                  title={stateGate ? "Remove the state condition" : "Send only while the device reports a state"}
+                  style={{
+                    padding: "2px",
+                    color: stateGate ? "var(--accent)" : "var(--text-muted)",
+                  }}
+                >
+                  <Filter size={14} />
+                </button>
+              )}
               <button
                 onClick={() => removeQuery(i)}
                 style={{ padding: "2px", color: "var(--text-muted)" }}
               >
                 <Trash2 size={14} />
               </button>
+            </div>
+            {stateGate && (
+              <div style={{ marginLeft: childTypeNames.length > 0 ? 138 : 0 }}>
+                <WhenStateEditor
+                  draft={draft}
+                  gate={stateGate}
+                  onChange={(gate) => setQueryGate(i, gate)}
+                  lead="Send only while"
+                />
+              </div>
+            )}
             </div>
           );
         })}

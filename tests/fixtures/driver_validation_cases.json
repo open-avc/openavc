@@ -9066,5 +9066,276 @@
    }
   },
   "transport": "carrier_pigeon"
+ },
+ "when_state_boolean_quoted": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    "PWR?\r"
+   ],
+   "when_state": {
+    "standby": "false"
+   }
+  },
+  "state_variables": {
+   "standby": {
+    "label": "Standby",
+    "type": "boolean"
+   }
+  },
+  "transport": "tcp"
+ },
+ "when_state_child_variable": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    {
+     "send": "PWR?\r",
+     "when_state": {
+      "level": 1
+     }
+    }
+   ]
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "when_state_empty_list": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    {
+     "send": "PWR?\r",
+     "when_state": {
+      "power": []
+     }
+    }
+   ]
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "when_state_enum_unknown_value": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    "PWR?\r"
+   ],
+   "when_state": {
+    "power": "sleep"
+   }
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "enum",
+    "values": [
+     "on",
+     "standby"
+    ]
+   }
+  },
+  "transport": "tcp"
+ },
+ "when_state_integer_wrong_type": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "on_connect": [
+   {
+    "send": "MODE?\r",
+    "when_state": {
+     "mode": [
+      0,
+      "2"
+     ]
+    }
+   }
+  ],
+  "state_variables": {
+   "mode": {
+    "label": "Mode",
+    "type": "integer"
+   }
+  },
+  "transport": "tcp"
+ },
+ "when_state_not_mapping": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    {
+     "send": "PWR?\r",
+     "when_state": "standby"
+    }
+   ]
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "when_state_number_wrong_type": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    "PWR?\r"
+   ],
+   "when_state": {
+    "temp": true
+   }
+  },
+  "state_variables": {
+   "temp": {
+    "label": "Temp",
+    "type": "number"
+   }
+  },
+  "transport": "tcp"
+ },
+ "when_state_string_bare_boolean": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    "PWR?\r"
+   ],
+   "when_state": {
+    "power": true
+   }
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "when_state_string_not_text": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    "PWR?\r"
+   ],
+   "when_state": {
+    "power": 1
+   }
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "when_state_undeclared_variable": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    {
+     "send": "PWR?\r",
+     "when_state": {
+      "standby": false
+     }
+    }
+   ]
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
  }
 }

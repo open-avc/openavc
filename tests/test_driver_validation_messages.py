@@ -842,6 +842,46 @@ CASES: dict[str, Any] = {
     "polling_query_bad_mapping": _d(polling={"queries": [{"foo": 1}]}),
     "polling_when_not_string": _d(polling={"queries": [{"send": "PWR?\r", "when": 5}]}),
     "polling_when_undeclared_field": _d(polling={"queries": [{"send": "PWR?\r", "when": "has_zones"}]}),
+    # `when_state:` reads the device's own state: a name that is not a
+    # device-level variable never shuts the gate, and a value the variable
+    # cannot take never opens it.
+    "when_state_not_mapping": _d(
+        polling={"queries": [{"send": "PWR?\r", "when_state": "standby"}]}
+    ),
+    "when_state_undeclared_variable": _d(
+        polling={"queries": [{"send": "PWR?\r", "when_state": {"standby": False}}]}
+    ),
+    "when_state_child_variable": _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        polling={"queries": [{"send": "PWR?\r", "when_state": {"level": 1}}]},
+    ),
+    "when_state_empty_list": _d(
+        polling={"queries": [{"send": "PWR?\r", "when_state": {"power": []}}]}
+    ),
+    "when_state_boolean_quoted": _d(
+        state_variables={"standby": {"type": "boolean", "label": "Standby"}},
+        polling={"when_state": {"standby": "false"}, "queries": ["PWR?\r"]},
+    ),
+    "when_state_integer_wrong_type": _d(
+        state_variables={"mode": {"type": "integer", "label": "Mode"}},
+        on_connect=[{"send": "MODE?\r", "when_state": {"mode": [0, "2"]}}],
+    ),
+    "when_state_number_wrong_type": _d(
+        state_variables={"temp": {"type": "number", "label": "Temp"}},
+        polling={"when_state": {"temp": True}, "queries": ["PWR?\r"]},
+    ),
+    "when_state_enum_unknown_value": _d(
+        state_variables={
+            "power": {"type": "enum", "label": "Power", "values": ["on", "standby"]}
+        },
+        polling={"when_state": {"power": "sleep"}, "queries": ["PWR?\r"]},
+    ),
+    "when_state_string_bare_boolean": _d(
+        polling={"when_state": {"power": True}, "queries": ["PWR?\r"]},
+    ),
+    "when_state_string_not_text": _d(
+        polling={"when_state": {"power": 1}, "queries": ["PWR?\r"]},
+    ),
     "each_child_undeclared_type": _d(
         polling={"queries": [{"each_child": "relay", "send": "Z{child_id}?\r"}]}
     ),

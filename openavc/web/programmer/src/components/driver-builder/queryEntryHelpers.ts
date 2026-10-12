@@ -3,6 +3,7 @@ import type {
   DriverEachChildQuery,
   DriverOscConnectItem,
   DriverQueryEntry,
+  DriverWhenState,
 } from "../../api/types";
 
 /**
@@ -18,10 +19,15 @@ import type {
  *   { each_child, send, page_size }                 one query per page of children
  *   { address, args }                               OSC message with typed args
  *   { address, args, when }                         OSC args, gated
+ *   { send, when_state }                            gated on the device's state
  *
  * `when: <config_field>` runs the entry only while that config field is truthy
  * — how a driver arms a chatty subscription (a level-meter stream) behind an
  * integrator checkbox instead of forcing it on every site.
+ *
+ * `when_state: {<state var>: <value or values>}` runs the entry only while the
+ * device's own state allows: a unit that any command wakes from standby is
+ * left in standby. Every form but a bare string can carry it.
  *
  * `query_for: <state_var>` names the state variable the reply reports, so the
  * auto-generated simulator answers the query without name-guessing. On the
@@ -156,11 +162,117 @@ export function withPageSize(q: QueryEntry, size: number | undefined): QueryEntr
   return next;
 }
 
+/** The entry's `when_state` gate, or `undefined` when it has none. */
+export function queryWhenState(q: QueryEntry): DriverWhenState | undefined {
+  if (isEachChild(q) || isGated(q) || isOscItem(q)) {
+    const gate = q.when_state;
+    if (gate && typeof gate === "object" && Object.keys(gate).length > 0) {
+      return gate;
+    }
+  }
+  return undefined;
+}
+
+/** An entry with its `when_state` gate set, or removed when `gate` is empty.
+ *  A bare string takes the `{send}` form to carry one, and a `{send}` entry
+ *  left with nothing but its send goes back to a string. */
+export function withWhenState(
+  q: QueryEntry,
+  gate: DriverWhenState | undefined,
+): QueryEntry {
+  const has = gate !== undefined && Object.keys(gate).length > 0;
+  if (typeof q === "string") {
+    return has ? { send: q, when_state: gate } : q;
+  }
+  if (isEachChild(q) || isGated(q) || isOscItem(q)) {
+    const next = { ...q } as Record<string, unknown>;
+    if (has) {
+      next.when_state = gate;
+    } else {
+      delete next.when_state;
+    }
+    if (
+      !has &&
+      isGated(q) &&
+      Object.keys(next).length === 1 &&
+      typeof next.send === "string"
+    ) {
+      return next.send;
+    }
+    return next as QueryEntry;
+  }
+  return q;
+}
+
 /** Keys an edit of the send, scope, gate or pairing must not lose: what
  *  `buildQueryEntry` does not take as a part is copied from the entry being
  *  replaced, where the new shape can hold it. */
 export function carryQueryExtras(prev: QueryEntry, next: QueryEntry): QueryEntry {
-  return withPageSize(next, queryPageSize(prev));
+  return withWhenState(
+    withPageSize(next, queryPageSize(prev)),
+    queryWhenState(prev),
+  );
+}
+
+/** A device-level state variable a `when_state` gate can name, with what the
+ *  value editor needs: its type and, for an enum, its values. */
+export interface StateGateVariable {
+  name: string;
+  label: string;
+  type: string;
+  values: string[];
+}
+
+/** The device-level state variables a `when_state` gate can read. */
+export function stateGateVariables(draft: DriverDefinition): StateGateVariable[] {
+  return Object.entries(draft.state_variables ?? {}).map(([name, def]) => ({
+    name,
+    label: def?.label || name,
+    type: def?.type || "string",
+    // A hand-written file may list {value, label} options.
+    values: Array.isArray(def?.values)
+      ? (def.values as unknown[]).map((v) =>
+          typeof v === "object" && v !== null && "value" in v
+            ? String((v as { value: unknown }).value)
+            : String(v),
+        )
+      : [],
+  }));
+}
+
+/** The value a new condition on this variable starts at. */
+export function firstGateValue(v: StateGateVariable): string | number | boolean {
+  if (v.type === "boolean") return false;
+  if (v.type === "enum") return v.values[0] ?? "";
+  if (v.type === "integer" || v.type === "number" || v.type === "float") return 0;
+  return "";
+}
+
+/** The value a gate stores for what was picked: one value as itself, several
+ *  as a list. */
+export function gateValue(
+  picked: (string | number | boolean)[],
+): string | number | boolean | (string | number | boolean)[] {
+  return picked.length === 1 ? picked[0] : picked;
+}
+
+/** Text typed for a number or text variable, as the values it lists:
+ *  separated by commas, numbers parsed for a number variable (an entry that
+ *  is not one is dropped). */
+export function parseGateValues(
+  text: string,
+  type: string,
+): (string | number)[] {
+  const parts = text
+    .split(",")
+    .map((t) => t.trim())
+    .filter((t) => t !== "");
+  if (type === "integer" || type === "number" || type === "float") {
+    return parts
+      .map((t) => Number(t))
+      .filter((n) => Number.isFinite(n) && (type !== "integer" || Number.isInteger(n)));
+  }
+  return parts;
 }
 
 /** The `<child type>.<variable>` pairs a query sent once can report: the

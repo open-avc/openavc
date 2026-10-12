@@ -1,9 +1,11 @@
-import { Plus, Trash2 } from "lucide-react";
-import type { DriverDefinition } from "../../api/types";
+import { Filter, Plus, Trash2 } from "lucide-react";
+import type { DriverDefinition, DriverWhenState } from "../../api/types";
 import { OscArgsEditor } from "./OscArgsEditor";
+import { WhenStateEditor } from "./WhenStateEditor";
 import {
   buildQueryEntry,
   carryQueryExtras,
+  firstGateValue,
   gateFieldNames,
   isEachChild,
   isOpaque,
@@ -13,8 +15,11 @@ import {
   queryPageSize,
   queryQueryFor,
   queryWhen,
+  queryWhenState,
   querySend,
+  stateGateVariables,
   withPageSize,
+  withWhenState,
   type QueryEntry,
 } from "./queryEntryHelpers";
 
@@ -58,6 +63,12 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
   };
   const stateVarNames = Object.keys(draft.state_variables ?? {});
   const listReads = listReadOptions(draft);
+  const gateVariables = stateGateVariables(draft);
+  const setStepGate = (i: number, gate: DriverWhenState | undefined) => {
+    const next = [...items];
+    next[i] = withWhenState(items[i], gate);
+    update(next);
+  };
 
   const transport = draft.transport;
   const placeholder =
@@ -143,6 +154,7 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
         const when = queryWhen(item);
         const queryFor = queryQueryFor(item);
         const args = queryArgs(item);
+        const stateGate = queryWhenState(item);
         const childKey = eachChild ? item.each_child : "";
         // OSC args are only authorable on a "send once" item — the runtime
         // sends each_child OSC items address-only, without args.
@@ -273,6 +285,26 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
                   style={{ width: 70, fontSize: "var(--font-size-sm)" }}
                 />
               )}
+              {gateVariables.length > 0 && !opaque && (
+                <button
+                  onClick={() =>
+                    setStepGate(
+                      i,
+                      stateGate
+                        ? undefined
+                        : { [gateVariables[0].name]: firstGateValue(gateVariables[0]) },
+                    )
+                  }
+                  aria-label={stateGate ? "Remove the state condition" : "Send only while the device reports a state"}
+                  title={stateGate ? "Remove the state condition" : "Send only while the device reports a state, so a reconnect to a unit in standby leaves it there"}
+                  style={{
+                    padding: "2px",
+                    color: stateGate ? "var(--accent)" : "var(--text-muted)",
+                  }}
+                >
+                  <Filter size={14} />
+                </button>
+              )}
               <button
                 onClick={() => removeItem(i)}
                 style={{ padding: "2px", color: "var(--text-muted)" }}
@@ -281,6 +313,16 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
                 <Trash2 size={14} />
               </button>
             </div>
+            {stateGate && !opaque && (
+              <div style={{ marginLeft: 32 }}>
+                <WhenStateEditor
+                  draft={draft}
+                  gate={stateGate}
+                  onChange={(gate) => setStepGate(i, gate)}
+                  lead="Send only while"
+                />
+              </div>
+            )}
             {showArgs && (
               <div style={{ marginLeft: 32 }}>
                 <OscArgsEditor
