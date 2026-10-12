@@ -9,19 +9,31 @@ a socket, WebSocket or datagram endpoint the driver opens through
 the reachability probes, and the equipment driver's remote connection.
 
 How the bind is seen: the "device" listens on this machine's own network
-address, and the pinned address is 127.0.0.1. A connection that binds arrives
-from 127.0.0.1; one that does not arrives from the network address. (A pinned
-network address would not show anything, because a connection from this
-machine to itself leaves from that address either way.) Skipped where the
-runner has no network address. A connection to a loopback host is never
-bound, which the address nobody holds (192.0.2.1, reserved for
-documentation) shows: binding to it fails, so a connection that succeeds was
-not bound.
+address, and the pinned address is 127.0.0.1. (A pinned network address would
+not show anything, because a connection from this machine to itself leaves
+from that address either way.) What a connection bound to 127.0.0.1 does
+next depends on the operating system, so the module asks once, with a trial
+connection, and every test expects the answer it got:
+
+- Linux and macOS route it over loopback: a bound connection arrives from
+  127.0.0.1, an unbound one from the network address.
+- Windows refuses it ("the network location cannot be reached"): a socket
+  bound to one adapter's address leaves only through that adapter, which is
+  the very thing Reach devices through relies on. There a bound connection
+  is refused for that reason and nothing arrives, while the same connection
+  with nothing pinned arrives from the network address.
+
+Skipped only where the machine has no network address at all. A connection
+to a loopback host is never bound, which the address nobody holds
+(192.0.2.1, reserved for documentation) shows: binding to it fails, so a
+connection that succeeds was not bound.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import errno
 import inspect
 import os
 import socket
@@ -42,18 +54,80 @@ NOBODYS_ADDRESS = "192.0.2.1"
 
 
 def _own_network_address() -> str | None:
-    """A non-loopback IPv4 this machine holds, or None."""
-    from openavc import listen
-    from openavc.discovery.network_scanner import get_interface_ips
+    """A non-loopback IPv4 this machine holds, or None.
 
-    for ip in get_interface_ips():
-        if listen.address_available(ip):
+    The adapter list leaves out virtual adapters, and a CI runner's only one
+    can be virtual; the address this machine routes the internet from is the
+    fallback.
+    """
+    from openavc import listen
+    from openavc.discovery.network_scanner import get_default_route_ip, get_interface_ips
+
+    for ip in [*get_interface_ips(), get_default_route_ip()]:
+        if ip and listen.address_available(ip):
             return ip
     return None
 
 
+def _pinned_reaches(address: str) -> bool:
+    """Whether a connection bound to ``PINNED`` reaches ``address`` on this machine."""
+    with socket.socket() as device, socket.socket() as dialer:
+        device.bind((address, 0))
+        device.listen(1)
+        dialer.bind((PINNED, 0))
+        dialer.settimeout(2)
+        try:
+            dialer.connect(device.getsockname())
+        except OSError:
+            return False
+        return True
+
+
 OWN = _own_network_address()
 needs_network = pytest.mark.skipif(OWN is None, reason="this machine has no network address")
+
+#: Whether a connection pinned to 127.0.0.1 reaches OWN (the module docstring).
+REACHES = OWN is not None and _pinned_reaches(OWN)
+#: Who a device on OWN sees connect when the connection is pinned to 127.0.0.1.
+BOUND_PEERS = [PINNED] if REACHES else []
+#: A pin a connection to OWN gets through on: 127.0.0.1 where that reaches
+#: OWN, else OWN itself. For the tests whose subject is not the bind.
+REACHING = PINNED if REACHES else OWN
+
+_UNREACHABLE_ERRNOS = {errno.ENETUNREACH, errno.EHOSTUNREACH}
+#: ERROR_NETWORK_UNREACHABLE and ERROR_HOST_UNREACHABLE, which Windows raises
+#: from an overlapped connect instead of the socket errors.
+_UNREACHABLE_WINERRORS = {1231, 1232}
+
+
+def unreachable(exc: BaseException) -> bool:
+    """Whether ``exc``, or anything it wraps, says the network was unreachable."""
+    pending, seen = [exc], set()
+    while pending:
+        node = pending.pop()
+        if node is None or id(node) in seen:
+            continue
+        seen.add(id(node))
+        if isinstance(node, OSError) and (
+            node.errno in _UNREACHABLE_ERRNOS
+            or getattr(node, "winerror", None) in _UNREACHABLE_WINERRORS
+        ):
+            return True
+        pending += [node.__cause__, node.__context__, *getattr(node, "exceptions", ())]
+    return False
+
+
+@contextlib.contextmanager
+def bound():
+    """Around a connection to OWN pinned to 127.0.0.1: where that cannot reach
+    OWN, the connection must be refused as unreachable, which only a bound
+    one is."""
+    if REACHES:
+        yield
+        return
+    with pytest.raises(Exception) as refused:
+        yield
+    assert unreachable(refused.value), repr(refused.value)
 
 
 @pytest.fixture
@@ -161,10 +235,13 @@ async def test_a_socket_opened_through_the_helper_leaves_from_the_pinned_address
     async with _Device(OWN) as device:
         drv = _driver(OWN)
         ip = drv.local_address()
-        _, writer = await asyncio.open_connection(OWN, device.port, local_addr=(ip, 0))
-        writer.close()
+        with bound():
+            _, writer = await asyncio.open_connection(
+                OWN, device.port, local_addr=(ip, 0) if ip else None,
+            )
+            writer.close()
         await asyncio.sleep(0.05)
-    assert device.peers == [PINNED]
+    assert device.peers == BOUND_PEERS
 
 
 @needs_network
@@ -181,10 +258,13 @@ async def test_a_websocket_opened_through_the_helper_leaves_from_the_pinned_addr
         port = server.sockets[0].getsockname()[1]
         drv = _driver(OWN)
         ip = drv.local_address()
-        async with websockets.connect(f"ws://{OWN}:{port}/", local_addr=(ip, 0)) as ws:
-            with pytest.raises(websockets.ConnectionClosed):
-                await ws.recv()
-    assert peers == [PINNED]
+        with bound():
+            async with websockets.connect(
+                f"ws://{OWN}:{port}/", local_addr=(ip, 0) if ip else None,
+            ) as ws:
+                with pytest.raises(websockets.ConnectionClosed):
+                    await ws.recv()
+    assert peers == BOUND_PEERS
 
 
 @needs_network
@@ -198,16 +278,29 @@ async def test_a_datagram_endpoint_opened_through_the_helper_leaves_from_the_pin
             if not received.done():
                 received.set_result(addr[0])
 
+    class Sender(asyncio.DatagramProtocol):
+        def __init__(self):
+            self.errors: list[Exception] = []
+
+        def error_received(self, exc):
+            self.errors.append(exc)
+
     device, _ = await loop.create_datagram_endpoint(Device, local_addr=(OWN, 0))
     port = device.get_extra_info("sockname")[1]
     drv = _driver(OWN)
     ip = drv.local_address()
-    sender, _ = await loop.create_datagram_endpoint(
-        asyncio.DatagramProtocol, local_addr=(ip or "0.0.0.0", 0),
+    sender, sending = await loop.create_datagram_endpoint(
+        Sender, local_addr=(ip or "0.0.0.0", 0),
     )
     try:
         sender.sendto(b"hello", (OWN, port))
-        assert await asyncio.wait_for(received, 2) == PINNED
+        if REACHES:
+            assert await asyncio.wait_for(received, 2) == PINNED
+        else:
+            # A datagram send that fails reaches the protocol, not the caller.
+            await asyncio.sleep(0.3)
+            assert not received.done()
+            assert any(unreachable(e) for e in sending.errors), sending.errors
     finally:
         sender.close()
         device.close()
@@ -225,8 +318,9 @@ async def test_a_drivers_own_client_leaves_from_the_pinned_address(pin):
         drv = _driver(OWN)
         async with drv.build_client(base_url=device.url) as client:
             assert isinstance(client._transport, ReachDevicesTransport)
-            assert (await client.get("/")).text == "ok"
-    assert device.peers == [PINNED]
+            with bound():
+                assert (await client.get("/")).text == "ok"
+    assert device.peers == BOUND_PEERS
 
 
 @needs_network
@@ -290,18 +384,18 @@ def test_a_setting_the_driver_left_out_is_the_one_httpx_would_have_used():
 
 @needs_network
 async def test_a_self_signed_device_connects_when_the_driver_trusts_it(pin, self_signed):
-    pin(PINNED)
+    pin(REACHING)
     async with _Device(OWN, tls=self_signed) as device:
         drv = _driver(OWN)
         async with drv.build_client(base_url=device.url, verify=False) as client:
             assert isinstance(client._transport, ReachDevicesTransport)
             assert (await client.get("/")).text == "ok"
-    assert device.peers == [PINNED]
+    assert device.peers == [REACHING]
 
 
 @needs_network
 async def test_a_self_signed_device_is_still_refused_when_the_driver_verifies(pin, self_signed):
-    pin(PINNED)
+    pin(REACHING)
     async with _Device(OWN, tls=self_signed) as device:
         drv = _driver(OWN)
         async with drv.build_client(base_url=device.url) as client:
@@ -318,12 +412,13 @@ async def test_each_request_asks_where_to_leave_from(pin):
     async with _Device(OWN) as device, _Device("127.0.0.1") as local:
         pin(PINNED)
         async with _driver(OWN).build_client(base_url=device.url) as client:
-            await client.get("/")
+            with bound():
+                await client.get("/")
             pin(OWN)
             await client.get("/")
             pin(NOBODYS_ADDRESS)
             assert (await client.get(f"{local.url}/")).text == "ok"
-    assert device.peers == [PINNED, OWN]
+    assert device.peers == [*BOUND_PEERS, OWN]
     assert local.peers == ["127.0.0.1"]
 
 
@@ -350,12 +445,13 @@ async def test_closing_the_client_closes_every_pool(pin):
 async def test_verify_reachable_dials_from_the_pinned_address(pin):
     async with _Device(OWN) as device:
         drv = _driver(OWN)
-        pin(PINNED)
         assert await drv._verify_reachable(OWN, device.port)
+        pin(PINNED)
+        assert await drv._verify_reachable(OWN, device.port) is REACHES
         pin(NOBODYS_ADDRESS)
         assert not await drv._verify_reachable(OWN, device.port)
         await asyncio.sleep(0.05)
-    assert device.peers == [PINNED]
+    assert device.peers == [OWN, *BOUND_PEERS]
 
 
 @needs_network
@@ -370,10 +466,18 @@ async def test_send_udp_leaves_from_the_pinned_address(pin):
                 received.set_result(addr[0])
 
     device, _ = await loop.create_datagram_endpoint(Device, local_addr=(OWN, 0))
+    port = device.get_extra_info("sockname")[1]
     try:
         drv = _driver(OWN)
-        await drv.send_udp(b"wake", port=device.get_extra_info("sockname")[1])
-        assert await asyncio.wait_for(received, 2) == PINNED
+        await drv.send_udp(b"wake", port=port)
+        if REACHES:
+            assert await asyncio.wait_for(received, 2) == PINNED
+        else:
+            await asyncio.sleep(0.3)
+            assert not received.done()
+            pin("")
+            await drv.send_udp(b"wake", port=port)
+            assert await asyncio.wait_for(received, 2) == OWN
     finally:
         device.close()
 
@@ -475,15 +579,16 @@ async def test_mqtt_connects_from_the_pinned_address():
     server = await asyncio.start_server(broker, OWN, 0)
     port = server.sockets[0].getsockname()[1]
     try:
-        transport = await MQTTTransport.create(OWN, port, local_address=PINNED, name="acme1")
-        try:
-            assert transport.connected
-        finally:
-            await transport.close()
+        with bound():
+            transport = await MQTTTransport.create(OWN, port, local_address=PINNED, name="acme1")
+            try:
+                assert transport.connected
+            finally:
+                await transport.close()
     finally:
         server.close()
         await server.wait_closed()
-    assert peers == [PINNED]
+    assert peers == BOUND_PEERS
 
 
 def test_the_mqtt_dial_copies_the_gmqtt_it_was_written_against():
@@ -518,12 +623,14 @@ async def test_the_web_ui_probe_dials_from_the_pinned_address(pin):
 
     async with _Device(OWN) as device:
         candidates = ((device.port, "http"),)
+        found = f"http://{OWN}:{device.port}"
+        assert await probe_web_ui(OWN, candidates) == found
         pin(NOBODYS_ADDRESS)
         assert await probe_web_ui(OWN, candidates) is None
         pin(PINNED)
-        assert await probe_web_ui(OWN, candidates) == f"http://{OWN}:{device.port}"
+        assert await probe_web_ui(OWN, candidates) == (found if REACHES else None)
         await asyncio.sleep(0.05)
-    assert device.peers == [PINNED]
+    assert device.peers == [OWN, *BOUND_PEERS]
 
 
 @needs_network
@@ -537,12 +644,13 @@ async def test_the_reconnect_probe_dials_from_the_pinned_address(pin):
     async with _Device(OWN) as device:
         drv = _driver(OWN)
         drv.config.update(port=device.port, transport="http")
+        assert await manager._probe_reachable("acme1", drv)
         pin(NOBODYS_ADDRESS)
         assert not await manager._probe_reachable("acme1", drv)
         pin(PINNED)
-        assert await manager._probe_reachable("acme1", drv)
+        assert await manager._probe_reachable("acme1", drv) is REACHES
         await asyncio.sleep(0.05)
-    assert device.peers == [PINNED]
+    assert device.peers == [OWN, *BOUND_PEERS]
 
 
 @needs_network
@@ -582,8 +690,9 @@ async def test_the_equipment_drivers_remote_connection_leaves_from_the_pinned_ad
     }, StateStore(), EventBus())
     monkeypatch.setattr(driver, "_refresh", AsyncMock())
     try:
-        await driver.connect()
+        with bound():
+            await driver.connect()
     finally:
         await driver.disconnect()
         await runner.cleanup()
-    assert remotes == [PINNED]
+    assert remotes == BOUND_PEERS

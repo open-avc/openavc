@@ -7,8 +7,9 @@ when no adapter is chosen or the host is on this computer. One rule with
 
 How the bind is seen is the method of ``test_reach_devices_own_connections``:
 the device listens on this machine's own network address and the pinned
-address is 127.0.0.1, so a bound connection arrives from 127.0.0.1 and an
-unbound one from the network address.
+address is 127.0.0.1, so a bound connection arrives from 127.0.0.1 (or, on
+Windows, is refused as unreachable) and an unbound one arrives from the
+network address.
 """
 
 from __future__ import annotations
@@ -29,9 +30,11 @@ from openavc.core.plugin_test_harness import (
 from openavc.core.state_store import StateStore
 from openavc.drivers.base import BaseDriver
 from tests.test_reach_devices_own_connections import (
+    BOUND_PEERS,
     NOBODYS_ADDRESS,
     OWN,
     PINNED,
+    bound,
     needs_network,
 )
 
@@ -124,9 +127,10 @@ async def test_with_an_adapter_chosen_the_plugins_connection_leaves_from_it(pin)
     plugin = await _started()
     assert plugin.api.local_address(OWN) == PINNED
     async with _RelayBox(OWN) as box:
-        await plugin.dial(OWN, box.port)
+        with bound():
+            await plugin.dial(OWN, box.port)
         await asyncio.sleep(0.05)
-    assert box.peers == [PINNED]
+    assert box.peers == BOUND_PEERS
 
 
 @needs_network
