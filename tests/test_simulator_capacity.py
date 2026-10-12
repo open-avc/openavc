@@ -668,8 +668,14 @@ async def managed_matrix(monkeypatch):
 
 async def test_an_overflow_that_silences_the_device_takes_it_offline_and_holds_it(managed_matrix):
     dm, state, sim, seen, connections = managed_matrix
-    assert await _until(lambda: state.get("device.acme1.connected") is False, 5.0)
-    assert state.get("device.acme1.offline_reason") == "no_response"
+    # `connected` goes false at once and the reason follows the disconnect
+    # event a moment later, so wait for both rather than reading the second
+    # straight after the first.
+    assert await _until(
+        lambda: state.get("device.acme1.connected") is False
+        and state.get("device.acme1.offline_reason") == "no_response",
+        5.0,
+    )
     first_drop = len(connections)
     # Every held reconnect floods it again, and it goes silent again.
     assert await _until(lambda: len(connections) >= first_drop + 2, 6.0)
