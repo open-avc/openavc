@@ -116,7 +116,7 @@ def _child_list_errors(
         try:
             compiled = re.compile(element)
         except re.error as e:
-            errors.append(f"{where}: element is not a valid regex: {e}")
+            errors.append(f"{where}: element is not a valid regular expression ({e})")
         else:
             element_groups = compiled.groups
             redos = _regex_redos_error(f"{where}: element", element)

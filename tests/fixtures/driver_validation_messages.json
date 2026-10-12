@@ -100,7 +100,7 @@
   "Response 0: child_list: bus has string ids, so an item cannot be named by its place in the list; give id: $N"
  ],
  "child_list_element_invalid": [
-  "Response 0: child_list: element is not a valid regex: missing ), unterminated subpattern at position 0"
+  "Response 0: child_list: element is not a valid regular expression (missing ), unterminated subpattern at position 0)"
  ],
  "child_list_element_matches_empty": [
   "Response 0: child_list: element matches empty text, so it cannot tell one item from the next"
