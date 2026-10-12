@@ -319,9 +319,11 @@ class PluginAPI:
 
         None when no adapter is chosen, and for a host on this computer (a
         sidecar, a local service), which a socket bound to an adapter cannot
-        reach. Not for a service on the internet: the chosen adapter may have
-        no route there. The same rule as ``BaseDriver.local_address``. Needs
-        no capability: it grants nothing, it answers where to leave from.
+        reach. A host at a 169.254 address gets the adapter's own 169.254
+        address when it holds one. Not for a service on the internet: the
+        chosen adapter may have no route there. The same rule as
+        ``BaseDriver.local_address``. Needs no capability: it grants nothing,
+        it answers where to leave from.
         """
         from openavc.transport.endpoint import control_bind_address
 

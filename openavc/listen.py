@@ -106,12 +106,18 @@ _NOT_ACCEPTING = "Not accepting connections from the network"
 
 @dataclass(frozen=True)
 class Adapter:
-    """One physical adapter: its OS name, MAC, IPv4 addresses and link."""
+    """One physical adapter: its OS name, MAC, IPv4 addresses and link.
+
+    ``link_local`` is its 169.254 addresses, which nothing here listens on or
+    shows; Reach devices through binds one for a device at a 169.254 address
+    (``openavc/reach_devices.py``).
+    """
 
     name: str
     mac: str = ""
     addresses: tuple[tuple[str, str], ...] = ()  # (ip, subnet)
     link: bool = True
+    link_local: tuple[tuple[str, str], ...] = ()  # (ip, subnet)
 
     @property
     def ips(self) -> tuple[str, ...]:
@@ -119,15 +125,19 @@ class Adapter:
 
     @classmethod
     def from_inventory(cls, entry: dict[str, Any]) -> Adapter:
+        def pairs(key: str) -> tuple[tuple[str, str], ...]:
+            return tuple(
+                (str(a.get("ip") or ""), str(a.get("subnet") or ""))
+                for a in entry.get(key) or ()
+                if a.get("ip")
+            )
+
         return cls(
             name=str(entry.get("name") or ""),
             mac=str(entry.get("mac") or ""),
-            addresses=tuple(
-                (str(a.get("ip") or ""), str(a.get("subnet") or ""))
-                for a in entry.get("addresses") or ()
-                if a.get("ip")
-            ),
+            addresses=pairs("addresses"),
             link=bool(entry.get("link", True)),
+            link_local=pairs("link_local"),
         )
 
     def identity(self) -> dict[str, str]:

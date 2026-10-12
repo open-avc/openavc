@@ -851,6 +851,41 @@ def bridge_offline_fault(bridge_label: str = "") -> ConnectionFault:
     return ConnectionFault(BRIDGE_OFFLINE, message)
 
 
+def link_local_fault(host: str, port: object = None) -> ConnectionFault | None:
+    """Why ``host`` could not be reached, when it is a 169.254 address and
+    the adapter chosen in Reach devices through holds no 169.254 address of
+    its own; None otherwise.
+
+    Asked only after a failure classified ``unreachable``, by the device card
+    (``DeviceManager._set_offline_reason``) and the connection test, so both
+    say the same sentence. The code stays ``unreachable``: the device cannot
+    be reached from the chosen adapter, and an address added to it later is
+    picked up by the next retry.
+    """
+    from openavc import reach_devices
+
+    choice = reach_devices.missing_link_local(host)
+    if choice is None:
+        return None
+    where = _endpoint(host, port)
+    name = (choice.adapter_name or "").strip()
+    if name:
+        message = (
+            f"Can't reach {where}. {name}, chosen in Settings > Network > Reach "
+            f"devices through, has no 169.254 address to reach it from. Give "
+            f"{name} one, or choose another adapter (or Every connected "
+            f"adapter) there."
+        )
+    else:
+        message = (
+            f"Can't reach {where}. The adapter chosen in Settings > Network > "
+            "Reach devices through has no 169.254 address to reach it from. "
+            "Give it one, or choose another adapter (or Every connected "
+            "adapter) there."
+        )
+    return ConnectionFault(UNREACHABLE, message)
+
+
 def no_simulator_fault() -> ConnectionFault:
     """A selected device has no virtual target, so hardware control is paused.
 

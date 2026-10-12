@@ -306,7 +306,7 @@ sock = socket.create_connection((host, port), timeout=5, source_address=local_ad
 client = httpx.AsyncClient(transport=httpx.AsyncHTTPTransport(local_address=ip)) if ip else httpx.AsyncClient()
 ```
 
-It returns the chosen adapter's address, or `None` when no adapter is chosen and for a host on this computer (a sidecar your plugin runs, a local service). Ask for each connection rather than once at start, so a new address from DHCP is picked up. Leave connections to services on the internet (a cloud API, a broker someone hosts elsewhere) unbound: the chosen adapter may have no route to them.
+It returns the chosen adapter's address, or `None` when no adapter is chosen and for a host on this computer (a sidecar your plugin runs, a local service). For a host at a 169.254 address it returns the adapter's own 169.254 address when the adapter has one. Ask for each connection rather than once at start, so a new address from DHCP is picked up. Leave connections to services on the internet (a cloud API, a broker someone hosts elsewhere) unbound: the chosen adapter may have no route to them.
 
 An `httpx` client given a `transport=` ignores the `verify`, `cert`, `limits`, `http2` and `trust_env` you pass the client itself, so pass those to `AsyncHTTPTransport` instead. `local_address()` is new in OpenAVC 0.37.0: set `min_openavc_version` to at least `"0.37.0"` in a plugin that calls it.
 

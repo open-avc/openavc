@@ -45,8 +45,10 @@ from openavc.core.connection_fault import (
     no_address_message,
     NO_RESPONSE,
     TRANSPORT_DISCONNECTED,
+    UNREACHABLE,
     _endpoint,
     classify_connection_fault,
+    link_local_fault,
 )
 from openavc.core.device_config import connection_of, resolve_device_config
 from openavc.transport.endpoint import control_bind_address
@@ -168,6 +170,8 @@ def _in_words(exc: BaseException, host: str, port: Any, transport: str) -> str:
     fault = classify_connection_fault(
         last_error=None, exc=exc, host=host, port=port, transport=transport,
     )
+    if fault.code == UNREACHABLE:
+        fault = link_local_fault(host, port) or fault
     if fault.code in (NO_RESPONSE, TRANSPORT_DISCONNECTED):
         return f"Could not connect to {_endpoint(host, port)}: {str(exc) or type(exc).__name__}"
     return fault.message
@@ -232,6 +236,9 @@ async def _open_tcp(host: str, port: Any, cfg: dict[str, Any]) -> str | None:
             timeout=_CONNECT_TIMEOUT_S,
         )
     except asyncio.TimeoutError:
+        missing = link_local_fault(host, port)
+        if missing is not None:
+            return missing.message
         return (
             f"No answer from {_endpoint(host, port)} within {_CONNECT_TIMEOUT_S:g} s. "
             "Check the IP address and network."

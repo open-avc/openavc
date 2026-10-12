@@ -41,6 +41,18 @@ def implied_port(transport: str, config: dict[str, Any]) -> int | None:
     return _IMPLIED_PORTS.get(transport)
 
 
+_LINK_LOCAL = ipaddress.IPv4Network("169.254.0.0/16")
+
+
+def is_link_local(host: Any) -> bool:
+    """True when ``host`` is written as an IPv4 169.254 address. A hostname
+    is never resolved here: a connection asks this for every dial."""
+    try:
+        return ipaddress.ip_address(str(host or "").strip()) in _LINK_LOCAL
+    except ValueError:
+        return False
+
+
 def control_bind_address(host: Any) -> str | None:
     """The local IP a connection to ``host`` is bound to, or None.
 
@@ -49,17 +61,26 @@ def control_bind_address(host: Any) -> str | None:
     """
     from openavc import reach_devices
 
-    return local_address_for(host, reach_devices.address())
+    pinned = reach_devices.address()
+    link_local = reach_devices.link_local_address() if pinned and is_link_local(host) else ""
+    return local_address_for(host, pinned, link_local)
 
 
-def local_address_for(host: Any, control_ip: str | None) -> str | None:
+def local_address_for(
+    host: Any, control_ip: str | None, link_local_ip: str | None = None,
+) -> str | None:
     """The rule :func:`control_bind_address` applies, given the pinned address.
 
     ``control_ip`` empty means nothing is pinned. A device on this machine (a
     simulator, a local service) is reached over loopback, which a socket bound
     to an adapter's address cannot do (Windows refuses the connect with
-    WinError 1214), so a loopback host is never bound. Separate so the plugin
-    test harness answers by the same rule from an address a test sets.
+    WinError 1214), so a loopback host is never bound. A device at a 169.254
+    address is reached from ``link_local_ip``, the pinned adapter's own
+    169.254 address, when it holds one: many such devices answer only a
+    source on their own link. Without one it gets ``control_ip`` like any
+    other host, never None, which would let the OS route it through another
+    adapter. Separate so the plugin test harness answers by the same rule
+    from addresses a test sets.
     """
     if not control_ip:
         return None
@@ -68,4 +89,8 @@ def local_address_for(host: Any, control_ip: str | None) -> str | None:
         loopback = name == "localhost" or ipaddress.ip_address(name).is_loopback
     except ValueError:
         loopback = False
-    return None if loopback else control_ip
+    if loopback:
+        return None
+    if link_local_ip and is_link_local(name):
+        return link_local_ip
+    return control_ip

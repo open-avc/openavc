@@ -92,6 +92,9 @@ class PluginTestHarness:
         # device traffic to, as api.local_address answers it ("" = no adapter
         # chosen). The harness never reads this computer's own settings.
         self.reach_devices_address: str = ""
+        # That adapter's 169.254 address ("" = it holds none), which
+        # api.local_address answers for a host at a 169.254 address.
+        self.reach_devices_link_local_address: str = ""
 
         # Active plugins
         self._registries: dict[str, PluginRegistry] = {}
@@ -145,10 +148,12 @@ class PluginTestHarness:
 
         api.mdns_browse = _stub_mdns_browse
 
-        # Answer local_address by the platform's rule from the address the
+        # Answer local_address by the platform's rule from the addresses the
         # test set, not from this computer's Settings.
         def _stub_local_address(host: str) -> str | None:
-            return local_address_for(host, self.reach_devices_address)
+            return local_address_for(
+                host, self.reach_devices_address, self.reach_devices_link_local_address,
+            )
 
         api.local_address = _stub_local_address
 

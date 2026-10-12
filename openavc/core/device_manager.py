@@ -24,6 +24,7 @@ from openavc.core.connection_fault import (
     ConnectionFaultError,
     classify_connection_fault,
     is_permanent_fault,
+    link_local_fault,
     no_simulator_fault,
     restarting_message,
     typed_fault_from_exc,
@@ -1875,6 +1876,11 @@ class DeviceManager:
                 last_error=last_error, exc=exc,
                 host=host, port=port, transport=transport,
             )
+        # A device at a 169.254 address, unreachable while the adapter chosen
+        # in Reach devices through holds no 169.254 address of its own: say
+        # that, not "check the IP address" (the address is right).
+        if fault.code == UNREACHABLE:
+            fault = link_local_fault(host, port) or fault
         # A commanded restart is absence we asked for, so for as long as the
         # driver said it would last the device reports a window instead of a
         # fault: a sentence in `offline_detail`, `restarting` true, and

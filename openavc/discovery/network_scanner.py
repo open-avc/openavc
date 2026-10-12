@@ -150,7 +150,7 @@ def get_adapter_inventory() -> list[dict[str, Any]]:
 
         [{"name": "Ethernet", "mac": "aa:bb:...", "addresses":
           [{"ip": "10.20.30.5", "subnet": "10.20.30.0/24"}], "link": True,
-          "has_address": True}, ...]
+          "has_address": True, "link_local": []}, ...]
 
     ``get_network_adapters`` lists addresses, so an adapter with two appears
     twice and one with none does not appear at all. A choice of adapter has to
@@ -158,6 +158,12 @@ def get_adapter_inventory() -> list[dict[str, Any]]:
     psutil, with the same virtual-adapter filter by OS name. ``link`` is False
     when the adapter is not connected; an unplugged adapter on Windows still
     reports its static address, and that address cannot be listened on.
+
+    ``link_local`` is the adapter's 169.254 addresses, kept apart from
+    ``addresses``: an adapter is listed, chosen and listened on by its other
+    addresses only, and ``has_address`` ignores these. Reach devices through
+    binds one for a device at a 169.254 address (``transport/endpoint.py``),
+    which only a connection from the same link can reach.
     """
     inventory: dict[tuple[str, str], dict[str, Any]] = {}
     for entry in get_network_adapters():
@@ -198,10 +204,43 @@ def get_adapter_inventory() -> list[dict[str, Any]]:
     except (ImportError, OSError, RuntimeError) as exc:
         log.debug("Adapters without an address unavailable: %s", exc)
 
+    link_local = _link_local_by_adapter()
     result = list(inventory.values())
     for item in result:
         item["has_address"] = bool(item["addresses"])
+        item["link_local"] = link_local.get(item["name"], [])
     return result
+
+
+def _link_local_by_adapter() -> dict[str, list[dict[str, str]]]:
+    """Each adapter's 169.254 addresses, by the OS's name for it (the name
+    the inventory uses). Linux names an address added under a label
+    ``eth0:avahi``; it belongs to ``eth0``. Empty when psutil cannot say."""
+    found: dict[str, list[dict[str, str]]] = {}
+    try:
+        import psutil
+
+        addrs = psutil.net_if_addrs()
+    except (ImportError, OSError, RuntimeError) as exc:
+        log.debug("Link-local addresses unavailable: %s", exc)
+        return found
+    for name, entries in addrs.items():
+        base = name.split(":", 1)[0]
+        owner = base if base != name and base in addrs else name
+        for entry in entries:
+            if entry.family != socket.AF_INET or not entry.address.startswith("169.254."):
+                continue
+            try:
+                subnet = str(ipaddress.IPv4Network(
+                    f"{entry.address}/{getattr(entry, 'netmask', None) or '255.255.0.0'}",
+                    strict=False,
+                ))
+            except ValueError:
+                subnet = "169.254.0.0/16"
+            held = found.setdefault(owner, [])
+            if all(a["ip"] != entry.address for a in held):
+                held.append({"ip": entry.address, "subnet": subnet})
+    return found
 
 
 def get_interface_ips() -> list[str]:

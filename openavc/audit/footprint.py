@@ -113,6 +113,7 @@ from openavc.discovery.result import (
 )
 from openavc.discovery.snmp_scanner import SNMPScanner
 from openavc.discovery.ssdp_scanner import SSDPScanner
+from openavc.transport.endpoint import is_link_local
 
 if TYPE_CHECKING:
     from openavc.audit.session import AuditSession
@@ -470,7 +471,17 @@ class NetworkCheck:
         self._communities = ["public"] + [
             c for c in (snmp_communities or []) if c and c != "public"
         ]
-        self._source_ip = source_ip if source_ip is not None else _control_interface()
+        # The listeners join their multicast groups on the adapter Reach
+        # devices through chose, by its address. Everything sent to the
+        # device leaves from the address its own connections use: for a
+        # device at a 169.254 address, the adapter's 169.254 address.
+        self._listen_ip = source_ip if source_ip is not None else _control_interface()
+        self._source_ip = self._listen_ip
+        self._source_adapter = ""
+        if source_ip is None and self._listen_ip and is_link_local(ip):
+            link_local, adapter = _link_local_interface()
+            if link_local:
+                self._source_ip, self._source_adapter = link_local, adapter
         self.footprint.source_ip = self._source_ip
         self._listen_seconds = listen_seconds
         self._greeting_seconds = greeting_seconds
@@ -522,14 +533,14 @@ class NetworkCheck:
         for hint in self.discovery.discovery_hints:
             types.extend(fp.service for fp in hint.mdns if fp.service)
         self._mdns = MDNSScanner(
-            control_ip=self._source_ip, service_types=types,
+            control_ip=self._listen_ip, service_types=types,
             query_enumerated_types=True, enumerated_from=[ip] if ip else [],
             on_message=self._hear("mdns"),
         )
         self._ssdp = SSDPScanner(
-            control_ip=self._source_ip, capture=True, on_message=self._hear("ssdp"),
+            control_ip=self._listen_ip, capture=True, on_message=self._hear("ssdp"),
         )
-        self._amx = AMXDDPScanner(control_ip=self._source_ip, on_message=self._hear("amx_ddp"))
+        self._amx = AMXDDPScanner(control_ip=self._listen_ip, on_message=self._hear("amx_ddp"))
         self._listeners_started = asyncio.get_running_loop().time()
         self._listener_tasks = [
             asyncio.create_task(self._mdns.start(duration=_LISTENER_CEILING_SECONDS)),
@@ -619,7 +630,9 @@ class NetworkCheck:
     def _network_facts(self) -> None:
         fp = self.footprint
         fp.local_ip = self._source_ip or local_route_ip(fp.ip)
-        for adapter in get_network_adapters():
+        # A 169.254 source is in no adapter's list of addresses.
+        fp.interface = self._source_adapter
+        for adapter in [] if fp.interface else get_network_adapters():
             if adapter.get("ip") == fp.local_ip:
                 fp.interface = adapter.get("name", "")
                 break
@@ -1343,6 +1356,17 @@ def _control_interface() -> str:
         return reach_devices.address()
     except Exception:
         return ""
+
+
+def _link_local_interface() -> tuple[str, str]:
+    """The chosen adapter's 169.254 address and its name, or ("", "")."""
+    try:
+        from openavc import reach_devices
+
+        resolved = reach_devices.current()
+    except Exception:
+        return "", ""
+    return resolved.link_local_address, resolved.adapter_name
 
 
 async def _read_certificate(

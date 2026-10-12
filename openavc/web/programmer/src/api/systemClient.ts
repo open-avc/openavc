@@ -644,6 +644,10 @@ export interface NetworkInterface {
   /** False when the adapter is not connected (cable out, radio off). */
   link: boolean;
   has_address: boolean;
+  /** The adapter's 169.254 addresses, apart from `addresses`. The pickers
+   *  list and show an adapter by `addresses` only; the server binds one of
+   *  these to reach a device at a 169.254 address. */
+  link_local?: { ip: string; subnet: string }[];
 }
 
 /** `adapters` is one entry per IPv4 address (Discovery); `interfaces` is one

@@ -21,6 +21,14 @@ network, which is what choosing one adapter was for, and every surface that
 already explains an address no adapter holds (discovery, the Discovery view)
 explains it. Same rule as Accept connections from: never widen.
 
+**A device at a 169.254 address** is reached from the chosen adapter's own
+169.254 address (:func:`link_local_address`): many link-local devices answer
+only a source on their own link, which is why they work with every adapter
+(the OS picks a 169.254 source) and not from the adapter's other address.
+An adapter that holds none still binds its other address, never a wider one;
+:func:`missing_link_local` is what the device card says then. A literal
+address (``OPENAVC_CONTROL_INTERFACE``) is bound as it is, for every device.
+
 **``OPENAVC_CONTROL_INTERFACE``** keeps its meaning: one literal address, or
 empty for every adapter. It holds the choice when set, as
 ``{"address": ...}`` (``system_config.parse_control_interface_variable``).
@@ -59,12 +67,19 @@ _STALE_AFTER = 60.0
 
 @dataclass(frozen=True)
 class Resolved:
-    """The choice resolved against the adapters present."""
+    """The choice resolved against the adapters present.
+
+    ``link_local_address`` is the chosen adapter's first 169.254 address, or
+    "" (none held, every adapter, or a literal address). Not in
+    :meth:`to_dict`: Settings lists and shows an adapter by its other
+    addresses.
+    """
 
     identity: dict[str, str]
     address: str = ""
     adapter_name: str = ""
     connected: bool = True
+    link_local_address: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         every = not self.identity
@@ -117,13 +132,18 @@ def resolve(identity: dict[str, str], adapters: Iterable[Any], last: str = "") -
         )
     adapter = listen.match_adapter(identity, adapters)
     name = adapter.name if adapter else identity.get("name", "")
+    link_local = adapter.link_local[0][0] if adapter is not None and adapter.link_local else ""
     if adapter is None or not adapter.ips:
-        return Resolved(identity=identity, address=last, adapter_name=name, connected=False)
+        return Resolved(
+            identity=identity, address=last, adapter_name=name, connected=False,
+            link_local_address=link_local,
+        )
     return Resolved(
         identity=identity,
         address=adapter.ips[0],
         adapter_name=name,
         connected=adapter.link,
+        link_local_address=link_local,
     )
 
 
@@ -183,6 +203,42 @@ def address() -> str:
     except Exception:  # never fail a connect over the lookup
         log.debug("Reach devices through: lookup failed", exc_info=True)
         return ""
+
+
+def link_local_address() -> str:
+    """The chosen adapter's 169.254 address, or "": what a connection to a
+    device at a 169.254 address binds (``transport/endpoint.py``)."""
+    try:
+        return current().link_local_address
+    except Exception:  # never fail a connect over the lookup
+        log.debug("Reach devices through: lookup failed", exc_info=True)
+        return ""
+
+
+def missing_link_local(host: Any) -> Resolved | None:
+    """The choice, when ``host`` is a 169.254 address and the chosen adapter,
+    connected, holds no 169.254 address to reach it from; otherwise None
+    (every adapter, a literal address, another host, an adapter that is not
+    connected, or one that holds a 169.254 address).
+
+    The device card and the connection test ask it when a connection
+    failed, to say so instead of "check the IP address"."""
+    from openavc.transport.endpoint import is_link_local
+
+    if not is_link_local(host):
+        return None
+    try:
+        resolved = current()
+    except Exception:
+        log.debug("Reach devices through: lookup failed", exc_info=True)
+        return None
+    from openavc import listen
+
+    if not resolved.identity or listen.is_literal(resolved.identity):
+        return None
+    if not resolved.connected or resolved.link_local_address:
+        return None
+    return resolved
 
 
 def refresh(cfg: Any = None, adapters: Iterable[Any] | None = None) -> Resolved:
