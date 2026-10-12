@@ -36,7 +36,7 @@ The fastest way to get started on Windows.
 
 After installation, open **http://localhost:8080/programmer** in your browser to start building.
 
-> OpenAVC accepts connections from tablets, phones and other computers on any network this PC is on. To limit that to one network, or to this PC only, change **Accept connections from** in Settings > Network.
+> OpenAVC accepts connections from tablets, phones and other computers on any network this PC is on. To limit that to one network, or to this computer only, change **Accept connections from** in Settings > Network.
 
 ## macOS Installer
 

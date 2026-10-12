@@ -208,7 +208,7 @@ You can also read and modify system configuration through the REST API:
 - `GET /api/system/config` returns the current configuration (sensitive fields redacted)
 - `PATCH /api/system/config` updates individual sections and saves to disk
 
-> **Who can connect:** an installed system accepts connections from any network, so touch panels on other devices can reach it, and a from-source run from this computer only. Change it in Settings > Network > **Accept connections from**. When it reaches a network and no admin password or API key is set, the server logs a warning at startup. With This computer only, the startup banner's `LAN access` line and the `/setup` screen say so and name the setting, rather than offering an address nothing on the network can open.
+> **Who can connect:** an installed system accepts connections from any network, so touch panels on other devices can reach it. A from-source run accepts them from this computer only. Change it in Settings > Network > **Accept connections from**. When it reaches a network and no admin password or API key is set, the server logs a warning at startup. With This computer only, the startup banner's `LAN access` line and the `/setup` screen say so and name the setting, rather than offering an address nothing on the network can open.
 
 ## Updates
 
