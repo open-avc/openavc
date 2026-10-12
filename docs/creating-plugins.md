@@ -294,6 +294,24 @@ All interaction with the panel goes through the postMessage API. This prevents a
 
 ---
 
+## Connecting to Devices on the Network
+
+On a computer connected to more than one network, Settings > Network > **Reach devices through** can send all device traffic out through one adapter. A connection your plugin opens to AV equipment follows it by asking `api.local_address(host)` and binding to the answer:
+
+```python
+ip = self.api.local_address(host)
+local_addr = (ip, 0) if ip else None
+reader, writer = await asyncio.open_connection(host, port, local_addr=local_addr)
+sock = socket.create_connection((host, port), timeout=5, source_address=local_addr)
+client = httpx.AsyncClient(transport=httpx.AsyncHTTPTransport(local_address=ip)) if ip else httpx.AsyncClient()
+```
+
+It returns the chosen adapter's address, or `None` when no adapter is chosen and for a host on this computer (a sidecar your plugin runs, a local service). Ask for each connection rather than once at start, so a new address from DHCP is picked up. Leave connections to services on the internet (a cloud API, a broker someone hosts elsewhere) unbound: the chosen adapter may have no route to them.
+
+An `httpx` client given a `transport=` ignores the `verify`, `cert`, `limits`, `http2` and `trust_env` you pass the client itself, so pass those to `AsyncHTTPTransport` instead. `local_address()` is new in OpenAVC 0.37.0: set `min_openavc_version` to at least `"0.37.0"` in a plugin that calls it.
+
+---
+
 ## Contributing Plugins
 
 For the full guide on plugin structure, manifest format, testing, and submitting to the community repository, see the [Contributing Plugins](https://github.com/open-avc/openavc-plugins/blob/main/docs/contributing-plugins.md) guide.

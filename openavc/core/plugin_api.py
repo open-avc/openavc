@@ -303,6 +303,30 @@ class PluginAPI:
         out.sort(key=lambda d: d["ip"])
         return out
 
+    def local_address(self, host: str) -> str | None:
+        """The local IP a connection this plugin opens to a device at ``host``
+        leaves from, or None to let the operating system choose.
+
+        Settings > Network > Reach devices through can pin device traffic to
+        one network adapter. A connection to AV equipment asks here and binds
+        to the answer::
+
+            ip = api.local_address(host)
+            local_addr = (ip, 0) if ip else None
+            await asyncio.open_connection(host, port, local_addr=local_addr)
+            socket.create_connection((host, port), source_address=local_addr)
+            httpx.AsyncClient(transport=httpx.AsyncHTTPTransport(local_address=ip))
+
+        None when no adapter is chosen, and for a host on this computer (a
+        sidecar, a local service), which a socket bound to an adapter cannot
+        reach. Not for a service on the internet: the chosen adapter may have
+        no route there. The same rule as ``BaseDriver.local_address``. Needs
+        no capability: it grants nothing, it answers where to leave from.
+        """
+        from openavc.transport.endpoint import control_bind_address
+
+        return control_bind_address(host)
+
     # ──── HTTP Endpoints ────
 
     def register_router(

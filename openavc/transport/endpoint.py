@@ -45,14 +45,22 @@ def control_bind_address(host: Any) -> str | None:
     """The local IP a connection to ``host`` is bound to, or None.
 
     Settings' Reach devices through pins device traffic to one adapter
-    (``openavc/reach_devices.py``). A device on this machine (a simulator, a
-    local service) is reached over loopback, which a socket bound to an
-    adapter's address cannot do (Windows refuses the connect with WinError
-    1214), so a loopback host is never bound.
+    (``openavc/reach_devices.py``); :func:`local_address_for` applies it.
     """
     from openavc import reach_devices
 
-    control_ip = reach_devices.address()
+    return local_address_for(host, reach_devices.address())
+
+
+def local_address_for(host: Any, control_ip: str | None) -> str | None:
+    """The rule :func:`control_bind_address` applies, given the pinned address.
+
+    ``control_ip`` empty means nothing is pinned. A device on this machine (a
+    simulator, a local service) is reached over loopback, which a socket bound
+    to an adapter's address cannot do (Windows refuses the connect with
+    WinError 1214), so a loopback host is never bound. Separate so the plugin
+    test harness answers by the same rule from an address a test sets.
+    """
     if not control_ip:
         return None
     name = str(host or "").strip().strip("[]").lower()

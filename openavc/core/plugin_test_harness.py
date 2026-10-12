@@ -13,6 +13,7 @@ from openavc.core.event_bus import EventBus
 from openavc.core.plugin_api import PluginAPI
 from openavc.core.plugin_registry import PluginRegistry
 from openavc.core.state_store import StateStore
+from openavc.transport.endpoint import local_address_for
 
 
 class MockMacroEngine:
@@ -87,6 +88,11 @@ class PluginTestHarness:
         # the real network). Set this before/after start_plugin as needed.
         self.mdns_results: list[dict] = []
 
+        # The adapter address Settings > Network > Reach devices through pins
+        # device traffic to, as api.local_address answers it ("" = no adapter
+        # chosen). The harness never reads this computer's own settings.
+        self.reach_devices_address: str = ""
+
         # Active plugins
         self._registries: dict[str, PluginRegistry] = {}
         self._apis: dict[str, PluginAPI] = {}
@@ -138,6 +144,13 @@ class PluginTestHarness:
             return [dict(r) for r in self.mdns_results]
 
         api.mdns_browse = _stub_mdns_browse
+
+        # Answer local_address by the platform's rule from the address the
+        # test set, not from this computer's Settings.
+        def _stub_local_address(host: str) -> str | None:
+            return local_address_for(host, self.reach_devices_address)
+
+        api.local_address = _stub_local_address
 
         self._registries[plugin_id] = registry
         self._apis[plugin_id] = api
