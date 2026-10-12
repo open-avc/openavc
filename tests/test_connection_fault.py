@@ -186,6 +186,25 @@ def test_unreachable_network_unreachable_errno():
     assert fault.code == UNREACHABLE
 
 
+def test_unreachable_windows_network_location_cannot_be_reached():
+    # Windows, connecting from an adapter with no route to the device (Reach
+    # devices through set to another network): the overlapped connect raises
+    # errno EINVAL with the meaning only in winerror 1231.
+    cause = OSError(errno.EINVAL, "The network location cannot be reached.")
+    cause.winerror = 1231
+    exc = _wrap(
+        "Failed to connect to 192.168.4.58:4998: [WinError 1231] The network "
+        "location cannot be reached. For information about network "
+        "troubleshooting, see Windows Help",
+        cause,
+    )
+    fault = classify_connection_fault(
+        last_error="", exc=exc, host="192.168.4.58", port=4998, transport="tcp",
+    )
+    assert fault.code == UNREACHABLE
+    assert "192.168.4.58:4998" in fault.message
+
+
 # --- host_key_rejected -----------------------------------------------------
 
 def test_host_key_rejected():

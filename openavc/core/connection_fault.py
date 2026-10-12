@@ -566,6 +566,23 @@ def _errno_of(chain: list[BaseException]) -> int | None:
     return None
 
 
+# ERROR_NETWORK_UNREACHABLE and ERROR_HOST_UNREACHABLE. Windows raises these
+# from an overlapped connect (asyncio's proactor loop) with errno EINVAL, so
+# the errno check below never sees them, and the message ("The network
+# location cannot be reached") is translated on a non-English system. A
+# socket bound to an adapter that has no route to the device (Settings >
+# Network > Reach devices through set to another network) fails this way.
+_UNREACHABLE_WINERRORS = (1231, 1232)
+
+
+def _winerror_of(chain: list[BaseException]) -> int | None:
+    for node in chain:
+        code = getattr(node, "winerror", None)
+        if isinstance(code, int):
+            return code
+    return None
+
+
 def _has_timeout(chain: list[BaseException]) -> bool:
     # asyncio.TimeoutError is an alias of TimeoutError on 3.11+, a distinct
     # class before — check both so connect timeouts classify on every runtime.
@@ -760,6 +777,7 @@ def classify_connection_fault(
     #    a protocol read-timeout (handled as no_response below).
     if (
         err_no in (errno.EHOSTUNREACH, errno.ENETUNREACH, errno.ETIMEDOUT, errno.EHOSTDOWN)
+        or _winerror_of(chain) in _UNREACHABLE_WINERRORS
         or _has_any(hay, _UNREACHABLE_STRONG_SIGS)
         or (_has_timeout(chain) and _has_any(hay, _CONNECT_WRAPPERS))
     ):
