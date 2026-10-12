@@ -364,7 +364,7 @@ function applyConnMode(
     v.transport = "serial";
     // A numeric TCP port is meaningless as a COM path → clear it.
     if (v.port && /^\d+$/.test(v.port)) v.port = "";
-    if (v.baudrate == null) v.baudrate = "9600";
+    seedLineSettings(v, d);
   } else {
     // bridge: the resolver computes the effective transport, so we store only
     // the binding. A serial device also keeps its line params; an IR device has
@@ -379,14 +379,33 @@ function applyConnMode(
       delete v.parity;
       delete v.stopbits;
       delete v.flow_control;
-    } else if (v.baudrate == null) {
-      v.baudrate = "9600";
+    } else {
+      seedLineSettings(v, d);
     }
   }
   return v;
 }
 
 const LINE_SETTINGS = ["baudrate", "bytesize", "parity", "stopbits", "flow_control"];
+
+// A line setting the form holds no value for: the driver's own default, which
+// is what the device connects at when nothing is saved.
+function lineDefault(d: DriverInfo | undefined, key: string, fallback: string): string {
+  const dv = d?.default_config?.[key];
+  return dv != null && dv !== "" ? String(dv) : fallback;
+}
+
+// A saved line setting outranks the driver's default, so a form switched to
+// serial starts each one at the driver's value: a device that runs at 115200
+// is not saved at 9600. Baud rate always gets one; the others only when the
+// driver names one (8N1 with no flow control applies otherwise).
+function seedLineSettings(v: Record<string, string>, d: DriverInfo | undefined): void {
+  for (const key of LINE_SETTINGS) {
+    if (v[key] != null) continue;
+    if (key === "baudrate") v[key] = lineDefault(d, key, "9600");
+    else if (d?.default_config?.[key] != null && d.default_config[key] !== "") v[key] = String(d.default_config[key]);
+  }
+}
 
 // The form a device starts from when Edit Device picks another driver: the new
 // driver's defaults, keeping what belongs to the device rather than to its
@@ -660,32 +679,32 @@ export function ConnectionModePicker({
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-sm)" }}>
         {field(
           "Baud rate",
-          <select value={configValues.baudrate ?? "9600"} onChange={(e) => set("baudrate", e.target.value)} style={{ width: "100%" }}>
+          <select value={configValues.baudrate ?? lineDefault(driverInfo, "baudrate", "9600")} onChange={(e) => set("baudrate", e.target.value)} style={{ width: "100%" }}>
             {BAUD_RATES.map((b) => <option key={b} value={b}>{b}</option>)}
           </select>,
         )}
         {field(
           "Parity",
-          <select value={configValues.parity ?? "N"} onChange={(e) => set("parity", e.target.value)} style={{ width: "100%" }}>
+          <select value={configValues.parity ?? lineDefault(driverInfo, "parity", "N")} onChange={(e) => set("parity", e.target.value)} style={{ width: "100%" }}>
             {PARITY_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>,
         )}
         {field(
           "Data bits",
-          <select value={configValues.bytesize ?? "8"} onChange={(e) => set("bytesize", e.target.value)} style={{ width: "100%" }}>
+          <select value={configValues.bytesize ?? lineDefault(driverInfo, "bytesize", "8")} onChange={(e) => set("bytesize", e.target.value)} style={{ width: "100%" }}>
             {DATABITS_OPTS.map((b) => <option key={b} value={b}>{b}</option>)}
           </select>,
         )}
         {field(
           "Stop bits",
-          <select value={configValues.stopbits ?? "1"} onChange={(e) => set("stopbits", e.target.value)} style={{ width: "100%" }}>
+          <select value={configValues.stopbits ?? lineDefault(driverInfo, "stopbits", "1")} onChange={(e) => set("stopbits", e.target.value)} style={{ width: "100%" }}>
             {STOPBITS_OPTS.map((b) => <option key={b} value={b}>{b}</option>)}
           </select>,
         )}
       </div>
       {field(
         "Flow control",
-        <select value={configValues.flow_control ?? "none"} onChange={(e) => set("flow_control", e.target.value)} style={{ width: "100%" }}>
+        <select value={configValues.flow_control ?? lineDefault(driverInfo, "flow_control", "none")} onChange={(e) => set("flow_control", e.target.value)} style={{ width: "100%" }}>
           {FLOW_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>,
       )}

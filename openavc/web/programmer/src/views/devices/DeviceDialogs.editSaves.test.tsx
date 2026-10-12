@@ -150,6 +150,24 @@ describe("Edit Device saves what its form shows", () => {
     });
   });
 
+  it("starts a serial connection at the driver's own baud rate", async () => {
+    const device = { id: "w1", driver: "acme_widget_pro", name: "W1", config: {} };
+    open(device as DeviceConfig, { host: "10.0.0.5", port: 4352 });
+    await userEvent.click(await screen.findByRole("button", { name: "Direct serial" }));
+    expect(screen.getByDisplayValue("19200")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Network (IP)" }));
+    await userEvent.click(screen.getByRole("button", { name: "Direct serial" }));
+    expect(screen.getByDisplayValue("19200")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("9600")).toBeNull();
+  });
+
+  it("shows the driver's baud rate for a serial device saved without one", async () => {
+    const device = { id: "w1", driver: "acme_widget_pro", name: "W1", config: {} };
+    open(device as DeviceConfig, { transport: "serial", port: "COM3" });
+    expect(await screen.findByDisplayValue("19200")).toBeInTheDocument();
+  });
+
   it("removes a connection setting the form cleared", async () => {
     const device = { id: "w1", driver: "acme_widget", name: "W1", config: {} };
     open(device as DeviceConfig, { host: "10.0.0.5", port: 2323 });
