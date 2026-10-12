@@ -12,6 +12,7 @@ import pytest
 from openavc.updater.host import get_firmware_host
 from openavc.updater.manager import UpdateManager
 from openavc.updater.platform import DeploymentType
+from tests import gates
 
 
 @pytest.fixture(autouse=True)
@@ -78,7 +79,10 @@ def stale_records(data):
         "boolean-schema",
         "extra-key",
         "directory",
-        "dangling-symlink",
+        pytest.param(
+            "dangling-symlink",
+            marks=gates.skipif_missing(gates.SYMLINKS, gates.symlink_reason()),
+        ),
     ],
 )
 def test_invalid_explicit_host_never_falls_back_to_vanilla(tmp_path, monkeypatch, kind):
