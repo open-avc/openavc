@@ -274,6 +274,7 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
                     updatePolling({ queries: next });
                   }}
                   placeholder="1 each"
+                  aria-label="Children per query"
                   title="Children one reply covers. Set it for a list read that answers a page of children starting at the one asked for: the query then goes out once per page. Leave blank to send it once per child."
                   style={{ width: 70, fontSize: "var(--font-size-sm)" }}
                 />

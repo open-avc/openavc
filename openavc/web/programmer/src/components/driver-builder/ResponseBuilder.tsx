@@ -1211,6 +1211,7 @@ function ChildListEditor({
           value={value.group === undefined ? "" : String(value.group)}
           onChange={(e) => set({ group: refOrNumberFromText(e.target.value) })}
           placeholder="$1"
+          aria-label="List capture"
           title="Which capture of this rule's pattern holds the list ($1 when left blank)"
           style={mono(50)}
         />
@@ -1219,8 +1220,9 @@ function ChildListEditor({
           value={value.separator ?? ""}
           onChange={(e) => set({ separator: e.target.value || undefined })}
           placeholder="side by side"
+          aria-label="Item separator"
           title="The text between two items, such as a comma. Leave it blank when the items are written one after another with nothing between them."
-          style={mono(90)}
+          style={mono(120)}
         />
       </div>
       <div style={row}>
@@ -1229,6 +1231,7 @@ function ChildListEditor({
           value={value.element}
           onChange={(e) => set({ element: e.target.value })}
           placeholder="(\d+)>(\d+)"
+          aria-label="Item pattern"
           title="The pattern for one item of the list. Its captures are what the child ID and the properties below read: $1 is the item's first capture."
           style={{ ...mono(0), flex: 1 }}
         />
@@ -1258,6 +1261,7 @@ function ChildListEditor({
               })
             }
             placeholder="$2"
+            aria-label="Item child ID"
             title="Which of the item's captures holds the child ID"
             style={mono(60)}
           />
@@ -1268,6 +1272,7 @@ function ChildListEditor({
               value={value.start === undefined ? "" : String(value.start)}
               onChange={(e) => set({ start: refOrNumberFromText(e.target.value) })}
               placeholder="1"
+              aria-label="First child"
               title="The child ID of the first item: a number, or a capture of this rule's pattern ($2) when the reply says where its list starts"
               style={mono(60)}
             />
@@ -1319,6 +1324,7 @@ function ChildListEditor({
                 })
               }
               placeholder="$1 or literal"
+              aria-label={`${prop || "Property"} value`}
               title="One of the item's captures ($1) or a literal value; coerced by the property's declared type"
               style={mono(110)}
             />
