@@ -301,6 +301,48 @@ async def test_the_check_runs_once_and_its_result_reaches_the_state(wired):
     await wired.manager.shutdown()
 
 
+class HangingCheck(FakeCheck):
+    """A network check still running when the audit is cancelled."""
+
+    async def run(self):
+        await asyncio.Event().wait()
+
+
+async def test_cancelling_during_the_check_sends_one_ended_state_naming_the_report(
+    wired, monkeypatch,
+):
+    async def hanging_open(session, _discovery):
+        check = HangingCheck(session)
+        session.check = check
+        session.add_state_provider(lambda: fpmod.check_state(session))
+        return check
+
+    monkeypatch.setattr(routes, "open_for_session", hanging_open)
+    started = await routes.start_session(AuditStartRequest(address="127.0.0.1"))
+    session_id = started["session"]["session_id"]
+    heard: list[dict] = []
+    wired.manager.current().subscribe(heard.append)
+    await routes.run_network_check(session_id)
+    await asyncio.sleep(0.01)
+
+    reply = await routes.end_session(session_id, cancel=True)
+
+    ended = [
+        m["state"] for m in heard
+        if m["type"] == "audit.state" and m["state"]["status"] != "active"
+    ]
+    assert [s["status"] for s in ended] == ["cancelled"], (
+        "an ending sends its state once, when the report is saved"
+    )
+    assert ended[0]["report_name"]
+    assert ended[0]["check"]["status"] == "cancelled"
+    assert wired.store.path(ended[0]["report_name"]) is not None
+    assert reply["session"]["report_name"] == ended[0]["report_name"]
+    # What happened during the ending still reaches the page.
+    kinds = [m["entry"]["kind"] for m in heard if m["type"] == "audit.timeline"]
+    assert "session.ended" in kinds
+
+
 async def test_tester_report_and_recent_reports(wired):
     import asyncio
 

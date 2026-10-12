@@ -6,7 +6,7 @@ import * as audit from "../../../api/auditClient";
 import { BASE } from "../../../api/base";
 import { onConnect, onMessage, send } from "../../../api/wsClient";
 import { parseApiError } from "../../../api/errors";
-import { AUDIT_STEPS, stepFor, type AuditStep } from "./auditHelpers";
+import { AUDIT_STEPS, endedReportText, stepFor, type AuditStep } from "./auditHelpers";
 import { TargetStep } from "./steps/TargetStep";
 import { NetworkCheckStep } from "./steps/NetworkCheckStep";
 import { DriverStep } from "./steps/DriverStep";
@@ -286,13 +286,7 @@ function EndedNotice({ session }: { session: audit.AuditSessionState }) {
       <div style={{ fontSize: "var(--font-size-md)", fontWeight: 600, marginBottom: "var(--space-sm)" }}>
         {ENDED_TEXT[session.status] ?? "This audit has ended."}
       </div>
-      {name ? (
-        <div>What it found up to then is saved in its report, {name}.</div>
-      ) : session.status === "gone" ? (
-        <div>If it saved a report, the report is under Recent reports when you start a new audit.</div>
-      ) : (
-        <div>It ended before the network check, so there is no report.</div>
-      )}
+      <div>{endedReportText(session)}</div>
       {session.paused.length > 0 && (
         <div style={{ marginTop: "var(--space-xs)" }}>The project devices it paused are connected again.</div>
       )}

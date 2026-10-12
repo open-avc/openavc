@@ -87,6 +87,20 @@ export function checkStarted(session: AuditSessionState | null): boolean {
   return !!status && status !== "idle";
 }
 
+/** What an audit that has ended says about its report. A report is saved
+ *  whenever the network check started, so with no report name either it
+ *  never did or the save failed. */
+export function endedReportText(session: AuditSessionState): string {
+  if (session.report_name) {
+    return `What it found up to then is saved in its report, ${session.report_name}.`;
+  }
+  if (session.status === "gone") {
+    return "If it saved a report, the report is under Recent reports when you start a new audit.";
+  }
+  if (!checkStarted(session)) return "It ended before the network check, so there is no report.";
+  return "Its report could not be saved.";
+}
+
 /**
  * One WebSocket message applied to what the wizard holds. Messages for
  * another session are ignored. Returns new objects only when something

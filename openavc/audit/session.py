@@ -272,6 +272,10 @@ class AuditSession:
         # last number. A reply to a request can reach the browser after a
         # message sent later; the wizard keeps the newer of the two.
         self.seq = 0
+        # True while the session ends (``AuditManager._teardown``). The tasks
+        # it cancels publish their state as they stop, but the report is not
+        # saved until they have, so the state goes out once, at the end.
+        self.ending = False
         self._tasks: set[asyncio.Task] = set()
         self._teardown_hooks: list[Callable[[], Awaitable[None]]] = []
         self._state_providers: list[Callable[[], dict[str, Any]]] = []
@@ -337,6 +341,8 @@ class AuditSession:
         return entry
 
     def publish_state(self) -> None:
+        if self.ending:
+            return
         self.publish({"type": "audit.state", "state": self.to_dict()})
 
     # -- things to stop -----------------------------------------------------
@@ -523,19 +529,23 @@ class AuditManager:
             return
         session.status = status
         session.ended_at = time.time()
-        # The session's own watch task is among the tracked tasks; teardown
-        # can run from inside it (the idle timeout), so it is not cancelled
-        # from under itself.
-        await session.stop_everything(spare=asyncio.current_task())
-        await self._resume_owned(session)
-        session.add_timeline("session.ended", self._end_text(status), status=status)
-        log.info("Device audit %s ended (%s)", session.id, status)
-        for hook in self._end_hooks:
-            try:
-                await hook(session)
-            except Exception:
-                log.warning("Audit end hook failed", exc_info=True)
-        logging.getLogger().removeHandler(session.log)
+        session.ending = True
+        try:
+            # The session's own watch task is among the tracked tasks;
+            # teardown can run from inside it (the idle timeout), so it is not
+            # cancelled from under itself.
+            await session.stop_everything(spare=asyncio.current_task())
+            await self._resume_owned(session)
+            session.add_timeline("session.ended", self._end_text(status), status=status)
+            log.info("Device audit %s ended (%s)", session.id, status)
+            for hook in self._end_hooks:
+                try:
+                    await hook(session)
+                except Exception:
+                    log.warning("Audit end hook failed", exc_info=True)
+            logging.getLogger().removeHandler(session.log)
+        finally:
+            session.ending = False
         session.publish_state()
 
     def _end_text(self, status: str) -> str:

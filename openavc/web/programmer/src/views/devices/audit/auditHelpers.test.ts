@@ -13,6 +13,7 @@ import {
   ACTIVITY_ORDER,
   applyAuditMessage,
   checkStarted,
+  endedReportText,
   fileSize,
   parseCommunities,
   pauseNotice,
@@ -83,6 +84,33 @@ describe("where the wizard picks up", () => {
     idle.check!.status = "idle";
     expect(checkStarted(idle)).toBe(false);
     expect(checkStarted(session())).toBe(true);
+  });
+});
+
+describe("what an ended audit says about its report", () => {
+  it("names the report it saved", () => {
+    const ended = session({ status: "cancelled", report_name: "audit-widget.zip" });
+    expect(endedReportText(ended)).toBe(
+      "What it found up to then is saved in its report, audit-widget.zip.",
+    );
+  });
+  it("says there is none when it ended before the network check", () => {
+    const ended = session({ status: "cancelled" });
+    ended.check!.status = "idle";
+    expect(endedReportText(ended)).toBe("It ended before the network check, so there is no report.");
+    expect(endedReportText(session({ status: "cancelled", check: null }))).toBe(
+      "It ended before the network check, so there is no report.",
+    );
+  });
+  it("never says the check had not run once it had", () => {
+    const ended = session({ status: "cancelled" });
+    ended.check!.status = "cancelled";
+    expect(endedReportText(ended)).toBe("Its report could not be saved.");
+  });
+  it("points to Recent reports when the server restarted", () => {
+    expect(endedReportText(session({ status: "gone" }))).toBe(
+      "If it saved a report, the report is under Recent reports when you start a new audit.",
+    );
   });
 });
 
