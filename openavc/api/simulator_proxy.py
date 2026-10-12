@@ -153,7 +153,21 @@ async def simulator_shell_proxy(path: str, request: Request) -> Response:
 # child process closes its sockets as it dies, and httpx discards a connection
 # the far end closed and dials a new one (verified against a server restarted
 # under the pool). Nothing stale is ever handed to a caller.
+#
+# What the pool must not do is hold an idle connection as long as the
+# simulator does. Each side clocks idleness from its own moment, so with both
+# at 5 s (httpx's and uvicorn's defaults) the Simulator UI's 5 s poll was now
+# and then handed a connection the simulator was closing that same instant, and
+# came back 502 with an empty ReadError. The pool drops an idle connection
+# after IDLE_EXPIRY_S; the simulator holds one for HTTP_KEEP_ALIVE_S
+# (simulator/_runtime.py), well past it.
 _client: httpx.AsyncClient | None = None
+
+TIMEOUT_S = 30.0
+IDLE_EXPIRY_S = 5.0
+_LIMITS = httpx.Limits(
+    max_connections=100, max_keepalive_connections=20, keepalive_expiry=IDLE_EXPIRY_S,
+)
 
 
 def _get_client() -> httpx.AsyncClient:
@@ -165,7 +179,7 @@ def _get_client() -> httpx.AsyncClient:
     """
     global _client
     if _client is None:
-        _client = httpx.AsyncClient(timeout=30.0)
+        _client = httpx.AsyncClient(timeout=TIMEOUT_S, limits=_LIMITS)
     return _client
 
 
@@ -201,8 +215,14 @@ async def _forward(path: str, request: Request) -> Response:
         # rather than as a server error.
         return Response(content=_UNAVAILABLE, status_code=503, media_type="text/plain")
     except httpx.HTTPError as e:
-        log.warning(f"Simulator UI proxy failed for /{path}: {e}")
-        return Response(content=f"Simulator UI unreachable: {e}", status_code=502,
+        # A timeout and a dropped connection both carry no text.
+        why = str(e) or (
+            f"no answer within {TIMEOUT_S:g} s"
+            if isinstance(e, httpx.TimeoutException)
+            else type(e).__name__
+        )
+        log.warning(f"Simulator UI proxy failed for /{path}: {why}")
+        return Response(content=f"Simulator UI unreachable: {why}", status_code=502,
                         media_type="text/plain")
 
     passthrough = {

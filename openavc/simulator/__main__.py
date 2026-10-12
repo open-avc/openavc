@@ -73,16 +73,22 @@ def main():
     # Run through an explicit Server (not uvicorn.run) so the API's shutdown
     # endpoints can flip ``should_exit`` for a graceful, cross-platform exit
     # instead of a self-SIGTERM (which is a hard kill on Windows).
-    server = uvicorn.Server(
-        uvicorn.Config(
-            "openavc.simulator.server:app",
-            host=args.host,
-            port=config["ui_port"],
-            log_level="info",
-        )
-    )
+    server = uvicorn.Server(server_config(args.host, config["ui_port"]))
     _runtime.uvicorn_server = server
     server.run()
+
+
+def server_config(host: str, port: int) -> uvicorn.Config:
+    """The simulator's web server settings."""
+    from openavc.simulator import _runtime
+
+    return uvicorn.Config(
+        "openavc.simulator.server:app",
+        host=host,
+        port=port,
+        log_level="info",
+        timeout_keep_alive=_runtime.HTTP_KEEP_ALIVE_S,
+    )
 
 
 if __name__ == "__main__":
