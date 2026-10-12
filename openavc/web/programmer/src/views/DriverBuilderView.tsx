@@ -29,6 +29,7 @@ export function DriverPanel() {
     saving,
     loading,
     error,
+    saveRefusal,
     commentLines,
     addedConnectionFields,
     loadDefinitions,
@@ -203,6 +204,7 @@ export function DriverPanel() {
                 dirty={dirty}
                 saving={saving}
                 error={error}
+                saveRefusal={saveRefusal}
                 isNew={isNew}
                 readOnly={readOnly}
                 originalId={selectedId}

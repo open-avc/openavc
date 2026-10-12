@@ -61,3 +61,25 @@ export function parseApiError(e: unknown): string {
   if (!match) return e.message;
   return extractDetail(match[1]) ?? e.message;
 }
+
+/**
+ * The `errors` list a structured refusal carries beside `detail` (a driver
+ * definition that failed validation lists each problem there), or null when
+ * the error has none.
+ */
+export function apiErrorList(e: unknown): string[] | null {
+  if (!(e instanceof ApiError)) return null;
+  try {
+    const errors = JSON.parse(e.body)?.errors;
+    if (
+      Array.isArray(errors) &&
+      errors.length > 0 &&
+      errors.every((item) => typeof item === "string")
+    ) {
+      return errors;
+    }
+  } catch {
+    /* not JSON */
+  }
+  return null;
+}

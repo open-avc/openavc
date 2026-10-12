@@ -2,7 +2,8 @@ import { create } from "zustand";
 import yaml from "js-yaml";
 import type { DriverDefinition, DriverInfo, CommunityDriver, InstalledDriver } from "../api/types";
 import * as api from "../api/restClient";
-import { parseApiError } from "../api/errors";
+import { apiErrorList, parseApiError } from "../api/errors";
+import type { SaveRefusal } from "../components/driver-builder/saveRefusal";
 import {
   reconcileAfterSave,
   makeLatestWins,
@@ -68,6 +69,9 @@ interface DriverBuilderState {
   saving: boolean;
   loading: boolean;
   error: string | null;
+  /** The last save the server refused with a list of errors, kept with the
+   *  draft it refused so the editor can tell whether it still applies. */
+  saveRefusal: SaveRefusal | null;
   /** Comment lines in the selected driver's file on disk. The Builder edits a
    *  parsed structure, so a save rewrites the file from that structure and the
    *  comments are gone — this is what the editor warns about before it happens.
@@ -172,6 +176,7 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
     saving: false,
     loading: false,
     error: null,
+    saveRefusal: null,
     commentLines: 0,
     addedConnectionFields: [],
 
@@ -230,7 +235,7 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
         return;
       }
       const savedId = capturedDraft.id;
-      set({ saving: true, error: null });
+      set({ saving: true, error: null, saveRefusal: null });
       try {
         if (selectionAtStart) {
           await api.updateDriverDefinition(selectionAtStart, capturedDraft);
@@ -247,7 +252,13 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
         });
         await get().loadDefinitions();
       } catch (e) {
-        set({ saving: false, error: parseApiError(e) });
+        const text = parseApiError(e);
+        const errors = apiErrorList(e);
+        set({
+          saving: false,
+          error: text,
+          saveRefusal: errors ? { text, errors, draft: capturedDraft } : null,
+        });
       }
     },
 

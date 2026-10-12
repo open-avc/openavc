@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { ApiError, parseApiError } from "./errors";
+import { ApiError, apiErrorList, parseApiError } from "./errors";
 import { request } from "./base";
 
 afterEach(() => {
@@ -79,5 +79,23 @@ describe("request() error contract", () => {
     expect(err).toBeInstanceOf(ApiError);
     expect(err.status).toBe(501);
     expect(err.detail).toBe("not implemented");
+  });
+});
+
+describe("apiErrorList", () => {
+  it("returns the errors a structured refusal lists beside its detail", () => {
+    const err = new ApiError(
+      422,
+      '{"detail":"The driver was not saved. Fix these first:\\na\\nb","errors":["a","b"]}',
+    );
+    expect(apiErrorList(err)).toEqual(["a", "b"]);
+  });
+
+  it("returns null when there is no list to read", () => {
+    expect(apiErrorList(new ApiError(422, '{"detail":"nope"}'))).toBeNull();
+    expect(apiErrorList(new ApiError(422, '{"detail":"nope","errors":[]}'))).toBeNull();
+    expect(apiErrorList(new ApiError(422, '{"detail":"nope","errors":[1]}'))).toBeNull();
+    expect(apiErrorList(new ApiError(502, "upstream down"))).toBeNull();
+    expect(apiErrorList(new Error("plain failure"))).toBeNull();
   });
 });

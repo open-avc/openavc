@@ -49,6 +49,7 @@ import * as api from "../../api/restClient";
 import { DOCS } from "./docLinks";
 import { copyToClipboard } from "../shared/clipboard";
 import { parseApiError } from "../../api/errors";
+import { saveErrorText, type SaveRefusal } from "./saveRefusal";
 
 type TabId =
   | "general"
@@ -76,6 +77,8 @@ interface DriverEditorProps {
   dirty: boolean;
   saving: boolean;
   error: string | null;
+  /** The last save the server refused, when it listed its errors. */
+  saveRefusal?: SaveRefusal | null;
   isNew: boolean;
   /** True when the loaded driver is built-in. Inputs disabled, Save hidden,
    *  banner offers "Customize a copy" to fork into an editable version. */
@@ -102,6 +105,7 @@ export function DriverEditor({
   dirty,
   saving,
   error,
+  saveRefusal = null,
   isNew,
   readOnly,
   originalId,
@@ -234,6 +238,7 @@ export function DriverEditor({
     { id: "simulation", label: "Simulation" },
     { id: "test", label: "Test" },
   ];
+  const headerError = saveErrorText(error, saveRefusal, draft, effectiveIssues, tabs);
 
   // Counts surfaced in collapsible headers so users can scan a tab and see
   // which sections are populated without expanding every panel.
@@ -309,14 +314,14 @@ export function DriverEditor({
           {isNew ? "New Driver" : draft.name || "Untitled Driver"}
         </h2>
 
-        {error && (
+        {headerError && (
           <span
             style={{
               fontSize: "var(--font-size-sm)",
               color: "var(--color-error)",
             }}
           >
-            {error}
+            {headerError}
           </span>
         )}
 

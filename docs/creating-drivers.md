@@ -4018,7 +4018,7 @@ For the complete simulator guide with all control types, state machines, and Pyt
 
 **Common causes:**
 
-1. **Validation error on save.** Check the error message in the Driver Builder. Common issues: missing `id` or `name`, invalid transport type, malformed regex in a response pattern.
+1. **Validation error on save.** The Driver Builder names the tab that holds the error, and the error is listed at the top of that tab. Common issues: missing `id` or `name`, invalid transport type, malformed regex in a response pattern.
 
 2. **Duplicate driver ID.** If another driver already has the same ID, the save will fail with a 409 Conflict error. Driver IDs must be unique across all sources (built-in, community, user-created).
 

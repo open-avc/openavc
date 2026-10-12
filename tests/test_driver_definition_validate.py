@@ -632,6 +632,24 @@ async def test_endpoint_flags_what_the_save_route_would_refuse():
         await create_driver_definition(DriverDefinitionRequest(**broken))
 
 
+async def test_a_refused_save_lists_the_endpoints_errors_word_for_word():
+    """The Builder finds a refused save's errors in its issue lists by their
+    text, and says where to look instead of repeating them."""
+    from openavc.api.errors import StructuredApiError
+
+    broken = _d(commands={
+        "broken": {},
+        "level": {"send": "LVL {lvel}\r", "params": {"lvl": {"type": "integer"}}},
+    })
+    result = await validate_driver_definition_draft(broken)
+    shown = [i["message"] for i in result["issues"] if i["severity"] == "error"]
+
+    with pytest.raises(StructuredApiError) as exc:
+        await create_driver_definition(DriverDefinitionRequest(**broken))
+    assert len(shown) == 2
+    assert exc.value.fields["errors"] == shown
+
+
 # --- The tagging mechanism keeps the old contract ----------------------------
 
 
