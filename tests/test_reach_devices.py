@@ -177,6 +177,25 @@ class TestTheAddressReadersBind:
         assert reach_devices.address() == ""
 
 
+class TestWhereABroadcastLeavesFrom:
+    def test_once_from_each_connected_adapter_with_an_address(self):
+        two_addresses = Adapter(
+            "Ethernet", ETHERNET.mac,
+            (("10.20.30.5", "10.20.30.0/24"), ("10.20.31.5", "10.20.31.0/24")), True,
+        )
+        unplugged_static = Adapter("Ethernet 2", "00-05-1B-00-00-01", (("192.0.2.123", "192.0.2.0/24"),), False)
+        link_local_only = Adapter("Ethernet 3", "00-05-1B-00-00-02", (), True, (("169.254.7.7", "169.254.0.0/16"),))
+        adapters = [two_addresses, unplugged_static, WIFI, link_local_only]
+        assert reach_devices.broadcast_sources(adapters) == ["10.20.30.5", "192.168.1.40"]
+
+    def test_a_failed_lookup_leaves_the_broadcast_unbound(self, monkeypatch):
+        def broken():
+            raise RuntimeError("no adapters")
+
+        monkeypatch.setattr(listen, "list_adapters", broken)
+        assert reach_devices.broadcast_sources() == []
+
+
 @pytest.fixture
 def api(tmp_path, monkeypatch, isolated_auth_config):
     """The real app on a config in tmp_path and two invented adapters."""

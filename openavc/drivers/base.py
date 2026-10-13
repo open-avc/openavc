@@ -612,6 +612,10 @@ def _ssh_option_list(value: object) -> list[str]:
 #: (the "discard" port; 7 is the other convention, and a listener honours both).
 WAKE_ON_LAN_PORT = 9
 
+#: Where ``send_udp(broadcast=True)`` sends: every host on the sending
+#: adapter's own network, which no router passes on.
+LIMITED_BROADCAST = "255.255.255.255"
+
 
 def normalize_mac(value: Any) -> str | None:
     """``aa:bb:cc:dd:ee:ff`` for any usual spelling of a MAC, else None.
@@ -1855,6 +1859,12 @@ class BaseDriver(ABC):
         in the device log as the transport's TX line. Returns the addresses the
         datagram went to.
 
+        A datagram to 255.255.255.255 with no adapter chosen in Reach devices
+        through goes out once through every connected adapter, from its
+        address (``reach_devices.broadcast_sources``): sent unbound, it would
+        leave through the one adapter the OS picks. An adapter that cannot
+        send is skipped; with none to send from, it goes once, unbound.
+
         This is the primitive under a YAML command's ``udp:`` block and under
         :meth:`wake_on_lan`; a Python driver that needs a datagram beside its
         transport (a message to a signage presentation's UDP receiver, say)
@@ -1866,7 +1876,7 @@ class BaseDriver(ABC):
             )
         port = int(port)
         if broadcast:
-            host = "255.255.255.255"
+            host = LIMITED_BROADCAST
         else:
             host = str(host or self.config.get("host") or "").strip()
             if not host:
@@ -1877,17 +1887,39 @@ class BaseDriver(ABC):
         target = (host, port)
         if self.udp_redirect is not None:
             target = self.udp_redirect
+        data = bytes(payload)
         # Bound for where it really goes: the simulator's redirect is local.
-        udp = await self._open_udp(local_addr=self.local_address(target[0]))
-        try:
-            await udp.send_to(bytes(payload), target[0], target[1])
-        finally:
-            await udp.close()
+        bound = self.local_address(target[0])
+        sources: list[str] = []
+        if bound is None and target[0] == LIMITED_BROADCAST:
+            from openavc import reach_devices
+
+            for source in await asyncio.to_thread(reach_devices.broadcast_sources):
+                try:
+                    await self._send_udp_from(source, data, target)
+                    sources.append(source)
+                except OSError as exc:
+                    log.debug(
+                        f"[{self.device_id}] UDP broadcast from {source} failed: {exc}"
+                    )
+        if not sources:
+            await self._send_udp_from(bound, data, target)
         log.info(
             f"[{self.device_id}] Sent {len(payload)} bytes over UDP to "
             f"{target[0]}:{target[1]}"
+            + (f" from {', '.join(sources)}" if sources else "")
         )
         return [target]
+
+    async def _send_udp_from(
+        self, local_addr: str | None, data: bytes, target: tuple[str, int],
+    ) -> None:
+        """One datagram from a socket opened for it and closed after."""
+        udp = await self._open_udp(local_addr=local_addr)
+        try:
+            await udp.send_to(data, target[0], target[1])
+        finally:
+            await udp.close()
 
     async def wake_on_lan(
         self,

@@ -20,7 +20,8 @@ driver handed the socket:
   - the simulator: a TCP device with a udp command also receives datagrams on
     its port, logs them, and applies the command's declared ``sets``;
   - the two helpers on their own, and the simulation redirect that points a
-    side-send at the simulator and back.
+    side-send at the simulator and back;
+  - a broadcast with no adapter chosen: once from every connected adapter.
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ import socket
 
 import pytest
 
+from openavc import reach_devices
 from openavc.core.event_bus import EventBus
 from openavc.core.simulation import SimulationManager
 from openavc.core.state_store import StateStore
@@ -90,16 +92,29 @@ def _definition(**over):
     return base
 
 
+@pytest.fixture(autouse=True)
+def _no_adapters(monkeypatch):
+    """A broadcast here goes once, unbound, whatever adapters the machine
+    running the suite has; a test that wants adapters names them."""
+    _adapters(monkeypatch)
+
+
+def _adapters(monkeypatch, *addresses: str) -> None:
+    monkeypatch.setattr(reach_devices, "broadcast_sources", lambda: list(addresses))
+
+
 class _CaptureUdp:
     """Stands in for the socket send_udp opens: records instead of sending."""
 
     def __init__(self) -> None:
         self.sent: list[tuple[bytes, str, int]] = []
+        self.sent_from: list[tuple[str | None, str, int]] = []
         self.closed = 0
         self.local_addr: str | None = None
 
     async def send_to(self, data: bytes, host: str, port: int) -> None:
         self.sent.append((bytes(data), host, port))
+        self.sent_from.append((self.local_addr, host, port))
 
     async def close(self) -> None:
         self.closed += 1
@@ -421,6 +436,73 @@ def test_udp_redirect_points_every_side_send_at_one_place():
     )
 
 
+def test_a_broadcast_goes_out_once_from_every_connected_adapter(monkeypatch):
+    _adapters(monkeypatch, "10.0.0.2", "192.168.50.3")
+    drv, cap = _python_driver()
+    assert asyncio.run(drv.wake_on_lan(MAC)) == MAC
+    assert cap.sent_from == [
+        ("10.0.0.2", "255.255.255.255", 9),
+        ("192.168.50.3", "255.255.255.255", 9),
+        (None, "10.0.0.9", 9),
+    ], "each adapter once; the direct send is routed, never repeated"
+    assert cap.closed == 3
+
+
+def test_a_chosen_adapter_sends_the_one_broadcast(monkeypatch):
+    _adapters(monkeypatch, "10.0.0.2", "192.168.50.3")
+    monkeypatch.setattr(reach_devices, "address", lambda: "192.168.50.3")
+    drv, cap = _python_driver()
+    asyncio.run(drv.send_udp(b"hi", port=7000, broadcast=True))
+    assert cap.sent_from == [("192.168.50.3", "255.255.255.255", 7000)]
+
+
+def test_a_subnet_broadcast_a_host_and_the_simulator_each_get_one_datagram(monkeypatch):
+    _adapters(monkeypatch, "10.0.0.2", "192.168.50.3")
+    drv, cap = _python_driver()
+    asyncio.run(drv.send_udp(b"hi", host="10.0.0.255", port=7000))
+    asyncio.run(drv.send_udp(b"hi", port=7000))
+    drv.udp_redirect = ("127.0.0.1", 19123)
+    asyncio.run(drv.send_udp(b"hi", port=7000, broadcast=True))
+    assert cap.sent_from == [
+        (None, "10.0.0.255", 7000),
+        (None, "10.0.0.9", 7000),
+        (None, "127.0.0.1", 19123),
+    ]
+
+
+def test_an_adapter_that_cannot_send_does_not_stop_the_others(monkeypatch):
+    _adapters(monkeypatch, "10.0.0.2", "192.168.50.3")
+    drv, cap = _python_driver()
+    record = cap.send_to
+
+    async def refuse_the_first(data, host, port):
+        if cap.local_addr == "10.0.0.2":
+            raise OSError("The requested address is not valid in its context")
+        await record(data, host, port)
+
+    cap.send_to = refuse_the_first
+    asyncio.run(drv.send_udp(b"hi", port=7000, broadcast=True))
+    assert cap.sent_from == [("192.168.50.3", "255.255.255.255", 7000)]
+    assert cap.closed == 2
+
+
+def test_with_no_adapter_that_can_send_it_the_broadcast_goes_once_unbound(monkeypatch):
+    _adapters(monkeypatch, "10.0.0.2")
+    drv, cap = _python_driver()
+    record = cap.send_to
+
+    async def refuse_bound(data, host, port):
+        if cap.local_addr is not None:
+            raise OSError("The requested address is not valid in its context")
+        await record(data, host, port)
+
+    cap.send_to = refuse_bound
+    asyncio.run(drv.send_udp(b"hi", port=7000, broadcast=True))
+    _adapters(monkeypatch)
+    asyncio.run(drv.send_udp(b"hi", port=7000, broadcast=True))
+    assert cap.sent_from == [(None, "255.255.255.255", 7000)] * 2
+
+
 def test_simulation_redirect_sets_and_restores_udp_redirect():
     drv, _ = _python_driver()
     manager = SimulationManager(engine=None)
@@ -449,3 +531,17 @@ def test_dry_run_reports_the_datagram_and_where_it_goes():
     assert result["wire"] == "hello bob\r"
     assert result["wire_hex"] == b"hello bob\r".hex()
     assert result["udp_targets"] == ["10.0.0.5:5100"]
+
+
+def test_dry_run_names_a_broadcast_once_however_many_adapters_send_it(monkeypatch):
+    from openavc.api.models import TestCommandRequest
+    from openavc.api.routes.driver_test import _dry_run_command
+
+    _adapters(monkeypatch, "10.0.0.2", "192.168.50.3")
+    body = TestCommandRequest(
+        host="10.0.0.5", port=5000, transport="tcp", dry_run=True,
+        definition=_definition(), command_name="shout",
+    )
+    result = asyncio.run(_dry_run_command(body))
+    assert result["success"], result
+    assert result["udp_targets"] == ["255.255.255.255:4000"]

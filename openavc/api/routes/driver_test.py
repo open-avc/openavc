@@ -468,7 +468,9 @@ async def _dry_run_command(body: TestCommandRequest) -> dict:
         data = udp_capture.sent[0][0]
         result["wire"] = data.decode("utf-8", errors="replace")
         result["wire_hex"] = data.hex()
-        result["udp_targets"] = [f"{h}:{p}" for _, h, p in udp_capture.sent]
+        # Where it goes, each once: a broadcast leaves through every
+        # connected adapter, one datagram each, all to the same address.
+        result["udp_targets"] = list(dict.fromkeys(f"{h}:{p}" for _, h, p in udp_capture.sent))
         return result
 
     if not capture.frames:
