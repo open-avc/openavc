@@ -522,3 +522,47 @@ class TestTheAuditsNetworkCheck:
     def test_an_address_given_is_used_as_it_is(self, choose):
         choose(ETHERNET.identity(), [ETHERNET_LL])
         assert self._check(DEVICE, source_ip="10.20.30.5").source_ip == "10.20.30.5"
+
+
+# ---------------------------------------------------------------------------
+# Where a device is told to post its updates (push: http_listener)
+# ---------------------------------------------------------------------------
+
+
+class TestTheCallbackAddress:
+    @pytest.fixture(autouse=True)
+    def _plain_http(self, monkeypatch):
+        from openavc import config
+
+        monkeypatch.setattr(config, "TLS_ENABLED", False)
+        monkeypatch.setattr(config, "HTTP_PORT", 8080)
+
+    def test_a_169_254_device_posts_to_the_adapters_169_254_address(self, choose):
+        from openavc.transport.http_listener import callback_url
+
+        choose(ETHERNET.identity(), [ETHERNET_LL, WIFI])
+        assert callback_url(DEVICE, "/api/push/acme") == f"http://{OUR_LINK_LOCAL}:8080/api/push/acme"
+        assert callback_url("10.20.30.80", "/api/push/acme") == "http://10.20.30.5:8080/api/push/acme"
+
+    def test_an_adapter_without_one_never_widens(self, choose):
+        from openavc.transport.http_listener import callback_url
+
+        choose(ETHERNET.identity(), [ETHERNET, WIFI])
+        assert callback_url(DEVICE, "/api/push/acme") == "http://10.20.30.5:8080/api/push/acme"
+
+    @pytest.mark.asyncio
+    async def test_updates_are_listened_for_there(self, choose, monkeypatch):
+        """Accept connections from never lists a 169.254 address, so the
+        updates-only listener opens on it."""
+        from openavc.listen_sockets import push_listeners
+        from openavc.transport import http_listener
+
+        choose(ETHERNET.identity(), [ETHERNET_LL, WIFI])
+        ensure = AsyncMock()
+        monkeypatch.setattr(push_listeners, "_enabled", True)
+        monkeypatch.setattr(push_listeners, "ensure", ensure)
+        sub = await http_listener.subscribe("acme", DEVICE, lambda request: None, "acme")
+        try:
+            ensure.assert_awaited_once_with(OUR_LINK_LOCAL)
+        finally:
+            await sub.close()

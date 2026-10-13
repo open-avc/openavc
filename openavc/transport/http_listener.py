@@ -229,7 +229,9 @@ def callback_url(device_host: str, path: str) -> str:
     """Build the callback URL a driver registers with its device.
 
     The host part is the server address **as the device sees it**: the
-    Reach devices through adapter when one is chosen, otherwise the local
+    Reach devices through adapter when one is chosen (its own 169.254
+    address for a device at a 169.254 address, when it holds one, the
+    address that device's connections leave from), otherwise the local
     address the OS would route toward ``device_host`` (a loopback device —
     the simulator redirect — gets a loopback URL). Scheme and port follow
     where a device can actually deliver: the plain-HTTP web port whenever it
@@ -250,11 +252,16 @@ def callback_url(device_host: str, path: str) -> str:
 def _local_ip_for(device_host: str) -> str:
     """The local address a device at ``device_host`` can reach us on."""
     from openavc import reach_devices
+    from openavc.transport.endpoint import is_link_local
 
     pinned = reach_devices.address().strip()
-    if pinned:
-        return pinned
     host = (device_host or "").strip()
+    if pinned:
+        # The address its connections leave from (transport/endpoint.py): a
+        # device that has only a 169.254 address has no route to the other.
+        if is_link_local(host):
+            return reach_devices.link_local_address() or pinned
+        return pinned
     if not host or host == "localhost" or host.startswith("127."):
         return "127.0.0.1"
     # UDP connect assigns the outgoing interface without sending a packet —

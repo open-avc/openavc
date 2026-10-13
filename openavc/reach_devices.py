@@ -22,9 +22,10 @@ already explains an address no adapter holds (discovery, the Discovery view)
 explains it. Same rule as Accept connections from: never widen.
 
 **A device at a 169.254 address** is reached from the chosen adapter's own
-169.254 address (:func:`link_local_address`): many link-local devices answer
-only a source on their own link, which is why they work with every adapter
-(the OS picks a 169.254 source) and not from the adapter's other address.
+169.254 address (:func:`link_local_address`), and told to post its updates
+to it: many link-local devices answer only a source on their own link, which
+is why they work with every adapter (the OS picks a 169.254 source) and not
+from the adapter's other address.
 An adapter that holds none still binds its other address, never a wider one;
 :func:`missing_link_local` is what the device card says then. A literal
 address (``OPENAVC_CONTROL_INTERFACE``) is bound as it is, for every device.
