@@ -400,6 +400,7 @@ export function ISCView() {
                 value={newPattern}
                 onChange={(e) => setNewPattern(e.target.value)}
                 placeholder="e.g. device.projector1.* or var.*"
+                autoComplete="off"
                 onKeyDown={(e) => e.key === "Enter" && handleAddPattern()}
               />
               <button onClick={handleAddPattern} style={btnSmall} disabled={!newPattern.trim()}>
@@ -445,6 +446,7 @@ export function ISCView() {
                   if (peerError) setPeerError("");
                 }}
                 placeholder="e.g. 192.168.1.10:8080"
+                autoComplete="off"
                 onKeyDown={(e) => e.key === "Enter" && handleAddPeer()}
               />
               <button onClick={handleAddPeer} style={btnSmall} disabled={!newPeer.trim()}>
@@ -501,6 +503,7 @@ export function ISCView() {
                 value={newCommand}
                 onChange={(e) => setNewCommand(e.target.value)}
                 placeholder="e.g. projector1.* or *.power_off"
+                autoComplete="off"
                 onKeyDown={(e) => e.key === "Enter" && handleAddCommand()}
               />
               <button onClick={handleAddCommand} style={btnSmall} disabled={!newCommand.trim()}>
@@ -532,6 +535,7 @@ export function ISCView() {
                 value={authKey}
                 onChange={(e) => setAuthKey(e.target.value)}
                 placeholder="Shared auth key (required)"
+                autoComplete="new-password"
               />
               <button
                 onClick={() => setAuthVisible(!authVisible)}
