@@ -73,7 +73,7 @@ type Choice = { accept_connections_from: string; accept_connections_adapter?: { 
 
 /** What the server would say about a choice, for a browser that reached it
  *  on Wi-Fi (192.168.1.40). */
-function previewFor(choice: Choice, cutOffAsked = false) {
+function previewFor(choice: Choice, cutOffAsked = false, cloudRemoteAccess = false) {
   const mode = choice.accept_connections_from;
   const onWifi = mode === "adapter" && choice.accept_connections_adapter?.name === "Wi-Fi";
   const onEthernet = mode === "adapter" && choice.accept_connections_adapter?.name === "Ethernet";
@@ -92,10 +92,13 @@ function previewFor(choice: Choice, cutOffAsked = false) {
       ? [{ code: "approved_panels", count: 3, message: "3 approved touch panels will stop connecting." }]
       : [],
     held_by: null,
+    cloud_remote_access: cloudRemoteAccess,
   };
 }
 
-const served: { config: Record<string, unknown>; cutOff: boolean } = { config: baseConfig(), cutOff: true };
+const served: { config: Record<string, unknown>; cutOff: boolean; cloud: boolean } = {
+  config: baseConfig(), cutOff: true, cloud: false,
+};
 
 vi.mock("../api/restClient", () => ({
   getSystemConfig: vi.fn(async () => structuredClone(served.config)),
@@ -105,7 +108,7 @@ vi.mock("../api/restClient", () => ({
   getSshStatus: vi.fn(async () => null),
   getNetworkAdapters: vi.fn(async () => ({ adapters: [], interfaces: [ETHERNET, WIFI, UNPLUGGED] })),
   getTlsStatus: vi.fn(async () => null),
-  previewListen: vi.fn(async (choice: Choice) => previewFor(choice, served.cutOff)),
+  previewListen: vi.fn(async (choice: Choice) => previewFor(choice, served.cutOff, served.cloud)),
   updateSystemConfig: vi.fn(async () => ({ status: "ok", updated_sections: ["network"] })),
   restartSystem: vi.fn(async () => ({ status: "restarting", mode: "graceful", delay_seconds: 2 })),
   downloadCertificate: vi.fn(),
@@ -138,6 +141,7 @@ describe("Accept connections from", () => {
     vi.clearAllMocks();
     served.config = baseConfig();
     served.cutOff = true;
+    served.cloud = false;
   });
 
   it("lists Any network, each adapter by name and address, and This computer only", async () => {
@@ -244,6 +248,20 @@ describe("Accept connections from", () => {
     expect(api.updateSystemConfig).not.toHaveBeenCalled();
   });
 
+  it("says cloud remote access keeps working when the server says it is set up", async () => {
+    // A paired, connected system whose system.json cloud section is empty:
+    // pairing lives with the cloud agent, so only the server's answer counts.
+    served.cloud = true;
+    await renderSettings();
+    await choose("Ethernet · 10.20.30.5 · 10.20.30.0/24");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByTestId("listen-cut-off-warning").textContent).toContain(
+      "Remote access through OpenAVC Cloud keeps working.",
+    );
+  });
+
   it("restarts and hands over the new address once agreed", async () => {
     vi.mocked(api.updateSystemConfig).mockImplementation(async () => {
       // What the server holds after the save: a choice waiting for a restart.
@@ -299,6 +317,7 @@ describe("Reach devices through", () => {
     vi.clearAllMocks();
     served.config = baseConfig();
     served.cutOff = true;
+    served.cloud = false;
   });
 
   it("saves the adapter by identity, with no restart", async () => {

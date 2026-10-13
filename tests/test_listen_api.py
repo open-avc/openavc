@@ -40,6 +40,7 @@ def api(tmp_path, monkeypatch, isolated_auth_config):
     state.set_event_bus(EventBus())
     engine.state = state
     engine.isc = None
+    engine.cloud_agent = None  # a MagicMock attribute would read as paired
     engine.panel_devices = SimpleNamespace(list_devices=lambda: {"approved": []})
     engine.panel_access_changed = AsyncMock()
     engine.reconcile_runtime_services = AsyncMock()
@@ -225,6 +226,50 @@ class TestPreview:
         c, _ = api()
         resp = c.post("/api/system/listen/preview", json={"accept_connections_from": "lan"})
         assert resp.status_code == 422
+
+
+class TestPreviewNamesCloudRemoteAccess:
+    """The cut-off warning says "Remote access through OpenAVC Cloud keeps
+    working." only when the preview says it is set up. Pairing writes
+    cloud.json beside the project, and system.json's cloud section can read
+    enabled: false with no system_id on a paired, connected system (found on
+    a real one), so that section must not decide."""
+
+    @pytest.fixture
+    def project_dir(self, tmp_path, monkeypatch):
+        import openavc.config as config
+
+        folder = tmp_path / "project"
+        folder.mkdir()
+        monkeypatch.setattr(config, "PROJECT_PATH", str(folder / "project.avc"))
+        return folder
+
+    @staticmethod
+    def _cut_off(c) -> dict:
+        return c.post("/api/system/listen/preview", json={
+            "accept_connections_from": "adapter",
+            "accept_connections_adapter": ETHERNET.identity(),
+        }).json()
+
+    def test_a_running_agent_means_it_is_set_up(self, api, project_dir):
+        c, cfg = api(base_url=WIFI_BROWSER)
+        api.engine.cloud_agent = object()
+        assert cfg.get("cloud", "enabled") is False
+        assert self._cut_off(c)["cloud_remote_access"] is True
+
+    def test_a_saved_pairing_means_it_is_set_up(self, api, project_dir):
+        (project_dir / "cloud.json").write_text(json.dumps({
+            "enabled": True, "system_id": "acme-room-1", "system_key": "k",
+        }))
+        c, _ = api(base_url=WIFI_BROWSER)
+        assert self._cut_off(c)["cloud_remote_access"] is True
+
+    def test_system_json_alone_says_nothing(self, api, tmp_path, project_dir):
+        (tmp_path / "system.json").write_text(json.dumps({
+            "cloud": {"enabled": True, "system_id": "acme-room-1"},
+        }))
+        c, _ = api(base_url=WIFI_BROWSER)
+        assert self._cut_off(c)["cloud_remote_access"] is False
 
 
 class TestConfirm:

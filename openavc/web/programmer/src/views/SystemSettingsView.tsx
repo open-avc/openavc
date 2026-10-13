@@ -937,6 +937,7 @@ export function SystemSettingsView() {
         panel_addresses: listenRunning.network_addresses, connected_through: "",
         serves_this_address: true, keeps_this_connection: true, safety_net: false,
         problem: null, consequences: [], held_by: listenRunning.held_by,
+        cloud_remote_access: false,
       }
       : null
   );
@@ -952,7 +953,7 @@ export function SystemSettingsView() {
     // The safety net goes back to the choice the server is running.
     previousLabel: listenRunning?.label ?? "the previous choice",
     minutes: 10,
-    cloudPaired: !!config?.cloud?.system_id,
+    cloudPaired: p.cloud_remote_access,
     consequences: p.consequences.map((c) => c.message),
   });
 

@@ -433,6 +433,10 @@ export interface ListenPreview {
   /** What stops working: approved panels, Inter-System. */
   consequences: { code: string; count: number; message: string }[];
   held_by: string | null;
+  /** Remote access through OpenAVC Cloud is set up on this system, so it
+   *  keeps working whatever the choice (from the cloud agent, never
+   *  system.json's cloud section). */
+  cloud_remote_access: boolean;
 }
 
 export async function previewListen(choice: {

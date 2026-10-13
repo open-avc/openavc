@@ -427,12 +427,25 @@ def _engine_facts() -> tuple[list[str], bool]:
     return approved, getattr(engine, "isc", None) is not None
 
 
+def _cloud_remote_access() -> bool:
+    """Whether remote access through OpenAVC Cloud is set up, which keeps
+    working under every choice (its tunnel reaches the server on loopback)."""
+    from openavc.cloud.config import remote_access_set_up
+
+    try:
+        agent = getattr(_get_engine(), "cloud_agent", None)
+    except HTTPException:
+        agent = None
+    return remote_access_set_up(agent)
+
+
 @router.post("/system/listen/preview")
 async def preview_listen(request: Request) -> dict[str, Any]:
     """What saving a choice of who can connect would do, before it is saved:
     the addresses a panel could open, whether this browser keeps its
-    connection (and so whether the safety net would be armed), and what
-    stops working. Body: ``{"accept_connections_from": ..., "accept_connections_adapter": {...}}``."""
+    connection (and so whether the safety net would be armed), what stops
+    working, and whether remote access through OpenAVC Cloud is set up (it
+    keeps working). Body: ``{"accept_connections_from": ..., "accept_connections_adapter": {...}}``."""
     import asyncio
 
     from openavc import listen
@@ -456,6 +469,7 @@ async def preview_listen(request: Request) -> dict[str, Any]:
         isc_enabled=isc_on,
     )
     result["held_by"] = cfg.env_override("network", listen.MODE_KEY)
+    result["cloud_remote_access"] = await asyncio.to_thread(_cloud_remote_access)
     return result
 
 

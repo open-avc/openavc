@@ -32,6 +32,17 @@ def load_cloud_config() -> dict:
         return {}
 
 
+def remote_access_set_up(agent: object | None) -> bool:
+    """Whether this system is paired with OpenAVC Cloud, so remote access
+    through it works: the agent is running, or the pairing saved here says it
+    is enabled. What ``/api/cloud/status`` reports as ``enabled``.
+
+    system.json's own ``cloud`` section says nothing about it: pairing writes
+    this file, and a paired, connected system can read ``enabled: false``
+    there."""
+    return agent is not None or bool(load_cloud_config().get("enabled", False))
+
+
 def save_cloud_config(config: dict) -> None:
     """Save cloud config to disk (atomic write to prevent corruption).
 
