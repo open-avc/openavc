@@ -130,7 +130,7 @@ For development or when you want full control over the installation.
 | Tool | What It Does | Where to Get It |
 |------|-------------|-----------------|
 | **Python 3.11+** | Runs the OpenAVC server | [python.org/downloads](https://www.python.org/downloads/) |
-| **Node.js 18+** | Builds the web interfaces | [nodejs.org](https://nodejs.org/) |
+| **Node.js 22 or 24** | Builds the web interfaces | [nodejs.org](https://nodejs.org/) |
 | **Git** | Downloads the OpenAVC source code | [git-scm.com](https://git-scm.com/) |
 
 When installing Python, check **"Add Python to PATH"** when prompted. For Node.js, the default installer settings are fine.
@@ -152,7 +152,7 @@ sudo dnf install -y python3 python3-pip git curl ca-certificates
 sudo pacman -S python python-pip git curl ca-certificates
 ```
 
-Node.js and npm are also required; install them from your distro or from [nodejs.org](https://nodejs.org/) if your distro packages are older than v18.
+Node.js and npm are also required. Install Node.js 22 or 24 from your distro or [nodejs.org](https://nodejs.org/).
 
 Then clone and build:
 
