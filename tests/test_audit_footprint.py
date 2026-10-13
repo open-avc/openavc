@@ -44,6 +44,10 @@ from openavc.simulator.snmp_simulator import SNMPSimulator
 from tests.helpers import refusing_tcp_port
 
 HOST = "127.0.0.1"
+
+# Every test brings up its own bench on free ports, and most wait out real
+# timeouts: a parallel run spreads them (tests/conftest.py).
+XDIST_SPREAD = True
 VENDOR_TYPE = "_acmewidget._tcp.local."
 URN = "urn:acme-com:device:Widget:1"
 BANNER = b"\xff\xfb\x01\xff\xfb\x03ACME-WIDGET 3000 v1.2\r\nlogin: "

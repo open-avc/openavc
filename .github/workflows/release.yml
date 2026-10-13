@@ -43,7 +43,7 @@ jobs:
         # tests/perf holds wall-clock benchmarks that are unreliable on shared
         # CI runners; run them on demand with `pytest tests/perf`, not in the
         # release gate (matches ci.yml).
-        run: pytest tests/ -v --tb=short --ignore=tests/perf
+        run: pytest tests/ -n auto --dist loadgroup -v --tb=short --ignore=tests/perf
 
   # ── Extract version from tag ────────────────────────────────────────
   version:

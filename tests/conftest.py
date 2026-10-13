@@ -113,6 +113,28 @@ def pytest_addoption(parser):
     )
 
 
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(config, items):
+    """Under ``pytest -n auto --dist loadgroup``, keep each file on one worker.
+
+    The tests in one file may share what a parallel run would race on: a
+    module-scoped fixture, a fixed registry key or firewall rule, a check that
+    the machine holds none of something. So each file is one xdist group,
+    unless it sets ``XDIST_SPREAD = True``: every test in it builds its own
+    world (its own simulator on its own port), and it is long enough that
+    keeping it on one worker would make the whole run wait for it.
+
+    tryfirst, because xdist reads the groups in its own hook of the same name.
+    """
+    if not config.getoption("loadgroup", default=False):
+        return
+    for item in items:
+        module = getattr(item, "module", None)
+        if module is None or getattr(module, "XDIST_SPREAD", False):
+            continue
+        item.add_marker(pytest.mark.xdist_group(module.__name__))
+
+
 def pytest_terminal_summary(terminalreporter):
     note = e2e_availability_note()
     if note:

@@ -5,8 +5,58 @@ on:
     branches: [main, staging]
   pull_request:
     branches: [main]
+  # Every job, every night, whatever changed: the backstop for the browser
+  # tests, which a push runs only when it touched the paths `changes` lists.
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
 
 jobs:
+  # Which parts of the tree this push or pull request touched, for a job that
+  # only has to run when its part did. Anything it cannot work out (a new
+  # branch, a force-push whose old head is gone, a scheduled or manual run)
+  # answers "run it": a skipped check has to be a decision, never a failure to
+  # look.
+  changes:
+    name: Changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      ide: ${{ steps.diff.outputs.ide }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          case "$EVENT" in
+            push) from="$BEFORE" ;;
+            pull_request) from="$BASE" ;;
+            *) from="" ;;
+          esac
+          # A diff of two commits compares their trees and needs no history
+          # between them, so one extra shallow fetch is enough.
+          if [ -z "$from" ] || [ "$from" = "0000000000000000000000000000000000000000" ] \
+             || ! git fetch --no-tags --depth=1 origin "$from" \
+             || ! files=$(git diff --name-only --no-renames "$from" HEAD); then
+            echo "Could not compare against the previous commit; running everything."
+            echo "ide=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '%s\n' "$files"
+          # What the browser tests drive: the IDE and panel bundles, the API
+          # they call, the UI model the server resolves for them, the themes,
+          # the entrypoint, the tests themselves, and what installs them all.
+          if printf '%s\n' "$files" | grep -qE '^(openavc/web/|openavc/api/|openavc/ui/|openavc/themes/|openavc/main\.py$|tests/e2e/|pyproject\.toml$|requirements\.txt$|\.github/workflows/ci\.yml$)'; then
+            echo "ide=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No IDE or panel path changed; the browser tests wait for the nightly run."
+            echo "ide=false" >> "$GITHUB_OUTPUT"
+          fi
+
   test:
     name: Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -92,9 +142,11 @@ jobs:
       - name: Run tests
         # tests/perf holds wall-clock benchmarks that are unreliable on shared
         # CI runners; run them on demand with `pytest tests/perf`, not in the gate.
+        # -n auto: one pytest-xdist worker per runner core; --dist loadgroup keeps
+        # each test file on one worker (tests/conftest.py says why).
         env:
           OPENAVC_DRIVERS_ROOT: ${{ runner.temp }}/openavc-drivers
-        run: pytest tests/ -v --tb=short --ignore=tests/perf
+        run: pytest tests/ -n auto --dist loadgroup -v --tb=short --ignore=tests/perf
 
   # The browser tests boot a real server and drive the Programmer IDE in
   # Chromium — the only automated proof the IDE works in a browser, and by far
@@ -111,8 +163,13 @@ jobs:
   # It repeats the Python and Node setup because a GitHub job is a fresh
   # machine. That costs about a minute of runner time and buys back several of
   # wall clock.
+  #
+  # A push that touched none of the paths `changes` lists skips it, and the
+  # nightly run covers it. A skipped run reads as skipped, not as passed.
   browser-tests:
     name: Browser tests (IDE in Chromium)
+    needs: changes
+    if: needs.changes.outputs.ide == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 

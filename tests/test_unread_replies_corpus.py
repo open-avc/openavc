@@ -65,6 +65,10 @@ def _polling_definitions() -> list[Path]:
 
 DEFINITIONS = _polling_definitions()
 
+# Each case starts its own simulator on a free port, and the slowest take half
+# a minute of real poll cycles: a parallel run spreads them (tests/conftest.py).
+XDIST_SPREAD = True
+
 
 @gates.skipif_missing(
     gates.DRIVER_CORPUS,
