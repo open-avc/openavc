@@ -9,6 +9,7 @@ import platform
 import re
 import socket
 import struct
+import subprocess
 from typing import Any, Awaitable, Callable
 
 from openavc.discovery import icmp
@@ -143,6 +144,46 @@ def get_network_adapters() -> list[dict[str, Any]]:
 # no usable address, which is the only way one of them reaches the list below.
 _NOT_A_NETWORK_PATTERNS = re.compile(r"bluetooth|local area connection\*", re.IGNORECASE)
 
+# macOS's own interfaces, never a network a person would choose: AirDrop
+# (awdl), its low-latency companion (llw), the Wi-Fi access-point interface
+# (ap) and Apple silicon's internal network interfaces (anpi). Like the
+# pattern above, only consulted for an adapter with no usable address.
+_MACOS_INTERNAL_PATTERNS = re.compile(r"^(anpi|awdl|llw|ap)\d+$")
+
+# One line of `networksetup -listnetworkserviceorder` per service:
+# "(Hardware Port: Wi-Fi, Device: en0)". A service with no interface of its
+# own (a VPN) has an empty Device and matches nothing.
+_MACOS_SERVICE_DEVICE = re.compile(r"\(Hardware Port: [^,]*, Device: ([^)\s]+)\)")
+
+
+def _macos_service_devices() -> set[str] | None:
+    """The interfaces a macOS network service uses (the list in System
+    Settings > Network), or None when it cannot be read.
+
+    macOS gives an interface an address only through a service, so one with
+    no service never gets one and is no network to choose. On Apple silicon
+    that is each Thunderbolt port (Thunderbolt Bridge, which has a service,
+    carries their network) and the "Ethernet Adapter" interfaces that go with
+    anpi; their names (en1 to en4 on one Mac) are the same kind of names a
+    Mac Pro's second Ethernet port or an older Mac's Wi-Fi have, so the name
+    cannot decide. None hides nothing.
+    """
+    try:
+        result = subprocess.run(
+            ["/usr/sbin/networksetup", "-listnetworkserviceorder"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            creationflags=CREATE_NO_WINDOW,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.debug("macOS network services unavailable: %s", exc)
+        return None
+    if result.returncode != 0:
+        log.debug("networksetup exited %s", result.returncode)
+        return None
+    return set(_MACOS_SERVICE_DEVICE.findall(result.stdout)) or None
+
 
 def get_adapter_inventory() -> list[dict[str, Any]]:
     """One entry per physical adapter, every IPv4 address it holds, and the
@@ -155,7 +196,9 @@ def get_adapter_inventory() -> list[dict[str, Any]]:
     ``get_network_adapters`` lists addresses, so an adapter with two appears
     twice and one with none does not appear at all. A choice of adapter has to
     stay visible while its adapter is unplugged, so this list keeps those, from
-    psutil, with the same virtual-adapter filter by OS name. ``link`` is False
+    psutil, with the same virtual-adapter filter by OS name. On macOS such an
+    adapter is listed only when it is not one of macOS's own interfaces and a
+    network service uses it (``_macos_service_devices``). ``link`` is False
     when the adapter is not connected; an unplugged adapter on Windows still
     reports its static address, and that address cannot be listened on.
 
@@ -181,6 +224,8 @@ def get_adapter_inventory() -> list[dict[str, Any]]:
         import psutil
 
         stats = psutil.net_if_stats()
+        services: set[str] | None = None
+        services_read = False
         for name, addrs in psutil.net_if_addrs().items():
             if any(item["name"] == name for item in inventory.values()):
                 continue
@@ -194,6 +239,13 @@ def get_adapter_inventory() -> list[dict[str, Any]]:
                 for a in addrs
             ):
                 continue
+            if _IS_MACOS:
+                if _MACOS_INTERNAL_PATTERNS.match(name):
+                    continue
+                if not services_read:
+                    services, services_read = _macos_service_devices(), True
+                if services is not None and name not in services:
+                    continue
             st = stats.get(name)
             inventory[(name, mac)] = {
                 "name": name,
