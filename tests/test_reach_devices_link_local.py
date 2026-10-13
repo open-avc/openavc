@@ -72,6 +72,8 @@ def _fake_enumeration(monkeypatch, ifaddr_adapters, psutil_addrs):
     """ifaddr names adapters by description, psutil by the OS's name, as on
     Windows; each entry is (name, [(ip, prefix_or_netmask), ...])."""
 
+    monkeypatch.setattr("openavc.discovery.network_scanner._IS_MACOS", False)
+
     def ip(addr, prefix):
         return types.SimpleNamespace(ip=addr, network_prefix=prefix)
 
