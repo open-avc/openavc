@@ -319,3 +319,45 @@ export async function syncDeviceConfig(
   }
   await store.load();
 }
+
+/**
+ * Re-sync the store after a device's setup wizard finished, whether it worked
+ * or not (a wizard can save new settings before a later step fails).
+ *
+ * The wizard writes the device's settings on the server from a run this tab
+ * started, so the project.reloaded that follows names this tab and the
+ * WebSocket handler leaves the refetch to the caller (hooks/projectReload.ts).
+ * Nothing else hands this tab the new project, so without this its ETag stayed
+ * behind the server's and its next save was refused as another session's.
+ *
+ * Clean store: refetch. Store with unsaved edits (or a save in flight): a
+ * refetch would clobber them, so mirror just this device's persisted config
+ * and connection, as syncDeviceConfig does, and the next full-project save
+ * meets the server's 409 guard.
+ */
+export async function syncAfterSetupAction(deviceId: string): Promise<void> {
+  const store = useProjectStore.getState();
+  if (!store.dirty && !store.saving) {
+    await store.load();
+    return;
+  }
+  let server: ProjectConfig;
+  try {
+    server = await api.getProject();
+  } catch {
+    return;
+  }
+  const saved = server.devices.find((d) => d.id === deviceId);
+  const cur = useProjectStore.getState().project;
+  if (!saved || !cur) return;
+  const connections = { ...cur.connections };
+  const connection = server.connections?.[deviceId];
+  if (connection) connections[deviceId] = connection;
+  else delete connections[deviceId];
+  useProjectStore.getState().update({
+    devices: cur.devices.map((d) =>
+      d.id === deviceId ? { ...d, config: saved.config } : d,
+    ),
+    connections,
+  });
+}

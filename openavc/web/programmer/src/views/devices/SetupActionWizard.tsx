@@ -12,6 +12,7 @@ import {
 } from "./actionParamFields";
 import { hasInvalidParams } from "../../components/shared/paramValidation";
 import { parseApiError } from "../../api/errors";
+import { syncAfterSetupAction } from "../../store/projectStore";
 
 type Phase = "input" | "running" | "done" | "error";
 
@@ -91,6 +92,10 @@ export function SetupActionWizard({
         ...prev,
         { step: String(msg.step ?? ""), pct: (msg.pct as number | null) ?? null, status },
       ]);
+      if (status === "done" || status === "error") {
+        // The run may have saved new settings for this device.
+        void syncAfterSetupAction(deviceId);
+      }
       if (status === "done") {
         setSummary(resultMessage(msg.result));
         setPhase("done");

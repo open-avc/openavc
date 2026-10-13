@@ -15,8 +15,9 @@ export interface ProjectStoreSnapshot {
 }
 
 export type ProjectReloadDecision =
-  // Our own save echoing back while its PUT is still in flight, or our own
-  // edit through a dedicated endpoint: the caller already re-syncs the store.
+  // Our own save echoing back while its PUT is still in flight, our own edit
+  // through a dedicated endpoint, or a setup wizard this tab started: the
+  // caller re-syncs the store (syncDeviceConfig, syncAfterSetupAction).
   | "own"
   // Nothing of ours is unsaved: refetch quietly.
   | "refetch"
