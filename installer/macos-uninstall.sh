@@ -39,6 +39,9 @@ rm -f "$DAEMON_PLIST" "$AGENT_PLIST"
 
 echo "Removing the application..."
 rm -rf "$APP"
+# And the copy an update keeps for rolling back (openavc-macos-run.sh). Left
+# here, a later fresh install would offer to roll back to it.
+rm -rf "$APP.previous"
 # Clear a copy already dragged to the Trash, if any.
 [ -n "${CONSOLE_USER:-}" ] && rm -rf "/Users/$CONSOLE_USER/.Trash/OpenAVC.app" 2>/dev/null || true
 
