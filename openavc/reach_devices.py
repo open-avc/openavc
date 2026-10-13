@@ -243,16 +243,16 @@ def missing_link_local(host: Any) -> Resolved | None:
 
 def broadcast_sources(adapters: Iterable[Any] | None = None) -> list[str]:
     """Where a broadcast to 255.255.255.255 is sent from with every adapter:
-    the first address of each connected adapter, one per adapter. Blocking
-    when ``adapters`` is not given (it enumerates them).
+    the first address of each connected adapter, one per adapter, and an
+    adapter's 169.254 address when it holds no other (a network with no DHCP
+    server). Blocking when ``adapters`` is not given (it enumerates them).
 
     An unbound limited broadcast leaves through the one adapter the OS picks:
     on Windows the lowest interface metric, which on a computer with WSL or
     Hyper-V is the virtual switch, so it reaches no network at all. A socket
     bound to an adapter's address sends it out that adapter (Windows and
     Linux alike), so ``BaseDriver.send_udp`` sends one from each of these.
-    Virtual adapters are not in the inventory; an adapter with only a 169.254
-    address is left out, as it is from every other "every adapter" list.
+    Virtual adapters are not in the inventory.
     """
     from openavc import listen
 
@@ -262,7 +262,11 @@ def broadcast_sources(adapters: Iterable[Any] | None = None) -> list[str]:
         except Exception:  # never fail a send over the lookup: it goes unbound
             log.debug("Reach devices through: adapter lookup failed", exc_info=True)
             return []
-    return [adapter.ips[0] for adapter in adapters if adapter.link and adapter.ips]
+    return [
+        adapter.ips[0] if adapter.ips else adapter.link_local[0][0]
+        for adapter in adapters
+        if adapter.link and (adapter.ips or adapter.link_local)
+    ]
 
 
 def refresh(cfg: Any = None, adapters: Iterable[Any] | None = None) -> Resolved:
