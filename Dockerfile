@@ -15,6 +15,10 @@
 # amd64 and COPY the dist/ into both final images.
 FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend
 WORKDIR /build
+# The Programmer's production build needs more than Node's default heap (about
+# 2 GB), which aborts it with "JavaScript heap out of memory" on a Docker host
+# with less than about 16 GB. The macOS release job sets the same.
+ENV NODE_OPTIONS=--max-old-space-size=4096
 COPY openavc/web/programmer/package*.json ./programmer/
 COPY openavc/web/simulator/package*.json ./simulator/
 RUN cd programmer && npm ci && cd ../simulator && npm ci
