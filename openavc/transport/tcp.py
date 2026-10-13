@@ -50,6 +50,24 @@ def _log_task_exception(task: asyncio.Task) -> None:
         log.error("Unhandled exception in TCP on_data task: %s", exc, exc_info=exc)
 
 
+def _connect_failure_text(exc: BaseException, timeout: float | None) -> str:
+    """What went wrong, for the end of "Failed to connect to host:port: ...".
+
+    A connect that hit our own timeout raises a TimeoutError with no text, and
+    a setup wizard or a test panel shows this message as it is, so it read as
+    "Failed to connect to 192.0.2.10:23:" and stopped.
+    """
+    text = str(exc)
+    if text:
+        return text
+    if isinstance(exc, (TimeoutError, asyncio.TimeoutError)):
+        if timeout is None:
+            return "no answer"
+        unit = "second" if timeout == 1 else "seconds"
+        return f"no answer within {timeout:g} {unit}"
+    return type(exc).__name__
+
+
 class TCPTransport:
     """Async TCP transport with pluggable message framing."""
 
@@ -231,7 +249,8 @@ class TCPTransport:
         except (ConnectionError, OSError, asyncio.TimeoutError) as e:
             self._last_error = str(e) or type(e).__name__
             raise ConnectionError(
-                f"Failed to connect to {self.host}:{self.port}: {e}"
+                f"Failed to connect to {self.host}:{self.port}: "
+                f"{_connect_failure_text(e, self._timeout)}"
             ) from e
 
     def _enable_keepalive(self) -> None:

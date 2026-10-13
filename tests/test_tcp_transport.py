@@ -248,6 +248,43 @@ async def test_connection_timeout():
         )
 
 
+async def _never_answers(*args, **kwargs):
+    await asyncio.Event().wait()
+
+
+async def test_a_connect_timeout_says_what_happened(monkeypatch):
+    """A device that never answers times out with a TimeoutError that has no
+    text, and a setup wizard and the Driver Builder's Test tab show this
+    message as it is. It used to stop at the colon."""
+    from openavc.core.connection_fault import (
+        UNREACHABLE,
+        classify_connection_fault,
+    )
+
+    monkeypatch.setattr(asyncio, "open_connection", _never_answers)
+    transport = TCPTransport(
+        "192.0.2.10", 23,
+        on_data=lambda d: None,
+        on_disconnect=lambda: None,
+        delimiter=b"\r",
+        timeout=0.05,
+        inter_command_delay=0.0,
+    )
+    with pytest.raises(ConnectionError) as exc_info:
+        await transport._connect()
+
+    prefix = "Failed to connect to 192.0.2.10:23:"
+    message = str(exc_info.value)
+    assert message.startswith(prefix)
+    assert message[len(prefix):].strip()
+    # The device card still reads the failure as unreachable.
+    fault = classify_connection_fault(
+        last_error=transport.last_error, exc=exc_info.value,
+        host="192.0.2.10", port=23, transport="tcp",
+    )
+    assert fault.code == UNREACHABLE
+
+
 async def test_send_when_not_connected(echo_server):
     """Sending after close raises ConnectionError."""
     server, port = echo_server
