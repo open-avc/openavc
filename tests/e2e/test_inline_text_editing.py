@@ -42,6 +42,11 @@ SEED_STATE = {
 }
 
 
+# Every test boots its own server on a free port and opens its own page: a
+# parallel run spreads them (tests/conftest.py).
+XDIST_SPREAD = True
+
+
 def _project() -> dict[str, Any]:
     elements = [
         # The plain case: words in the element's own field.

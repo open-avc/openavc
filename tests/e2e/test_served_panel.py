@@ -49,6 +49,11 @@ READY_TIMEOUT = 15_000
 DEST = "out1"
 
 
+# Every test boots its own server on a free port and opens its own page: a
+# parallel run spreads them (tests/conftest.py).
+XDIST_SPREAD = True
+
+
 def _panel_project() -> dict[str, Any]:
     """A room with two controls, both of which write state and nothing else.
 

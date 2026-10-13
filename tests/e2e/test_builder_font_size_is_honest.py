@@ -65,6 +65,11 @@ STYLED_ID = "btn_styled"
 STYLED_REM = 3.0
 
 
+# Every test boots its own server on a free port and opens its own page: a
+# parallel run spreads them (tests/conftest.py).
+XDIST_SPREAD = True
+
+
 def _project() -> dict[str, Any]:
     placements: dict[str, Any] = {}
     elements: list[dict[str, Any]] = []

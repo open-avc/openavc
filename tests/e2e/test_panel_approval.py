@@ -35,6 +35,11 @@ EXPECT_TIMEOUT = 10_000
 READY_TIMEOUT = 15_000
 
 
+# Every test boots its own server on a free port and opens its own page: a
+# parallel run spreads them (tests/conftest.py).
+XDIST_SPREAD = True
+
+
 def _lan_address() -> str | None:
     """The address a device on the network reaches this host at. A UDP
     connect picks the interface the default route uses and sends nothing."""

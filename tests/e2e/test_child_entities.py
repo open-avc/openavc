@@ -26,6 +26,11 @@ SELECT_TIMEOUT = 15_000
 EXPECT_TIMEOUT = 10_000
 
 
+# Every test boots its own server on a free port and opens its own page: a
+# parallel run spreads them (tests/conftest.py).
+XDIST_SPREAD = True
+
+
 def _open_device(page: Page, base_url: str, device_name: str) -> None:
     """Navigate to the Programmer IDE, open Devices, click the test device."""
     page.goto(f"{base_url}/programmer/", wait_until="domcontentloaded")
