@@ -45,7 +45,12 @@ adapter's address), refreshed whenever the choice is settled or changed, so a
 rollback starts on a sane listen address. An adapter that cannot be resolved
 mirrors to ``127.0.0.1``: the earlier release would refuse to start on an
 address this computer does not have, and widening to every network is the
-other thing this setting exists to prevent.
+other thing this setting exists to prevent. The mirror only helps once it is
+on disk, so what a start settles is written to an existing ``system.json`` the
+same start (:func:`save_settled`): an updated system otherwise keeps the
+earlier release's ``bind_address`` until someone saves a setting, and a Mac
+whose launch settings no longer set ``OPENAVC_BIND`` would roll back onto this
+computer only.
 
 The resolved plan is process state, set by ``main()`` once the sockets are
 bound (:func:`set_current`): ``python -m openavc.main`` imports the served app
@@ -509,6 +514,21 @@ def refresh_mirror(cfg: Any, adapters: AdapterSource) -> None:
 # ---------------------------------------------------------------------------
 
 _current: ListenPlan | None = None
+# Whether the last start() changed what system.json should hold and nothing has
+# written it yet (save_settled).
+_settled_unsaved = False
+
+
+def _settled_keys(cfg: Any) -> list[Any]:
+    """What settling writes: both choices and both rollback mirrors."""
+    import copy
+
+    from openavc import reach_devices
+
+    return [
+        copy.deepcopy(cfg.stored("network", key))
+        for key in (MODE_KEY, ADAPTER_KEY, MIRROR_KEY, reach_devices.KEY, reach_devices.MIRROR_KEY)
+    ]
 
 
 def start(
@@ -518,7 +538,11 @@ def start(
 ) -> ListenPlan:
     """Settle the choice, resolve it against the adapters present, and make
     that the current plan. ``main()`` calls it before binding; anything that
-    asks :func:`current` first (a test client, a tool) gets the same."""
+    asks :func:`current` first (a test client, a tool) gets the same.
+
+    Writes nothing to disk: whatever it settled waits in memory for
+    :func:`save_settled`, which only the server's start calls."""
+    global _settled_unsaved
     from openavc.system_config import get_system_config
 
     cfg = cfg if cfg is not None else get_system_config()
@@ -530,6 +554,7 @@ def start(
             found = list_adapters()
         return found
 
+    before = _settled_keys(cfg)
     settle_choice(cfg, present, deployment_type)
     # Reach devices through is settled here too: the same first start, the
     # same adapter list (openavc/reach_devices.py).
@@ -539,10 +564,37 @@ def start(
         reach_devices.settle(cfg, present)
     except Exception:  # never block startup on the device-side choice
         log.exception("Could not settle Reach devices through")
+    if _settled_keys(cfg) != before:
+        _settled_unsaved = True
     choice = ListenChoice.from_config(cfg)
     plan = resolve(choice, present() if choice.mode == MODE_ADAPTER else [])
     set_current(plan)
     return plan
+
+
+def save_settled(cfg: Any = None) -> bool:
+    """Write to system.json what :func:`start` settled, once, when it
+    changed anything. Returns True when it saved. A start that settled
+    nothing (every start after the first, unless an adapter's address
+    changed) leaves the file alone.
+
+    Called from ``Engine.start``, after the Panel access default is decided:
+    a save writes every shipped default into the file, so it must not come
+    before that decision (``core/panel_devices.settle_access_default``), and
+    ``main()`` calls :func:`start` before the engine exists. Never from
+    :func:`start` itself, which runs in any process that asks for the plan
+    first, and a process that only reads the settings must not rewrite them.
+    """
+    global _settled_unsaved
+    if not _settled_unsaved:
+        return False
+    from openavc.system_config import get_system_config
+
+    cfg = cfg if cfg is not None else get_system_config()
+    _settled_unsaved = False
+    cfg.save()
+    log.info("Saved who can connect and its rollback mirror to system.json")
+    return True
 
 
 def current() -> ListenPlan:
@@ -559,8 +611,9 @@ def set_current(plan: ListenPlan) -> None:
 
 def reset() -> None:
     """Forget the current plan (tests)."""
-    global _current
+    global _current, _settled_unsaved
     _current = None
+    _settled_unsaved = False
 
 
 def panel_addresses(plan: ListenPlan) -> list[str]:

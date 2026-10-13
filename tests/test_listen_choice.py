@@ -309,6 +309,144 @@ class TestStart:
         assert plan.hosts == ("0.0.0.0",)
 
 
+# What an earlier release wrote and left there: the written default
+# bind_address, never taken as a choice on an installed system, and Panel
+# access already decided (so that decision's own save stays out of the way).
+EARLIER_RELEASE_FILE = {
+    "network": {"bind_address": "127.0.0.1"},
+    "panels": {"access": "open"},
+}
+
+
+class TestWrittenToTheFileAtStart:
+    """An updated system has to carry the mirror on disk before anyone saves a
+    setting: an earlier release rolled back onto this data reads only the file,
+    and on a Mac whose launch settings no longer set OPENAVC_BIND it otherwise
+    finds the earlier release's 127.0.0.1 and leaves the network."""
+
+    def test_start_itself_writes_nothing(self, tmp_path):
+        """start() runs in any process that asks for the plan first, and
+        before the Panel access decision on the server."""
+        cfg = _config_at(tmp_path, EARLIER_RELEASE_FILE)
+        before = (tmp_path / "system.json").read_bytes()
+        listen.start(cfg, adapters=[], deployment_type="macos_app")
+        assert (tmp_path / "system.json").read_bytes() == before
+
+    def test_what_start_settled_is_saved_once(self, tmp_path):
+        cfg = _config_at(tmp_path, EARLIER_RELEASE_FILE)
+        listen.start(cfg, adapters=[], deployment_type="macos_app")
+        assert listen.save_settled(cfg) is True
+        network = _on_disk(tmp_path)["network"]
+        assert network["accept_connections_from"] == "any"
+        assert network["bind_address"] == "0.0.0.0"
+        assert network["reach_devices_through"] == {}
+        assert network["control_interface"] == ""
+        assert listen.save_settled(cfg) is False
+
+    def test_a_start_that_settles_nothing_leaves_the_file_alone(self, tmp_path):
+        cfg = _config_at(tmp_path, EARLIER_RELEASE_FILE)
+        listen.start(cfg, adapters=[], deployment_type="macos_app")
+        listen.save_settled(cfg)
+        settled = (tmp_path / "system.json").read_bytes()
+
+        listen.reset()
+        cfg = _config_at(tmp_path)
+        listen.start(cfg, adapters=[], deployment_type="macos_app")
+        assert listen.save_settled(cfg) is False
+        assert (tmp_path / "system.json").read_bytes() == settled
+
+    def test_an_adapter_whose_address_changed_updates_the_mirror(self, tmp_path):
+        cfg = _config_at(tmp_path, {"network": {
+            "accept_connections_from": "adapter",
+            "accept_connections_adapter": ETHERNET.identity(),
+            "bind_address": "10.20.30.99",
+        }})
+        listen.start(cfg, adapters=[ETHERNET], deployment_type="windows_installer")
+        assert listen.save_settled(cfg) is True
+        assert _on_disk(tmp_path)["network"]["bind_address"] == "10.20.30.5"
+
+    def test_the_environment_never_reaches_the_file(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("OPENAVC_BIND", "10.20.30.5")
+        cfg = _config_at(tmp_path, EARLIER_RELEASE_FILE)
+        listen.start(cfg, adapters=[ETHERNET], deployment_type="linux_package")
+        listen.save_settled(cfg)
+        network = _on_disk(tmp_path)["network"]
+        assert network["accept_connections_from"] == "any"
+        assert network["bind_address"] == "0.0.0.0"
+
+
+class TestTheServerWritesItAtStart:
+    """The tests above prove save_settled works; this proves the server calls
+    it on a real start. The rollback itself needs both releases: start the
+    earlier one, this one, then the earlier one again on the same data with
+    no OPENAVC_BIND, and the last one listens on every network."""
+
+    @pytest.fixture
+    def redirected_singleton(self, tmp_path, monkeypatch):
+        """The live singleton on tmp_path, an installed Mac with no adapters,
+        all put back afterwards."""
+        import copy
+
+        from openavc.system_config import get_system_config
+
+        monkeypatch.setattr(listen, "_deployment_type", lambda: "macos_app")
+        monkeypatch.setattr(listen, "list_adapters", lambda: [])
+        cfg = get_system_config()
+        saved = (
+            cfg._data_dir, cfg._file_path, copy.deepcopy(cfg._data),
+            copy.deepcopy(cfg._file_data), copy.deepcopy(getattr(cfg, "_raw_file", {})),
+            dict(getattr(cfg, "_env_held", {})),
+        )
+        cfg._data_dir = tmp_path
+        cfg._file_path = tmp_path / "system.json"
+        yield cfg
+        (cfg._data_dir, cfg._file_path, cfg._data, cfg._file_data,
+         cfg._raw_file, cfg._env_held) = saved
+
+    async def _start_engine(self, tmp_path):
+        from openavc.core.engine import Engine
+
+        project = tmp_path / "project.avc"
+        project.write_text(json.dumps({
+            "version": "0.3.0",
+            "project": {"id": "listen_written", "name": "Listen Written"},
+            "devices": [], "connections": {}, "variables": [], "macros": [],
+            "ui": {"pages": []}, "plugins": {},
+        }))
+        engine = Engine(str(project))
+        try:
+            await engine.start()
+        finally:
+            await engine.stop()
+
+    async def test_an_updated_system_gets_the_mirror_on_its_first_start(
+        self, tmp_path, redirected_singleton
+    ):
+        (tmp_path / "system.json").write_text(json.dumps(EARLIER_RELEASE_FILE))
+        redirected_singleton.load()
+
+        await self._start_engine(tmp_path)
+
+        network = _on_disk(tmp_path)["network"]
+        assert network["accept_connections_from"] == "any"
+        assert network["bind_address"] == "0.0.0.0"
+        assert _on_disk(tmp_path)["panels"]["access"] == "open"
+
+    async def test_the_next_start_does_not_write_it_again(
+        self, tmp_path, redirected_singleton
+    ):
+        (tmp_path / "system.json").write_text(json.dumps(EARLIER_RELEASE_FILE))
+        redirected_singleton.load()
+        await self._start_engine(tmp_path)
+        written = (tmp_path / "system.json").stat().st_mtime_ns
+
+        listen.reset()
+        redirected_singleton.load()
+        await self._start_engine(tmp_path)
+
+        assert (tmp_path / "system.json").stat().st_mtime_ns == written
+
+
 class TestPreview:
     def _preview(self, choice, through, **kwargs):
         return listen.preview(

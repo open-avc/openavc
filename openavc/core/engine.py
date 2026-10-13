@@ -268,6 +268,16 @@ class Engine:
         except Exception:  # never block startup on the decision
             log.exception("Could not settle who can connect")
 
+        # And write it down, so an earlier release rolled back onto this data
+        # reads the current mirror (openavc/listen.py, "Rollback"). After the
+        # Panel access decision above, which a save would otherwise pre-empt.
+        try:
+            from openavc import listen
+
+            listen.save_settled(sys_config)
+        except Exception:  # never block startup on the write
+            log.exception("Could not save who can connect")
+
         sys_config.ensure_file()
 
         # Convert an admin password or API key stored as typed (an install
