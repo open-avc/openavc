@@ -116,9 +116,9 @@ async def test_bulk_connect_and_background_retry_do_not_dial(rig):
     manager._deferred_connects.add("missing")
     await manager.bring_up()
     assert manager.state.get("device.missing.offline_reason") == "no_simulator"
-    manager._probe_reachable = AsyncMock(return_value=True)
+    manager._probe_failure = AsyncMock(return_value=None)
     await manager._reconnect_loop("missing", immediate=True)
-    manager._probe_reachable.assert_not_awaited()
+    manager._probe_failure.assert_not_awaited()
     assert missing.connects == 0
 
 

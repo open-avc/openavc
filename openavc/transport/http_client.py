@@ -764,6 +764,8 @@ class HTTPClientTransport:
         self.last_data_received: float = 0.0
         # Last request error string, for the connection-fault classifier.
         self._last_error = ""
+        # The exception behind the last failed verify() (see verify_error).
+        self._verify_error: BaseException | None = None
         # Open event-stream subscriptions (push: {type: sse}); closed with
         # the client so a stream's reconnect loop never runs against a
         # closed session.
@@ -865,6 +867,7 @@ class HTTPClientTransport:
 
     async def verify(self, timeout: float = 5.0) -> bool:
         """Verify the remote HTTP device is reachable with a HEAD request."""
+        self._verify_error = None
         if self._client is None:
             return False
         try:
@@ -874,6 +877,7 @@ class HTTPClientTransport:
             # Keep the underlying cause so the connection-fault classifier can
             # tell "refused" / "unreachable" apart from a generic verify miss.
             self._last_error = str(e) or type(e).__name__
+            self._verify_error = e
             return False
 
     @property
@@ -885,6 +889,16 @@ class HTTPClientTransport:
     def last_error(self) -> str:
         """Last request error string (for the connection-fault classifier)."""
         return self._last_error
+
+    @property
+    def verify_error(self) -> BaseException | None:
+        """The exception behind the last failed :meth:`verify`, or None.
+
+        Its text is not enough: httpx says "All connection attempts failed"
+        for a refused port, and the refusal itself is only in the exception's
+        cause chain, which is what the classifier reads.
+        """
+        return self._verify_error
 
     @property
     def last_response(self) -> HTTPResponse | None:

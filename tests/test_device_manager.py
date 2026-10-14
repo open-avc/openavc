@@ -453,10 +453,10 @@ async def test_expensive_transports_probe_before_connecting(dm, core):
         calls["n"] += 1
         if calls["n"] >= 5:
             raise asyncio.CancelledError
-        return False
+        return ConnectionFaultError("", code="unreachable")
 
     with patch("asyncio.sleep", new_callable=AsyncMock), \
-            patch.object(dm, "_probe_reachable", side_effect=unreachable):
+            patch.object(dm, "_probe_failure", side_effect=unreachable):
         await dm._reconnect_loop("sshdev")
 
     assert calls["n"] >= 4          # the cheap check ran every cycle
@@ -477,7 +477,7 @@ async def test_cheap_transports_are_not_probed_twice(dm, core):
         "config": {"host": "192.0.2.1", "port": 4352, "transport": "tcp"},
     }
 
-    assert await dm._probe_reachable("tcpdev", driver) is True
+    assert await dm._probe_failure("tcpdev", driver) is None
 
 
 async def test_a_command_for_an_offline_device_retries_it_now(dm, core):
@@ -652,7 +652,7 @@ async def test_offline_reason_auth_failed_from_permission_denied(dm, core):
     # The reachability probe is stubbed: this test is about how a login
     # rejection is classified, not about whether the host answers.
     with patch("asyncio.sleep", new_callable=AsyncMock), \
-            patch.object(dm, "_probe_reachable", AsyncMock(return_value=True)):
+            patch.object(dm, "_probe_failure", AsyncMock(return_value=None)):
         await dm._reconnect_loop("sw")
 
     assert state.get("device.sw.offline_reason") == "auth_failed"

@@ -1145,6 +1145,11 @@ class BaseDriver(ABC):
                 # Retain the transport's underlying cause (refused / timeout)
                 # before tearing it down — the raise below only says "not
                 # responding", which the classifier would read as no_response.
+                # A transport that keeps the exception (HTTP) passes it on as
+                # this one's cause, since a refusal can live in its chain alone.
+                cause = getattr(self.transport, "verify_error", None)
+                if not isinstance(cause, BaseException):
+                    cause = None
                 self._stash_transport_error()
                 if self.transport:
                     await self.transport.close()
@@ -1152,7 +1157,7 @@ class BaseDriver(ABC):
                 raise ConnectionError(
                     f"Device at {self.config.get('host', '?')}:"
                     f"{self.config.get('port', '?')} is not responding"
-                )
+                ) from cause
 
         try:
             # Device-specific session setup (e.g. an SSH/CLI driver entering

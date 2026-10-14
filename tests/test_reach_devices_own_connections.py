@@ -644,11 +644,11 @@ async def test_the_reconnect_probe_dials_from_the_pinned_address(pin):
     async with _Device(OWN) as device:
         drv = _driver(OWN)
         drv.config.update(port=device.port, transport="http")
-        assert await manager._probe_reachable("acme1", drv)
+        assert await manager._probe_failure("acme1", drv) is None
         pin(NOBODYS_ADDRESS)
-        assert not await manager._probe_reachable("acme1", drv)
+        assert await manager._probe_failure("acme1", drv) is not None
         pin(PINNED)
-        assert await manager._probe_reachable("acme1", drv) is REACHES
+        assert (await manager._probe_failure("acme1", drv) is None) is REACHES
         await asyncio.sleep(0.05)
     assert device.peers == [OWN, *BOUND_PEERS]
 

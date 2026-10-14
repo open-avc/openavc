@@ -20,6 +20,8 @@ from typing import Any, TYPE_CHECKING
 from openavc.core.connection_fault import (
     BRIDGE_OFFLINE,
     INVALID_CONFIG,
+    NO_RESPONSE,
+    TRANSPORT_DISCONNECTED,
     UNREACHABLE,
     ConnectionFaultError,
     classify_connection_fault,
@@ -148,7 +150,11 @@ _RECONNECT_JITTER = 0.2  # +/- 20%
 # probe would, so probing first would just do the work twice — and on a
 # single-session device, an extra socket is not free.
 _PROBE_FIRST_TRANSPORTS = frozenset({"ssh", "mqtt", "http"})
-_PROBE_TIMEOUT = 1.5
+# Long enough for Windows to report a refused port: it sends the SYN twice more
+# after the first reset, so a refusal arrives about 2 s after the dial (2.00 s
+# measured, on loopback and on this computer's LAN addresses alike). A shorter
+# wait reads every closed port there as silence, and the card as unreachable.
+_PROBE_TIMEOUT = 3.0
 
 # A reconnect that succeeds and then drops again inside this window is
 # flapping, not recovering. THIS is what backoff is for: an absent device costs
@@ -175,6 +181,28 @@ _MAX_RESTART_WINDOW_SECONDS = 600.0
 # Bounded by the site's own interval where that is already tighter (see
 # _reconnect_delay for why this one case earns a shorter wait at all).
 _RESTART_RECONNECT_INTERVAL = 2.0
+
+
+def _probe_fault(
+    exc: BaseException, host: str, port: Any, transport: str,
+) -> ConnectionFaultError:
+    """Why the reconnect check's dial failed, as the device card says it.
+
+    Worded by the classifier from this dial alone: the device's stashed error
+    is an earlier attempt's, and a port refused minutes ago says nothing about
+    a device that is now unplugged. The prefix is the one TCPTransport puts on
+    a failed connect, so a timeout reads as a connect timeout; the cause chain
+    keeps a refusal, which Windows words in the system's own language. A dial
+    the classifier has nothing specific for stays unreachable, as before.
+    """
+    dial = ConnectionError(f"Failed to connect to {host}:{port}: {exc}")
+    dial.__cause__ = exc
+    fault = classify_connection_fault(
+        last_error=None, exc=dial, host=host, port=port, transport=transport,
+    )
+    if fault.code in (NO_RESPONSE, TRANSPORT_DISCONNECTED):
+        return ConnectionFaultError("", code=UNREACHABLE)
+    return ConnectionFaultError(fault.message, code=fault.code)
 
 
 def _log_task_exception(task: asyncio.Task) -> None:
@@ -2379,18 +2407,21 @@ class DeviceManager:
         # silently recreate the problem this whole loop exists to fix.
         return min(max(value, 1.0), 300.0)
 
-    async def _probe_reachable(self, device_id: str, driver: BaseDriver) -> bool:
+    async def _probe_failure(
+        self, device_id: str, driver: BaseDriver,
+    ) -> ConnectionFaultError | None:
         """Cheap "is it back?" check, for transports whose connect is costly.
 
-        Returns True when the expensive connect is worth attempting — which
+        Returns None when the expensive connect is worth attempting — which
         includes every case where we can't cheaply tell, so a probe failure
-        never becomes the reason a device stays offline.
+        never becomes the reason a device stays offline. Otherwise returns
+        why the port did not answer, typed, for ``_set_offline_reason``.
         """
         host, port, transport = self._connection_descriptor(driver)
         if (transport or "").lower() not in _PROBE_FIRST_TRANSPORTS:
-            return True
+            return None
         if not host or port in (None, "", 0):
-            return True
+            return None
         # From the adapter the connect itself will use (Reach devices through).
         from openavc.transport.endpoint import control_bind_address
 
@@ -2402,12 +2433,12 @@ class DeviceManager:
                 ),
                 timeout=_PROBE_TIMEOUT,
             )
-        except (OSError, asyncio.TimeoutError, ValueError):
-            return False
+        except (OSError, asyncio.TimeoutError, ValueError) as exc:
+            return _probe_fault(exc, host, port, transport)
         writer.close()
         with contextlib.suppress(Exception):
             await writer.wait_closed()
-        return True
+        return None
 
     def kick_reconnect(self, device_id: str) -> bool:
         """Retry this device now instead of waiting out the interval.
@@ -2515,15 +2546,15 @@ class DeviceManager:
                 # Cheap reachability first for the transports whose connect is
                 # expensive. A device that is still absent costs one short
                 # socket here instead of an ssh subprocess every few seconds.
-                if not await self._probe_reachable(device_id, driver):
+                failure = await self._probe_failure(device_id, driver)
+                if failure is not None:
                     # The control port didn't answer, so the expensive connect
                     # would only fail slower. Still classify — skipping the
                     # attempt must not leave the device card showing a stale
-                    # reason for a device that is now simply not there.
-                    self._set_offline_reason(
-                        device_id, driver,
-                        exc=ConnectionFaultError("", code=UNREACHABLE),
-                    )
+                    # reason for a device that is now simply not there — and
+                    # say what the dial found: a refused port is the service,
+                    # not the address.
+                    self._set_offline_reason(device_id, driver, exc=failure)
                     attempt += 1
                     continue
 
