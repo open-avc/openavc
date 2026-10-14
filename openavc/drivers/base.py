@@ -1119,6 +1119,15 @@ class BaseDriver(ABC):
             except Exception:
                 pass
 
+    async def _close_session_quietly(self) -> None:
+        """A driver-owned session an ended connect may have built after the
+        disconnect closed it. The disconnect may still be closing it too, so
+        a second close that fails is not this connect's failure."""
+        try:
+            await self._close_session()
+        except Exception:
+            log.debug(f"[{self.device_id}] Closing an ended connect's session", exc_info=True)
+
     async def _unwind_ended_connect(self) -> None:
         """Take down what an ended connect started after the disconnect that
         ended it had already cleaned up."""
@@ -1126,7 +1135,7 @@ class BaseDriver(ABC):
         await self._stop_push()
         await self.stop_polling()
         await self._close_transport_quietly()
-        await self._close_session()
+        await self._close_session_quietly()
         self._connected = False
 
     async def _end_if_ended(self, attempt: object) -> None:
@@ -1295,7 +1304,7 @@ class BaseDriver(ABC):
                 # Ended by a disconnect or a newer connect, which owns the
                 # device now: close what is left of this one, report nothing.
                 await self._close_transport_quietly()
-                await self._close_session()
+                await self._close_session_quietly()
                 self._connected = False
                 if isinstance(exc, ConnectEndedError):
                     raise
@@ -2222,7 +2231,7 @@ class BaseDriver(ABC):
                 raise handshake.exception()  # type: ignore[misc]
             raise self._dropped_error()
         finally:
-            # A connect started meanwhile (the Reconnect button) holds its own.
+            # Only ever this connect's own: connects run one at a time.
             if self._connect_drop is dropped:
                 self._connect_drop = None
             if handshake is not None and not handshake.done():
