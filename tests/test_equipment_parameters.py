@@ -27,7 +27,7 @@ def driver():
     }
     instance._sdk_command_lock = asyncio.Lock()
     instance._sdk_session = "session"
-    instance._reserve_id = lambda: 1
+    instance._reserve_id = AsyncMock(return_value=1)
     instance._request = AsyncMock(return_value={"outcome": "completed"})
     instance._refresh = AsyncMock()
     return instance
