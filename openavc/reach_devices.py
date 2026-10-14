@@ -47,6 +47,7 @@ that explain one still do.
 
 from __future__ import annotations
 
+import asyncio
 import threading
 import time
 from dataclasses import dataclass
@@ -252,7 +253,11 @@ def broadcast_sources(adapters: Iterable[Any] | None = None) -> list[str]:
     on Windows the lowest interface metric, which on a computer with WSL or
     Hyper-V is the virtual switch, so it reaches no network at all. A socket
     bound to an adapter's address sends it out that adapter (Windows and
-    Linux alike), so ``BaseDriver.send_udp`` sends one from each of these.
+    Linux alike), so ``BaseDriver.send_udp`` sends one from each of these,
+    and so does the Inter-System beacon with Accept connections from on Any
+    network (``core/isc.py``). A multicast group's adapter is picked the same
+    way, so a multicast send with nothing chosen goes out once through each
+    of these too, its adapter set per copy (``UDPTransport.send_to``).
     Virtual adapters are not in the inventory.
     """
     from openavc import listen
@@ -268,6 +273,52 @@ def broadcast_sources(adapters: Iterable[Any] | None = None) -> list[str]:
         for adapter in adapters
         if adapter.link and (adapter.ips or adapter.link_local)
     ]
+
+
+# How long a sender that asks often trusts the list before it is read again.
+_SOURCES_FRESH_FOR = 10.0
+
+_sources_lock = threading.Lock()
+_kept_sources: tuple[list[str], float] | None = None
+_sources_reading = False
+
+
+def _read_sources() -> list[str]:
+    """:func:`broadcast_sources` now, kept. Blocking."""
+    global _kept_sources, _sources_reading
+    try:
+        sources = broadcast_sources()
+        with _sources_lock:
+            _kept_sources = (sources, time.monotonic())
+        return sources
+    finally:
+        with _sources_lock:
+            _sources_reading = False
+
+
+async def kept_broadcast_sources() -> list[str]:
+    """:func:`broadcast_sources` for a sender that asks often: the
+    Inter-System beacon every five seconds, a multicast stream (sACN) many
+    times a second, where reading the adapters per send costs more than the
+    send.
+
+    The answer is kept for ten seconds. An older one is still used while it
+    is read again off the event loop, so no send waits for the adapters to
+    be read, except the first, which has nothing to use yet. An adapter
+    unplugged in between costs a copy that fails and is skipped.
+    """
+    global _sources_reading
+    with _sources_lock:
+        kept = _kept_sources
+        stale = kept is None or time.monotonic() - kept[1] >= _SOURCES_FRESH_FOR
+        start = stale and not _sources_reading
+        if start:
+            _sources_reading = True
+    if kept is None:
+        return await asyncio.to_thread(_read_sources)
+    if start:
+        asyncio.get_running_loop().run_in_executor(None, _read_sources)
+    return list(kept[0])
 
 
 def refresh(cfg: Any = None, adapters: Iterable[Any] | None = None) -> Resolved:
@@ -287,10 +338,12 @@ def refresh(cfg: Any = None, adapters: Iterable[Any] | None = None) -> Resolved:
 
 
 def forget() -> None:
-    """Drop the kept answer (a changed choice, tests)."""
-    global _cached
+    """Drop the kept answers (a changed choice, tests)."""
+    global _cached, _kept_sources
     with _lock:
         _cached = None
+    with _sources_lock:
+        _kept_sources = None
 
 
 # ---------------------------------------------------------------------------

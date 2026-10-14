@@ -1,9 +1,11 @@
 """Tests for UDP transport."""
 
 import asyncio
+import socket
 
 import pytest
 
+from openavc import reach_devices
 from openavc.transport.udp import UDPTransport, _format_data
 
 
@@ -300,3 +302,98 @@ async def test_send_and_wait_accepts_response_from_target(udp_receiver):
         assert await t.send_and_wait(b"ping", timeout=0.5) == b"pong"
     finally:
         await t.close()
+
+
+# --- A multicast send with nothing chosen in Reach devices through ---
+
+
+class _RecordingSocket:
+    """Stands in for the transport's own socket: records which multicast
+    interface each copy was sent under instead of sending."""
+
+    def __init__(self, refuse=()):
+        self.calls: list[tuple] = []
+        self.refuse = set(refuse)
+        self._interface = "0.0.0.0"
+
+    def setsockopt(self, level, option, value):
+        if option == socket.IP_MULTICAST_IF:
+            self._interface = socket.inet_ntoa(value)
+            self.calls.append(("interface", self._interface))
+
+    def sendto(self, data, addr):
+        if self._interface in self.refuse:
+            raise OSError("the adapter cannot send")
+        self.calls.append(("send", self._interface, addr))
+
+
+async def _multicast_transport(monkeypatch, sources, local_addr=None, refuse=()):
+    """An Acme lighting transport on a machine whose connected adapters are
+    ``sources``; returns it, its recording socket, and what went through
+    asyncio's transport instead."""
+    monkeypatch.setattr(reach_devices, "broadcast_sources", lambda: list(sources))
+    t = UDPTransport(name="acme_lights")
+    await t.open(local_addr=local_addr)
+    recording = _RecordingSocket(refuse)
+    t._sock = recording
+    direct: list[tuple[str, int]] = []
+    monkeypatch.setattr(t._transport, "sendto", lambda data, addr: direct.append(addr))
+    return t, recording, direct
+
+
+GROUP = ("239.255.0.1", 5568)
+
+
+async def test_a_multicast_send_goes_once_through_every_adapter(monkeypatch):
+    t, recording, direct = await _multicast_transport(monkeypatch, ["10.20.30.5", "192.168.1.40"])
+    try:
+        await t.send_to(b"DMX", *GROUP)
+    finally:
+        await t.close()
+    assert recording.calls == [
+        ("interface", "10.20.30.5"), ("send", "10.20.30.5", GROUP),
+        ("interface", "192.168.1.40"), ("send", "192.168.1.40", GROUP),
+        ("interface", "0.0.0.0"),
+    ]
+    assert direct == []
+    assert t.send_count == 1
+
+
+@pytest.mark.parametrize(
+    "local_addr, host",
+    [("127.0.0.1", GROUP[0]), (None, "10.0.0.5")],
+    ids=["an adapter chosen", "a device's own address"],
+)
+async def test_it_goes_once_as_before(monkeypatch, local_addr, host):
+    t, recording, direct = await _multicast_transport(
+        monkeypatch, ["10.20.30.5", "192.168.1.40"], local_addr=local_addr
+    )
+    try:
+        await t.send_to(b"DMX", host, GROUP[1])
+    finally:
+        await t.close()
+    assert recording.calls == []
+    assert direct == [(host, GROUP[1])]
+
+
+async def test_an_adapter_that_cannot_send_is_skipped_for_multicast(monkeypatch):
+    t, recording, direct = await _multicast_transport(
+        monkeypatch, ["10.20.30.5", "192.168.1.40"], refuse={"10.20.30.5"}
+    )
+    try:
+        await t.send_to(b"DMX", *GROUP)
+    finally:
+        await t.close()
+    assert [call for call in recording.calls if call[0] == "send"] == [("send", "192.168.1.40", GROUP)]
+    assert direct == []
+
+
+@pytest.mark.parametrize("sources", [[], ["10.20.30.5"]], ids=["no adapter", "none can send"])
+async def test_with_no_copy_sent_it_goes_once_as_the_os_picks(monkeypatch, sources):
+    t, recording, direct = await _multicast_transport(monkeypatch, sources, refuse=set(sources))
+    try:
+        await t.send_to(b"DMX", *GROUP)
+    finally:
+        await t.close()
+    assert [call for call in recording.calls if call[0] == "send"] == []
+    assert direct == [GROUP]

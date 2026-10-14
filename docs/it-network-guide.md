@@ -188,6 +188,7 @@ server log names the address it could not reach.
 | 61000 | TCP | Wireless microphones | Shure DCS |
 | 161 | UDP | SNMP-managed devices | SNMP v2c status queries, and control writes on a device set up for them |
 | 9 | UDP broadcast | Displays, projectors and PCs powered on over the network | Wake-on-LAN (some drivers use port 7) |
+| 5568 | UDP multicast | Lighting nodes, gateways and fixtures | sACN (E1.31) lighting levels, to one group per universe (239.255.0.1 for universe 1) |
 | 5343 | TCP | Network-attached control surfaces | Elgato Network Dock, Stream Deck Studio (Stream Deck plugin) |
 
 An OpenAVC instance controlling only PJLink projectors and a Biamp DSP, for example, will only generate traffic on ports 4352 and 49152. If your network policy requires explicit allow-listing, the exact ports in use for a given deployment can be determined from the project's device configuration.
@@ -216,6 +217,8 @@ others. Three things are worth knowing before you allow it:
   refusing it.
 
 **Wake-on-LAN (UDP 9).** A display, projector or PC that is powered on over the network is sent a Wake-on-LAN packet, only when a power-on command runs: to the broadcast address 255.255.255.255 and usually also straight to the device's own address. Some drivers use port 7. A broadcast stays on the network segment it is sent on; routers do not forward it. With **Reach devices through** (Settings > Network) set to **Every connected adapter**, the broadcast is sent once on each network the OpenAVC host is connected to. Choose the AV adapter there to keep it on the AV network.
+
+**Lighting over sACN (UDP 5568).** The sACN lighting driver sends lighting levels to a multicast group for each universe (239.255.0.1 for universe 1): on every change, and about once a second when nothing changes. Set to unicast, it sends them straight to one lighting node's address instead. A multicast group stays on the network segment it is sent on. With **Reach devices through** set to **Every connected adapter**, the levels are sent once on each network the OpenAVC host is connected to, so they also reach a campus network or Wi-Fi the host is on. Wi-Fi sends multicast at its slowest rate, so a busy universe can slow a Wi-Fi network. Choose the lighting adapter there to keep the levels on the lighting network.
 
 **Network-attached control surfaces (port 5343):** when the Stream Deck plugin is configured with a network-attached deck, the server keeps an outbound TCP connection to the unit on port 5343 and may send mDNS queries (UDP multicast 224.0.0.251:5353) to find it. This protocol has no authentication or encryption — any host on the segment can drive the unit — so place these devices on the control VLAN with the AV equipment. mDNS discovery does not cross VLANs, NAT, or Docker bridge networks; the surface is added by IP address there (a static IP on the unit is recommended).
 
@@ -362,6 +365,8 @@ When deploying multiple OpenAVC instances (e.g., one per room), ISC allows them 
 | Cross-subnet support | Manual peer addressing (no broadcast required) |
 | Inbound message limit | 300 messages per minute per peer (the budget persists across reconnects) |
 | Remote command limit | At most 8 peer-requested device commands execute at once (all peers combined) |
+
+The beacon follows **Accept connections from** (Settings > Network). With **Any network**, it is sent once on each network the host is connected to, from the host's address on that network, so a peer on any of them can connect back. With one adapter chosen, it is sent only to that adapter's own subnet, and with **This computer only** it is not sent.
 
 **To disable ISC entirely**, set `isc.enabled: false` in `system.json`. No UDP traffic will be sent or received on port 19872.
 

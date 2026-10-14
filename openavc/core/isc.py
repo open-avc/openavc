@@ -56,6 +56,7 @@ DISCOVERY_PORT = 19872
 DISCOVERY_MAGIC = b"OPENAVC1"      # 8-byte header to filter stray packets
 BEACON_INTERVAL = 5.0              # seconds between broadcast beacons
 BEACON_TTL = 15.0                  # consider a peer gone after this many seconds without a beacon
+LIMITED_BROADCAST = "255.255.255.255"
 
 # Reconnection back-off (seconds)
 RECONNECT_DELAYS = [5, 10, 20, 40, 60]
@@ -154,10 +155,11 @@ def _beacon_targets() -> list[str]:
 
     A peer that hears the beacon dials the address it came from, so it goes
     only where this server accepts connections (Settings > Network > Accept
-    connections from): everywhere for any network, the chosen adapter's own
-    subnet broadcast for one adapter (a directed broadcast leaves through
-    that adapter, with its address as the source), and nowhere for this
-    computer only, where no peer could connect.
+    connections from): everywhere for any network (the limited broadcast,
+    sent through every connected adapter: ``ISCManager._send_beacon``), the
+    chosen adapter's own subnet broadcast for one adapter (a directed
+    broadcast leaves through that adapter, with its address as the source),
+    and nowhere for this computer only, where no peer could connect.
     """
     from openavc import config
 
@@ -165,7 +167,7 @@ def _beacon_targets() -> list[str]:
     if plan.local_only:
         return []
     if plan.mode != "adapter":
-        return ["255.255.255.255"]
+        return [LIMITED_BROADCAST]
     targets: list[str] = []
     for subnet in plan.network_subnets:
         try:
@@ -175,6 +177,16 @@ def _beacon_targets() -> list[str]:
         if target not in targets:
             targets.append(target)
     return targets
+
+
+def _send_bound(payload: bytes, source: str, target: tuple[str, int]) -> None:
+    """One datagram from a socket bound to ``source``, closed after. A UDP
+    send on a non-blocking socket goes or fails at once."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.setblocking(False)
+        sock.bind((source, 0))
+        sock.sendto(payload, target)
 
 
 def get_or_create_instance_id(project_path: Path) -> str:
@@ -361,6 +373,7 @@ class ISCManager:
         # UDP discovery
         self._discovery_sock: socket.socket | None = None
         self._discovery_transport: Any = None  # asyncio DatagramTransport
+        self._beacon_sources: list[str] = []  # the addresses the beacon went from last
         self._beacon_rate: dict[str, float] = {}
 
     # ------------------------------------------------------------------
@@ -954,13 +967,45 @@ class ISCManager:
                 # don't linger forever and inflate peer_count.
                 self._prune_stale_peers()
                 if self._discovery_transport:
-                    for target in _beacon_targets():
-                        self._discovery_transport.sendto(beacon, (target, DISCOVERY_PORT))
+                    await self._send_beacon(beacon)
                 await asyncio.sleep(BEACON_INTERVAL)
         except asyncio.CancelledError:
             return
         except Exception:
             log.debug("ISC: Beacon loop error (non-fatal)")
+
+    async def _send_beacon(self, beacon: bytes) -> None:
+        """One beacon to each of :func:`_beacon_targets`.
+
+        The limited broadcast goes once through every connected adapter, from
+        a socket bound to its address (``reach_devices.broadcast_sources``,
+        as ``BaseDriver.send_udp`` sends one): from the discovery socket,
+        which is bound to every address, it leaves through the one adapter
+        the OS picks, on Windows the lowest interface metric, which on a
+        computer with WSL or Hyper-V is the virtual switch, so no peer on a
+        real network would hear it. The discovery socket keeps listening; a
+        peer dials the address a beacon came from and the port written in
+        it, so the source port does not matter. With no adapter to send
+        from, it goes from the discovery socket as before.
+        """
+        from openavc import reach_devices
+
+        for target in _beacon_targets():
+            if target == LIMITED_BROADCAST:
+                sent: list[str] = []
+                for source in await reach_devices.kept_broadcast_sources():
+                    try:
+                        _send_bound(beacon, source, (target, DISCOVERY_PORT))
+                        sent.append(source)
+                    except OSError as exc:
+                        log.debug("ISC: beacon from %s failed: %s", source, exc)
+                if sent != self._beacon_sources:
+                    self._beacon_sources = sent
+                    if sent:
+                        log.info("ISC: beacon goes out from %s", ", ".join(sent))
+                if sent:
+                    continue
+            self._discovery_transport.sendto(beacon, (target, DISCOVERY_PORT))
 
     def _build_beacon(self) -> bytes:
         """Build a discovery beacon packet: magic header + JSON payload.

@@ -2981,7 +2981,7 @@ await loop.create_datagram_endpoint(factory, remote_addr=(host, port), local_add
 await udp.open(local_addr=ip)  # a UDPTransport you built yourself
 ```
 
-`_verify_reachable`, `send_udp` and `wake_on_lan` already follow it.
+`_verify_reachable`, `send_udp` and `wake_on_lan` already follow it. A datagram to a multicast group from a `UDPTransport` opened with no address, which is what `local_address()` gives when no adapter is chosen, goes out once through each connected adapter (since 0.37.0), so a driver that streams to a group (sACN, say) reaches every network the computer is on. With an adapter chosen it goes out through that adapter only.
 
 ```python
 async def _send_message(self, message: dict) -> None:

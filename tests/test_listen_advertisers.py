@@ -8,8 +8,12 @@ joined or broadcast on.
 
 from __future__ import annotations
 
+import socket
+from types import SimpleNamespace
+
 import pytest
 
+from openavc import reach_devices
 from openavc.core import isc as isc_module
 from openavc.discovery import multicast
 from openavc.listen import Adapter
@@ -85,7 +89,6 @@ class TestMdns:
     async def test_the_engine_advertises_where_panels_can_connect(
         self, monkeypatch, mode, adapter, wanted, interfaces
     ):
-        from types import SimpleNamespace
 
         from openavc.core.engine import Engine
         from openavc.discovery import mdns_advertiser
@@ -132,6 +135,69 @@ class TestTheInterSystemBeacon:
     def test_this_computer_only_sends_nothing(self):
         use_plan("this_computer")
         assert isc_module._beacon_targets() == []
+
+    def _sending(self, monkeypatch, sources, refuse=()):
+        """A manager whose discovery socket and bound sends record instead
+        of sending, on a machine whose connected adapters are ``sources``."""
+        monkeypatch.setattr(reach_devices, "broadcast_sources", lambda: list(sources))
+        manager = isc_module.ISCManager.__new__(isc_module.ISCManager)
+        manager._beacon_sources = []
+        from_discovery: list[tuple[str, int]] = []
+        manager._discovery_transport = SimpleNamespace(
+            sendto=lambda data, addr: from_discovery.append(addr)
+        )
+        bound: list[tuple[str, tuple[str, int]]] = []
+
+        def send_bound(payload, source, target):
+            if source in refuse:
+                raise OSError("the adapter cannot send")
+            bound.append((source, target))
+
+        monkeypatch.setattr(isc_module, "_send_bound", send_bound)
+        return manager, from_discovery, bound
+
+    async def test_any_network_sends_it_once_from_every_adapter(self, monkeypatch):
+        use_plan("any")
+        manager, from_discovery, bound = self._sending(monkeypatch, ["10.20.30.5", "192.168.1.40"])
+        await manager._send_beacon(b"OPENAVC1{}")
+        everywhere = ("255.255.255.255", isc_module.DISCOVERY_PORT)
+        assert bound == [("10.20.30.5", everywhere), ("192.168.1.40", everywhere)]
+        assert from_discovery == []
+
+    async def test_an_adapter_that_cannot_send_is_skipped(self, monkeypatch):
+        use_plan("any")
+        manager, from_discovery, bound = self._sending(
+            monkeypatch, ["10.20.30.5", "192.168.1.40"], refuse={"10.20.30.5"}
+        )
+        await manager._send_beacon(b"OPENAVC1{}")
+        assert [source for source, _ in bound] == ["192.168.1.40"]
+        assert from_discovery == []
+
+    @pytest.mark.parametrize("sources", [[], ["10.20.30.5"]], ids=["no adapter", "none can send"])
+    async def test_with_nothing_to_send_from_it_goes_from_the_discovery_socket(self, monkeypatch, sources):
+        use_plan("any")
+        manager, from_discovery, bound = self._sending(monkeypatch, sources, refuse=set(sources))
+        await manager._send_beacon(b"OPENAVC1{}")
+        assert bound == []
+        assert from_discovery == [("255.255.255.255", isc_module.DISCOVERY_PORT)]
+
+    async def test_one_adapter_still_sends_its_subnet_broadcasts(self, monkeypatch):
+        use_plan("adapter", TWO_SUBNETS)
+        manager, from_discovery, bound = self._sending(monkeypatch, ["10.20.30.5", "192.168.1.40"])
+        await manager._send_beacon(b"OPENAVC1{}")
+        assert bound == []
+        assert from_discovery == [
+            ("10.20.30.255", isc_module.DISCOVERY_PORT),
+            ("172.16.255.255", isc_module.DISCOVERY_PORT),
+        ]
+
+    def test_a_bound_send_comes_from_the_address_it_is_given(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver:
+            receiver.bind(("127.0.0.1", 0))
+            receiver.settimeout(2)
+            isc_module._send_bound(b"OPENAVC1{}", "127.0.0.1", receiver.getsockname())
+            data, (source, _) = receiver.recvfrom(64)
+        assert (data, source) == (b"OPENAVC1{}", "127.0.0.1")
 
     def test_the_status_says_whether_peers_can_connect(self):
         manager = isc_module.ISCManager.__new__(isc_module.ISCManager)
@@ -185,7 +251,6 @@ class TestStatus:
 
 def _sensitive_status(engine) -> dict:
     """get_status's network block, on an engine built without start()."""
-    from types import SimpleNamespace
 
     engine._start_time = 0
     engine._running = True

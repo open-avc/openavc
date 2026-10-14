@@ -56,6 +56,15 @@ def _expected_source_ip(host: str | None):
     return ip
 
 
+def _is_multicast(host: str) -> bool:
+    """True for an IPv4 multicast group (224.0.0.0/4)."""
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return isinstance(ip, ipaddress.IPv4Address) and ip.is_multicast
+
+
 def _log_task_exception(task: asyncio.Task) -> None:
     """Done-callback for fire-and-forget on_data tasks: surface failures that
     would otherwise vanish as a 'Task exception was never retrieved' GC warning."""
@@ -111,6 +120,11 @@ class UDPTransport:
 
         self._transport: asyncio.DatagramTransport | None = None
         self._protocol: _UDPProtocol | None = None
+        # The socket itself, which this transport opens and asyncio wraps: a
+        # multicast send to every adapter goes from it directly (send_to).
+        self._sock: socket.socket | None = None
+        self._local_addr: str | None = None
+        self._multicast_sources: list[str] | None = None
         self._connected = False
         self._send_lock = asyncio.Lock()
         self.last_data_received: float = 0.0
@@ -146,22 +160,21 @@ class UDPTransport:
                 Multicast sends leave through the same adapter: the bound
                 address alone does not choose the interface for a multicast
                 group, so it is also set as the socket's multicast interface.
+                Without one, a multicast send goes out through every
+                connected adapter (:meth:`send_to`).
         """
         loop = asyncio.get_running_loop()
         bind_addr = local_addr or "0.0.0.0"
-        self._transport, self._protocol = await loop.create_datagram_endpoint(
-            lambda: _UDPProtocol(
-                name=self._name,
-                on_data=self._deliver_message,
-                on_error=self._record_error,
-                on_lost=self._wake_response_waiter,
-            ),
-            local_addr=(bind_addr, 0),
-            allow_broadcast=allow_broadcast,
-        )
-        if local_addr:
-            sock = self._transport.get_extra_info("socket")
-            if sock is not None:
+        # Opened here rather than by create_datagram_endpoint so this
+        # transport holds the socket: the copies of a multicast send to every
+        # adapter go from it directly (send_to says why).
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            if allow_broadcast:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            sock.bind((bind_addr, 0))
+            sock.setblocking(False)
+            if local_addr:
                 try:
                     sock.setsockopt(
                         socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
@@ -169,6 +182,21 @@ class UDPTransport:
                     )
                 except OSError as exc:  # unicast and broadcast still bound
                     log.debug(f"[{self._name}] Multicast interface not set: {exc}")
+            self._transport, self._protocol = await loop.create_datagram_endpoint(
+                lambda: _UDPProtocol(
+                    name=self._name,
+                    on_data=self._deliver_message,
+                    on_error=self._record_error,
+                    on_lost=self._wake_response_waiter,
+                ),
+                sock=sock,
+            )
+        except BaseException:
+            sock.close()
+            raise
+        self._sock = sock
+        self._local_addr = local_addr or None
+        self._multicast_sources = None
         self._connected = True
         log.debug(f"[{self._name}] UDP socket opened (bound to {bind_addr})")
 
@@ -196,13 +224,34 @@ class UDPTransport:
         await self.send_to(data, self.host, self.port)
 
     async def send_to(self, data: bytes, host: str, port: int) -> None:
-        """Send a UDP datagram to a specific host and port."""
+        """Send a UDP datagram to a specific host and port.
+
+        A datagram to a multicast group, from a socket opened with no
+        adapter (nothing chosen in Reach devices through), goes out once
+        through every connected adapter (``reach_devices.broadcast_sources``),
+        the multicast interface set for each copy: left to the OS, a group's
+        adapter is the one with the lowest interface metric on Windows, which
+        on a computer with WSL or Hyper-V is the virtual switch, and the
+        default route's on Linux, so the stream would reach one network or
+        none. A copy that cannot be sent is skipped; with none sent, it goes
+        once, as the OS picks. A limited broadcast is not fanned out here:
+        that needs a socket bound per adapter (``BaseDriver.send_udp``).
+        """
         if self._transport is None:
             raise ConnectionError("UDP socket not open")
 
+        sources: list[str] = []
+        if self._local_addr is None and self._sock is not None and _is_multicast(host):
+            from openavc import reach_devices
+
+            sources = await reach_devices.kept_broadcast_sources()
+
         async with self._send_lock:
+            if self._transport is None:
+                raise ConnectionError("UDP socket not open")
             try:
-                self._transport.sendto(data, (host, port))
+                if not (sources and self._send_per_adapter(data, host, port, sources)):
+                    self._transport.sendto(data, (host, port))
             except OSError as e:
                 self._last_error = str(e) or type(e).__name__
                 log.error(f"[{self._name}] UDP send failed to {host}:{port}: {e}")
@@ -218,6 +267,47 @@ class UDPTransport:
             )
             if self._inter_command_delay > 0:
                 await sleep_at_least(self._inter_command_delay)
+
+    def _send_per_adapter(
+        self, data: bytes, host: str, port: int, sources: list[str],
+    ) -> bool:
+        """One copy through each of ``sources``, the multicast interface set
+        before each, sent from this transport's own socket. Not through
+        asyncio's transport: on Windows it queues a datagram while the one
+        before is still going out and sends it later, under whatever interface
+        is set by then, so every copy could leave through the last adapter. A
+        UDP send on a non-blocking socket goes or fails at once. The interface
+        goes back to the OS's choice after. Returns whether any copy went."""
+        sock = self._sock
+        sent: list[str] = []
+        for source in sources:
+            try:
+                sock.setsockopt(
+                    socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(source),
+                )
+                sock.sendto(data, (host, port))
+                sent.append(source)
+            except OSError as exc:
+                log.debug(
+                    f"[{self._name}] Multicast to {host}:{port} through {source} "
+                    f"failed: {exc}"
+                )
+        try:
+            sock.setsockopt(
+                socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton("0.0.0.0"),
+            )
+        except OSError:
+            pass
+        if not sent:
+            self._multicast_sources = None
+            return False
+        if sent != self._multicast_sources:
+            self._multicast_sources = sent
+            log.info(
+                f"[{self._name}] Multicast to {host}:{port} goes out through "
+                f"{', '.join(sent)} (every connected adapter)"
+            )
+        return True
 
     async def send_and_wait(self, data: bytes, timeout: float = 2.0) -> bytes:
         """Send a datagram and wait for the next response.
@@ -300,6 +390,7 @@ class UDPTransport:
             self._transport.close()
             self._transport = None
             log.debug(f"[{self._name}] UDP socket closed")
+        self._sock = None
 
     @property
     def connected(self) -> bool:

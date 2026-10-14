@@ -8,7 +8,9 @@ often it enumerates adapters), and the config API. The adapters are invented
 
 from __future__ import annotations
 
+import asyncio
 import json
+import threading
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -194,6 +196,50 @@ class TestWhereABroadcastLeavesFrom:
 
         monkeypatch.setattr(listen, "list_adapters", broken)
         assert reach_devices.broadcast_sources() == []
+
+
+class TestASenderThatAsksOften:
+    """The beacon and a multicast stream ask for the adapters on every send;
+    they are read at most every ten seconds, and never while a send waits."""
+
+    async def test_read_once_then_kept(self, monkeypatch):
+        reads: list[int] = []
+
+        def sources():
+            reads.append(1)
+            return ["10.20.30.5"]
+
+        monkeypatch.setattr(reach_devices, "broadcast_sources", sources)
+        assert await reach_devices.kept_broadcast_sources() == ["10.20.30.5"]
+        assert await reach_devices.kept_broadcast_sources() == ["10.20.30.5"]
+        assert len(reads) == 1
+
+    async def test_an_old_answer_is_used_while_it_is_read_again(self, monkeypatch):
+        answers = iter([["10.20.30.5"], ["10.20.30.5", "192.168.1.40"]])
+        reading = threading.Event()
+        release = threading.Event()
+
+        def sources():
+            answer = next(answers)
+            if len(answer) == 2:
+                reading.set()
+                release.wait(5)
+            return answer
+
+        monkeypatch.setattr(reach_devices, "broadcast_sources", sources)
+        assert await reach_devices.kept_broadcast_sources() == ["10.20.30.5"]
+        monkeypatch.setattr(reach_devices, "_SOURCES_FRESH_FOR", 0.0)
+        # Stale: the old answer comes back at once, the read goes on beside it.
+        assert await reach_devices.kept_broadcast_sources() == ["10.20.30.5"]
+        assert await asyncio.to_thread(reading.wait, 5)
+        assert await reach_devices.kept_broadcast_sources() == ["10.20.30.5"]
+        release.set()
+        for _ in range(100):
+            if not reach_devices._sources_reading:
+                break
+            await asyncio.sleep(0.02)
+        monkeypatch.setattr(reach_devices, "_SOURCES_FRESH_FOR", 10.0)
+        assert await reach_devices.kept_broadcast_sources() == ["10.20.30.5", "192.168.1.40"]
 
 
 @pytest.fixture
