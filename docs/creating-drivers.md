@@ -2906,7 +2906,7 @@ async def _post_connect(self) -> None:
         await asyncio.sleep(0.1)
 ```
 
-If the connection closes while `_post_connect()` is still waiting (the port refused it, or the device hung up before its greeting), the platform cancels the hook and fails the attempt at once with the transport's own error, so a handshake needs no check of its own for a dropped link. Let `asyncio.CancelledError` pass through rather than catching it.
+If the connection closes while `_post_connect()` is still waiting (an SSH device's port refused it, or the device hung up before its greeting), the platform cancels the hook and fails the attempt at once with the transport's own error, so a handshake needs no check of its own for a dropped link. Let `asyncio.CancelledError` pass through rather than catching it.
 
 A protocol that needs different transport settings keeps the platform's construction (log naming, disconnect wiring, the control-interface binding) and adjusts only what differs:
 

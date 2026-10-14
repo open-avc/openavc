@@ -480,6 +480,15 @@ _NO_RESPONSE_SIGS = (
     "unexpected response",
 )
 
+# ssh's keep-alive giving up on a session that was up ("Timeout, server <host>
+# not responding."): the device stopped answering mid-session, so the session
+# dropped. Checked before no_response, whose "not responding" it contains and
+# whose advice (check the driver, transport and port) is wrong for a session
+# that was working.
+_SSH_KEEPALIVE_SIGS = (
+    "timeout, server",
+)
+
 # Weak timeout signals — checked *after* no_response so a protocol read-timeout
 # stays no_response, while a bare connect timeout with no other signal still
 # resolves to unreachable.
@@ -672,7 +681,7 @@ def classify_connection_fault(
     """Map a connection failure to a stable code + human message.
 
     Args:
-        last_error: The transport's last error string (e.g. ``ssh`` stderr, a
+        last_error: The transport's last error string (e.g. ``ssh``'s log, a
             wrapped OSError). May be empty.
         exc: The exception raised by ``connect()`` / reconnect, if any. Its
             ``__cause__`` chain is inspected for errno / timeout signals.
@@ -795,6 +804,12 @@ def classify_connection_fault(
     mismatch = _transport_port_mismatch(transport, port)
     if mismatch is not None:
         return ConnectionFault(INVALID_CONFIG, mismatch)
+
+    # 6c. ssh's keep-alive gave up on a session that was working: a drop.
+    if _has_any(hay, _SSH_KEEPALIVE_SIGS):
+        return ConnectionFault(
+            TRANSPORT_DISCONNECTED, _DEFAULT_MESSAGES[TRANSPORT_DISCONNECTED],
+        )
 
     # 7. Authed/opened but no usable response (wrong transport or protocol).
     if _has_any(hay, _NO_RESPONSE_SIGS):

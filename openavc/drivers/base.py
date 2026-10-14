@@ -1202,7 +1202,7 @@ class BaseDriver(ABC):
         except Exception:
             # Clean up transport if post-connect setup fails. Stash the
             # transport's last error first (e.g. an SSH auth failure surfaces
-            # as ssh stderr on the transport, not in this exception).
+            # in ssh's log on the transport, not in this exception).
             self._stash_transport_error()
             if self.transport:
                 await self.transport.close()

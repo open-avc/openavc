@@ -35,6 +35,17 @@ Authentication:
 Host keys use trust-on-first-use by default (``StrictHostKeyChecking=accept-new``)
 against a managed ``known_hosts`` file, so a changed key (a possible MITM) is
 refused while a brand-new device connects without a prompt.
+
+Why a session failed comes from ssh's own log, which it writes to a file of
+its own (``-E``) at ``LogLevel=INFO``, never from stderr. Some failures are
+logged only at INFO: a refused port on Windows' built-in client, a key
+exchange that finds no common algorithm and a session the device stopped
+answering on every client. At INFO, ssh also prints the device's pre-login
+banner, to stderr and outside the log. A banner is device text ("If you are
+not authorized to access this system, disconnect now") that the classifier
+would read as a rejected login, so stderr is drained and logged at debug
+only. The log is read once ssh has exited: Windows' client holds it open,
+unreadable, until then.
 """
 
 from __future__ import annotations
@@ -156,10 +167,12 @@ class SSHTransport:
         self._send_lock = asyncio.Lock()
         self._connected = False
         self._askpass_path: str | None = None
-        # Last few stderr lines from ssh, for surfacing auth/host-key failures
-        # to the driver when the session dies during the prompt read.
-        self._stderr_tail = ""
-        # A typed fault the classifier should prefer over matching stderr —
+        # ssh's own log (-E): its path, and its last 500 characters once read,
+        # which is what last_error reports (auth, host key, refused port).
+        self._log_path: str | None = None
+        self._log_tail = ""
+        self._log_read = False
+        # A typed fault the classifier should prefer over matching the log —
         # set when the failure already knows its own code (a stalled write).
         # Cleared on every connect so a healed link can't report it.
         self._last_fault: ConnectionFault | None = None
@@ -273,8 +286,10 @@ class SSHTransport:
             "-o", f"UserKnownHostsFile={known_hosts}",
             "-o", "ServerAliveInterval=15",
             "-o", "ServerAliveCountMax=3",
-            "-o", "LogLevel=ERROR",
+            "-o", "LogLevel=INFO",
         ]
+        if self._log_path:
+            argv += ["-E", self._log_path]
         if self._auth_method == "password":
             argv += [
                 "-o", "PubkeyAuthentication=no",
@@ -322,7 +337,21 @@ class SSHTransport:
         # Clean slate: a previous attempt's typed fault must not be read as
         # this one's cause.
         self._last_fault = None
-        argv = self.build_argv()
+        self._remove_log()
+        self._log_tail = ""
+        self._log_read = False
+        try:
+            fd, self._log_path = tempfile.mkstemp(prefix="openavc-ssh-", suffix=".log")
+            os.close(fd)
+        except OSError as e:
+            raise ConnectionError(
+                f"Failed to launch ssh for {self.host}:{self.port}: {e}"
+            ) from e
+        try:
+            argv = self.build_argv()
+        except BaseException:
+            self._remove_log()
+            raise
         env = self.build_env()
         # ssh creates known_hosts itself but not its parent directory.
         _, known_hosts = self._known_hosts_option()
@@ -340,6 +369,7 @@ class SSHTransport:
             )
         except (OSError, ValueError) as e:
             self._cleanup_askpass()
+            self._remove_log()
             raise ConnectionError(
                 f"Failed to launch ssh for {self.host}:{self.port}: {e}"
             ) from e
@@ -362,10 +392,15 @@ class SSHTransport:
             log.debug(f"[{self._name}] SSH reader error: {e}")
         finally:
             if self._connected:
+                # ssh writes why it failed just before it exits: let it exit,
+                # so the drop is reported with its reason.
+                await self._await_exit(2.0)
+                self._read_log()
                 await self._handle_disconnect()
 
     async def _stderr_loop(self) -> None:
-        """Collect ssh's stderr so auth/host-key failures can be surfaced."""
+        """Drain ssh's stderr: the device's pre-login banner and ssh's own
+        closing lines. Logged at debug, never read as a failure's cause."""
         assert self._proc is not None and self._proc.stderr is not None
         try:
             while True:
@@ -374,10 +409,49 @@ class SSHTransport:
                     break
                 text = line.decode("utf-8", errors="replace").rstrip()
                 if text:
-                    self._stderr_tail = (self._stderr_tail + "\n" + text)[-500:]
-                    log.debug(f"[{self._name}] ssh: {text}")
+                    log.debug(f"[{self._name}] ssh (stderr): {text}")
         except (asyncio.CancelledError, ConnectionError, OSError):
             return
+
+    async def _await_exit(self, timeout: float) -> None:
+        proc = self._proc
+        if proc is None or proc.returncode is not None:
+            return
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=timeout)
+        except (asyncio.TimeoutError, ProcessLookupError):
+            pass
+
+    def _read_log(self) -> None:
+        """Read ssh's log once ssh has exited. Until then it may still grow,
+        and Windows' client holds it unreadable. A read that fails is tried
+        again on the next ``last_error``."""
+        if self._log_read or not self._log_path:
+            return
+        if self._proc is None or self._proc.returncode is None:
+            return
+        try:
+            with open(self._log_path, "rb") as f:
+                data = f.read()
+        except OSError:
+            return
+        self._log_read = True
+        lines = [
+            line.rstrip()
+            for line in data.decode("utf-8", errors="replace").splitlines()
+            if line.strip()
+        ]
+        for text in lines:
+            log.debug(f"[{self._name}] ssh: {text}")
+        self._log_tail = "\n".join(lines)[-500:]
+
+    def _remove_log(self) -> None:
+        if self._log_path:
+            try:
+                os.remove(self._log_path)
+            except OSError:
+                pass
+            self._log_path = None
 
     def _deliver(self, data: bytes) -> None:
         record_traffic(self._traffic_name, RX, data, channel="ssh")
@@ -442,6 +516,9 @@ class SSHTransport:
                 except asyncio.CancelledError:
                     pass
         if self._proc is not None:
+            # Keep why ssh failed, if it already exited on its own, before
+            # the log goes; never what it says about being stopped here.
+            self._read_log()
             try:
                 if self._proc.stdin is not None and not self._proc.stdin.is_closing():
                     self._proc.stdin.close()
@@ -460,6 +537,7 @@ class SSHTransport:
                     pass
             self._proc = None
         self._cleanup_askpass()
+        self._remove_log()
         log.info(f"[{self._name}] SSH disconnected")
 
     @property
@@ -470,8 +548,10 @@ class SSHTransport:
 
     @property
     def last_error(self) -> str:
-        """Recent ssh stderr (auth/host-key diagnostics), trimmed."""
-        return self._stderr_tail.strip()
+        """The end of ssh's own log (auth, host key, refused port), trimmed.
+        Empty while ssh is still running."""
+        self._read_log()
+        return self._log_tail.strip()
 
     @property
     def last_fault(self) -> ConnectionFault | None:

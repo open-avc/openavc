@@ -384,6 +384,19 @@ def test_fallback_unrecognized_error():
     assert fault.code == TRANSPORT_DISCONNECTED
 
 
+def test_an_ssh_session_the_device_stopped_answering_is_a_drop():
+    # ssh's keep-alive giving up on a session that was up. Its "not
+    # responding" must not read as a device that never spoke the protocol.
+    fault = classify_connection_fault(
+        last_error=(
+            "Warning: Permanently added '[10.0.0.5]:22' (ED25519) to the list "
+            "of known hosts.\nTimeout, server 10.0.0.5 not responding."
+        ),
+        exc=None, host="10.0.0.5", port=22, transport="ssh",
+    )
+    assert fault.code == TRANSPORT_DISCONNECTED
+
+
 # --- endpoint rendering ----------------------------------------------------
 
 def test_endpoint_degrades_without_host():
