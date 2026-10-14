@@ -176,3 +176,70 @@ async def test_cooldown_not_updated_when_blocked(engine, events):
     await asyncio.sleep(0.1)        # now 0.18 since t0 -> window elapsed
     await engine.execute("quick")   # accepted again
     assert starts["n"] == 2
+
+
+# --- A run that has ended no longer counts as running ------------------------
+
+
+async def _end_a_run(engine, monkeypatch, end):
+    """Run ``acme_warm_up`` to the given end: completed, cancelled or error."""
+    engine.load_macros([{
+        "id": "acme_warm_up",
+        "name": "Acme Warm Up",
+        "steps": [{"action": "delay", "seconds": 5 if end == "cancelled" else 0}],
+    }])
+    if end == "error":
+        monkeypatch.setattr(
+            engine, "execute_steps", AsyncMock(side_effect=RuntimeError("acme fault")),
+        )
+    run = asyncio.create_task(engine.execute("acme_warm_up"))
+    if end == "cancelled":
+        await asyncio.sleep(0.05)
+        assert await engine.cancel("acme_warm_up")
+    return await run
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("end, outcome", [
+    ("completed", "completed"), ("cancelled", "cancelled"), ("error", "failed"),
+])
+async def test_whoever_hears_a_run_end_sees_it_stopped(engine, events, monkeypatch, end, outcome):
+    """The end is announced after the run stops counting as running, so a
+    handler on that event, and anything that runs while one yields, sees the
+    macro stopped."""
+    seen = []
+
+    async def on_end(event, data):
+        seen.append(engine.is_macro_running("acme_warm_up"))
+        await asyncio.sleep(0)
+        seen.append(engine.is_macro_running("acme_warm_up"))
+
+    events.on(f"macro.{end}.acme_warm_up", on_end)
+    assert await _end_a_run(engine, monkeypatch, end) == outcome
+    assert seen == [False, False]
+
+
+@pytest.mark.asyncio
+async def test_a_macro_started_again_when_it_ends_is_not_turned_away(engine, events):
+    """overlap=skip guards a run in flight, not one that has finished: a
+    handler on a run's own end (an event trigger, a script) that starts it
+    again gets a run."""
+    starts = _count_starts(events, "acme_cycle")
+    engine.load_macros([{
+        "id": "acme_cycle",
+        "name": "Acme Cycle",
+        "overlap": "skip",
+        "steps": [{"action": "state.set", "key": "var.acme_x", "value": 1}],
+    }])
+    asked, again = [], []
+
+    async def start_again(event, data):
+        if asked:  # once: the second run's own end must not start a third
+            return
+        asked.append(True)
+        again.append(await engine.execute("acme_cycle"))
+
+    events.on("macro.completed.acme_cycle", start_again)
+    assert await engine.execute("acme_cycle") == "completed"
+    assert again == ["completed"]
+    assert starts["n"] == 2

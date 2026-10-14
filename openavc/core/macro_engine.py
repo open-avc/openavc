@@ -504,6 +504,7 @@ class MacroEngine:
                 steps, context, macro_id, stop_on_error, _call_chain=_call_chain
             )
             outcome = "failed" if failed_steps else "completed"
+            self._release(macro_id, task)
             # Still `macro.completed`, and deliberately: the run DID reach the
             # end, which is what that event has always meant and what the IDE's
             # progress display keys off. What it never carried is how it went,
@@ -524,6 +525,7 @@ class MacroEngine:
             return outcome
         except asyncio.CancelledError:
             log.info(f"Macro '{name}' was cancelled")
+            self._release(macro_id, task)
             await self.events.emit(
                 f"macro.cancelled.{macro_id}",
                 {"macro_id": macro_id, "name": name},
@@ -533,6 +535,7 @@ class MacroEngine:
             return "cancelled"
         except Exception as e:  # Catch-all: isolates macro execution errors
             log.exception(f"Macro '{name}' failed")
+            self._release(macro_id, task)
             await self.events.emit(
                 f"macro.error.{macro_id}",
                 {"macro_id": macro_id, "name": name, "error": str(e)},
@@ -542,12 +545,24 @@ class MacroEngine:
             return "failed"
         finally:
             _active_call_chain.reset(_chain_token)
-            if task is not None:
-                task_set = self._running.get(macro_id)
-                if task_set is not None:
-                    task_set.discard(task)
-                    if not task_set:
-                        self._running.pop(macro_id, None)
+            self._release(macro_id, task)
+
+    def _release(self, macro_id: str, task: asyncio.Task | None) -> None:
+        """Stop counting ``task`` as a run of ``macro_id``. Idempotent.
+
+        Called before a run's end is announced, not after: the handlers of
+        ``macro.completed`` / ``macro.cancelled`` / ``macro.error`` run inside
+        that emit, so anything they start (an event trigger, a script) or ask
+        would otherwise find the finished run still in flight, and
+        ``overlap: skip`` would turn a macro started again on its own end away.
+        """
+        if task is None:
+            return
+        task_set = self._running.get(macro_id)
+        if task_set is not None:
+            task_set.discard(task)
+            if not task_set:
+                self._running.pop(macro_id, None)
 
     async def execute_detached(
         self,
