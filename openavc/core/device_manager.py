@@ -34,6 +34,7 @@ from openavc.core.connection_fault import (
 from openavc.drivers.avcdriver_semantic import undeclared_child_type_reason
 from openavc.drivers.base import (
     CommandParamError,
+    ConnectEndedError,
     UnknownCommandError,
     UnknownDeviceSettingError,
     normalize_and_validate_command_params,
@@ -536,6 +537,11 @@ class DeviceManager:
                 bridge_id = config.get("bridge")
                 if bridge_id:
                     self._set_bridge_offline_reason(device_id, bridge_id)
+        except ConnectEndedError:
+            # Ended by a Reconnect, a pause or a removal while it waited: the
+            # door that ended it owns the device now.
+            if not await self._discard_if_superseded(device_id, driver):
+                return
         except Exception as e:
             if not await self._discard_if_superseded(device_id, driver):
                 return
@@ -2611,6 +2617,10 @@ class DeviceManager:
                         attempt += 1
                         continue
                     return
+                except ConnectEndedError:
+                    # A Reconnect, pause or resume ended this attempt and owns
+                    # the device now.
+                    return
                 except Exception as e:
                     if noisy:
                         log.warning(f"[{device_id}] Reconnect failed: {e}")
@@ -2718,6 +2728,8 @@ class DeviceManager:
                 # simulator's redirect, which reconnects through here) and
                 # waited for some later connect nobody was going to ask for.
                 await self._apply_pending_settings(device_id)
+            except ConnectEndedError:
+                pass  # ended by a newer press, a pause or a removal
             except Exception as e:
                 self.state.set(f"device.{device_id}.connected", False, source="device_manager")
                 log.warning(f"Reconnect failed for {device_id}: {e}")
@@ -2889,6 +2901,8 @@ class DeviceManager:
             # reason and flush anything queued while the device was away.
             self._clear_offline_reason(device_id)
             await self._apply_pending_settings(device_id)
+        except ConnectEndedError:
+            pass  # ended by a Reconnect, a pause or a removal meanwhile
         except Exception as e:
             self.state.set(f"device.{device_id}.connected", False, source="device_manager")
             log.warning(f"resume_device: connect failed for {device_id}: {e}")
