@@ -1,6 +1,7 @@
 """OpenAVC equipment protocol client for manufacturer-described capabilities."""
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import contextlib
 import copy
 import hashlib
@@ -90,6 +91,57 @@ class RequestJournal:
                 setattr(self, name, None)
 
 
+class AsyncRequestJournal:
+    """Keep SQLite and its lifetime lease on one worker, off the event loop.
+
+    Cancellation consumes an in-progress reservation but never sends it. Close
+    queues behind that reservation, so the lease outlives every pending write.
+    """
+
+    def __init__(self):
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='equipment-journal')
+        self._journal = None
+        self._close_future = None
+
+    @staticmethod
+    def _observe(future):
+        # A cancelled caller no longer awaits the worker's eventual exception.
+        if not future.cancelled():
+            future.exception()
+
+    def _submit(self, operation, *args):
+        if self._executor is None:
+            raise RuntimeError('The device request journal is closed.')
+        future = asyncio.wrap_future(self._executor.submit(operation, *args))
+        future.add_done_callback(self._observe)
+        return future
+
+    def _open(self, folder, stem):
+        folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self._journal = RequestJournal(folder, stem)
+        return self._journal.client
+
+    async def open(self, folder, stem):
+        return await asyncio.shield(self._submit(self._open, folder, stem))
+
+    async def reserve(self, session):
+        return await asyncio.shield(self._submit(self._journal.reserve, session))
+
+    def _close(self):
+        if self._journal is not None:
+            self._journal.close()
+            self._journal = None
+
+    async def close(self):
+        if self._close_future is None:
+            self._close_future = self._submit(self._close)
+            # Queued work finishes in order; shutting down never waits on disk
+            # in the event-loop thread, even if this close caller is cancelled.
+            self._executor.shutdown(wait=False)
+            self._executor = None
+        await asyncio.shield(self._close_future)
+
+
 class EquipmentDriver(BaseDriver):
     DRIVER_INFO = {
         "id": "openavc_equipment",
@@ -153,7 +205,6 @@ class EquipmentDriver(BaseDriver):
         try:
             # Single-host writer lifetime, not a distributed authority protocol.
             folder = get_data_dir() / "equipment-requests"
-            folder.mkdir(mode=0o700, parents=True, exist_ok=True)
             local = "token" in self.config
             if not local:
                 host = self.config.get("host", "")
@@ -166,13 +217,13 @@ class EquipmentDriver(BaseDriver):
             if local and self.config.get("host") and self.config.get("port"):
                 self._sdk_url = str(URL.build(scheme="https", host=self.config["host"], port=int(self.config["port"])))
             stem = hashlib.sha256((self.config["identity"] if local else self.config["url"]).encode()).hexdigest()
+            self._sdk_journal = AsyncRequestJournal()
             try:
-                self._sdk_journal = RequestJournal(folder, stem)
+                client = await self._sdk_journal.open(folder, stem)
             except sqlite3.OperationalError as exc:
                 if getattr(exc, 'sqlite_errorcode', None) in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED):
                     raise ConnectionFaultError('Equipment is already open in another local connection. Close that connection before retrying.', code='connection_refused') from exc
                 raise
-            client = self._sdk_journal.client
             tls = (ssl.create_default_context(cafile=self.config.get("ca_file", os.environ.get("SSL_CERT_FILE")))
                    if local or self.config.get("verify_ssl", True) else False)
             headers = {"X-OpenAVC-Client": client}
@@ -305,9 +356,13 @@ class EquipmentDriver(BaseDriver):
                 await self.events.emit(f"device.disconnected.{self.device_id}")
                 return
 
-    def _reserve_id(self):
+    async def _reserve_id(self, session):
         # Commit before sending. Lost replies consume their ID, never replay.
-        return self._sdk_journal.reserve(self._sdk_session)
+        journal = self._sdk_journal
+        identifier = await journal.reserve(session)
+        if self._sdk_journal is not journal:
+            raise ConnectionError('The device connection changed before the command was sent.')
+        return identifier
 
     async def send_command(self, command, params=None):
         rules = self.DRIVER_INFO["commands"][command].get("params", {})
@@ -331,11 +386,13 @@ class EquipmentDriver(BaseDriver):
                     value = next((item for item in choices if str(item) == value), value)
             normalized[key] = value
         async with self._sdk_command_lock:
+            session = self._sdk_session
+            identifier = await self._reserve_id(session)
             result = await self._request(
                 "/v1/command",
                 {
-                    "session": self._sdk_session,
-                    "id": self._reserve_id(),
+                    "session": session,
+                    "id": identifier,
                     "command": command,
                     "params": normalized,
                 },
@@ -366,7 +423,8 @@ class EquipmentDriver(BaseDriver):
             await self._sdk_http.close()
             self._sdk_http = None
         if getattr(self, "_sdk_journal", None):
-            self._sdk_journal.close()
+            journal = self._sdk_journal
             self._sdk_journal = None
+            await journal.close()
         self._connected = False
         self.set_state("connected", False)
