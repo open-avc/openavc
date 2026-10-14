@@ -2,7 +2,6 @@
 
 import io
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -23,24 +22,23 @@ TEST_PROJECT = {
 
 
 @pytest.fixture
-async def client():
-    """Start engine with a test project, yield TestClient."""
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False
-    ) as f:
-        json.dump(TEST_PROJECT, f)
-        tmp_path = f.name
+async def client(tmp_path):
+    """Start engine with a test project in a folder of its own, yield TestClient.
 
-    engine = Engine(tmp_path)
+    Its own folder, because the assets folder sits beside the project file:
+    two test files sharing the system temp folder shared one assets folder,
+    and one's uploads and deletes broke the other's listing.
+    """
+    project_path = tmp_path / "project.json"
+    project_path.write_text(json.dumps(TEST_PROJECT))
+
+    engine = Engine(str(project_path))
 
     from openavc.core.project_loader import load_project
-    engine.project = load_project(tmp_path)
+    engine.project = load_project(str(project_path))
     engine._running = True
 
-    # Create assets directory
-    project_dir = Path(tmp_path).parent
-    assets_dir = project_dir / "assets"
-    assets_dir.mkdir(exist_ok=True)
+    (tmp_path / "assets").mkdir()
 
     rest.set_engine(engine)
     assets_api.set_engine(engine)
@@ -49,7 +47,6 @@ async def client():
 
     rest.set_engine(None)
     assets_api.set_engine(None)
-    Path(tmp_path).unlink(missing_ok=True)
 
 
 def _make_png(size: int = 100) -> bytes:
@@ -350,3 +347,46 @@ async def test_delete_rejects_non_active_project(client):
     resp = client.delete("/api/projects/roomB/assets/keep.png")
     assert resp.status_code == 404
     assert client.get("/api/projects/default/assets/keep.png").status_code == 200
+
+
+# --- A file another session deletes while the folder is being read ---
+
+
+def _deleted_mid_read(monkeypatch, assets_dir: Path, name: str) -> None:
+    """The folder listing names ``name``, and the file is gone by the time it
+    is read: what a delete from another Programmer tab leaves between the two."""
+    path_type = type(assets_dir)
+
+    class Gone(path_type):
+        def is_file(self, *args, **kwargs):
+            return True
+
+        def stat(self, *args, **kwargs):
+            raise FileNotFoundError(2, "No such file or directory", str(self))
+
+    listed = path_type.iterdir
+
+    def iterdir(self):
+        yield from listed(self)
+        if self == assets_dir:
+            yield Gone(assets_dir / name)
+
+    monkeypatch.setattr(path_type, "iterdir", iterdir)
+
+
+async def test_a_file_deleted_while_the_folder_is_read_is_left_out(client, monkeypatch):
+    assets_dir = assets_api._assets_dir_for("default")
+    (assets_dir / "logo.png").write_bytes(_make_png(120))
+    _deleted_mid_read(monkeypatch, assets_dir, "spare.png")
+
+    resp = client.get("/api/projects/default/assets")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert [a["name"] for a in data["assets"]] == ["logo.png"]
+    assert data["total_size"] == 120
+
+    resp = client.post(
+        "/api/projects/default/assets",
+        files={"file": ("new.png", io.BytesIO(_make_png()), "image/png")},
+    )
+    assert resp.status_code == 200

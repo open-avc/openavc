@@ -6,7 +6,9 @@ Handles uploading, listing, serving, and deleting project assets
 """
 
 import json
+import os
 import re
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -132,15 +134,33 @@ def _require_active_project(project_id: str) -> None:
         )
 
 
+def _asset_files(assets_dir: Path) -> list[tuple[Path, os.stat_result]]:
+    """Each regular file in ``assets_dir``, with what one read of it said.
+
+    A file deleted between the listing and the read (another Programmer tab
+    deleting while this one lists or uploads) is left out rather than failing
+    the whole request.
+    """
+    found: list[tuple[Path, os.stat_result]] = []
+    for f in sorted(assets_dir.iterdir()):
+        try:
+            info = f.stat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISREG(info.st_mode):
+            found.append((f, info))
+    return found
+
+
 def _list_assets_metadata(assets_dir: Path) -> list[dict[str, Any]]:
     """Build the asset metadata list shared between the API and state publishing."""
     out: list[dict[str, Any]] = []
-    for f in sorted(assets_dir.iterdir()):
+    for f, info in _asset_files(assets_dir):
         ext = f.suffix.lower()
-        if f.is_file() and ext in ALLOWED_EXTENSIONS:
+        if ext in ALLOWED_EXTENSIONS:
             out.append({
                 "name": f.name,
-                "size": f.stat().st_size,
+                "size": info.st_size,
                 "extension": ext.lstrip("."),
                 "type": _asset_type(ext),
             })
@@ -205,7 +225,7 @@ def _validate_svg(content: bytes) -> None:
 
 def _get_total_size(assets_dir: Path) -> int:
     """Calculate total size of all assets."""
-    return sum(f.stat().st_size for f in assets_dir.iterdir() if f.is_file())
+    return sum(info.st_size for _f, info in _asset_files(assets_dir))
 
 
 # --- Endpoints ---

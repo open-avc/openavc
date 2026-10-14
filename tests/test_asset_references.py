@@ -11,8 +11,6 @@ Invented devices and made-up file names throughout, per the core-test rule.
 """
 
 import json
-import tempfile
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -220,18 +218,18 @@ def _png() -> bytes:
 
 
 @pytest.fixture
-def engine_client():
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-        json.dump(TEST_PROJECT, f)
-        tmp_path = f.name
+def engine_client(tmp_path):
+    # A folder of its own: the assets folder sits beside the project file.
+    project_path = tmp_path / "project.json"
+    project_path.write_text(json.dumps(TEST_PROJECT))
 
-    engine = Engine(tmp_path)
+    engine = Engine(str(project_path))
     from openavc.core.project_loader import load_project
-    engine.project = load_project(tmp_path)
+    engine.project = load_project(str(project_path))
     engine._running = True
 
-    assets_dir = Path(tmp_path).parent / "assets"
-    assets_dir.mkdir(exist_ok=True)
+    assets_dir = tmp_path / "assets"
+    assets_dir.mkdir()
     for name in ("logo.png", "spare.png"):
         (assets_dir / name).write_bytes(_png())
 
@@ -242,9 +240,6 @@ def engine_client():
     rest.set_engine(None)
     assets_api.set_engine(None)
     themes_api.set_engine(None)
-    Path(tmp_path).unlink(missing_ok=True)
-    for name in ("logo.png", "spare.png"):
-        (assets_dir / name).unlink(missing_ok=True)
 
 
 async def test_the_rest_door_refuses_an_asset_still_shown(engine_client):
