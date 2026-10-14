@@ -61,6 +61,19 @@ class TestResolving:
         assert resolved.address == "10.20.30.5"
         assert resolved.connected is False
 
+    def test_a_last_address_another_adapter_holds_now_is_not_kept(self):
+        # Wi-Fi was chosen, then Ethernet with no address: the mirror is still Wi-Fi's.
+        resolved = reach_devices.resolve(ETHERNET.identity(), [WIFI, UNPLUGGED], last="192.168.1.40")
+        assert resolved.address == "", "never Wi-Fi's address, which would send it out Wi-Fi"
+        assert resolved.connected is False
+
+    def test_a_broadcast_goes_from_the_169_254_address_of_an_adapter_holding_no_other(self):
+        no_dhcp = Adapter("Ethernet", ETHERNET.mac, (), True, (("169.254.7.7", "169.254.0.0/16"),))
+        resolved = reach_devices.resolve(ETHERNET.identity(), [WIFI, no_dhcp], last="10.20.30.5")
+        assert resolved.broadcast_source == "169.254.7.7"
+        assert reach_devices.resolve(ETHERNET.identity(), [ETHERNET]).broadcast_source == "10.20.30.5"
+        assert reach_devices.resolve(ETHERNET.identity(), [UNPLUGGED]).broadcast_source == ""
+
     def test_a_literal_address_is_bound_as_it_is(self):
         resolved = reach_devices.resolve({"address": "10.20.30.5"}, [ETHERNET])
         assert resolved.address == "10.20.30.5"
@@ -177,6 +190,33 @@ class TestTheAddressReadersBind:
 
         monkeypatch.setattr("openavc.system_config.get_system_config", broken)
         assert reach_devices.address() == ""
+
+
+class TestWhatAFanOutAsks:
+    """``pinned``: whether a broadcast or a multicast may go out through
+    every adapter, or only the chosen one, or not at all."""
+
+    def test_nothing_chosen_lets_it_go_through_every_adapter(self, monkeypatch):
+        monkeypatch.setattr(reach_devices, "choice", lambda cfg=None: {})
+        assert reach_devices.pinned() is None
+        assert reach_devices.is_chosen() is False
+
+    def test_an_adapter_chosen_answers_with_its_resolution(self, monkeypatch):
+        resolved = reach_devices.Resolved(identity=ETHERNET.identity(), address="10.20.30.5")
+        monkeypatch.setattr(reach_devices, "choice", lambda cfg=None: ETHERNET.identity())
+        monkeypatch.setattr(reach_devices, "current", lambda cfg=None, adapters=None: resolved)
+        assert reach_devices.pinned() is resolved
+        assert reach_devices.is_chosen() is True
+
+    def test_a_failed_lookup_with_an_adapter_chosen_answers_no_address(self, monkeypatch):
+        def broken(cfg=None, adapters=None):
+            raise RuntimeError("no adapters")
+
+        monkeypatch.setattr(reach_devices, "choice", lambda cfg=None: {"name": "Ethernet"})
+        monkeypatch.setattr(reach_devices, "current", broken)
+        answer = reach_devices.pinned()
+        assert answer is not None and answer.address == "", "never widen on a failed lookup"
+        assert answer.adapter_name == "Ethernet"
 
 
 class TestWhereABroadcastLeavesFrom:

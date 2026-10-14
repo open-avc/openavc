@@ -21,6 +21,7 @@ from openavc.api.models import (
     RawSendRequest,
 )
 from openavc.core.device_manager import DeviceNotFoundError
+from openavc.reach_devices import AdapterUnavailable
 from openavc.core.project_loader import ChildEntityConfig, DeviceConfig
 from openavc.core.project_migration import CONNECTION_FIELDS
 from openavc.core.required_config import (
@@ -478,6 +479,10 @@ async def send_command(device_id: str, body: CommandRequest) -> dict[str, Any]:
         raise _api_error(404, str(e), e)
     except DeviceNotFoundError as e:
         raise _api_error(404, f"Device '{device_id}' not found", e)
+    except AdapterUnavailable as e:
+        # The adapter chosen in Reach devices through, not the device: a
+        # Wake-on-LAN command runs while the device is off.
+        raise _api_error(503, str(e), e)
     except ConnectionError as e:
         raise _api_error(503, f"Device '{device_id}' is not connected", e)
     except CommandPartialError as e:

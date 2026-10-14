@@ -65,6 +65,11 @@ def _is_multicast(host: str) -> bool:
     return isinstance(ip, ipaddress.IPv4Address) and ip.is_multicast
 
 
+# Where a multicast send's copies go, as the log says it.
+_THROUGH_EVERY = "every connected adapter"
+_THROUGH_CHOSEN = "the adapter chosen in Reach devices through"
+
+
 def _log_task_exception(task: asyncio.Task) -> None:
     """Done-callback for fire-and-forget on_data tasks: surface failures that
     would otherwise vanish as a 'Task exception was never retrieved' GC warning."""
@@ -125,6 +130,8 @@ class UDPTransport:
         self._sock: socket.socket | None = None
         self._local_addr: str | None = None
         self._multicast_sources: list[str] | None = None
+        # The chosen adapter a multicast was last not sent for (its name).
+        self._unavailable_adapter = ""
         self._connected = False
         self._send_lock = asyncio.Lock()
         self.last_data_received: float = 0.0
@@ -234,20 +241,26 @@ class UDPTransport:
         on a computer with WSL or Hyper-V is the virtual switch, and the
         default route's on Linux, so the stream would reach one network or
         none. A copy that cannot be sent is skipped; with none sent, it goes
-        once, as the OS picks. A limited broadcast is not fanned out here:
-        that needs a socket bound per adapter (``BaseDriver.send_udp``).
+        once, as the OS picks. With an adapter chosen in Reach devices through
+        after the socket opened, it goes through that adapter alone, and not
+        at all while that adapter has no address (logged once, not raised: a
+        stream sends many times a second). A limited broadcast is not fanned
+        out here: that needs a socket bound per adapter
+        (``BaseDriver.send_udp``).
         """
         if self._transport is None:
             raise ConnectionError("UDP socket not open")
 
-        sources = await self._fan_out_sources(host)
+        fan_out = await self._fan_out_sources(host)
+        if fan_out is None:
+            return
+        sources, label = fan_out
 
         async with self._send_lock:
             if self._transport is None:
                 raise ConnectionError("UDP socket not open")
             try:
-                if not (sources and self._send_per_adapter(data, host, port, sources)):
-                    self._transport.sendto(data, (host, port))
+                self._send_fanned_out(data, host, port, sources, label)
             except OSError as e:
                 self._last_error = str(e) or type(e).__name__
                 log.error(f"[{self._name}] UDP send failed to {host}:{port}: {e}")
@@ -264,19 +277,58 @@ class UDPTransport:
             if self._inter_command_delay > 0:
                 await sleep_at_least(self._inter_command_delay)
 
-    async def _fan_out_sources(self, host: str) -> list[str]:
+    async def _fan_out_sources(self, host: str) -> tuple[list[str], str] | None:
         """The adapters a datagram to ``host`` goes out through one copy
-        each: every connected adapter for a multicast group from a socket
-        opened with no address, otherwise none (one send, as the OS or the
-        bound address picks)."""
+        each, and how the log names them: for a multicast group from a socket
+        opened with no address, every connected adapter, or with an adapter
+        chosen in Reach devices through since the socket opened, that adapter
+        alone; otherwise none (one send, as the OS or the bound address
+        picks). None: an adapter is chosen and it has no address, so the
+        datagram is not sent at all, never through another adapter
+        (``reach_devices.pinned``)."""
         if self._local_addr is not None or self._sock is None or not _is_multicast(host):
-            return []
+            return [], ""
         from openavc import reach_devices
 
-        return await reach_devices.kept_broadcast_sources()
+        if reach_devices.is_chosen():
+            chosen = await asyncio.to_thread(reach_devices.pinned)
+            if chosen is not None:
+                if not chosen.broadcast_source:
+                    self._note_not_sent(host, chosen.adapter_name)
+                    return None
+                return [chosen.broadcast_source], _THROUGH_CHOSEN
+        return await reach_devices.kept_broadcast_sources(), _THROUGH_EVERY
+
+    def _note_not_sent(self, host: str, adapter_name: str) -> None:
+        """Say once, not per datagram, that a multicast stream stopped."""
+        self._unavailable_adapter = adapter_name
+        if self._multicast_sources == []:
+            return
+        self._multicast_sources = []
+        log.warning(
+            f"[{self._name}] Multicast to {host} not sent: "
+            f"{adapter_name or 'the adapter chosen in Reach devices through'} "
+            f"isn't connected"
+        )
+
+    def _send_fanned_out(
+        self, data: bytes, host: str, port: int, sources: list[str], label: str,
+    ) -> None:
+        """Send through ``sources`` when there are any, otherwise once as the
+        OS or the bound address picks. With every adapter, a datagram no
+        copy of which went out still goes once that way; through the chosen
+        adapter it does not, which would let the OS pick another: the send
+        fails instead."""
+        if sources and self._send_per_adapter(data, host, port, sources, label):
+            return
+        if sources and label == _THROUGH_CHOSEN:
+            raise ConnectionError(
+                f"Multicast to {host}:{port} through {sources[0]} failed"
+            )
+        self._transport.sendto(data, (host, port))
 
     def _send_per_adapter(
-        self, data: bytes, host: str, port: int, sources: list[str],
+        self, data: bytes, host: str, port: int, sources: list[str], label: str,
     ) -> bool:
         """One copy through each of ``sources``, the multicast interface set
         before each, sent from this transport's own socket. Not through
@@ -312,7 +364,7 @@ class UDPTransport:
             self._multicast_sources = sent
             log.info(
                 f"[{self._name}] Multicast to {host}:{port} goes out through "
-                f"{', '.join(sent)} (every connected adapter)"
+                f"{', '.join(sent)} ({label})"
             )
         return True
 
@@ -321,8 +373,9 @@ class UDPTransport:
 
         Used for query/response protocols. Sends to the default target
         and waits for any incoming datagram as the response. A multicast
-        target goes out once through every connected adapter, as
-        :meth:`send_to` says.
+        target goes out once through every connected adapter, or through
+        the adapter chosen in Reach devices through, as :meth:`send_to` says;
+        while that adapter has no address it is not sent (ConnectionError).
 
         Args:
             data: The datagram payload to send.
@@ -341,7 +394,12 @@ class UDPTransport:
             )
         if self._transport is None:
             raise ConnectionError("UDP socket not open")
-        sources = await self._fan_out_sources(self.host)
+        fan_out = await self._fan_out_sources(self.host)
+        if fan_out is None:
+            from openavc import reach_devices
+
+            raise reach_devices.AdapterUnavailable(self._unavailable_adapter)
+        sources, label = fan_out
 
         async with self._send_lock:
             if self._transport is None:
@@ -351,8 +409,7 @@ class UDPTransport:
             while not self._response_queue.empty():
                 self._response_queue.get_nowait()
             try:
-                if not (sources and self._send_per_adapter(data, self.host, self.port, sources)):
-                    self._transport.sendto(data, (self.host, self.port))
+                self._send_fanned_out(data, self.host, self.port, sources, label)
             except OSError as e:
                 self._waiting_for_response = False
                 log.error(

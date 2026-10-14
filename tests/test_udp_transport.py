@@ -327,11 +327,16 @@ class _RecordingSocket:
         self.calls.append(("send", self._interface, addr))
 
 
-async def _multicast_transport(monkeypatch, sources, local_addr=None, refuse=(), host=None, port=None):
+async def _multicast_transport(
+    monkeypatch, sources, local_addr=None, refuse=(), host=None, port=None, chosen=None,
+):
     """An Acme lighting transport on a machine whose connected adapters are
-    ``sources``; returns it, its recording socket, and what went through
-    asyncio's transport instead."""
+    ``sources``, and ``chosen`` the adapter Reach devices through names after
+    the socket opened (None: every adapter); returns it, its recording
+    socket, and what went through asyncio's transport instead."""
     monkeypatch.setattr(reach_devices, "broadcast_sources", lambda: list(sources))
+    monkeypatch.setattr(reach_devices, "is_chosen", lambda: chosen is not None)
+    monkeypatch.setattr(reach_devices, "pinned", lambda: chosen)
     t = UDPTransport(host=host, port=port, name="acme_lights")
     await t.open(local_addr=local_addr)
     recording = _RecordingSocket(refuse)
@@ -397,6 +402,76 @@ async def test_with_no_copy_sent_it_goes_once_as_the_os_picks(monkeypatch, sourc
         await t.close()
     assert [call for call in recording.calls if call[0] == "send"] == []
     assert direct == [GROUP]
+
+
+ETHERNET_CHOSEN = reach_devices.Resolved(
+    identity={"name": "Ethernet"}, address="10.20.30.5", adapter_name="Ethernet",
+)
+ETHERNET_GONE = reach_devices.Resolved(
+    identity={"name": "Ethernet"}, adapter_name="Ethernet", connected=False,
+)
+
+
+async def test_an_adapter_chosen_after_the_socket_opened_takes_every_copy(monkeypatch):
+    t, recording, direct = await _multicast_transport(
+        monkeypatch, ["10.20.30.5", "192.168.1.40"], chosen=ETHERNET_CHOSEN,
+    )
+    try:
+        await t.send_to(b"DMX", *GROUP)
+    finally:
+        await t.close()
+    assert recording.calls == [
+        ("interface", "10.20.30.5"), ("send", "10.20.30.5", GROUP), ("interface", "0.0.0.0"),
+    ]
+    assert direct == []
+
+
+async def test_a_chosen_adapter_holding_only_a_169_254_address_takes_the_copy(monkeypatch):
+    no_dhcp = reach_devices.Resolved(
+        identity={"name": "Ethernet"}, adapter_name="Ethernet", connected=False,
+        link_local_address="169.254.7.7",
+    )
+    t, recording, direct = await _multicast_transport(
+        monkeypatch, ["192.168.1.40", "169.254.7.7"], chosen=no_dhcp,
+    )
+    try:
+        await t.send_to(b"DMX", *GROUP)
+    finally:
+        await t.close()
+    assert [call for call in recording.calls if call[0] == "send"] == [("send", "169.254.7.7", GROUP)]
+    assert direct == []
+
+
+async def test_a_chosen_adapter_with_no_address_sends_nothing_anywhere(monkeypatch, caplog):
+    t, recording, direct = await _multicast_transport(
+        monkeypatch, ["10.20.30.5", "192.168.1.40"], chosen=ETHERNET_GONE,
+    )
+    try:
+        with caplog.at_level("WARNING", logger="openavc.transport.udp"):
+            await t.send_to(b"DMX", *GROUP)
+            await t.send_to(b"DMX", *GROUP)
+        with pytest.raises(reach_devices.AdapterUnavailable, match="Ethernet isn't connected"):
+            t.host, t.port = GROUP
+            await t.send_and_wait(b"STATUS?", timeout=0.1)
+    finally:
+        await t.close()
+    assert recording.calls == [] and direct == [], "never through the other adapters"
+    assert t.send_count == 0
+    said = [r.message for r in caplog.records if "not sent" in r.message]
+    assert len(said) == 1 and "Ethernet isn't connected" in said[0], "once, not per datagram"
+
+
+async def test_a_copy_the_chosen_adapter_cannot_send_is_not_sent_another_way(monkeypatch):
+    t, recording, direct = await _multicast_transport(
+        monkeypatch, ["10.20.30.5", "192.168.1.40"], refuse={"10.20.30.5"}, chosen=ETHERNET_CHOSEN,
+    )
+    try:
+        with pytest.raises(ConnectionError, match="through 10.20.30.5 failed"):
+            await t.send_to(b"DMX", *GROUP)
+    finally:
+        await t.close()
+    assert [call for call in recording.calls if call[0] == "send"] == []
+    assert direct == []
 
 
 async def test_a_multicast_query_goes_once_through_every_adapter(monkeypatch):

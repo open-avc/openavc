@@ -101,6 +101,7 @@ def _no_adapters(monkeypatch):
 
 def _adapters(monkeypatch, *addresses: str) -> None:
     monkeypatch.setattr(reach_devices, "broadcast_sources", lambda: list(addresses))
+    monkeypatch.setattr(reach_devices, "pinned", lambda: None)
 
 
 class _CaptureUdp:
@@ -454,6 +455,35 @@ def test_a_chosen_adapter_sends_the_one_broadcast(monkeypatch):
     drv, cap = _python_driver()
     asyncio.run(drv.send_udp(b"hi", port=7000, broadcast=True))
     assert cap.sent_from == [("192.168.50.3", "255.255.255.255", 7000)]
+
+
+def test_a_chosen_adapter_with_no_address_sends_nothing_anywhere(monkeypatch):
+    _adapters(monkeypatch, "10.0.0.2", "192.168.50.3")
+    monkeypatch.setattr(reach_devices, "address", lambda: "")
+    monkeypatch.setattr(reach_devices, "pinned", lambda: reach_devices.Resolved(
+        identity={"name": "Ethernet"}, adapter_name="Ethernet", connected=False,
+    ))
+    drv, cap = _python_driver()
+    with pytest.raises(reach_devices.AdapterUnavailable, match="Not sent: Ethernet isn't connected"):
+        asyncio.run(drv.send_udp(b"hi", port=7000, broadcast=True))
+    with pytest.raises(reach_devices.AdapterUnavailable, match="Ethernet isn't connected"):
+        asyncio.run(drv.wake_on_lan(MAC))
+    assert cap.sent == [], "not through the other adapters, and not unbound"
+    drv.udp_redirect = ("127.0.0.1", 19123)
+    asyncio.run(drv.send_udp(b"hi", port=7000, broadcast=True))
+    assert cap.sent_from == [(None, "127.0.0.1", 19123)], "the simulator is on this computer"
+
+
+def test_a_chosen_adapter_holding_only_a_169_254_address_broadcasts_from_it(monkeypatch):
+    _adapters(monkeypatch, "10.0.0.2", "169.254.7.7")
+    monkeypatch.setattr(reach_devices, "address", lambda: "")
+    monkeypatch.setattr(reach_devices, "pinned", lambda: reach_devices.Resolved(
+        identity={"name": "Ethernet"}, adapter_name="Ethernet", connected=False,
+        link_local_address="169.254.7.7",
+    ))
+    drv, cap = _python_driver()
+    asyncio.run(drv.send_udp(b"hi", port=7000, broadcast=True))
+    assert cap.sent_from == [("169.254.7.7", "255.255.255.255", 7000)], "that network alone"
 
 
 def test_a_subnet_broadcast_a_host_and_the_simulator_each_get_one_datagram(monkeypatch):

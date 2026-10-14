@@ -19,7 +19,16 @@ tick, with no restart.
 then fails to leave this computer rather than going out through another
 network, which is what choosing one adapter was for, and every surface that
 already explains an address no adapter holds (discovery, the Discovery view)
-explains it. Same rule as Accept connections from: never widen.
+explains it. Same rule as Accept connections from: never widen. The last
+address is the rollback mirror, which right after a change of choice is
+still the previous choice's, so one another adapter holds now is not kept.
+
+**Broadcasts and multicast never widen either.** With nothing chosen they go
+out once through every connected adapter (:func:`broadcast_sources`); with an
+adapter chosen, from its address alone (:attr:`Resolved.broadcast_source`:
+its 169.254 address when it holds no other, a network with no DHCP server),
+and when it has nothing to send from they are not sent (:func:`pinned`,
+asked by ``BaseDriver.send_udp`` and ``UDPTransport``).
 
 **A device at a 169.254 address** is reached from the chosen adapter's own
 169.254 address (:func:`link_local_address`), and told to post its updates
@@ -83,6 +92,15 @@ class Resolved:
     connected: bool = True
     link_local_address: str = ""
 
+    @property
+    def broadcast_source(self) -> str:
+        """Where a broadcast or a multicast goes out from with this adapter
+        chosen: its 169.254 address when it holds no other (a network with no
+        DHCP server), otherwise ``address``; "" for nothing to send from."""
+        if not self.connected and self.link_local_address:
+            return self.link_local_address
+        return self.address
+
     def to_dict(self) -> dict[str, Any]:
         every = not self.identity
         return {
@@ -136,6 +154,11 @@ def resolve(identity: dict[str, str], adapters: Iterable[Any], last: str = "") -
     name = adapter.name if adapter else identity.get("name", "")
     link_local = adapter.link_local[0][0] if adapter is not None and adapter.link_local else ""
     if adapter is None or not adapter.ips:
+        # Never an address another adapter holds now: the mirror can still be
+        # the choice before this one's, and binding it would send this
+        # adapter's traffic out through that one.
+        if any(last in other.ips for other in adapters if other is not adapter):
+            last = ""
         return Resolved(
             identity=identity, address=last, adapter_name=name, connected=False,
             link_local_address=link_local,
@@ -215,6 +238,57 @@ def link_local_address() -> str:
     except Exception:  # never fail a connect over the lookup
         log.debug("Reach devices through: lookup failed", exc_info=True)
         return ""
+
+
+class AdapterUnavailable(ConnectionError):
+    """A broadcast or a multicast not sent: the adapter chosen in Reach
+    devices through has nothing to send it from, and it never goes out
+    another. A ConnectionError, so whatever catches a failed send still
+    does; the message is the sentence a person reads, which the command
+    route and ``api/error_messages.friendly_error`` pass on as it is (the
+    device is not what is missing)."""
+
+    def __init__(self, adapter_name: str = "") -> None:
+        self.adapter_name = adapter_name
+        super().__init__(
+            f"Not sent: {adapter_name or 'the adapter chosen in Reach devices through'} "
+            f"isn't connected. Connect it, or choose another adapter in "
+            f"Settings > Network > Reach devices through."
+        )
+
+
+def is_chosen() -> bool:
+    """Whether an adapter is chosen: the stored choice only, no enumeration,
+    so a sender can ask it per datagram."""
+    try:
+        return bool(choice())
+    except Exception:  # no config to read: nothing is chosen
+        log.debug("Reach devices through: lookup failed", exc_info=True)
+        return False
+
+
+def pinned() -> Resolved | None:
+    """The choice resolved when an adapter is chosen, or None with every
+    adapter. Blocking when the kept answer is stale (it enumerates).
+
+    Asked where a datagram would otherwise go out through every adapter
+    (``BaseDriver.send_udp``'s broadcast, ``UDPTransport``'s multicast): with
+    an adapter chosen it goes from ``address`` alone, and when that is empty
+    it is not sent, never through the other adapters. A lookup that fails
+    with an adapter chosen answers with no address for the same reason.
+    """
+    try:
+        identity = choice()
+    except Exception:  # no config to read: nothing is chosen
+        log.debug("Reach devices through: lookup failed", exc_info=True)
+        return None
+    if not identity:
+        return None
+    try:
+        return current()
+    except Exception:
+        log.debug("Reach devices through: lookup failed", exc_info=True)
+        return Resolved(identity=identity, adapter_name=identity.get("name", ""), connected=False)
 
 
 def missing_link_local(host: Any) -> Resolved | None:

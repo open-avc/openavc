@@ -273,6 +273,26 @@ def test_a_drivers_own_value_error_is_not_a_missing_device(client):
     assert "ERR7" not in detail
 
 
+def test_a_broadcast_refused_for_the_chosen_adapter_is_not_a_disconnected_device(client):
+    """A Wake-on-LAN command runs while the device is off; when the adapter
+    chosen in Reach devices through has no address the refusal names the
+    adapter, at the command door and in the sentence a panel shows."""
+    from openavc.api.error_messages import friendly_error
+    from openavc.reach_devices import AdapterUnavailable
+
+    c, engine = client
+    refused = AdapterUnavailable("en9")
+    engine.devices.send_command = AsyncMock(side_effect=refused)
+    resp = c.post("/api/devices/dev1/command", json={"command": "power_on"})
+    assert resp.status_code == 503
+    assert resp.json()["detail"] == str(refused)
+    assert str(refused).startswith("Not sent: en9 isn't connected.")
+    assert friendly_error(refused, device="Lobby Display") == str(refused)
+    assert friendly_error(ConnectionError("Device 'dev1' is not connected"), device="Lobby Display") == (
+        "Lobby Display is not connected."
+    ), "a device that really is not connected still says so"
+
+
 def test_the_action_door_does_not_call_it_a_missing_device_either(client):
     c, engine = client
     engine.devices.send_command = AsyncMock(side_effect=_DRIVER_FAULT)

@@ -2009,7 +2009,11 @@ class BaseDriver(ABC):
         through goes out once through every connected adapter, from its
         address (``reach_devices.broadcast_sources``): sent unbound, it would
         leave through the one adapter the OS picks. An adapter that cannot
-        send is skipped; with none to send from, it goes once, unbound.
+        send is skipped; with none to send from, it goes once, unbound. With
+        an adapter chosen it goes from that adapter alone (its 169.254 address
+        when it holds no other), and when it has nothing to send from it is
+        not sent: ``reach_devices.AdapterUnavailable`` (a ConnectionError),
+        never another adapter (``reach_devices.pinned``).
 
         This is the primitive under a YAML command's ``udp:`` block and under
         :meth:`wake_on_lan`; a Python driver that needs a datagram beside its
@@ -2037,6 +2041,14 @@ class BaseDriver(ABC):
         # Bound for where it really goes: the simulator's redirect is local.
         bound = self.local_address(target[0])
         sources: list[str] = []
+        if target[0] == LIMITED_BROADCAST:
+            from openavc import reach_devices
+
+            chosen = await asyncio.to_thread(reach_devices.pinned)
+            if chosen is not None:
+                bound = chosen.broadcast_source or None
+                if bound is None:
+                    raise reach_devices.AdapterUnavailable(chosen.adapter_name)
         if bound is None and target[0] == LIMITED_BROADCAST:
             from openavc import reach_devices
 

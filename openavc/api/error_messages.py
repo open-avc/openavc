@@ -92,6 +92,13 @@ def friendly_error(exc: Exception, device: str = "", host: str = "") -> str:
         # needs to go and look at anything, they need to wait. Read off the
         # attribute rather than the message so the sentence can be reworded
         # without this branch quietly stopping to match.
+        # A broadcast or multicast refused because the adapter chosen in Reach
+        # devices through has no address: the device is not what is missing,
+        # and the refusal already says what to do.
+        from openavc.reach_devices import AdapterUnavailable
+
+        if isinstance(exc, AdapterUnavailable):
+            return msg
         restart_seconds = getattr(exc, "restart_seconds", None)
         if restart_seconds is not None:
             unit = "second" if restart_seconds == 1 else "seconds"
