@@ -327,12 +327,12 @@ class _RecordingSocket:
         self.calls.append(("send", self._interface, addr))
 
 
-async def _multicast_transport(monkeypatch, sources, local_addr=None, refuse=()):
+async def _multicast_transport(monkeypatch, sources, local_addr=None, refuse=(), host=None, port=None):
     """An Acme lighting transport on a machine whose connected adapters are
     ``sources``; returns it, its recording socket, and what went through
     asyncio's transport instead."""
     monkeypatch.setattr(reach_devices, "broadcast_sources", lambda: list(sources))
-    t = UDPTransport(name="acme_lights")
+    t = UDPTransport(host=host, port=port, name="acme_lights")
     await t.open(local_addr=local_addr)
     recording = _RecordingSocket(refuse)
     t._sock = recording
@@ -397,3 +397,24 @@ async def test_with_no_copy_sent_it_goes_once_as_the_os_picks(monkeypatch, sourc
         await t.close()
     assert [call for call in recording.calls if call[0] == "send"] == []
     assert direct == [GROUP]
+
+
+async def test_a_multicast_query_goes_once_through_every_adapter(monkeypatch):
+    t, recording, direct = await _multicast_transport(
+        monkeypatch, ["10.20.30.5", "192.168.1.40"], host=GROUP[0], port=GROUP[1]
+    )
+
+    async def answer():
+        await asyncio.sleep(0.05)
+        t._deliver_message(b"OK", ("10.20.30.9", GROUP[1]))
+
+    reply = asyncio.create_task(answer())
+    try:
+        assert await t.send_and_wait(b"STATUS?", timeout=2.0) == b"OK"
+    finally:
+        await reply
+        await t.close()
+    assert [call for call in recording.calls if call[0] == "send"] == [
+        ("send", "10.20.30.5", GROUP), ("send", "192.168.1.40", GROUP),
+    ]
+    assert direct == []

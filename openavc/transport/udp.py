@@ -240,11 +240,7 @@ class UDPTransport:
         if self._transport is None:
             raise ConnectionError("UDP socket not open")
 
-        sources: list[str] = []
-        if self._local_addr is None and self._sock is not None and _is_multicast(host):
-            from openavc import reach_devices
-
-            sources = await reach_devices.kept_broadcast_sources()
+        sources = await self._fan_out_sources(host)
 
         async with self._send_lock:
             if self._transport is None:
@@ -267,6 +263,17 @@ class UDPTransport:
             )
             if self._inter_command_delay > 0:
                 await sleep_at_least(self._inter_command_delay)
+
+    async def _fan_out_sources(self, host: str) -> list[str]:
+        """The adapters a datagram to ``host`` goes out through one copy
+        each: every connected adapter for a multicast group from a socket
+        opened with no address, otherwise none (one send, as the OS or the
+        bound address picks)."""
+        if self._local_addr is not None or self._sock is None or not _is_multicast(host):
+            return []
+        from openavc import reach_devices
+
+        return await reach_devices.kept_broadcast_sources()
 
     def _send_per_adapter(
         self, data: bytes, host: str, port: int, sources: list[str],
@@ -313,7 +320,9 @@ class UDPTransport:
         """Send a datagram and wait for the next response.
 
         Used for query/response protocols. Sends to the default target
-        and waits for any incoming datagram as the response.
+        and waits for any incoming datagram as the response. A multicast
+        target goes out once through every connected adapter, as
+        :meth:`send_to` says.
 
         Args:
             data: The datagram payload to send.
@@ -332,14 +341,18 @@ class UDPTransport:
             )
         if self._transport is None:
             raise ConnectionError("UDP socket not open")
+        sources = await self._fan_out_sources(self.host)
 
         async with self._send_lock:
+            if self._transport is None:
+                raise ConnectionError("UDP socket not open")
             self._waiting_for_response = True
             # Clear any stale responses
             while not self._response_queue.empty():
                 self._response_queue.get_nowait()
             try:
-                self._transport.sendto(data, (self.host, self.port))
+                if not (sources and self._send_per_adapter(data, self.host, self.port, sources)):
+                    self._transport.sendto(data, (self.host, self.port))
             except OSError as e:
                 self._waiting_for_response = False
                 log.error(
