@@ -644,6 +644,10 @@ class NetworkCheck:
             )
         except ValueError:
             fp.same_subnet = None
+        # The subnet list leaves 169.254 out; a 169.254 device reached from a
+        # 169.254 address is on this computer's own link all the same.
+        if fp.same_subnet is False and is_link_local(fp.ip) and is_link_local(fp.local_ip):
+            fp.same_subnet = True
 
     async def _address(self) -> None:
         fp = self.footprint

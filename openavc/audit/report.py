@@ -23,7 +23,8 @@
   exists yet), and the ``tester``'s name, company, email and notes (all
   optional).
 - ``target``: the ``address`` as typed, the ``ip`` it resolved to, the reverse
-  DNS ``hostname``, ``same_subnet`` (on one of this computer's subnets), the
+  DNS ``hostname``, ``same_subnet`` (on one of this computer's subnets, or a
+  169.254 device the check reached from a 169.254 address), the
   ``local_ip`` and ``interface`` the check used, and ``serial_port`` (none
   yet).
 - ``device``: manufacturer, model and firmware as the person entered them on

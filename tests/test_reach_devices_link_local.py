@@ -523,6 +523,38 @@ class TestTheAuditsNetworkCheck:
         choose(ETHERNET.identity(), [ETHERNET_LL])
         assert self._check(DEVICE, source_ip="10.20.30.5").source_ip == "10.20.30.5"
 
+    @pytest.mark.parametrize("identity, adapters, routed, expected", [
+        (ETHERNET.identity(), [ETHERNET_LL], "10.20.30.5", True),
+        ({}, [ETHERNET_LL], OUR_LINK_LOCAL, True),  # the OS picked the 169.254 source
+        (ETHERNET.identity(), [ETHERNET], "10.20.30.5", False),  # none held
+    ])
+    def test_a_169_254_device_reached_from_one_is_on_this_network(
+        self, choose, monkeypatch, identity, adapters, routed, expected,
+    ):
+        from openavc.audit import footprint
+
+        choose(identity, adapters)
+        monkeypatch.setattr(footprint, "get_network_adapters", lambda: [])
+        monkeypatch.setattr(footprint, "get_local_subnets", lambda: ["10.20.30.0/24"])
+        monkeypatch.setattr(footprint, "local_route_ip", lambda ip: routed)
+        check = self._check(DEVICE)
+        check._network_facts()
+        assert check.footprint.same_subnet is expected
+
+    @pytest.mark.asyncio
+    async def test_an_unread_mac_is_not_blamed_on_another_network(self, choose, monkeypatch):
+        from openavc.audit import footprint
+
+        choose(ETHERNET.identity(), [ETHERNET_LL])
+        monkeypatch.setattr(footprint, "get_network_adapters", lambda: [])
+        monkeypatch.setattr(footprint, "get_local_subnets", lambda: ["10.20.30.0/24"])
+        monkeypatch.setattr(footprint, "harvest_arp_table", AsyncMock(return_value={}))
+        check = self._check(DEVICE)
+        check._network_facts()
+        await check._late_mac()
+        assert [limit["id"] for limit in check.footprint.to_dict()["limits"]
+                if limit["id"].startswith("mac_")] == ["mac_unread"]
+
 
 # ---------------------------------------------------------------------------
 # Where a device is told to post its updates (push: http_listener)
