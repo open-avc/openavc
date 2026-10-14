@@ -807,6 +807,11 @@ class BaseDriver(ABC):
         self._hold_next_connect = False
         self._held = False
         self._answer_waiter: asyncio.Future[bool] | None = None
+        # Set while connect() builds its transport, verifies it and runs the
+        # handshake. A drop in that window resolves it instead of starting the
+        # usual teardown: the connect is still running, so its failure is the
+        # one report of this connection (_handle_transport_disconnect).
+        self._connect_drop: asyncio.Future[None] | None = None
         # Registered child entities: {child_type: {local_id: register_epoch}}.
         # The inner mapping is a dict (not a set) so it preserves insertion
         # order, which makes list_children() output stable for tests and IDE
@@ -1047,7 +1052,8 @@ class BaseDriver(ABC):
         5. Handshake: _post_connect() runs logins/negotiation before
            `connected` is declared; then the canonical declare — internal
            flag, ``connected`` state key, the ``device.connected.<id>``
-           event.
+           event. A connection that drops anywhere in stages 3 to 5 ends the
+           handshake and fails the connect at once (_run_handshake).
         6. Tail: push subscription, _initial_sync() hook (identity reads,
            rosters, keep-alive loops), then polling and the liveness
            watchdog.
@@ -1126,45 +1132,56 @@ class BaseDriver(ABC):
         # Stage 3 — establishment: driver-owned setup hook, then the
         # transport (or driver-owned session) itself.
         await self._pre_connect()
-        await self._create_transport(transport_type)
+        # From the moment the transport exists until the handshake settles, a
+        # drop of this connection is this connect's to report (_run_handshake).
+        dropped: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+        self._connect_drop = dropped
+        try:
+            await self._create_transport(transport_type)
 
-        # For connectionless transports (OSC, HTTP), verify the remote host
-        # is actually reachable before reporting connected. TCP and serial
-        # validate during open/create. UDP is genuinely connectionless and
-        # has no transport-level probe: a UDP device is noticed going away by
-        # its polls drawing no replies (the poll loop's silence check, for a
-        # driver that reads replies; an awaited poll that raises does the
-        # same) or by a liveness probe (a YAML `liveness:` block / a Python
-        # override of _liveness_probe). A UDP driver with none of those reads
-        # connected against a dead host forever.
-        # Set verify_timeout: 0 in config to skip the pre-connect probe on
-        # OSC/HTTP.
-        verify_timeout = self.config.get("verify_timeout", 3.0)
-        if verify_timeout > 0 and hasattr(self.transport, "verify"):
-            if not await self.transport.verify(timeout=verify_timeout):
-                # Retain the transport's underlying cause (refused / timeout)
-                # before tearing it down — the raise below only says "not
-                # responding", which the classifier would read as no_response.
-                # A transport that keeps the exception (HTTP) passes it on as
-                # this one's cause, since a refusal can live in its chain alone.
-                cause = getattr(self.transport, "verify_error", None)
-                if not isinstance(cause, BaseException):
-                    cause = None
-                self._stash_transport_error()
-                if self.transport:
-                    await self.transport.close()
-                    self.transport = None
-                raise ConnectionError(
-                    f"Device at {self.config.get('host', '?')}:"
-                    f"{self.config.get('port', '?')} is not responding"
-                ) from cause
+            # For connectionless transports (OSC, HTTP), verify the remote
+            # host is actually reachable before reporting connected. TCP and
+            # serial validate during open/create. UDP is genuinely
+            # connectionless and has no transport-level probe: a UDP device is
+            # noticed going away by its polls drawing no replies (the poll
+            # loop's silence check, for a driver that reads replies; an
+            # awaited poll that raises does the same) or by a liveness probe
+            # (a YAML `liveness:` block / a Python override of
+            # _liveness_probe). A UDP driver with none of those reads
+            # connected against a dead host forever.
+            # Set verify_timeout: 0 in config to skip the pre-connect probe on
+            # OSC/HTTP.
+            verify_timeout = self.config.get("verify_timeout", 3.0)
+            if verify_timeout > 0 and hasattr(self.transport, "verify"):
+                if not await self.transport.verify(timeout=verify_timeout):
+                    # Retain the transport's underlying cause (refused /
+                    # timeout) before tearing it down — the raise below only
+                    # says "not responding", which the classifier would read
+                    # as no_response. A transport that keeps the exception
+                    # (HTTP) passes it on as this one's cause, since a refusal
+                    # can live in its chain alone.
+                    cause = getattr(self.transport, "verify_error", None)
+                    if not isinstance(cause, BaseException):
+                        cause = None
+                    self._stash_transport_error()
+                    if self.transport:
+                        await self.transport.close()
+                        self.transport = None
+                    raise ConnectionError(
+                        f"Device at {self.config.get('host', '?')}:"
+                        f"{self.config.get('port', '?')} is not responding"
+                    ) from cause
+        except BaseException:
+            if self._connect_drop is dropped:
+                self._connect_drop = None
+            raise
 
         try:
             # Device-specific session setup (e.g. an SSH/CLI driver entering
             # privileged mode and disabling output paging) runs before we
             # report connected so the first poll sees a ready session. A raise
             # here aborts the connection and the transport is cleaned up below.
-            await self._post_connect()
+            await self._run_handshake()
             self._connected = True
             if hold and (self._health_enabled() or self._watches_for_silence()):
                 # Sends, polling and the liveness probe run as usual;
@@ -2047,6 +2064,75 @@ class BaseDriver(ABC):
         connection (the caller closes the transport and the driver session).
         Default: no-op.
         """
+
+    async def _run_handshake(self) -> None:
+        """Run :meth:`_post_connect`, ending it the moment the connection drops.
+
+        A handshake waits for the device (a banner, a prompt, a login
+        verdict). When the connection closes under it, waiting on would only
+        run out its own timeout and fail with its own complaint, the cause
+        long gone with the transport, while the drop's handler started a
+        retry beside a connect that was still running. So the drop wins: the
+        handshake is cancelled and the connect fails at once with what the
+        transport said (:meth:`_dropped_error`). A handshake that had already
+        failed with a typed fault (a refused login) keeps it. A drop that
+        lands as the handshake finishes still fails the connect, so a device
+        is never declared connected on a connection already gone.
+
+        ``_connect_drop`` is cleared before this returns or raises, so a drop
+        after it (a held connection, a running session) takes the usual path.
+        """
+        dropped = self._connect_drop
+        if dropped is None:
+            await self._post_connect()
+            return
+        handshake: asyncio.Future[None] | None = None
+        try:
+            if not dropped.done():
+                handshake = asyncio.ensure_future(self._post_connect())
+                await asyncio.wait(
+                    (handshake, dropped), return_when=asyncio.FIRST_COMPLETED,
+                )
+                if not dropped.done():
+                    handshake.result()  # its own outcome: returns or raises
+                    return
+            if (
+                handshake is not None
+                and handshake.done()
+                and not handshake.cancelled()
+                and typed_fault_from_exc(handshake.exception()) is not None
+            ):
+                raise handshake.exception()  # type: ignore[misc]
+            raise self._dropped_error()
+        finally:
+            # A connect started meanwhile (the Reconnect button) holds its own.
+            if self._connect_drop is dropped:
+                self._connect_drop = None
+            if handshake is not None and not handshake.done():
+                handshake.cancel()
+                await asyncio.wait((handshake,))
+                if not handshake.cancelled():
+                    handshake.exception()  # seen, so it is not logged as lost
+
+    def _dropped_error(self) -> ConnectionError:
+        """Why the connection closed under a connect, in the transport's words.
+
+        A fault the driver stashed as it dropped the link
+        (:meth:`_force_disconnect`, a refused login read by its reader) is
+        raised typed, so it stays a refused login and the retries pause. Else
+        the transport's last line, or the taxonomy's own sentence when the
+        device closed without a word (a plain goodbye leaves none).
+        """
+        fault = self._last_fault
+        if fault is not None:
+            return ConnectionFaultError(fault.message, code=fault.code)
+        said = ""
+        if self.transport is not None:
+            said = getattr(self.transport, "last_error", "") or ""
+        lines = [line.strip() for line in said.splitlines() if line.strip()]
+        if lines:
+            return ConnectionError(lines[-1])
+        return ConnectionError(default_fault_message(TRANSPORT_DISCONNECTED))
 
     async def _initial_sync(self) -> None:
         """Hook: one-time initialization after the device is declared
@@ -3224,9 +3310,19 @@ class BaseDriver(ABC):
         Sets connected state to False, then schedules cleanup (stop polling,
         close the now-dead transport, emit the disconnect event). Override for
         custom disconnect behavior.
+
+        A drop while connect() is still building or handshaking ends that
+        connect instead (_run_handshake): it closes what it opened and its
+        failure is the one report, so nothing is scheduled here and no
+        disconnect is emitted for a connection that never came up.
         """
         self._connected = False
         self.set_state("connected", False)
+        dropped = self._connect_drop
+        if dropped is not None:
+            if not dropped.done():
+                dropped.set_result(None)
+            return
         if self._held:
             log.info(f"[{self.device_id}] Connection closed before the device answered")
         else:
