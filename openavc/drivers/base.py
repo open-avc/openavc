@@ -658,6 +658,39 @@ def magic_packet(mac: str) -> bytes:
     return b"\xff" * 6 + bytes.fromhex(normalized.replace(":", "")) * 16
 
 
+def _verify_failure_error(
+    said: str, cause: BaseException | None, host: Any, port: Any, transport: str,
+) -> ConnectionError:
+    """What a connect raises when the transport's verify step failed.
+
+    "Device at <host>:<port> is not responding", unless the transport said
+    why in a line of its own (ssh's "Connection refused" for a closed port):
+    then that line, so the log's "Failed to connect" names the reason the
+    device card shows. The line has to say that reason by itself (an HTTP
+    refusal lives in the exception's chain, not in httpx's words). When none
+    does, or the card's reason is ``no_response`` or a plain drop, "is not
+    responding" stays: that sentence is what makes the card say
+    ``no_response``. ``said`` is the transport's ``last_error``.
+    """
+    not_responding = ConnectionError(f"Device at {host}:{port} is not responding")
+    not_responding.__cause__ = cause
+    lines = [line.strip() for line in (said or "").splitlines() if line.strip()]
+    if not lines:
+        return not_responding
+    fault = classify_connection_fault(
+        last_error=said, exc=not_responding, host=str(host), port=port, transport=transport,
+    )
+    if fault.code in (NO_RESPONSE, TRANSPORT_DISCONNECTED):
+        return not_responding
+    for line in reversed(lines):
+        alone = classify_connection_fault(
+            last_error=line, exc=None, host=str(host), port=port, transport=transport,
+        )
+        if alone.code == fault.code:
+            return ConnectionError(line)
+    return not_responding
+
+
 class BaseDriver(ABC):
     """Abstract base class for all device drivers."""
 
@@ -1243,11 +1276,11 @@ class BaseDriver(ABC):
                 if not await self.transport.verify(timeout=verify_timeout):
                     self._raise_if_ended(attempt)
                     # Retain the transport's underlying cause (refused /
-                    # timeout) before tearing it down — the raise below only
-                    # says "not responding", which the classifier would read
-                    # as no_response. A transport that keeps the exception
-                    # (HTTP) passes it on as this one's cause, since a refusal
-                    # can live in its chain alone.
+                    # timeout) before tearing it down: on its own the raise
+                    # below says "not responding", which the classifier would
+                    # read as no_response. A transport that keeps the
+                    # exception (HTTP) passes it on as this one's cause, since
+                    # a refusal can live in its chain alone.
                     cause = getattr(self.transport, "verify_error", None)
                     if not isinstance(cause, BaseException):
                         cause = None
@@ -1255,9 +1288,10 @@ class BaseDriver(ABC):
                     if self.transport:
                         await self.transport.close()
                         self.transport = None
-                    raise ConnectionError(
-                        f"Device at {self.config.get('host', '?')}:"
-                        f"{self.config.get('port', '?')} is not responding"
+                    raise _verify_failure_error(
+                        self._last_transport_error, cause,
+                        self.config.get("host", "?"), self.config.get("port", "?"),
+                        transport_type,
                     ) from cause
             self._raise_if_ended(attempt)
         except BaseException as exc:

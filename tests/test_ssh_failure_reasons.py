@@ -33,7 +33,7 @@ from openavc.core.connection_fault import (
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
-from openavc.drivers.base import BaseDriver
+from openavc.drivers.base import BaseDriver, _verify_failure_error
 from openavc.drivers.registry import _DRIVER_REGISTRY
 from openavc.transport.ssh import SSHTransport
 
@@ -284,3 +284,54 @@ async def test_a_closed_ssh_port_reads_refused_from_the_first_attempt(
     })
     assert state.get("device.shell.offline_reason") == CONNECTION_REFUSED
     assert f"127.0.0.1:{port}" in state.get("device.shell.offline_detail")
+
+
+# --- In the log ---------------------------------------------------------------
+
+
+async def test_the_connect_error_names_the_refusal(stand_in, core, tmp_path):
+    # The "Failed to connect" log line is this error's text: it used to say
+    # "is not responding" while the card said the port refused.
+    state, events = core
+    port = _closed_port()
+    driver = AcmeSshShellDriver("shell", {
+        **AcmeSshShellDriver.DRIVER_INFO["default_config"],
+        "host": "127.0.0.1", "port": port,
+        "known_hosts_path": str(tmp_path / "known_hosts"),
+    }, state, events)
+    with pytest.raises(ConnectionError) as caught:
+        await driver.connect()
+    assert str(caught.value).endswith("Connection refused")
+
+
+REFUSED = "ssh: connect to host 192.0.2.1 port 22: Connection refused"
+
+
+@pytest.mark.parametrize("said, expected", [
+    (REFUSED, REFUSED),
+    # The reason is in an earlier line than the last.
+    (REFUSED + "\nsomething else ssh said", REFUSED),
+    # Nothing said, or nothing in particular: the card reads no_response
+    # from "is not responding", so it stays.
+    ("", "Device at 192.0.2.1:22 is not responding"),
+    ("ssh said something unrecognised", "Device at 192.0.2.1:22 is not responding"),
+    # A drop is not a reason to name either.
+    ("Timeout, server 192.0.2.1 not responding.", "Device at 192.0.2.1:22 is not responding"),
+])
+def test_a_failed_verify_says_the_transports_reason_only_when_it_is_one(said, expected):
+    assert str(_verify_failure_error(said, None, "192.0.2.1", 22, "ssh")) == expected
+
+
+def test_a_reason_only_in_the_exceptions_chain_keeps_not_responding():
+    # httpx says "All connection attempts failed" for a refused port; the
+    # refusal is in the cause, which the card reads, not in the words.
+    cause = ConnectionRefusedError(111, "Connection refused")
+    error = _verify_failure_error(
+        "All connection attempts failed", cause, "192.0.2.1", 80, "http",
+    )
+    assert str(error) == "Device at 192.0.2.1:80 is not responding"
+    assert error.__cause__ is cause
+    assert classify_connection_fault(
+        last_error="All connection attempts failed", exc=error,
+        host="192.0.2.1", port=80, transport="http",
+    ).code == CONNECTION_REFUSED
