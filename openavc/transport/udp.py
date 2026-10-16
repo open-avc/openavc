@@ -244,7 +244,9 @@ class UDPTransport:
         once, as the OS picks. With an adapter chosen in Reach devices through
         after the socket opened, it goes through that adapter alone, and not
         at all while that adapter has no address (logged once, not raised: a
-        stream sends many times a second). A limited broadcast is not fanned
+        stream sends many times a second). A socket opened bound to the chosen
+        adapter's address sends from it, and not at all while that adapter
+        isn't connected (logged once too). A limited broadcast is not fanned
         out here: that needs a socket bound per adapter
         (``BaseDriver.send_udp``).
         """
@@ -285,10 +287,24 @@ class UDPTransport:
         alone; otherwise none (one send, as the OS or the bound address
         picks). None: an adapter is chosen and it has no address, so the
         datagram is not sent at all, never through another adapter
-        (``reach_devices.pinned``)."""
-        if self._local_addr is not None or self._sock is None or not _is_multicast(host):
+        (``reach_devices.pinned``); or the socket was opened bound to the
+        chosen adapter's address and that adapter isn't connected."""
+        if self._sock is None or not _is_multicast(host):
             return [], ""
         from openavc import reach_devices
+
+        if self._local_addr is not None:
+            # Unplugged, the chosen adapter keeps its address for connections,
+            # and the OS refuses every datagram sent from it.
+            if reach_devices.is_chosen():
+                chosen = await asyncio.to_thread(reach_devices.pinned)
+                if chosen is not None and not chosen.connected and chosen.address == self._local_addr:
+                    self._note_not_sent(host, chosen.adapter_name)
+                    return None
+            if self._multicast_sources == []:
+                log.info(f"[{self._name}] Multicast to {host} goes out through {self._local_addr} again")
+            self._multicast_sources = None
+            return [], ""
 
         if reach_devices.is_chosen():
             chosen = await asyncio.to_thread(reach_devices.pinned)

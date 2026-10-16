@@ -468,6 +468,52 @@ async def test_a_chosen_adapter_with_no_address_sends_nothing_anywhere(monkeypat
     assert len(said) == 1 and "Ethernet isn't connected" in said[0], "once, not per datagram"
 
 
+async def test_a_socket_bound_to_the_chosen_adapter_sends_nothing_while_it_is_unplugged(
+    monkeypatch, caplog,
+):
+    # Opened after the choice, bound to the adapter's address, which it keeps when unplugged.
+    unplugged = reach_devices.Resolved(
+        identity={"name": "Ethernet"}, address="127.0.0.1", adapter_name="Ethernet", connected=False,
+    )
+    plugged = reach_devices.Resolved(
+        identity={"name": "Ethernet"}, address="127.0.0.1", adapter_name="Ethernet",
+    )
+    t, recording, direct = await _multicast_transport(
+        monkeypatch, ["10.20.30.5", "192.168.1.40"], local_addr="127.0.0.1", chosen=unplugged,
+    )
+    try:
+        with caplog.at_level("WARNING", logger="openavc.transport.udp"):
+            await t.send_to(b"DMX", *GROUP)
+            await t.send_to(b"DMX", *GROUP)
+        assert recording.calls == [] and direct == [], "the OS would refuse every one"
+        assert t.send_count == 0
+        said = [r.message for r in caplog.records if "not sent" in r.message]
+        assert len(said) == 1 and "Ethernet isn't connected" in said[0], "once, not per datagram"
+
+        monkeypatch.setattr(reach_devices, "pinned", lambda: plugged)
+        await t.send_to(b"DMX", *GROUP)
+        assert direct == [GROUP], "plugged back in: from the bound address, as before"
+
+        caplog.clear()
+        monkeypatch.setattr(reach_devices, "pinned", lambda: unplugged)
+        with caplog.at_level("WARNING", logger="openavc.transport.udp"):
+            await t.send_to(b"DMX", *GROUP)
+        assert [r for r in caplog.records if "not sent" in r.message], "a second outage is said again"
+    finally:
+        await t.close()
+
+
+async def test_a_socket_bound_to_another_address_is_left_to_the_os(monkeypatch):
+    t, recording, direct = await _multicast_transport(
+        monkeypatch, ["10.20.30.5", "192.168.1.40"], local_addr="127.0.0.1", chosen=ETHERNET_UNPLUGGED,
+    )
+    try:
+        await t.send_to(b"DMX", *GROUP)
+    finally:
+        await t.close()
+    assert recording.calls == [] and direct == [GROUP]
+
+
 async def test_a_copy_the_chosen_adapter_cannot_send_is_not_sent_another_way(monkeypatch):
     t, recording, direct = await _multicast_transport(
         monkeypatch, ["10.20.30.5", "192.168.1.40"], refuse={"10.20.30.5"}, chosen=ETHERNET_CHOSEN,
