@@ -457,11 +457,14 @@ def test_a_chosen_adapter_sends_the_one_broadcast(monkeypatch):
     assert cap.sent_from == [("192.168.50.3", "255.255.255.255", 7000)]
 
 
-def test_a_chosen_adapter_with_no_address_sends_nothing_anywhere(monkeypatch):
+# Unplugged, it keeps its last address for connections (which then fail rather than
+# widen); with no address yet it has none. Neither is somewhere to send from.
+@pytest.mark.parametrize("kept", ["", "10.0.0.7"], ids=["no address", "its last address kept"])
+def test_a_chosen_adapter_with_no_address_sends_nothing_anywhere(monkeypatch, kept):
     _adapters(monkeypatch, "10.0.0.2", "192.168.50.3")
-    monkeypatch.setattr(reach_devices, "address", lambda: "")
+    monkeypatch.setattr(reach_devices, "address", lambda: kept)
     monkeypatch.setattr(reach_devices, "pinned", lambda: reach_devices.Resolved(
-        identity={"name": "Ethernet"}, adapter_name="Ethernet", connected=False,
+        identity={"name": "Ethernet"}, address=kept, adapter_name="Ethernet", connected=False,
     ))
     drv, cap = _python_driver()
     with pytest.raises(reach_devices.AdapterUnavailable, match="Not sent: Ethernet isn't connected"):

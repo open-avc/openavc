@@ -74,6 +74,15 @@ class TestResolving:
         assert reach_devices.resolve(ETHERNET.identity(), [ETHERNET]).broadcast_source == "10.20.30.5"
         assert reach_devices.resolve(ETHERNET.identity(), [UNPLUGGED]).broadcast_source == ""
 
+    def test_a_broadcast_never_goes_from_the_address_an_unplugged_adapter_keeps(self):
+        kept = reach_devices.resolve(ETHERNET.identity(), [WIFI, UNPLUGGED], last="10.20.30.5")
+        assert kept.address == "10.20.30.5", "kept for connections, which then fail rather than widen"
+        assert kept.broadcast_source == "", "nothing to send from, so the sender says it isn't connected"
+        link_down = Adapter("Ethernet", ETHERNET.mac, ETHERNET.addresses, False)
+        assert reach_devices.resolve(ETHERNET.identity(), [WIFI, link_down]).broadcast_source == "", (
+            "an address still listed on an adapter whose link is down"
+        )
+
     def test_a_literal_address_is_bound_as_it_is(self):
         resolved = reach_devices.resolve({"address": "10.20.30.5"}, [ETHERNET])
         assert resolved.address == "10.20.30.5"

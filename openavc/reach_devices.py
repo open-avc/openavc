@@ -28,7 +28,8 @@ out once through every connected adapter (:func:`broadcast_sources`); with an
 adapter chosen, from its address alone (:attr:`Resolved.broadcast_source`:
 its 169.254 address when it holds no other, a network with no DHCP server),
 and when it has nothing to send from they are not sent (:func:`pinned`,
-asked by ``BaseDriver.send_udp`` and ``UDPTransport``).
+asked by ``BaseDriver.send_udp`` and ``UDPTransport``). The last address a
+missing or unplugged adapter keeps is not something to send from.
 
 **A device at a 169.254 address** is reached from the chosen adapter's own
 169.254 address (:func:`link_local_address`), and told to post its updates
@@ -96,8 +97,13 @@ class Resolved:
     def broadcast_source(self) -> str:
         """Where a broadcast or a multicast goes out from with this adapter
         chosen: its 169.254 address when it holds no other (a network with no
-        DHCP server), otherwise ``address``; "" for nothing to send from."""
-        if not self.connected and self.link_local_address:
+        DHCP server), otherwise ``address``; "" for nothing to send from.
+
+        Never the last address a missing or unplugged adapter keeps: that one
+        is for connections, which then fail rather than widen. A datagram sent
+        from it fails at the socket every time, so the sender would report the
+        OS's error per datagram instead of saying the adapter isn't connected."""
+        if not self.connected:
             return self.link_local_address
         return self.address
 

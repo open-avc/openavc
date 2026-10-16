@@ -410,6 +410,10 @@ ETHERNET_CHOSEN = reach_devices.Resolved(
 ETHERNET_GONE = reach_devices.Resolved(
     identity={"name": "Ethernet"}, adapter_name="Ethernet", connected=False,
 )
+# Unplugged, it keeps its last address for connections, which is nowhere to send from.
+ETHERNET_UNPLUGGED = reach_devices.Resolved(
+    identity={"name": "Ethernet"}, address="10.20.30.5", adapter_name="Ethernet", connected=False,
+)
 
 
 async def test_an_adapter_chosen_after_the_socket_opened_takes_every_copy(monkeypatch):
@@ -442,9 +446,12 @@ async def test_a_chosen_adapter_holding_only_a_169_254_address_takes_the_copy(mo
     assert direct == []
 
 
-async def test_a_chosen_adapter_with_no_address_sends_nothing_anywhere(monkeypatch, caplog):
+@pytest.mark.parametrize(
+    "gone", [ETHERNET_GONE, ETHERNET_UNPLUGGED], ids=["no address", "its last address kept"],
+)
+async def test_a_chosen_adapter_with_no_address_sends_nothing_anywhere(monkeypatch, caplog, gone):
     t, recording, direct = await _multicast_transport(
-        monkeypatch, ["10.20.30.5", "192.168.1.40"], chosen=ETHERNET_GONE,
+        monkeypatch, ["10.20.30.5", "192.168.1.40"], chosen=gone,
     )
     try:
         with caplog.at_level("WARNING", logger="openavc.transport.udp"):
