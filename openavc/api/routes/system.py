@@ -771,7 +771,7 @@ async def update_system_config(request: Request) -> dict[str, Any]:
 
     safety_net = None
     if listen_choice is not None:
-        listen.refresh_mirror(cfg, listen_adapters)
+        listen.refresh_mirror(cfg)
         safety_net = _arm_or_disarm(cfg, request, listen_choice, listen_adapters)
     if reach_choice is not None:
         # Applies to the next connection or scan, with no restart.

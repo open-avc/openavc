@@ -13,7 +13,7 @@ import pytest
 from openavc import listen, listen_safety_net
 from openavc.listen import ListenChoice
 from openavc.system_config import SystemConfig
-from tests.listen_helpers import ETHERNET, WIFI
+from tests.listen_helpers import ETHERNET
 
 ANY = ListenChoice("any")
 ETHERNET_ONLY = ListenChoice("adapter", ETHERNET.identity())
@@ -100,7 +100,7 @@ class TestGoingBack:
             restarts.append(reason)
 
         went = asyncio.run(listen_safety_net.tick(
-            cfg, restart, adapters=[ETHERNET, WIFI], now=T0 + 601
+            cfg, restart, now=T0 + 601
         ))
         assert went is True and len(restarts) == 1
         network = json.loads((tmp_path / "system.json").read_text())["network"]
@@ -117,7 +117,7 @@ class TestGoingBack:
     def test_this_computer_only_names_where_to_confirm(self, cfg, tmp_path):
         listen_safety_net.arm(tmp_path, ANY, ListenChoice("this_computer"), now=T0)
         listen_safety_net.note_listening(tmp_path, ListenChoice("this_computer"), now=T0)
-        listen_safety_net.revert(cfg, listen_safety_net.due(tmp_path, now=T0 + 600), [])
+        listen_safety_net.revert(cfg, listen_safety_net.due(tmp_path, now=T0 + 600))
         assert "opened the Programmer on this computer" in listen_safety_net.take_notice(tmp_path)
 
     def test_before_the_deadline_nothing_happens(self, cfg, tmp_path):
@@ -127,14 +127,14 @@ class TestGoingBack:
         async def restart(reason: str) -> None:
             raise AssertionError("restarted before the deadline")
 
-        assert asyncio.run(listen_safety_net.tick(cfg, restart, adapters=[], now=T0 + 599)) is False
+        assert asyncio.run(listen_safety_net.tick(cfg, restart, now=T0 + 599)) is False
         assert cfg.get("network", "accept_connections_from") == "adapter"
 
     def test_nothing_armed_nothing_happens(self, cfg):
         async def restart(reason: str) -> None:
             raise AssertionError("restarted with nothing armed")
 
-        assert asyncio.run(listen_safety_net.tick(cfg, restart, adapters=[], now=T0)) is False
+        assert asyncio.run(listen_safety_net.tick(cfg, restart, now=T0)) is False
 
 
 def test_the_watcher_runs_the_net_on_every_tick(tmp_path):

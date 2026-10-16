@@ -112,7 +112,7 @@ class TestWhatPatchAccepts:
         network = _on_disk(tmp_path)["network"]
         assert network["accept_connections_from"] == "adapter"
         assert network["accept_connections_adapter"] == ETHERNET.identity()
-        assert network["bind_address"] == "10.20.30.5"
+        assert network["bind_address"] == "0.0.0.0"
 
     def test_another_choice_forgets_the_adapter(self, api, tmp_path):
         c, _ = api()

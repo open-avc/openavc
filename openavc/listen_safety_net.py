@@ -197,7 +197,7 @@ def due(data_dir: Path, now: float | None = None) -> dict[str, Any] | None:
     return marker
 
 
-def revert(cfg: Any, marker: dict[str, Any], adapters: Any) -> str:
+def revert(cfg: Any, marker: dict[str, Any]) -> str:
     """Write the previous choice back and leave the notice. The caller
     restarts the server."""
     from openavc import listen
@@ -205,7 +205,7 @@ def revert(cfg: Any, marker: dict[str, Any], adapters: Any) -> str:
     previous = marker["previous"]
     cfg.set("network", listen.MODE_KEY, previous["mode"])
     cfg.set("network", listen.ADAPTER_KEY, dict(previous.get("adapter") or {}))
-    listen.refresh_mirror(cfg, adapters)
+    listen.refresh_mirror(cfg)
     cfg.save()
     minutes = marker.get("deadline_seconds", DEADLINE_SECONDS) // 60
     message = (
@@ -222,15 +222,12 @@ async def tick(
     cfg: Any,
     restart: Callable[[str], Awaitable[None]],
     *,
-    adapters: Any = None,
     now: float | None = None,
 ) -> bool:
     """Revert and restart when the deadline has passed. True when it did."""
-    from openavc import listen
-
     marker = due(cfg.data_dir, now)
     if marker is None:
         return False
-    revert(cfg, marker, adapters if adapters is not None else listen.list_adapters)
+    revert(cfg, marker)
     await restart("the safety net went back to the previous choice")
     return True

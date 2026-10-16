@@ -263,24 +263,26 @@ class TestTheDefaultPerInstallType:
 
 
 class TestTheRollbackMirror:
-    def test_an_adapter_choice_mirrors_its_address(self, tmp_path):
-        cfg = _config_at(tmp_path, {"network": {
-            "accept_connections_from": "adapter",
-            "accept_connections_adapter": ETHERNET.identity(),
-        }})
-        listen.settle_choice(cfg, [ETHERNET], deployment_type="windows_installer")
-        cfg.save()
-        assert _on_disk(tmp_path)["network"]["bind_address"] == "10.20.30.5"
-
-    def test_an_adapter_that_cannot_be_found_mirrors_to_loopback(self, tmp_path):
+    def test_an_adapter_choice_mirrors_every_network(self, tmp_path):
+        # An earlier release binds one address: the adapter's alone would leave
+        # a kiosk or a health check on 127.0.0.1 without the server.
         cfg = _config_at(tmp_path, {"network": {
             "accept_connections_from": "adapter",
             "accept_connections_adapter": ETHERNET.identity(),
             "bind_address": "10.20.30.5",
         }})
+        listen.settle_choice(cfg, [ETHERNET], deployment_type="windows_installer")
+        cfg.save()
+        assert _on_disk(tmp_path)["network"]["bind_address"] == "0.0.0.0"
+
+    def test_an_adapter_that_cannot_be_found_mirrors_every_network_too(self, tmp_path):
+        cfg = _config_at(tmp_path, {"network": {
+            "accept_connections_from": "adapter",
+            "accept_connections_adapter": ETHERNET.identity(),
+        }})
         listen.settle_choice(cfg, [WIFI], deployment_type="windows_installer")
         cfg.save()
-        assert _on_disk(tmp_path)["network"]["bind_address"] == "127.0.0.1"
+        assert _on_disk(tmp_path)["network"]["bind_address"] == "0.0.0.0"
 
     def test_this_computer_only_mirrors_to_loopback(self, tmp_path):
         cfg = _config_at(tmp_path, {"network": {"accept_connections_from": "this_computer"}})
@@ -355,7 +357,7 @@ class TestWrittenToTheFileAtStart:
         assert listen.save_settled(cfg) is False
         assert (tmp_path / "system.json").read_bytes() == settled
 
-    def test_an_adapter_whose_address_changed_updates_the_mirror(self, tmp_path):
+    def test_an_adapter_address_left_in_the_mirror_is_replaced(self, tmp_path):
         cfg = _config_at(tmp_path, {"network": {
             "accept_connections_from": "adapter",
             "accept_connections_adapter": ETHERNET.identity(),
@@ -363,7 +365,7 @@ class TestWrittenToTheFileAtStart:
         }})
         listen.start(cfg, adapters=[ETHERNET], deployment_type="windows_installer")
         assert listen.save_settled(cfg) is True
-        assert _on_disk(tmp_path)["network"]["bind_address"] == "10.20.30.5"
+        assert _on_disk(tmp_path)["network"]["bind_address"] == "0.0.0.0"
 
     def test_the_environment_never_reaches_the_file(self, tmp_path, monkeypatch):
         monkeypatch.setenv("OPENAVC_BIND", "10.20.30.5")

@@ -40,12 +40,15 @@ driver validator load the same file, and that import closure is held to the
 standard library (``tests/test_compiled_protocol_purity.py``).
 
 **Rollback.** ``network.bind_address`` is kept as a mirror of the choice in
-the terms an earlier release understands (``0.0.0.0``, ``127.0.0.1``, or the
-adapter's address), refreshed whenever the choice is settled or changed, so a
-rollback starts on a sane listen address. An adapter that cannot be resolved
-mirrors to ``127.0.0.1``: the earlier release would refuse to start on an
-address this computer does not have, and widening to every network is the
-other thing this setting exists to prevent. The mirror only helps once it is
+the terms an earlier release understands, refreshed whenever the choice is
+settled or changed, so a rollback starts on a sane listen address:
+``127.0.0.1`` for this computer only, ``0.0.0.0`` for everything else. An
+earlier release binds exactly one address, and an adapter's address alone
+would cut off everything on this computer that reaches the server on
+``127.0.0.1`` (a kiosk screen, an appliance's health check, the menu bar), so
+an adapter choice rolls back to every network, the way that release ran before
+the update; installs whose old service sets ``OPENAVC_BIND=0.0.0.0`` land
+there anyway. The mirror only helps once it is
 on disk, so what a start settles is written to an existing ``system.json`` the
 same start (:func:`save_settled`): an updated system otherwise keeps the
 earlier release's ``bind_address`` until someone saves a setting, and a Mac
@@ -483,28 +486,26 @@ def settle_choice(
             choice_label(mode, identity.get("name") or identity.get("address", "")),
         )
         settled = True
-    refresh_mirror(cfg, adapters)
+    refresh_mirror(cfg)
     return settled
 
 
-def mirror_for(mode: str, identity: dict[str, Any], adapters: AdapterSource) -> str:
-    """``bind_address`` as an earlier release reads it, for this choice."""
-    if mode == MODE_ANY:
-        return WILDCARD
-    if mode != MODE_ADAPTER:
-        return LOOPBACK
-    plan = resolve(ListenChoice(mode=mode, adapter=dict(identity)), _adapters_of(adapters))
-    return plan.legacy_bind
+def mirror_for(mode: str) -> str:
+    """``bind_address`` as an earlier release reads it, for this choice: every
+    network, unless this computer only was chosen. An earlier release binds one
+    address, so an adapter's address alone would leave everything on this
+    computer that reaches the server on ``127.0.0.1`` (a kiosk screen, a
+    supervisor's health check, the menu bar) without it after a rollback."""
+    return LOOPBACK if mode == MODE_THIS_COMPUTER else WILDCARD
 
 
-def refresh_mirror(cfg: Any, adapters: AdapterSource) -> None:
+def refresh_mirror(cfg: Any) -> None:
     """Recompute the rollback mirror from the choice in the FILE (never the
     environment's: an environment value never reaches system.json)."""
     mode = cfg.stored("network", MODE_KEY)
-    identity = cfg.stored("network", ADAPTER_KEY) or {}
     if mode not in MODES:
         return
-    value = mirror_for(mode, identity if isinstance(identity, dict) else {}, adapters)
+    value = mirror_for(mode)
     if cfg.stored("network", MIRROR_KEY) != value:
         cfg.persist_default("network", MIRROR_KEY, value)
 
