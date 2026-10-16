@@ -227,8 +227,16 @@ _PAGE = """<!DOCTYPE html>
 <title>OpenAVC Setup</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { height: 100%; }
+  /* Everything is sized in rem, and the rem grows with the screen: this page
+     is read off whatever display the box drives, and a small one (800x480)
+     showed it at a size nobody could read. 16px on a phone, up to 22px from a
+     600px-tall screen up. */
+  html { height: 100%; font-size: clamp(16px, calc(2.5vmin + 9px), 22px); }
+  /* min-height, not height: when the page is taller than the screen the body
+     grows and scrolls from the top. A fixed height centres the overflow, which
+     pushes the top of the page above the screen where scrolling cannot reach. */
   body {
+    min-height: 100%;
     background: #1a1a2e;
     color: #e0e0e0;
     font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -236,7 +244,7 @@ _PAGE = """<!DOCTYPE html>
     padding: 1.5rem;
     -webkit-font-smoothing: antialiased;
   }
-  .container { width: 100%; max-width: 560px; text-align: center; }
+  .container { width: 100%; max-width: 35rem; text-align: center; }
   .logo {
     font-size: 2rem; font-weight: 700; color: #8AB493;
     margin-bottom: 0.15rem; letter-spacing: -0.5px;
@@ -266,7 +274,7 @@ _PAGE = """<!DOCTYPE html>
   /* Multi-homed hosts list one address per line. */
   .value.multiline { white-space: pre-line; }
   .btn {
-    display: inline-block; padding: 14px 40px; border-radius: 12px;
+    display: inline-block; padding: 0.875rem 2.5rem; border-radius: 12px;
     font-size: 1rem; font-weight: 500; text-decoration: none;
     background: #8AB493; color: #fff; margin-bottom: 1rem;
   }
