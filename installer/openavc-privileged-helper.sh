@@ -95,6 +95,12 @@ for req in "$REQ_DIR"/*.json; do
 done
 
 if [ "$reboot_after" -eq 1 ]; then
-    ( sleep 2; /sbin/reboot ) &
+    # Hand the reboot to systemd as its own timer. This script runs as a
+    # oneshot service, and systemd kills everything the service leaves behind
+    # when it exits, so a backgrounded "sleep; reboot" here never fires. The
+    # delay lets the server's answer reach the browser first.
+    if ! systemd-run --quiet --on-active=2 /usr/bin/systemctl reboot; then
+        echo "$LOG_TAG: action=reboot error=could not schedule the reboot"
+    fi
 fi
 exit 0

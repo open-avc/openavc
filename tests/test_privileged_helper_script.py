@@ -159,6 +159,26 @@ def test_an_unknown_action_is_refused_and_drained(appliance):
     assert not appliance.called("chpasswd")
 
 
+def test_a_reboot_is_handed_to_systemd_rather_than_left_in_the_background(appliance):
+    """The helper runs as a oneshot service, and systemd kills whatever a
+    oneshot leaves running when it exits: a backgrounded `sleep 2; reboot`
+    never fired, and Settings answered "rebooting" while the box stayed up."""
+    stub = appliance.stub_bin / "systemd-run"
+    stub.write_text(
+        "#!/bin/bash\n"
+        f'printf "%s" "$*" > "{appliance.stub_bin.parent}/calls/systemd-run.args"\n'
+        "exit 0\n"
+    )
+    stub.chmod(0o755)
+    req = appliance.submit("req01", {"action": "reboot"})
+    result = appliance.run()
+    assert result.returncode == 0, result.stderr
+    assert not req.exists()
+    scheduled = appliance.args_to("systemd-run")
+    assert "--on-active=" in scheduled
+    assert scheduled.endswith("systemctl reboot")
+
+
 def test_a_result_is_written_only_when_one_was_asked_for(appliance):
     appliance.submit("req01", {"action": "set_password", "password": "topsecretpw123"})
     appliance.submit("req02", {"action": "set_password", "password": "x", "want_result": True})
