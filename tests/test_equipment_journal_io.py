@@ -143,6 +143,33 @@ async def test_disconnect_during_commit_does_not_send_on_a_closed_connection(tmp
 
 
 @pytest.mark.asyncio
+async def test_new_equipment_session_during_commit_does_not_send(tmp_path, monkeypatch):
+    driver = await connected_driver(tmp_path, monkeypatch)
+    entered, release = threading.Event(), threading.Event()
+    reserve = RequestJournal.reserve
+
+    def slow_reserve(journal, session):
+        entered.set()
+        assert release.wait(5)
+        return reserve(journal, session)
+
+    monkeypatch.setattr(RequestJournal, 'reserve', slow_reserve)
+    task = asyncio.create_task(driver.send_command('increment'))
+    try:
+        assert await asyncio.to_thread(entered.wait, 3)
+        driver._request.return_value = {'identity': 'unit', 'session': 'replacement'}
+        with pytest.raises(ConnectionError, match='equipment restarted'):
+            await EquipmentDriver._refresh(driver)
+        release.set()
+        with pytest.raises(ConnectionError, match='connection changed'):
+            await task
+        driver._request.assert_awaited_once_with('/v1/snapshot')
+    finally:
+        release.set()
+        await driver.disconnect()
+
+
+@pytest.mark.asyncio
 async def test_open_cancellation_closes_on_the_worker_and_releases_lease(tmp_path, monkeypatch):
     entered, release = threading.Event(), threading.Event()
     original = RequestJournal.__init__

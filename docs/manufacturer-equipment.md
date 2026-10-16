@@ -12,6 +12,10 @@ port and credentials. The product supplies its commands, settings, state and
 channels when connected. Use them in panels, macros and scripts like other
 devices.
 
+After the equipment restarts, OpenAVC reconnects and reads its current protocol
+and capabilities before accepting more commands. An incompatible product stays
+disconnected. Commands interrupted by the restart are not replayed.
+
 HTTPS certificate verification is on by default. Products should provide a
 certificate trusted by the server. The advanced **Verify HTTPS certificate**
 setting controls this check for a remote connection. Turning it off accepts

@@ -310,7 +310,12 @@ class EquipmentDriver(BaseDriver):
             raise ValueError(
                 "The product identity changed. Recommission the replacement."
             )
-        self._sdk_session = snapshot["session"]
+        if snapshot["session"] != self._sdk_session:
+            # A new session can describe different firmware or capabilities.
+            # Reconnect through description validation before accepting it.
+            self._sdk_session = None
+            self._connected = False
+            raise ConnectionError("The equipment restarted. Reconnecting to read its current capabilities.")
         wanted = {(c["type"], c["id"]) for c in snapshot["children"]}
         for kind, ident in self._sdk_children - wanted:
             self.deregister_child(kind, ident)
@@ -358,9 +363,11 @@ class EquipmentDriver(BaseDriver):
 
     async def _reserve_id(self, session):
         # Commit before sending. Lost replies consume their ID, never replay.
+        if session is None:
+            raise ConnectionError('The equipment connection must be restored before sending commands.')
         journal = self._sdk_journal
         identifier = await journal.reserve(session)
-        if self._sdk_journal is not journal:
+        if self._sdk_journal is not journal or self._sdk_session != session:
             raise ConnectionError('The device connection changed before the command was sent.')
         return identifier
 
