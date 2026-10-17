@@ -51,6 +51,7 @@ class _FakeAgent:
 
     async def send_message(self, msg_type, payload):
         self.sent.append((msg_type, payload))
+        return True
 
 
 @pytest.fixture
@@ -138,6 +139,69 @@ async def test_a_cloud_that_throws_does_not_take_the_room_with_it(engine, help_r
     assert result["raised"] is True
     assert result["delivered"] is False
     assert engine.state.get(KEY_STATE) == UNREACHABLE
+
+
+class _Socket:
+    def __init__(self):
+        self.sent: list[str] = []
+
+    async def send(self, raw):
+        self.sent.append(raw)
+
+
+class _Session:
+    def sign_outgoing(self, msg):
+        msg["sig"] = "test"
+
+
+def _real_agent(throttled: str | None = None):
+    """A connected CloudAgent whose send path is the real one, onto a socket
+    that records what reached it. ``throttled`` names a throttle in effect,
+    as the cloud's rate-limit message leaves it."""
+    from openavc.cloud.agent import CloudAgent
+    from openavc.cloud.sequencer import Sequencer
+
+    agent = CloudAgent.__new__(CloudAgent)
+    agent._connected = True
+    agent._session = _Session()
+    agent._ws = _Socket()
+    agent._sequencer = Sequencer()
+    agent._throttles = {}
+    if throttled:
+        agent._throttles[throttled] = asyncio.Event()
+    return agent
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("throttled", ["global", "alert"])
+async def test_a_throttled_send_is_not_called_delivered(throttled):
+    """The cloud asked the agent to back off and the agent dropped the alert.
+    Nothing left the building, so the panel must not say help is coming. An
+    alert throttle is the likely one: a burst of monitor alerts sets it."""
+    engine = _FakeEngine()
+    engine.cloud_agent = _real_agent(throttled)
+    h = HelpRequests(engine)
+    h.declare_keys()
+
+    result = await h.raise_request(message="Lecture Hall 2 needs someone")
+
+    assert engine.cloud_agent._ws.sent == []
+    assert result["delivered"] is False
+    assert engine.state.get(KEY_STATE) == UNREACHABLE
+
+
+@pytest.mark.asyncio
+async def test_an_unthrottled_send_is_delivered():
+    engine = _FakeEngine()
+    engine.cloud_agent = _real_agent()
+    h = HelpRequests(engine)
+    h.declare_keys()
+
+    result = await h.raise_request(message="Lecture Hall 2 needs someone")
+
+    assert len(engine.cloud_agent._ws.sent) == 1
+    assert result["delivered"] is True
+    assert engine.state.get(KEY_STATE) == REQUESTED
 
 
 @pytest.mark.asyncio

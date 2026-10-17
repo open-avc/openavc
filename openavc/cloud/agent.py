@@ -707,7 +707,7 @@ class CloudAgent:
 
     # --- Message Pipeline ---
 
-    async def send_message(self, msg_type: str, payload: dict[str, Any]) -> None:
+    async def send_message(self, msg_type: str, payload: dict[str, Any]) -> bool:
         """
         Send a signed, sequenced message to the cloud.
 
@@ -717,9 +717,15 @@ class CloudAgent:
         Args:
             msg_type: Message type constant.
             payload: Message payload dict.
+
+        Returns:
+            True when the message went onto the wire path: sequenced, and
+            buffered for replay until the cloud acks it. False when it was
+            dropped here (not connected, throttled, or too large), so a
+            caller that tells a person it was sent can ask.
         """
         if not self._connected or not self._session or not self._ws:
-            return
+            return False
 
         # Check global and per-type throttle.
         #
@@ -736,15 +742,15 @@ class CloudAgent:
         global_throttle = self._throttles.get("global")
         if global_throttle and not global_throttle.is_set() and msg_type != HEARTBEAT:
             log.debug("Cloud agent: global throttle active, dropping message")
-            return
+            return False
         throttle_event = self._throttles.get(msg_type)
         if throttle_event and not throttle_event.is_set():
             log.debug(f"Cloud agent: message type {msg_type} is throttled, dropping")
-            return
+            return False
 
-        await self._send_signed(msg_type, payload)
+        return await self._send_signed(msg_type, payload)
 
-    async def _send_signed(self, msg_type: str, payload: dict[str, Any]) -> None:
+    async def _send_signed(self, msg_type: str, payload: dict[str, Any]) -> bool:
         """Envelope, sequence, sign, and send — the one live wire path for
         steady-state upstream messages (build_signed_message is the same
         envelope in pure-function form for tests; here the seq comes from
@@ -754,9 +760,12 @@ class CloudAgent:
         pong and gap_report replies still flow while the agent is throttled
         — the cloud's liveness check reaps a connection whose ping gets no
         nonce-matched pong and no other inbound traffic.
+
+        Returns True once the message is sequenced and buffered, False when
+        it was refused before that.
         """
         if not self._session:
-            return
+            return False
 
         msg = {
             "type": msg_type,
@@ -777,7 +786,7 @@ class CloudAgent:
                 "(payload exceeds the %d-byte wire limit)",
                 msg_type, MAX_MESSAGE_BYTES,
             )
-            return
+            return False
 
         # Assign sequence number and buffer
         self._sequencer.assign_seq(msg)
@@ -790,6 +799,7 @@ class CloudAgent:
 
         # Send pre-serialized string
         await self._send_raw_str(raw)
+        return True
 
     async def _send_raw(self, msg: dict[str, Any]) -> None:
         """Send a raw message dict over the WebSocket."""

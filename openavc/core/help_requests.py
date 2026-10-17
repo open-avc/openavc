@@ -169,7 +169,7 @@ class HelpRequests:
             return False
         try:
             from openavc.cloud.protocol import ALERT, build_alert_payload
-            await agent.send_message(ALERT, build_alert_payload(
+            sent = await agent.send_message(ALERT, build_alert_payload(
                 alert_id=f"help:{request_id}",
                 rule_id="help",
                 severity=severity,
@@ -183,7 +183,16 @@ class HelpRequests:
                 },
                 fired_at=raised_at,
             ))
-            return True
+            if not sent:
+                # Connected, but the agent did not send it: the cloud has it
+                # backing off (a burst of alerts does that), and nothing is
+                # queued for later.
+                log.warning(
+                    "Help request %s was raised locally but the cloud agent "
+                    "did not send it, so nobody outside the room has been told.",
+                    request_id,
+                )
+            return bool(sent)
         except Exception:
             log.warning(
                 "Help request %s could not be sent to the cloud.",

@@ -167,7 +167,7 @@ The step sets state you can bind to a label, so a panel can answer the person wh
 
 Bind a label to these and the room can say "Help requested 9:02. Ben acknowledged 9:04." A button that does nothing visible gets pressed four more times, so it is worth showing something back even if it is only "requested".
 
-**If the cloud cannot be reached**, `system.help_state` becomes `unreachable` rather than `requested`. Nothing is held and sent later: a help request that arrives forty minutes on is a message about a class that already ended. Show the difference on the panel so nobody stands waiting for help that never left the building.
+**If the request does not reach the cloud**, `system.help_state` becomes `unreachable` rather than `requested`. That happens when the system is not connected to the cloud, and when messages to the cloud are paused for a short time after too many were sent at once (a burst of alerts, for example). Nothing is held and sent later: a help request that arrives forty minutes on is a message about a class that already ended. Show the difference on the panel so nobody stands waiting for help that never left the building.
 
 ### Sending at most every N seconds
 
