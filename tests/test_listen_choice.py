@@ -511,6 +511,35 @@ class TestPreview:
         result = self._preview(ListenChoice("adapter", {"name": "Ethernet 9"}), "127.0.0.1")
         assert result["problem"]["code"] == "adapter_not_connected"
 
+    def test_on_an_appliance_this_computer_only_leaves_no_way_into_the_programmer(self):
+        """Its own screen shows only the panel, so with no remote access
+        through OpenAVC Cloud nobody could open the Programmer."""
+        result = self._preview(
+            ListenChoice("this_computer"), "10.20.30.5", own_screen_opens_programmer=False,
+        )
+        assert result["consequences"] == [{
+            "code": "no_programmer",
+            "count": 1,
+            "message": "Nobody can open the Programmer (remote access through OpenAVC Cloud isn't set up).",
+        }]
+
+    def test_on_an_appliance_cloud_remote_access_is_the_way_in(self):
+        result = self._preview(
+            ListenChoice("this_computer"), "10.20.30.5",
+            own_screen_opens_programmer=False, cloud_remote_access=True,
+        )
+        assert result["consequences"] == []
+        assert result["cloud_remote_access"] is True
+
+    def test_on_an_appliance_a_missing_adapter_is_only_its_problem(self):
+        """The Programmer opens through the adapter again once it is back."""
+        result = self._preview(
+            ListenChoice("adapter", {"name": "Ethernet 9"}), "10.20.30.5",
+            own_screen_opens_programmer=False,
+        )
+        assert result["problem"]["code"] == "adapter_not_connected"
+        assert result["consequences"] == []
+
 
 class TestTheWatcher:
     def _watcher(self, plan: ListenPlan, adapters: list[Adapter], **kwargs):

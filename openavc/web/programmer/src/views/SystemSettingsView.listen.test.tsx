@@ -73,7 +73,7 @@ type Choice = { accept_connections_from: string; accept_connections_adapter?: { 
 
 /** What the server would say about a choice, for a browser that reached it
  *  on Wi-Fi (192.168.1.40). */
-function previewFor(choice: Choice, cutOffAsked = false, cloudRemoteAccess = false) {
+function previewFor(choice: Choice, cutOffAsked = false, cloudRemoteAccess = false, appliance = false) {
   const mode = choice.accept_connections_from;
   const onWifi = mode === "adapter" && choice.accept_connections_adapter?.name === "Wi-Fi";
   const onEthernet = mode === "adapter" && choice.accept_connections_adapter?.name === "Ethernet";
@@ -89,15 +89,20 @@ function previewFor(choice: Choice, cutOffAsked = false, cloudRemoteAccess = fal
     safety_net: !keeps && cutOffAsked,
     problem: null,
     consequences: mode === "this_computer"
-      ? [{ code: "approved_panels", count: 3, message: "3 approved touch panels will stop connecting." }]
+      ? [
+        { code: "approved_panels", count: 3, message: "3 approved touch panels will stop connecting." },
+        ...(appliance && !cloudRemoteAccess
+          ? [{ code: "no_programmer", count: 1, message: "Nobody can open the Programmer (remote access through OpenAVC Cloud isn't set up)." }]
+          : []),
+      ]
       : [],
     held_by: null,
     cloud_remote_access: cloudRemoteAccess,
   };
 }
 
-const served: { config: Record<string, unknown>; cutOff: boolean; cloud: boolean } = {
-  config: baseConfig(), cutOff: true, cloud: false,
+const served: { config: Record<string, unknown>; cutOff: boolean; cloud: boolean; appliance: boolean } = {
+  config: baseConfig(), cutOff: true, cloud: false, appliance: false,
 };
 
 vi.mock("../api/restClient", () => ({
@@ -108,7 +113,7 @@ vi.mock("../api/restClient", () => ({
   getSshStatus: vi.fn(async () => null),
   getNetworkAdapters: vi.fn(async () => ({ adapters: [], interfaces: [ETHERNET, WIFI, UNPLUGGED] })),
   getTlsStatus: vi.fn(async () => null),
-  previewListen: vi.fn(async (choice: Choice) => previewFor(choice, served.cutOff, served.cloud)),
+  previewListen: vi.fn(async (choice: Choice) => previewFor(choice, served.cutOff, served.cloud, served.appliance)),
   updateSystemConfig: vi.fn(async () => ({ status: "ok", updated_sections: ["network"] })),
   restartSystem: vi.fn(async () => ({ status: "restarting", mode: "graceful", delay_seconds: 2 })),
   downloadCertificate: vi.fn(),
@@ -142,6 +147,7 @@ describe("Accept connections from", () => {
     served.config = baseConfig();
     served.cutOff = true;
     served.cloud = false;
+    served.appliance = false;
   });
 
   it("lists Any network, each adapter by name and address, and This computer only", async () => {
@@ -260,6 +266,26 @@ describe("Accept connections from", () => {
     expect(within(dialog).getByTestId("listen-cut-off-warning").textContent).toContain(
       "Remote access through OpenAVC Cloud keeps working.",
     );
+  });
+
+  it("on the appliance, sends nobody to its own screen and says when nothing opens the Programmer", async () => {
+    served.config = { ...baseConfig(), _environment: { deployment_type: "android_appliance", overrides: {} } };
+    served.appliance = true;
+    await renderSettings();
+    await choose("This computer only");
+    expect(screen.getByTestId("accept-connections-help").textContent).toBe(
+      "Only this computer's own screen shows the panel, and only remote access through OpenAVC Cloud can open the Programmer.",
+    );
+    expect((await screen.findByTestId("accept-connections-consequences")).textContent).toContain(
+      "Nobody can open the Programmer (remote access through OpenAVC Cloud isn't set up).",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const dialog = await screen.findByRole("alertdialog");
+    const warning = within(dialog).getByTestId("listen-cut-off-warning").textContent;
+    expect(warning).not.toContain("own screen");
+    expect(warning).toContain("Nobody can open the Programmer (remote access through OpenAVC Cloud isn't set up).");
+    expect(warning).toContain("OpenAVC goes back to Any network 10 minutes after the restart.");
   });
 
   it("restarts and hands over the new address once agreed", async () => {

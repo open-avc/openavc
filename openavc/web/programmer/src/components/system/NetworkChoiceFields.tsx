@@ -22,6 +22,7 @@ import {
   listenHelp,
   listenValue,
   matchInterface,
+  ownScreenOpensProgrammer,
   valueForIdentity,
 } from "./adapterChoice";
 
@@ -138,7 +139,7 @@ export function AcceptConnectionsField({
         </select>
       </EnvLock>
       <span style={helpText} data-testid="accept-connections-help">
-        {listenHelp(mode, name)}
+        {listenHelp(mode, name, ownScreenOpensProgrammer(deploymentType))}
       </span>
       {!changed && problem && (
         <span style={warnLine} role="status" data-testid="accept-connections-problem">

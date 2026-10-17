@@ -679,6 +679,8 @@ def preview(
     from_this_computer: bool,
     approved_panel_addresses: Iterable[str] = (),
     isc_enabled: bool = False,
+    own_screen_opens_programmer: bool = True,
+    cloud_remote_access: bool = False,
 ) -> dict[str, Any]:
     """What saving ``candidate`` would do, for the person about to save it.
 
@@ -687,6 +689,12 @@ def preview(
     True for the computer's own screen and the cloud tunnel, which arrive on
     loopback and keep working under every choice. One rule, here, for the
     Settings screen and anything else that asks.
+
+    ``own_screen_opens_programmer`` is False on hardware whose own screen
+    shows only the panel (the appliance: no address bar, nothing that opens
+    another page). There, this computer only leaves remote access through
+    OpenAVC Cloud as the one way into the Programmer, and none at all when
+    ``cloud_remote_access`` is False.
     """
     plan = resolve(candidate, adapters)
     through = (connected_through or "").strip().strip("[]")
@@ -718,6 +726,18 @@ def preview(
             "count": 1,
             "message": "Other OpenAVC systems can't reach this one (Inter-System is on).",
         })
+    # An adapter that is only missing for now is the problem sentence's job:
+    # the Programmer opens through it again once it is back.
+    if (
+        plan.mode == MODE_THIS_COMPUTER
+        and not own_screen_opens_programmer
+        and not cloud_remote_access
+    ):
+        consequences.append({
+            "code": "no_programmer",
+            "count": 1,
+            "message": "Nobody can open the Programmer (remote access through OpenAVC Cloud isn't set up).",
+        })
 
     return {
         "mode": plan.mode,
@@ -733,6 +753,7 @@ def preview(
         "safety_net": not keeps,
         "problem": plan.problem.to_dict() if plan.problem else None,
         "consequences": consequences,
+        "cloud_remote_access": cloud_remote_access,
     }
 
 

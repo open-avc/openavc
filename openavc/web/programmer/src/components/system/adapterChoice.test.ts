@@ -7,6 +7,7 @@ import {
   listenHelp,
   listenValue,
   matchInterface,
+  ownScreenOpensProgrammer,
   restartPlan,
   sameListenChoice,
   valueForIdentity,
@@ -109,6 +110,17 @@ describe("Accept connections from", () => {
     expect(listenHelp("this_computer", "")).toBe(
       "Only this computer's own screen and browser can open the panel and the Programmer.",
     );
+  });
+
+  it("on the appliance, never offers its own screen for the Programmer", () => {
+    expect(listenHelp("adapter", "eth0", false)).toBe(
+      "Only devices on the eth0 network can open the panel and the Programmer, and this computer's own screen shows the panel.",
+    );
+    expect(listenHelp("this_computer", "", false)).toBe(
+      "Only this computer's own screen shows the panel, and only remote access through OpenAVC Cloud can open the Programmer.",
+    );
+    expect(ownScreenOpensProgrammer("android_appliance")).toBe(false);
+    expect(ownScreenOpensProgrammer("windows_installer")).toBe(true);
   });
 
   it("compares choices by adapter identity, not spelling", () => {

@@ -37,6 +37,7 @@ from openavc.api.auth import (
     is_claimed,
     programmer_auth_satisfied,
 )
+from openavc.api.routes.system import cloud_remote_access_set_up, own_screen_opens_programmer
 from openavc.system_config import get_system_config
 from openavc.utils.hostnames import resolvable_hostname
 from openavc.utils.request_origin import is_local_console_request
@@ -176,8 +177,17 @@ async def setup_status(
         )
         local_ip = all_ips[0]
 
+    # The appliance's own screen shows only the panel: it has no address bar
+    # to type localhost into, so under this computer only there is no URL to
+    # offer at all, and the page names the ways into the Programmer that are
+    # left.
+    own_screen = await asyncio.to_thread(own_screen_opens_programmer)
+    cloud = await asyncio.to_thread(cloud_remote_access_set_up)
+
     # Prefer the routable IP; fall back to mDNS when there is a usable name.
-    if local_only:
+    if local_only and not own_screen:
+        base = None
+    elif local_only:
         base = _base_url(proto, "localhost", port)
     elif online:
         base = _base_url(proto, local_ip, port)
@@ -205,6 +215,8 @@ async def setup_status(
         "bind_address": plan.legacy_bind,
         "listen_label": plan.label,
         "listen_problem": plan.problem.message if plan.problem else None,
+        "own_screen_opens_programmer": own_screen,
+        "cloud_remote_access": cloud,
         "ip": local_ip if online else None,
         "ips": ips,
         "hostname": mdns_name,
@@ -404,6 +416,20 @@ _PAGE = """<!DOCTYPE html>
   function text(id, value) { document.getElementById(id).textContent = value; }
   function show(id, visible) { document.getElementById(id).hidden = !visible; }
 
+  // The lede when nothing on the network can connect and this screen cannot
+  // open the Programmer itself.
+  function panelOnlyLede(net, state) {
+    var cloud = ' Remote access through OpenAVC Cloud keeps working.';
+    if (net.listen_problem) {
+      return net.listen_problem + ' Once it is back, open the Programmer from a browser on that network and ' +
+        (state === 'setup' ? 'create the admin password to claim this controller.' : 'sign in to program this controller.') +
+        (net.cloud_remote_access ? cloud : '');
+    }
+    return net.cloud_remote_access
+      ? 'This controller accepts connections from this computer only, so only remote access through OpenAVC Cloud can open the Programmer. To open it from the network, change Accept connections from in Settings > Network and restart.'
+      : 'This controller accepts connections from this computer only, and remote access through OpenAVC Cloud isn\\'t set up, so nobody can open the Programmer.';
+  }
+
   function render(s) {
     document.body.classList.remove('server-offline');
 
@@ -430,6 +456,10 @@ _PAGE = """<!DOCTYPE html>
     var lede = document.getElementById('lede');
     if (!net) {
       lede.textContent = 'Connection details are shown on the device itself, or sign in to view them here.';
+    } else if (net.local_only && net.own_screen_opens_programmer === false) {
+      // This screen shows only the panel, so there is no address to open
+      // here: name the ways into the Programmer that are left.
+      lede.textContent = s.panel_has_content && s.state !== 'setup' ? '' : panelOnlyLede(net, s.state);
     } else if (!net.online && !net.programmer_url) {
       lede.textContent = 'No network connection detected. Connect an Ethernet cable. This screen updates automatically.';
     } else {

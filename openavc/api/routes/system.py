@@ -427,7 +427,7 @@ def _engine_facts() -> tuple[list[str], bool]:
     return approved, getattr(engine, "isc", None) is not None
 
 
-def _cloud_remote_access() -> bool:
+def cloud_remote_access_set_up() -> bool:
     """Whether remote access through OpenAVC Cloud is set up, which keeps
     working under every choice (its tunnel reaches the server on loopback)."""
     from openavc.cloud.config import remote_access_set_up
@@ -437,6 +437,19 @@ def _cloud_remote_access() -> bool:
     except HTTPException:
         agent = None
     return remote_access_set_up(agent)
+
+
+def own_screen_opens_programmer() -> bool:
+    """Whether this computer's own screen can open the Programmer. Not on the
+    appliance, whose screen shows only the panel. Like
+    ``_panel_dim_available``, the deployment type is a true answer here
+    because on the appliance the server and the screen are the same box."""
+    try:
+        from openavc.updater.platform import DeploymentType, detect_deployment_type
+
+        return detect_deployment_type() != DeploymentType.ANDROID_APPLIANCE
+    except Exception:
+        return True
 
 
 @router.post("/system/listen/preview")
@@ -459,6 +472,8 @@ async def preview_listen(request: Request) -> dict[str, Any]:
     candidate = _listen_choice_from(cfg, body, adapters)
     through, from_this_computer = _connection_facts(request)
     approved, isc_on = _engine_facts()
+    cloud = await asyncio.to_thread(cloud_remote_access_set_up)
+    own_screen = await asyncio.to_thread(own_screen_opens_programmer)
     result = await asyncio.to_thread(
         listen.preview,
         candidate,
@@ -467,9 +482,10 @@ async def preview_listen(request: Request) -> dict[str, Any]:
         from_this_computer=from_this_computer,
         approved_panel_addresses=approved,
         isc_enabled=isc_on,
+        own_screen_opens_programmer=own_screen,
+        cloud_remote_access=cloud,
     )
     result["held_by"] = cfg.env_override("network", listen.MODE_KEY)
-    result["cloud_remote_access"] = await asyncio.to_thread(_cloud_remote_access)
     return result
 
 

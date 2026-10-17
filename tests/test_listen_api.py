@@ -222,6 +222,22 @@ class TestPreview:
         assert [x["code"] for x in result["consequences"]] == ["approved_panels", "inter_system"]
         assert result["consequences"][0]["message"] == "2 approved touch panels will stop connecting."
 
+    def test_on_an_appliance_it_says_nobody_can_open_the_programmer(self, api, monkeypatch):
+        # Not detect_deployment_type itself: an appliance also closes the
+        # development checkout's open admin access, and this client has no
+        # credential.
+        from openavc.api.routes import system as system_routes
+
+        monkeypatch.setattr(system_routes, "own_screen_opens_programmer", lambda: False)
+        c, _ = api()
+        choice = {"accept_connections_from": "this_computer"}
+        codes = [x["code"] for x in c.post("/api/system/listen/preview", json=choice).json()["consequences"]]
+        assert codes == ["no_programmer"]
+
+        api.engine.cloud_agent = object()
+        paired = c.post("/api/system/listen/preview", json=choice).json()
+        assert paired["consequences"] == [] and paired["cloud_remote_access"] is True
+
     def test_a_bad_choice_is_refused_the_same_way_patch_refuses_it(self, api):
         c, _ = api()
         resp = c.post("/api/system/listen/preview", json={"accept_connections_from": "lan"})

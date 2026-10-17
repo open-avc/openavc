@@ -13,6 +13,9 @@ export interface CutOffFacts {
   programmerUrls: string[];
   /** The Programmer on this computer's own screen. */
   localUrl: string;
+  /** False on the appliance, whose own screen shows only the panel, so
+   *  `localUrl` is never offered there. */
+  ownScreenOpensProgrammer: boolean;
   /** The choice it goes back to, as Settings lists it ("Any network"). */
   previousLabel: string;
   /** Minutes the safety net waits. */
@@ -43,19 +46,52 @@ function Urls({ urls }: { urls: string[] }) {
   );
 }
 
+/** On the appliance under this computer only, remote access through OpenAVC
+ *  Cloud is the one way into the Programmer. */
+function cloudIsTheOnlyWay(f: CutOffFacts): boolean {
+  return !f.ownScreenOpensProgrammer && f.mode === "this_computer";
+}
+
+/** Nothing can open the Programmer under the new choice, so the safety net
+ *  always goes back. */
+function noWayIn(f: CutOffFacts): boolean {
+  return cloudIsTheOnlyWay(f) && !f.cloudPaired;
+}
+
 /** "If nobody opens the Programmer that way within 10 minutes, OpenAVC goes
  *  back to Any network." */
 export function safetyNetSentence(f: CutOffFacts): string {
+  if (noWayIn(f)) {
+    return `OpenAVC goes back to ${f.previousLabel} ${f.minutes} minutes after the restart.`;
+  }
   return `If nobody opens the Programmer that way within ${f.minutes} minutes, OpenAVC goes back to ${f.previousLabel}.`;
 }
 
+/** Where to keep working, after "To keep working". Null when there is
+ *  nowhere. */
 function where(f: CutOffFacts): ReactNode {
+  const network = f.adapterName || "chosen";
+  if (!f.ownScreenOpensProgrammer) {
+    if (f.mode === "adapter" && f.programmerUrls.length > 0) {
+      return (
+        <>
+          open
+          <Urls urls={f.programmerUrls} />
+          from a device on the {network} network.
+        </>
+      );
+    }
+    if (f.mode === "adapter") {
+      return <>open the Programmer from a device on the {network} network once that adapter has an address.</>;
+    }
+    return f.cloudPaired ? <>use remote access through OpenAVC Cloud.</> : null;
+  }
   if (f.mode === "adapter" && f.programmerUrls.length > 0) {
     return (
       <>
         open
         <Urls urls={f.programmerUrls} />
-        from a device on the {f.adapterName || "chosen"} network, or use this computer's own
+        from a device on the {network} network, or use this computer's own
         screen (<code>{f.localUrl}</code>).
       </>
     );
@@ -65,16 +101,19 @@ function where(f: CutOffFacts): ReactNode {
 
 /** The confirm dialog's body. */
 export function CutOffWarning({ facts }: { facts: CutOffFacts }) {
+  const route = where(facts);
   return (
     <div data-testid="listen-cut-off-warning" style={{ lineHeight: 1.5 }}>
       <p style={para}>
         You're connected through {facts.connectedThrough}. After the restart, OpenAVC won't accept
         connections from that network, so this page will stop loading here.
       </p>
-      <p style={para}>
-        To keep working on it, {where(facts)}
-        {facts.cloudPaired && <> Remote access through OpenAVC Cloud keeps working.</>}
-      </p>
+      {route && (
+        <p style={para}>
+          To keep working on it, {route}
+          {facts.cloudPaired && !cloudIsTheOnlyWay(facts) && <> Remote access through OpenAVC Cloud keeps working.</>}
+        </p>
+      )}
       {facts.consequences.length > 0 && (
         <ul style={{ ...para, paddingLeft: "var(--space-lg)" }}>
           {facts.consequences.map((c) => (
@@ -89,33 +128,54 @@ export function CutOffWarning({ facts }: { facts: CutOffFacts }) {
 
 /** Shown while the server restarts. */
 export function CutOffRestartLines({ facts }: { facts: CutOffFacts }) {
+  const route = where(facts);
   return (
     <div style={{ lineHeight: 1.5, color: "var(--text-secondary)" }}>
-      <p style={para}>This page will stop loading here. To keep working, {where(facts)}</p>
+      <p style={para}>This page will stop loading here.{route && <> To keep working, {route}</>}</p>
       <p style={{ ...para, marginBottom: 0 }}>{safetyNetSentence(facts)}</p>
     </div>
   );
 }
 
+/** Where the Programmer opens now, after "Saved." */
+function savedWhere(f: CutOffFacts): ReactNode {
+  const network = f.adapterName || "chosen";
+  const onNetwork = f.mode === "adapter" && f.programmerUrls.length > 0;
+  if (!f.ownScreenOpensProgrammer) {
+    if (onNetwork) {
+      return (
+        <>
+          Open the Programmer from
+          <Urls urls={f.programmerUrls} />
+          on a device on the {network} network.
+        </>
+      );
+    }
+    if (f.mode === "adapter") {
+      return <>Open the Programmer from a device on the {network} network once that adapter has an address.</>;
+    }
+    return f.cloudPaired
+      ? <>Open the Programmer with remote access through OpenAVC Cloud.</>
+      : <>Nobody can open the Programmer.</>;
+  }
+  if (onNetwork) {
+    return (
+      <>
+        Open the Programmer from
+        <Urls urls={f.programmerUrls} />
+        on a device on the {network} network, or on this computer's own
+        screen (<code>{f.localUrl}</code>).
+      </>
+    );
+  }
+  return <>Open the Programmer on this computer's own screen (<code>{f.localUrl}</code>).</>;
+}
+
 /** Shown once this page can no longer reach the server. */
 export function CutOffSaved({ facts }: { facts: CutOffFacts }) {
-  const onNetwork = facts.mode === "adapter" && facts.programmerUrls.length > 0;
   return (
     <div style={{ lineHeight: 1.5 }}>
-      <p style={para}>
-        {onNetwork ? (
-          <>
-            Saved. Open the Programmer from
-            <Urls urls={facts.programmerUrls} />
-            on a device on the {facts.adapterName || "chosen"} network, or on this computer's own
-            screen (<code>{facts.localUrl}</code>).
-          </>
-        ) : (
-          <>
-            Saved. Open the Programmer on this computer's own screen (<code>{facts.localUrl}</code>).
-          </>
-        )}
-      </p>
+      <p style={para}>Saved. {savedWhere(facts)}</p>
       <p style={{ ...para, marginBottom: 0, color: "var(--text-secondary)" }}>{safetyNetSentence(facts)}</p>
     </div>
   );

@@ -154,15 +154,27 @@ export function listenChoiceFor(
   return { mode: "adapter", adapter: option ? { ...option.identity } : {} };
 }
 
-/** Under the picker, in one sentence: who can connect with this choice. */
-export function listenHelp(mode: ListenMode, name: string): string {
+/** Under the picker, in one sentence: who can connect with this choice.
+ *  `ownScreenOpensProgrammer` is false on the appliance, whose own screen
+ *  shows only the panel. */
+export function listenHelp(mode: ListenMode, name: string, ownScreenOpensProgrammer = true): string {
   if (mode === "any") {
     return "Touch panels, phones and computers on any network this computer is connected to can open the panel and the Programmer.";
   }
   if (mode === "adapter") {
-    return `Only devices on the ${name || "chosen"} network, and this computer itself, can open the panel and the Programmer.`;
+    return ownScreenOpensProgrammer
+      ? `Only devices on the ${name || "chosen"} network, and this computer itself, can open the panel and the Programmer.`
+      : `Only devices on the ${name || "chosen"} network can open the panel and the Programmer, and this computer's own screen shows the panel.`;
   }
-  return "Only this computer's own screen and browser can open the panel and the Programmer.";
+  return ownScreenOpensProgrammer
+    ? "Only this computer's own screen and browser can open the panel and the Programmer."
+    : "Only this computer's own screen shows the panel, and only remote access through OpenAVC Cloud can open the Programmer.";
+}
+
+/** Whether this computer's own screen can open the Programmer, from the
+ *  deployment type Settings reads: not on the appliance. */
+export function ownScreenOpensProgrammer(deploymentType: string): boolean {
+  return deploymentType !== "android_appliance";
 }
 
 /** The choice as it reads inside a sentence: "Any network", "Ethernet only". */

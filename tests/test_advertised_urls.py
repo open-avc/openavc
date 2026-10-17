@@ -241,6 +241,38 @@ class TestTheSetupScreenConsultsTheBind:
         )
         assert net["other_programmer_urls"] == ["http://10.50.0.20:8080/programmer"]
 
+    async def test_an_appliance_offers_no_url_its_own_screen_cannot_open(
+        self, claimed, monkeypatch, tmp_path
+    ):
+        """The appliance's screen shows only the panel: no address bar to type
+        localhost into. The page names the ways in that are left instead."""
+        from openavc.updater import platform
+
+        monkeypatch.setattr(
+            platform, "detect_deployment_type", lambda: platform.DeploymentType.ANDROID_APPLIANCE,
+        )
+        monkeypatch.setattr(config, "PROJECT_PATH", str(tmp_path / "project.avc"))
+        net = await _network(claimed, monkeypatch, bind="127.0.0.1", hostname="avc-1")
+
+        assert net["local_only"] is True
+        assert net["programmer_url"] is None
+        assert net["panel_url"] is None
+        assert net["own_screen_opens_programmer"] is False
+        assert net["cloud_remote_access"] is False
+
+        claimed.cloud_agent = object()
+        net = await _network(claimed, monkeypatch, bind="127.0.0.1", hostname="avc-1")
+        assert net["cloud_remote_access"] is True
+
+    async def test_an_appliance_on_the_network_keeps_its_address(self, claimed, monkeypatch):
+        from openavc.updater import platform
+
+        monkeypatch.setattr(
+            platform, "detect_deployment_type", lambda: platform.DeploymentType.ANDROID_APPLIANCE,
+        )
+        net = await _network(claimed, monkeypatch, bind="0.0.0.0", hostname="avc-1")
+        assert net["programmer_url"] == f"http://{LAN_IP}:8080/programmer"
+
 
 class TestTheSetupScreenAppendsTheSuffixOnce:
     async def test_a_bare_hostname_gets_the_mdns_suffix(self, claimed, monkeypatch):

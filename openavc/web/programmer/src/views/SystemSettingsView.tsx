@@ -7,7 +7,7 @@ import { HostNetworkCard } from "../components/system/HostNetworkCard";
 import { EnvHeldNote, EnvLock } from "../components/system/EnvHeldNote";
 import { AcceptConnectionsField, ReachDevicesField } from "../components/system/NetworkChoiceFields";
 import { CutOffRestartLines, CutOffSaved, CutOffWarning, type CutOffFacts } from "../components/system/ListenCutOff";
-import { adapterName, restartPlan, sameListenChoice, type RestartPlan } from "../components/system/adapterChoice";
+import { adapterName, ownScreenOpensProgrammer, restartPlan, sameListenChoice, type RestartPlan } from "../components/system/adapterChoice";
 import { VariableKeyPicker } from "../components/shared/VariableKeyPicker";
 import { useProjectStore } from "../store/projectStore";
 import { RestartProgressDialog } from "../components/shared/RestartProgressDialog";
@@ -950,6 +950,7 @@ export function SystemSettingsView() {
     adapterName: p.adapter_name,
     programmerUrls: p.mode === "adapter" ? programmerUrls : [],
     localUrl,
+    ownScreenOpensProgrammer: ownScreenOpensProgrammer(deploymentType),
     // The safety net goes back to the choice the server is running.
     previousLabel: listenRunning?.label ?? "the previous choice",
     minutes: 10,
