@@ -58,6 +58,50 @@ def _set_monitored(project: Any, variable: Any, monitored: bool) -> None:
     )
 
 
+def _count_steps(steps: Any, matches: Any) -> int:
+    """Count the steps ``matches`` accepts, conditional branches included."""
+    count = 0
+    for step in steps or []:
+        if matches(step):
+            count += 1
+        count += _count_steps(getattr(step, "then_steps", None), matches)
+        count += _count_steps(getattr(step, "else_steps", None), matches)
+    return count
+
+
+def _mentions(value: Any, text: str) -> bool:
+    """True when ``text`` is a string anywhere in a params or value tree."""
+    if isinstance(value, str):
+        return value == text
+    if isinstance(value, (list, tuple)):
+        return any(_mentions(v, text) for v in value)
+    if isinstance(value, dict):
+        return any(_mentions(v, text) for v in value.values())
+    return False
+
+
+def _step_uses_key(step: Any, key: str) -> bool:
+    """A step that sets ``key``, tests it, or takes ``$key`` as a parameter."""
+    if getattr(step, "key", None) == key:
+        return True
+    for guard in (getattr(step, "condition", None), getattr(step, "skip_if", None)):
+        if guard is not None and getattr(guard, "key", None) == key:
+            return True
+    return _mentions(getattr(step, "params", None), f"${key}") or _mentions(
+        getattr(step, "value", None), f"${key}"
+    )
+
+
+def _ui_elements(project: Any) -> Any:
+    """Every UI element with where it lives: page elements, then master elements."""
+    ui = project.ui
+    for page in ui.pages:
+        for el in page.elements:
+            yield {"page_id": page.id, "element_id": el.id}, el
+    for el in getattr(ui, "master_elements", None) or []:
+        yield {"element_id": el.id}, el
+
+
 class MacroToolsMixin:
     """Macro, variable, trigger, and state management tools."""
 
@@ -442,23 +486,28 @@ class MacroToolsMixin:
         result: dict = {"macros": [], "triggers": [], "bindings": [], "scripts": []}
 
         if ref_type == "macro":
-            # Check triggers on all macros
+            # Other macros that call it as a step, at any depth. A trigger
+            # belongs to the macro it fires and goes with it, so it is not a
+            # reference.
             for m in p.macros:
-                for t in m.triggers:
-                    action = t.action if hasattr(t, "action") else ""
-                    if action == ref_id or (hasattr(t, "macro") and t.macro == ref_id):
-                        result["triggers"].append({"macro_id": m.id, "trigger_id": getattr(t, "id", "")})
+                if m.id == ref_id:
+                    continue
+                calls = _count_steps(
+                    m.steps,
+                    lambda s: s.action == "macro" and s.macro == ref_id,
+                )
+                if calls:
+                    result["macros"].append({"macro_id": m.id, "macro_name": m.name, "steps": calls})
             # Check UI bindings
-            for page in p.ui.pages:
-                for el in page.elements:
-                    bindings = el.bindings if hasattr(el, "bindings") and el.bindings else {}
-                    if isinstance(bindings, dict):
-                        for slot, binding in bindings.items():
-                            actions = binding if isinstance(binding, list) else [binding] if isinstance(binding, dict) else []
-                            for act in actions:
-                                if isinstance(act, dict) and act.get("action") == "macro" and act.get("macro") == ref_id:
-                                    result["bindings"].append({"page_id": page.id, "element_id": el.id, "slot": slot})
-                                    break
+            for where, el in _ui_elements(p):
+                bindings = el.bindings if hasattr(el, "bindings") and el.bindings else {}
+                if isinstance(bindings, dict):
+                    for slot, binding in bindings.items():
+                        actions = binding if isinstance(binding, list) else [binding] if isinstance(binding, dict) else []
+                        for act in actions:
+                            if isinstance(act, dict) and act.get("action") == "macro" and act.get("macro") == ref_id:
+                                result["bindings"].append({**where, "slot": slot})
+                                break
             # Check scripts
             result["scripts"] = self._scan_scripts_for_ref(engine, ref_id)
 
@@ -482,22 +531,28 @@ class MacroToolsMixin:
         elif ref_type == "variable":
             state_key = f"var.{ref_id}"
             # Check UI bindings
-            for page in p.ui.pages:
-                for el in page.elements:
-                    bindings = el.bindings if hasattr(el, "bindings") and el.bindings else {}
-                    if isinstance(bindings, dict):
-                        for slot, binding in bindings.items():
-                            actions = binding if isinstance(binding, list) else [binding] if isinstance(binding, dict) else []
-                            for act in actions:
-                                if isinstance(act, dict) and act.get("key") in (ref_id, state_key):
-                                    result["bindings"].append({"page_id": page.id, "element_id": el.id, "slot": slot})
-                                    break
-            # Check triggers
+            for where, el in _ui_elements(p):
+                bindings = el.bindings if hasattr(el, "bindings") and el.bindings else {}
+                if isinstance(bindings, dict):
+                    for slot, binding in bindings.items():
+                        actions = binding if isinstance(binding, list) else [binding] if isinstance(binding, dict) else []
+                        for act in actions:
+                            if isinstance(act, dict) and act.get("key") in (ref_id, state_key):
+                                result["bindings"].append({**where, "slot": slot})
+                                break
+            # Macro steps that set it, test it or take it as a parameter, and
+            # triggers that watch it or guard on it.
+            for m in p.macros:
+                uses = _count_steps(m.steps, lambda s: _step_uses_key(s, state_key))
+                if uses:
+                    result["macros"].append({"macro_id": m.id, "macro_name": m.name, "steps": uses})
             for m in p.macros:
                 for t in m.triggers:
-                    trigger_dict = t.model_dump(mode="json") if hasattr(t, "model_dump") else t
-                    if isinstance(trigger_dict, dict) and trigger_dict.get("key") in (ref_id, state_key):
-                        result["triggers"].append({"macro_id": m.id})
+                    if t.state_key == state_key:
+                        result["triggers"].append({"macro_id": m.id, "trigger_id": t.id, "field": "state_key"})
+                    for condition in t.conditions:
+                        if condition.key == state_key:
+                            result["triggers"].append({"macro_id": m.id, "trigger_id": t.id, "field": "condition"})
             # Check scripts
             result["scripts"] = self._scan_scripts_for_ref(engine, ref_id)
 
