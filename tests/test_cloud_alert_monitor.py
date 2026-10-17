@@ -1529,13 +1529,13 @@ async def test_a_monitor_removed_from_the_project_is_not_a_repair():
 # --- The alert agrees with the tile ---
 #
 # A monitor's tile and its alert read one declaration, so at every value the
-# alert is open exactly when the tile is not green. The range is inclusive at
+# alert is open exactly when the tile says abnormal. The range is inclusive at
 # both bounds on the tile (core.monitors.monitor_status); the alert has to
 # resolve there too, not one step further in.
 
 
 async def _alert_agrees_with_tile_at(values, monitor_decl):
-    from openavc.core.monitors import NORMAL, monitor_status
+    from openavc.core.monitors import ABNORMAL, monitor_status
 
     agent = MockAgent()
     state = MockStateStore()
@@ -1547,9 +1547,9 @@ async def _alert_agrees_with_tile_at(values, monitor_decl):
     for value in values:
         state.set(monitor_decl["key"], value)
         await _drain(monitor, agent)
-        tile_green = monitor_status(monitor_decl, value) == NORMAL
+        tile_abnormal = monitor_status(monitor_decl, value) == ABNORMAL
         alert_open = bool(monitor._active_alerts)
-        if alert_open == tile_green:
+        if alert_open != tile_abnormal:
             disagreements.append((value, monitor_status(monitor_decl, value), alert_open))
     await monitor.stop()
     return disagreements
@@ -1564,3 +1564,24 @@ async def test_a_range_alert_resolves_exactly_on_its_bound():
     high_end = [25, 20, 19.999, 20.001, 20, 15]
     assert await _alert_agrees_with_tile_at(low_end, decl) == []
     assert await _alert_agrees_with_tile_at(high_end, decl) == []
+
+
+@pytest.mark.asyncio
+async def test_a_reading_the_tile_cannot_judge_does_not_fire():
+    """"inf" and "1_000" are numbers to float() and not to the monitor rule,
+    so the tile stayed neutral while the .above alert fired beside it."""
+    decl = {"key": "device.dsp.level", "label": "Level", "normal_min": 10, "normal_max": 20}
+    for value in ["inf", "-inf", "nan", "1_000", True, False, " 5 ", " 15 ", "25"]:
+        assert await _alert_agrees_with_tile_at([value], decl) == [], value
+
+
+def test_compare_numbers_by_the_monitor_rule():
+    assert _compare("inf", ">", 5) is False
+    assert _compare("-inf", "<", 5) is False
+    assert _compare("nan", ">", 5) is False
+    assert _compare("1_000", ">", 5) is False
+    assert _compare(True, ">", 0) is False
+    assert _compare(" 5 ", "<", 10) is True
+    assert _compare("1e3", ">", 5) is True
+    # The threshold is read by the same rule: a word is not a limit.
+    assert _compare(10, "<", "inf") is False

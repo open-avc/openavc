@@ -21,7 +21,7 @@ from openavc.cloud.protocol import (
     build_active_alerts_payload, build_alert_payload,
     build_alert_resolved_payload, build_monitors_payload,
 )
-from openavc.core.monitors import compile_alert_rules, monitor_reading
+from openavc.core.monitors import as_number, compile_alert_rules, monitor_reading
 from openavc.utils.logger import get_logger
 from openavc.utils.regex_safety import regex_safety_error
 
@@ -784,8 +784,13 @@ def _compare(value: Any, operator: str, threshold: Any) -> bool:
             return False
 
         if operator in (">", "<", ">=", "<="):
-            v = float(value)
-            t = float(threshold)
+            # What counts as a number is the monitor rule's answer, not
+            # float()'s: float() takes "inf" and "1_000", which the tile
+            # beside this alert reads as no number at all.
+            v = as_number(value)
+            t = as_number(threshold)
+            if v is None or t is None:
+                return False
             if operator == ">":
                 return v > t
             if operator == "<":
