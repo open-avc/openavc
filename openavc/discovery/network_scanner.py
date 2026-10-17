@@ -150,6 +150,16 @@ _NOT_A_NETWORK_PATTERNS = re.compile(r"bluetooth|local area connection\*", re.IG
 # pattern above, only consulted for an adapter with no usable address.
 _MACOS_INTERNAL_PATTERNS = re.compile(r"^(anpi|awdl|llw|ap)\d+$")
 
+# The Linux kernel's own interfaces, never a network a person would choose:
+# the fallback device each tunnel module creates when it loads (sit, ip6tnl,
+# ip_vti, ip6_vti, tunl and the GRE family), dummy, and the ifb devices traffic
+# shaping uses. Android loads all of them, so appliance hardware listed seven
+# in both adapter pickers. Like the patterns above, only consulted for an
+# adapter with no usable address.
+_LINUX_PSEUDO_PATTERNS = re.compile(
+    r"^(dummy|ifb|sit|ip6tnl|ip_vti|ip6_vti|tunl|gre|gretap|erspan|ip6gre|ip6gretap|ip6erspan)\d+$"
+)
+
 # One line of `networksetup -listnetworkserviceorder` per service:
 # "(Hardware Port: Wi-Fi, Device: en0)". A service with no interface of its
 # own (a VPN) has an empty Device and matches nothing.
@@ -196,7 +206,8 @@ def get_adapter_inventory() -> list[dict[str, Any]]:
     ``get_network_adapters`` lists addresses, so an adapter with two appears
     twice and one with none does not appear at all. A choice of adapter has to
     stay visible while its adapter is unplugged, so this list keeps those, from
-    psutil, with the same virtual-adapter filter by OS name. On macOS such an
+    psutil, with the same virtual-adapter filter by OS name, never one of the
+    Linux kernel's own interfaces (``_LINUX_PSEUDO_PATTERNS``). On macOS such an
     adapter is listed only when it is not one of macOS's own interfaces and a
     network service uses it (``_macos_service_devices``). ``link`` is False
     when the adapter is not connected; an unplugged adapter on Windows still
@@ -232,7 +243,7 @@ def get_adapter_inventory() -> list[dict[str, Any]]:
             mac = next((a.address for a in addrs if a.family == psutil.AF_LINK), "")
             if not mac or _VIRTUAL_ADAPTER_PATTERNS.search(name):
                 continue
-            if _NOT_A_NETWORK_PATTERNS.search(name):
+            if _NOT_A_NETWORK_PATTERNS.search(name) or _LINUX_PSEUDO_PATTERNS.match(name):
                 continue
             if any(
                 a.family == socket.AF_INET and a.address.startswith("127.")
