@@ -271,7 +271,7 @@ indistinguishable from a dead device.
 
 `device.command`, `event.emit`, `macro`, `state.set` and `ui.navigate` name a macro step as well, so the two vocabularies read like one.
 These steps are **not** binding actions, and are silent when written here:
-`conditional`, `delay`, `group.command`, `help.request` and `wait_until`.
+`conditional`, `delay`, `group.command`, `help.clear`, `help.request` and `wait_until`.
 To reach one of those, put it in a macro and call that macro with
 `{"action": "macro", "macro": "<id>"}`.
 

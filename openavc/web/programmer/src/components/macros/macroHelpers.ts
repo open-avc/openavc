@@ -131,6 +131,14 @@ export const STEP_TYPES: StepTypeInfo[] = [
     defaults: () => ({ action: "help.request", message: "" }),
   },
   {
+    action: "help.clear",
+    label: "Clear Help Request",
+    description: "Put the help state back to idle, for the end of a session",
+    color: "#9f1239",
+    summary: () => "Back to idle",
+    defaults: () => ({ action: "help.clear" }),
+  },
+  {
     action: "wait_until",
     label: "Wait Until",
     description: "Pause until a state value matches a condition (with optional timeout)",
@@ -446,6 +454,20 @@ function _generateStepLines(
         );
         lines.push(
           `${indent}# (no script API for ui.navigate yet, call from a macro step instead)`
+        );
+        break;
+      case "help.request":
+        lines.push(
+          `${indent}# Ask for help: '${_pyComment(step.message?.trim() || "Someone asked for help")}'`
+        );
+        lines.push(
+          `${indent}# (no script API for Ask for Help, call from a macro step instead)`
+        );
+        break;
+      case "help.clear":
+        lines.push(`${indent}# Clear help request`);
+        lines.push(
+          `${indent}# (no script API for Clear Help Request, call from a macro step instead)`
         );
         break;
       case "conditional": {

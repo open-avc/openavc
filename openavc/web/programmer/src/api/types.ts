@@ -106,6 +106,7 @@ export interface MacroStep {
   // $var. / $trigger. references INSIDE the sentence, unlike other step
   // values, because it is prose going to a person. `cooldown` is seconds and
   // guards against a trigger loop, not against people; 0 always sends.
+  // help.clear ("Clear Help Request") takes no fields.
   message?: string;
   severity?: string;
   cooldown?: number;

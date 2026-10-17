@@ -303,4 +303,4 @@ export const DISPATCHED_ACTIONS: string[] = ["device.command", "event.emit", "ma
  * natural wrong guess. Worth naming separately because "that is a macro step,
  * put it in a macro" is a fix and "no such action" is not.
  */
-export const MACRO_ONLY_ACTIONS: string[] = ["conditional", "delay", "group.command", "help.request", "wait_until"];
+export const MACRO_ONLY_ACTIONS: string[] = ["conditional", "delay", "group.command", "help.clear", "help.request", "wait_until"];

@@ -340,7 +340,7 @@ class MacroEngine:
     def plugin_action_types(self) -> frozenset[str]:
         """Action types plugins have registered — valid steps beyond the built-ins.
 
-        Anything validating a macro needs this: the built-in nine are a static
+        Anything validating a macro needs this: the built-in steps are a static
         list, but a step naming a plugin action is equally runnable, and only
         this engine knows which ones are loaded right now.
         """
@@ -899,6 +899,8 @@ class MacroEngine:
             return f"Waiting for {key} ({tmo})"
         if action == "help.request":
             return "Asking for help"
+        if action == "help.clear":
+            return "Clearing the help request"
         if action == "ui.navigate":
             page = step.get("page", "?")
             if page == "$back":
@@ -1212,6 +1214,15 @@ class MacroEngine:
             await self._help.raise_request(
                 message=message, severity=severity, cooldown=cooldown,
             )
+
+        elif action == "help.clear":
+            if self._help is None:
+                log.warning(
+                    "A macro cleared the help request and there is nothing "
+                    "wired to clear."
+                )
+                return
+            self._help.clear()
 
         else:
             plugin_action = self._plugin_actions.get(action)

@@ -200,6 +200,7 @@ SCENARIOS = [
     "trigger_gte",
     "wait_until_timeout_fail",
     "legacy_plain",
+    "help_steps",
 ]
 
 
@@ -330,6 +331,17 @@ class TestValueGeneration:
         assert ("disp", "input_hdmi1", None) in r.devices.sent
         assert r.state.data["var.src"] == "hdmi1"
         assert r.macros.executed == ["sub_macro"]
+
+    def test_help_steps_are_named_not_called_plugin_actions(self, generated):
+        """Neither step has a script API; the script says so by name and runs
+        the steps around them."""
+        script = generated["help_steps"]["script"]
+        assert "Plugin action" not in script
+        assert "# Ask for help: " in script
+        assert "# Clear help request" in script
+        r = _exec_script(script)
+        r.run()
+        assert r.state.data["var.after"] == "ran"
 
 
 class TestOfflineGuards:

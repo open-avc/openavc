@@ -1794,8 +1794,8 @@ def binding_findings(element: Mapping[str, Any]) -> list[Finding]:
 # The second set is what makes the message worth reading. Five names --
 # device.command, event.emit, macro, state.set, ui.navigate -- are both a
 # binding action and a macro step, so the two vocabularies look like one and the
-# five that are macro steps ONLY (delay, conditional, wait_until, group.command,
-# help.request) are the natural wrong guess. Telling somebody `delay` does not
+# ones that are macro steps ONLY (delay, conditional, wait_until, group.command,
+# help.request, help.clear) are the natural wrong guess. Telling somebody `delay` does not
 # exist would be false; telling them it is a macro step and how to reach one is
 # the fix.
 

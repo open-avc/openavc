@@ -26,6 +26,8 @@ Use the search box at the top of the macro list to filter by name.
 | **Run Macro** | Execute another macro as a sub-routine | Run `select_hdmi1` |
 | **Conditional** | If/else branching based on state | If projector is already on, skip power-on |
 | **Navigate Panel** | Send every panel to a specific page or overlay | Return all panels to `home` at end of meeting |
+| **Ask for Help** | Raise a help request to whoever supports this space | A Help button, or a trigger after three failed power-ons |
+| **Clear Help Request** | Put the help state back to idle | The last step of `system_off` |
 
 The **Device Command** step uses smart dropdowns: after selecting a device, the command dropdown only shows commands defined by that device's driver, with parameter fields that match the driver's command definition. No guessing at command syntax.
 
@@ -168,6 +170,12 @@ The step sets state you can bind to a label, so a panel can answer the person wh
 Bind a label to these and the room can say "Help requested 9:02. Ben acknowledged 9:04." A button that does nothing visible gets pressed four more times, so it is worth showing something back even if it is only "requested".
 
 **If the request does not reach the cloud**, `system.help_state` becomes `unreachable` rather than `requested`. That happens when the system is not connected to the cloud, and when messages to the cloud are paused for a short time after too many were sent at once (a burst of alerts, for example). Nothing is held and sent later: a help request that arrives forty minutes on is a message about a class that already ended. Show the difference on the panel so nobody stands waiting for help that never left the building.
+
+### Putting the space back to idle
+
+The keys keep showing the last request until a **Clear Help Request** step runs. Put one in the macro that ends a session, in a macro on an end-of-day schedule, or behind a Dismiss button on the page that shows the request. It sets `system.help_state` back to `idle` and empties the message, the times and who acknowledged it. The next Ask for Help sends at once, even inside its cooldown.
+
+Clearing changes only what this system shows. The request stays open in OpenAVC Cloud until someone there closes it, and an acknowledgement that arrives after the clear does not put it back on the panel.
 
 ### Sending at most every N seconds
 
@@ -340,7 +348,7 @@ Click **Test** to save pending project edits and execute the macro. If saving fa
 
 ## Convert to Script
 
-Click **Convert to Script** to generate a Python script from the macro. A preview shows the generated code in a diff-like view before committing. This is useful when you need loops, error handling with retries, external API calls, or complex data processing that macros cannot express. The generated script is fully functional and includes all the same steps with proper `await` calls.
+Click **Convert to Script** to generate a Python script from the macro. A preview shows the generated code in a diff-like view before committing. This is useful when you need loops, error handling with retries, external API calls, or complex data processing that macros cannot express. The generated script runs the same steps with proper `await` calls. Navigate Panel, Ask for Help and Clear Help Request have no script equivalent and come out as comments: keep them in a macro and call it with `await macros.execute("<macro id>")`.
 
 ## Triggers
 

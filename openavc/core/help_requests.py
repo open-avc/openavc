@@ -28,6 +28,11 @@ The room learns whether anyone heard: acknowledging in the cloud comes back
 down and lands in ``system.help_acknowledged_by``, so a page can say "Help
 requested 9:02. Ben acknowledged 9:04." A button with no visible effect is a
 black hole, and it gets pressed four more times.
+
+**The programmer says when it is over**, with the ``help.clear`` step: at the
+end of a session, on a schedule, behind a Dismiss button. Until then the panel
+keeps showing the last request. Clearing is local: the alert stays open in the
+cloud until somebody there closes it.
 """
 
 from __future__ import annotations
@@ -83,6 +88,10 @@ class HelpRequests:
         self._engine = engine
         self._last_raised_at: float = 0.0
         self._current_id: str = ""
+        # True from a clear until the next raise. The cleared request keeps its
+        # id, so an acknowledgement that arrives after the clear can be told
+        # apart from one for a request raised before a restart (no id at all).
+        self._cleared: bool = False
 
     def declare_keys(self) -> None:
         """Publish the idle state at startup so a bound label draws something.
@@ -124,6 +133,7 @@ class HelpRequests:
         text = (message or DEFAULT_MESSAGE).strip()[:MAX_MESSAGE_LEN]
         request_id = str(uuid.uuid4())
         self._current_id = request_id
+        self._cleared = False
         raised_at = datetime.now(timezone.utc).isoformat()
 
         state = self._engine.state
@@ -211,6 +221,11 @@ class HelpRequests:
         if self._current_id and help_id and help_id != self._current_id:
             log.debug("Acknowledgement for an older help request (%s), ignoring", help_id)
             return
+        if self._cleared:
+            # The programmer put the room back to idle; an answer arriving
+            # after that must not put the request back on the panel.
+            log.debug("Acknowledgement after the help request was cleared, ignoring")
+            return
 
         who = str(payload.get("acknowledged_by") or "").strip() or "OpenAVC Cloud"
         at = str(payload.get("acknowledged_at") or "") or datetime.now(timezone.utc).isoformat()
@@ -225,8 +240,14 @@ class HelpRequests:
         log.info("Help request acknowledged by %s", who)
 
     def clear(self) -> None:
-        """Put the room back to idle. The programmer decides when that is."""
-        self._current_id = ""
+        """Put the room back to idle. The programmer decides when that is.
+
+        It also ends the cooldown. The panel reads idle after a clear, so a
+        press dropped by the cooldown would have no visible effect at all; the
+        next request is a new one and goes out.
+        """
+        self._cleared = True
+        self._last_raised_at = 0.0
         state = self._engine.state
         state.set(KEY_STATE, IDLE)
         state.set(KEY_MESSAGE, None)

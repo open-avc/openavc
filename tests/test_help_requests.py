@@ -346,3 +346,118 @@ async def test_a_step_with_nothing_wired_says_so_rather_than_raising():
     ]}])
 
     await macros.execute("ask")  # does not raise
+
+
+# --- Putting the room back --------------------------------------------------
+#
+# A request stays on the panel until something says it is over. That is the
+# programmer's call, made with the Clear help request step: at the end of a
+# session, on a schedule, or behind a Dismiss button.
+
+
+def _macro_engine(engine, help_requests):
+    from openavc.core.device_manager import DeviceManager
+    from openavc.core.macro_engine import MacroEngine
+
+    return MacroEngine(
+        engine.state, engine.events,
+        DeviceManager(engine.state, engine.events),
+        help_requests=help_requests,
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_clear_step_is_a_known_action():
+    from openavc.core.macro_validation import validate_macro_step
+
+    assert validate_macro_step({"action": "help.clear"}, "steps[0]") == []
+
+
+@pytest.mark.asyncio
+async def test_the_clear_step_puts_the_room_back(engine, help_requests):
+    macros = _macro_engine(engine, help_requests)
+    macros.load_macros([
+        {"id": "ask", "name": "Ask", "steps": [{"action": "help.request", "message": "x"}]},
+        {"id": "off", "name": "System Off", "steps": [{"action": "help.clear"}]},
+    ])
+    raised = await help_requests.raise_request(message="need a hand")
+    await help_requests.handle_acknowledged({
+        "help_id": raised["help_id"], "acknowledged_by": "ben@example.com",
+    })
+
+    assert await macros.execute("off") == "completed"
+
+    assert engine.state.get(KEY_STATE) == IDLE
+    assert engine.state.get(KEY_MESSAGE) is None
+    assert engine.state.get(KEY_REQUESTED_AT) is None
+    assert engine.state.get(KEY_ACKNOWLEDGED_AT) is None
+    assert engine.state.get(KEY_ACKNOWLEDGED_BY) is None
+
+
+@pytest.mark.asyncio
+async def test_clearing_ends_the_cooldown(engine, help_requests):
+    """The next class presses help two minutes after the last one was cleared.
+    Inside the old cooldown that press would be dropped with the panel at idle,
+    a button with no visible effect."""
+    await help_requests.raise_request(message="first")
+    help_requests.clear()
+
+    result = await help_requests.raise_request(message="second")
+
+    assert result["raised"] is True
+    assert len(engine.cloud_agent.sent) == 2
+    assert engine.state.get(KEY_STATE) == REQUESTED
+
+
+@pytest.mark.asyncio
+async def test_an_acknowledgement_after_a_clear_does_not_bring_it_back(
+    engine, help_requests
+):
+    raised = await help_requests.raise_request(message="done with this")
+    help_requests.clear()
+
+    await help_requests.handle_acknowledged({
+        "help_id": raised["help_id"], "acknowledged_by": "late@example.com",
+    })
+
+    assert engine.state.get(KEY_STATE) == IDLE
+    assert engine.state.get(KEY_ACKNOWLEDGED_BY) is None
+
+
+@pytest.mark.asyncio
+async def test_an_acknowledgement_after_a_restart_still_lands(engine, help_requests):
+    """A request raised before a restart is still open in the cloud. Nothing
+    was cleared, so the room hears that someone is coming."""
+    await help_requests.handle_acknowledged({
+        "help_id": "raised-before-the-restart", "acknowledged_by": "ben@example.com",
+    })
+
+    assert engine.state.get(KEY_STATE) == ACKNOWLEDGED
+    assert engine.state.get(KEY_ACKNOWLEDGED_BY) == "ben@example.com"
+
+
+@pytest.mark.asyncio
+async def test_a_clear_during_the_relay_is_not_overwritten(engine, help_requests):
+    """A clear that lands while the relay is still out must not be replaced by
+    unreachable when the relay then fails."""
+    async def clear_then_drop(msg_type, payload):
+        help_requests.clear()
+        return False
+
+    engine.cloud_agent.send_message = clear_then_drop
+    await help_requests.raise_request(message="x")
+
+    assert engine.state.get(KEY_STATE) == IDLE
+
+
+@pytest.mark.asyncio
+async def test_a_clear_step_with_nothing_wired_does_not_raise():
+    from openavc.core.device_manager import DeviceManager
+    from openavc.core.macro_engine import MacroEngine
+
+    state = StateStore()
+    events = EventBus()
+    macros = MacroEngine(state, events, DeviceManager(state, events))
+    macros.load_macros([{"id": "off", "name": "Off", "steps": [{"action": "help.clear"}]}])
+
+    assert await macros.execute("off") == "completed"

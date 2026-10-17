@@ -152,6 +152,19 @@ export function StepEditor({ step, macros, currentMacroId, onChange, activeStepP
     case "help.request":
       editor = <AskForHelpEditor step={step} onChange={update} />;
       break;
+    case "help.clear":
+      editor = (
+        <HelpText>
+          Puts <code style={codeStyle}>system.help_state</code> back to{" "}
+          <strong>idle</strong> and empties the message, the request time and who
+          acknowledged it, so a panel stops showing the last request. Put it in
+          the macro that ends a session, in a macro on an end-of-day schedule,
+          or behind a Dismiss button. The next Ask for Help sends at once, even
+          inside its cooldown. The request stays open in OpenAVC Cloud until
+          someone there closes it.
+        </HelpText>
+      );
+      break;
     default:
       if (pluginAction) {
         editor = (

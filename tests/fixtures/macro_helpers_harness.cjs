@@ -175,4 +175,15 @@ gen("legacy_plain", {
   ],
 });
 
+// --- Ask for help and Clear help request have no script API ---
+gen("help_steps", {
+  id: "m11",
+  name: "Help",
+  steps: [
+    { action: "help.request", message: "Hall 2 'projector'\nwill not start" },
+    { action: "help.clear" },
+    { action: "state.set", key: "var.after", value: "ran" },
+  ],
+});
+
 process.stdout.write(JSON.stringify(results));

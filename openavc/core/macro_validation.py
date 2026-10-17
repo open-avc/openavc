@@ -44,7 +44,7 @@ MissingParams = Callable[[Mapping[str, Any]], "list[str] | None"]
 BUILTIN_STEP_ACTIONS = frozenset((
     "device.command", "group.command", "delay", "state.set",
     "macro", "event.emit", "conditional", "wait_until", "ui.navigate",
-    "help.request",
+    "help.request", "help.clear",
 ))
 STEP_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     "device.command": ("device", "command"),
@@ -66,6 +66,7 @@ STEP_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     # a panel button whose whole meaning is "someone in this room needs a
     # person" -- and requiring a message would make the simplest wiring the
     # fussiest one.
+    # help.clear: no fields. It puts the help state back to idle.
 }
 VALID_TRIGGER_TYPES = frozenset(("schedule", "state_change", "event", "startup"))
 # Accept both canonical operator names and the user-facing aliases that

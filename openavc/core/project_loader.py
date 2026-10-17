@@ -226,7 +226,7 @@ class StepCondition(_ForwardCompatModel):
 
 
 class MacroStep(_ForwardCompatModel):
-    action: str  # "device.command", "group.command", "delay", "state.set", "macro", "event.emit", "conditional", "wait_until", "ui.navigate"
+    action: str  # one of macro_validation.BUILTIN_STEP_ACTIONS, or a plugin-registered action
     # Fields used by different action types (all optional, validated at runtime)
     device: str | None = None
     group: str | None = None  # group.command: target device group ID
