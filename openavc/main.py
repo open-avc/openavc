@@ -773,15 +773,18 @@ def _spawn_replacement() -> None:
         log.exception("Failed to spawn replacement process; exiting without restart")
 
 
-# The data folder's status/ subfolder holds what the Windows tray app reads.
-# The tray runs as the signed-in user, and the installer leaves this one folder
-# readable (and only readable) by every local account, while the rest of the
-# data folder belongs to the service and administrators
-# (installer/secure-data-dir.bat). Nothing secret may be written here.
-# installer/tray.py names the same folder and files.
+# The data folder's status/ subfolder holds what the Windows tray app and the
+# macOS menu bar app read. Both run as the signed-in user. On Windows the
+# installer leaves this one folder readable (and only readable) by every local
+# account, while the rest of the data folder belongs to the service and
+# administrators (installer/secure-data-dir.bat); on macOS the server runs as
+# root, so server.json is written readable by everyone (STATUS_FILE_MODE).
+# Nothing secret may be written here. installer/tray.py and
+# installer/menubar.py name the same folder and files.
 STATUS_DIR_NAME = "status"
 STARTUP_ERROR_FILE_NAME = "startup-error.json"
 SERVER_ADDRESS_FILE_NAME = "server.json"
+STATUS_FILE_MODE = 0o644
 
 
 def _status_dir():
@@ -841,7 +844,7 @@ def _write_server_address() -> None:
                 "addresses": list(plan.hosts),
                 "problem": plan.problem.message if plan.problem else None,
             },
-        }))
+        }), mode=STATUS_FILE_MODE)
     except OSError:
         pass
 

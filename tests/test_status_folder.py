@@ -1,12 +1,16 @@
-"""The data folder's status/ subfolder: what the server writes for the tray app.
+"""The data folder's status/ subfolder: what the server writes for the tray app
+and the macOS menu bar app.
 
 On Windows the installer restricts the data folder to the service and
 administrators (installer/secure-data-dir.bat), and the tray app runs as the
-signed-in user, so the one thing the tray can read is status/. The server
-writes two files there: where it listens, at every start, and why it failed to
-start, when it does. The tray reads both. Nothing ties the two ends together
-but these tests: tray.py is a standalone script that imports nothing from the
-server, so each end names the folder and files itself.
+signed-in user, so the one thing the tray can read is status/. On macOS the
+server runs as root and the menu bar app as the signed-in user, so the server
+writes server.json readable by everyone. The server writes two files there:
+where it listens, at every start, and why it failed to start, when it does.
+The tray reads both; the menu bar reads where it listens. Nothing ties the
+ends together but these tests: tray.py and menubar.py are standalone scripts
+that import nothing from the server, so each end names the folder and files
+itself.
 
 The folder is readable by every local account, so these tests also hold it to
 carrying exactly those two files and those fields.
@@ -14,6 +18,10 @@ carrying exactly those two files and those fields.
 
 import importlib.util
 import json
+import os
+import stat
+import sys
+import types
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -22,7 +30,9 @@ import pytest
 import openavc.main as main
 from openavc import config
 
-TRAY_PATH = Path(__file__).resolve().parents[1] / "installer" / "tray.py"
+INSTALLER = Path(__file__).resolve().parents[1] / "installer"
+TRAY_PATH = INSTALLER / "tray.py"
+MENUBAR_PATH = INSTALLER / "menubar.py"
 
 
 def _load_tray():
@@ -32,7 +42,28 @@ def _load_tray():
     return mod
 
 
+def _load_menubar():
+    """menubar.py with a stand-in for rumps, which exists only on macOS: the
+    functions under test never touch it, only the class body names it."""
+    rumps = types.ModuleType("rumps")
+    rumps.App = type("App", (), {})
+    rumps.MenuItem = rumps.Timer = object
+    saved = sys.modules.get("rumps")
+    sys.modules["rumps"] = rumps
+    try:
+        spec = importlib.util.spec_from_file_location("openavc_menubar_status_test", MENUBAR_PATH)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    finally:
+        if saved is None:
+            del sys.modules["rumps"]
+        else:
+            sys.modules["rumps"] = saved
+    return mod
+
+
 tray_mod = _load_tray()
+menubar_mod = _load_menubar()
 
 
 @pytest.fixture
@@ -50,6 +81,7 @@ def data_dir(monkeypatch, tmp_path):
     monkeypatch.setattr(tray_mod, "STATUS_DIR", status)
     monkeypatch.setattr(tray_mod, "STARTUP_ERROR_FILE", status / tray_mod.STARTUP_ERROR_FILE.name)
     monkeypatch.setattr(tray_mod, "SERVER_ADDRESS_FILE", status / tray_mod.SERVER_ADDRESS_FILE.name)
+    monkeypatch.setattr(menubar_mod, "SERVER_ADDRESS_FILE", status / menubar_mod.SERVER_ADDRESS_FILE.name)
     return tmp_path
 
 
@@ -57,6 +89,39 @@ def test_both_ends_name_the_same_folder_and_files():
     assert tray_mod.STATUS_DIR == tray_mod.DATA_DIR / main.STATUS_DIR_NAME
     assert tray_mod.STARTUP_ERROR_FILE == tray_mod.STATUS_DIR / main.STARTUP_ERROR_FILE_NAME
     assert tray_mod.SERVER_ADDRESS_FILE == tray_mod.STATUS_DIR / main.SERVER_ADDRESS_FILE_NAME
+    assert menubar_mod.SERVER_ADDRESS_FILE == (
+        menubar_mod.DATA_DIR / main.STATUS_DIR_NAME / main.SERVER_ADDRESS_FILE_NAME
+    )
+
+
+def test_the_menu_bar_reads_the_address_and_problem_the_server_records(data_dir, monkeypatch):
+    from tests.listen_helpers import ETHERNET, plan_for
+
+    monkeypatch.setattr(config, "HTTP_PORT", 8090)
+    monkeypatch.setattr(config, "TLS_ENABLED", True)
+    monkeypatch.setattr(config, "TLS_PORT", 8444)
+    unplugged = plan_for("adapter", ETHERNET, adapters=[])
+    monkeypatch.setattr(config, "listen_plan", lambda: unplugged)
+
+    main._write_server_address()
+
+    assert menubar_mod._get_server_config() == {
+        "http_port": 8090, "tls_enabled": True, "tls_port": 8444,
+    }
+    assert menubar_mod._get_listen_problem() == (
+        "Not accepting connections from the network: the Ethernet adapter isn't connected."
+    )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the folder's ACL decides on Windows, not the file mode")
+def test_every_account_can_read_where_the_server_listens(data_dir, monkeypatch):
+    """On macOS the server runs as root and the menu bar app as the signed-in user."""
+    monkeypatch.setattr(config, "HTTP_PORT", 8090)
+
+    main._write_server_address()
+
+    mode = stat.S_IMODE((data_dir / "status" / "server.json").stat().st_mode)
+    assert mode & 0o044 == 0o044, oct(mode)
 
 
 def test_the_tray_reads_the_address_the_server_records(data_dir, monkeypatch):

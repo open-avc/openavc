@@ -45,8 +45,10 @@ DEFAULT_PORT = 8080
 POLL_INTERVAL = 5  # seconds
 SERVICE_LABEL = "com.openavc.server"
 DATA_DIR = Path("/Library/Application Support/OpenAVC")
-SYSTEM_JSON = DATA_DIR / "system.json"
 # Where the server records, at every start, where it listens (openavc/main.py).
+# The menu bar runs as the signed-in user and the server as root, so this is
+# the one file in the data folder the menu bar can read: the server writes it
+# readable by everyone, and system.json readable by root only.
 SERVER_ADDRESS_FILE = DATA_DIR / "status" / "server.json"
 DAEMON_PLIST = "/Library/LaunchDaemons/com.openavc.server.plist"
 # Uninstaller shipped inside the app bundle. The menu item runs it elevated so
@@ -60,11 +62,11 @@ FIRST_RUN_MARKER = Path.home() / "Library" / "Application Support" / "OpenAVC" /
 
 
 def _get_server_config() -> dict:
-    """Read the port/TLS subset of system.json (falls back to defaults).
+    """Read the ports the server listens on, as it recorded them at its last start.
 
-    Mirrors installer/tray.py: env overrides win, then system.json, then
-    defaults. The menu bar must keep running even if system.json is missing or
-    malformed.
+    Mirrors installer/tray.py: env overrides win, then server.json, then
+    defaults. The menu bar must keep running before the server has ever
+    started, or if the file is malformed.
     """
     result = {"http_port": DEFAULT_PORT, "tls_enabled": False, "tls_port": 8443}
 
@@ -79,18 +81,24 @@ def _get_server_config() -> dict:
         result["tls_enabled"] = True
     elif tls_env in ("false", "0", "no"):
         result["tls_enabled"] = False
-
-    if SYSTEM_JSON.exists():
+    tls_port_env = os.environ.get("OPENAVC_TLS_PORT")
+    if tls_port_env:
         try:
-            data = json.loads(SYSTEM_JSON.read_text(encoding="utf-8"))
-            if "OPENAVC_PORT" not in os.environ:
-                result["http_port"] = data.get("network", {}).get("http_port", DEFAULT_PORT)
-            tls = data.get("tls", {}) if isinstance(data.get("tls"), dict) else {}
-            if "OPENAVC_TLS_ENABLED" not in os.environ:
-                result["tls_enabled"] = bool(tls.get("enabled", False))
-            result["tls_port"] = int(tls.get("port", 8443))
-        except (json.JSONDecodeError, OSError, ValueError, TypeError):
+            result["tls_port"] = int(tls_port_env)
+        except ValueError:
             pass
+
+    try:
+        if SERVER_ADDRESS_FILE.exists():
+            data = json.loads(SERVER_ADDRESS_FILE.read_text(encoding="utf-8"))
+            if "OPENAVC_PORT" not in os.environ:
+                result["http_port"] = int(data.get("http_port", DEFAULT_PORT))
+            if "OPENAVC_TLS_ENABLED" not in os.environ:
+                result["tls_enabled"] = bool(data.get("tls_enabled", False))
+            if "OPENAVC_TLS_PORT" not in os.environ:
+                result["tls_port"] = int(data.get("tls_port", 8443))
+    except (json.JSONDecodeError, OSError, ValueError, TypeError, AttributeError):
+        pass
 
     return result
 
@@ -205,6 +213,10 @@ class OpenAVCMenuBar(rumps.App):
             pass
 
     def _poll(self, _timer) -> None:
+        # Read where the server listens at every poll, not once: a port
+        # changed in Settings is recorded when the restart applies it.
+        self._cfg = _get_server_config()
+        self._base = _base_url(self._cfg)
         health = _api_get("/api/health", self._cfg)
         if health and health.get("status") == "healthy":
             version = health.get("version", "")
