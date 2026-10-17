@@ -1524,3 +1524,43 @@ async def test_a_monitor_removed_from_the_project_is_not_a_repair():
     assert payload["reason"] == "rule_removed"
 
     await monitor.stop()
+
+
+# --- The alert agrees with the tile ---
+#
+# A monitor's tile and its alert read one declaration, so at every value the
+# alert is open exactly when the tile is not green. The range is inclusive at
+# both bounds on the tile (core.monitors.monitor_status); the alert has to
+# resolve there too, not one step further in.
+
+
+async def _alert_agrees_with_tile_at(values, monitor_decl):
+    from openavc.core.monitors import NORMAL, monitor_status
+
+    agent = MockAgent()
+    state = MockStateStore()
+    monitor = AlertMonitor(
+        agent, state, MockEventBus(), monitors_provider=lambda: [monitor_decl],
+    )
+    await monitor.start()
+    disagreements = []
+    for value in values:
+        state.set(monitor_decl["key"], value)
+        await _drain(monitor, agent)
+        tile_green = monitor_status(monitor_decl, value) == NORMAL
+        alert_open = bool(monitor._active_alerts)
+        if alert_open == tile_green:
+            disagreements.append((value, monitor_status(monitor_decl, value), alert_open))
+    await monitor.stop()
+    return disagreements
+
+
+@pytest.mark.asyncio
+async def test_a_range_alert_resolves_exactly_on_its_bound():
+    """The tile is green at normal_min=10 with the reading at 10; the .below
+    alert raised at 5 has to clear there, and the same at normal_max."""
+    decl = {"key": "device.dsp.level", "label": "Level", "normal_min": 10, "normal_max": 20}
+    low_end = [5, 10, 10.001, 9.999, 10, 15]
+    high_end = [25, 20, 19.999, 20.001, 20, 15]
+    assert await _alert_agrees_with_tile_at(low_end, decl) == []
+    assert await _alert_agrees_with_tile_at(high_end, decl) == []

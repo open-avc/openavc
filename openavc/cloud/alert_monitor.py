@@ -265,8 +265,9 @@ class AlertMonitor:
 
         Supports hysteresis via an optional ``resolve_value`` in the condition.
         When present, the alert fires when ``value <op> threshold`` but only
-        resolves when the value crosses ``resolve_value`` in the opposite
-        direction.  For example, fire at disk > 90% but resolve at disk < 85%.
+        resolves when the value is back at ``resolve_value`` or beyond it in
+        the opposite direction.  For example, fire at disk > 90% but resolve
+        at disk <= 85%.
 
         An optional ``duration_seconds`` means the same thing it means on a
         pattern rule: the reading has to stay wrong that long before anybody is
@@ -811,14 +812,18 @@ def _compare(value: Any, operator: str, threshold: Any) -> bool:
 def _check_resolved(value: Any, fire_operator: str, resolve_value: Any) -> bool:
     """Check if a value has crossed the resolve threshold (opposite of fire).
 
-    For ``>``, resolved means ``value < resolve_value``.
-    For ``<``, resolved means ``value > resolve_value``.
+    For ``>``, resolved means ``value <= resolve_value``.
+    For ``<``, resolved means ``value >= resolve_value``.
     For equality operators, resolved means the value no longer matches.
+
+    The inverse is inclusive. A project range is inclusive at its bounds
+    (``core.monitors.monitor_status``), so a strict inverse left the reading
+    exactly on ``normal_min`` with a green tile and an open ``.below`` alert.
     """
     _INVERSE = {
-        ">": "<",
+        ">": "<=",
         ">=": "<=",
-        "<": ">",
+        "<": ">=",
         "<=": ">=",
     }
     inverse_op = _INVERSE.get(fire_operator)
