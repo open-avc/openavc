@@ -525,7 +525,8 @@ a device connected over the network, `port` of one connected over the network
 or a direct serial line, and neither of a device reached through a bridge. A
 `table` field is set up on the device page and is not checked. A project that
 already holds a device with the field blank still opens and saves; that device
-is asked for the field the next time it is edited. A required `host` is also
+is asked for the field the next time it is opened in Edit Device, and its other
+edits (a table row, an IR code) still save. A required `host` is also
 checked when the device connects, for every driver: a network device with no
 address is not dialed, its card reads "No address is set for this device.",
 and it is not retried until the address is set. Leave `host` unmarked when a

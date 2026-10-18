@@ -196,7 +196,8 @@ export type ConnectionMode = "network" | "serial" | "bridge";
 // The connection picker's fields a driver may require, and the connections
 // each applies to: no IP address is asked of a device wired by serial or
 // reached through a bridge. The picker's other fields (serial line settings,
-// the bridge binding) always show a value and are never refused. Mirrors
+// the bridge binding) are never refused, and a bridge picked before its port
+// is still a bridged device. Mirrors
 // PICKER_FIELD_CONNECTIONS in openavc/core/required_config.py, the server's
 // half of this rule; keep the two in sync.
 const PICKER_FIELD_CONNECTIONS: Record<string, ConnectionMode[]> = {

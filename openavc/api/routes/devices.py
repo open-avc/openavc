@@ -25,6 +25,7 @@ from openavc.reach_devices import AdapterUnavailable
 from openavc.core.project_loader import ChildEntityConfig, DeviceConfig
 from openavc.core.project_migration import CONNECTION_FIELDS
 from openavc.core.required_config import (
+    gaps_an_edit_makes,
     merged_device_config,
     missing_for_driver,
     required_sentence,
@@ -240,6 +241,12 @@ async def update_device(device_id: str, body: DeviceUpdateRequest) -> dict[str, 
             if not is_driver_registered(new_driver):
                 raise HTTPException(status_code=422, detail=f"Driver '{new_driver}' is not installed")
 
+        # What the device ran with before this edit, for the required-field
+        # check below: taken before the split, which changes the connections row.
+        merged_before = merged_device_config(
+            existing.driver, existing.config, dict(project.connections.get(device_id, {})),
+        )
+
         if body.config is not None:
             # Split incoming config: connection fields → connections table, rest → device.config
             protocol_config = {}
@@ -260,12 +267,14 @@ async def update_device(device_id: str, body: DeviceUpdateRequest) -> dict[str, 
             new_config = existing.config
 
         # A required field left blank is refused, the way the Edit Device
-        # dialog refuses it. Only an edit to the settings or the driver asks:
-        # renaming or disabling an older device that already has the gap
-        # must still work. See core/required_config.py.
+        # dialog refuses it. Only an edit to the settings or the driver asks,
+        # and only for a gap the edit makes: renaming, disabling or saving a
+        # preset on an older device that already has the gap must still work.
+        # See core/required_config.py.
         if body.config is not None or body.driver is not None:
-            missing = missing_for_driver(
+            missing = gaps_an_edit_makes(
                 new_driver,
+                merged_before if new_driver == existing.driver else None,
                 merged_device_config(
                     new_driver, new_config, project.connections.get(device_id, {}),
                 ),

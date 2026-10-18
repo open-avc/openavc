@@ -17,6 +17,7 @@ import { useProjectStore, syncDeviceConfig } from "../../store/projectStore";
 import { showError, showSuccess } from "../../store/toastStore";
 import type { OptionRow } from "./paramOptions";
 import * as api from "../../api/restClient";
+import { parseApiError } from "../../api/errors";
 import type { DriverInfo } from "../../api/types";
 import { coerceConfigValue, configFieldKind } from "../../views/devices/deviceConfigCoerce";
 
@@ -175,8 +176,8 @@ export function SetupField({ device, field }: { device: string; field: string })
       // change instead when there are unsaved edits.
       await syncDeviceConfig(device, config);
       showSuccess(`${label} saved.`);
-    } catch {
-      showError(`Could not save ${label}.`);
+    } catch (e) {
+      showError(`Could not save ${label}. ${parseApiError(e)}`);
     } finally {
       setSaving(false);
     }

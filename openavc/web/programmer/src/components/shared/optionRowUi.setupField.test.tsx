@@ -42,6 +42,7 @@ vi.mock("../../api/restClient", () => ({
   listDrivers: mocks.listDrivers,
 }));
 
+import { ApiError } from "../../api/errors";
 import { SetupField } from "./optionRowUi";
 
 const DEVICE = "cam1";
@@ -105,6 +106,25 @@ describe("SetupField — saving before the driver schema arrives", () => {
     // The rest of the driver's config survives: the endpoint replaces the whole
     // protocol config with what it is sent.
     expect(body.config.host).toBe("10.0.0.5");
+  });
+});
+
+describe("SetupField — a save the server refuses", () => {
+  it("says what the server said", async () => {
+    mocks.updateDevice.mockRejectedValueOnce(
+      new ApiError(422, JSON.stringify({ detail: "Stream port must be 1 to 65535." })),
+    );
+    render(<SetupField device={DEVICE} field="port" />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Save" })).toBeEnabled(),
+    );
+
+    await userEvent.clear(screen.getByRole("spinbutton"));
+    await userEvent.type(screen.getByRole("spinbutton"), "99999");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mocks.showError).toHaveBeenCalled());
+    expect(mocks.showError.mock.calls[0][0]).toContain("Stream port must be 1 to 65535.");
   });
 });
 

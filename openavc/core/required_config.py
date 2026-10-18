@@ -11,7 +11,11 @@ device tools. Each answers with the field's label: "Model is required."
 A whole-project save, a project load and the whole-table connection routes
 (``PUT /api/connections``, the import) never ask. One older device with a
 blank field must not block every other edit or stop a project opening; that
-device fails to connect and says why on its card, as before.
+device fails to connect and says why on its card, as before. For the same
+reason ``PATCH /api/devices/{id}`` refuses only a gap the edit makes
+(``gaps_an_edit_makes``): the device page's editors send the whole config
+back, and an older device's preset or IR code saves from there while its
+blank Model waits for Edit Device.
 
 What counts:
 
@@ -27,7 +31,8 @@ What counts:
   connection that uses them: ``host`` to a network connection, ``port`` to a
   network or direct serial one, neither to a device reached through a bridge.
   The picker's other fields (the serial line settings, the bridge binding) are
-  never refused; the picker always shows a value for them.
+  never refused. A bridge picked before its port is still a bridged device:
+  the form shows no IP address for it.
 
 The browser half mirrors ``PICKER_FIELD_CONNECTIONS``, ``PICKER_OWNED_FIELDS``
 and the sentence; keep the two in sync.
@@ -59,11 +64,12 @@ PICKER_OWNED_FIELDS = frozenset({
 def connection_kind(config: dict[str, Any], driver_transport: str) -> str:
     """``network``, ``serial`` or ``bridge``: how a merged config connects.
 
-    Bridged when it is bound to a bridge port (the condition
-    ``resolve_bridge_binding`` rewrites on) or its transport is ``bridge`` (an
-    IR device); serial when its transport, else its driver's, is ``serial``.
+    Bridged when it names a bridge, its port picked or not yet (the Edit
+    Device form is then on Through a bridge and asks for no IP address), or its
+    transport is ``bridge`` (an IR device); serial when its transport, else its
+    driver's, is ``serial``.
     """
-    if config.get("bridge") and config.get("bridge_port"):
+    if config.get("bridge"):
         return "bridge"
     transport = str(config.get("transport") or driver_transport or "tcp").lower()
     if transport == "bridge":
@@ -117,6 +123,22 @@ def missing_for_driver(driver_id: str, config: dict[str, Any]) -> list[tuple[str
         config,
         connection_kind(config, str(info.get("transport") or "tcp")),
     )
+
+
+def gaps_an_edit_makes(
+    driver_id: str,
+    before: dict[str, Any] | None,
+    after: dict[str, Any],
+) -> list[tuple[str, str]]:
+    """Every required field ``after`` leaves blank, when the edit made at
+    least one of them; empty when it made none. ``before`` and ``after`` are
+    the device's merged config either side of the edit; ``before`` is None
+    when the edit changes the driver, and then every gap is the edit's."""
+    missing = missing_for_driver(driver_id, after)
+    if before is None:
+        return missing
+    already = {key for key, _label in missing_for_driver(driver_id, before)}
+    return missing if any(key not in already for key, _label in missing) else []
 
 
 def merged_device_config(
