@@ -14,12 +14,18 @@ on:
       - 'requirements*.txt'
       - '.github/workflows/sdk-compatibility.yml'
   workflow_dispatch:
+    inputs:
+      sdk-ref:
+        description: SDK revision to compare with this core revision
+        required: true
+        default: main
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: sdk-compatibility-${{ github.ref }}
+  group: sdk-compatibility-${{ github.ref }}-${{ inputs.sdk-ref || 'main' }}
   cancel-in-progress: true
 
 jobs:
@@ -27,4 +33,4 @@ jobs:
     uses: open-avc/openavc-sdk/.github/workflows/compatibility.yml@ceb2e38ed785f609a32e1e8c9a2db4241704b633
     with:
       core-ref: ${{ github.sha }}
-      sdk-ref: main
+      sdk-ref: ${{ inputs.sdk-ref || 'main' }}
