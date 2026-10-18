@@ -102,3 +102,15 @@ def resolve_in_text(
         return "" if value is None else str(value)
 
     return _EMBEDDED_REF.sub(_one, text)
+
+
+def embedded_refs(text: Any) -> list[str]:
+    """The keys ``resolve_in_text`` would look up in ``text``, in order.
+
+    For a caller asking whether a sentence uses a key -- a variable named in a
+    help message is a use of that variable -- without a second reading of
+    where a reference ends.
+    """
+    if not isinstance(text, str):
+        return []
+    return _EMBEDDED_REF.findall(text)

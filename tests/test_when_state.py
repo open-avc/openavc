@@ -319,6 +319,184 @@ async def test_a_reconnect_to_a_unit_in_standby_leaves_it_there(sleepy_server) -
         await drv.disconnect()
 
 
+# --- A device dropped for silence that comes back in standby ---
+#
+# After a drop for silence the automatic reconnect keeps the device offline
+# until it answers a poll. A unit that comes back in standby holds its own
+# poll back, so no poll ever goes out for it to answer.
+
+
+@pytest.fixture
+async def quiet_server():
+    """A device the test changes as it runs: with ``answer`` False it records
+    every line and replies to none (a unit that has hung); ``standby`` is what
+    it says to ``STBY?``. ``kick()`` closes every open connection, as switching
+    the unit off and on again does."""
+    dev: dict[str, Any] = {
+        "answer": True, "standby": False, "lines": [], "connections": 0,
+    }
+    writers: list[Any] = []
+
+    async def handle(reader, writer):
+        dev["connections"] += 1
+        writers.append(writer)
+        buf = b""
+        try:
+            while True:
+                chunk = await reader.read(4096)
+                if not chunk:
+                    break
+                buf += chunk
+                while b"\r" in buf:
+                    raw, buf = buf.split(b"\r", 1)
+                    line = raw.decode()
+                    dev["lines"].append(line)
+                    if not dev["answer"]:
+                        continue
+                    if line == "STBY?":
+                        reply = f"STBY={int(dev['standby'])}"
+                    elif line == "PWR?":
+                        reply = "PWR=ON"
+                    else:
+                        continue
+                    writer.write(reply.encode() + b"\r")
+                    await writer.drain()
+        except (ConnectionError, OSError):
+            pass
+        finally:
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except (ConnectionError, OSError):
+                pass
+
+    def kick() -> None:
+        for writer in writers:
+            writer.close()
+        writers.clear()
+
+    dev["kick"] = kick
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    yield port, dev
+    server.close()
+    await server.wait_closed()
+
+
+@pytest.fixture
+async def managed_quiet(monkeypatch, quiet_server):
+    """The gated acme driver under a real DeviceManager, retries 50 ms apart.
+    Start-up reads the standby state, so a reconnect learns it from the device
+    before its first poll."""
+    from openavc.core.device_manager import DeviceManager
+    from openavc.drivers.registry import register_driver, unregister_driver
+
+    monkeypatch.setattr(
+        DeviceManager, "_reconnect_delay", lambda self, device_id, attempt: 0.05
+    )
+    port, dev = quiet_server
+    definition = _acme(on_connect=[{"send": "STBY?\r"}])
+    assert validate_driver_definition(definition) == []
+    register_driver(create_configurable_driver_class(definition))
+    state = StateStore()
+    dm = DeviceManager(state, EventBus())
+    await dm.add_device({
+        "id": "acme1", "driver": definition["id"], "name": "Acme",
+        "config": {
+            "host": "127.0.0.1", "port": port, "poll_interval": _INTERVAL,
+            "max_missed_polls": 5,
+        },
+    })
+    try:
+        yield dm, state, dev
+    finally:
+        await dm.disconnect_all()
+        unregister_driver(definition["id"])
+
+
+async def _drop_for_silence(dm: Any, state: StateStore, dev: dict[str, Any]) -> Any:
+    """Connected and polling, then silent until dropped, and back on a held
+    connection that has not answered. Returns the driver."""
+    drv = dm._devices["acme1"]
+    assert await _until(lambda: state.get("device.acme1.power") == "ON", 3.0)
+    dev["answer"] = False
+    assert await _until(
+        lambda: state.get("device.acme1.offline_reason") == "no_response", 3.0,
+    )
+    assert await _until(lambda: drv._held, 3.0)
+    return drv
+
+
+@pytest.mark.asyncio
+async def test_a_device_that_comes_back_in_standby_comes_online(managed_quiet) -> None:
+    """Silent until dropped, then switched off and on again in standby: the
+    reconnect reads standby from the device, the poll waits, and the device
+    is online, still in standby, with nothing sent to wake it."""
+    dm, state, dev = managed_quiet
+    await _drop_for_silence(dm, state, dev)
+    dev["answer"], dev["standby"] = True, True
+    mark = len(dev["lines"])
+    dev["kick"]()
+    # The driver announces it; the reconnect loop then clears the reason.
+    assert await _until(
+        lambda: state.get("device.acme1.connected") is True
+        and state.get("device.acme1.offline_reason") is None,
+        3.0,
+    )
+    assert state.get("device.acme1.standby") is True
+    assert state.get("device.acme1.offline_detail") is None
+    await asyncio.sleep(_INTERVAL * 6)
+    assert state.get("device.acme1.connected") is True
+    assert set(dev["lines"][mark:]) <= {"STBY?"}
+
+
+@pytest.mark.asyncio
+async def test_an_open_held_connection_does_not_say_the_connection_dropped(
+    managed_quiet,
+) -> None:
+    """Switched off and on while it is held, and still not answering: once
+    the new connection is open, the card no longer says it dropped."""
+    from openavc.core.connection_fault import (
+        TRANSPORT_DISCONNECTED,
+        default_fault_message,
+    )
+
+    dm, state, dev = managed_quiet
+    drv = await _drop_for_silence(dm, state, dev)
+    dropped = default_fault_message(TRANSPORT_DISCONNECTED)
+    after_cycle = dev["connections"] + 1
+    dev["kick"]()
+    # The first connection after the power cycle, while it is open and held.
+    assert await _until(
+        lambda: dev["connections"] == after_cycle
+        and drv._held
+        and state.get("device.acme1.offline_reason") == "no_response",
+        3.0,
+    )
+    assert state.get("device.acme1.offline_detail") != dropped
+    assert state.get("device.acme1.connected") is False
+
+
+@pytest.mark.asyncio
+async def test_a_silent_device_last_seen_in_standby_stays_held(quiet_server) -> None:
+    """The reading that holds the poll back is from before the drop, and the
+    device answers nothing on the new connection: nothing has answered, so it
+    stays offline."""
+    port, dev = quiet_server
+    drv = _build(_acme(on_connect=[{"send": "STBY?\r"}]), port)
+    drv.set_state("standby", True)
+    dev["answer"] = False
+    drv._hold_next_connect = True
+    await drv.connect()
+    try:
+        assert drv._held
+        await asyncio.sleep(_INTERVAL * 6)
+        assert drv._held
+        assert drv.get_state("connected") is not True
+    finally:
+        await drv.disconnect()
+
+
 def test_the_poll_length_counts_a_gated_entry_as_sent() -> None:
     """The validator's poll-length check does not know the device's state, so
     a gated entry counts as sent: the poll is that long whenever it runs."""

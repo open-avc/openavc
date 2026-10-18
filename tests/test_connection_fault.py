@@ -278,7 +278,7 @@ def test_tls_cert_untrusted_beats_generic_timeout_noise():
 def test_no_platform_sentence_opens_with_connected():
     """Each of these is shown under the device card's Offline heading, where a
     sentence opening "Connected, but" contradicts the heading above it."""
-    from openavc.core.connection_fault import _DEFAULT_MESSAGES
+    from openavc.core.connection_fault import _DEFAULT_MESSAGES, held_connection_fault
     from openavc.drivers.base import BaseDriver
 
     classified = classify_connection_fault(
@@ -287,6 +287,7 @@ def test_no_platform_sentence_opens_with_connected():
     )
     sentences = [
         *_DEFAULT_MESSAGES.values(), BaseDriver.HEALTH_FAULT_MESSAGE, classified.message,
+        held_connection_fault().message,
     ]
     assert [s for s in sentences if s.lower().startswith("connected")] == []
 

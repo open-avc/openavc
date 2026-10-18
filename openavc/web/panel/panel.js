@@ -6663,13 +6663,19 @@ class PanelApp {
             // element until a full page re-render (one-way-invariant violation).
             if (!entry._uiBase) {
                 const words = this._overrideWordsNode(el, elementDef);
+                // A label drawn as rich text is put back from its source, so
+                // its **bold** comes back bold rather than as asterisks.
+                const rich = words === el && elementDef?.type === 'label'
+                    && !!elementDef.style?.white_space && !this._labelSpan(el);
                 entry._uiBase = {
                     backgroundColor: el.style.backgroundColor,
                     color: el.style.color,
                     opacity: el.style.opacity,
                     display: el.style.display,
                     words,
-                    label: words ? this._ownText(words) : null,
+                    label: !words ? null
+                        : rich ? String(elementDef.text ?? '') : this._drawnWords(words),
+                    labelRich: rich,
                     labelPath: elementDef?.type === 'label' ? ['text'] : ['label'],
                 };
                 entry._uiApplied = new Set();
@@ -6686,7 +6692,7 @@ class PanelApp {
             // First, put back what a cleared override was covering.
             let cleared = false;
             if (!isSet(labelOverride) && applied.has('label')) {
-                this._writeOverrideWords(el, base.words, base.label, base.labelPath);
+                this._writeOverrideWords(el, base.words, base.label, base.labelPath, base.labelRich);
                 applied.delete('label');
                 cleared = true;
             }
@@ -6770,8 +6776,18 @@ class PanelApp {
         return new Set(['button', 'page_nav', 'camera_preset', 'label']);
     }
 
-    /** The text a node draws itself, leaving icons and image layers out. */
-    _ownText(node) {
+    /** The span a control with an icon keeps its words in (`renderElementContent`). */
+    _labelSpan(node) {
+        return node.querySelector(':scope > .panel-label-span');
+    }
+
+    /**
+     * The words a node draws, leaving icons and image layers out: the span
+     * beside an icon when there is one, else the text sitting in the node.
+     */
+    _drawnWords(node) {
+        const span = this._labelSpan(node);
+        if (span) return span.textContent;
         let text = '';
         for (const child of node.childNodes) {
             if (child.nodeType === Node.TEXT_NODE) text += child.nodeValue;
@@ -6779,10 +6795,26 @@ class PanelApp {
         return text;
     }
 
-    /** Write a control's words for an override, unless an edit holds them. */
-    _writeOverrideWords(el, node, text, path) {
+    /**
+     * Write a control's words for an override, unless an edit holds them.
+     *
+     * Beside an icon the words go in its span, so the icon stays on the side
+     * it was drawn. A rich-text label's bold and italic runs are words too,
+     * so they go with the rest, and `rich` draws the text as rich text again.
+     */
+    _writeOverrideWords(el, node, text, path, rich = false) {
         if (this._textEdit && this._textEdit.el === el) return;
-        this._setLabelText(node, text, path);
+        const span = this._labelSpan(node);
+        if (span) {
+            this._setLabelText(span, text, path);
+            if (node.tagName === 'BUTTON') {
+                node.setAttribute('aria-label', text !== '' ? text : (node._baseAccessibleName || ''));
+            }
+            return;
+        }
+        node.querySelectorAll(':scope > strong, :scope > em').forEach((n) => n.remove());
+        this._setLabelText(node, rich ? '' : text, path);
+        if (rich) node.insertAdjacentHTML('beforeend', this._formatRichText(text));
     }
 
     evaluateVisibleWhen(b) {

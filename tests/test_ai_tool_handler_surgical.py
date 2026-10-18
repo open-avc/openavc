@@ -606,6 +606,48 @@ async def test_update_macro(handler, mock_agent, mock_engine):
 
 
 @pytest.mark.asyncio
+async def test_a_never_time_out_wait_survives_a_read_and_write_back(handler, mock_agent, mock_engine):
+    """A Wait Until that never times out is saved with `timeout: null`, which
+    update_macro requires. get_macro keeps that null (and a Set State's,
+    which clears the key), so the assistant can send back the steps it read,
+    a condition's branch included."""
+    from openavc.core.project_loader import MacroConfig, MacroStep, StepCondition
+
+    cond = StepCondition(key="var.room_mode", operator="eq", value="ready")
+    mock_engine.project.macros.append(MacroConfig(
+        id="wait_ready", name="Wait for the room", steps=[
+            MacroStep(action="wait_until", condition=cond, timeout=None, on_timeout="fail"),
+            MacroStep(action="conditional", condition=cond, then_steps=[
+                MacroStep(action="wait_until", condition=cond, timeout=None),
+                MacroStep(action="state.set", key="ui.btn_on.label", value=None),
+            ]),
+        ],
+    ))
+
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        await handler.handle(_make_tool_call_msg("get_macro", {"macro_id": "wait_ready"}))
+        await _drain()
+        steps = _get_result_payload(mock_agent)["result"]["steps"]
+        with patch("openavc.core.project_loader.save_project"):
+            await handler.handle(_make_tool_call_msg("update_macro", {
+                "macro_id": "wait_ready",
+                "name": "Wait for the room to be ready",
+                "steps": steps,
+            }))
+            await _drain()
+
+    payload = _get_result_payload(mock_agent)
+    assert payload["success"] is True, payload["result"]
+    assert steps[0].get("timeout", "absent") is None
+    assert steps[1]["then_steps"][0].get("timeout", "absent") is None
+    assert steps[1]["then_steps"][1].get("value", "absent") is None
+    macro = next(m for m in mock_engine.project.macros if m.id == "wait_ready")
+    assert macro.name == "Wait for the room to be ready"
+    assert macro.steps[0].timeout is None
+    assert macro.steps[1].then_steps[0].timeout is None
+
+
+@pytest.mark.asyncio
 async def test_update_macro_preserves_existing_cancel_group(handler, mock_agent, mock_engine):
     """A11: update_macro must keep existing cancel_group when not specified."""
     # Seed an existing cancel_group on the all_off macro.

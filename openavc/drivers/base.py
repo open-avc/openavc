@@ -2568,6 +2568,19 @@ class BaseDriver(ABC):
         """
         return False
 
+    def _poll_waits_on_device(self) -> bool:
+        """True when the poll that just ran sent nothing because the device's
+        own state holds polling back (a unit in standby that any command
+        would wake).
+
+        Asked while a connection is held after a drop for silence: no poll
+        goes out until that state changes, so waiting for a poll to be
+        answered would keep the device offline for good. It is announced
+        instead once it has answered anything on this connection. Default:
+        never.
+        """
+        return False
+
     def _silence_fault(self, cycles: int) -> ConnectionFault:
         """The no_response fault for ``cycles`` polls in a row that drew
         nothing back: one sentence for a connection that has never answered
@@ -3644,8 +3657,10 @@ class BaseDriver(ABC):
         silence (_silence_expected). ``max_missed_polls`` of those in a
         row drop the connection as ``no_response``, and the automatic
         reconnect then holds the device offline until a poll is answered
-        (connect(), _announce_held). Only cycles this loop ran are judged;
-        a connect-time poll is not.
+        (connect(), _announce_held), or, while the device's own state holds
+        the poll back, until it has answered anything on the new connection
+        (_poll_waits_on_device). Only cycles this loop ran are judged; a
+        connect-time poll is not.
 
         The same judgement, for a driver that reports what its own rules read
         (_parsed_count), also asks whether a cycle that brought replies had
@@ -3756,6 +3771,17 @@ class BaseDriver(ABC):
                     if before is not None:
                         after = self._io_counts()
                         if after is not None and after[0] is before[0]:
+                            if (
+                                self._held
+                                and self._connected
+                                and after[1] == before[1]
+                                and after[2] > 0
+                                and self._poll_waits_on_device()
+                            ):
+                                # Nothing goes out to answer until the
+                                # device's state changes, and the device has
+                                # answered on this connection already.
+                                await self._announce_held()
                             if watching:
                                 pending = (
                                     before[0], after[1] > before[1], before[2],

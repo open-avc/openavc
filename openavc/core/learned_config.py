@@ -18,7 +18,11 @@ When it runs:
 When it does nothing:
 
   - while the device is redirected to the simulator: a simulator reports what
-    it was told, and saving that would write a guess into the real project;
+    it was told, and saving that would write a guess into the real project.
+    After simulation stops, a value still as the simulator reported it is left
+    until the equipment reports another (the state store announces changes
+    only, so one the equipment reports exactly as the simulator did is saved
+    when it next changes);
   - while a setup action is running on the device (it owns the config then);
   - for a value the field does not accept: an enum value it does not list, a
     number outside its range, an empty value. That is logged once.
@@ -155,6 +159,9 @@ class LearnedConfig:
         self._tasks: set[asyncio.Task] = set()
         self._retry_handles: dict[str, asyncio.TimerHandle] = {}
         self._retry_delays: dict[str, float] = {}
+        # What the simulator reported, by state key: what is left in state
+        # after simulation stops is not the equipment's report.
+        self._simulated: dict[str, Any] = {}
         self._active = False
 
     def start(self) -> None:
@@ -183,6 +190,7 @@ class LearnedConfig:
             self._engine.state.unsubscribe(state_id)
         self._state_ids.clear()
         self._watched.clear()
+        self._simulated.clear()
 
     async def _on_connected(self, event: str, payload: Any = None) -> None:
         device_id = event[len(_CONNECTED_EVENT):]
@@ -196,17 +204,29 @@ class LearnedConfig:
         fields = learned_fields(driver)
         if not fields:
             return
+        redirected = self._redirected(device_id)
         for source in set(fields.values()):
             key = f"device.{device_id}.{source}"
             if key not in self._watched:
                 self._watched[key] = device_id
                 self._state_ids.append(self._engine.state.subscribe(key, self._on_state))
+            if redirected:
+                # Reported while it connected to the simulator.
+                self._simulated[key] = self._engine.state.get(key)
         self.evaluate(device_id)
 
     def _on_state(self, key: str, old: Any, new: Any, source: Any = None) -> None:
         device_id = self._watched.get(key)
         if device_id:
+            if self._redirected(device_id):
+                self._simulated[key] = new
+            else:
+                self._simulated.pop(key, None)
             self.evaluate(device_id)
+
+    def _redirected(self, device_id: str) -> bool:
+        simulation = getattr(self._engine, "simulation", None)
+        return simulation is not None and simulation.is_redirected(device_id)
 
     def evaluate(self, device_id: str) -> dict[str, Any]:
         """Save every learned field of ``device_id`` whose reported value the
@@ -217,8 +237,7 @@ class LearnedConfig:
             return {}
         if engine.state.get(f"device.{device_id}.connected") is not True:
             return {}
-        simulation = getattr(engine, "simulation", None)
-        if simulation is not None and simulation.is_redirected(device_id):
+        if self._redirected(device_id):
             return {}
         setup_actions = getattr(engine, "setup_actions", None)
         if setup_actions is not None and setup_actions.is_running(device_id):
@@ -229,8 +248,11 @@ class LearnedConfig:
         delta: dict[str, Any] = {}
         previous: dict[str, Any] = {}
         for field, source in learned_fields(driver).items():
-            reported = engine.state.get(f"device.{device_id}.{source}")
+            key = f"device.{device_id}.{source}"
+            reported = engine.state.get(key)
             if reported is None or reported == "":
+                continue
+            if key in self._simulated and _same(self._simulated[key], reported):
                 continue
             ok, value = accepted_value(schema.get(field) or {}, reported)
             if not ok:

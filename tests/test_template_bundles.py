@@ -217,6 +217,48 @@ def test_no_template_needs_a_driver_it_does_not_carry() -> None:
             )
 
 
+def test_no_template_device_asks_for_a_transport_its_driver_lacks() -> None:
+    """A device's own ``transport`` is one its driver speaks.
+
+    A generic TCP device set to HTTP dialed the TCP simulator over HTTP and
+    stayed offline, so the first simulated project a new user opened showed a
+    red device. ``bridge`` is a way of reaching the device, not the driver's
+    protocol, so it is left out.
+    """
+    import yaml
+
+    def transports(text: str) -> set[str]:
+        definition = yaml.safe_load(text)
+        return {definition.get("transport", "tcp"), *definition.get("transports", [])}
+
+    builtin = {}
+    for path in (REPO_ROOT / "openavc" / "drivers" / "definitions").glob("*.avcdriver"):
+        text = path.read_text(encoding="utf-8")
+        builtin[yaml.safe_load(text)["id"]] = transports(text)
+
+    for bundle in BUNDLES:
+        members = _bundle_members(bundle)
+        project = json.loads(members["project.avc"].decode("utf-8"))
+        carried = {
+            Path(n).stem: transports(data.decode("utf-8"))
+            for n, data in members.items()
+            if n.startswith("drivers/") and n.endswith(".avcdriver")
+        }
+        for device in project.get("devices", []):
+            wanted = (device.get("config") or {}).get("transport")
+            if not wanted or wanted == "bridge":
+                continue
+            spoken = builtin.get(device["driver"]) or carried.get(device["driver"])
+            assert spoken is not None, (
+                f"{bundle.name}: device '{device['id']}' sets transport '{wanted}' on "
+                f"'{device['driver']}', whose transports this test cannot read"
+            )
+            assert wanted in spoken, (
+                f"{bundle.name}: device '{device['id']}' sets transport '{wanted}', "
+                f"which '{device['driver']}' does not speak ({sorted(spoken)})"
+            )
+
+
 @gates.skipif_missing(gates.DRIVER_CORPUS, _corpus_reason())
 def test_build_script_is_deterministic() -> None:
     """Two builds of the same sources produce identical bytes.

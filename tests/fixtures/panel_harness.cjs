@@ -4276,6 +4276,50 @@ const tests = {
         }
     },
 
+    // A control with an icon keeps its words in a span beside it, and a label
+    // drawn as rich text keeps some of them in <strong> and <em>. Clearing a
+    // label override read only the text sitting directly in the control, so
+    // the button came back as an icon with no words and the label lost its
+    // bold run.
+    a_cleared_label_override_gives_back_the_words_it_covered() {
+        const defs = [
+            { id: 'icon_left', type: 'button', label: 'Power', icon: 'power' },
+            { id: 'icon_right', type: 'button', label: 'Next', icon: 'arrow-right', icon_position: 'right' },
+            { id: 'icon_top', type: 'button', label: 'Mute', icon: 'volume-x', icon_position: 'top' },
+            { id: 'nav', type: 'page_nav', label: 'Home', target_page: 'main', icon: 'house' },
+            { id: 'cam', type: 'camera_preset', label: 'Wide', preset_number: 2, icon: 'camera' },
+            { id: 'rich', type: 'label', text: '**Room** is *ready*', style: { white_space: 'pre-wrap' } },
+        ];
+        const text = (el) => el.textContent.replace(/\s+/g, ' ').trim();
+        for (const d of defs) {
+            const app = mkApp();
+            renderProject(app, project({
+                elements: [d],
+                placements: { [d.id]: { x: 5, y: 5, w: 30, h: 30 } },
+            }));
+            app.state = {};
+            app.evaluateAllBindings();
+            const el = app.root.querySelector(`[data-element-id="${d.id}"]`);
+            const drawn = el.innerHTML;
+            // Where the icon sits against the words; bold and italic runs are words.
+            const order = () => [...el.children].filter(c => !['STRONG', 'EM'].includes(c.tagName))
+                .map(c => c.tagName.toLowerCase()).join(',');
+            const layout = order();
+            const key = `ui.${d.id}.label`;
+
+            app.state[key] = 'OVR';
+            app.evaluateAllBindings([key]);
+            assert(text(el) === 'OVR', `${d.id}: the override is all the words, got "${text(el)}"`);
+            assert(order() === layout,
+                `${d.id}: the icon stays where it was drawn, got [${order()}] for [${layout}]`);
+
+            delete app.state[key];
+            app.evaluateAllBindings([key]);
+            assert(el.innerHTML === drawn,
+                `${d.id}: cleared, it draws what it drew before, got ${el.innerHTML} for ${drawn}`);
+        }
+    },
+
     // The unavailable mark is styled on the control's box (.panel-element), so
     // a mark on the part a binding draws into (an LED's dot, a slider's track,
     // a dropdown's list) was never drawn.

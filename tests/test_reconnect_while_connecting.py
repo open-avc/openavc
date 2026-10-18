@@ -325,3 +325,58 @@ async def test_a_disconnect_while_the_transport_is_built_closes_what_it_built(
     assert driver.transport is None
     assert not driver.connected
     assert len(server.accepted) == 1 and not server.open(0)
+
+
+async def test_a_second_connect_while_a_yaml_device_dials_leaves_it_polling(
+    core, console,
+):
+    """A YAML driver holds its poll interval back while it connects, so the
+    poll starts after its start-up queries. A second connect started while the
+    first still dialed (Reconnect pressed during a bring-up) read the held-back
+    0 as the interval and, finishing last, put 0 back: that connection and
+    every later one polled nothing until the device was edited."""
+    from openavc.drivers.configurable import create_configurable_driver_class
+
+    yaml_driver = create_configurable_driver_class({
+        "id": "acme_widget_reconnect_poll_test",
+        "name": "Acme Widget",
+        "manufacturer": "Acme",
+        "category": "utility",
+        "version": "1.0.0",
+        "transport": "tcp",
+        "delimiter": "\r",
+        "default_config": {},
+        "state_variables": {"power": {"type": "string", "label": "Power"}},
+        "commands": {},
+        "responses": [{"match": r"PWR=(\w+)", "set": {"power": "$1"}}],
+        "polling": {"queries": ["PWR?\r"]},
+    })
+
+    class SlowFirstDial(yaml_driver):
+        dials = 0
+
+        async def _create_transport(self, transport_type: str) -> None:
+            SlowFirstDial.dials += 1
+            if SlowFirstDial.dials == 1:
+                await asyncio.sleep(0.5)
+            await super()._create_transport(transport_type)
+
+    state, events = core
+    _, port = await console(0.0)
+    driver = SlowFirstDial(
+        "widget", {"host": "127.0.0.1", "port": port, "poll_interval": 30}, state, events,
+    )
+    first = asyncio.ensure_future(driver.connect())
+    await asyncio.sleep(0.1)
+    await driver.connect()
+    with pytest.raises(ConnectionError):
+        await asyncio.wait_for(first, 5)
+    assert driver.connected
+    assert driver.config["poll_interval"] == 30
+    assert driver._poll_task is not None and not driver._poll_task.done()
+
+    # A later reconnect, with nothing else going on, still polls.
+    await driver.disconnect()
+    await driver.connect()
+    assert driver._poll_task is not None and not driver._poll_task.done()
+    await driver.disconnect()

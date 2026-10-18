@@ -45,11 +45,9 @@
     },
     {
       "id": "sensor1",
-      "driver": "generic_tcp",
+      "driver": "generic_http",
       "name": "Occupancy Sensor",
-      "config": {
-        "transport": "http"
-      },
+      "config": {},
       "child_entities": {}
     }
   ],

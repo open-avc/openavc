@@ -705,12 +705,18 @@ class ConfigurableDriver(BaseDriver):
             self.config, self._definition.get("config_derived")
         )
 
-    async def connect(self) -> None:
+    async def _connect_once(self, attempt: object) -> None:
         """Connect and send on_connect initialization commands.
 
         Defers polling until after on_connect and initial state queries
         complete, so the watchdog doesn't start counting before the
         device is fully initialized.
+
+        This is the body BaseDriver.connect() runs under its lock, so one
+        attempt's setup is never undone by another's. Held back in
+        connect(), a second connect started while the first still dialed
+        read the held-back 0 as the poll interval and, finishing last, put 0
+        back: the device polled nothing again until it was edited.
 
         The declarative `auth:` login handshake runs inside _post_connect()
         — i.e. BEFORE BaseDriver reports the device connected — so
@@ -746,13 +752,13 @@ class ConfigurableDriver(BaseDriver):
             self._auth_mode = True
 
         try:
-            await super().connect()
+            await super()._connect_once(attempt)
         except Exception:
             self._auth_mode = False
             raise
         finally:
             # Restore even when the attempt fails: leaving the zeroed value
-            # in config would make the NEXT connect() save 0 as the interval
+            # in config would make the NEXT connect save 0 as the interval
             # to restore, permanently disabling polling after one bad attempt.
             self.config["poll_interval"] = saved_poll_interval
 
@@ -989,21 +995,23 @@ class ConfigurableDriver(BaseDriver):
           with nothing answered yet: the device never accepted it.
 
         A query refused from the start once something has answered is an
-        endpoint this account may not use and never counts. A poll cycle
-        whose every request was refused is poll()'s to judge.
+        endpoint this account may not use and never counts, in the poll
+        cycle's tally either. A poll cycle whose every counted request was
+        refused is poll()'s to judge.
         """
         status = getattr(response, "status_code", None)
         if not isinstance(status, int):
             return
         cycle = self._http_cycle
-        if cycle is not None:
-            cycle[0] += 1
         if status not in _HTTP_AUTH_REJECT_STATUS:
             self._http_answered.add(query)
+            if cycle is not None:
+                cycle[0] += 1
             return
-        if cycle is not None:
-            cycle[1] += 1
         if query in self._http_answered:
+            if cycle is not None:
+                cycle[0] += 1
+                cycle[1] += 1
             if status not in _HTTP_CREDENTIAL_REFUSED_STATUS:
                 return
             log.warning(
@@ -1022,6 +1030,9 @@ class ConfigurableDriver(BaseDriver):
                 f"other queries answer, so the account may not read it"
             )
             return
+        if cycle is not None:
+            cycle[0] += 1
+            cycle[1] += 1
         self._http_refused_unanswered.add(query)
         if len(self._http_refused_unanswered) >= _HTTP_REFUSALS_BEFORE_ANY_ANSWER:
             log.warning(
@@ -2172,6 +2183,10 @@ class ConfigurableDriver(BaseDriver):
         """Complete messages that reached the response rules, read or not."""
         return self._framed_messages if self._reads_replies() else None
 
+    def _poll_waits_on_device(self) -> bool:
+        """The last poll was held back by ``polling.when_state``."""
+        return self._poll_held
+
     def _unread_sample(self) -> str:
         return self._last_unread
 
@@ -3218,7 +3233,10 @@ class ConfigurableDriver(BaseDriver):
             # Every request this cycle came back refused: not one privileged
             # endpoint, the credentials themselves. This catches what
             # _judge_http_answer leaves alone: a list shorter than its count,
-            # and a device that answers a changed password with 403. Raise
+            # and a device that answers a changed password with 403. An
+            # endpoint the account may not read is not in the tally, so a
+            # cycle that sent only such a page (start-up just read the rest,
+            # or a state condition held it back) is no verdict. Raise
             # typed so the fault reaches the device card as auth_failed
             # instead of the device sitting "connected" with stale state.
             # BaseDriver's poll loop drops the connection on it at once rather

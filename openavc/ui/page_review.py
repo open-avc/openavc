@@ -1486,7 +1486,7 @@ def keypad_findings(element: Mapping[str, Any]) -> list[Finding]:
     (no Enter key) sends an entry shorter than ``digits``. Two settings break
     that: the phone layout with ``auto_send`` off has no way to send at all,
     and a delay under the default can send after the first digit of a PIN --
-    the field report that named this check set it to 200 ms. With one digit
+    at 200 ms a four-digit PIN went out after its first key. With one digit
     the delay never runs (the first key is the whole entry), so it is silent.
     """
     if element.get("type") != "keypad":
