@@ -9,6 +9,8 @@
 // with an AttributeError. An object field that isn't valid JSON now reports a
 // clear error instead of being silently stored as a string.
 
+import { CONNECTION_FIELDS } from "../../api/types.gen";
+
 export type CoerceResult =
   | { ok: true; value: unknown }
   | { ok: false; error: string };
@@ -273,31 +275,9 @@ export function buildConfigFromForm(
 }
 
 // Connection-related config fields that belong in the project's connections
-// table, not device.config. Mirrors CONNECTION_FIELDS in
-// openavc/core/project_migration.py — keep the two in sync.
-export const CONNECTION_FIELDS = new Set([
-  "host",
-  "port",
-  // Serial line params — all live with the connection alongside baudrate so a
-  // template deployment swaps them per site (not split half into device.config).
-  "baudrate",
-  "bytesize",
-  "parity",
-  "stopbits",
-  "flow_control",
-  "username",
-  "password",
-  "base_url",
-  "ssl",
-  // Bridge binding (v0.6.0): a downstream device routes its bytes through
-  // another device's typed port. `bridge` = bridge device id, `bridge_port` =
-  // the port id it advertises (e.g. "serial:1").
-  "bridge",
-  "bridge_port",
-  // Local USB-to-serial stable identity: the adapter's USB serial number, which
-  // the resolver turns back into the live OS port path across reboot/replug.
-  "usb_serial",
-]);
+// table, not device.config. Generated from the driver contract (spec.py), the
+// list the server splits a device's config by.
+export { CONNECTION_FIELDS };
 
 // Connection fields the segmented connection-mode picker owns and renders
 // itself (for serial-capable drivers). The Add/Edit dialogs exclude these from

@@ -1,16 +1,23 @@
 "use strict";
-// Loads the real deviceConfigCoerce.ts (transpiled on the fly with the esbuild
-// already in openavc/web/programmer/node_modules) and exercises coerceConfigValue,
-// printing JSON results to stdout. Mirrors color_utils_harness.cjs: no build
-// step, and the Python wrapper skips when the toolchain is absent.
-const fs = require("fs");
+// Loads the real deviceConfigCoerce.ts (bundled on the fly, with the generated
+// contract tables it imports, by the esbuild already in
+// openavc/web/programmer/node_modules) and exercises coerceConfigValue,
+// printing JSON results to stdout. No build step, and the Python wrapper skips
+// when the toolchain is absent.
 const path = require("path");
 
 const srcPath = process.argv[2];
-const src = fs.readFileSync(srcPath, "utf8");
 
 const esbuild = require("esbuild");
-const { code } = esbuild.transformSync(src, { loader: "ts", format: "cjs" });
+const built = esbuild.buildSync({
+  entryPoints: [srcPath],
+  bundle: true,
+  format: "cjs",
+  platform: "node",
+  write: false,
+  logLevel: "silent",
+});
+const code = built.outputFiles[0].text;
 const moduleObj = { exports: {} };
 const fn = new Function("exports", "require", "module", "__filename", "__dirname", code);
 fn(moduleObj.exports, require, moduleObj, srcPath, path.dirname(srcPath));

@@ -41,6 +41,12 @@ export const PARAM_OPTIONS_FROM_SOURCES: ReadonlySet<string> = new Set(["child_s
 /** Types a config_schema field may declare. */
 export const CONFIG_FIELD_TYPES = ["string", "text", "integer", "number", "float", "boolean", "enum", "table"] as const;
 
+/**
+ * Config keys a project keeps in its connections table rather than in the
+ * device's config. Such a field cannot be learned_from a state variable.
+ */
+export const CONNECTION_FIELDS: ReadonlySet<string> = new Set(["base_url", "baudrate", "bridge", "bridge_port", "bytesize", "flow_control", "host", "parity", "password", "port", "ssl", "stopbits", "usb_serial", "username"]);
+
 /** cloud_priority forwarding tiers. */
 export const CLOUD_PRIORITIES = ["low", "high"] as const;
 

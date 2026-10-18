@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import type { DriverDefinition } from "../../api/types";
+import { CONNECTION_FIELDS } from "../../api/types.gen";
 import { IdRenameInput, type RenameResult } from "./IdRenameInput";
 import {
   type ConfigFieldDef as ConfigField,
@@ -402,7 +403,7 @@ export function ConfigSchemaEditor({ draft, onUpdate }: ConfigSchemaEditorProps)
                   />
                 </div>
 
-                {!field.secret && field.type !== "table" && (
+                {!field.secret && field.type !== "table" && !CONNECTION_FIELDS.has(name) && (
                   <div style={{ marginTop: "var(--space-md)" }}>
                     <label style={labelStyle} htmlFor={`config-learned-${name}`}>
                       Filled In From
@@ -439,6 +440,58 @@ export function ConfigSchemaEditor({ draft, onUpdate }: ConfigSchemaEditorProps)
                       so a value chosen before the equipment existed is
                       corrected. Never filled in from the simulator.
                     </div>
+                    {field.learned_from && NUMERIC_CONFIG_TYPES.has(field.type) && (
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 1fr",
+                          gap: "var(--space-sm)",
+                          marginTop: "var(--space-sm)",
+                        }}
+                      >
+                        <div>
+                          <label style={labelStyle} htmlFor={`config-min-${name}`}>
+                            Min (optional)
+                          </label>
+                          <input
+                            id={`config-min-${name}`}
+                            type="number"
+                            value={field.min === undefined ? "" : String(field.min)}
+                            onChange={(e) =>
+                              updateField(name, {
+                                min: e.target.value === "" ? undefined : parseFloat(e.target.value),
+                              })
+                            }
+                            style={{ width: "100%" }}
+                          />
+                        </div>
+                        <div>
+                          <label style={labelStyle} htmlFor={`config-max-${name}`}>
+                            Max (optional)
+                          </label>
+                          <input
+                            id={`config-max-${name}`}
+                            type="number"
+                            value={field.max === undefined ? "" : String(field.max)}
+                            onChange={(e) =>
+                              updateField(name, {
+                                max: e.target.value === "" ? undefined : parseFloat(e.target.value),
+                              })
+                            }
+                            style={{ width: "100%" }}
+                          />
+                        </div>
+                        <div
+                          style={{
+                            gridColumn: "1 / -1",
+                            fontSize: "11px",
+                            color: "var(--text-muted)",
+                          }}
+                        >
+                          A value the device reports outside this range is not saved.
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

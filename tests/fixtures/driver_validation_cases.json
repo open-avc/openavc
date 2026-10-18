@@ -3426,6 +3426,28 @@
   },
   "transport": "tcp"
  },
+ "config_learned_from_connection_field": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "config_schema": {
+   "host": {
+    "learned_from": "power",
+    "type": "string"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "config_learned_from_empty": {
   "commands": {
    "noop": {

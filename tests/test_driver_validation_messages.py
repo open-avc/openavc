@@ -593,6 +593,9 @@ CASES: dict[str, Any] = {
             "columns": {"name": {"type": "string"}},
         }},
     ),
+    "config_learned_from_connection_field": _d(
+        config_schema={"host": {"type": "string", "learned_from": "power"}},
+    ),
     # --- device settings ---
     "device_settings_not_mapping": _d(device_settings=["knob"]),
     "device_setting_not_mapping": _d(device_settings={"knob": "integer"}),

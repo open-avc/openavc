@@ -129,6 +129,30 @@ const results = {};
   };
 }
 {
+  // Leaving a number type drops min and max: a text field has no range.
+  const r = H.applyConfigFieldTypeChange(
+    { type: "float", label: "L", min: 0.5, max: 9.5 },
+    2.5,
+    "string",
+  );
+  results.leaving_numeric_drops_range = {
+    pass: eq(r.field, { type: "string", label: "L" }) && r.defaultValue === "2.5",
+    detail: r,
+  };
+}
+{
+  // Between number types the range stays.
+  const r = H.applyConfigFieldTypeChange(
+    { type: "integer", label: "L", min: 1, max: 8 },
+    4,
+    "float",
+  );
+  results.numeric_switch_keeps_range = {
+    pass: eq(r.field, { type: "float", label: "L", min: 1, max: 8 }) && r.defaultValue === 4,
+    detail: r,
+  };
+}
+{
   // boolean -> string keeps a representable default (true -> "true").
   const r = H.applyConfigFieldTypeChange(
     { type: "boolean", label: "L" },

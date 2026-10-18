@@ -617,6 +617,10 @@ CONSTANTS: tuple[tuple[str, str, Callable[[], Any], str], ...] = (
      "Sources a param's options_from cascade may read its choices from."),
     ("CONFIG_FIELD_TYPES", _LIST, lambda: spec.CONFIG_FIELD_TYPES,
      "Types a config_schema field may declare."),
+    ("CONNECTION_FIELDS", _SET, lambda: spec.CONNECTION_FIELDS,
+     "Config keys a project keeps in its connections table rather than in "
+     "the device's config. Such a field cannot be learned_from a state "
+     "variable."),
     ("CLOUD_PRIORITIES", _LIST, lambda: spec.CLOUD_PRIORITIES,
      "cloud_priority forwarding tiers."),
     ("ACTION_KINDS_YAML", _LIST,

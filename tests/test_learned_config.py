@@ -316,6 +316,15 @@ def test_accepted_value():
     assert accepted_value({"type": "table"}, "x") == (False, None)
 
 
+def test_a_float_field_is_learned_as_a_number_inside_its_range():
+    gain = {"type": "float", "min": -10, "max": 10}
+    assert accepted_value(gain, "2.5") == (True, 2.5)
+    assert accepted_value(gain, 3) == (True, 3.0)
+    assert accepted_value(gain, "12.5") == (False, None)
+    assert accepted_value(gain, "loud") == (False, None)
+    assert accepted_value(gain, True) == (False, None)
+
+
 def test_learned_fields_skips_secrets():
     class _D:
         DRIVER_INFO = {"config_schema": {

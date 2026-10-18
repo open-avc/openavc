@@ -1,12 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ConfigSchemaEditor } from "./ConfigSchemaEditor";
 import type { DriverDefinition } from "../../api/types";
 
 // The Driver Builder half of `learned_from`: a config field can be filled in
 // from a state variable the device reports. The picker offers the driver's
-// own state variables and is not offered on a secret field.
+// own state variables and is not offered on a secret field or a connection
+// field. A number field filled in from the device takes the range a reported
+// value has to fall inside.
 
 function draft(over: Record<string, unknown> = {}): DriverDefinition {
   return {
@@ -46,5 +48,32 @@ describe("ConfigSchemaEditor: Filled In From", () => {
     render(<ConfigSchemaEditor draft={d} onUpdate={vi.fn()} />);
     await userEvent.click(screen.getByText("pin"));
     expect(screen.queryByLabelText("Filled In From")).toBeNull();
+  });
+  it("is not offered on a connection field", async () => {
+    const d = draft({ config_schema: { username: { type: "string", label: "Username" } } });
+    render(<ConfigSchemaEditor draft={d} onUpdate={vi.fn()} />);
+    await userEvent.click(screen.getByText("username"));
+    expect(screen.queryByLabelText("Filled In From")).toBeNull();
+  });
+
+  it("asks a number field filled in from the device for its range", async () => {
+    const onUpdate = vi.fn();
+    const d = draft({
+      state_variables: { trim_reported: { type: "number" } },
+      config_schema: {
+        gain: { type: "float", label: "Gain" },
+        trim: { type: "float", label: "Trim", learned_from: "trim_reported", max: 9.5 },
+      },
+    });
+    render(<ConfigSchemaEditor draft={d} onUpdate={onUpdate} />);
+    await userEvent.click(screen.getByText("gain"));
+    expect(screen.queryByLabelText("Min (optional)")).toBeNull();
+    await userEvent.click(screen.getByText("trim"));
+    fireEvent.change(screen.getByLabelText("Min (optional)"), { target: { value: "0.5" } });
+    let update = onUpdate.mock.calls.at(-1)?.[0] as { config_schema: Record<string, { min?: number; max?: number }> };
+    expect(update.config_schema.trim.min).toBe(0.5);
+    fireEvent.change(screen.getByLabelText("Max (optional)"), { target: { value: "" } });
+    update = onUpdate.mock.calls.at(-1)?.[0] as { config_schema: Record<string, { min?: number; max?: number }> };
+    expect(update.config_schema.trim.max).toBeUndefined();
   });
 });
