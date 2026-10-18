@@ -694,7 +694,9 @@ async def _handle_message(
             log.error(f"Command failed: {e}")
             device_name = device_error_label(device_id, engine.state, engine.project, exc=e)
             host = engine.state.get(f"device.{device_id}.host") or ""
-            error_msg = friendly_error(e, device=device_name, host=host)
+            error_msg = friendly_error(
+                e, device=device_name, host=host, at_panel=client_type == "panel"
+            )
             await _send_ws(ws, {
                 "type": "command.ack",
                 "device_id": device_id,

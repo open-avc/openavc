@@ -276,7 +276,8 @@ def test_a_drivers_own_value_error_is_not_a_missing_device(client):
 def test_a_broadcast_refused_for_the_chosen_adapter_is_not_a_disconnected_device(client):
     """A Wake-on-LAN command runs while the device is off; when the adapter
     chosen in Reach devices through has no address the refusal names the
-    adapter, at the command door and in the sentence a panel shows."""
+    adapter, at the command door and in the Programmer's sentence (a panel's
+    is in test_adapter_unavailable_panel_message.py)."""
     from openavc.api.error_messages import friendly_error
     from openavc.reach_devices import AdapterUnavailable
 

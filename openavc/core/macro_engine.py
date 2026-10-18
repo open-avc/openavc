@@ -835,11 +835,11 @@ class MacroEngine:
         from openavc.api.error_messages import device_error_label, friendly_error
 
         if not device_id:
-            return friendly_error(exc)
+            return friendly_error(exc, at_panel=True)
         project = self._project_provider() if self._project_provider else None
         name = device_error_label(device_id, self.state, project, exc=exc)
         host = self.state.get(f"device.{device_id}.host") or ""
-        return friendly_error(exc, device=str(name), host=str(host))
+        return friendly_error(exc, device=str(name), host=str(host), at_panel=True)
 
     def _step_error_detail(self, step: dict[str, Any], index: int, total: int) -> str:
         """Build a descriptive error context string for a failed macro step."""
