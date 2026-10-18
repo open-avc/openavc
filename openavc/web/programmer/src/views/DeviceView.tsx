@@ -69,22 +69,27 @@ export function DeviceView() {
   const stateVersion = useConnectionStore((s) => s.stateVersion);
   const deviceConfigs = devices ?? [];
   // Product hardware is never deleted here, and only the running system says
-  // which devices are. Until it answers (null), nothing is deletable; after,
-  // every other device is, including one the running system does not have
-  // because its driver failed while loading.
+  // which devices are. Until it first answers (null), nothing is deletable;
+  // after, every other device is, including one the running system does not
+  // have because its driver failed while loading. Asked again whenever the
+  // project changes, keeping the last answer meanwhile. When it cannot be
+  // asked, no device counts as product hardware: the server refuses to
+  // delete one itself.
   const [productHardwareIds, setProductHardwareIds] = useState<Set<string> | null>(null);
   useEffect(() => {
     let active = true;
-    setProductHardwareIds(null);
     api.listDevices().then(items => {
       if (active) setProductHardwareIds(new Set(items.filter(item => item.ownership === "manufacturer").map(item => item.id)));
-    }).catch(() => {});
+    }).catch(() => {
+      if (active) setProductHardwareIds(known => known ?? new Set());
+    });
     return () => { active = false; };
   }, [devices]);
-  const selectionDeletable = useMemo(
-    () => productHardwareIds !== null && ![...selectedIds].some(id => productHardwareIds.has(id)),
+  const selectionHasProductHardware = useMemo(
+    () => productHardwareIds !== null && [...selectedIds].some(id => productHardwareIds.has(id)),
     [productHardwareIds, selectedIds],
   );
+  const selectionDeletable = productHardwareIds !== null && !selectionHasProductHardware;
 
   // Bridge topology: each bridge device, its advertised ports, and which
   // devices are bound to each port (from the connections table). Drives the
@@ -521,9 +526,9 @@ export function DeviceView() {
               >
                 Online
               </button>
-              {selectedIds.size > 0 && !selectionDeletable && (
+              {selectionHasProductHardware && (
                 <span role="status" style={{ color: "var(--text-secondary)" }}>
-                  Delete is unavailable while the selection includes product hardware or device details are loading.
+                  Delete is unavailable while the selection includes product hardware.
                 </span>
               )}
               <span style={{ color: "var(--border-color)" }}>|</span>
