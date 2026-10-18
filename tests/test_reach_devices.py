@@ -83,6 +83,17 @@ class TestResolving:
             "an address still listed on an adapter whose link is down"
         )
 
+    def test_a_broadcast_never_goes_from_the_169_254_address_an_unplugged_adapter_keeps(self):
+        # Windows keeps an unplugged adapter's addresses, its 169.254 one
+        # included, in the Tentative state, and refuses a socket bound to one.
+        link_local = (("169.254.125.131", "169.254.0.0/16"),)
+        static = Adapter("Ethernet", ETHERNET.mac, ETHERNET.addresses, False, link_local)
+        dhcp = Adapter("Ethernet", ETHERNET.mac, (), False, link_local)
+        for unplugged in (static, dhcp):
+            resolved = reach_devices.resolve(ETHERNET.identity(), [WIFI, unplugged])
+            assert resolved.broadcast_source == "", "nothing to send from, so the sender says it isn't connected"
+            assert resolved.link_local_address == "169.254.125.131", "connections still bind it"
+
     def test_a_literal_address_is_bound_as_it_is(self):
         resolved = reach_devices.resolve({"address": "10.20.30.5"}, [ETHERNET])
         assert resolved.address == "10.20.30.5"

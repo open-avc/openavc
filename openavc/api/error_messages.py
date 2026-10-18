@@ -34,7 +34,9 @@ def device_error_label(
     return str(state.get(f"device.{device_id}.name") or fallback)
 
 
-def friendly_error(exc: Exception, device: str = "", host: str = "") -> str:
+def friendly_error(
+    exc: Exception, device: str = "", host: str = "", *, at_panel: bool = False
+) -> str:
     """
     Convert a Python exception to a user-friendly error message.
 
@@ -42,6 +44,9 @@ def friendly_error(exc: Exception, device: str = "", host: str = "") -> str:
         exc: The exception to translate.
         device: Optional device name/ID for context.
         host: Optional host/IP for context.
+        at_panel: The sentence is for somebody standing at a panel, who can
+            reach no setting: a failure only the Programmer can fix says so
+            in words for the room.
 
     Returns:
         A human-readable error string with actionable guidance.
@@ -94,10 +99,22 @@ def friendly_error(exc: Exception, device: str = "", host: str = "") -> str:
         # without this branch quietly stopping to match.
         # A broadcast or multicast refused because the adapter chosen in Reach
         # devices through has no address: the device is not what is missing,
-        # and the refusal already says what to do.
+        # and the refusal already says what to do -- in Settings, which is
+        # the integrator's to open, not the room's.
         from openavc.reach_devices import AdapterUnavailable
 
+        from openavc.core.device_manager import NoSimulatorError
+
+        # Refused because a running simulation has no simulator for this
+        # device: the device card's own sentence, which says what to do.
+        if isinstance(exc, NoSimulatorError):
+            return msg
         if isinstance(exc, AdapterUnavailable):
+            if at_panel:
+                return (
+                    f"{device or 'The equipment'} can't be reached: the network "
+                    "connection to it is down. Contact support."
+                )
             return msg
         restart_seconds = getattr(exc, "restart_seconds", None)
         if restart_seconds is not None:

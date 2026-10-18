@@ -324,7 +324,9 @@ type ConnMode = ConnectionMode;
 function inferConnMode(cv: Record<string, string>, d: DriverInfo | undefined): ConnMode {
   // An IR device is always bridged — there's no network/serial mode for it.
   if (driverIrCapable(d)) return "bridge";
-  if (cv.bridge && cv.bridge_port) return "bridge";
+  // A bridge saved before its port was picked is still Through a bridge (the
+  // server reads it the same way: connection_kind in core/required_config.py).
+  if (cv.bridge) return "bridge";
   if ((cv.transport || "").toLowerCase() === "serial") return "serial";
   if ((cv.host ?? "") !== "") return "network";
   return driverNetworkCapable(d) ? "network" : "serial";
@@ -351,9 +353,10 @@ function applyConnMode(
     delete v.usb_serial;
     v.transport = primaryNetworkTransport(d);
     if (v.host == null) v.host = "";
-    // A COM path left in `port` is meaningless as a TCP port → reset to the
-    // driver's default network port.
-    if (v.port && /[A-Za-z]/.test(v.port)) {
+    // A COM path left in `port` is meaningless as a TCP port, and a port that
+    // Direct serial cleared is blank → reset to the driver's default network
+    // port.
+    if (!v.port || /[A-Za-z]/.test(v.port)) {
       const dp = d?.default_config?.port;
       v.port = dp != null ? String(dp) : "";
     }
@@ -1127,8 +1130,16 @@ export function AddDeviceDialog({
               setSelectedDriver(newDriverId);
               const newDriver = drivers.find((d) => d.id === newDriverId);
               setConfigOriginals(newDriver?.default_config ?? {});
+              const seeded = prefillConfigValues(newDriver?.default_config, newDriver?.config_schema);
+              // A driver whose own transport is serial but which also connects
+              // over the network opens on Network (IP) (inferConnMode). Saved
+              // without its network transport, it would open a serial port
+              // named after the TCP port.
+              const opensOnTheNetworkOverItsOwn =
+                (newDriver?.transport || "").toLowerCase() === "serial" &&
+                inferConnMode(seeded, newDriver) === "network";
               setConfigValues(
-                prefillConfigValues(newDriver?.default_config, newDriver?.config_schema),
+                opensOnTheNetworkOverItsOwn ? applyConnMode(seeded, "network", newDriver) : seeded,
               );
               if (newDriver) {
                 const generated = generateDeviceDefaults(newDriver, devices ?? []);

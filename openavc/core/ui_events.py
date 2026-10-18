@@ -576,7 +576,7 @@ class UIEventRuntime:
         state = self._engine.state
         name = device_error_label(device_id, state, self._engine.project, exc=exc)
         host = state.get(f"device.{device_id}.host") or ""
-        return friendly_error(exc, device=str(name), host=str(host))
+        return friendly_error(exc, device=str(name), host=str(host), at_panel=True)
 
     def _script_call_error(self, exc: ScriptCallError) -> str:
         """Why the script the control named did not do its job.

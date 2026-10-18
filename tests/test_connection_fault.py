@@ -528,7 +528,7 @@ def test_the_simulation_gap_wins_over_a_refused_socket():
 
     manager.unsimulated_driver = lambda device_id: "acme_widget"
     assert manager._set_offline_reason("dev1", None, exc=exc) == NO_SIMULATOR
-    assert "Stop simulation" in state.get("device.dev1.offline_detail")
+    assert "stop simulation" in state.get("device.dev1.offline_detail").lower()
 
 
 def test_a_simulated_device_is_left_to_the_normal_classifier():

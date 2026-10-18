@@ -84,7 +84,8 @@ class Resolved:
     ``link_local_address`` is the chosen adapter's first 169.254 address, or
     "" (none held, every adapter, or a literal address). Not in
     :meth:`to_dict`: Settings lists and shows an adapter by its other
-    addresses.
+    addresses. ``link`` is whether the adapter is plugged in, apart from
+    ``connected``, which is also False for one holding only a 169.254 address.
     """
 
     identity: dict[str, str]
@@ -92,6 +93,7 @@ class Resolved:
     adapter_name: str = ""
     connected: bool = True
     link_local_address: str = ""
+    link: bool = True
 
     @property
     def broadcast_source(self) -> str:
@@ -99,10 +101,14 @@ class Resolved:
         chosen: its 169.254 address when it holds no other (a network with no
         DHCP server), otherwise ``address``; "" for nothing to send from.
 
-        Never the last address a missing or unplugged adapter keeps: that one
-        is for connections, which then fail rather than widen. A datagram sent
-        from it fails at the socket every time, so the sender would report the
-        OS's error per datagram instead of saying the adapter isn't connected."""
+        Never an address a missing or unplugged adapter keeps: the last one is
+        for connections, which then fail rather than widen, and Windows keeps
+        an unplugged adapter's own addresses, 169.254 included, in a state no
+        socket binds. A datagram sent from one fails at the socket every time,
+        so the sender would report the OS's error per datagram instead of
+        saying the adapter isn't connected."""
+        if not self.link:
+            return ""
         if not self.connected:
             return self.link_local_address
         return self.address
@@ -155,6 +161,7 @@ def resolve(identity: dict[str, str], adapters: Iterable[Any], last: str = "") -
             address=address,
             adapter_name=holder.name if holder else "",
             connected=bool(holder and holder.link),
+            link=bool(holder and holder.link),
         )
     adapter = listen.match_adapter(identity, adapters)
     name = adapter.name if adapter else identity.get("name", "")
@@ -167,7 +174,7 @@ def resolve(identity: dict[str, str], adapters: Iterable[Any], last: str = "") -
             last = ""
         return Resolved(
             identity=identity, address=last, adapter_name=name, connected=False,
-            link_local_address=link_local,
+            link_local_address=link_local, link=bool(adapter and adapter.link),
         )
     return Resolved(
         identity=identity,
@@ -175,6 +182,7 @@ def resolve(identity: dict[str, str], adapters: Iterable[Any], last: str = "") -
         adapter_name=name,
         connected=adapter.link,
         link_local_address=link_local,
+        link=adapter.link,
     )
 
 
@@ -250,9 +258,10 @@ class AdapterUnavailable(ConnectionError):
     """A broadcast or a multicast not sent: the adapter chosen in Reach
     devices through has nothing to send it from, and it never goes out
     another. A ConnectionError, so whatever catches a failed send still
-    does; the message is the sentence a person reads, which the command
+    does; the message is the sentence the integrator reads, which the command
     route and ``api/error_messages.friendly_error`` pass on as it is (the
-    device is not what is missing)."""
+    device is not what is missing). A panel gets its own sentence from
+    ``friendly_error(..., at_panel=True)``: nobody there can open Settings."""
 
     def __init__(self, adapter_name: str = "") -> None:
         self.adapter_name = adapter_name

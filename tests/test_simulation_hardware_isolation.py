@@ -3,7 +3,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from fastapi.testclient import TestClient
 
+from openavc.api import rest
+from openavc.api.error_messages import friendly_error
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
 from openavc.core.simulation import SimulationManager
@@ -155,3 +158,48 @@ async def test_failed_simulator_add_cannot_connect_new_hardware(rig, outcome, de
         await manager.send_command("new", "wake")
     assert hardware.connects == 0 and hardware.writes == 0
     assert not manager._reconnect_tasks
+
+
+# What the integrator is told. The device is refused on purpose; the card, a
+# command and the device page's next step say why and what to do about it.
+
+
+@pytest.mark.asyncio
+async def test_the_card_names_the_driver_and_how_to_give_it_a_simulator(rig):
+    manager, simulator = rig
+    await simulator._redirect_connections()
+    detail = manager.state.get("device.missing.offline_detail")
+    assert "'acme_widget'" in detail
+    assert "_sim.py" in detail and "stop simulation" in detail.lower()
+
+
+def test_product_hardware_is_only_told_to_stop_simulation(rig):
+    manager, _ = rig
+    manager.installed_equipment = SimpleNamespace(owns=lambda ident: ident == "missing")
+    manager._set_offline_reason("missing", None, exc=ConnectionRefusedError())
+    detail = manager.state.get("device.missing.offline_detail")
+    assert detail == "This device has no simulator. Stop simulation to control it."
+
+
+@pytest.mark.asyncio
+async def test_a_command_is_refused_in_the_cards_words(rig):
+    manager, simulator = rig
+    await simulator._redirect_connections()
+    card = manager.state.get("device.missing.offline_detail")
+    with pytest.raises(ConnectionError) as refused:
+        await manager.send_command("missing", "wake")
+    assert friendly_error(refused.value, device="Missing Widget") == card
+
+    rest.set_engine(SimpleNamespace(devices=manager, state=manager.state))
+    try:
+        resp = TestClient(rest_app()).post("/api/devices/missing/command", json={"command": "wake"})
+    finally:
+        rest.set_engine(None)
+    assert resp.status_code == 503
+    assert resp.json()["detail"] == card
+
+
+def rest_app():
+    from openavc.main import app
+
+    return app

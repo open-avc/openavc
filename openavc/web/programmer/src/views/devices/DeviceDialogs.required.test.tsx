@@ -127,6 +127,17 @@ describe("required config fields in the device dialogs", () => {
     expect(update).toHaveBeenCalledTimes(1);
   });
 
+  it("Edit Device reopens a bridge saved before its port on the bridge, asking no IP address", async () => {
+    const device = { id: "cam1", driver: "acme_camera", name: "Cam", config: { model: "w12" } };
+    seedProject([device as DeviceConfig], { cam1: { bridge: "itach1", baudrate: 9600 } });
+    render(<EditDeviceDialog device={device as DeviceConfig} onClose={() => {}} onSaved={() => {}} />);
+    await waitFor(() => expect(screen.getByLabelText(/^Model/)).toHaveValue("w12"));
+
+    await userEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+    expect(screen.queryByText(/is required\./)).toBeNull();
+    expect(api.updateDevice).toHaveBeenCalledTimes(1);
+  });
+
   it("Edit Device refuses a Model cleared to blank and sends nothing", async () => {
     const device = { id: "cam1", driver: "acme_camera", name: "Cam", config: { model: "w20" } };
     seedProject([device as DeviceConfig], { cam1: { host: "10.0.0.9", port: 5500 } });

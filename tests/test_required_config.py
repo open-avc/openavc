@@ -141,7 +141,8 @@ def test_the_pickers_other_fields_are_never_asked():
         ({"transport": "serial"}, "tcp", "serial"),
         ({}, "serial", "serial"),
         ({"bridge": "itach", "bridge_port": "serial:1"}, "tcp", "bridge"),
-        ({"bridge": "itach"}, "tcp", "network"),
+        ({"bridge": "itach"}, "tcp", "bridge"),
+        ({"bridge": "itach", "bridge_port": ""}, "serial", "bridge"),
         ({}, "bridge", "bridge"),
     ],
 )
@@ -203,9 +204,9 @@ def _saved_device(engine) -> DeviceConfig:
 async def test_patch_refuses_a_blank_required_field_by_label(camera_engine):
     client, engine = camera_engine
     before = engine._project_revision
-    resp = client.patch("/api/devices/cam1", json={"config": {"host": "10.0.0.50", "model": ""}})
+    resp = client.patch("/api/devices/cam1", json={"config": {"host": "", "model": "w12"}})
     assert resp.status_code == 422
-    assert resp.json()["detail"] == "Model is required."
+    assert resp.json()["detail"] == "IP Address is required."
     assert engine._project_revision == before
     assert _saved_device(engine).config == {}
 
@@ -228,6 +229,18 @@ async def test_patch_names_every_blank_field(camera_engine):
     assert resp.json()["detail"] == "IP Address, Model and Password are required."
 
 
+async def test_patch_leaves_alone_a_gap_the_request_did_not_make(camera_engine):
+    """The device page's editors send the whole config back. An older device
+    with no Model still saves a preset from there; Edit Device, where Model is,
+    is where the gap is filled."""
+    client, engine = camera_engine
+    presets = [{"name": "Wide", "number": 1}]
+    for config in ({"presets": presets}, {"model": "", "presets": presets}):
+        resp = client.patch("/api/devices/cam1", json={"config": config})
+        assert resp.status_code == 200, resp.text
+    assert _saved_device(engine).config["presets"] == presets
+
+
 async def test_patch_counts_a_stored_password_it_was_not_sent(camera_engine):
     client, engine = camera_engine
     resp = client.patch("/api/devices/cam1", json={"config": {"model": "w20"}})
@@ -242,6 +255,16 @@ async def test_patch_does_not_ask_for_an_ip_address_of_a_serial_or_bridged_devic
     bridged = {"port": None, "bridge": "itach1", "bridge_port": "serial:1", "model": "w12"}
     assert client.patch("/api/devices/cam1", json={"config": bridged}).status_code == 200
     assert "host" not in load_project(engine.project_path).connections["cam1"]
+
+
+async def test_patch_takes_a_bridge_chosen_before_its_port_as_bridged(camera_engine):
+    """Edit Device on Through a bridge, the bridge picked and its port not yet:
+    the form asks for no IP address, so neither does the save."""
+    client, _engine = camera_engine
+    config = {"host": None, "port": None, "transport": None, "bridge": "itach1",
+              "bridge_port": "", "model": "w12"}
+    resp = client.patch("/api/devices/cam1", json={"config": config})
+    assert resp.status_code == 200, resp.text
 
 
 async def test_patch_renaming_or_disabling_an_older_device_is_not_refused(camera_engine):

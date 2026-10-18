@@ -44,7 +44,7 @@ import { InlineProtocolEditor } from "./InlineProtocolEditor";
 import { IrCodesEditor } from "./IrCodesEditor";
 import { ConfigTableEditor } from "./ConfigTableEditor";
 import { BridgeIrPort } from "./BridgeIrPort";
-import { parseApiError } from "../../api/errors";
+import { ApiError, parseApiError } from "../../api/errors";
 import { useConnectionTestResult } from "./useConnectionTestResult";
 
 export function DeviceDetail({
@@ -66,6 +66,10 @@ export function DeviceDetail({
   const update = useProjectStore((s) => s.update);
   const liveState = useConnectionStore((s) => s.liveState);
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
+  // The running system has no such device (its driver failed while loading;
+  // the device log says why). It is still in the project, so it can still be
+  // edited, duplicated or deleted.
+  const [notRunning, setNotRunning] = useState(false);
   const [commandResult, setCommandResult] = useState<
     { ok: boolean; text: string; detail?: string } | null
   >(null);
@@ -105,8 +109,18 @@ export function DeviceDetail({
   const refetchDeviceInfo = useCallback(() => {
     const forDevice = deviceId;
     api.getDevice(deviceId)
-      .then((info) => { if (shownDeviceId.current === forDevice) setDeviceInfo(info); })
-      .catch(console.error);
+      .then((info) => {
+        if (shownDeviceId.current !== forDevice) return;
+        setDeviceInfo(info);
+        setNotRunning(false);
+      })
+      .catch((e) => {
+        if (shownDeviceId.current === forDevice && e instanceof ApiError && e.status === 404) {
+          setDeviceInfo(null);
+          setNotRunning(true);
+        }
+        console.error(e);
+      });
   }, [deviceId]);
 
   // Refetch on mount and whenever the connection flips: a role-adaptive
@@ -126,6 +140,9 @@ export function DeviceDetail({
   const deviceConfig = project?.devices.find((d) => d.id === deviceId);
   const isEnabled = deviceConfig?.enabled !== false;
   const installed = deviceInfo?.ownership === "manufacturer";
+  // Product hardware is never edited or deleted here, and only the running
+  // system says which devices are; until it answers, nothing is offered.
+  const manageable = deviceInfo ? !installed : notRunning && Boolean(deviceConfig);
 
   const handleDelete = useCallback(async () => {
     setDeleting(true);
@@ -244,7 +261,7 @@ export function DeviceDetail({
     stateEntries.push([rest, valueStr, fullValue !== valueStr ? fullValue : undefined]);
   }
 
-  const deviceName = String(liveState[`device.${deviceId}.name`] ?? deviceId);
+  const deviceName = String(liveState[`device.${deviceId}.name`] ?? deviceConfig?.name ?? deviceId);
   const orphaned = Boolean(liveState[`device.${deviceId}.orphaned`]);
   // Paused by Live Test or a Device Audit (device.<id>.paused; paused_for
   // names which) — auto-reconnect is suspended until a resume, a manual
@@ -466,7 +483,7 @@ export function DeviceDetail({
               <RefreshCw size={14} /> {reconnecting ? "Reconnecting..." : "Reconnect"}
             </button>
           )}
-          {deviceInfo && !installed && <>
+          {manageable && <>
           <button
             onClick={() => deviceConfig && onEdit(deviceConfig)}
             title="Edit device settings"
@@ -1663,6 +1680,11 @@ export function offlineNextStep(
   failed: boolean,
   signInFields: boolean,
 ): string {
+  if (reason === "no_simulator") {
+    // Refused on purpose, and retried by nothing: it is the simulation that
+    // keeps it off, so stopping it is what brings the device back.
+    return "Not connecting while simulation runs. Stopping simulation connects it to the real device again.";
+  }
   if (!failed) {
     // Deliberately no attempt count. There's no ceiling to count toward, and
     // a device left off over a weekend would show a number in the thousands,
@@ -1738,17 +1760,17 @@ function OfflineBanner({
             {hint}
           </div>
         )}
-        {reason !== "no_simulator" && (<div
+        <div
           style={{
             fontSize: "var(--font-size-sm)",
             color: "var(--text-muted)",
             marginTop: "var(--space-xs)",
           }}
         >
-          {installed && failed
+          {installed && failed && reason !== "no_simulator"
             ? "Automatic reconnect is paused. Check this product's OpenAVC status, then press Reconnect."
             : offlineNextStep(reason, failed, signInFields)}
-        </div>)}
+        </div>
       </div>
     </div>
   );
