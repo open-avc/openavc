@@ -689,7 +689,14 @@ export function DeviceDetail({
         />
       )}
 
-      {installed && <InstalledEquipment key={deviceId} deviceId={deviceId} name={deviceName} />}
+      {installed && (
+        <InstalledEquipment
+          key={deviceId}
+          deviceId={deviceId}
+          name={deviceName}
+          completionWait={deviceInfo?.completion_wait}
+        />
+      )}
 
       {/* Offline reason banner — actionable cause from device.<id>.offline_detail */}
       {!connected && isEnabled && !orphaned && !paused && !restarting && offlineDetail && (

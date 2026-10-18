@@ -8,6 +8,7 @@ Tests verify:
 - Error handling for invalid messages
 """
 
+import asyncio
 import json
 import tempfile
 import time
@@ -598,3 +599,49 @@ async def test_ws_rate_limit_rejects_flood(engine_and_client, monkeypatch):
 
     # The rate-limited press was never dispatched
     assert engine.state.get("var.channel") == ""
+
+
+# A press whose command is slow to finish must not hold the panel's next
+# message: the room would see every later press, and the release of a held
+# button, wait behind it.
+
+
+class _SlowEngine:
+    def __init__(self):
+        self.finish = asyncio.Event()
+        self.handled = []
+
+    async def handle_ui_event(self, event_type, element_id, data=None):
+        if element_id == "slow":
+            await self.finish.wait()
+            self.handled.append(element_id)
+            return [{"error": "The product did not confirm the command finished."}]
+        self.handled.append(element_id)
+        return []
+
+
+class _Socket:
+    def __init__(self):
+        self.frames = []
+
+    async def send_json(self, frame):
+        self.frames.append(frame)
+
+
+@pytest.mark.asyncio
+async def test_a_slow_interaction_does_not_hold_the_next_one(monkeypatch):
+    monkeypatch.setattr(ws, "UI_EVENT_HOLD_SEC", 0.05)
+    engine, socket = _SlowEngine(), _Socket()
+    async with asyncio.timeout(1):
+        await ws._run_ui_event(socket, "ui.press", engine, "press", "slow")
+        await ws._run_ui_event(socket, "ui.release", engine, "release", "fast")
+    assert engine.handled == ["fast"] and socket.frames == []
+    engine.finish.set()
+    async with asyncio.timeout(1):
+        while not socket.frames:
+            await asyncio.sleep(0.01)
+    assert engine.handled == ["fast", "slow"]
+    assert socket.frames == [{
+        "type": "error", "source_type": "ui.press", "element_id": "slow",
+        "message": "The product did not confirm the command finished.",
+    }]

@@ -9,6 +9,7 @@ import json
 import os
 import ssl
 import sqlite3
+import time
 import uuid
 
 import aiohttp
@@ -25,6 +26,14 @@ from openavc.drivers.child_ids import coerce_child_local_id
 from openavc.drivers.python_info import python_driver_info_issues
 from openavc.drivers.equipment_protocol import MAX_MESSAGE_BYTES, PROTOCOL
 from openavc.system_config import get_data_dir
+
+# How long a command waits, unless the device says otherwise, for the
+# equipment to confirm it finished. The equipment answers within a fraction of
+# a second either way and keeps the outcome under the same request ID, which is
+# read every _RESULT_POLL_S until it is final.
+COMPLETION_WAIT_DEFAULT = 5
+COMPLETION_WAIT_MAX = 600
+_RESULT_POLL_S = 0.1
 
 
 class RequestJournal:
@@ -158,7 +167,8 @@ class EquipmentDriver(BaseDriver):
             "_sdk_identity": {"type": "string", "label": "Equipment ID"},
             "_sdk_model": {"type": "string", "label": "Equipment model"},
         },
-        "default_config": {"host": "", "port": 9443, "username": "", "password": "", "verify_ssl": True},
+        "default_config": {"host": "", "port": 9443, "username": "", "password": "", "verify_ssl": True,
+                           "completion_wait": COMPLETION_WAIT_DEFAULT},
         "config_schema": {
             "reported_identity": {"type": "string", "label": "Equipment ID", "default": "",
                          "advanced": True, "learned_from": "_sdk_identity"},
@@ -170,6 +180,11 @@ class EquipmentDriver(BaseDriver):
             "password": {"type": "string", "label": "Password", "default": "", "secret": True},
             "verify_ssl": {"type": "boolean", "label": "Verify HTTPS certificate", "default": True,
                            "advanced": True, "description": "Verify the equipment's certificate against trusted certificate authorities."},
+            "completion_wait": {"type": "number", "label": "Wait for completion (seconds)",
+                                "default": COMPLETION_WAIT_DEFAULT, "min": 0, "max": COMPLETION_WAIT_MAX,
+                                "advanced": True,
+                                "description": "How long a command waits for the product to confirm it finished. "
+                                               "A command that takes longer is reported as not confirmed."},
         },
         "discovery": {"mdns": [{"service": "_openavc-device._tcp.local."}]},
     }
@@ -295,6 +310,8 @@ class EquipmentDriver(BaseDriver):
                 raise ConnectionFaultError(value.get("message", "Check the product credentials in its connection settings."), code="auth_failed")
             if response.status == 403:
                 raise ConnectionFaultError(value.get("message", "Device access is disabled in product settings."), code="connection_refused")
+            if response.status == 404 and path.startswith("/v1/commands/"):
+                return None
             if (response.status == 409 and path == "/v1/command"
                     and isinstance(payload, dict) and isinstance(value, dict)
                     and type(value.get("id")) is int and value["id"] == payload.get("id")
@@ -404,12 +421,49 @@ class EquipmentDriver(BaseDriver):
                     "params": normalized,
                 },
             )
-            if result["outcome"] in {"failed", "rejected", "pending", "uncertain"}:
-                raise CommandOutcomeError(result["outcome"])
-            if result["outcome"] != "completed":
-                raise RuntimeError("The product returned an unsupported command outcome.")
-            await self._refresh()
-            return result
+        # The lock orders request IDs, so it is released before waiting: a
+        # second command is sent while the first finishes.
+        if result["outcome"] in {"pending", "uncertain"}:
+            result = await self._await_outcome(session, identifier)
+        if result["outcome"] in {"failed", "rejected", "pending", "uncertain"}:
+            raise CommandOutcomeError(result["outcome"])
+        if result["outcome"] != "completed":
+            raise RuntimeError("The product returned an unsupported command outcome.")
+        await self._refresh()
+        return result
+
+    def _completion_wait(self):
+        try:
+            wait = float(self.config.get("completion_wait", COMPLETION_WAIT_DEFAULT))
+        except (TypeError, ValueError):
+            return COMPLETION_WAIT_DEFAULT
+        if wait != wait:
+            return COMPLETION_WAIT_DEFAULT
+        return min(max(wait, 0.0), COMPLETION_WAIT_MAX)
+
+    async def _await_outcome(self, session, identifier):
+        """Read a command's outcome until it is final or the device's wait runs out.
+
+        Never sends the command again. A new equipment session drops every
+        outcome it held, and so does a lost connection, so either ends the
+        wait as unconfirmed, as does an outcome the equipment no longer holds.
+        """
+        wait = self._completion_wait()
+        deadline = time.monotonic() + wait
+        http = self._sdk_http
+        while (remaining := deadline - time.monotonic()) > 0:
+            await asyncio.sleep(min(_RESULT_POLL_S, remaining))
+            if self._sdk_session != session or self._sdk_http is not http:
+                raise CommandOutcomeError("uncertain")
+            try:
+                result = await self._request(f"/v1/commands/{identifier}")
+            except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionError, ValueError):
+                continue
+            if not isinstance(result, dict) or result.get("id") != identifier:
+                raise CommandOutcomeError("uncertain")
+            if result.get("outcome") != "pending":
+                return result
+        raise CommandOutcomeError("uncertain", waited=wait)
 
     async def set_device_setting(self, key, value):
         write = copy.deepcopy(self.DRIVER_INFO["device_settings"][key]["write"]["body"])

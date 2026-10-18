@@ -39,6 +39,32 @@ class InstalledEquipmentError(ValueError):
     pass
 
 
+def project_completion_wait(config, *, strict=True):
+    """The product hardware's Wait for completion, the one setting its project
+    keeps in ``config`` beside the model. None when unset. A value that is not
+    a number of seconds in range is refused, or dropped when not ``strict``."""
+    from openavc.drivers.equipment import COMPLETION_WAIT_MAX
+
+    wait = config.get("completion_wait")
+    if wait is None:
+        return None
+    if isinstance(wait, bool) or not isinstance(wait, (int, float)) or not 0 <= wait <= COMPLETION_WAIT_MAX:
+        if not strict:
+            return None
+        raise InstalledEquipmentError(
+            f"Wait for completion must be a number of seconds from 0 to {COMPLETION_WAIT_MAX}."
+        )
+    return wait
+
+
+def _with_completion_wait(config, *sources):
+    for source in sources:
+        wait = project_completion_wait(source, strict=False)
+        if wait is not None:
+            return {**config, "completion_wait": wait}
+    return config
+
+
 class InstalledEquipment:
     def __init__(self, manifest=None):
         self.manifest = copy.deepcopy(manifest)
@@ -169,7 +195,8 @@ class InstalledEquipment:
             if kind not in info.get("child_entity_types", {}):
                 raise InstalledEquipmentError(f"The product hardware does not provide '{kind}' channels. Review the saved channel labels before assigning it.")
         source.driver = self.driver_id
-        source.config = {"integration": self.manifest["integration"]}
+        source.config = _with_completion_wait(
+            {"integration": self.manifest["integration"]}, source.config, target.config)
         project.connections.pop(source.id, None)
         project.connections.pop(target.id, None)
         project.devices.remove(target)
@@ -265,7 +292,7 @@ class InstalledEquipment:
                     "The saved equipment model does not match this product. Its programming has not been reassigned."
                 )
             selected.driver = self.driver_id
-            selected.config = {"integration": host["integration"]}
+            selected.config = _with_completion_wait({"integration": host["integration"]}, selected.config)
             result.connections.pop(selected.id, None)
             matches = [selected]
         found = matches[0] if matches else None
@@ -290,6 +317,8 @@ class InstalledEquipment:
             expected = reference.model_dump()
             incoming = found.model_dump()
             expected["name"] = incoming["name"]
+            if "completion_wait" in incoming["config"]:
+                expected["config"]["completion_wait"] = project_completion_wait(incoming["config"])
             # These fields control this project, not the hardware mapping.
             expected["enabled"] = incoming["enabled"]
             expected["pending_settings"] = incoming["pending_settings"]
@@ -330,6 +359,9 @@ class InstalledEquipment:
         result["config"] = copy.deepcopy(self.manifest["connection"])
         result["config"]["identity"] = self.manifest["identity"]
         result["config"]["integration"] = self.manifest["integration"]
+        wait = project_completion_wait(device.config, strict=False)
+        if wait is not None:
+            result["config"]["completion_wait"] = wait
         return result
 
     async def test_connection(self):
@@ -339,8 +371,11 @@ class InstalledEquipment:
     def information(self, device_id):
         if not self.owns(device_id):
             return {}
+        from openavc.drivers.equipment import COMPLETION_WAIT_DEFAULT, COMPLETION_WAIT_MAX
+
         return {
             "ownership": "manufacturer",
+            "completion_wait": {"default": COMPLETION_WAIT_DEFAULT, "max": COMPLETION_WAIT_MAX},
             "physical_identity": self.manifest["identity"],
             "integration": self.manifest["integration"],
             "permitted_actions": [
