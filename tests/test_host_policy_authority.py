@@ -203,7 +203,7 @@ async def test_completed_save_only_allows_its_response(rig, fail):
             return {'failed': True}
         with pytest.raises(HostPolicyDenied):
             lease.begin_commit()
-        with pytest.raises(HostPolicyDenied):
+        with pytest.raises(asyncio.CancelledError):
             await request.body()
         return {'finished': True}
     rig.app.include_router(router)
@@ -230,6 +230,139 @@ async def test_settings_replace_failure_does_not_authorize_a_success_response(ri
     assert rig.cfg.file_path.read_bytes() == previous
     assert admissions and all(not lease.response_only for lease in admissions)
     assert not rig.host._commits and not rig.host._admissions
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('kind', ['restart', 'plugin'])
+async def test_revoked_optional_body_cannot_be_recovered_as_an_action(rig, monkeypatch, kind):
+    from openavc.api import plugins
+    from openavc.core.project_loader import PluginConfig
+    rig.app.include_router(plugins.router)
+    monkeypatch.setattr(plugins, '_engine', rig.engine)
+    rig.engine.project.plugins['example'] = PluginConfig()
+    event = 'system.restart_requested' if kind == 'restart' else 'plugin.example.action.apply'
+    path = '/api/system/restart' if kind == 'restart' else '/api/plugins/example/context-action/apply'
+    effects = []
+    rig.engine.events.on(event, lambda name, payload: effects.append((name, payload)))
+    # Engine.start never runs: observe the real event, with no restart handler.
+    assert (await http(rig, path, method='POST', body=None))[0] == 200
+    await asyncio.gather(*system._BACKGROUND_TASKS)
+    assert len(effects) == 1
+    effects.clear()
+
+    async def logout():
+        assert (await http(rig, '/api/auth/session', method='DELETE'))[1]['revoked']
+
+    result = await http(rig, path, method='POST', body=None, before_body=logout)
+    await asyncio.gather(*system._BACKGROUND_TASKS)
+    assert result[0] == 401
+    assert effects == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('during_connect', [False, True])
+async def test_simulator_proxy_releases_acquired_upstream_and_pumps_on_revocation(rig, monkeypatch, during_connect):
+    from openavc.api import simulator_proxy
+    rig.app.include_router(simulator_proxy.ws_router)
+    closed, pumping, pump_finished = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    accepted = asyncio.Event()
+
+    class Upstream:
+        async def close(self):
+            closed.set()
+        def __aiter__(self):
+            return self
+        async def __anext__(self):
+            pumping.set()
+            try:
+                await asyncio.Future()
+            finally:
+                pump_finished.set()
+        async def send(self, message):
+            raise AssertionError('No client payload is supplied')
+
+    async def connect(*args, **kwargs):
+        if during_connect:
+            assert (await http(rig, '/api/auth/session', method='DELETE'))[1]['revoked']
+        return Upstream()
+    monkeypatch.setattr(simulator_proxy.websockets, 'connect', connect)
+    queue, sent = asyncio.Queue(), []
+    await queue.put({'type': 'websocket.connect'})
+    async def send(message):
+        sent.append(message)
+        if message['type'] == 'websocket.accept':
+            accepted.set()
+    task = asyncio.create_task(rig.app(scope('/simulator/ws', rig.token, socket=True), queue.get, send))
+    try:
+        if not during_connect:
+            await asyncio.wait_for(accepted.wait(), 1)
+            await asyncio.wait_for(pumping.wait(), 1)
+            assert (await http(rig, '/api/auth/session', method='DELETE'))[1]['revoked']
+        await asyncio.wait_for(task, 1)
+        assert closed.is_set()
+        assert pump_finished.is_set() is (not during_connect)
+        assert sent[-1]['code'] == 4001
+        assert not rig.host._admissions
+    finally:
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('credential', ['basic', 'session'])
+async def test_plugin_stream_polling_retains_its_grant_without_renewal_or_hashing(rig, monkeypatch, credential):
+    from starlette.responses import StreamingResponse
+    from openavc.api.plugin_ext import mount_plugin_router, unmount_plugin_router
+    router, ready, finished = APIRouter(), asyncio.Event(), asyncio.Event()
+    checks = []
+    check = auth._check_credentials
+    def checked(user, password):
+        checks.append(True)
+        return check(user, password)
+    monkeypatch.setattr(auth, '_check_credentials', checked)
+    auth.store_admin_password('disposable-password')
+    # Hashing the configured password invalidates the original fixture session.
+    rig.token, _ = rig.store.issue(auth.credential_fingerprint())
+
+    @router.get('/stream')
+    async def stream():
+        async def chunks():
+            try:
+                yield b'initial'
+                ready.set()
+                await asyncio.Future()
+            finally:
+                finished.set()
+        return StreamingResponse(chunks())
+    mount_plugin_router(rig.app, 'example', router)
+    headers = [(b'authorization', b'Basic ' + base64.b64encode(b'engineer:disposable-password'))] if credential == 'basic' else []
+    request = scope('/api/plugins/example/ext/stream', rig.token if credential == 'session' else '', headers=headers)
+    sent = []
+    async def receive():
+        await asyncio.Future()
+    async def send(message):
+        sent.append(message)
+    task = asyncio.create_task(rig.app(request, receive, send))
+    try:
+        await asyncio.wait_for(ready.wait(), 1)
+        admitted_checks = len(checks)
+        rig.clock[0] += 9
+        await asyncio.sleep(.15)
+        assert not task.done()
+        assert len(checks) == admitted_checks
+        if credential == 'session':
+            rig.clock[0] += 2
+        else:
+            auth.store_admin_password('replacement-password')
+        await asyncio.wait_for(task, 1)
+        assert finished.is_set()
+        assert sent[-1] == {'type': 'http.response.body', 'body': b'', 'more_body': False}
+    finally:
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        unmount_plugin_router(rig.app, 'example')
 
 
 @pytest.mark.asyncio

@@ -45,7 +45,7 @@ from fastapi.security import HTTPBasicCredentials
 
 from openavc.api import auth as _auth
 from openavc.api.host_policy import (
-    EndpointPolicy, application_policy, bind_request_authority, include_policy_router,
+    EndpointPolicy, admitted_category, application_policy, bind_request_authority, include_policy_router,
 )
 from openavc.core.host_policy import HostCategory, HostPolicyDenied
 from openavc.middleware import rate_limit as _rate_limit
@@ -410,6 +410,9 @@ def _plugin_host_policy(plugin_id: str, generation: object) -> EndpointPolicy:
     def category(scope):
         if _interface_generations.get(("ext", plugin_id)) is not generation:
             raise HostPolicyDenied("This plugin registration has stopped")
+        admitted = admitted_category(scope)
+        if admitted is not None:
+            return admitted
         request = Request(scope)
         authorized = _plugin_access_category(request, _auth.basic_credentials(request), plugin_id)
         if authorized is not None:

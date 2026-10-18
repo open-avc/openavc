@@ -765,7 +765,7 @@ def check_ws_auth(query_params: dict, headers: dict, cloud_secret: str = "") -> 
 
 
 def websocket_authority(
-    query_params: dict, headers: dict, cloud_secret: str = "",
+    query_params: dict, headers: dict, cloud_secret: str = "", *, refresh_session: bool = True,
 ) -> Callable[[], bool] | None:
     """Retain the canonical WebSocket grant without renewing it during polling."""
     if _is_cloud_session(cloud_secret):
@@ -789,7 +789,7 @@ def websocket_authority(
         if _check_credentials(user, password):
             return _password_authority()
     bearer = _extract_bearer(auth_header)
-    if bearer and _check_session_token(bearer):
+    if bearer and _check_session_token(bearer, refresh=refresh_session):
         return lambda: _check_session_token(bearer, refresh=False)
 
     ws_protocols = headers.get("sec-websocket-protocol", "")
@@ -798,7 +798,7 @@ def websocket_authority(
         if proto.startswith("auth."):
             token = proto[5:]
             if token.startswith("bearer."):
-                if _check_session_token(token[7:]):
+                if _check_session_token(token[7:], refresh=refresh_session):
                     bearer = token[7:]
                     return lambda: _check_session_token(bearer, refresh=False)
                 continue

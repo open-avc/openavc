@@ -22,7 +22,7 @@ from openavc.api.auth import (
     require_programmer_auth,
 )
 from openavc.api.errors import api_error as _api_error
-from openavc.api.host_policy import EndpointPolicy, ProgrammerRoute, RenderRoute, endpoint_policy
+from openavc.api.host_policy import EndpointPolicy, ProgrammerRoute, RenderRoute, admitted_category, endpoint_policy
 from openavc.core.host_policy import HostCategory
 from openavc.api.static_files import serve_static_file
 from openavc.core.plugin_config import (
@@ -598,6 +598,9 @@ async def get_plugin_data_info_endpoint(plugin_id: str) -> dict[str, Any]:
 # refuses gets the empty token: this is what reaches a camera feed, and a
 # device that is still waiting for approval must not get one.
 def _token_host_category(scope):
+    admitted = admitted_category(scope)
+    if admitted is not None:
+        return admitted
     request = Request(scope)
     return (HostCategory.PROGRAMMER
             if _auth.programmer_authority(request, basic_credentials(request), refresh_session=False)

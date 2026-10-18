@@ -262,8 +262,6 @@ async def simulator_ws_proxy(ws: WebSocket) -> None:
         await ws.close(code=1013)
         return
 
-    await ws.accept(subprotocol=subprotocol)
-
     async def client_to_sim() -> None:
         while True:
             await upstream.send(await ws.receive_text())
@@ -274,29 +272,32 @@ async def simulator_ws_proxy(ws: WebSocket) -> None:
                 message if isinstance(message, str) else message.decode("utf-8", "replace")
             )
 
-    tasks = [asyncio.create_task(client_to_sim()), asyncio.create_task(sim_to_client())]
+    tasks = []
+    cancelled = False
     try:
+        # Own the upstream before the guarded accept: credentials may have
+        # expired while connect was awaiting the simulator's handshake.
+        await ws.accept(subprotocol=subprotocol)
+        tasks = [asyncio.create_task(client_to_sim()), asyncio.create_task(sim_to_client())]
         # Either direction ending means the socket is done; cancel its partner
         # so neither task is left pumping into a closed peer.
-        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-        for task in pending:
-            task.cancel()
-        # Retrieve the finished task's exception even though we do not act on
-        # it. A closing socket raises here as a matter of course, and an
-        # unretrieved task exception is logged by asyncio as if something had
-        # gone wrong -- a full traceback in the journal every time a user
-        # closes the simulator window.
-        for task in done:
-            with contextlib.suppress(Exception):
-                task.exception()
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    except asyncio.CancelledError:
+        cancelled = True
+        raise
     except Exception:  # noqa: BLE001 - a dropped socket is not an error here
         pass
     finally:
+        for task in tasks:
+            task.cancel()
+        # Retrieve both results on normal disconnect AND request cancellation.
+        await asyncio.gather(*tasks, return_exceptions=True)
         await upstream.close()
-        try:
-            await ws.close()
-        except RuntimeError:
-            pass  # already closed by the peer
+        if not cancelled:
+            try:
+                await ws.close()
+            except RuntimeError:
+                pass  # already closed by the peer
 
 
 def simulator_ui_path() -> str:

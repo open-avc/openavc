@@ -8,6 +8,8 @@ store.
 
 from __future__ import annotations
 
+import copy
+import json
 from pathlib import Path
 from typing import Any
 
@@ -370,12 +372,18 @@ def test_patch_system_config_rejects_provided_mode_without_cert(client):
     assert "provided" in resp.json()["detail"].lower()
 
 
-def test_patch_system_config_allows_provided_mode_with_cert(client, monkeypatch):
-    # Don't actually write to the real system.json — monkeypatch the save.
-    from openavc.system_config import get_system_config
-
+@pytest.fixture
+def saved_settings(tmp_path, monkeypatch):
+    """Exercise the checked save against disposable settings, not a no-op mock."""
     cfg = get_system_config()
-    monkeypatch.setattr(cfg, "save", lambda: None)
+    monkeypatch.setattr(cfg, "_data_dir", tmp_path)
+    monkeypatch.setattr(cfg, "_file_path", tmp_path / "system.json")
+    monkeypatch.setattr(cfg, "_data", copy.deepcopy(cfg._data))
+    monkeypatch.setattr(cfg, "_file_data", copy.deepcopy(cfg._file_data))
+    return cfg.file_path
+
+
+def test_patch_system_config_allows_provided_mode_with_cert(client, saved_settings):
     resp = client.patch(
         "/api/system/config",
         json={
@@ -388,18 +396,18 @@ def test_patch_system_config_allows_provided_mode_with_cert(client, monkeypatch)
         },
     )
     assert resp.status_code == 200
+    persisted = json.loads(saved_settings.read_text())["tls"]
+    assert persisted["auto_generate"] is False
+    assert persisted["cert_file"] == "/tmp/cert.pem"
 
 
-def test_patch_system_config_allows_auto_mode(client, monkeypatch):
-    from openavc.system_config import get_system_config
-
-    cfg = get_system_config()
-    monkeypatch.setattr(cfg, "save", lambda: None)
+def test_patch_system_config_allows_auto_mode(client, saved_settings):
     resp = client.patch(
         "/api/system/config",
         json={"tls": {"enabled": True, "auto_generate": True}},
     )
     assert resp.status_code == 200
+    assert json.loads(saved_settings.read_text())["tls"]["auto_generate"] is True
 
 
 # ---------------------------------------------------------------------------

@@ -46,6 +46,15 @@ _ENDPOINT_POLICY = "__openavc_endpoint_policy__"
 log = get_logger(__name__)
 
 
+class _PolicyRevoked(asyncio.CancelledError):
+    """Terminate admitted ASGI work, including through application error handlers.
+
+    A revoked body read is cancellation, not malformed input. Ordinary endpoint
+    ``except Exception`` handlers must not recover from it and start an effect.
+    Keep the core's admission refusal separate from this connection teardown.
+    """
+
+
 @dataclass(frozen=True)
 class EndpointPolicy:
     category: HostCategory | CategoryResolver
@@ -98,6 +107,17 @@ def request_admission(request: Request) -> AdmissionLease:
     return lease
 
 
+def admitted_category(scope: Scope) -> HostCategory | None:
+    """Return the original category; retained authority checks own its lifetime.
+
+    Dynamic adapters must still check their registration identity on every call.
+    Re-authenticating to choose a category would renew idle credentials, repeat
+    password hashing and allow a request to switch grants after admission.
+    """
+    lease = scope.get(_ADMISSION)
+    return lease.category if isinstance(lease, AdmissionLease) else None
+
+
 def bind_request_authority(request: HTTPConnection, check: Callable[[], bool]) -> None:
     """Keep authenticated authority current through response/commit admission.
 
@@ -113,7 +133,7 @@ def require_current_request(request: Request) -> None:
     """Revalidate admitted work immediately after an adapter's awaited gate."""
     lease = request.scope.get(_ADMISSION)
     if isinstance(lease, AdmissionLease) and not lease.revalidate():
-        raise HostPolicyDenied("Request authority changed before the operation could start")
+        raise _PolicyRevoked("Request authority changed before the operation could start")
 
 
 @contextmanager
@@ -200,13 +220,13 @@ class HTTPPolicy:
             except Exception as error:
                 log.exception("Reading the host interface policy failed")
                 lease.revoked.set()
-                raise HostPolicyDenied("Host permission is unavailable") from error
+                raise _PolicyRevoked("Host permission is unavailable") from error
             if lease.revoked.is_set():
-                raise HostPolicyDenied("Host permission changed during the request")
+                raise _PolicyRevoked("Host permission changed during the request")
 
         async def guarded_receive():
             if lease.response_only:
-                raise HostPolicyDenied("The completed operation cannot consume more input")
+                raise _PolicyRevoked("The completed operation cannot consume more input")
             check()
             message = await receive()
             check()
@@ -229,7 +249,7 @@ class HTTPPolicy:
                 except TimeoutError:
                     try:
                         check()
-                    except HostPolicyDenied:
+                    except _PolicyRevoked:
                         break
             cancelled_by_host = True
             task.cancel()
@@ -239,7 +259,7 @@ class HTTPPolicy:
         try:
             try:
                 await self.app(scope, guarded_receive, guarded_send)
-            except HostPolicyDenied:
+            except (HostPolicyDenied, _PolicyRevoked):
                 revoked = True
             except asyncio.CancelledError:
                 if not cancelled_by_host:
@@ -323,9 +343,9 @@ class WebSocketPolicy:
             except Exception as error:
                 log.exception("Reading the host WebSocket policy failed")
                 lease.revoked.set()
-                raise HostPolicyDenied("Host permission is unavailable") from error
+                raise _PolicyRevoked("Host permission is unavailable") from error
             if lease.revoked.is_set():
-                raise HostPolicyDenied("Host permission changed during the connection")
+                raise _PolicyRevoked("Host permission changed during the connection")
 
         async def guarded_receive():
             nonlocal disconnected, connected
@@ -358,7 +378,7 @@ class WebSocketPolicy:
                 except TimeoutError:
                     try:
                         check()
-                    except HostPolicyDenied:
+                    except _PolicyRevoked:
                         break
             cancelled_by_host = True
             task.cancel()
@@ -368,7 +388,7 @@ class WebSocketPolicy:
         try:
             try:
                 await self.app(scope, guarded_receive, guarded_send)
-            except HostPolicyDenied:
+            except (HostPolicyDenied, _PolicyRevoked):
                 revoked = True
             except asyncio.CancelledError:
                 if not cancelled_by_host:
