@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -197,6 +198,34 @@ class TestTheAddressReadersBind:
         reach_devices.refresh()
         assert reach_devices.address() == "10.20.30.9"
 
+    def test_the_kept_answer_stays_while_a_refresh_reads_the_adapters(self, tmp_path, monkeypatch):
+        # A multicast stream asks pinned_is_kept per datagram; a refresh that
+        # emptied the kept answer while it read the adapters sent those sends
+        # to a thread, where two of them could be built with one number.
+        cfg = _cfg(tmp_path, {"reach_devices_through": ETHERNET.identity()})
+        monkeypatch.setattr("openavc.system_config.get_system_config", lambda: cfg)
+        reading, release = threading.Event(), threading.Event()
+        slow = [False]
+
+        def list_adapters():
+            if slow[0]:
+                reading.set()
+                release.wait(5)
+            return [ETHERNET]
+
+        monkeypatch.setattr(listen, "list_adapters", list_adapters)
+        assert reach_devices.address() == "10.20.30.5"
+        slow[0] = True
+        worker = threading.Thread(target=reach_devices.refresh)
+        worker.start()
+        try:
+            assert reading.wait(5)
+            assert reach_devices.pinned_is_kept() is True
+            assert reach_devices.pinned().address == "10.20.30.5"
+        finally:
+            release.set()
+            worker.join(5)
+
     def test_every_adapter_and_an_address_never_enumerate(self, tmp_path, monkeypatch):
         monkeypatch.setattr(listen, "list_adapters", lambda: pytest.fail("enumerated"))
         for choice, expected in (({}, ""), ({"address": "192.0.2.77"}, "192.0.2.77")):
@@ -238,6 +267,29 @@ class TestWhatAFanOutAsks:
         assert answer is not None and answer.address == "", "never widen on a failed lookup"
         assert answer.adapter_name == "Ethernet"
 
+
+    def test_a_fresh_kept_answer_can_be_given_on_the_event_loop(self, monkeypatch):
+        monkeypatch.setattr(reach_devices, "choice", lambda cfg=None: ETHERNET.identity())
+        resolved = reach_devices.Resolved(identity=ETHERNET.identity(), address="10.20.30.5")
+        monkeypatch.setattr(
+            reach_devices, "_cached",
+            (reach_devices._key(ETHERNET.identity()), resolved, time.monotonic()),
+        )
+        assert reach_devices.pinned_is_kept() is True
+
+    def test_a_stale_or_missing_answer_sends_the_lookup_off_the_loop(self, monkeypatch):
+        monkeypatch.setattr(reach_devices, "choice", lambda cfg=None: ETHERNET.identity())
+        resolved = reach_devices.Resolved(identity=ETHERNET.identity(), address="10.20.30.5")
+        monkeypatch.setattr(reach_devices, "_cached", None)
+        assert reach_devices.pinned_is_kept() is False
+        stale = time.monotonic() - reach_devices._STALE_AFTER - 1
+        monkeypatch.setattr(
+            reach_devices, "_cached", (reach_devices._key(ETHERNET.identity()), resolved, stale),
+        )
+        assert reach_devices.pinned_is_kept() is False
+        other = {"name": "Wi-Fi"}
+        monkeypatch.setattr(reach_devices, "_cached", (reach_devices._key(other), resolved, time.monotonic()))
+        assert reach_devices.pinned_is_kept() is False
 
 class TestWhereABroadcastLeavesFrom:
     def test_once_from_each_connected_adapter(self):

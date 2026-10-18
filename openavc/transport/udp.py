@@ -297,7 +297,7 @@ class UDPTransport:
             # Unplugged, the chosen adapter keeps its address for connections,
             # and the OS refuses every datagram sent from it.
             if reach_devices.is_chosen():
-                chosen = await asyncio.to_thread(reach_devices.pinned)
+                chosen = await self._chosen_adapter()
                 if chosen is not None and not chosen.connected and chosen.address == self._local_addr:
                     self._note_not_sent(host, chosen.adapter_name)
                     return None
@@ -307,13 +307,27 @@ class UDPTransport:
             return [], ""
 
         if reach_devices.is_chosen():
-            chosen = await asyncio.to_thread(reach_devices.pinned)
+            chosen = await self._chosen_adapter()
             if chosen is not None:
                 if not chosen.broadcast_source:
                     self._note_not_sent(host, chosen.adapter_name)
                     return None
                 return [chosen.broadcast_source], _THROUGH_CHOSEN
         return await reach_devices.kept_broadcast_sources(), _THROUGH_EVERY
+
+    @staticmethod
+    async def _chosen_adapter():
+        """The adapter chosen in Reach devices through, resolved. From the
+        kept answer when there is one, on the event loop: a stream numbers
+        each datagram as it builds it (sACN's sequence byte), so a send that
+        stopped here would let the next one be built with the same number,
+        which the receiver drops. Off the loop only when the adapters must be
+        read again."""
+        from openavc import reach_devices
+
+        if reach_devices.pinned_is_kept():
+            return reach_devices.pinned()
+        return await asyncio.to_thread(reach_devices.pinned)
 
     def _note_not_sent(self, host: str, adapter_name: str) -> None:
         """Say once, not per datagram, that a multicast stream stopped."""

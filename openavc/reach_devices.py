@@ -202,9 +202,12 @@ def _last(cfg: Any) -> str:
     return str(cfg.stored("network", MIRROR_KEY) or "").strip()
 
 
-def current(cfg: Any = None, adapters: Iterable[Any] | None = None) -> Resolved:
+def current(
+    cfg: Any = None, adapters: Iterable[Any] | None = None, *, fresh: bool = False,
+) -> Resolved:
     """The choice resolved now: from the cache when it is for this choice and
-    fresh, otherwise by enumerating the adapters (blocking)."""
+    fresh, otherwise by enumerating the adapters (blocking). ``fresh``
+    enumerates whatever is kept."""
     global _cached
     if cfg is None:
         from openavc.system_config import get_system_config
@@ -221,7 +224,7 @@ def current(cfg: Any = None, adapters: Iterable[Any] | None = None) -> Resolved:
     key = _key(identity)
     with _lock:
         cached = _cached
-    if adapters is None and cached and cached[0] == key and time.monotonic() - cached[2] < _STALE_AFTER:
+    if adapters is None and not fresh and cached and cached[0] == key and time.monotonic() - cached[2] < _STALE_AFTER:
         return cached[1]
     found = list(adapters) if adapters is not None else listen.list_adapters()
     resolved = resolve(identity, found, _last(cfg))
@@ -304,6 +307,30 @@ def pinned() -> Resolved | None:
     except Exception:
         log.debug("Reach devices through: lookup failed", exc_info=True)
         return Resolved(identity=identity, adapter_name=identity.get("name", ""), connected=False)
+
+
+def pinned_is_kept() -> bool:
+    """Whether :func:`pinned` can answer now without enumerating the
+    adapters: nothing is chosen, the choice is an address, or the kept answer
+    for this choice is fresh (the server's tick refreshes it every ten
+    seconds). A sender that asks per datagram then calls it on the event
+    loop instead of handing it to a thread, which would let another send run
+    in between."""
+    try:
+        identity = choice()
+    except Exception:  # no config to read: pinned answers None at once
+        return True
+    if not identity:
+        return True
+    from openavc import listen
+
+    if listen.is_literal(identity):
+        return True
+    with _lock:
+        cached = _cached
+    return bool(
+        cached and cached[0] == _key(identity) and time.monotonic() - cached[2] < _STALE_AFTER
+    )
 
 
 def missing_link_local(host: Any) -> Resolved | None:
@@ -412,12 +439,13 @@ async def kept_broadcast_sources() -> list[str]:
 
 def refresh(cfg: Any = None, adapters: Iterable[Any] | None = None) -> Resolved:
     """Resolve again now and keep the answer. The server's tick calls it off
-    the event loop; a change of choice calls it too. Logs a moved address."""
-    global _cached
+    the event loop; a change of choice calls it too. Logs a moved address.
+
+    The kept answer stays in place until the new one replaces it, so a sender
+    asking :func:`pinned_is_kept` meanwhile still gets it."""
     with _lock:
         before = _cached[1].address if _cached else None
-        _cached = None
-    resolved = current(cfg, adapters)
+    resolved = current(cfg, adapters, fresh=True)
     if before is not None and resolved.address and before != resolved.address:
         log.info(
             "Reach devices through: %s moved from %s to %s",
