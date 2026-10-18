@@ -14,6 +14,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPBasicCredentials
 
+from openavc.api import auth as _auth
 from openavc.api.auth import (
     _basic as _auth_basic,
     basic_credentials,
@@ -599,7 +600,8 @@ async def get_plugin_data_info_endpoint(plugin_id: str) -> dict[str, Any]:
 def _token_host_category(scope):
     request = Request(scope)
     return (HostCategory.PROGRAMMER
-            if programmer_auth_satisfied(request, basic_credentials(request)) else HostCategory.PANEL)
+            if _auth.programmer_authority(request, basic_credentials(request), refresh_session=False)
+            is not None else HostCategory.PANEL)
 
 
 @open_router.get("/plugins/{plugin_id}/ext-token")

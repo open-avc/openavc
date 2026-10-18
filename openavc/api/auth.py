@@ -43,11 +43,13 @@ import base64
 import binascii
 import hashlib
 import secrets
+from collections.abc import Callable
 from functools import lru_cache
 from typing import Any
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from starlette.requests import HTTPConnection
 
 from openavc.system_config import get_system_config
 from openavc.utils.logger import get_logger
@@ -215,7 +217,7 @@ def _is_cloud_session(secret: str) -> bool:
     return cloud_session.is_active(secret)
 
 
-def _check_session_token(token: str) -> bool:
+def _check_session_token(token: str, *, refresh: bool = True) -> bool:
     """Validate a session token against the store and the live credential.
 
     Sessions only exist when a password is configured (minting requires
@@ -224,7 +226,7 @@ def _check_session_token(token: str) -> bool:
     if not token or not _get_password():
         return False
     from openavc.api.session_tokens import store
-    return store.validate(token, credential_fingerprint())
+    return store.validate(token, credential_fingerprint(), refresh=refresh)
 
 
 @lru_cache(maxsize=1)
@@ -478,28 +480,56 @@ def programmer_auth_satisfied(
     so somebody in such a session who *does* hold the password gets in by
     typing it.
     """
-    if allow_cloud_session and _is_cloud_session(cloud_session_secret(request)):
-        return True
+    return programmer_authority(
+        request, credentials, allow_cloud_session=allow_cloud_session,
+    ) is not None
 
-    pw = _get_password()
-    api_key = _get_api_key()
 
+def _anonymous_authority() -> bool:
+    return not is_claimed() and anonymous_access_allowed()
+
+
+def _password_authority() -> Callable[[], bool]:
+    fingerprint = credential_fingerprint()
+    return lambda: secrets.compare_digest(credential_fingerprint(), fingerprint)
+
+
+def _key_authority() -> Callable[[], bool]:
+    key = _get_api_key()
+    return lambda: secrets.compare_digest(_get_api_key().encode(), key.encode())
+
+
+def programmer_authority(
+    request: HTTPConnection, credentials: HTTPBasicCredentials | None, *,
+    allow_cloud_session: bool = True, refresh_session: bool = True,
+) -> Callable[[], bool] | None:
+    """Authenticate once and retain the particular grant used for admission.
+
+    A revoked grant cannot inherit anonymous access or another credential later.
+    Polling checks token expiry without extending it and compares already-verified
+    password/key identities without repeatedly running the password hash.
+    """
+    secret = cloud_session_secret(request)
+    if allow_cloud_session and _is_cloud_session(secret):
+        return lambda: _is_cloud_session(secret)
+    pw, api_key = _get_password(), _get_api_key()
     if not pw and not api_key:
-        return anonymous_access_allowed()
-
+        return _anonymous_authority if anonymous_access_allowed() else None
     provided_key = request.headers.get("x-api-key", "")
     if provided_key and api_key and _check_api_key(provided_key):
-        return True
-
+        return _key_authority()
     bearer = _extract_bearer(request.headers.get("authorization", ""))
-    if bearer and _check_session_token(bearer):
-        return True
+    if bearer and _check_session_token(bearer, refresh=refresh_session):
+        return lambda: _check_session_token(bearer, refresh=False)
+    if credentials and pw and _check_credentials(credentials.username, credentials.password):
+        return _password_authority()
+    return None
 
-    if credentials and pw:
-        if _check_credentials(credentials.username, credentials.password):
-            return True
 
-    return False
+def _bind_authority(connection: HTTPConnection, authority: Callable[[], bool]) -> None:
+    # Lazy import: host_policy registers the canonical guards from this module.
+    from openavc.api.host_policy import bind_request_authority
+    bind_request_authority(connection, authority)
 
 
 def _challenge_headers(request: Request) -> dict[str, str]:
@@ -553,7 +583,9 @@ async def require_programmer_auth(
     (open on a dev checkout, 401 on a shipped deployment that hasn't been
     claimed).
     """
-    if programmer_auth_satisfied(request, credentials):
+    authority = programmer_authority(request, credentials)
+    if authority is not None:
+        _bind_authority(request, authority)
         return
 
     raise HTTPException(
@@ -591,8 +623,11 @@ async def require_local_or_programmer_auth(
     where these settings are actually changed.
     """
     if is_local_console_request(request):
+        _bind_authority(request, lambda: is_local_console_request(request))
         return
-    if programmer_auth_satisfied(request, credentials, allow_cloud_session=False):
+    authority = programmer_authority(request, credentials, allow_cloud_session=False)
+    if authority is not None:
+        _bind_authority(request, authority)
         return
 
     if _is_cloud_session(cloud_session_secret(request)):
@@ -607,6 +642,8 @@ async def require_local_or_programmer_auth(
         # own 404, so the Programmer hides the card instead of showing a lock
         # on a door that was never built.
         if await asyncio.to_thread(host_network.get_backend) is None:
+            secret = cloud_session_secret(request)
+            _bind_authority(request, lambda: _is_cloud_session(secret))
             return
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -642,7 +679,9 @@ async def require_claimed_auth(
                 "in Settings > Access > Programmer login."
             ),
         )
-    if programmer_auth_satisfied(request, credentials):
+    authority = programmer_authority(request, credentials)
+    if authority is not None:
+        _bind_authority(request, authority)
         return
 
     raise HTTPException(
@@ -712,29 +751,36 @@ def check_ws_auth(query_params: dict, headers: dict, cloud_secret: str = "") -> 
 
     Returns True if auth passes or is not required.
     """
+    return websocket_authority(query_params, headers, cloud_secret) is not None
+
+
+def websocket_authority(
+    query_params: dict, headers: dict, cloud_secret: str = "",
+) -> Callable[[], bool] | None:
+    """Retain the canonical WebSocket grant without renewing it during polling."""
     if _is_cloud_session(cloud_secret):
-        return True
+        return lambda: _is_cloud_session(cloud_secret)
 
     pw = _get_password()
     api_key = _get_api_key()
 
     if not pw and not api_key:
-        return anonymous_access_allowed()
+        return _anonymous_authority if anonymous_access_allowed() else None
 
     provided_key = headers.get("x-api-key", "")
     if provided_key:
         if api_key and _check_api_key(provided_key):
-            return True
+            return _key_authority()
 
     auth_header = headers.get("authorization", "")
     decoded = _decode_basic_header(auth_header)
     if decoded is not None and pw:
         user, password = decoded
         if _check_credentials(user, password):
-            return True
+            return _password_authority()
     bearer = _extract_bearer(auth_header)
     if bearer and _check_session_token(bearer):
-        return True
+        return lambda: _check_session_token(bearer, refresh=False)
 
     ws_protocols = headers.get("sec-websocket-protocol", "")
     for proto in ws_protocols.split(","):
@@ -743,7 +789,8 @@ def check_ws_auth(query_params: dict, headers: dict, cloud_secret: str = "") -> 
             token = proto[5:]
             if token.startswith("bearer."):
                 if _check_session_token(token[7:]):
-                    return True
+                    bearer = token[7:]
+                    return lambda: _check_session_token(bearer, refresh=False)
                 continue
             # Support `auth.b64.<urlsafe-b64>` for tokens with characters
             # that aren't valid in a WebSocket subprotocol token (RFC 6455
@@ -757,11 +804,23 @@ def check_ws_auth(query_params: dict, headers: dict, cloud_secret: str = "") -> 
                     continue
             if token:
                 if pw and _check_password(token):
-                    return True
+                    return _password_authority()
                 if api_key and _check_api_key(token):
-                    return True
+                    return _key_authority()
 
-    return False
+    return None
+
+
+def authenticate_websocket(connection: HTTPConnection, *, allow_cloud_session: bool = False) -> bool:
+    """Authenticate a socket and bind its original grant to the connection."""
+    authority = websocket_authority(
+        dict(connection.query_params), dict(connection.headers),
+        cloud_session_secret(connection) if allow_cloud_session else "",
+    )
+    if authority is None:
+        return False
+    _bind_authority(connection, authority)
+    return True
 
 
 def get_ws_auth_subprotocol(headers: dict) -> str | None:

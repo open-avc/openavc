@@ -40,7 +40,7 @@ from fastapi import APIRouter, Depends, Request, WebSocket
 from fastapi.responses import RedirectResponse, Response
 
 from openavc.api.auth import (
-    check_ws_auth,
+    authenticate_websocket,
     get_ws_auth_subprotocol,
     require_programmer_auth,
 )
@@ -242,7 +242,7 @@ async def _forward(path: str, request: Request) -> Response:
 @endpoint_policy(EndpointPolicy(HostCategory.PROGRAMMER))
 async def simulator_ws_proxy(ws: WebSocket) -> None:
     """Pump the simulator's live feed (state, protocol log) through this origin."""
-    if not check_ws_auth(dict(ws.query_params), dict(ws.headers)):
+    if not authenticate_websocket(ws):
         await ws.close(code=4401)
         return
 

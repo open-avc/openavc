@@ -44,7 +44,6 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBasicCredentials
 
 from openavc.api import auth as _auth
-from openavc.api.auth import programmer_auth_satisfied
 from openavc.api.host_policy import (
     EndpointPolicy, application_policy, bind_request_authority, include_policy_router,
 )
@@ -351,18 +350,27 @@ def _ext_path_suffix(plugin_id: str, full_path: str) -> str:
     return suffix or "/"
 
 
-def _plugin_access_category(request: Request, credentials, plugin_id: str) -> HostCategory | None:
-    """Return the authenticated scope using the same rules at every check."""
-    if programmer_auth_satisfied(request, credentials):
-        return HostCategory.PROGRAMMER
+def _plugin_access_authority(request: Request, credentials, plugin_id: str, *, refresh_session=True):
+    """Authenticate a plugin request and retain its actual credential grant."""
+    authority = _auth.programmer_authority(request, credentials, refresh_session=refresh_session)
+    if authority is not None:
+        return HostCategory.PROGRAMMER, authority
     token = request.headers.get(PLUGIN_TOKEN_HEADER) or request.query_params.get(PLUGIN_TOKEN_QUERY, "")
     if token and verify_plugin_token(token, plugin_id):
-        return HostCategory.PROGRAMMER
-    if (token and verify_panel_token(token, plugin_id)
-            and panel_path_allowed(plugin_id, request.method,
-                                   _ext_path_suffix(plugin_id, request.url.path))):
-        return HostCategory.PANEL
+        return HostCategory.PROGRAMMER, lambda: verify_plugin_token(token, plugin_id)
+    def panel_authority():
+        return bool(token and verify_panel_token(token, plugin_id)
+                    and panel_path_allowed(plugin_id, request.method,
+                                           _ext_path_suffix(plugin_id, request.url.path)))
+    if panel_authority():
+        return HostCategory.PANEL, panel_authority
     return None
+
+
+def _plugin_access_category(request: Request, credentials, plugin_id: str) -> HostCategory | None:
+    # Category resolution runs during background lifetime checks, not client use.
+    access = _plugin_access_authority(request, credentials, plugin_id, refresh_session=False)
+    return access[0] if access is not None else None
 
 
 def require_plugin_access(plugin_id: str):
@@ -372,7 +380,9 @@ def require_plugin_access(plugin_id: str):
         request: Request,
         credentials: HTTPBasicCredentials | None = Depends(_basic),
     ) -> None:
-        if _plugin_access_category(request, credentials, plugin_id) is not None:
+        access = _plugin_access_authority(request, credentials, plugin_id)
+        if access is not None:
+            bind_request_authority(request, access[1])
             return
         # No WWW-Authenticate challenge: the only browser-usable auth here is the
         # injected token, not HTTP Basic, so advertising a Basic challenge would
@@ -396,10 +406,6 @@ def _plugin_host_policy(plugin_id: str, generation: object) -> EndpointPolicy:
     async def authenticate(request):
         credentials = _auth.basic_credentials(request)
         await guard(request, credentials=credentials)
-        admitted = _plugin_access_category(request, credentials, plugin_id)
-        bind_request_authority(
-            request, lambda: _plugin_access_category(request, credentials, plugin_id) == admitted,
-        )
 
     def category(scope):
         if _interface_generations.get(("ext", plugin_id)) is not generation:

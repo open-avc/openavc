@@ -770,40 +770,43 @@ async def update_system_config(request: Request) -> dict[str, Any]:
     ):
         raise HTTPException(status_code=400, detail=API_KEY_NEEDS_PASSWORD)
 
-    updated_sections = []
-    for section_name, section_data in body.items():
-        if not isinstance(section_data, dict):
-            continue
-        current = cfg.section(section_name)
-        if not current:
-            continue
-        for key, value in section_data.items():
-            if key in current:
-                cfg.set(section_name, key, value)
-        updated_sections.append(section_name)
+    from openavc.api.host_policy import synchronous_response_commit
 
-    if new_password is not None:
-        from openavc.api.auth import store_admin_password
-        store_admin_password(new_password)
-        if "auth" not in updated_sections:
-            updated_sections.append("auth")
+    with synchronous_response_commit(request):
+        updated_sections = []
+        for section_name, section_data in body.items():
+            if not isinstance(section_data, dict):
+                continue
+            current = cfg.section(section_name)
+            if not current:
+                continue
+            for key, value in section_data.items():
+                if key in current:
+                    cfg.set(section_name, key, value)
+            updated_sections.append(section_name)
 
-    if new_api_key is not None:
-        from openavc.api.auth import store_api_key
-        store_api_key(new_api_key)
-        if "auth" not in updated_sections:
-            updated_sections.append("auth")
+        if new_password is not None:
+            from openavc.api.auth import store_admin_password
+            store_admin_password(new_password)
+            if "auth" not in updated_sections:
+                updated_sections.append("auth")
 
-    safety_net = None
-    if listen_choice is not None:
-        listen.refresh_mirror(cfg)
-        safety_net = _arm_or_disarm(cfg, request, listen_choice, listen_adapters)
-    if reach_choice is not None:
-        # Applies to the next connection or scan, with no restart.
-        reach_devices.refresh_mirror(cfg, listen_adapters)
-        reach_devices.refresh(cfg, listen_adapters)
+        if new_api_key is not None:
+            from openavc.api.auth import store_api_key
+            store_api_key(new_api_key)
+            if "auth" not in updated_sections:
+                updated_sections.append("auth")
 
-    cfg.save()
+        safety_net = None
+        if listen_choice is not None:
+            listen.refresh_mirror(cfg)
+            safety_net = _arm_or_disarm(cfg, request, listen_choice, listen_adapters)
+        if reach_choice is not None:
+            # Applies to the next connection or scan, with no restart.
+            reach_devices.refresh_mirror(cfg, listen_adapters)
+            reach_devices.refresh(cfg, listen_adapters)
+
+        cfg.save(raise_errors=True)
 
     # If the admin password changed, re-sync the OS login on a Pi appliance
     # (no-op everywhere else). C10.

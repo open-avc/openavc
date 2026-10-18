@@ -865,7 +865,7 @@ class SystemConfig:
         log.info("Converted the stored %s in %s to a hash", description, self._file_path)
         return True
 
-    def save(self) -> None:
+    def save(self, *, raise_errors: bool = False) -> None:
         """Write the persisted config layer (defaults + file + UI changes,
         minus env overrides) to system.json.
 
@@ -891,6 +891,9 @@ class SystemConfig:
         this instance has to be able to present, so it is stored as it is used
         and the mode is what protects it.
         ``tests/test_system_config_secrets.py`` pins it.
+
+        Callers acknowledging a completed save pass ``raise_errors=True``; an
+        I/O failure then propagates instead of becoming a success response.
         """
         fd = None
         tmp_path = None
@@ -910,6 +913,8 @@ class SystemConfig:
             log.info("Saved system config to %s", self._file_path)
         except OSError as e:
             log.error("Failed to save system.json to %s: %s", self._file_path, e)
+            if raise_errors:
+                raise
         finally:
             if fd is not None:
                 try:

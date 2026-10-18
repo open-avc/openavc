@@ -81,9 +81,10 @@ class SessionTokenStore:
         self._sessions[_hash(token)] = _Session(time.time() + self._ttl, fingerprint)
         return token, int(self._ttl)
 
-    def validate(self, token: str, fingerprint: str) -> bool:
+    def validate(self, token: str, fingerprint: str, *, refresh: bool = True) -> bool:
         """True if the token exists, hasn't expired, and was minted under the
-        current credential. Sliding expiry: success extends the session."""
+        current credential. Only client use refreshes sliding expiry; background
+        authority checks pass ``refresh=False`` so idle sessions can expire."""
         if not token:
             return False
         session = self._sessions.get(_hash(token))
@@ -98,7 +99,8 @@ class SessionTokenStore:
             # the table doesn't fill with unusable entries.
             del self._sessions[_hash(token)]
             return False
-        session.expires_at = now + self._ttl
+        if refresh:
+            session.expires_at = now + self._ttl
         return True
 
     def revoke(self, token: str) -> bool:

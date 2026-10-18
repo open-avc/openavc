@@ -38,7 +38,7 @@ from openavc.api.host_policy import EndpointPolicy, endpoint_policy
 from openavc.core.host_policy import HostCategory
 
 from openavc.api._engine import get_engine_optional
-from openavc.api.auth import check_ws_auth, get_ws_auth_subprotocol
+from openavc.api.auth import authenticate_websocket, get_ws_auth_subprotocol
 from openavc.utils.logger import get_logger
 
 router = APIRouter()
@@ -64,7 +64,7 @@ async def ir_learn_endpoint(bridge_id: str, ws: WebSocket) -> None:
 
     # Learning drives hardware — require programmer auth, same gate as the
     # Programmer WebSocket.
-    if not check_ws_auth(query_params, headers):
+    if not authenticate_websocket(ws):
         await ws.close(code=4001, reason="Authentication required")
         return
 

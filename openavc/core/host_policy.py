@@ -79,17 +79,19 @@ class AdmissionLease:
         self._authority_checks: list[Callable[[], bool]] = []
         self.revoked = asyncio.Event()
         self.closed = False
+        self.authority_revoked = False
+        self.response_only = False
 
     def revalidate(self) -> bool:
         """Recheck queued work against the exact admitted policy revision."""
         current = self.refresh()
-        return (not self.closed and not self.revoked.is_set()
+        return (not self.closed and not self.response_only and not self.revoked.is_set()
                 and (self.category in (HostCategory.HOST, HostCategory.RUNTIME)
                      or current == self.snapshot))
 
     def _check_snapshot(self, current: PolicySnapshot) -> None:
         valid = True
-        checks = self._authority_checks
+        checks = [] if self.response_only else self._authority_checks
         if self._is_current is not None:
             checks = [self._is_current, *checks]
         for check in checks:
@@ -98,6 +100,7 @@ class AdmissionLease:
             except HostPolicyDenied:
                 valid = False
             if not valid:
+                self.authority_revoked = check in self._authority_checks
                 break
         if not current.allows(self.category) or not valid:
             self.revoked.set()
@@ -117,9 +120,20 @@ class AdmissionLease:
     def begin_commit(self) -> CommitLease:
         if not self.revalidate():
             raise HostPolicyDenied("Host permission changed before the operation could start")
-        lease = CommitLease(self.policy, self.category)
+        lease = CommitLease(self.policy, self.category, self)
         self.policy._commits.add(lease)
         return lease
+
+    def complete_response(self, commit: CommitLease) -> None:
+        """Allow only acknowledgement of this admission's finished operation.
+
+        Credential rotation invalidates the old grant, including this request's.
+        Its already-saved result may still be returned, but no more body input or
+        new commit may be admitted. Interface and registration revocation remain.
+        """
+        if commit.admission is not self or not commit.finished:
+            raise ValueError("A completed operation from this admission is required")
+        self.response_only = True
 
     def close(self) -> None:
         if not self.closed:
@@ -129,7 +143,8 @@ class AdmissionLease:
 
 
 class CommitLease:
-    def __init__(self, policy: HostPolicy, category: HostCategory):
+    def __init__(self, policy: HostPolicy, category: HostCategory, admission: AdmissionLease):
+        self.admission = admission
         self.policy = policy
         self.category = category
         self.finished = False

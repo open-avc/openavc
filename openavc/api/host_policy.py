@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from contextlib import contextmanager
 
 from fastapi import APIRouter, Request
 from fastapi.routing import APIRoute
@@ -97,7 +98,7 @@ def request_admission(request: Request) -> AdmissionLease:
     return lease
 
 
-def bind_request_authority(request: Request, check: Callable[[], bool]) -> None:
+def bind_request_authority(request: HTTPConnection, check: Callable[[], bool]) -> None:
     """Keep authenticated authority current through response/commit admission.
 
     Standalone router consumers without the host middleware still perform their
@@ -106,6 +107,29 @@ def bind_request_authority(request: Request, check: Callable[[], bool]) -> None:
     lease = request.scope.get(_ADMISSION)
     if isinstance(lease, AdmissionLease):
         lease.require_current(check)
+
+
+@contextmanager
+def synchronous_response_commit(request: Request):
+    """Own a synchronous save and retain only its completed acknowledgement.
+
+    Use only around a block with no await: validation happens immediately before
+    mutation and completion follows the checked settings save. A caller may then finish
+    post-save notifications and send its result, even if it changed its own
+    credential. This is not an owner for asynchronous/project transactions.
+    """
+    lease = request.scope.get(_ADMISSION)
+    commit = lease.begin_commit() if isinstance(lease, AdmissionLease) else None
+    try:
+        yield
+    except BaseException:
+        if commit is not None:
+            commit.finish("save failed")
+        raise
+    else:
+        if commit is not None:
+            commit.finish("saved")
+            lease.complete_response(commit)
 
 
 def interface_disabled_response(scope: Scope):
@@ -125,7 +149,15 @@ def interface_disabled_response(scope: Scope):
 
 
 async def _denied(scope: Scope, receive: Receive, send: Send) -> None:
-    await interface_disabled_response(scope)(scope, receive, send)
+    lease = scope.get(_ADMISSION)
+    if isinstance(lease, AdmissionLease) and lease.authority_revoked:
+        await JSONResponse(
+            {"detail": "Authentication is no longer valid. Sign in again.",
+             "code": "authentication_required"},
+            status_code=401, headers={"Cache-Control": "no-store"},
+        )(scope, receive, send)
+    else:
+        await interface_disabled_response(scope)(scope, receive, send)
 
 
 class HTTPPolicy:
@@ -166,6 +198,8 @@ class HTTPPolicy:
                 raise HostPolicyDenied("Host permission changed during the request")
 
         async def guarded_receive():
+            if lease.response_only:
+                raise HostPolicyDenied("The completed operation cannot consume more input")
             check()
             message = await receive()
             check()
@@ -253,8 +287,13 @@ class WebSocketPolicy:
                 from openavc.api.auth import get_ws_auth_subprotocol
                 subprotocol = get_ws_auth_subprotocol(dict(HTTPConnection(scope).headers))
                 await send({"type": "websocket.accept", "subprotocol": subprotocol})
-            await send({"type": "websocket.close", "code": 4013,
-                        "reason": "This interface is disabled by the product settings."})
+            lease = scope.get(_ADMISSION)
+            if isinstance(lease, AdmissionLease) and lease.authority_revoked:
+                code = {HostCategory.PREVIEW: 4014, HostCategory.PANEL: 4010}.get(lease.category, 4001)
+                reason = "Authentication is no longer valid. Reconnect to authenticate again."
+            else:
+                code, reason = 4013, "This interface is disabled by the product settings."
+            await send({"type": "websocket.close", "code": code, "reason": reason})
 
         try:
             category = self.endpoint_policy.resolve(scope)

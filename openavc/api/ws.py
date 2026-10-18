@@ -20,8 +20,8 @@ from starlette.requests import HTTPConnection
 
 from openavc.api._engine import get_engine_optional
 from openavc.api._engine import set_engine as _shared_set_engine
-from openavc.api.auth import check_ws_auth, get_ws_auth_subprotocol
-from openavc.api.host_policy import EndpointPolicy, endpoint_policy
+from openavc.api.auth import authenticate_websocket, get_ws_auth_subprotocol
+from openavc.api.host_policy import EndpointPolicy, bind_request_authority, endpoint_policy
 from openavc.core.host_policy import HostCategory
 from openavc.api.error_messages import device_error_label, friendly_error
 from openavc.api.panel_access import Admission, admit as admit_panel
@@ -32,7 +32,6 @@ from openavc.core.panel_devices import (
 )
 from openavc.core.state_store import check_state_write, is_flat_primitive
 from openavc.utils.log_buffer import get_log_buffer, LogEntry
-from openavc.utils.request_origin import cloud_session_secret
 from openavc.utils.logger import get_logger
 
 router = APIRouter()
@@ -124,9 +123,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         return
 
     # Derive client type from authentication level, not client declaration
-    is_authenticated = check_ws_auth(
-        query_params, headers, cloud_session_secret(ws)
-    )
+    is_authenticated = authenticate_websocket(ws, allow_cloud_session=True)
     if requested_type in ("programmer", "preview") and not is_authenticated:
         await ws.close(code=4001, reason="Authentication required")
         return
@@ -148,6 +145,9 @@ async def websocket_endpoint(ws: WebSocket) -> None:
             await ws.accept(subprotocol=get_ws_auth_subprotocol(headers))
             await ws.close(code=CLOSE_CODE_NOT_APPROVED, reason=CLOSE_REASON_NOT_APPROVED)
             return
+
+    if client_type == "panel" and not is_authenticated:
+        bind_request_authority(ws, lambda: admit_panel(ws, authenticated=False) == admission)
 
     # Connection cap: reject before accepting the handshake. The counter is
     # incremented before any await so concurrent handshakes can't slip past
