@@ -647,6 +647,21 @@ async def require_claimed_auth(
     )
 
 
+async def authenticate_programmer_request(request: Request) -> None:
+    """Apply canonical Programmer authentication before parsing a request body."""
+    await require_programmer_auth(request, credentials=await _basic(request))
+
+
+async def authenticate_claimed_request(request: Request) -> None:
+    """Require the configured credential before parsing a code-writing body."""
+    await require_claimed_auth(request, credentials=await _basic(request))
+
+
+async def authenticate_local_or_programmer_request(request: Request) -> None:
+    """Apply the existing local-console/network guard before body parsing."""
+    await require_local_or_programmer_auth(request, credentials=await _basic(request))
+
+
 def _decode_basic_header(header_value: str) -> tuple[str, str] | None:
     """Decode an `Authorization: Basic <base64>` header value to (user, pass).
 
