@@ -68,15 +68,23 @@ export function DeviceView() {
 
   const stateVersion = useConnectionStore((s) => s.stateVersion);
   const deviceConfigs = devices ?? [];
-  const [removableIds, setRemovableIds] = useState<Set<string>>(new Set());
+  // Product hardware is never deleted here, and only the running system says
+  // which devices are. Until it answers (null), nothing is deletable; after,
+  // every other device is, including one the running system does not have
+  // because its driver failed while loading.
+  const [productHardwareIds, setProductHardwareIds] = useState<Set<string> | null>(null);
   useEffect(() => {
     let active = true;
-    setRemovableIds(new Set());
+    setProductHardwareIds(null);
     api.listDevices().then(items => {
-      if (active) setRemovableIds(new Set(items.filter(item => item.ownership !== "manufacturer").map(item => item.id)));
+      if (active) setProductHardwareIds(new Set(items.filter(item => item.ownership === "manufacturer").map(item => item.id)));
     }).catch(() => {});
     return () => { active = false; };
   }, [devices]);
+  const selectionDeletable = useMemo(
+    () => productHardwareIds !== null && ![...selectedIds].some(id => productHardwareIds.has(id)),
+    [productHardwareIds, selectedIds],
+  );
 
   // Bridge topology: each bridge device, its advertised ports, and which
   // devices are bound to each port (from the connections table). Drives the
@@ -193,7 +201,7 @@ export function DeviceView() {
 
   const handleBulkDelete = useCallback(() => {
     const project = useProjectStore.getState().project;
-    if (!project || selectedIds.size === 0 || [...selectedIds].some(id => !removableIds.has(id))) return;
+    if (!project || selectedIds.size === 0 || !selectionDeletable) return;
     const allRefs: string[] = [];
     for (const id of selectedIds) {
       allRefs.push(...findDeviceReferences(project, id));
@@ -209,11 +217,11 @@ export function DeviceView() {
       </>
     );
     setBulkDeleteConfirm({ message });
-  }, [selectedIds, removableIds]);
+  }, [selectedIds, selectionDeletable]);
 
   const doBulkDelete = useCallback(async () => {
     setBulkDeleteConfirm(null);
-    if ([...selectedIds].some(id => !removableIds.has(id))) return;
+    if (!selectionDeletable) return;
     for (const id of selectedIds) {
       try {
         await api.deleteDevice(id);
@@ -225,7 +233,7 @@ export function DeviceView() {
     setSelectedIds(new Set());
     setBulkMode(false);
     reloadProject();
-  }, [selectedIds, removableIds, selectedId, reloadProject]);
+  }, [selectedIds, selectionDeletable, selectedId, reloadProject]);
 
   const handleBulkToggle = useCallback(
     async (enabled: boolean) => {
@@ -513,7 +521,7 @@ export function DeviceView() {
               >
                 Online
               </button>
-              {[...selectedIds].some(id => !removableIds.has(id)) && (
+              {selectedIds.size > 0 && !selectionDeletable && (
                 <span role="status" style={{ color: "var(--text-secondary)" }}>
                   Delete is unavailable while the selection includes product hardware or device details are loading.
                 </span>
@@ -521,7 +529,7 @@ export function DeviceView() {
               <span style={{ color: "var(--border-color)" }}>|</span>
               <button
                 onClick={handleBulkDelete}
-                disabled={selectedIds.size === 0 || [...selectedIds].some(id => !removableIds.has(id))}
+                disabled={selectedIds.size === 0 || !selectionDeletable}
                 style={{
                   padding: "2px var(--space-sm)",
                   borderRadius: "var(--border-radius)",
