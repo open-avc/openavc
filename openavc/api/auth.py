@@ -821,16 +821,23 @@ def websocket_authority(
     return None
 
 
-def authenticate_websocket(connection: HTTPConnection, *, allow_cloud_session: bool = False) -> bool:
-    """Authenticate a socket and bind its original grant to the connection."""
+def authenticate_websocket_grant(
+    connection: HTTPConnection, *, allow_cloud_session: bool = False,
+) -> Callable[[], bool] | None:
+    """Authenticate once, bind and return the exact non-refreshing socket grant."""
     authority = websocket_authority(
         dict(connection.query_params), dict(connection.headers),
         cloud_session_secret(connection) if allow_cloud_session else "",
     )
     if authority is None:
-        return False
+        return None
     _bind_authority(connection, authority)
-    return True
+    return authority
+
+
+def authenticate_websocket(connection: HTTPConnection, *, allow_cloud_session: bool = False) -> bool:
+    """Authenticate a socket and bind its original grant to the connection."""
+    return authenticate_websocket_grant(connection, allow_cloud_session=allow_cloud_session) is not None
 
 
 def get_ws_auth_subprotocol(headers: dict) -> str | None:

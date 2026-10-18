@@ -236,3 +236,15 @@ def test_device_and_ui_event_correlations_survive_without_nested_details():
     ):
         assert delivered(p, {"type": "event", "event": event, "payload": data},
                          c, targeted=True)["payload"] == expected
+
+
+def test_python_authored_custom_values_keep_legacy_string_conversion_only_there():
+    class Authored:
+        def __str__(self):
+            return "custom event label"
+
+    p, c = OutboundPolicy(), recipient()
+    assert delivered(p, {"type": "event", "event": "custom.annotation",
+                         "payload": {"value": Authored()}}, c, targeted=True)["payload"] == {
+        "value": "custom event label"}
+    assert p.project({"type": "macro.progress", "macro_id": "x", "description": Authored()}, c) is None

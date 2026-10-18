@@ -1,6 +1,7 @@
 """Tests for WebSocket protocol — message handling, panel vs programmer, state validation."""
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -77,6 +78,12 @@ def _make_engine():
     engine.broadcast_ws = AsyncMock()
     engine.reload_project = AsyncMock()
     engine.isc = None
+    # These tests isolate inbound dispatch and error correlation. Actual
+    # recipient admission and wire projection are exercised by the hub/socket
+    # tests, including test_ws_outbound_policy and test_ws_ui.
+    async def send_immediate(ws, msg, **_kwargs):
+        await ws.send_json(msg)
+    engine.ws.send_immediate = AsyncMock(side_effect=send_immediate)
     return engine
 
 
@@ -654,7 +661,9 @@ async def test_send_ws_swallows_disconnect_silently(caplog):
     """Disconnect-class send failures are expected and stay silent."""
     import logging
 
-    with caplog.at_level(logging.DEBUG, logger="openavc.api.ws"):
+    with caplog.at_level(logging.DEBUG, logger="openavc.api.ws"), patch(
+        "openavc.api._engine._engine", _make_engine()
+    ):
         await _send_ws(_RaisingWS(ConnectionResetError("gone")), {"type": "x"})
     assert not caplog.records
 
@@ -664,7 +673,9 @@ async def test_send_ws_logs_unexpected_send_failure(caplog):
     """Non-disconnect send failures are debug-logged instead of vanishing."""
     import logging
 
-    with caplog.at_level(logging.DEBUG, logger="openavc.api.ws"):
+    with caplog.at_level(logging.DEBUG, logger="openavc.api.ws"), patch(
+        "openavc.api._engine._engine", _make_engine()
+    ):
         await _send_ws(_RaisingWS(ValueError("encode boom")), {"type": "x"})
     assert any("send failed" in r.message.lower() for r in caplog.records)
 
@@ -701,7 +712,7 @@ async def test_ws_client_registered_before_snapshot(tmp_path):
             order.append(f"send:{data.get('type')}")
 
         async def send_text(self, text):
-            pass
+            order.append(f"send:{json.loads(text).get('type')}")
 
         async def receive_text(self):
             raise WebSocketDisconnect(1000)
@@ -710,7 +721,7 @@ async def test_ws_client_registered_before_snapshot(tmp_path):
             pass
 
     with patch("openavc.api._engine._engine", eng):
-        await _run_ws_connection(HandshakeWS(), {}, {}, "programmer")
+        await _run_ws_connection(HandshakeWS(), {}, {}, "programmer", authority=lambda: True)
 
     assert "register" in order
     assert "send:state.snapshot" in order
@@ -836,7 +847,8 @@ async def test_a_failure_no_control_caused_carries_no_element():
     would put a real one back for a reason that was never about it.
     """
     ws = FakeWS()
-    await ws_module._send_ws_error(ws, None, "Rate limit exceeded")
+    with patch("openavc.api._engine._engine", _make_engine()):
+        await ws_module._send_ws_error(ws, None, "Rate limit exceeded")
     assert "element_id" not in ws.sent[0]
 
 
@@ -845,7 +857,8 @@ async def test_error_frame_omits_source_type_when_unknown():
     """Omitted, not a placeholder — a client must be able to tell the
     difference between "this message type failed" and "nothing parsed"."""
     ws = FakeWS()
-    await ws_module._send_ws_error(ws, None, "Invalid JSON")
+    with patch("openavc.api._engine._engine", _make_engine()):
+        await ws_module._send_ws_error(ws, None, "Invalid JSON")
     assert ws.sent[0] == {"type": "error", "message": "Invalid JSON"}
     assert "source_type" not in ws.sent[0]
 
@@ -872,7 +885,8 @@ async def test_non_object_json_is_a_clean_error_not_a_server_error():
     """`5` and `[]` parse fine but have no type. That's the client's mistake,
     and it used to surface as "Server error: AttributeError"."""
     ws = FakeWS()
-    await _dispatch_text(ws, "5", "panel")
+    with patch("openavc.api._engine._engine", _make_engine()):
+        await _dispatch_text(ws, "5", "panel")
     assert ws.sent[0]["type"] == "error"
     assert "JSON object" in ws.sent[0]["message"]
     assert "Server error" not in ws.sent[0]["message"]

@@ -170,8 +170,8 @@ async def test_broadcast_state_delete_filters_per_client_namespace(engine):
 
     ws_all = FakeWS("all")
     ws_var_only = FakeWS("var_only")
-    engine.ws.add_client(ws_all)
-    engine.ws.add_client(ws_var_only, ns_prefixes=("var.",))
+    engine.ws.add_client(ws_all, authority=lambda: True)
+    engine.ws.add_client(ws_var_only, ns_prefixes=("var.",), authority=lambda: True)
 
     await engine.ws.broadcast({
         "type": "state.delete",
@@ -200,7 +200,7 @@ async def test_broadcast_state_delete_skips_client_with_no_matching_keys(engine)
             sent.append(json.loads(text))
 
     ws = FakeWS()
-    engine.ws.add_client(ws, ns_prefixes=("plugin.",))
+    engine.ws.add_client(ws, ns_prefixes=("plugin.",), authority=lambda: True)
 
     await engine.ws.broadcast({
         "type": "state.delete",
@@ -231,8 +231,8 @@ async def test_broadcast_fast_path_drops_failing_client(engine):
 
     good = GoodWS()
     bad = BadWS()
-    engine.ws.add_client(good)
-    engine.ws.add_client(bad)
+    engine.ws.add_client(good, authority=lambda: True)
+    engine.ws.add_client(bad, authority=lambda: True)
     assert bad in engine.ws._clients
 
     await engine.ws.broadcast({"type": "ping"})
@@ -261,8 +261,8 @@ async def test_broadcast_slow_path_drops_failing_client(engine):
     good = GoodWS()
     bad = BadWS()
     # Both subscribed to var.* so the slow path is exercised on both
-    engine.ws.add_client(good, ns_prefixes=("var.",))
-    engine.ws.add_client(bad, ns_prefixes=("var.",))
+    engine.ws.add_client(good, ns_prefixes=("var.",), authority=lambda: True)
+    engine.ws.add_client(bad, ns_prefixes=("var.",), authority=lambda: True)
     assert bad in engine.ws._clients
 
     await engine.ws.broadcast({
@@ -309,8 +309,8 @@ async def test_broadcast_returns_promptly_with_stuck_client(engine):
     """broadcast must not await the wedged client's send."""
     stuck = _StuckWS()
     good = _CollectingWS()
-    engine.ws.add_client(stuck)
-    engine.ws.add_client(good)
+    engine.ws.add_client(stuck, authority=lambda: True)
+    engine.ws.add_client(good, authority=lambda: True)
 
     # Pre-fix this hung until the stuck client's send completed (never).
     await asyncio.wait_for(engine.ws.broadcast({"type": "ping"}), timeout=0.5)
@@ -332,8 +332,8 @@ async def test_stuck_client_dropped_on_queue_overflow(engine):
 
     stuck = _StuckWS()
     good = _CollectingWS()
-    engine.ws.add_client(stuck)
-    engine.ws.add_client(good)
+    engine.ws.add_client(stuck, authority=lambda: True)
+    engine.ws.add_client(good, authority=lambda: True)
 
     # One message is in-flight in the writer, _WS_SEND_QUEUE_MAX fill the
     # queue, and the next one overflows. Yield between broadcasts so the
@@ -365,15 +365,15 @@ async def test_deferred_delivery_buffers_until_ready(engine):
     handshake registers before snapshotting so no flush window is missed.
     """
     ws = _CollectingWS()
-    engine.ws.add_client(ws, defer_delivery=True)
+    engine.ws.add_client(ws, defer_delivery=True, authority=lambda: True)
 
-    await engine.ws.broadcast({"type": "ping", "seq": 1})
+    await engine.ws.broadcast({"type": "state.update", "changes": {"var.sequence": 1}})
     await asyncio.sleep(0.05)
     assert ws.received == []  # buffered, not delivered
 
     engine.ws.mark_client_ready(ws)
     await engine.ws.flush_sends()
-    assert ws.received == [{"type": "ping", "seq": 1}]
+    assert ws.received == [{"type": "state.update", "changes": {"var.sequence": 1}}]
     engine.ws.remove_client(ws)
 
 
@@ -381,9 +381,9 @@ async def test_deferred_delivery_buffers_until_ready(engine):
 async def test_per_client_delivery_preserves_order(engine):
     """Messages reach a client in broadcast order through its queue."""
     ws = _CollectingWS()
-    engine.ws.add_client(ws)
+    engine.ws.add_client(ws, authority=lambda: True)
     for i in range(10):
-        await engine.ws.broadcast({"type": "ping", "seq": i})
+        await engine.ws.broadcast({"type": "state.update", "changes": {"var.sequence": i}})
     await engine.ws.flush_sends()
-    assert [m["seq"] for m in ws.received] == list(range(10))
+    assert [m["changes"]["var.sequence"] for m in ws.received] == list(range(10))
     engine.ws.remove_client(ws)

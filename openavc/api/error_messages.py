@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 import httpx
 
 from openavc.drivers.command_outcome import CommandOutcomeError
+from openavc.core.outbound_messages import DiagnosticText, RoomText
 
 if TYPE_CHECKING:
     from openavc.core.project_loader import ProjectConfig
@@ -51,6 +52,15 @@ def friendly_error(
     Returns:
         A human-readable error string with actionable guidance.
     """
+    if at_panel:
+        return DiagnosticText(
+            _friendly_error(exc, device, host, at_panel=True), _panel_error(exc, device),
+        )
+    return _friendly_error(exc, device, host)
+
+
+def _friendly_error(exc: Exception, device: str = "", host: str = "", *, at_panel: bool = False) -> str:
+
     if isinstance(exc, CommandOutcomeError):
         return str(exc)
 
@@ -189,6 +199,43 @@ def friendly_error(
 
     # Generic fallback: type name + message
     return f"Unexpected error: {exc}"
+
+
+def _panel_error(exc: Exception, device: str) -> RoomText:
+    """Classified guidance without exception, protocol, or configuration text.
+
+    A friendly diagnostic can still contain credentials. Only these core-owned
+    sentences carry room provenance; names come from the public device model.
+    This does not infer whether an arbitrary failed command changed equipment.
+    """
+    from openavc.core.device_manager import DeviceNotFoundError, NoSimulatorError
+    from openavc.drivers.command_outcome import MESSAGES
+    from openavc.drivers.base import CommandPartialError
+    from openavc.reach_devices import AdapterUnavailable
+
+    target = device or "The requested equipment"
+    if isinstance(exc, CommandOutcomeError):
+        # Do not echo args: callers can change an exception's diagnostic text.
+        return RoomText(MESSAGES[exc.outcome])
+    if isinstance(exc, CommandPartialError):
+        return RoomText("The action only partly completed. Check the equipment's current status before trying again.")
+    if isinstance(exc, DeviceNotFoundError):
+        return RoomText(f"{target} is unavailable. Contact support.")
+    if isinstance(exc, NoSimulatorError):
+        return RoomText(f"{target} cannot be controlled in this simulation. Contact support.")
+    if isinstance(exc, AdapterUnavailable):
+        return RoomText(f"{device or 'The equipment'} can't be reached: the network connection to it is down. Contact support.")
+    seconds = getattr(exc, "restart_seconds", None)
+    if isinstance(exc, ConnectionError) and type(seconds) is int and seconds > 0:
+        unit = "second" if seconds == 1 else "seconds"
+        return RoomText(f"{target} is restarting. It should be back in about {seconds} {unit}.")
+    if isinstance(exc, (TimeoutError, httpx.TimeoutException)):
+        return RoomText(f"{target} did not respond in time. Check its current status before trying again.")
+    if isinstance(exc, (ConnectionError, httpx.NetworkError)):
+        if getattr(exc, "device_id", None):
+            return RoomText(f"{target} is not connected.")
+        return RoomText(f"{target} is not connected. Check its power and network connection, or contact support.")
+    return RoomText("The action could not be completed. Check the equipment's current status or contact support.")
 
 
 def friendly_save_error(exc: Exception) -> str:

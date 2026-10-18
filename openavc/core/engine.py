@@ -1873,11 +1873,11 @@ class Engine:
 
     async def _on_script_error(self, event: str, payload: dict[str, Any]) -> None:
         """Forward script error events to WebSocket clients."""
-        await self.broadcast_ws({"type": "script.error", **payload})
+        await self.broadcast_ws({**payload, "type": "script.error"})
 
     async def _on_trigger_event(self, event: str, payload: dict[str, Any]) -> None:
         """Forward trigger events to WebSocket clients."""
-        await self.broadcast_ws({"type": event, **payload})
+        await self.broadcast_ws({**payload, "type": event})
 
     async def _on_macro_event(self, event: str, payload: dict[str, Any]) -> None:
         """Forward macro lifecycle events to WebSocket clients."""
@@ -1885,13 +1885,13 @@ class Engine:
         parts = event.split(".")
         event_type = parts[1] if len(parts) >= 2 else "unknown"
         await self.broadcast_ws({
-            "type": f"macro.{event_type}",
             **payload,
+            "type": f"macro.{event_type}",
         })
 
     async def _on_plugin_event(self, event: str, payload: dict[str, Any]) -> None:
         """Forward plugin lifecycle events to WebSocket clients."""
-        await self.broadcast_ws({"type": event, **(payload or {})})
+        await self.broadcast_ws({**(payload or {}), "type": event})
 
     # --- Periodic backup ---
 

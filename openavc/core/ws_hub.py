@@ -17,9 +17,10 @@ and stays the platform-wide entry point for sending a message to panels.
 from __future__ import annotations
 
 import asyncio
-import json
+from collections.abc import Callable
 from typing import Any
 
+from openavc.core.outbound_messages import Envelope, MessageScope, OutboundPolicy, Recipient
 from openavc.core.state_store import StateStore
 from openavc.utils.logger import get_logger
 
@@ -64,6 +65,9 @@ class WSHub:
         # closed by what admitted them.
         self._client_types: dict[int, str] = {}
         self._admissions: dict[int, tuple[str, str | None]] = {}
+        self._policy = OutboundPolicy()
+        self._recipients: dict[int, Recipient] = {}
+        self._scopes: dict[int, set[MessageScope]] = {}
         # Per-client bounded send queues + their writer tasks: id(ws) -> ...
         # Broadcasts enqueue and return; each writer drains its own client,
         # so one wedged client can never stall the emit path (macros,
@@ -99,7 +103,8 @@ class WSHub:
 
     def add_client(self, ws, ns_prefixes: tuple[str, ...] | None = None,
                    *, defer_delivery: bool = False, client_type: str = "panel",
-                   admitted_by: str = "", panel_device: str | None = None) -> None:
+                   admitted_by: str = "", panel_device: str | None = None,
+                   authority: Callable[[], bool]) -> None:
         """Register a WebSocket client with optional namespace filter.
 
         Each client gets a bounded send queue drained by its own writer
@@ -121,6 +126,11 @@ class WSHub:
             self._ns_filters[id(ws)] = ns_prefixes
         self._client_types[id(ws)] = client_type
         self._admissions[id(ws)] = (admitted_by, panel_device)
+        self._scopes[id(ws)] = set()
+        self._recipients[id(ws)] = Recipient(
+            ws, client_type, authority,
+            lambda scope: scope in self._scopes.get(id(ws), ()),
+        )
         queue: asyncio.Queue = asyncio.Queue(maxsize=_WS_SEND_QUEUE_MAX)
         self._send_queues[id(ws)] = queue
         ready = asyncio.Event()
@@ -158,6 +168,8 @@ class WSHub:
         self._ns_filters.pop(id(ws), None)
         self._client_types.pop(id(ws), None)
         self._admissions.pop(id(ws), None)
+        self._recipients.pop(id(ws), None)
+        self._scopes.pop(id(ws), None)
         self._send_queues.pop(id(ws), None)
         self._ready_events.pop(id(ws), None)
         writer = self._writers.pop(id(ws), None)
@@ -179,9 +191,12 @@ class WSHub:
         try:
             await ready.wait()
             while True:
-                text = await queue.get()
+                envelope: Envelope = await queue.get()
                 try:
-                    await ws.send_text(text)
+                    recipient = self._recipients.get(id(ws))
+                    text = envelope.for_send(recipient) if recipient is not None else None
+                    if text is not None:
+                        await ws.send_text(text)
                 finally:
                     queue.task_done()
         except asyncio.CancelledError:
@@ -298,49 +313,84 @@ class WSHub:
         # ns_prefixes should only receive keys under those namespaces.
         is_filterable = msg_type in ("state.update", "state.delete")
 
-        full_text: str | None = None
         for ws in list(self._clients):
             if client_type is not None and self._client_types.get(id(ws)) != client_type:
                 continue
             ns = self._ns_filters.get(id(ws)) if is_filterable else None
+            projected_input = message
             if not ns:
-                if full_text is None:
-                    full_text = json.dumps(message)
-                text = full_text
+                pass
             elif msg_type == "state.update":
                 changes = message.get("changes", {})
                 filtered = {k: v for k, v in changes.items()
                             if k.startswith(ns)}
                 if not filtered:
                     continue
-                text = json.dumps({"type": "state.update", "changes": filtered})
+                projected_input = {"type": "state.update", "changes": filtered}
             else:  # state.delete
                 keys = message.get("keys", [])
                 filtered_keys = [k for k in keys if k.startswith(ns)]
                 if not filtered_keys:
                     continue
-                text = json.dumps({"type": "state.delete", "keys": filtered_keys})
+                projected_input = {"type": "state.delete", "keys": filtered_keys}
 
-            self._enqueue(ws, text)
+            recipient = self._recipients.get(id(ws))
+            if recipient is not None:
+                envelope = self._policy.project(projected_input, recipient)
+                if envelope is not None:
+                    self._enqueue(ws, envelope)
 
-    def send(self, ws, message: dict[str, Any]) -> None:
+    def send(self, ws, message: dict[str, Any], *, scope: MessageScope | None = None) -> None:
         """Queue a JSON message for ONE client, on the same terms as broadcast.
 
         The event stream's bus handler calls this from inside every emit on the
         bus, so it decides and enqueues and never awaits a socket. A client the
         hub no longer holds (already dropped) is skipped; one whose queue
         overflows is dropped exactly as it would be under ``broadcast``.
-        ``default=str`` because the payload is somebody else's dict -- a value
-        that is not JSON must not take the whole stream down.
+        The same closed policy projects targeted and broadcast frames. A scope
+        may narrow an authorized audit/setup subscription; it never grants a
+        client a more privileged role.
         """
-        self._enqueue(ws, json.dumps(message, default=str))
+        recipient = self._recipients.get(id(ws))
+        if recipient is not None:
+            envelope = self._policy.project(message, recipient, targeted=True, scope=scope)
+            if envelope is not None:
+                self._enqueue(ws, envelope)
 
-    def _enqueue(self, ws, text: str) -> None:
+    async def send_immediate(self, ws, message: dict[str, Any], *, scope: MessageScope | None = None) -> None:
+        """Send a baseline/reply through the same policy without queue ordering.
+
+        The handshake uses this while its update queue is deliberately held.
+        Socket adapters still own their ordinary disconnect/error handling.
+        """
+        recipient = self._recipients.get(id(ws))
+        if recipient is None:
+            return
+        envelope = self._policy.project(message, recipient, targeted=True, scope=scope)
+        if envelope is not None:
+            text = envelope.for_send(recipient)
+            if text is not None:
+                await ws.send_text(text)
+
+    def open_scope(self, ws) -> MessageScope:
+        """Create a fresh scope after the adapter authorizes a subscription."""
+        scopes = self._scopes.get(id(ws))
+        if scopes is None:
+            raise ValueError("WebSocket is not registered")
+        scope = MessageScope()
+        scopes.add(scope)
+        return scope
+
+    def close_scope(self, ws, scope: MessageScope) -> None:
+        """Revoke queued messages for an ended/replaced subscription."""
+        self._scopes.get(id(ws), set()).discard(scope)
+
+    def _enqueue(self, ws, envelope: Envelope) -> None:
         queue = self._send_queues.get(id(ws))
         if queue is None:
             return
         try:
-            queue.put_nowait(text)
+            queue.put_nowait(envelope)
         except asyncio.QueueFull:
             log.warning(
                 "WebSocket client send queue overflowed "

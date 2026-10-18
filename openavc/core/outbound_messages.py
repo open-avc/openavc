@@ -29,15 +29,41 @@ class InvalidMessage(ValueError):
     """An internal producer supplied an unsupported payload shape."""
 
 
-@dataclass(frozen=True)
-class RoomText:
+class RoomText(str):
     """Guidance explicitly constructed for a room by a core producer.
 
     Raw exception/device/protocol text must not be wrapped. This is a provenance
     distinction at the producer, not a string sanitizer or an extension sandbox.
     """
 
-    text: str
+    def __new__(cls, text: str):
+        if not isinstance(text, str):
+            raise TypeError("string guidance required")
+        return super().__new__(cls, text)
+
+    @property
+    def text(self) -> str:
+        return str(self)
+
+
+class DiagnosticText(str):
+    """Keep a diagnostic's existing string contract and separate room guidance.
+
+    Internal action records and protected consumers retain the original text.
+    The live outbound projector alone selects the explicitly supplied guidance.
+    Converting this to plain str loses that provenance and fails to generic
+    room guidance; it never grants the original diagnostic room visibility.
+    """
+
+    def __new__(cls, detail: str, room: RoomText):
+        if not isinstance(room, RoomText):
+            raise TypeError("RoomText guidance required")
+        value = super().__new__(cls, detail)
+        value.room_guidance = room
+        return value
+
+    def __reduce__(self):
+        return type(self), (str(self), self.room_guidance)
 
 
 class MessageScope:
@@ -245,7 +271,9 @@ _registry = {
         "message": _text, "event": _text, "function": _text, "handler": _text, "line": _number,
     }),
     "drivers.changed": _rule(protected={"driver_id": _text}),
-    "panel.devices.changed": _rule(protected={}),
+    "panel.devices.changed": _rule(protected={
+        "reason": _text, "device": _object, "access": _text, "upgrade_notice": _bool,
+    }),
     "log.entry": _rule(protected=_LOG, targeted=True),
     "log.history": _rule(protected={"entries": _list}, targeted=True),
     "audit.state": _rule(
@@ -299,7 +327,7 @@ _EVENT_EXACT = MappingProxyType({
     "system.project.reloaded": _rule({}),
     "device.orphaned": _rule(protected={"device_id": _text, "driver": _text}),
     "device.pending_settings_applied": _rule(protected={
-        "device_id": _text, "applied": _object, "remaining": _object,
+        "device_id": _text, "applied": _strings, "remaining": _object,
     }),
 })
 _EVENT_SUFFIX = MappingProxyType({
@@ -379,7 +407,9 @@ class OutboundPolicy:
         if recipient.programmer:
             payload.update(_fields(message, rule.protected))
         if rule.guidance is not None:
-            guidance = message.get("room_guidance")
+            guidance = message.get("room_guidance", message.get(rule.guidance))
+            if isinstance(guidance, DiagnosticText):
+                guidance = guidance.room_guidance
             failed = kind == "error" or kind.startswith("macro.") or message.get("success") is False
             if failed and not recipient.programmer:
                 payload[rule.guidance] = (
@@ -395,7 +425,9 @@ class OutboundPolicy:
             # State has its own coalesced delivery path.
             return None
         if event.startswith("custom.") and event[7:].strip():
-            projected = data  # Deliberately authored public event contract.
+            # Preserve the existing authored-event conversion for Python
+            # values. This opt-in contract does not apply to internal messages.
+            projected = json.loads(json.dumps(data, default=str, allow_nan=False))
         else:
             rule = _EVENT_EXACT.get(event) or REGISTRY.get(event)
             kind = event

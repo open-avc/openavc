@@ -821,7 +821,8 @@ class MacroEngine:
                 f"Timed out: {description}." if description
                 else "The requested status was not reached in time."
             )
-            return f"{message} Check the system and try again."
+            from openavc.core.outbound_messages import RoomText
+            return RoomText(f"{message} Check the system and try again.")
         return self._device_error_message(str(step.get("device") or ""), exc)
 
     def _device_error_message(self, device_id: str, exc: Exception) -> str:

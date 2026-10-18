@@ -17,6 +17,7 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 from openavc.core.script_engine import ScriptCallError
+from openavc.core.outbound_messages import DiagnosticText, RoomText
 from openavc.core.state_store import coerce_flat_primitive
 from openavc.core.value_resolver import resolve_ref
 from openavc.ui.matrix_model import destination_for
@@ -359,7 +360,7 @@ class UIEventRuntime:
                     )
                     record(
                         macro=macro_id, started=False,
-                        error=f"No macro named '{macro_id}'.",
+                        error=RoomText(f"No macro named '{macro_id}'."),
                     )
                     return
                 if dry_run:
@@ -471,7 +472,7 @@ class UIEventRuntime:
                 if engine.scripts is None:
                     record(
                         function=func_name, params=params, called=False,
-                        error=f"No script function named '{func_name}'.",
+                        error=RoomText(f"No script function named '{func_name}'."),
                     )
                     return
                 try:
@@ -598,7 +599,13 @@ class UIEventRuntime:
         device_id = getattr(exc.__cause__, "device_id", "")
         if device_id:
             return self._command_error(str(device_id), exc.__cause__)
-        return str(exc)
+        # Only a core refusal without a nested driver/script exception has
+        # known provenance. Raised user code remains protected diagnostic text.
+        if exc.__cause__ is None:
+            return RoomText(str(exc))
+        from openavc.api.error_messages import friendly_error
+        guidance = friendly_error(exc.__cause__, at_panel=True).room_guidance
+        return DiagnosticText(str(exc), guidance)
 
     @staticmethod
     def scale_value_forward(element: Any, raw_value: Any) -> Any:

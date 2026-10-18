@@ -20,12 +20,13 @@ from starlette.requests import HTTPConnection
 
 from openavc.api._engine import get_engine_optional
 from openavc.api._engine import set_engine as _shared_set_engine
-from openavc.api.auth import authenticate_websocket, get_ws_auth_subprotocol
-from openavc.api.host_policy import EndpointPolicy, bind_request_authority, endpoint_policy
+from openavc.api.auth import authenticate_websocket_grant, get_ws_auth_subprotocol
+from openavc.api.host_policy import EndpointPolicy, bind_request_authority, endpoint_policy, request_admission
 from openavc.core.host_policy import HostCategory
 from openavc.api.error_messages import device_error_label, friendly_error
 from openavc.api.panel_access import Admission, admit as admit_panel
 from openavc.core.event_bus import check_event_emit, event_visible
+from openavc.core.outbound_messages import MessageScope, RoomText
 from openavc.core.panel_devices import (
     CLOSE_CODE_NOT_APPROVED,
     CLOSE_REASON_NOT_APPROVED,
@@ -75,6 +76,7 @@ _log_subscriptions: dict[int, tuple[str, asyncio.Task]] = {}
 # Per-client device-audit subscriptions: ws id -> unsubscribe. An audit's
 # progress goes to the Programmer that asked for it, never to every client.
 _audit_subscriptions: dict[int, Callable[[], None]] = {}
+_audit_scopes: dict[int, MessageScope] = {}
 
 # Per-client event-stream subscriptions: ws id -> (bus handler id, patterns).
 # ONE bus handler per client, registered on "*" and filtering against the
@@ -123,7 +125,8 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         return
 
     # Derive client type from authentication level, not client declaration
-    is_authenticated = authenticate_websocket(ws, allow_cloud_session=True)
+    authority = authenticate_websocket_grant(ws, allow_cloud_session=True)
+    is_authenticated = authority is not None
     if requested_type in ("programmer", "preview") and not is_authenticated:
         await ws.close(code=4001, reason="Authentication required")
         return
@@ -147,7 +150,19 @@ async def websocket_endpoint(ws: WebSocket) -> None:
             return
 
     if client_type == "panel" and not is_authenticated:
-        bind_request_authority(ws, lambda: admit_panel(ws, authenticated=False) == admission)
+        def authority():
+            return admit_panel(ws, authenticated=False) == admission
+        bind_request_authority(ws, authority)
+
+    assert authority is not None
+    try:
+        retained_admission = request_admission(ws)
+    except RuntimeError:
+        # Standalone router consumers retain the canonical credential/panel
+        # grant even when they do not install a host policy middleware.
+        current = authority
+    else:
+        current = retained_admission.revalidate
 
     # Connection cap: reject before accepting the handshake. The counter is
     # incremented before any await so concurrent handshakes can't slip past
@@ -160,7 +175,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         return
     _ws_connection_count += 1
     try:
-        await _run_ws_connection(ws, query_params, headers, client_type, admission)
+        await _run_ws_connection(ws, query_params, headers, client_type, admission, authority=current)
     finally:
         _ws_connection_count -= 1
 
@@ -168,6 +183,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
 async def _run_ws_connection(
     ws: WebSocket, query_params: dict, headers: dict, client_type: str,
     admission: Admission = Admission(True, "programmer"),
+    *, authority: Callable[[], bool],
 ) -> None:
     """Accept the handshake and run one client's message loop until disconnect."""
     # Echo back auth subprotocol if client used Sec-WebSocket-Protocol
@@ -187,7 +203,7 @@ async def _run_ws_connection(
         try:
             while True:
                 await asyncio.sleep(30)
-                await ws.send_json({"type": "ping"})
+                await _send_ws(ws, {"type": "ping"})
         except asyncio.CancelledError:
             return
         except _WS_DISCONNECT_EXCEPTIONS:
@@ -213,6 +229,7 @@ async def _run_ws_connection(
             ws, ns_prefixes=ns_prefixes, defer_delivery=True,
             client_type=client_type, admitted_by=admission.kind,
             panel_device=admission.device_id,
+            authority=authority,
         )
         if admission.device_id:
             engine.panel_devices.touch(admission.device_id)
@@ -235,14 +252,14 @@ async def _run_ws_connection(
             state_snapshot = {k: v for k, v in full_state.items() if k.startswith(ns_prefixes)}
         else:
             state_snapshot = full_state
-        await ws.send_json({
+        await engine.ws.send_immediate(ws, {
             "type": "state.snapshot",
             "state": state_snapshot,
         })
 
         # Send UI definition
         if engine.project:
-            await ws.send_json({
+            await engine.ws.send_immediate(ws, {
                 "type": "ui.definition",
                 "ui": engine.panel_ui(),
             })
@@ -270,7 +287,7 @@ async def _run_ws_connection(
             if len(_msg_times) >= WS_RATE_LIMIT_MAX_MESSAGES:
                 # No source_type: the limiter fires before anything is parsed,
                 # so the failing message type genuinely isn't known here.
-                await _send_ws_error(ws, None, "Rate limit exceeded")
+                await _send_ws_error(ws, None, RoomText("Rate limit exceeded"))
                 continue
             _msg_times.append(now)
 
@@ -382,6 +399,7 @@ def _cleanup_audit_subscription(ws_id: int) -> None:
     unsubscribe = _audit_subscriptions.pop(ws_id, None)
     if unsubscribe is not None:
         unsubscribe()
+    _audit_scopes.pop(ws_id, None)
 
 
 def _subscribe_audit(ws: WebSocket, engine: Any, session_id: str) -> dict[str, Any] | None:
@@ -399,10 +417,17 @@ def _subscribe_audit(ws: WebSocket, engine: Any, session_id: str) -> dict[str, A
     session = manager.latest() if manager is not None else None
     if session is None or session.id != session_id:
         return None
-    if session.active:
-        _audit_subscriptions[ws_id] = session.subscribe(
-            lambda message: engine.ws.send(ws, message),
-        )
+    scope = engine.ws.open_scope(ws)
+    _audit_scopes[ws_id] = scope
+    unsubscribe = session.subscribe(
+        lambda message: engine.ws.send(ws, message, scope=scope),
+    ) if session.active else lambda: None
+
+    def close_subscription():
+        engine.ws.close_scope(ws, scope)
+        unsubscribe()
+
+    _audit_subscriptions[ws_id] = close_subscription
     return session.to_dict()
 
 
@@ -420,7 +445,7 @@ async def _log_stream_task(ws: WebSocket, queue: asyncio.Queue) -> None:
     try:
         while True:
             entry: LogEntry = await queue.get()
-            await ws.send_json({
+            await _send_ws(ws, {
                 "type": "log.entry",
                 **entry.to_dict(),
             })
@@ -432,10 +457,12 @@ async def _log_stream_task(ws: WebSocket, queue: asyncio.Queue) -> None:
         log.debug("WebSocket log stream ended on send failure", exc_info=True)
 
 
-async def _send_ws(ws: WebSocket, msg: dict[str, Any]) -> None:
+async def _send_ws(ws: WebSocket, msg: dict[str, Any], *, scope: MessageScope | None = None) -> None:
     """Send a JSON message to the client, silently ignoring disconnects."""
     try:
-        await ws.send_json(msg)
+        engine = get_engine_optional()
+        if engine is not None:
+            await engine.ws.send_immediate(ws, msg, scope=scope)
     except _WS_DISCONNECT_EXCEPTIONS:
         pass  # Client disconnected mid-send
     except Exception:
@@ -514,12 +541,12 @@ async def _run_ui_event(
     except Exception as e:
         # Catch-all: UI events dispatch to scripts/macros/drivers which can raise anything
         log.error(f"{msg_type} failed: {e}")
-        await _send_ws_error(ws, msg_type, friendly_error(e), element_id)
+        await _send_ws_error(ws, msg_type, friendly_error(e, at_panel=True), element_id)
         return
     for action in dispatched or []:
         error = action.get("error")
         if error:
-            await _send_ws_error(ws, msg_type, str(error), element_id)
+            await _send_ws_error(ws, msg_type, error, element_id)
             return
 
 
@@ -557,12 +584,12 @@ async def _dispatch_text(ws: WebSocket, text: str, client_type: str) -> None:
             # A bare JSON scalar or array parses fine but has no type. Say so,
             # rather than letting `msg.get` raise into the catch-all below and
             # reporting the client's mistake as a server error.
-            await _send_ws_error(ws, None, "Expected a JSON object with a 'type' field")
+            await _send_ws_error(ws, None, RoomText("Expected a JSON object with a 'type' field"))
             return
         await _handle_message(ws, msg, client_type)
     except json.JSONDecodeError:
         log.warning(f"Invalid JSON from WebSocket: {text[:100]}")
-        await _send_ws_error(ws, None, "Invalid JSON")
+        await _send_ws_error(ws, None, RoomText("Invalid JSON"))
     except Exception as exc:
         # Catch-all: isolates arbitrary message-handler errors from the connection loop
         log.exception("Error handling WebSocket message")
@@ -582,45 +609,45 @@ async def _handle_message(
 
     # Restrict panel clients to UI interactions only
     if client_type == "panel" and msg_type not in _PANEL_ALLOWED_TYPES:
-        await _send_ws_error(ws, msg_type, "Panel clients cannot send this message type")
+        await _send_ws_error(ws, msg_type, RoomText("Panel clients cannot send this message type"))
         return
 
     if msg_type == "ui.press":
         element_id = msg.get("element_id", "")
         if not element_id:
-            await _send_ws_error(ws, msg_type, "Missing element_id")
+            await _send_ws_error(ws, msg_type, RoomText("Missing element_id"))
             return
         await _run_ui_event(ws, msg_type, engine, "press", element_id)
 
     elif msg_type == "ui.release":
         element_id = msg.get("element_id", "")
         if not element_id:
-            await _send_ws_error(ws, msg_type, "Missing element_id")
+            await _send_ws_error(ws, msg_type, RoomText("Missing element_id"))
             return
         await _run_ui_event(ws, msg_type, engine, "release", element_id)
 
     elif msg_type == "ui.hold":
         element_id = msg.get("element_id", "")
         if not element_id:
-            await _send_ws_error(ws, msg_type, "Missing element_id")
+            await _send_ws_error(ws, msg_type, RoomText("Missing element_id"))
             return
         await _run_ui_event(ws, msg_type, engine, "hold", element_id)
 
     elif msg_type == "ui.toggle_off":
         element_id = msg.get("element_id", "")
         if not element_id:
-            await _send_ws_error(ws, msg_type, "Missing element_id")
+            await _send_ws_error(ws, msg_type, RoomText("Missing element_id"))
             return
         await _run_ui_event(ws, msg_type, engine, "toggle_off", element_id)
 
     elif msg_type == "ui.change":
         element_id = msg.get("element_id", "")
         if not element_id:
-            await _send_ws_error(ws, msg_type, "Missing element_id")
+            await _send_ws_error(ws, msg_type, RoomText("Missing element_id"))
             return
         value = msg.get("value")
         if not is_flat_primitive(value):
-            await _send_ws_error(ws, msg_type, _FLAT_PRIMITIVE_REQUIRED)
+            await _send_ws_error(ws, msg_type, RoomText(_FLAT_PRIMITIVE_REQUIRED))
             return
         await _run_ui_event(ws, msg_type, engine, "change", element_id, {"value": value})
 
@@ -629,23 +656,23 @@ async def _handle_message(
         # binding (and its two-way show.value.write_back write in the engine).
         element_id = msg.get("element_id", "")
         if not element_id:
-            await _send_ws_error(ws, msg_type, "Missing element_id")
+            await _send_ws_error(ws, msg_type, RoomText("Missing element_id"))
             return
         value = msg.get("value")
         if not is_flat_primitive(value):
-            await _send_ws_error(ws, msg_type, _FLAT_PRIMITIVE_REQUIRED)
+            await _send_ws_error(ws, msg_type, RoomText(_FLAT_PRIMITIVE_REQUIRED))
             return
         await _run_ui_event(ws, msg_type, engine, "select", element_id, {"value": value})
 
     elif msg_type == "ui.route":
         element_id = msg.get("element_id", "")
         if not element_id:
-            await _send_ws_error(ws, msg_type, "Missing element_id")
+            await _send_ws_error(ws, msg_type, RoomText("Missing element_id"))
             return
         input_idx = msg.get("input")
         output_idx = msg.get("output")
         if not is_flat_primitive(input_idx) or not is_flat_primitive(output_idx):
-            await _send_ws_error(ws, msg_type, "Input and output must be flat primitives")
+            await _send_ws_error(ws, msg_type, RoomText("Input and output must be flat primitives"))
             return
         audio_flag = bool(msg.get("audio"))
         mute_val = msg.get("mute")
@@ -671,18 +698,18 @@ async def _handle_message(
     elif msg_type == "ui.submit":
         element_id = msg.get("element_id", "")
         if not element_id:
-            await _send_ws_error(ws, msg_type, "Missing element_id")
+            await _send_ws_error(ws, msg_type, RoomText("Missing element_id"))
             return
         value = msg.get("value")
         if not is_flat_primitive(value):
-            await _send_ws_error(ws, msg_type, _FLAT_PRIMITIVE_REQUIRED)
+            await _send_ws_error(ws, msg_type, RoomText(_FLAT_PRIMITIVE_REQUIRED))
             return
         await _run_ui_event(ws, msg_type, engine, "submit", element_id, {"value": value})
 
     elif msg_type == "ui.page":
         page_id = msg.get("page_id", "")
         if not page_id:
-            await _send_ws_error(ws, msg_type, "Missing page_id")
+            await _send_ws_error(ws, msg_type, RoomText("Missing page_id"))
             return
         await engine.events.emit(f"ui.page.{page_id}")
         # Confirm navigation to sender only — each panel manages its own page
@@ -692,7 +719,7 @@ async def _handle_message(
         device_id = msg.get("device_id", "")
         command = msg.get("command", "")
         if not device_id or not command:
-            await _send_ws_error(ws, msg_type, "Missing device_id or command")
+            await _send_ws_error(ws, msg_type, RoomText("Missing device_id or command"))
             return
         params = msg.get("params", {})
         try:
@@ -722,14 +749,14 @@ async def _handle_message(
     elif msg_type == "state.set":
         key = msg.get("key", "")
         if not key:
-            await _send_ws_error(ws, msg_type, "Missing key")
+            await _send_ws_error(ws, msg_type, RoomText("Missing key"))
             return
         value = msg.get("value")
         # Shared write policy — one place decides what a panel vs. a programmer
         # client may write, so this door can't drift from REST or the AI tools.
         reason = check_state_write(key, value, panel=client_type == "panel")
         if reason:
-            await _send_ws_error(ws, msg_type, reason)
+            await _send_ws_error(ws, msg_type, RoomText(reason))
             return
         try:
             engine.state.set(key, value, source="ws")
@@ -756,7 +783,7 @@ async def _handle_message(
         # engine's own overlap/cooldown settings are the right control here.
         macro_id = msg.get("macro_id", "")
         if not macro_id:
-            await _send_ws_error(ws, msg_type, "Missing macro_id")
+            await _send_ws_error(ws, msg_type, RoomText("Missing macro_id"))
             return
         # The same sentence a bound button gets (core.ui_events), because it is
         # the same failure: a matrix preset and a button that runs a macro are
@@ -764,7 +791,7 @@ async def _handle_message(
         # the only thing anybody can go and look up. Answered before the task
         # rather than out of it, so the run that cannot happen never starts.
         if not engine.macros.has_macro(macro_id):
-            await _send_ws_error(ws, msg_type, f"No macro named '{macro_id}'.")
+            await _send_ws_error(ws, msg_type, RoomText(f"No macro named '{macro_id}'."))
             return
 
         async def _run_macro() -> None:
@@ -796,10 +823,10 @@ async def _handle_message(
         # background like the execute does.
         macro_id = msg.get("macro_id", "")
         if not macro_id:
-            await _send_ws_error(ws, msg_type, "Missing macro_id")
+            await _send_ws_error(ws, msg_type, RoomText("Missing macro_id"))
             return
         if not engine.macros.has_macro(macro_id):
-            await _send_ws_error(ws, msg_type, f"No macro named '{macro_id}'.")
+            await _send_ws_error(ws, msg_type, RoomText(f"No macro named '{macro_id}'."))
             return
         running = engine.macros.is_macro_running(macro_id)
         if running:
@@ -842,10 +869,11 @@ async def _handle_message(
         session_id = str(msg.get("session_id") or "")
         state = _subscribe_audit(ws, engine, session_id)
         if state is None:
-            await _send_ws_error(ws, msg_type, "That audit has ended. Start a new one.")
+            await _send_ws_error(ws, msg_type, RoomText("That audit has ended. Start a new one."))
             return
         # The state now, so a client that (re)subscribes draws from it.
-        await _send_ws(ws, {"type": "audit.state", "session_id": session_id, "state": state})
+        await _send_ws(ws, {"type": "audit.state", "session_id": session_id, "state": state},
+                       scope=_audit_scopes.get(id(ws)))
 
     elif msg_type == "audit.unsubscribe":
         _cleanup_audit_subscription(id(ws))
@@ -854,7 +882,7 @@ async def _handle_message(
         patterns = _parse_event_patterns(msg.get("patterns"))
         if patterns is None:
             await _send_ws_error(
-                ws, msg_type, "'patterns' must be a list of event name patterns"
+                ws, msg_type, RoomText("'patterns' must be a list of event name patterns")
             )
             return
         _subscribe_events(ws, engine, patterns, client_type)
@@ -872,7 +900,7 @@ async def _handle_message(
         payload = msg.get("payload")
         reason = check_event_emit(event, payload)
         if reason:
-            await _send_ws_error(ws, msg_type, reason)
+            await _send_ws_error(ws, msg_type, RoomText(reason))
             return
         # A receipt, not an outcome -- the same shape as macro.execute.ack and
         # for the same reason: a script handler that awaits would otherwise
@@ -893,7 +921,7 @@ async def _handle_message(
             event = msg.get("event", "")
             payload = msg.get("payload", {})
             if not instance_id or not event:
-                await _send_ws_error(ws, msg_type, "Missing instance_id or event")
+                await _send_ws_error(ws, msg_type, RoomText("Missing instance_id or event"))
                 return
             try:
                 await engine.isc.send_to(instance_id, event, payload)
@@ -904,7 +932,7 @@ async def _handle_message(
             # No ack on success (fire-and-forget to a peer), but silence on
             # failure is not a valid answer: without this a client on an
             # instance with ISC disabled cannot tell "sent" from "never ran".
-            await _send_ws_error(ws, msg_type, "Inter-system communication is not enabled")
+            await _send_ws_error(ws, msg_type, RoomText("Inter-system communication is not enabled"))
 
     elif msg_type == "isc.broadcast":
         # Broadcast event to all ISC peers
@@ -912,7 +940,7 @@ async def _handle_message(
             event = msg.get("event", "")
             payload = msg.get("payload", {})
             if not event:
-                await _send_ws_error(ws, msg_type, "Missing event")
+                await _send_ws_error(ws, msg_type, RoomText("Missing event"))
                 return
             try:
                 await engine.isc.broadcast(event, payload)
@@ -920,7 +948,7 @@ async def _handle_message(
                 log.warning(f"ISC broadcast failed: {e}")
                 await _send_ws_error(ws, msg_type, f"ISC broadcast failed: {e}")
         else:
-            await _send_ws_error(ws, msg_type, "Inter-system communication is not enabled")
+            await _send_ws_error(ws, msg_type, RoomText("Inter-system communication is not enabled"))
 
     else:
         log.debug(f"Unknown WS message type: {msg_type}")
