@@ -103,6 +103,12 @@ def friendly_error(
         # the integrator's to open, not the room's.
         from openavc.reach_devices import AdapterUnavailable
 
+        from openavc.core.device_manager import NoSimulatorError
+
+        # Refused because a running simulation has no simulator for this
+        # device: the device card's own sentence, which says what to do.
+        if isinstance(exc, NoSimulatorError):
+            return msg
         if isinstance(exc, AdapterUnavailable):
             if at_panel:
                 return (

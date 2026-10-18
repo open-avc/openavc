@@ -903,15 +903,26 @@ def link_local_fault(host: str, port: object = None) -> ConnectionFault | None:
     return ConnectionFault(UNREACHABLE, message)
 
 
-def no_simulator_fault() -> ConnectionFault:
+def no_simulator_fault(driver_id: str = "") -> ConnectionFault:
     """A selected device has no virtual target, so hardware control is paused.
 
-    The remedy must also apply to manufacturer-owned equipment whose installed
-    integration cannot be edited by the programmer.
+    ``driver_id`` names a driver the integrator can give a simulator: a YAML
+    driver simulates on its own, a Python driver needs a companion
+    ``<name>_sim.py``. Left out for manufacturer-owned equipment, whose
+    installed integration the programmer cannot edit, so its one remedy is to
+    stop simulation.
     """
+    who = (driver_id or "").strip()
+    if not who:
+        return ConnectionFault(
+            NO_SIMULATOR,
+            "This device has no simulator. Stop simulation to control it.",
+        )
     return ConnectionFault(
         NO_SIMULATOR,
-        "This device has no simulator. Stop simulation to control it.",
+        f"The driver '{who}' has no simulator, so this device stays disconnected "
+        f"while simulation runs. Add a simulator for it (a Python driver needs a "
+        f"companion _sim.py file), or stop simulation to control the real device.",
     )
 
 

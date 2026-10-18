@@ -20,7 +20,7 @@ from openavc.api.models import (
     PendingSettingsRequest,
     RawSendRequest,
 )
-from openavc.core.device_manager import DeviceNotFoundError
+from openavc.core.device_manager import DeviceNotFoundError, NoSimulatorError
 from openavc.reach_devices import AdapterUnavailable
 from openavc.core.project_loader import ChildEntityConfig, DeviceConfig
 from openavc.core.project_migration import CONNECTION_FIELDS
@@ -468,6 +468,15 @@ async def retry_orphaned_device(device_id: str) -> dict[str, Any]:
             "detail": "Driver is still not installed"}
 
 
+def _not_connected(device_id: str, exc: ConnectionError) -> Exception:
+    """503 for a command or a setting the device manager would not send. A
+    device a running simulation has no simulator for is refused in its card's
+    own words, which say what to do."""
+    if isinstance(exc, NoSimulatorError):
+        return _api_error(503, str(exc), exc)
+    return _api_error(503, f"Device '{device_id}' is not connected", exc)
+
+
 @router.post("/devices/{device_id}/command")
 async def send_command(device_id: str, body: CommandRequest) -> dict[str, Any]:
     """Send a command to a device."""
@@ -493,7 +502,7 @@ async def send_command(device_id: str, body: CommandRequest) -> dict[str, Any]:
         # Wake-on-LAN command runs while the device is off.
         raise _api_error(503, str(e), e)
     except ConnectionError as e:
-        raise _api_error(503, f"Device '{device_id}' is not connected", e)
+        raise _not_connected(device_id, e)
     except CommandPartialError as e:
         # The command DID something and could not confirm the rest, so the
         # generic wording below would be actively wrong -- it reads as "nothing
@@ -675,7 +684,7 @@ async def invoke_device_action(
         except DeviceNotFoundError as e:
             raise _api_error(404, f"Device '{device_id}' not found", e)
         except ConnectionError as e:
-            raise _api_error(503, f"Device '{device_id}' is not connected", e)
+            raise _not_connected(device_id, e)
         except CommandOutcomeError as e:
             raise StructuredApiError(
                 502 if e.outcome == "failed" else 409, str(e),
@@ -747,7 +756,7 @@ async def set_device_setting(
     except DeviceNotFoundError as e:
         raise _api_error(404, f"Device '{device_id}' not found", e)
     except ConnectionError as e:
-        raise _api_error(503, f"Device '{device_id}' is not connected", e)
+        raise _not_connected(device_id, e)
     except NotImplementedError as e:
         raise _api_error(501, f"Device '{device_id}' does not support writable settings", e)
     except CommandOutcomeError as e:

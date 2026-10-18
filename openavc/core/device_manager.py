@@ -114,6 +114,18 @@ def not_connected(device_id: str) -> ConnectionError:
     return exc
 
 
+class NoSimulatorError(ConnectionError):
+    """A command or a setting refused because a running simulation has no
+    simulator for this device. A ConnectionError, so whatever catches a failed
+    send still does; the message is the device card's own sentence, which the
+    command routes and ``friendly_error`` pass on as it is (the device is not
+    what is missing)."""
+
+    def __init__(self, device_id: str, message: str) -> None:
+        super().__init__(message)
+        self.device_id = device_id
+
+
 # How many reconnect attempts a permanent fault gets before the loop stops.
 # One retry past the first classification: enough to shrug off a device that
 # was mid-reboot when we read its certificate or host key, few enough that a
@@ -1889,7 +1901,7 @@ class DeviceManager:
         # asking before the classifier answers a different one correctly.
         gap = self.unsimulated_driver(device_id) if self.unsimulated_driver else None
         if gap:
-            fault = no_simulator_fault()
+            fault = self._no_simulator_fault(device_id, gap)
         if fault is None:
             fault = typed_fault_from_exc(exc, host=host, port=port)
         if fault is None and driver is not None:
@@ -2311,11 +2323,19 @@ class DeviceManager:
     def _simulation_gap(self, device_id: str) -> str | None:
         return self.unsimulated_driver(device_id) if self.unsimulated_driver else None
 
+    def _no_simulator_fault(self, device_id: str, driver_id: str) -> ConnectionFault:
+        """The card's sentence for a device a running simulation could not
+        simulate: how to give its driver a simulator, except on product
+        hardware, whose installed integration the programmer cannot edit."""
+        if self.installed_equipment and self.installed_equipment.owns(device_id):
+            return no_simulator_fault()
+        return no_simulator_fault(driver_id)
+
     def _require_control_target(self, device_id: str) -> None:
         """A missing simulator must never fall through to physical control."""
         gap = self._simulation_gap(device_id)
         if gap is not None:
-            raise ConnectionError(no_simulator_fault().message)
+            raise NoSimulatorError(device_id, self._no_simulator_fault(device_id, gap).message)
 
     async def _connect_driver(self, device_id: str, driver: Any) -> None:
         self._require_control_target(device_id)

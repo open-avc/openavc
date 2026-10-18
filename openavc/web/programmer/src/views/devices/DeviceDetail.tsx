@@ -1680,6 +1680,11 @@ export function offlineNextStep(
   failed: boolean,
   signInFields: boolean,
 ): string {
+  if (reason === "no_simulator") {
+    // Refused on purpose, and retried by nothing: it is the simulation that
+    // keeps it off, so stopping it is what brings the device back.
+    return "Not connecting while simulation runs. Stopping simulation connects it to the real device again.";
+  }
   if (!failed) {
     // Deliberately no attempt count. There's no ceiling to count toward, and
     // a device left off over a weekend would show a number in the thousands,
@@ -1755,17 +1760,17 @@ function OfflineBanner({
             {hint}
           </div>
         )}
-        {reason !== "no_simulator" && (<div
+        <div
           style={{
             fontSize: "var(--font-size-sm)",
             color: "var(--text-muted)",
             marginTop: "var(--space-xs)",
           }}
         >
-          {installed && failed
+          {installed && failed && reason !== "no_simulator"
             ? "Automatic reconnect is paused. Check this product's OpenAVC status, then press Reconnect."
             : offlineNextStep(reason, failed, signInFields)}
-        </div>)}
+        </div>
       </div>
     </div>
   );
