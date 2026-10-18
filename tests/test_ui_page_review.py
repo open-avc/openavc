@@ -372,7 +372,7 @@ def test_a_keypad_carrying_a_look_binding_is_told_it_does_nothing():
 
 
 def test_a_pin_keypad_that_sends_after_its_first_digit_is_told_the_default():
-    """The field report: auto_send with a 200 ms delay sent a PIN after one key."""
+    """With auto_send and a 200 ms delay, a PIN can go out after its first key."""
     page = _page(
         [UIElement(id="pin", type="keypad", digits=4, auto_send=True,
                    auto_send_delay_ms=200)],
