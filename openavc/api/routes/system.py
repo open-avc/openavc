@@ -305,11 +305,16 @@ async def get_system_config_endpoint() -> dict[str, Any]:
 def _listen_block(cfg: Any) -> dict[str, Any]:
     """Who can connect, as running: what the listeners bound (which can
     differ from the saved choice until a restart, or when the chosen adapter
-    is missing), whether a restart is waiting, and the safety net."""
-    from openavc import listen, listen_safety_net
+    is missing), whether a restart is waiting, and the safety net. Also the
+    ports this process listens on, which a saved change does not move until
+    the restart: the Settings page compares its own address with them to know
+    whether it reaches this server directly or through a proxy."""
+    from openavc import config, listen, listen_safety_net
 
     plan = listen.current()
     running = plan.to_dict()
+    running["http_port"] = config.HTTP_PORT
+    running["https_port"] = config.TLS_PORT if config.TLS_ENABLED else None
     saved = listen.ListenChoice.from_config(cfg)
     running["restart_needed"] = (
         saved.mode != plan.choice.mode or saved.adapter != plan.choice.adapter

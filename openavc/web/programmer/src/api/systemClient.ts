@@ -330,6 +330,10 @@ export interface ListenSafetyNet {
 export interface ListenBlock extends ListenRunning {
   /** The saved choice differs from the running one. */
   restart_needed: boolean;
+  /** The ports this server is listening on now; a saved change moves them at
+   *  the restart. `https_port` is null while HTTPS is off. */
+  http_port?: number;
+  https_port?: number | null;
   safety_net: ListenSafetyNet | null;
 }
 
