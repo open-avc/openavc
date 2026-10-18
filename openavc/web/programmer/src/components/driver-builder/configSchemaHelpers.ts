@@ -74,10 +74,10 @@ export function coerceConfigDefault(
 /**
  * Compute the field def and its stored default when the field's `type`
  * changes, as ONE atomic pair so a single store write applies both. Strips
- * enum values when leaving enum, and re-coerces the existing default into
- * the new type (dropping it when it can't represent one) so a type switch
- * never leaves a wrong-typed default behind in default_config or in the
- * schema entry's own `default`.
+ * enum values when leaving enum, min and max when leaving a number type, and
+ * re-coerces the existing default into the new type (dropping it when it
+ * can't represent one) so a type switch never leaves a wrong-typed default
+ * behind in default_config or in the schema entry's own `default`.
  */
 export function applyConfigFieldTypeChange(
   field: ConfigFieldDef,
@@ -86,6 +86,10 @@ export function applyConfigFieldTypeChange(
 ): { field: ConfigFieldDef; defaultValue: string | number | boolean | undefined } {
   const next = { ...field, type: newType } as Record<string, unknown>;
   if (newType !== "enum") delete next.values;
+  if (!NUMERIC_CONFIG_TYPES.has(newType)) {
+    delete next.min;
+    delete next.max;
+  }
   const defaultValue = coerceConfigDefault(
     newType,
     currentDefault === undefined || currentDefault === null

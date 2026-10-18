@@ -104,6 +104,16 @@ CLOUD_PRIORITIES: tuple[str, ...] = ("low", "high")
 # Blocks whose keys become config fields a template/reference may name.
 CONFIG_FIELD_SOURCES: tuple[str, ...] = ("config_schema", "default_config", "config_derived")
 
+# Config keys a project keeps in its connections table rather than in the
+# device's config: where and how the device is reached (address, sign-in,
+# serial line, bridge binding, USB adapter identity). Names match what
+# BaseDriver reads at runtime.
+CONNECTION_FIELDS: frozenset[str] = frozenset({
+    "host", "port", "username", "password", "base_url", "ssl",
+    "baudrate", "bytesize", "parity", "stopbits", "flow_control",
+    "bridge", "bridge_port", "usb_serial",
+})
+
 # --- transports with extra constraints ---------------------------------------
 
 # Transports the auth: login-handshake block supports (it swaps the frame

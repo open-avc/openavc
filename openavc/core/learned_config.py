@@ -77,7 +77,7 @@ def accepted_value(field_def: dict[str, Any], value: Any) -> tuple[bool, Any]:
             if str(option_value) == str(value).strip():
                 return True, option_value
         return False, None
-    if ftype in ("integer", "number"):
+    if ftype in ("integer", "number", "float"):
         if isinstance(value, bool):
             return False, None
         try:

@@ -30,6 +30,7 @@ from openavc.drivers.spec import (
     CHILD_RESERVED_PROPS,
     CLOUD_PRIORITIES,
     CONFIG_FIELD_SOURCES,
+    CONNECTION_FIELDS,
     DEFAULT_LINE_GAP_S,
     DEFS,
     FIELDS,
@@ -3559,9 +3560,11 @@ def config_learned_from_errors(
     One rule for both surfaces, like ``device_setting_state_key_errors``. A
     name that is not a declared state variable is never reported, so the
     field is silently never filled in. A secret is never learned (the value
-    would have to sit in visible state first), and a table has no single
-    value to learn. A state-variable block built at runtime cannot be judged
-    from the source and is skipped, not failed.
+    would have to sit in visible state first), a table has no single value
+    to learn, and a connection field is saved to the connections table, where
+    a reported value would move where the device dials. A state-variable
+    block built at runtime cannot be judged from the source and is skipped,
+    not failed.
     """
     learned_from = field_def.get("learned_from")
     if learned_from is None:
@@ -3579,6 +3582,12 @@ def config_learned_from_errors(
         errors.append(
             f"{where}: a table field cannot be learned_from a state variable, "
             f"because it has no single value to fill in"
+        )
+    if field_name in CONNECTION_FIELDS:
+        errors.append(
+            f"{where}: a connection field cannot be learned_from a state "
+            f"variable, because a reported value would change how the device "
+            f"is reached"
         )
     if isinstance(declared_vars, dict) and UNEVALUATED_KEY not in declared_vars:
         if learned_from not in declared_vars:

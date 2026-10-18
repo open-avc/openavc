@@ -572,8 +572,9 @@ config_schema:
   reports a different one.
 - Only a value the field accepts is saved: a listed `enum` value (a reported
   `4` matches a listed `"4"` or `4`, and the listed one is stored), a number
-  within `min` and `max`, a non-empty string, a boolean. Anything else is
-  left alone and noted once in the device log.
+  within `min` and `max` (in the Driver Builder, Min and Max under Filled In
+  From), a non-empty string, a boolean. Anything else is left alone and noted
+  once in the device log.
 - The device keeps running; nothing reconnects. The device page shows the new
   value, and the device form marks the field **From the device** beside its
   label. Write the field's `description` for what the setting is: the form
@@ -585,7 +586,10 @@ config_schema:
 - Your driver keeps reading the state variable first while it is connected.
   The field is what it has when the device has not reported yet: before the
   first connection, and in simulation.
-- Not on a `secret` field or a `table`. Requires platform 0.37.0.
+- Not on a `secret` field, a `table`, or a field saved with the device's
+  connection (`host`, `port`, `username`, `password`, `base_url`, `ssl`, the
+  serial line settings, `bridge`, `bridge_port`, `usb_serial`): the driver is
+  refused. Requires platform 0.37.0.
 
 A Python driver declares it the same way in `DRIVER_INFO["config_schema"]` and
 needs no code: it only has to publish the state variable.

@@ -5,6 +5,18 @@ Applies versioned transforms when loading older project files.
 Each migration is a pure function: dict -> dict.
 """
 
+# Connection-related config fields that belong in the connections table. The
+# list is part of the driver contract (a connection field cannot be
+# learned_from a state variable), so it is kept in openavc/drivers/spec.py.
+# `port` is a string for serial and an int for TCP/UDP/OSC/HTTP. The serial
+# line params live with the connection alongside `baudrate` so a template
+# deployment swaps the whole serial config per site. `bridge` / `bridge_port`
+# name the bridge device and the port it advertises (e.g. "serial:1"), which
+# core.device_config rewrites into the bridge's pass-through endpoint;
+# `usb_serial` is the adapter's USB serial number, which it turns into the
+# adapter's live OS port path. Older `com_port`/`baud_rate` are translated by
+# migrate_0_1_to_0_2.
+from openavc.drivers.spec import CONNECTION_FIELDS
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -40,30 +52,6 @@ _ELEMENT_PX_KEYS = ("icon_size", "item_height", "thumb_size")
 _OVERLAY_DEFAULT_W = 400
 _OVERLAY_DEFAULT_H = 300
 _SIDEBAR_DEFAULT_W = 320
-
-# Connection-related config fields that belong in the connections table.
-# Names match what BaseDriver reads at runtime (openavc/drivers/base.py):
-# `port` (string for serial, int for TCP/UDP/OSC/HTTP) and `baudrate` for serial.
-# Older `com_port`/`baud_rate` are translated by migrate_0_1_to_0_2.
-CONNECTION_FIELDS = {
-    "host", "port", "baudrate", "username", "password",
-    "base_url", "ssl",
-    # Serial line params (match BaseDriver._coerce_serial_params): they live
-    # with the connection alongside `baudrate` so a template deployment swaps
-    # the whole serial config per site instead of leaving some in device.config.
-    "bytesize", "parity", "stopbits", "flow_control",
-    # Bridge binding (v0.6.0): a downstream device routes its bytes through
-    # another device's typed port. `bridge` is the bridge device id,
-    # `bridge_port` the port id it advertises (e.g. "serial:1"). The bridge
-    # resolver (core.device_config) reads these to rewrite the
-    # downstream's effective transport to the bridge's pass-through endpoint.
-    "bridge", "bridge_port",
-    # Local USB-to-serial stable identity: the adapter's USB serial number.
-    # The USB resolver (core.device_config) turns it into the
-    # adapter's live OS port path so a direct serial device survives its port
-    # name moving across reboot / replug.
-    "usb_serial",
-}
 
 
 def migrate_0_1_to_0_2(data: dict) -> dict:

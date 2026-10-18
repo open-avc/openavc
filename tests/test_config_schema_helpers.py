@@ -85,6 +85,8 @@ SCENARIOS = [
     "type_switch_converts_default",
     "type_switch_drops_unconvertible",
     "leaving_enum_drops_values",
+    "leaving_numeric_drops_range",
+    "numeric_switch_keeps_range",
     "type_switch_stringifies",
     "typed_beats_legacy_strings",
     "secret_purges_default",

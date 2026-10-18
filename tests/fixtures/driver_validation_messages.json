@@ -340,6 +340,9 @@
  "commands_not_mapping": [
   "commands: must be a mapping"
  ],
+ "config_learned_from_connection_field": [
+  "Config field 'host': a connection field cannot be learned_from a state variable, because a reported value would change how the device is reached"
+ ],
  "config_learned_from_empty": [
   "Config field 'model': learned_from must name a state variable"
  ],
