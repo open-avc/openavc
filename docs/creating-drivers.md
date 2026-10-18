@@ -998,7 +998,7 @@ polling:
     - { each_child: output, page_size: 16, send: "PAGE? {child_id}\r", query_for: input }  # outputs 1, 17, 33 ...
 ```
 
-A reply that does not say where its list starts (an optional `start` capture that did not match) writes nothing, so one page is never written over another.
+A reply that does not say where its list starts (an optional `start` capture that did not match) writes nothing, so one page is never written over another. The rule that fills a paged query's variable has to take its `start` from the reply or name each item with `id`; one counting from a fixed `start` would write every page onto the first children, and the driver is refused.
 
 ##### Gating a query on a config field (`when:`)
 
@@ -1022,7 +1022,7 @@ on_connect:
 
 ##### Holding a query back on the device's state (`when_state:`, platform 0.37.0)
 
-Some devices wake from standby at any command they receive, so polling them would wake them every interval. `when_state:` sends an entry only while the device's own state variables hold the values you give. On `polling` it holds back the whole poll; on an `on_connect` or `polling.queries` entry it holds back that entry, so a reconnect to a unit in standby leaves it there.
+Some devices wake from standby at any command they receive, so polling them would wake them every interval. `when_state:` sends an entry only while the device's own state variables hold the values you give. On `polling` it holds back the whole poll; on an `on_connect` or `polling.queries` entry it holds back that entry, so a reconnect to a unit in standby leaves it there. An `osc` driver also asks every reply address once its `on_connect` steps have gone; the `polling` gate holds those back as well.
 
 ```yaml
 responses:
@@ -1038,7 +1038,7 @@ polling:
     - { send: "PICTURE?\r", when_state: { power: ["on", "warming"] } }
 ```
 
-Each key is one of the device's state variables (not a child's), with the value it must hold or a list of the values it may hold, and every key must hold. Quote a word YAML reads as a boolean (`"on"`). A variable the device has not reported yet holds nothing back, so the first connect still asks for it. The gate is checked again before each line goes out, so a reply that puts the device in standby stops the rest of that poll. A gated line waits for a command sent just before it and its `inter_command_delay`, so set `inter_command_delay` to give the device time to answer the command that puts it in standby.
+Each key is one of the device's state variables (not a child's), with the value it must hold or a list of the values it may hold, and every key must hold. Quote a word YAML reads as a boolean (`"on"`). An empty value is refused: give the value the device reports. A variable the device has not reported yet holds nothing back, so the first connect still asks for it. The gate is checked again before each line goes out, so a reply that puts the device in standby stops the rest of that poll. A gated line waits for a command sent just before it and its `inter_command_delay`, so set `inter_command_delay` to give the device time to answer the command that puts it in standby.
 
 A response rule has to set the variable back when the device leaves the state, because a command's `sets:` is never applied at runtime: read the reply to the wake command, or the notice the device sends. While a poll is held nothing is sent, so the device stays connected, and nothing notices a unit that is switched off or unplugged in the meantime. Say so in the help of the command that puts the device in that state.
 

@@ -891,7 +891,10 @@ class ConfigurableDriver(BaseDriver):
                 # OSC convention: sending an address with no args returns the
                 # current value. This populates state immediately on connect.
                 # With no inter_command_delay, 5 ms apart; with one, the
-                # transport's own wait spaces them.
+                # transport's own wait spaces them. It is a poll in all but
+                # name, so polling.when_state holds it back too: any message
+                # wakes a unit that a reconnect finds in standby.
+                polling = self._definition.get("polling") or {}
                 for addr_pattern, *_rest in self._osc_responses:
                     # A response address with fnmatch wildcards (e.g. QLab's
                     # push-only "/update/workspace/*/...") is a match pattern,
@@ -900,6 +903,8 @@ class ConfigurableDriver(BaseDriver):
                     # on_connect/poll query instead.
                     if any(c in addr_pattern for c in "*?["):
                         continue
+                    if await self._line_gate_shut(polling, None):
+                        break
                     try:
                         addr = self._safe_substitute(addr_pattern, self.config) if "{" in addr_pattern else addr_pattern
                         await self.transport.send(osc_encode_message(addr))
@@ -1075,6 +1080,30 @@ class ConfigurableDriver(BaseDriver):
                 return False
         return True
 
+    def _describe_state_gate(self, gate: dict[str, Any]) -> tuple[str, str]:
+        """A shut ``when_state`` gate in words, as the Driver Builder shows
+        it: what it waits for ("Standby is false"), and what the device
+        reports now for each variable that holds it shut ("Standby true")."""
+        declared = self._definition.get("state_variables") or {}
+
+        def label(var: str) -> str:
+            var_def = declared.get(var)
+            return (var_def.get("label") if isinstance(var_def, dict) else None) or var
+
+        def word(value: Any) -> str:
+            if isinstance(value, bool):
+                return "true" if value else "false"
+            return str(value)
+
+        wanted: list[str] = []
+        reported: list[str] = []
+        for var, values in gate.items():
+            values = values if isinstance(values, list) else [values]
+            wanted.append(f"{label(var)} is {' or '.join(word(v) for v in values)}")
+            if not self._state_gate_open({var: values}):
+                reported.append(f"{label(var)} {word(self.get_state(var))}")
+        return " and ".join(wanted), ", ".join(reported)
+
     def _poll_gate_shut(self, polling: dict[str, Any]) -> bool:
         """Whether ``polling.when_state`` holds the poll back now. Says so in
         the log once when the poll pauses and once when it resumes."""
@@ -1082,9 +1111,10 @@ class ConfigurableDriver(BaseDriver):
         if held != self._poll_held:
             self._poll_held = held
             if held:
+                wanted, reported = self._describe_state_gate(polling.get("when_state"))
                 log.info(
-                    f"[{self.device_id}] Polling paused: the device state is "
-                    f"outside {polling.get('when_state')!r}"
+                    f"[{self.device_id}] Polling paused: it polls only while "
+                    f"{wanted}, and the device reports {reported}"
                 )
             else:
                 log.info(f"[{self.device_id}] Polling resumed")

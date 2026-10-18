@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Plus, X } from "lucide-react";
 import type { DriverDefinition, DriverWhenState } from "../../api/types";
 import {
+  firstGateEntry,
   firstGateValue,
   gateValue,
   parseGateValues,
@@ -44,7 +45,10 @@ function GateTextInput({
       onChange={(e) => {
         setText(e.target.value);
         const picked = parseGateValues(e.target.value, variable.type);
+        // A cleared box is stored empty, so a save names the condition
+        // instead of keeping the value the box no longer shows.
         if (picked.length) onCommit(picked);
+        else if (!e.target.value.trim()) onCommit([""]);
       }}
       placeholder={numeric ? "e.g., 0, 2" : "e.g., on"}
       aria-label={`Values of ${variable.name}`}
@@ -83,9 +87,9 @@ export function WhenStateEditor({ draft, gate, onChange, lead }: WhenStateEditor
   };
 
   const add = () => {
-    const v = variables.find((x) => !used.has(x.name));
-    if (!v) return;
-    commit([...entries, [v.name, firstGateValue(v)]]);
+    const first = firstGateEntry(variables, used);
+    if (!first) return;
+    commit([...entries, first]);
   };
 
   const remove = (index: number) => commit(entries.filter((_, i) => i !== index));

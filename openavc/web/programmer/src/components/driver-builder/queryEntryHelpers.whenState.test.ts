@@ -3,6 +3,7 @@ import type { DriverDefinition } from "../../api/types";
 import {
   buildQueryEntry,
   carryQueryExtras,
+  firstGateEntry,
   firstGateValue,
   gateValue,
   parseGateValues,
@@ -82,5 +83,22 @@ describe("gate values", () => {
     ]);
     expect(firstGateValue(vars[0])).toBe(false);
     expect(firstGateValue(vars[1])).toBe("on");
+  });
+
+  it("starts a new condition on a variable with a value to show, not on text", () => {
+    const draft = {
+      state_variables: {
+        input_name: { type: "string", label: "Input Name" },
+        mode: { type: "integer", label: "Mode" },
+        standby: { type: "boolean", label: "Standby" },
+      },
+    } as unknown as DriverDefinition;
+    const vars = stateGateVariables(draft);
+    expect(firstGateEntry(vars)).toEqual(["standby", false]);
+    expect(firstGateEntry(vars, new Set(["standby"]))).toEqual(["mode", 0]);
+    // Text only: the condition starts empty, which a save refuses until a
+    // value is typed.
+    expect(firstGateEntry(vars, new Set(["standby", "mode"]))).toEqual(["input_name", ""]);
+    expect(firstGateEntry(vars, new Set(["standby", "mode", "input_name"]))).toBeUndefined();
   });
 });

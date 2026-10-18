@@ -248,6 +248,27 @@ export function firstGateValue(v: StateGateVariable): string | number | boolean 
   return "";
 }
 
+/** The variable and value a new condition starts on: one whose starting value
+ *  the editor shows (a boolean, then an enum, then a number) before a text
+ *  variable, whose empty box reads as no condition while it would hold the
+ *  entry back whenever the device reports any text. Skips `used` names;
+ *  undefined when none is left. */
+export function firstGateEntry(
+  variables: StateGateVariable[],
+  used: ReadonlySet<string> = new Set(),
+): [string, string | number | boolean] | undefined {
+  const rank = (v: StateGateVariable) => {
+    if (v.type === "boolean") return 0;
+    if (v.type === "enum" && v.values.length) return 1;
+    if (v.type === "integer" || v.type === "number" || v.type === "float") return 2;
+    return 3;
+  };
+  const open = variables.filter((v) => !used.has(v.name));
+  if (!open.length) return undefined;
+  const pick = open.reduce((best, v) => (rank(v) < rank(best) ? v : best));
+  return [pick.name, firstGateValue(pick)];
+}
+
 /** The value a gate stores for what was picked: one value as itself, several
  *  as a list. */
 export function gateValue(

@@ -251,7 +251,9 @@ def _when_state_errors(
     The gate reads the device's own state at runtime; a name that is not a
     device-level variable never holds a value, so the entry would run as if
     ungated forever, and a value the variable can never take shuts it for
-    good. Both are refused here, where the author can see them.
+    good. Both are refused here, where the author can see them. So is empty
+    text: a condition left blank reads as none, but it shuts the gate
+    whenever the device reports any text at all.
     """
     if not isinstance(gate, dict) or not gate:
         return [
@@ -296,7 +298,12 @@ def _when_state_errors(
                 if not isinstance(v, dict) or "value" in v
             ]
         for value in values:
-            if vtype == "boolean":
+            if isinstance(value, str) and not value.strip():
+                errors.append(
+                    f"{where}: when_state.{var} has no value. Type the value "
+                    f"the device reports, or remove the condition"
+                )
+            elif vtype == "boolean":
                 if not isinstance(value, bool):
                     errors.append(
                         f"{where}: when_state.{var} is a boolean; write true "
@@ -2637,11 +2644,27 @@ def validate_driver_definition(
     # (child type, variable) pairs a child_list rule fills: what a list read
     # (a plain query naming <type>.<var>, or a paged per-child query) reports.
     list_filled: set[tuple[str, str]] = set()
+    # Of those, the pairs some rule can place a page of: it names each item
+    # (`id`) or takes its start from the reply (`start: $N`). A rule counting
+    # from a fixed start writes every page onto the same first children.
+    list_paged: set[tuple[str, str]] = set()
+    # Child type -> whether any of its child_list rules can place a page, for
+    # a paged query that does not say which variable it reads.
+    list_types_paged: dict[Any, bool] = {}
     for resp in responses:
         spec = resp.get("child_list") if isinstance(resp, dict) else None
         if isinstance(spec, dict) and isinstance(spec.get("state"), dict):
+            start = spec.get("start")
+            places_a_page = "id" in spec or (
+                isinstance(start, str) and start.startswith("$")
+            )
+            list_types_paged[spec.get("type")] = (
+                list_types_paged.get(spec.get("type"), False) or places_a_page
+            )
             for prop in spec["state"]:
                 list_filled.add((spec.get("type"), prop))
+                if places_a_page:
+                    list_paged.add((spec.get("type"), prop))
 
     def _validate_each_child(name: str, entries: Any, allow_osc_dict: bool) -> None:
         errors.ctx = name
@@ -2708,6 +2731,14 @@ def validate_driver_definition(
                             f"{name}[{i}]: a paged query reads a list, and no "
                             f"child_list rule fills '{qf}' on {_ec!r}"
                         )
+                    elif "page_size" in q and (_ec, qf) not in list_paged:
+                        errors.append(
+                            f"{name}[{i}]: every page of this paged query "
+                            f"would land on the same children of {_ec!r}: the "
+                            f"child_list rule that fills '{qf}' counts from a "
+                            f"fixed start. Take the start from the reply "
+                            f"(start: $2) or name each item (id: $1)"
+                        )
                 elif "." in qf:
                     # <child type>.<variable>: a list read sent once whose
                     # reply a child_list rule spreads across every child.
@@ -2767,6 +2798,17 @@ def validate_driver_definition(
                     errors.append(
                         f"{name}[{i}]: page_size must be a whole number, 2 or "
                         f"more (how many children one reply covers)"
+                    )
+                elif (
+                    "query_for" not in q
+                    and list_types_paged.get(q.get("each_child")) is False
+                ):
+                    errors.append(
+                        f"{name}[{i}]: every page of this paged query would "
+                        f"land on the same children of {q.get('each_child')!r}: "
+                        f"its child_list rules count from a fixed start. Take "
+                        f"the start from the reply (start: $2) or name each "
+                        f"item (id: $1)"
                     )
             if "each_child" not in q:
                 if allow_osc_dict and "address" in q:

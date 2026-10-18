@@ -69,7 +69,10 @@ export const STEP_TYPES: StepTypeInfo[] = [
     label: "Set Variable or Control",
     description: "Set a project variable, or change a control's label, colour or visibility",
     color: "#10b981",
-    summary: (step) => `${step.key ?? "?"} = ${quotedValueText(step.value ?? "")}`,
+    summary: (step) =>
+      step.value === null && (step.key ?? "").startsWith("ui.")
+        ? `${step.key} cleared`
+        : `${step.key ?? "?"} = ${quotedValueText(step.value ?? "")}`,
     defaults: () => ({ action: "state.set", key: "", value: "" }),
   },
   {
