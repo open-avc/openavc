@@ -353,9 +353,10 @@ function applyConnMode(
     delete v.usb_serial;
     v.transport = primaryNetworkTransport(d);
     if (v.host == null) v.host = "";
-    // A COM path left in `port` is meaningless as a TCP port → reset to the
-    // driver's default network port.
-    if (v.port && /[A-Za-z]/.test(v.port)) {
+    // A COM path left in `port` is meaningless as a TCP port, and a port that
+    // Direct serial cleared is blank → reset to the driver's default network
+    // port.
+    if (!v.port || /[A-Za-z]/.test(v.port)) {
       const dp = d?.default_config?.port;
       v.port = dp != null ? String(dp) : "";
     }
@@ -1129,8 +1130,16 @@ export function AddDeviceDialog({
               setSelectedDriver(newDriverId);
               const newDriver = drivers.find((d) => d.id === newDriverId);
               setConfigOriginals(newDriver?.default_config ?? {});
+              const seeded = prefillConfigValues(newDriver?.default_config, newDriver?.config_schema);
+              // A driver whose own transport is serial but which also connects
+              // over the network opens on Network (IP) (inferConnMode). Saved
+              // without its network transport, it would open a serial port
+              // named after the TCP port.
+              const opensOnTheNetworkOverItsOwn =
+                (newDriver?.transport || "").toLowerCase() === "serial" &&
+                inferConnMode(seeded, newDriver) === "network";
               setConfigValues(
-                prefillConfigValues(newDriver?.default_config, newDriver?.config_schema),
+                opensOnTheNetworkOverItsOwn ? applyConnMode(seeded, "network", newDriver) : seeded,
               );
               if (newDriver) {
                 const generated = generateDeviceDefaults(newDriver, devices ?? []);
