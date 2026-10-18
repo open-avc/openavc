@@ -459,6 +459,56 @@ async def test_a_new_connection_starts_with_no_history():
     await drv.disconnect()
 
 
+@pytest.mark.asyncio
+async def test_a_first_poll_of_only_a_page_the_account_may_not_read_stays_connected():
+    """Start-up reads the status page, so the first poll skips it and sends
+    only a page this account may not read. Its refusal is the account's
+    scope, not the password: the device stays connected."""
+    device = _AcmeHTTPDevice({"/outputs": 403})
+    drv = _make_driver(
+        {
+            **_ACME_WIDGET_DEF,
+            "on_connect": ["get_status"],
+            "polling": {"queries": ["get_status", "/outputs"]},
+        },
+        config={"poll_interval": 5},
+    )
+    await _connect(drv, device)
+    try:
+        await asyncio.sleep(0.5)  # the first poll runs at once
+        assert device.requested == ["/status", "/outputs"]
+        assert drv.last_fault is None, drv.last_fault.code
+        assert drv.get_state("connected") is True
+    finally:
+        await drv.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_a_held_query_leaves_a_page_the_account_may_not_read_to_the_account():
+    """The same when the readable page is held back by its state condition:
+    a cycle that sends only the page the account may not read is not a
+    refused password."""
+    device = _AcmeHTTPDevice({"/outputs": 403})
+    drv = _make_driver(
+        {
+            **_ACME_WIDGET_DEF,
+            "state_variables": {"power": {"type": "string", "label": "Power"}},
+            "on_connect": ["get_status"],
+            "polling": {"queries": [
+                {"send": "get_status", "when_state": {"power": "on"}},
+                "/outputs",
+            ]},
+        },
+        config={"poll_interval": 0},
+    )
+    await _connect(drv, device)
+    drv.set_state("power", "off")  # the device reported it: /status is held
+    await drv.poll()  # must NOT raise: /status answered at start-up
+    await drv.poll()
+    assert device.requested == ["/status", "/outputs", "/outputs"]
+    await drv.disconnect()
+
+
 # ===========================================================================
 # value-map result is coerced (type parity + flat-primitive guard)
 # ===========================================================================
