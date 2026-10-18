@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 import pytest
 from starlette.responses import StreamingResponse
 
+from openavc.api import plugin_ext
 from openavc.api.host_policy import HostPolicyMiddleware, configure_policy, validate_policies
 from openavc.api.plugin_ext import (
     mint_panel_token, mint_plugin_token, mount_plugin_guest_router,
@@ -80,10 +81,13 @@ def test_plugin_scope_and_guest_alias_keep_distinct_authority(product):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("surface", ["ext", "guest", "alias"])
-async def test_stopped_plugin_stream_cannot_inherit_replacement_registration(product, surface):
+async def test_stopped_plugin_stream_cannot_inherit_replacement_registration(
+    product, surface, isolated_auth_config,
+):
     app, host = product
     router, replacement = APIRouter(), APIRouter()
     started, closed = asyncio.Event(), asyncio.Event()
+    continue_stream, continued = asyncio.Event(), asyncio.Event()
 
     @router.get("/view")
     async def stream():
@@ -91,6 +95,9 @@ async def test_stopped_plugin_stream_cannot_inherit_replacement_registration(pro
             try:
                 yield b"old registration"
                 started.set()
+                await continue_stream.wait()
+                yield b"same panel or guest authority"
+                continued.set()
                 await asyncio.Event().wait()
             finally:
                 closed.set()
@@ -126,6 +133,10 @@ async def test_stopped_plugin_stream_cannot_inherit_replacement_registration(pro
     task = asyncio.create_task(app(scope, receive, send))
     try:
         await asyncio.wait_for(started.wait(), 1)
+        isolated_auth_config.set("auth", "programmer_password", "changed-disposable-password")
+        continue_stream.set()
+        await asyncio.wait_for(continued.wait(), 1)
+        assert not closed.is_set()
         if surface == "ext":
             unmount_plugin_router(app, "policy_example")
         else:
@@ -133,6 +144,66 @@ async def test_stopped_plugin_stream_cannot_inherit_replacement_registration(pro
         mount(replacement)
         await asyncio.wait_for(closed.wait(), 1)
         await asyncio.wait_for(task, 1)
+        assert sent[-1] == {"type": "http.response.body", "body": b"", "more_body": False}
+        assert (await host.apply_current(timeout=0)).observed
+    finally:
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("credential,change", [
+    ("programmer", "password"), ("programmer", "expiry"), ("panel", "expiry"),
+])
+async def test_plugin_stream_closes_when_its_credential_stops_authorizing(
+    product, isolated_auth_config, monkeypatch, credential, change,
+):
+    app, host = product
+    router = APIRouter()
+    started, closed = asyncio.Event(), asyncio.Event()
+    clock = [2_000_000_000]
+    monkeypatch.setattr(plugin_ext.time, "time", lambda: clock[0])
+
+    @router.get("/view")
+    async def stream():
+        async def chunks():
+            try:
+                yield b"authorized stream"
+                started.set()
+                await asyncio.Event().wait()
+            finally:
+                closed.set()
+        return StreamingResponse(chunks())
+
+    mount_plugin_router(app, "policy_example", router,
+                        panel_paths=["GET /view"] if credential == "panel" else [])
+    mint = mint_panel_token if credential == "panel" else mint_plugin_token
+    token, expiry = mint("policy_example", ttl=60)
+    path = "/api/plugins/policy_example/ext/view"
+    scope = {"type": "http", "asgi": {"version": "3.0", "spec_version": "2.4"},
+             "method": "GET", "path": path, "raw_path": path.encode(), "query_string": b"",
+             "root_path": "", "scheme": "http", "http_version": "1.1",
+             "headers": [(b"x-openavc-plugin-token", token.encode())],
+             "server": ("test", 80), "client": ("127.0.0.1", 12345)}
+    sent = []
+
+    async def receive():
+        await asyncio.Event().wait()
+
+    async def send(message):
+        sent.append(message)
+
+    task = asyncio.create_task(app(scope, receive, send))
+    try:
+        await asyncio.wait_for(started.wait(), 1)
+        if change == "password":
+            isolated_auth_config.set("auth", "programmer_password", "changed-disposable-password")
+        else:
+            clock[0] = expiry + 1
+        await asyncio.wait_for(closed.wait(), 1)
+        await asyncio.wait_for(task, 1)
+        assert sent[0]["status"] == 200
         assert sent[-1] == {"type": "http.response.body", "body": b"", "more_body": False}
         assert (await host.apply_current(timeout=0)).observed
     finally:

@@ -45,7 +45,9 @@ from fastapi.security import HTTPBasicCredentials
 
 from openavc.api import auth as _auth
 from openavc.api.auth import programmer_auth_satisfied
-from openavc.api.host_policy import EndpointPolicy, application_policy, include_policy_router
+from openavc.api.host_policy import (
+    EndpointPolicy, application_policy, bind_request_authority, include_policy_router,
+)
 from openavc.core.host_policy import HostCategory, HostPolicyDenied
 from openavc.middleware import rate_limit as _rate_limit
 from openavc.utils.logger import get_logger
@@ -349,6 +351,20 @@ def _ext_path_suffix(plugin_id: str, full_path: str) -> str:
     return suffix or "/"
 
 
+def _plugin_access_category(request: Request, credentials, plugin_id: str) -> HostCategory | None:
+    """Return the authenticated scope using the same rules at every check."""
+    if programmer_auth_satisfied(request, credentials):
+        return HostCategory.PROGRAMMER
+    token = request.headers.get(PLUGIN_TOKEN_HEADER) or request.query_params.get(PLUGIN_TOKEN_QUERY, "")
+    if token and verify_plugin_token(token, plugin_id):
+        return HostCategory.PROGRAMMER
+    if (token and verify_panel_token(token, plugin_id)
+            and panel_path_allowed(plugin_id, request.method,
+                                   _ext_path_suffix(plugin_id, request.url.path))):
+        return HostCategory.PANEL
+    return None
+
+
 def require_plugin_access(plugin_id: str):
     """Build a FastAPI dependency guarding one plugin's ``/ext/*`` routes."""
 
@@ -356,23 +372,7 @@ def require_plugin_access(plugin_id: str):
         request: Request,
         credentials: HTTPBasicCredentials | None = Depends(_basic),
     ) -> None:
-        if programmer_auth_satisfied(request, credentials):
-            return
-        token = request.headers.get(PLUGIN_TOKEN_HEADER) or request.query_params.get(
-            PLUGIN_TOKEN_QUERY, ""
-        )
-        if token and verify_plugin_token(token, plugin_id):
-            return
-        # Panel token: only for routes the plugin declared panel-reachable.
-        if (
-            token
-            and verify_panel_token(token, plugin_id)
-            and panel_path_allowed(
-                plugin_id,
-                request.method,
-                _ext_path_suffix(plugin_id, request.url.path),
-            )
-        ):
+        if _plugin_access_category(request, credentials, plugin_id) is not None:
             return
         # No WWW-Authenticate challenge: the only browser-usable auth here is the
         # injected token, not HTTP Basic, so advertising a Basic challenge would
@@ -394,17 +394,21 @@ def _plugin_host_policy(plugin_id: str, generation: object) -> EndpointPolicy:
     guard = require_plugin_access(plugin_id)
 
     async def authenticate(request):
-        await guard(request, credentials=_auth.basic_credentials(request))
+        credentials = _auth.basic_credentials(request)
+        await guard(request, credentials=credentials)
+        admitted = _plugin_access_category(request, credentials, plugin_id)
+        bind_request_authority(
+            request, lambda: _plugin_access_category(request, credentials, plugin_id) == admitted,
+        )
 
     def category(scope):
         if _interface_generations.get(("ext", plugin_id)) is not generation:
             raise HostPolicyDenied("This plugin registration has stopped")
         request = Request(scope)
-        if programmer_auth_satisfied(request, _auth.basic_credentials(request)):
-            return HostCategory.PROGRAMMER
+        authorized = _plugin_access_category(request, _auth.basic_credentials(request), plugin_id)
+        if authorized is not None:
+            return authorized
         token = request.headers.get(PLUGIN_TOKEN_HEADER) or request.query_params.get(PLUGIN_TOKEN_QUERY, "")
-        if token and verify_plugin_token(token, plugin_id):
-            return HostCategory.PROGRAMMER
         panel_path = panel_path_allowed(plugin_id, request.method, _ext_path_suffix(plugin_id, request.url.path))
         if token and verify_panel_token(token, plugin_id):
             if panel_path or not application_policy(scope).snapshot().panel_enabled:

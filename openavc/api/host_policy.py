@@ -76,6 +76,17 @@ def request_admission(request: Request) -> AdmissionLease:
     return lease
 
 
+def bind_request_authority(request: Request, check: Callable[[], bool]) -> None:
+    """Keep authenticated authority current through response/commit admission.
+
+    Standalone router consumers without the host middleware still perform their
+    ordinary authentication; only the canonical host owns connection accounting.
+    """
+    lease = request.scope.get(_ADMISSION)
+    if isinstance(lease, AdmissionLease):
+        lease.require_current(check)
+
+
 async def _denied(scope: Scope, receive: Receive, send: Send) -> None:
     await JSONResponse(
         {"detail": "This interface is disabled by the product settings."},

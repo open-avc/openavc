@@ -76,6 +76,7 @@ class AdmissionLease:
         self.principal = principal
         self.origin = origin
         self._is_current = is_current
+        self._authority_checks: list[Callable[[], bool]] = []
         self.revoked = asyncio.Event()
         self.closed = False
 
@@ -88,13 +89,24 @@ class AdmissionLease:
 
     def _check_snapshot(self, current: PolicySnapshot) -> None:
         valid = True
+        checks = self._authority_checks
         if self._is_current is not None:
+            checks = [self._is_current, *checks]
+        for check in checks:
             try:
-                valid = self._is_current() is True
+                valid = check() is True
             except HostPolicyDenied:
                 valid = False
+            if not valid:
+                break
         if not current.allows(self.category) or not valid:
             self.revoked.set()
+
+    def require_current(self, check: Callable[[], bool]) -> None:
+        """Retain an adapter's authority check after it authenticates the caller."""
+        self._authority_checks.append(check)
+        if not self.revalidate():
+            raise HostPolicyDenied("The authenticated authority is no longer available")
 
     def refresh(self) -> PolicySnapshot:
         """Poll this connection without rescanning every other connection."""

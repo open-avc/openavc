@@ -57,6 +57,17 @@ def test_queued_admission_cannot_commit_after_its_registered_owner_changes():
     lease.close()
 
 
+def test_authentication_guard_can_bind_authority_before_queued_commit():
+    policy = MutableHost()
+    authority = {"valid": True}
+    lease = policy.admit(HostCategory.PROGRAMMER)
+    lease.require_current(lambda: authority["valid"])
+    authority["valid"] = False
+    with pytest.raises(HostPolicyDenied):
+        lease.begin_commit()
+    lease.close()
+
+
 def test_unknown_or_invalid_state_cannot_enable_optional_interfaces():
     policy = MutableHost()
     policy.current = PolicySnapshot(None, False, False)
