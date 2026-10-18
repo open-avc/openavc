@@ -2456,7 +2456,10 @@ class DeviceManager:
         # From the adapter the connect itself will use (Reach devices through).
         from openavc.transport.endpoint import control_bind_address
 
-        bind = control_bind_address(host)
+        try:
+            bind = control_bind_address(host)
+        except ConnectionFaultError as exc:
+            return exc
         try:
             _, writer = await asyncio.wait_for(
                 asyncio.open_connection(

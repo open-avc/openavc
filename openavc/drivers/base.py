@@ -1457,7 +1457,10 @@ class BaseDriver(ABC):
         ``host`` defaults to this device's host; pass another when the
         driver also talks to a second address. None when no adapter is
         chosen, and for a host on this computer (a simulator, a local
-        service), which a socket bound to an adapter cannot reach.
+        service), which a socket bound to an adapter cannot reach. Raises
+        :class:`ConnectionFaultError` (``unreachable``) while the chosen
+        adapter has no address at all: let it fail the connect, and the
+        device card says which adapter and where to change it.
         """
         from openavc.transport.endpoint import control_bind_address
 

@@ -789,6 +789,12 @@ class DiscoveryEngine:
                 log.info("Reach devices through %s: scanning that adapter's subnets only", control_ip)
             else:
                 log.info("Reach devices through every connected adapter: scanning every adapter that has a link")
+            if not control_ip and not ignore_control_interface:
+                from openavc import reach_devices
+
+                unusable = reach_devices.unusable_choice()
+                if unusable is not None:
+                    raise ValueError(reach_devices.no_address_sentence(unusable.adapter_name))
             targets = subnets if subnets else get_local_subnets(
                 interface_ip=control_ip or None
             )

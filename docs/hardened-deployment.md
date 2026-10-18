@@ -218,7 +218,7 @@ Behind a proxy every panel needs approval, including a browser on the OpenAVC ma
 A machine with one adapter on the AV network and another on the campus network is the usual arrangement. In Settings > Network:
 
 - **Accept connections from:** choose the AV adapter. Panels and browsers on the AV network can open the panel and the Programmer, and nothing on the campus network can reach the sign-in page. The machine's own screen, the tray or menu bar app, and remote access through OpenAVC Cloud keep working. If the Programmer is also used from the management network, leave this at **Any network** and allow only the AV and management networks with the firewall rules above.
-- **Reach devices through:** choose the AV adapter. Device connections and discovery scans then use that adapter only.
+- **Reach devices through:** choose the AV adapter. Device connections and discovery scans then use that adapter only. While it has no address at all (unplugged before it ever had one), they are refused, and say so, rather than sent through another network.
 - **Advertise on the network** announces only where Accept connections from allows, and not at all for This computer only. Turn it off unless the Panel app's list of systems is used.
 
 Both choices name the adapter, not its address, so a new address from DHCP is followed. If the chosen adapter is unplugged or has no address when OpenAVC starts, OpenAVC accepts connections from this computer only, says so on the Dashboard and in Settings, and listens on the adapter again when it comes back.

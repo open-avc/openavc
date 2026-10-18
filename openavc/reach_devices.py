@@ -333,6 +333,35 @@ def pinned_is_kept() -> bool:
     )
 
 
+def unusable_choice() -> Resolved | None:
+    """The chosen adapter, resolved, when device traffic has nowhere to leave
+    from: an adapter is chosen, it holds no address now and none it held is
+    kept. None otherwise (every adapter, an address, an adapter with one).
+
+    A connection, a discovery scan or an audit's network check is then
+    refused (:func:`no_address_sentence`), never sent unbound, which would let
+    the operating system route it through another adapter. A device at a
+    169.254 address can still be reached from the adapter's own 169.254
+    address (``transport/endpoint.py``)."""
+    if not is_chosen():
+        return None
+    resolved = pinned()
+    if resolved is None or resolved.address:
+        return None
+    return resolved
+
+
+def no_address_sentence(adapter_name: str) -> str:
+    """What a refused connection, scan or audit says, for the person at the
+    Programmer: the adapter, and where to change it."""
+    name = (adapter_name or "").strip()
+    who = f"{name}, chosen" if name else "The adapter chosen"
+    return (
+        f"{who} in Settings > Network > Reach devices through, has no address. "
+        "Connect it, or choose another adapter (or Every connected adapter) there."
+    )
+
+
 def missing_link_local(host: Any) -> Resolved | None:
     """The choice, when ``host`` is a 169.254 address and the chosen adapter,
     connected, holds no 169.254 address to reach it from; otherwise None
