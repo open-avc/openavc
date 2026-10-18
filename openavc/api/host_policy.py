@@ -1,4 +1,25 @@
-"""Explicit interface policy registration and HTTP/WebSocket lifetimes."""
+"""Explicit interface policy registration and HTTP/WebSocket lifetimes.
+
+The canonical application installs HostPolicyMiddleware once. Hosts configure
+their provider through ``openavc.main.configure_host_policy(provider)`` before
+starting the application. Replacing it after lifespan starts is refused.
+
+An APIRouter selects a PolicyRoute subclass for its default category and named
+early authentication; endpoint_policy declares exceptions. PolicyMount declares
+mounted applications. WebSocket authentication stays with the endpoint. Dynamic
+plugin routers use include_policy_router, which preserves their public FastAPI
+schema/dependencies and binds authority to the platform's registration.
+
+The middleware owns complete response/socket lifetimes. Route guards authenticate
+before FastAPI consumes a body. bind_request_authority can retain a successful
+canonical credential check for streams and queued work. request_admission returns
+the connection's lease; a durable operation must retain its separate commit lease
+until its owner knows the outcome. HTTP completion is not a durability receipt.
+
+Slash redirects use the target's declared policy; unknown operational routes are
+refused. Disabled interfaces return non-cacheable 403 HTML/JSON or a WebSocket
+4013 close. This supplements authentication and never grants it.
+"""
 from __future__ import annotations
 
 import asyncio
