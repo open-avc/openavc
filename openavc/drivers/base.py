@@ -1301,7 +1301,10 @@ class BaseDriver(ABC):
                 self._connect_attempt is not attempt
                 and not isinstance(exc, asyncio.CancelledError)
             ):
+                # The disconnect that ended this connect found neither to
+                # close: a driver that owns its session built it here too.
                 await self._close_transport_quietly()
+                await self._close_session_quietly()
                 if isinstance(exc, ConnectEndedError):
                     raise
                 raise ConnectEndedError(
