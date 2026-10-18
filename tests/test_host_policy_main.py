@@ -12,12 +12,26 @@ import sys
 def test_main_routes_and_startup_responses_obey_host_policy(tmp_path):
     code = r'''
 import asyncio
+import socket
 import sys
 
+# Windows implements asyncio's local wake-up socket pair with loopback TCP.
+# Permit only the stdlib socketpair frame, never arbitrary loopback I/O.
+socketpair_code = getattr(socket.socketpair, '__code__', None)
 def audit(event, args):
+    if event in {'socket.connect', 'socket.bind'} and sys._getframe(1).f_code is socketpair_code:
+        return
     if event in {"socket.connect", "socket.bind", "socket.sendto", "subprocess.Popen", "os.system"}:
         raise RuntimeError("External I/O is forbidden in this route fixture: " + event)
 sys.addaudithook(audit)
+
+with socket.socket() as forbidden:
+    try:
+        forbidden.bind(('127.0.0.1', 0))
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError('Arbitrary loopback I/O was allowed')
 
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
