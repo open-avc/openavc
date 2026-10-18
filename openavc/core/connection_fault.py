@@ -395,7 +395,11 @@ def typed_fault_from_exc(
 _HOST_KEY_SIGS = (
     "host key verification failed",
     "remote host identification has changed",
-    "host key for",  # "Host key for <host> has changed"
+    # "Host key for <host> has changed and you have requested strict checking."
+    # Not "host key for" alone: a client before OpenSSH 8.5 also logs "the
+    # ECDSA host key for IP address ..." when a device reached by name moves
+    # to a new address, and the session goes on.
+    "has changed and you have requested strict checking",
     "key verification failed",
 )
 

@@ -27,6 +27,7 @@ import pytest
 
 from openavc.core.connection_fault import (
     CONNECTION_REFUSED,
+    HOST_KEY_REJECTED,
     TRANSPORT_DISCONNECTED,
     classify_connection_fault,
 )
@@ -86,6 +87,22 @@ _CLIENT = textwrap.dedent(
         log(f"Unable to negotiate with {host} port {port}: no matching key "
             "exchange method found. Their offer: diffie-hellman-group1-sha1")
         sys.exit(255)
+    if greeting == "SSH-2.0-AcmeChangedKey":
+        log("@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @")
+        log(f"Host key for {host} has changed and you have requested strict checking.")
+        log("Host key verification failed.")
+        sys.exit(255)
+    # A client before OpenSSH 8.5 checks the host's address as well as its
+    # name (CheckHostIP) and says so at INFO when the address is new to it or
+    # holds another device's key. The session itself goes on.
+    if greeting == "SSH-2.0-AcmeNewAddress":
+        log(f"Warning: Permanently added the ECDSA host key for IP address '{host}' "
+            "to the list of known hosts.")
+    if greeting == "SSH-2.0-AcmeReusedAddress":
+        log(f"Warning: the ECDSA host key for 'acme-widget.local' differs from the key "
+            f"for the IP address '{host}'")
+        log("Offending key for IP in /home/acme/.openavc/known_hosts:2")
+        log("Matching host key in /home/acme/.openavc/known_hosts:1")
     if level >= RANKS["INFO"]:
         sys.stderr.write("BANNER\\n")
         sys.stderr.flush()
@@ -193,6 +210,39 @@ async def test_the_devices_banner_is_never_read_as_the_reason(
         assert _classify(transport, port).code == TRANSPORT_DISCONNECTED
     finally:
         await transport.close()
+
+
+@pytest.mark.parametrize("greeting", [b"SSH-2.0-AcmeNewAddress", b"SSH-2.0-AcmeReusedAddress"])
+async def test_an_older_clients_address_warning_is_not_a_rejected_host_key(
+    stand_in, tmp_path, greeter, greeting,
+):
+    # A device reached by name that DHCP moved: the session opened and later
+    # timed out. A rejected host key stops the retries for good, so reading
+    # the address warning that way would leave the device offline.
+    port = await greeter(greeting)
+    transport = await _drop(port, tmp_path)
+    try:
+        assert "host key for" in transport.last_error
+        assert _classify(transport, port).code == TRANSPORT_DISCONNECTED
+    finally:
+        await transport.close()
+
+
+async def test_a_changed_host_key_is_still_rejected(stand_in, tmp_path, greeter):
+    port = await greeter(b"SSH-2.0-AcmeChangedKey")
+    transport = await _drop(port, tmp_path)
+    try:
+        assert _classify(transport, port).code == HOST_KEY_REJECTED
+    finally:
+        await transport.close()
+
+
+def test_the_strict_checking_line_alone_still_reads_as_a_changed_key():
+    fault = classify_connection_fault(
+        last_error="Host key for acme-widget.local has changed and you have requested strict checking.",
+        exc=None, host="acme-widget.local", port=22, transport="ssh",
+    )
+    assert fault.code == HOST_KEY_REJECTED
 
 
 async def test_the_log_file_is_removed_when_the_session_closes(
