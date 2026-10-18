@@ -391,9 +391,10 @@ _EVENT_SUFFIX = MappingProxyType({
     "device.error": _rule({"device_id": _text}, {"error": _text, "source": _text}),
     **{f"ui.{name}": _rule({
         "element_id": _text, "value": _primitive, "input": _primitive,
-        "output": _primitive, "audio": _bool,
+        "output": _primitive, "audio": _bool, "mute": _bool,
     }) for name in ("press", "release", "hold", "change", "submit", "select",
-                   "toggle_off", "route", "page")},
+                   "toggle_off", "route", "audio_route", "mute_route",
+                   "audio_mute_route", "page")},
 })
 
 

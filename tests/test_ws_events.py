@@ -123,6 +123,31 @@ async def _emit_and_deliver(engine, event: str, payload: dict | None = None) -> 
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("stream", ["panel", "programmer"], indirect=True)
+async def test_matrix_socket_interactions_reach_event_subscribers(stream, request):
+    from openavc.core.ui_events import UIEventRuntime
+
+    engine, ws = stream
+    kind = request.node.callspec.params["stream"]
+    # No bindings: exercise the actual socket dispatcher and event producer
+    # without commanding equipment or relying on a synthetic event payload.
+    engine.project = None
+    engine.handle_ui_event = UIEventRuntime(engine).handle
+    await _say(ws, engine, {"type": "event.subscribe", "patterns": ["ui.*"]}, kind)
+    for options in ({}, {"audio": True}, {"mute": True}, {"audio": True, "mute": False}):
+        await _say(ws, engine, {"type": "ui.route", "element_id": "matrix",
+                                "input": "source-1", "output": "destination-1", **options}, kind)
+    await engine.ws.flush_sends()
+    frames = ws.frames("event")
+    assert [(f["event"], f["payload"]) for f in frames] == [
+        ("ui.route.matrix", {"element_id": "matrix", "input": "source-1", "output": "destination-1"}),
+        ("ui.audio_route.matrix", {"element_id": "matrix", "input": "source-1", "output": "destination-1"}),
+        ("ui.mute_route.matrix", {"element_id": "matrix", "output": "destination-1", "mute": True}),
+        ("ui.audio_mute_route.matrix", {"element_id": "matrix", "output": "destination-1", "mute": False}),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_subscribe_then_emit_delivers_a_frame(stream):
     engine, ws = stream
     await _say(ws, engine, {"type": "event.subscribe", "patterns": ["custom.*"]})
