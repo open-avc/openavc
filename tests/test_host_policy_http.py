@@ -9,6 +9,7 @@ from starlette.responses import StreamingResponse
 from openavc.api import auth
 from openavc.api.host_policy import (
     EndpointPolicy,
+    HostPolicyMiddleware,
     PolicyRoute,
     configure_policy,
     endpoint_policy,
@@ -39,6 +40,7 @@ def scope(path="/sample", method="POST"):
 def application(guard=None):
     app, host = FastAPI(), MutableHost()
     configure_policy(app, host)
+    app.add_middleware(HostPolicyMiddleware)
     router = APIRouter(route_class=policy_route(EndpointPolicy(HostCategory.PROGRAMMER, guard)))
     return app, host, router
 
