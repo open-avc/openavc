@@ -915,6 +915,17 @@ def no_simulator_fault() -> ConnectionFault:
     )
 
 
+def held_connection_fault() -> ConnectionFault:
+    """A device dropped because it stopped answering, whose new connection is
+    open while the automatic reconnect waits for its first answer. Shown in
+    place of a reason about a connection that has since closed."""
+    return ConnectionFault(
+        NO_RESPONSE,
+        "The device stopped answering. The connection is open again, and the "
+        "device shows as online once it answers.",
+    )
+
+
 # --- Restarting: absence we asked for, which is not a fault -----------------
 #
 # A command declaring `restarts_device_for` takes the control channel away on

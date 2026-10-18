@@ -2172,6 +2172,10 @@ class ConfigurableDriver(BaseDriver):
         """Complete messages that reached the response rules, read or not."""
         return self._framed_messages if self._reads_replies() else None
 
+    def _poll_waits_on_device(self) -> bool:
+        """The last poll was held back by ``polling.when_state``."""
+        return self._poll_held
+
     def _unread_sample(self) -> str:
         return self._last_unread
 

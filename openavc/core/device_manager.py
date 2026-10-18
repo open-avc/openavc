@@ -23,8 +23,10 @@ from openavc.core.connection_fault import (
     NO_RESPONSE,
     TRANSPORT_DISCONNECTED,
     UNREACHABLE,
+    ConnectionFault,
     ConnectionFaultError,
     classify_connection_fault,
+    held_connection_fault,
     is_permanent_fault,
     link_local_fault,
     no_simulator_fault,
@@ -1853,6 +1855,7 @@ class DeviceManager:
         device_id: str,
         driver: BaseDriver | None,
         exc: BaseException | None = None,
+        fault: ConnectionFault | None = None,
     ) -> str:
         """Classify why a device is offline and publish both the stable code
         (``device.<id>.offline_reason``, for triggers/automation) and the human
@@ -1867,6 +1870,7 @@ class DeviceManager:
         over string matching: first a ConnectionFaultError in the exception
         chain (the freshest signal), then a fault the driver stashed before
         forcing a disconnect (liveness watchdogs), then the classifier.
+        ``fault``, when given, is the reason and nothing is classified.
         """
         last_error = ""
         host, port, transport = "", None, ""
@@ -1884,7 +1888,8 @@ class DeviceManager:
         # never meant to be reached. Answer the question the author is actually
         # asking before the classifier answers a different one correctly.
         gap = self.unsimulated_driver(device_id) if self.unsimulated_driver else None
-        fault = no_simulator_fault() if gap else None
+        if gap:
+            fault = no_simulator_fault()
         if fault is None:
             fault = typed_fault_from_exc(exc, host=host, port=port)
         if fault is None and driver is not None:
@@ -2580,6 +2585,13 @@ class DeviceManager:
                             log.info(
                                 "[%s] Connected; it stays offline until the "
                                 "device answers", device_id,
+                            )
+                        # A reason about a connection that has since closed
+                        # (dropped, refused) no longer holds while this one is
+                        # open; a silence verdict still does.
+                        if self.state.get(f"device.{device_id}.offline_reason") != NO_RESPONSE:
+                            self._set_offline_reason(
+                                device_id, driver, fault=held_connection_fault(),
                             )
                         if not await driver._wait_for_answer():
                             # Closed again before answering. The driver kept
