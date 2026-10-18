@@ -46,7 +46,7 @@ from fastapi.security import HTTPBasicCredentials
 from openavc.api import auth as _auth
 from openavc.api.auth import programmer_auth_satisfied
 from openavc.api.host_policy import EndpointPolicy, application_policy, include_policy_router
-from openavc.core.host_policy import HostCategory
+from openavc.core.host_policy import HostCategory, HostPolicyDenied
 from openavc.middleware import rate_limit as _rate_limit
 from openavc.utils.logger import get_logger
 
@@ -386,7 +386,10 @@ def require_plugin_access(plugin_id: str):
     return _dependency
 
 
-def _plugin_host_policy(plugin_id: str) -> EndpointPolicy:
+_interface_generations: dict[tuple[str, str], object] = {}
+
+
+def _plugin_host_policy(plugin_id: str, generation: object) -> EndpointPolicy:
     """Bind host access to this registration's plugin and canonical tokens."""
     guard = require_plugin_access(plugin_id)
 
@@ -394,6 +397,8 @@ def _plugin_host_policy(plugin_id: str) -> EndpointPolicy:
         await guard(request, credentials=_auth.basic_credentials(request))
 
     def category(scope):
+        if _interface_generations.get(("ext", plugin_id)) is not generation:
+            raise HostPolicyDenied("This plugin registration has stopped")
         request = Request(scope)
         if programmer_auth_satisfied(request, _auth.basic_credentials(request)):
             return HostCategory.PROGRAMMER
@@ -412,6 +417,17 @@ def _plugin_host_policy(plugin_id: str) -> EndpointPolicy:
         return HostCategory.RENDER if panel_path else HostCategory.PROGRAMMER
 
     return EndpointPolicy(category, authenticate)
+
+
+def _guest_host_policy(plugin_id: str) -> EndpointPolicy:
+    generation = _interface_generations[("guest", plugin_id)]
+
+    def category(scope):
+        if _interface_generations.get(("guest", plugin_id)) is not generation:
+            raise HostPolicyDenied("This plugin registration has stopped")
+        return HostCategory.RUNTIME
+
+    return EndpointPolicy(category)
 
 
 def _ext_prefix(plugin_id: str) -> str:
@@ -450,11 +466,13 @@ def mount_plugin_router(
     # Drop any previously-mounted routes for this plugin first so a
     # stop→start (e.g. config change) doesn't leave stale duplicates.
     unmount_plugin_router(app, plugin_id)
+    generation = object()
+    _interface_generations[("ext", plugin_id)] = generation
     previous = {id(route) for route in app.router.routes}
     include_policy_router(
         app,
         router,
-        _plugin_host_policy(plugin_id),
+        _plugin_host_policy(plugin_id, generation),
         prefix=prefix,
         dependencies=[Depends(require_plugin_access(plugin_id))],
     )
@@ -473,6 +491,7 @@ def mount_plugin_router(
 
 def unmount_plugin_router(app, plugin_id: str) -> None:
     """Remove all routes previously mounted under this plugin's ``/ext`` prefix."""
+    _interface_generations.pop(("ext", plugin_id), None)
     _panel_reachable.pop(plugin_id, None)
     _rate_limit.unregister_media_patterns(_ext_prefix(plugin_id))
     _unmount_prefix(app, plugin_id, _ext_prefix(plugin_id))
@@ -499,8 +518,9 @@ def mount_plugin_guest_router(app, plugin_id: str, router, alias: str | None = N
     """
     prefix = _guest_prefix(plugin_id)
     unmount_plugin_guest_router(app, plugin_id)
+    _interface_generations[("guest", plugin_id)] = object()
     previous = {id(route) for route in app.router.routes}
-    include_policy_router(app, router, EndpointPolicy(HostCategory.RUNTIME), prefix=prefix)
+    include_policy_router(app, router, _guest_host_policy(plugin_id), prefix=prefix)
     _mark_interface_routes(app, previous, plugin_id, "guest")
     log.info("Mounted plugin '%s' guest HTTP router at %s/*", plugin_id, prefix)
     if alias:
@@ -509,6 +529,7 @@ def mount_plugin_guest_router(app, plugin_id: str, router, alias: str | None = N
 
 def unmount_plugin_guest_router(app, plugin_id: str) -> None:
     """Remove this plugin's ``/guest`` routes and any top-level alias mount."""
+    _interface_generations.pop(("guest", plugin_id), None)
     _unmount_prefix(app, plugin_id, _guest_prefix(plugin_id))
     for alias, owner in list(_active_aliases.items()):
         if owner == plugin_id:
@@ -552,7 +573,7 @@ def _mount_guest_alias(app, plugin_id: str, router, alias: str) -> None:
             )
             return
     previous = {id(route) for route in app.router.routes}
-    include_policy_router(app, router, EndpointPolicy(HostCategory.RUNTIME), prefix=f"/{alias}")
+    include_policy_router(app, router, _guest_host_policy(plugin_id), prefix=f"/{alias}")
     _mark_interface_routes(app, previous, plugin_id, "guest")
     _active_aliases[alias] = plugin_id
     _rate_limit.register_standard_prefix(f"/{alias}")

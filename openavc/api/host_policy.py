@@ -93,7 +93,8 @@ class HTTPPolicy:
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         policy = application_policy(scope)
         try:
-            lease = policy.admit(self.endpoint_policy.resolve(scope))
+            category = self.endpoint_policy.resolve(scope)
+            lease = policy.admit(category, is_current=lambda: self.endpoint_policy.resolve(scope) == category)
         except HostPolicyDenied:
             await _denied(scope, receive, send)
             return
@@ -111,7 +112,7 @@ class HTTPPolicy:
 
         def check() -> None:
             try:
-                policy.refresh()
+                lease.refresh()
             except Exception as error:
                 log.exception("Reading the host interface policy failed")
                 lease.revoked.set()
@@ -211,7 +212,8 @@ class WebSocketPolicy:
                         "reason": "This interface is disabled by the product settings."})
 
         try:
-            lease = policy.admit(self.endpoint_policy.resolve(scope))
+            category = self.endpoint_policy.resolve(scope)
+            lease = policy.admit(category, is_current=lambda: self.endpoint_policy.resolve(scope) == category)
         except HostPolicyDenied:
             await close()
             return
@@ -226,7 +228,7 @@ class WebSocketPolicy:
 
         def check():
             try:
-                policy.refresh()
+                lease.refresh()
             except Exception as error:
                 log.exception("Reading the host WebSocket policy failed")
                 lease.revoked.set()

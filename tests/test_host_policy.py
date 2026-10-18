@@ -43,6 +43,20 @@ def test_render_is_shared_but_preview_requires_programming():
         policy.admit(HostCategory.PREVIEW)
 
 
+def test_queued_admission_cannot_commit_after_its_registered_owner_changes():
+    policy = MutableHost()
+    registration = {"current": object()}
+    admitted = registration["current"]
+    lease = policy.admit(HostCategory.PROGRAMMER,
+                         is_current=lambda: registration["current"] is admitted)
+    registration["current"] = object()
+    assert policy.snapshot().programmer_enabled  # No host toggle caused this refusal.
+    with pytest.raises(HostPolicyDenied):
+        lease.begin_commit()
+    assert lease.revoked.is_set()
+    lease.close()
+
+
 def test_unknown_or_invalid_state_cannot_enable_optional_interfaces():
     policy = MutableHost()
     policy.current = PolicySnapshot(None, False, False)

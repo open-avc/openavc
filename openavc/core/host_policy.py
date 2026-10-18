@@ -12,6 +12,7 @@ All admission, revocation and completion calls run on the server's event loop.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 import math
@@ -67,21 +68,39 @@ class PolicyApplication:
 
 class AdmissionLease:
     def __init__(self, policy: HostPolicy, category: HostCategory,
-                 snapshot: PolicySnapshot, principal: object, origin: object):
+                 snapshot: PolicySnapshot, principal: object, origin: object,
+                 is_current: Callable[[], bool] | None = None):
         self.policy = policy
         self.category = category
         self.snapshot = snapshot
         self.principal = principal
         self.origin = origin
+        self._is_current = is_current
         self.revoked = asyncio.Event()
         self.closed = False
 
     def revalidate(self) -> bool:
         """Recheck queued work against the exact admitted policy revision."""
-        current = self.policy.refresh()
+        current = self.refresh()
         return (not self.closed and not self.revoked.is_set()
                 and (self.category in (HostCategory.HOST, HostCategory.RUNTIME)
                      or current == self.snapshot))
+
+    def _check_snapshot(self, current: PolicySnapshot) -> None:
+        valid = True
+        if self._is_current is not None:
+            try:
+                valid = self._is_current() is True
+            except HostPolicyDenied:
+                valid = False
+        if not current.allows(self.category) or not valid:
+            self.revoked.set()
+
+    def refresh(self) -> PolicySnapshot:
+        """Poll this connection without rescanning every other connection."""
+        current = self.policy._read_snapshot()
+        self._check_snapshot(current)
+        return current
 
     def begin_commit(self) -> CommitLease:
         if not self.revalidate():
@@ -130,22 +149,29 @@ class HostPolicy:
     def snapshot(self) -> PolicySnapshot:
         return PolicySnapshot(0, True, True)
 
-    def refresh(self) -> PolicySnapshot:
+    def _read_snapshot(self) -> PolicySnapshot:
         current = self.snapshot()
         if not isinstance(current, PolicySnapshot):
             raise TypeError("Host provider must return a PolicySnapshot")
+        return current
+
+    def refresh(self) -> PolicySnapshot:
+        current = self._read_snapshot()
         for lease in self._admissions:
-            if not current.allows(lease.category):
-                lease.revoked.set()
+            lease._check_snapshot(current)
         return current
 
     def admit(self, category: HostCategory, principal: object = None,
-              origin: object = None) -> AdmissionLease:
+              origin: object = None, *,
+              is_current: Callable[[], bool] | None = None) -> AdmissionLease:
         category = HostCategory(category)
         current = self.refresh()
         if not current.allows(category):
             raise HostPolicyDenied("This interface is disabled by the host")
-        lease = AdmissionLease(self, category, current, principal, origin)
+        lease = AdmissionLease(self, category, current, principal, origin, is_current)
+        lease._check_snapshot(current)
+        if lease.revoked.is_set():
+            raise HostPolicyDenied("The registered interface is no longer available")
         self._admissions.add(lease)
         return lease
 
