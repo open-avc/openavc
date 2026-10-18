@@ -430,6 +430,32 @@ async def test_an_adapter_chosen_after_the_socket_opened_takes_every_copy(monkey
     assert direct == []
 
 
+@pytest.mark.parametrize("local_addr", [None, "127.0.0.1"], ids=["opened unbound", "opened bound"])
+async def test_sends_through_a_chosen_adapter_go_out_in_the_order_they_were_built(monkeypatch, local_addr):
+    # A lighting stream numbers each datagram as it builds it and counts the
+    # number once the datagram is sent (sACN's sequence byte), and a receiver
+    # drops one whose number is not newer than the last it took. So a send
+    # started while another is under way must not be built with the same
+    # number: send_to may not stop to look the adapter up before it sends.
+    t, recording, direct = await _multicast_transport(
+        monkeypatch, ["10.20.30.5", "192.168.1.40"], local_addr=local_addr, chosen=ETHERNET_CHOSEN,
+    )
+    sequence = 0
+    built: list[int] = []
+
+    async def send() -> None:
+        nonlocal sequence
+        built.append(sequence)
+        await t.send_to(bytes([sequence]), *GROUP)
+        sequence += 1
+
+    try:
+        await asyncio.gather(send(), send(), send())
+    finally:
+        await t.close()
+    assert built == [0, 1, 2]
+
+
 async def test_a_chosen_adapter_holding_only_a_169_254_address_takes_the_copy(monkeypatch):
     no_dhcp = reach_devices.Resolved(
         identity={"name": "Ethernet"}, adapter_name="Ethernet", connected=False,
