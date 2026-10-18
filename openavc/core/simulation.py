@@ -285,6 +285,9 @@ class SimulationManager:
         self.engine = engine
         self._process: asyncio.subprocess.Process | None = None
         self._original_configs: dict[str, dict] = {}  # device_id → {host, port, transport}
+        # device_id → the transport of its simulator connection, while Stop
+        # Simulation reconnects it to its own address (is_redirected).
+        self._handing_back: dict[str, Any] = {}
         self._sim_ports: dict[str, int] = {}  # device_id → sim port
         # device_id → whether that simulator terminates TLS. Decides whether an
         # https device keeps its scheme while redirected (see
@@ -320,8 +323,16 @@ class SimulationManager:
     def is_redirected(self, device_id: str) -> bool:
         """True while this device's connection points at the simulator rather
         than at its own address. Whatever it reports then is the simulator's,
-        not the equipment's (a learned config value is never saved from it)."""
-        return device_id in self._original_configs
+        not the equipment's (a learned config value is never saved from it).
+        When simulation stops it lasts until the simulator connection closes,
+        so what the equipment reports on its first connection counts."""
+        if device_id in self._original_configs:
+            return True
+        transport = self._handing_back.get(device_id)
+        if transport is None:
+            return False
+        driver = self.engine.devices._devices.get(device_id)
+        return driver is not None and getattr(driver, "transport", None) is transport
 
     def redirect_of(self, device_id: str) -> dict[str, Any] | None:
         """Where a redirected device connects now (the connection settings
@@ -1018,6 +1029,7 @@ class SimulationManager:
                 continue
 
             self._restore_original_config(driver, orig)
+            self._handing_back[device_id] = getattr(driver, "transport", None)
 
             log.info("Restored %s to %s:%s", device_id, orig["host"], orig["port"])
             restored.append(device_id)
@@ -1026,7 +1038,14 @@ class SimulationManager:
             did for did in self._sim_payloads
             if did not in self._original_configs and did in dm._devices
         )
-        await self._reconnect_all(restored, "to real device")
+        # Cleared before the reconnects, not after them: a setting the device
+        # fills in is saved from what the equipment reports on its first
+        # connection, which comes up inside them.
+        self._original_configs.clear()
+        try:
+            await self._reconnect_all(restored, "to real device")
+        finally:
+            self._handing_back.clear()
 
     async def sync(self) -> None:
         """Sync simulated devices with the current project.

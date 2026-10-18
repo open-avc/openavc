@@ -216,6 +216,52 @@ async def test_a_simulated_device_writes_nothing(tmp_path, acme_widget):
     assert _disk_config(eng).get("model", "") == ""
 
 
+def _simulating(eng) -> Any:
+    """The device is redirected to a simulator, as Start Simulation leaves it."""
+    sim = eng.simulation
+    sim._active = True
+    sim._original_configs["w1"] = {"host": "10.0.0.5", "port": 5000}
+    return sim
+
+
+@pytest.mark.asyncio
+async def test_stopping_simulation_saves_what_the_equipment_reports(tmp_path, acme_widget):
+    """Added while simulating, then Stop Simulation: what the equipment
+    reports on its first connection is saved on that connection."""
+    eng, _ = _engine(tmp_path)
+    sim = _simulating(eng)
+    acme_widget.REPORT = {"model": "W100", "channel_count": 2}
+    await _add(eng, config={"model": "W100", "channels": "2"})
+    acme_widget.REPORT = {"model": "W200", "channel_count": 4}
+    await sim.stop()
+    await wait_for_condition(
+        lambda: _disk_config(eng).get("model") == "W200",
+        timeout=2.0,
+        message="the equipment's report was not saved after simulation stopped",
+    )
+    assert _disk_config(eng)["channels"] == "4"
+
+
+@pytest.mark.asyncio
+async def test_what_the_simulator_reported_is_not_saved_after_it_stops(tmp_path, acme_widget):
+    """The simulator's own answer is still in state when simulation stops, and
+    the equipment has not answered yet: nothing is saved from it."""
+    eng, _ = _engine(tmp_path)
+    sim = _simulating(eng)
+    acme_widget.REPORT = {"model": "W200", "channel_count": 4}
+    await _add(eng, config={"model": "W100", "channels": "2"})
+    acme_widget.REPORT = {}
+    await sim.stop()
+    await wait_for_condition(lambda: eng.state.get("device.w1.connected") is True)
+    await _settle()
+    assert _disk_config(eng)["model"] == "W100"
+    assert _disk_config(eng)["channels"] == "2"
+    # The equipment then reports a channel count of its own: that is saved.
+    eng.devices.get_driver("w1").set_state("channel_count", 2)
+    eng.devices.get_driver("w1").set_state("channel_count", 4)
+    await wait_for_condition(lambda: _disk_config(eng).get("channels") == "4")
+
+
 @pytest.mark.asyncio
 async def test_a_later_report_is_saved_and_a_disconnected_one_is_not(tmp_path, acme_widget):
     acme_widget.REPORT = {}

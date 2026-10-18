@@ -565,7 +565,10 @@ config_schema:
   variable changes while it is connected. A value the device reports while it
   is still connecting is picked up when it connects.
 - **Nothing is saved while the device is simulated.** The simulator reports
-  what it was told, so a simulated device never changes the project.
+  what it was told, so a simulated device never changes the project. When
+  simulation stops, what the equipment reports on its first connection is
+  saved; a value still as the simulator left it is not, until the equipment
+  reports a different one.
 - Only a value the field accepts is saved: a listed `enum` value (a reported
   `4` matches a listed `"4"` or `4`, and the listed one is stored), a number
   within `min` and `max`, a non-empty string, a boolean. Anything else is
