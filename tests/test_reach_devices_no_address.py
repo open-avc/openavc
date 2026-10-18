@@ -160,3 +160,31 @@ async def test_an_audits_network_check_is_refused(chosen):
     check = NetworkCheck(MagicMock(), "192.0.2.10", "192.0.2.10")
     with pytest.raises(ConnectionError, match="^Ethernet 2, chosen in Settings"):
         await check.run()
+
+
+async def test_a_drivers_own_http_client_is_refused_not_left_unbound(chosen):
+    import httpx
+
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
+    from openavc.drivers.base import BaseDriver
+    from openavc.transport.http_client import ReachDevicesTransport
+
+    class AcmeOwnClient(BaseDriver):
+        DRIVER_INFO = {"id": "acme_own_client_no_address_test", "name": "Acme", "transport": "http"}
+
+        async def send_command(self, command, params=None):
+            return None
+
+        def build_client(self) -> httpx.AsyncClient:
+            return httpx.AsyncClient(base_url="http://192.0.2.10:8080")
+
+    chosen()
+    state = StateStore()
+    state.set_event_bus(EventBus())
+    driver = AcmeOwnClient("acme1", {"host": "192.0.2.10", "port": 8080}, state, EventBus())
+    async with driver.build_client() as client:
+        assert isinstance(client._transport, ReachDevicesTransport)
+        with pytest.raises(httpx.ConnectError) as refused:
+            await client.get("/status")
+    assert str(refused.value) == "Can't reach 192.0.2.10. " + SENTENCE

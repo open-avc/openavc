@@ -312,7 +312,14 @@ class ReachDevicesTransport(httpx.AsyncBaseTransport):
         return pool
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        return await self.pool_for(request.url.host).handle_async_request(request)
+        try:
+            pool = self.pool_for(request.url.host)
+        except ConnectionError as exc:
+            # The chosen adapter has no address: refused as httpx refuses a
+            # connection, so a driver's own handling of one sees it, with the
+            # sentence that names the adapter.
+            raise httpx.ConnectError(str(exc), request=request) from exc
+        return await pool.handle_async_request(request)
 
     async def aclose(self) -> None:
         pools, self._pools = list(self._pools.values()), {}
@@ -332,7 +339,14 @@ def _reach_devices_transport(driver: Any, kwargs: dict[str, Any]) -> ReachDevice
     """
     if any(kwargs.get(name) is not None for name in ("transport", "mounts", "proxy")):
         return None
-    if driver.local_address() is None:
+    try:
+        bind = driver.local_address()
+    except ConnectionError:
+        # An adapter chosen with no address: the transport refuses each
+        # request (pool_for), where an unbound client would leave through
+        # another adapter.
+        bind = ""
+    if bind is None:
         return None
     return ReachDevicesTransport(
         {name: kwargs[name] for name in _TRANSPORT_SETTINGS if name in kwargs}
