@@ -327,6 +327,48 @@ async def test_a_disconnect_while_the_transport_is_built_closes_what_it_built(
     assert len(server.accepted) == 1 and not server.open(0)
 
 
+class AcmeOwnSessionDriver(AcmeConsoleDriver):
+    """Owns its session: builds its own connection instead of a platform
+    transport, and closes it in _close_session."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.session: asyncio.StreamWriter | None = None
+
+    async def _create_transport(self, transport_type: str) -> None:
+        await asyncio.sleep(0.5)
+        _, self.session = await asyncio.open_connection(
+            self.config["host"], self.config["port"],
+        )
+
+    async def _close_session(self) -> None:
+        session, self.session = self.session, None
+        if session is not None:
+            session.close()
+            await session.wait_closed()
+
+
+async def test_a_disconnect_while_a_driver_builds_its_own_session_closes_it(core, console):
+    # A device that takes one control connection at a time: a session left
+    # open by an ended connect would keep a test panel or an audit out of it
+    # until the next connect.
+    import openavc.drivers.base as base_module
+
+    state, events = core
+    server, port = await console(0.0)
+    driver = AcmeOwnSessionDriver("console", {"host": "127.0.0.1", "port": port}, state, events)
+    connect = asyncio.ensure_future(driver.connect())
+    await asyncio.sleep(0.1)
+    await driver.disconnect()
+
+    with pytest.raises(ConnectionError) as failed:
+        await asyncio.wait_for(connect, 5)
+    assert type(failed.value) is base_module.ConnectEndedError
+    await asyncio.sleep(0.2)
+    assert driver.session is None
+    assert len(server.accepted) == 1 and not server.open(0)
+
+
 async def test_a_second_connect_while_a_yaml_device_dials_leaves_it_polling(
     core, console,
 ):
