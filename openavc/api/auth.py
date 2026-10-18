@@ -471,8 +471,8 @@ def programmer_auth_satisfied(
     5. HTTP Basic credentials (username and password both checked when a
        username is configured; password-only when no username is set).
 
-    Non-raising so callers that compose auth schemes (e.g. plugin routers that
-    also accept a plugin token) can fall through to their own checks.
+    Invalid credentials return False so callers can compose other admission
+    rules. Success binds the accepted grant to the current request lifetime.
 
     ``allow_cloud_session=False`` drops check 1 for the one surface that is
     deliberately narrower than the Programmer: the host's own network settings
@@ -480,9 +480,19 @@ def programmer_auth_satisfied(
     so somebody in such a session who *does* hold the password gets in by
     typing it.
     """
-    return programmer_authority(
-        request, credentials, allow_cloud_session=allow_cloud_session,
-    ) is not None
+    authority = programmer_authority(request, credentials, allow_cloud_session=allow_cloud_session)
+    if authority is None:
+        return False
+    _bind_authority(request, authority)
+    return True
+
+
+def local_console_auth_satisfied(request: HTTPConnection) -> bool:
+    """Retain local-console authority when an optional surface accepts it."""
+    if not is_local_console_request(request):
+        return False
+    _bind_authority(request, lambda: is_local_console_request(request))
+    return True
 
 
 def _anonymous_authority() -> bool:

@@ -41,7 +41,7 @@ from openavc.api.auth import (
 from openavc.api.routes.system import cloud_remote_access_set_up, own_screen_opens_programmer
 from openavc.system_config import get_system_config
 from openavc.utils.hostnames import resolvable_hostname
-from openavc.utils.request_origin import is_local_console_request
+from openavc.api.auth import local_console_auth_satisfied
 from openavc.version import __version__
 
 router = APIRouter(route_class=PublicProgrammerRoute)
@@ -149,7 +149,7 @@ async def setup_status(
         "network": None,
     }
 
-    if not (is_local_console_request(request) or programmer_auth_satisfied(request, credentials)):
+    if not (local_console_auth_satisfied(request) or programmer_auth_satisfied(request, credentials)):
         return payload
 
     # Re-detect rather than serve the startup cache: a device that boots

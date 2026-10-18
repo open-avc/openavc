@@ -15,7 +15,7 @@ from fastapi.security import HTTPBasicCredentials
 
 from openavc.api._engine import _get_engine
 from openavc.core.host_policy import HostCategory
-from openavc.api.auth import _basic, programmer_auth_satisfied
+from openavc.api.auth import _basic, local_console_auth_satisfied, programmer_auth_satisfied
 from openavc.utils.request_origin import (
     is_local_console_request,
     is_tunneled_request,
@@ -197,7 +197,7 @@ async def get_display_idle(
     with itself.
     """
     if not (
-        is_local_console_request(request)
+        local_console_auth_satisfied(request)
         or programmer_auth_satisfied(request, credentials)
     ):
         raise HTTPException(status_code=401, detail="Authentication required")

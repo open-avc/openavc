@@ -230,3 +230,52 @@ async def test_settings_replace_failure_does_not_authorize_a_success_response(ri
     assert rig.cfg.file_path.read_bytes() == previous
     assert admissions and all(not lease.response_only for lease in admissions)
     assert not rig.host._commits and not rig.host._admissions
+
+
+@pytest.mark.asyncio
+async def test_optional_auth_claim_rechecks_after_panel_sweep(rig, monkeypatch, tmp_path):
+    from openavc.api import panel_access
+    from openavc.core.panel_devices import PanelDeviceStore
+    rig.app.include_router(panel_access.open_router, prefix='/api')
+    rig.cfg.set('panels', 'access', 'approved')
+    panels = PanelDeviceStore(tmp_path / 'panel_devices.json')
+    rig.engine.panel_devices = panels
+    expired = panels.check_in(None, address='192.0.2.2', user_agent='expired fixture')
+    expired.device.last_checkin = -1000000
+    broadcast = rig.engine.ws.broadcast
+    async def revoke_at_sweep(message, **kwargs):
+        if message.get('reason') == 'expired':
+            assert (await http(rig, '/api/auth/session', method='DELETE'))[1]['revoked']
+        await broadcast(message, **kwargs)
+    # The current hub queues synchronously. Inject a logout at its await boundary
+    # to test post-wait admission without relying on the periodic watcher.
+    monkeypatch.setattr(rig.engine.ws, 'broadcast', revoke_at_sweep)
+    result = await http(rig, '/api/panel/access/claim', method='POST', body={'name': 'refused'})
+    assert result[0] == 401
+    assert not panels.list_devices().get('approved')
+
+
+@pytest.mark.asyncio
+async def test_setup_sensitive_response_rechecks_after_real_thread_wait(rig, monkeypatch):
+    import threading
+    from openavc.api.routes import setup
+    rig.app.include_router(setup.open_router, prefix='/api')
+    entered, release = threading.Event(), threading.Event()
+    def network_info():
+        entered.set()
+        assert release.wait(2)
+        return '192.0.2.30', 'private-name', ['192.0.2.30']
+    monkeypatch.setattr(rig.engine, 'refresh_network_info', network_info)
+    pending = asyncio.create_task(http(rig, '/api/setup/status'))
+    try:
+        assert await asyncio.to_thread(entered.wait, 1)
+        assert (await http(rig, '/api/auth/session', method='DELETE'))[1]['revoked']
+        release.set()
+        status, payload = await pending
+        assert status == 401
+        assert 'private-name' not in json.dumps(payload)
+    finally:
+        release.set()
+        if not pending.done():
+            pending.cancel()
+        await asyncio.gather(pending, return_exceptions=True)

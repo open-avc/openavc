@@ -109,6 +109,13 @@ def bind_request_authority(request: HTTPConnection, check: Callable[[], bool]) -
         lease.require_current(check)
 
 
+def require_current_request(request: Request) -> None:
+    """Revalidate admitted work immediately after an adapter's awaited gate."""
+    lease = request.scope.get(_ADMISSION)
+    if isinstance(lease, AdmissionLease) and not lease.revalidate():
+        raise HostPolicyDenied("Request authority changed before the operation could start")
+
+
 @contextmanager
 def synchronous_response_commit(request: Request):
     """Own a synchronous save and retain only its completed acknowledgement.

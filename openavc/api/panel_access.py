@@ -40,7 +40,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from openavc.api.host_policy import PanelRoute, ProgrammerRoute
+from openavc.api.host_policy import PanelRoute, ProgrammerRoute, require_current_request
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.security import HTTPBasicCredentials
 from starlette.requests import HTTPConnection
@@ -291,6 +291,7 @@ async def panel_access_claim(
 
     store = _require_store(engine)
     await _sweep(engine, store)
+    require_current_request(request)
     name = body.name if body is not None else None
     presented = request.cookies.get(cookie_name(engine.instance_id))
     result = store.check_in(
