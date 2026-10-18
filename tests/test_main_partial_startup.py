@@ -66,7 +66,7 @@ async def test_shutdown_releases_real_driver_client_before_and_after_readiness(t
     monkeypatch.setattr(main.audit_manager, "shutdown", AsyncMock())
     close_proxy = AsyncMock()
     monkeypatch.setattr(main.simulator_proxy, "aclose_client", close_proxy)
-    app = FastAPI()
+    app = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
     try:
         try:
             async with main.lifespan(app):
@@ -110,7 +110,7 @@ async def test_shutdown_before_initialization_has_started(tmp_path, monkeypatch)
     monkeypatch.setattr(main.audit_manager, "shutdown", AsyncMock())
     close_proxy = AsyncMock()
     monkeypatch.setattr(main.simulator_proxy, "aclose_client", close_proxy)
-    async with main.lifespan(FastAPI()):
+    async with main.lifespan(FastAPI(openapi_url=None, docs_url=None, redoc_url=None)):
         pass
     assert not entered
     close_proxy.assert_awaited_once()

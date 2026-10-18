@@ -9,6 +9,7 @@ empty boxes on somebody else's machine, which is why every one of those paths
 gets a test rather than a promise.
 """
 
+import base64
 import io
 import json
 import zipfile
@@ -226,15 +227,12 @@ def project_dir(tmp_path):
 
 
 @pytest.fixture
-def client(project_dir):
-    """The ui-file routes on their own app, with the claimed gate neutralized.
-
-    The gate itself is generic and covered in test_auth_posture.py; what this
-    file checks is that these routes declare it (below) and what they do once
-    past it.
-    """
-    from openavc.api.auth import require_claimed_auth
+def client(project_dir, isolated_auth_config):
+    """Exercise file routes with the same credential their early guard needs."""
     from openavc.api.routes import ui_files
+
+    isolated_auth_config.set("auth", "programmer_username", "engineer")
+    isolated_auth_config.set("auth", "programmer_password", "disposable-file-password")
 
     engine = MagicMock()
     engine.project_path = project_dir / "project.avc"
@@ -246,11 +244,11 @@ def client(project_dir):
     app = FastAPI()
     app.include_router(ui_files.open_router, prefix="/api")
     app.include_router(ui_files.router, prefix="/api")
-    app.dependency_overrides[require_claimed_auth] = lambda: None
 
     import openavc.api._engine as engine_mod
     engine_mod.set_engine(engine)
-    yield TestClient(app)
+    credential = base64.b64encode(b"engineer:disposable-file-password").decode()
+    yield TestClient(app, headers={"Authorization": "Basic " + credential})
     engine_mod.set_engine(None)
 
 

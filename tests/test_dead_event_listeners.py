@@ -27,6 +27,7 @@ Two properties matter more than any single case here:
 
 from __future__ import annotations
 
+import base64
 import json
 from unittest.mock import AsyncMock, MagicMock
 
@@ -34,7 +35,6 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from openavc.api.auth import require_claimed_auth
 from openavc.api.rest import router, set_engine
 from openavc.core.event_references import (
     dead_listeners,
@@ -332,8 +332,10 @@ def test_a_step_or_action_that_is_not_an_emit_contributes_nothing():
 
 
 @pytest.fixture
-def client(tmp_path):
+def client(tmp_path, isolated_auth_config):
     """The app over a project directory with two scripts on disk."""
+    isolated_auth_config.set("auth", "programmer_username", "engineer")
+    isolated_auth_config.set("auth", "programmer_password", "disposable-listener-password")
     project_dir = tmp_path / "project"
     (project_dir / "scripts").mkdir(parents=True)
     (project_dir / "scripts" / "router.py").write_text(DEAD_HANDLER, encoding="utf-8")
@@ -364,11 +366,10 @@ def client(tmp_path):
 
     app = FastAPI()
     app.include_router(router)
-    # The save below is gated on the instance being claimed, which is a
-    # separate rule about editing code at all and not this check's business.
-    app.dependency_overrides[require_claimed_auth] = lambda: None
     set_engine(engine)
-    yield TestClient(app, raise_server_exceptions=False), project_dir
+    credential = base64.b64encode(b"engineer:disposable-listener-password").decode()
+    yield TestClient(app, headers={"Authorization": "Basic " + credential},
+                     raise_server_exceptions=False), project_dir
     set_engine(None)
 
 

@@ -1,5 +1,6 @@
 """Tests for script CRUD REST API endpoints."""
 
+import base64
 import json
 from unittest.mock import MagicMock, AsyncMock
 
@@ -73,20 +74,17 @@ def mock_engine(tmp_path):
 
 
 @pytest.fixture
-def client(mock_engine):
+def client(mock_engine, isolated_auth_config):
     """Create a test client with the mock engine."""
     from fastapi import FastAPI
 
-    from openavc.api.auth import require_claimed_auth
-
+    isolated_auth_config.set("auth", "programmer_username", "engineer")
+    isolated_auth_config.set("auth", "programmer_password", "disposable-script-password")
     app = FastAPI()
     app.include_router(router)
-    # These tests exercise CRUD logic, not auth. Code-writing endpoints now
-    # require a claimed credential (C6) — neutralize that gate here; the gate
-    # itself is covered in test_auth_posture.py.
-    app.dependency_overrides[require_claimed_auth] = lambda: None
     set_engine(mock_engine)
-    yield TestClient(app)
+    credential = base64.b64encode(b"engineer:disposable-script-password").decode()
+    yield TestClient(app, headers={"Authorization": "Basic " + credential})
     set_engine(None)
 
 
