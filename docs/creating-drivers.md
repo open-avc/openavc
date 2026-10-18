@@ -998,7 +998,7 @@ polling:
     - { each_child: output, page_size: 16, send: "PAGE? {child_id}\r", query_for: input }  # outputs 1, 17, 33 ...
 ```
 
-A reply that does not say where its list starts (an optional `start` capture that did not match) writes nothing, so one page is never written over another.
+A reply that does not say where its list starts (an optional `start` capture that did not match) writes nothing, so one page is never written over another. The rule that fills a paged query's variable has to take its `start` from the reply or name each item with `id`; one counting from a fixed `start` would write every page onto the first children, and the driver is refused.
 
 ##### Gating a query on a config field (`when:`)
 

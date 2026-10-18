@@ -7589,6 +7589,63 @@
   },
   "transport": "tcp"
  },
+ "query_entry_paged_list_counts_from_a_fixed_start": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    {
+     "each_child": "zone",
+     "page_size": 2,
+     "query_for": "level",
+     "send": "L{child_id}?"
+    }
+   ]
+  },
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)",
+     "separator": ",",
+     "state": {
+      "level": "$1"
+     },
+     "type": "zone"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "query_entry_paged_query_for_no_list_rule": {
   "child_entity_types": {
    "zone": {
@@ -7625,6 +7682,62 @@
     }
    ]
   },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "query_entry_paged_unnamed_list_counts_from_a_fixed_start": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    {
+     "each_child": "zone",
+     "page_size": 2,
+     "send": "L{child_id}?"
+    }
+   ]
+  },
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)",
+     "separator": ",",
+     "state": {
+      "level": "$1"
+     },
+     "type": "zone"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
   "state_variables": {
    "power": {
     "label": "Power",

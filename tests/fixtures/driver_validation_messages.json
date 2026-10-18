@@ -788,8 +788,14 @@
  "query_entry_page_size_without_each_child": [
   "polling.queries[0]: page_size applies to a per-child query (each_child)"
  ],
+ "query_entry_paged_list_counts_from_a_fixed_start": [
+  "polling.queries[0]: every page of this paged query would land on the same children of 'zone': the child_list rule that fills 'level' counts from a fixed start. Take the start from the reply (start: $2) or name each item (id: $1)"
+ ],
  "query_entry_paged_query_for_no_list_rule": [
   "polling.queries[0]: a paged query reads a list, and no child_list rule fills 'level' on 'zone'"
+ ],
+ "query_entry_paged_unnamed_list_counts_from_a_fixed_start": [
+  "polling.queries[0]: every page of this paged query would land on the same children of 'zone': its child_list rules count from a fixed start. Take the start from the reply (start: $2) or name each item (id: $1)"
  ],
  "query_entry_query_for_bare_child_var": [
   "polling.queries[0]: query_for 'level' is a child variable; on a query sent once, name its child type too: 'zone.level'"

@@ -517,6 +517,12 @@ CASES: dict[str, Any] = {
     "query_entry_page_size_below_two": _list_read(
         each_child="zone", send="L{child_id}?", page_size=1
     ),
+    "query_entry_paged_list_counts_from_a_fixed_start": _list_read(
+        each_child="zone", send="L{child_id}?", page_size=2, query_for="level"
+    ),
+    "query_entry_paged_unnamed_list_counts_from_a_fixed_start": _list_read(
+        each_child="zone", send="L{child_id}?", page_size=2
+    ),
     "query_entry_paged_query_for_no_list_rule": _d(
         child_entity_types=dict(_CHILD_TYPES),
         polling={"queries": [
