@@ -346,7 +346,9 @@ def _strip_listing_decorations(definition: dict) -> dict:
     }
 
 
-def _definition_invalid(errors: list[str], preamble: str | None = None) -> StructuredApiError:
+def _definition_invalid(
+    errors: list[str], preamble: str | None = None, status_code: int = 422
+) -> StructuredApiError:
     """422 for a driver definition that failed validation.
 
     The ``detail`` string is the whole message — heading plus the errors, one per
@@ -360,7 +362,19 @@ def _definition_invalid(errors: list[str], preamble: str | None = None) -> Struc
         else "The driver was not saved. Fix these first"
     )
     detail = f"{heading}:\n" + "\n".join(errors) if errors else heading
-    return StructuredApiError(422, detail, errors=errors)
+    return StructuredApiError(status_code, detail, errors=errors)
+
+
+def _id_taken(driver_id: str) -> StructuredApiError:
+    """409 for a save that would give a driver an id another driver has.
+
+    Worded as the Driver Builder's own check words it (``validateDriver.ts``),
+    so the editor's header points at the ID field instead of saying it twice.
+    """
+    return _definition_invalid(
+        [f'Another driver named "{driver_id}" already exists. Choose a different ID.'],
+        status_code=409,
+    )
 
 
 def _reject_unknown_keys(driver_def: dict[str, Any], cleanup: Path | None = None) -> None:
@@ -1519,10 +1533,7 @@ async def create_driver_definition(body: DriverDefinitionRequest) -> dict:
     # Check for duplicate ID
     existing = _list(dirs)
     if any(d.get("id") == driver_def["id"] for d in existing):
-        raise HTTPException(
-            status_code=409,
-            detail=f"Driver definition '{driver_def['id']}' already exists",
-        )
+        raise _id_taken(driver_def["id"])
 
     # Validate. strict: this is an authoring gate, so an undeclared key is a
     # typo to reject now, not a mystery to debug later.
@@ -1596,6 +1607,11 @@ async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest
             status_code=403,
             detail=f"Driver id '{driver_def.get('id')}' belongs to a read-only built-in driver.",
         )
+    # A rename onto another driver's id would save over that driver.
+    if driver_def.get("id") != driver_id and any(
+        d.get("id") == driver_def.get("id") for d in existing
+    ):
+        raise _id_taken(driver_def["id"])
 
     # Validate. strict: this is an authoring gate, so an undeclared key is a
     # typo to reject now, not a mystery to debug later.
