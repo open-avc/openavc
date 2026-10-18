@@ -70,6 +70,35 @@ class MessageScope:
     """An opaque server-owned subscription scope; a public ID is not a grant."""
 
 
+@dataclass(frozen=True)
+class _Publication:
+    family: str
+    event: str
+
+
+class PublishedEvent(dict):
+    """A named protected adapter issued by a platform-owned producer.
+
+    Metadata is outside the payload, so JSON keys cannot register a publication.
+    Dict compatibility preserves existing in-process event handlers. This is
+    output provenance, not plugin/peer lifetime enforcement or a Python sandbox.
+    """
+
+    def __init__(self, family: str, owner: str, suffix: str, payload: dict | None):
+        if family not in ("plugin", "isc") or not owner or not suffix:
+            raise ValueError("publication identity required")
+        super().__init__({} if payload is None else payload)
+        self.publication = _Publication(family, f"{family}.{owner}.{suffix}")
+
+
+def plugin_publication(plugin_id: str, event: str, payload: dict | None) -> PublishedEvent:
+    return PublishedEvent("plugin", plugin_id, event, payload)
+
+
+def peer_publication(peer_id: str, event: str, payload: dict) -> PublishedEvent:
+    return PublishedEvent("isc", peer_id, event, payload)
+
+
 def _no_scope(_scope: MessageScope) -> bool:
     return False
 
@@ -211,7 +240,7 @@ def _rule(room=None, protected=None, *, required=(), targeted=False, scoped=Fals
 
 
 _MACRO_ROOM = {
-    "macro_id": _text, "macro_name": _text, "run_id": _text,
+    "macro_id": _text, "name": _text, "macro_name": _text, "run_id": _text,
     "step_index": _number, "total_steps": _number, "step_path": _path,
     "action": _text, "description": _text, "status": _text,
     "device": _text, "group": _text, "command": _text,
@@ -268,7 +297,8 @@ _registry = {
     ),
     "script.error": _rule(protected={
         "script_id": _text, "script": _text, "error": _text, "traceback": _text,
-        "message": _text, "event": _text, "function": _text, "handler": _text, "line": _number,
+        "message": _text, "event": _text, "function": _text, "handler": _text,
+        "timer_id": _text, "line": _number,
     }),
     "drivers.changed": _rule(protected={"driver_id": _text}),
     "panel.devices.changed": _rule(protected={
@@ -299,7 +329,7 @@ for _name in ("started", "progress", "completed", "cancelled", "error", "step_er
     )
 for _name in ("fired", "skipped", "pending", "queued", "completed"):
     _registry[f"trigger.{_name}"] = _rule(protected=_TRIGGER, required=("trigger_id",))
-for _name in ("started", "stopped", "error", "missing"):
+for _name in ("started", "stopped", "error", "missing", "auto_disabled"):
     _registry[f"plugin.{_name}"] = _rule(
         protected={"plugin_id": _text, "error": _text, "message": _text},
         required=("plugin_id",),
@@ -325,9 +355,34 @@ _EVENT_EXACT = MappingProxyType({
     "system.started": _rule({}),
     "system.stopping": _rule({}),
     "system.project.reloaded": _rule({}),
+    "system.restart_requested": _rule(protected={"mode": _text, "source": _text}),
     "device.orphaned": _rule(protected={"device_id": _text, "driver": _text}),
     "device.pending_settings_applied": _rule(protected={
         "device_id": _text, "applied": _strings, "remaining": _object,
+    }),
+    "cloud.command": _rule(protected={
+        "device_id": _text, "command": _text, "params": _object,
+        "user_name": _text, "user_id": _text, "request_id": _text,
+    }),
+    **{f"cloud.{name}": _rule(protected={
+        "user_name": _text, "user_id": _text, "request_id": _text, **fields,
+    }) for name, fields in {
+        "config_push": {"mode": _text}, "restart": {"mode": _text},
+        "diagnostic": {"action": _text, "target": _text},
+        "software_update": {"target_version": _text, "auto_restart": _bool},
+        "alert_rules_update": {"rules": _list},
+    }.items()},
+    "isc.peer_connected": _rule(protected={"instance_id": _text, "name": _text}),
+    "isc.peer_disconnected": _rule(protected={"instance_id": _text, "name": _text}),
+    "ai.device_command": _rule(protected={"device_id": _text, "command": _text, "params": _object}),
+    "log.plugin": _rule(protected={"plugin_id": _text, "message": _text, "level": _text}),
+    "simulation.stopped": _rule(protected={"exit_code": _number}),
+    "simulation.crashed": _rule(protected={"exit_code": _number}),
+    "help.requested": _rule(protected={
+        "help_id": _text, "message": _text, "severity": _text, "at": _text,
+    }),
+    "help.acknowledged": _rule(protected={
+        "help_id": _text, "acknowledged_by": _text, "acknowledged_at": _text,
     }),
 })
 _EVENT_SUFFIX = MappingProxyType({
@@ -424,10 +479,17 @@ class OutboundPolicy:
         if event.startswith("state."):
             # State has its own coalesced delivery path.
             return None
-        if event.startswith("custom.") and event[7:].strip():
+        if isinstance(data, PublishedEvent):
+            publication = data.publication
+            if not isinstance(publication, _Publication) or publication.family not in ("plugin", "isc") or publication.event != event:
+                raise InvalidMessage("publication identity mismatch")
+            if not recipient.programmer:
+                return None
+            projected = self._authored_payload(data)
+        elif event.startswith("custom.") and event[7:].strip():
             # Preserve the existing authored-event conversion for Python
             # values. This opt-in contract does not apply to internal messages.
-            projected = json.loads(json.dumps(data, default=str, allow_nan=False))
+            projected = self._authored_payload(data)
         else:
             rule = _EVENT_EXACT.get(event) or REGISTRY.get(event)
             kind = event
@@ -448,3 +510,13 @@ class OutboundPolicy:
         if "timestamp" in message:
             result["timestamp"] = _number(message["timestamp"])
         return result
+
+    @staticmethod
+    def _authored_payload(data):
+        # Preserve the pre-existing custom/plugin/peer event conversion only
+        # at these declared adapters. A broken __str__ cannot break delivery
+        # or disclose its own exception in administrative refusal diagnostics.
+        try:
+            return json.loads(json.dumps(data, default=str, allow_nan=False))
+        except Exception:
+            raise InvalidMessage("authored payload conversion failed") from None

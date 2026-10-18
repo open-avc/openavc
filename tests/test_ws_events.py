@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -87,13 +88,22 @@ def _engine():
     return engine
 
 
+def _plugin(engine, plugin_id="foo"):
+    from openavc.core.plugin_api import PluginAPI
+    from openavc.core.plugin_registry import PluginRegistry
+    return PluginAPI(plugin_id, ["event_emit"], {}, PluginRegistry(plugin_id),
+                     engine.state, engine.events, engine.macros, MagicMock(), "fixture")
+
+
 @pytest.fixture
-async def stream():
+async def stream(request):
     """A connected client plus the engine it is talking to, torn down after.
     Async because the hub starts each client's writer task on the running loop."""
     engine = _engine()
     ws = FakeWS()
-    engine.ws.add_client(ws)
+    option = getattr(request, "param", "panel")
+    kind, held = option if isinstance(option, tuple) else (option, False)
+    engine.ws.add_client(ws, client_type=kind, defer_delivery=held, authority=lambda: True)
     with patch("openavc.api._engine._engine", engine):
         yield engine, ws
     _cleanup_event_subscription(id(ws), engine)
@@ -190,7 +200,7 @@ async def test_a_panel_sees_what_a_panel_reflects_and_nothing_else(stream):
         "cloud.command", "plugin.foo.bar", "isc.peer.custom.x", "ai.device_command",
         "script.error",
     ):
-        await engine.events.emit(event, {})
+        await engine.events.emit(event, {"macro_id": "m"} if event == "macro.started.m" else {})
     await engine.ws.flush_sends()
 
     seen = [f["event"] for f in ws.frames("event")]
@@ -201,18 +211,106 @@ async def test_a_panel_sees_what_a_panel_reflects_and_nothing_else(stream):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("stream", ["programmer"], indirect=True)
 async def test_a_programmer_sees_the_rest_too(stream):
     engine, ws = stream
     await _say(ws, engine, {"type": "event.subscribe", "patterns": ["*"]}, "programmer")
-    for event in ("custom.x", "cloud.command", "plugin.foo.bar", "script.error"):
-        await engine.events.emit(event, {})
+    from openavc.cloud.command_handler import CommandHandler
+    await engine.events.emit("custom.x", {})
+    devices = MagicMock(send_command=AsyncMock())
+    cloud = CommandHandler(MagicMock(), devices, engine.events)
+    cloud._send_result = AsyncMock()
+    await cloud._handle_device_command({"device_id": "acme", "command": "power_on",
+                                        "params": {"nested": [1, 2]}, "user_name": "Operator",
+                                        "user_id": "user-1"}, "request-1", "Operator")
+    await _plugin(engine).event_emit("bar", {})
+    await engine.events.emit("script.error", {"script_id": "room", "handler": "tick",
+                                             "timer_id": "timer-1", "error": "detail", "traceback": "trace"})
     await engine.ws.flush_sends()
 
     seen = [f["event"] for f in ws.frames("event")]
     assert seen == ["custom.x", "cloud.command", "plugin.foo.bar", "script.error"]
+    payloads = {frame["event"]: frame["payload"] for frame in ws.frames("event")}
+    assert payloads["cloud.command"]["params"] == {"nested": [1, 2]}
+    assert payloads["script.error"]["timer_id"] == "timer-1"
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("stream", [("panel", True), ("programmer", True)], indirect=True)
+async def test_plugin_publications_preserve_authored_data_without_a_prefix_grant(stream, request, caplog):
+    from openavc.core.outbound_messages import plugin_publication
+
+    engine, ws = stream
+    kind = request.node.callspec.params["stream"][0]
+    await _say(ws, engine, {"type": "event.subscribe", "patterns": ["*"]}, kind)
+    data = {"nested": {"value": "before"}, "type": "state.snapshot", "event": "custom.forged"}
+    await _plugin(engine).event_emit("changed", data)
+    data["nested"]["value"] = "after"
+    await _plugin(engine).event_emit("connected", None)
+    await engine.events.emit("plugin.foo.forged", {"publication": "plugin", "value": "forged"})
+    await engine.events.emit("plugin.foo.wrong", plugin_publication("foo", "right", {}))
+
+    class LegacyValue:
+        def __str__(self):
+            return "legacy-text"
+
+    class BrokenValue:
+        def __str__(self):
+            raise RuntimeError("private-conversion-marker")
+
+    await _plugin(engine).event_emit("legacy", {"value": LegacyValue()})
+    await _plugin(engine).event_emit("broken", {"value": BrokenValue()})
+    engine.ws.mark_client_ready(ws)
+    await engine.ws.flush_sends()
+    frames = ws.frames("event")
+    assert "private-conversion-marker" not in caplog.text
+    if kind == "panel":
+        assert frames == []
+    else:
+        assert [f["event"] for f in frames] == ["plugin.foo.changed", "plugin.foo.connected", "plugin.foo.legacy"]
+        assert frames[0]["payload"]["nested"]["value"] == "before"
+        assert frames[0]["type"] == "event"
+        assert frames[1]["payload"] == {}
+        assert frames[2]["payload"] == {"value": "legacy-text"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", ["programmer"], indirect=True)
+async def test_context_action_and_peer_mirror_keep_their_authenticated_source(stream, monkeypatch):
+    from openavc.api import plugins
+    from openavc.api.plugins import emit_context_action
+    from openavc.core.isc import ISCManager
+
+    engine, ws = stream
+    monkeypatch.setattr(plugins, "_engine", engine)
+    engine.project = SimpleNamespace(plugins={"foo": {}})
+    await _say(ws, engine, {"type": "event.subscribe", "patterns": ["*"]}, "programmer")
+    await emit_context_action("foo", "route", SimpleNamespace(json=AsyncMock(return_value={"input": [1, 2]})))
+    await ISCManager._handle_remote_event(SimpleNamespace(events=engine.events), "peer-1", {
+        "event": "custom.ready", "payload": {"value": 1, "source_instance": "forged"},
+    })
+    await engine.ws.flush_sends()
+    frames = ws.frames("event")
+    assert [f["event"] for f in frames] == ["plugin.foo.action.route", "isc.peer-1.custom.ready"]
+    assert frames[0]["payload"] == {"input": [1, 2]}
+    assert frames[1]["payload"] == {"value": 1, "source_instance": "peer-1"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", [("panel", True)], indirect=True)
+async def test_replacing_a_subscription_revokes_its_already_queued_events(stream):
+    engine, ws = stream
+    await _say(ws, engine, {"type": "event.subscribe", "patterns": ["custom.old"]})
+    await engine.events.emit("custom.old", {"value": "old"})
+    await _say(ws, engine, {"type": "event.subscribe", "patterns": ["custom.new"]})
+    await engine.events.emit("custom.new", {"value": "new"})
+    engine.ws.mark_client_ready(ws)
+    await engine.ws.flush_sends()
+    assert [f["event"] for f in ws.frames("event")] == ["custom.new"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", ["programmer"], indirect=True)
 async def test_state_changes_ride_the_state_stream_never_this_one(stream):
     """A `*` subscriber must not get every state change twice."""
     engine, ws = stream
@@ -242,7 +340,7 @@ async def test_a_subscriber_that_stops_reading_is_dropped_not_awaited():
     engine = _engine()
     ws = FakeWS()
     # Delivery deferred and never released: the writer holds, the queue fills.
-    engine.ws.add_client(ws, defer_delivery=True)
+    engine.ws.add_client(ws, defer_delivery=True, authority=lambda: True)
     with patch("openavc.api._engine._engine", engine):
         await _say(ws, engine, {"type": "event.subscribe", "patterns": ["custom.*"]})
     try:

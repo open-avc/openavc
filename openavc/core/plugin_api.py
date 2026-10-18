@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Callable, Coroutine
 
 from openavc.core.state_store import is_flat_primitive
+from openavc.core.outbound_messages import plugin_publication
 from openavc.utils.logger import get_logger
 from openavc.utils.net_safety import assert_safe_outbound_url
 
@@ -201,7 +202,7 @@ class PluginAPI:
         """
         self._require("event_emit")
         full_event = f"plugin.{self._plugin_id}.{event_name}"
-        await self._events.emit(full_event, payload)
+        await self._events.emit(full_event, plugin_publication(self._plugin_id, event_name, payload))
 
     async def event_subscribe(self, pattern: str, callback: Callable) -> str:
         """Subscribe to events matching a glob. Requires: event_subscribe.

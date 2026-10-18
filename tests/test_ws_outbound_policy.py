@@ -135,3 +135,39 @@ async def test_runtime_diagnostic_reaches_only_the_requesting_programmer(tmp_pat
         for ws, _kind in sockets:
             engine.ws.remove_client(ws)
         await asyncio.sleep(0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("configured", [True, False])
+async def test_group_failure_keeps_classified_panel_guidance_and_lifecycle_name(tmp_path, configured):
+    from openavc.core.engine import Engine
+    from openavc.core.project_loader import ProjectConfig
+
+    engine = Engine(str(tmp_path / "project.avc"))
+    engine.project = ProjectConfig.model_validate({
+        "project": {"id": "example", "name": "Example"},
+        "devices": [{"id": "acme", "name": "Room Display", "driver": "acme_widget"}] if configured else [],
+    })
+    engine.state.set("device.acme.name", "Room Display")
+    engine.macros.load_groups([{"id": "screens", "name": "Screens", "device_ids": ["acme"]}])
+    engine.macros.load_macros([{"id": "wake", "name": "Wake screens", "steps": [
+        {"action": "group.command", "group": "screens", "command": "power_on"},
+    ]}])
+    engine.events.on("macro.*", engine._on_macro_event)
+    panel, programmer = Socket(), Socket()
+    engine.ws.add_client(panel, authority=lambda: True)
+    engine.ws.add_client(programmer, client_type="programmer", authority=lambda: True)
+    try:
+        await engine.macros.execute("wake")
+        await engine.ws.flush_sends()
+        error = next(m for m in panel.messages if m["type"] == "macro.step_error")
+        if configured:
+            assert "Room Display is not connected" in error["message"]
+        else:
+            assert "Screens" in error["message"] and "Contact support" in error["message"]
+        started = next(m for m in programmer.messages if m["type"] == "macro.started")
+        assert started["name"] == "Wake screens"
+    finally:
+        engine.ws.remove_client(panel)
+        engine.ws.remove_client(programmer)
+        await asyncio.sleep(0)

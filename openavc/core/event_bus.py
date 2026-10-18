@@ -181,7 +181,9 @@ class EventBus:
             )
             return
 
-        payload = payload or {}
+        # An empty producer-issued publication still carries outward schema
+        # provenance. Preserve mapping identity; only an absent value is empty.
+        payload = {} if payload is None else payload
         matching = self._find_handlers(event)
 
         if not matching:

@@ -1493,9 +1493,11 @@ class ISCManager:
         event = msg.get("event", "")
         payload = msg.get("payload", {})
         if event:
+            from openavc.core.outbound_messages import peer_publication
+            mirrored = {**payload, "source_instance": peer_id}
             await self.events.emit(
                 f"isc.{peer_id}.{event}",
-                {"source_instance": peer_id, **payload},
+                peer_publication(peer_id, event, mirrored),
             )
 
     # ------------------------------------------------------------------

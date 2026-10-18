@@ -477,7 +477,8 @@ async def emit_context_action(plugin_id: str, action_id: str, request: Request) 
 
     # Emit as plugin event: plugin.<id>.action.<action_id>
     event = f"plugin.{plugin_id}.action.{action_id}"
-    await engine.events.emit(event, payload)
+    from openavc.core.outbound_messages import plugin_publication
+    await engine.events.emit(event, plugin_publication(plugin_id, f"action.{action_id}", payload))
 
     return {"status": "emitted", "event": event}
 

@@ -1042,12 +1042,14 @@ class MacroEngine:
                 # with what a device.command step raises for the same cause, so
                 # anything matching on the code sees one answer.
                 group_name = self._group_names.get(group_id) or group_id
+                from openavc.core.outbound_messages import DiagnosticText, RoomText
                 outcome[did] = {
                     "device_id": did, "name": did, "success": False,
                     "error": "Device not found",
-                    "message": (
+                    "message": DiagnosticText(
                         f"Device '{did}' is listed in group '{group_name}' but is not in "
-                        f"this project. Remove it from the group, or add the device back."
+                        f"this project. Remove it from the group, or add the device back.",
+                        RoomText(f"Equipment in '{group_name}' is unavailable. Contact support."),
                     ),
                 }
             device_results = [outcome[did] for did in device_ids if did in outcome]
@@ -1073,7 +1075,7 @@ class MacroEngine:
             failures = [r for r in device_results if not r["success"]]
             if failures and len(failures) == len(device_results):
                 first = failures[0]
-                return (str(first.get("error") or ""), str(first.get("message") or ""))
+                return (str(first.get("error") or ""), first.get("message") or "")
             return None
 
         elif action == "delay":

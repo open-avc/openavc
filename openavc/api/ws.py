@@ -84,6 +84,7 @@ _audit_scopes: dict[int, MessageScope] = {}
 # bus walks every registered pattern on every emit and `state.changed` emits
 # on every state change.
 _event_subscriptions: dict[int, tuple[str, tuple[str, ...]]] = {}
+_event_scope_releases: dict[int, Callable[[], None]] = {}
 
 # The key a self-identified connection holds up while it is connected. A
 # system whose logic lives outside (a Node-RED flow) is part of the room, and
@@ -367,6 +368,8 @@ def _subscribe_events(
     if not patterns:
         return
     panel = client_type == "panel"
+    scope = engine.ws.open_scope(ws)
+    _event_scope_releases[ws_id] = lambda: engine.ws.close_scope(ws, scope)
 
     def _forward(event: str, payload: dict[str, Any]) -> None:
         # Runs inside every emit on the bus: decide and enqueue, never await.
@@ -381,7 +384,7 @@ def _subscribe_events(
             "event": event,
             "payload": payload,
             "timestamp": time.time(),
-        })
+        }, scope=scope)
 
     handler_id = engine.events.on("*", _forward)
     _event_subscriptions[ws_id] = (handler_id, patterns)
@@ -390,6 +393,9 @@ def _subscribe_events(
 def _cleanup_event_subscription(ws_id: int, engine: Any) -> None:
     """Drop a client's event subscription and its bus handler."""
     sub = _event_subscriptions.pop(ws_id, None)
+    release_scope = _event_scope_releases.pop(ws_id, None)
+    if release_scope is not None:
+        release_scope()
     if sub and engine is not None:
         engine.events.off(sub[0])
 
