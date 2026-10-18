@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from fastapi import APIRouter, Request
 from fastapi.routing import APIRoute
 from starlette.requests import HTTPConnection
-from starlette.responses import JSONResponse
+from starlette.responses import HTMLResponse, JSONResponse
 from starlette.routing import Match, Mount
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -87,11 +87,24 @@ def bind_request_authority(request: Request, check: Callable[[], bool]) -> None:
         lease.require_current(check)
 
 
+def interface_disabled_response(scope: Scope):
+    """Return the product-settings refusal suitable for a browser or API client."""
+    message = "This interface is disabled in product management."
+    headers = {"Cache-Control": "no-store"}
+    if "text/html" in HTTPConnection(scope).headers.get("accept", ""):
+        return HTMLResponse(
+            '<!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1">'
+            '<title>OpenAVC interface disabled</title><style>body{font:18px system-ui;background:#f4f6f5;'
+            'color:#192d28;max-width:640px;margin:12vh auto;padding:24px}p{line-height:1.6}</style>'
+            '<h1>OpenAVC interface disabled</h1><p>' + message + '</p>'
+            '<p>Use this product’s management interface to change access settings.</p></html>',
+            status_code=403, headers=headers,
+        )
+    return JSONResponse({"detail": message, "code": "interface_disabled"}, status_code=403, headers=headers)
+
+
 async def _denied(scope: Scope, receive: Receive, send: Send) -> None:
-    await JSONResponse(
-        {"detail": "This interface is disabled by the product settings."},
-        status_code=403, headers={"Cache-Control": "no-store"},
-    )(scope, receive, send)
+    await interface_disabled_response(scope)(scope, receive, send)
 
 
 class HTTPPolicy:
@@ -428,36 +441,52 @@ def validate_policies(app) -> None:
         registered_policy(route)
 
 
+def resolve_endpoint_policy(scope: Scope) -> EndpointPolicy:
+    """Resolve declared authority for dispatch, method refusal or slash redirect."""
+    def bound(route, child, overrides=None):
+        declared = registered_policy(route)
+        return EndpointPolicy(
+            lambda original: declared.resolve({**original, **(overrides or {}), **child}),
+            declared.authenticate,
+        )
+
+    partial = None
+    for route in scope["app"].routes:
+        match, child = route.matches(scope)
+        if match is Match.FULL:
+            return bound(route, child)
+        if match is Match.PARTIAL and partial is None:
+            partial = (route, child)
+    if partial is not None:
+        return bound(*partial)
+    # Starlette only redirects after all full and method-only matches fail.
+    # The redirect receives the target's registered policy without dispatching
+    # that target or changing the scope the real router will see.
+    router = scope["app"].router
+    if scope["type"] == "http" and router.redirect_slashes and scope["path"] != "/":
+        path = scope["path"]
+        redirected = {"path": path.rstrip("/") if path.endswith("/") else path + "/"}
+        for route in router.routes:
+            match, child = route.matches({**scope, **redirected})
+            if match is not Match.NONE:
+                return bound(route, child, redirected)
+    return EndpointPolicy(HostCategory.PROGRAMMER)
+
+
 class HostPolicyMiddleware:
     """Own connection lifetime outside response/startup middleware.
 
     Route matching uses Starlette's public interface and the same declaration
     order. Authority comes solely from explicit registration metadata, never
     endpoint names, URL conventions or FastAPI's dependency internals. Ordinary
-    no-match/redirect responses retain the Programmer surface's policy.
+    redirects use their target's policy; unmatched responses use Programmer.
     """
 
     def __init__(self, app: ASGIApp):
         self.app = app
 
     def resolve(self, scope: Scope) -> EndpointPolicy:
-        partial = None
-        for route in scope["app"].routes:
-            match, child = route.matches(scope)
-            if match is Match.FULL:
-                declared = registered_policy(route)
-                # Give resolvers the matched parameters without changing the
-                # router's input: mutating root_path here would strip a mount
-                # prefix a second time when the actual router dispatches.
-                return EndpointPolicy(
-                    lambda original: declared.resolve({**original, **child}),
-                    declared.authenticate,
-                )
-            if match is Match.PARTIAL and partial is None:
-                partial = route
-        if partial is not None:
-            return registered_policy(partial)
-        return EndpointPolicy(HostCategory.PROGRAMMER)
+        return resolve_endpoint_policy(scope)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] not in {"http", "websocket"}:

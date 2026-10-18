@@ -84,8 +84,15 @@ def test_static_mount_keeps_prefix_redirect_file_response_and_policy(tmp_path):
         host.current = PolicySnapshot(2, True, False)
         assert client.get("/panel/").status_code == 403
         assert client.get("/panel/panel.js").text == "panel asset"
+        host.current = PolicySnapshot(3, False, True)
+        assert client.get("/panel", follow_redirects=False).status_code == 307
+        assert client.get("/panel").text == "panel shell"
         host.current = PolicySnapshot(3, False, False)
-        assert client.get("/panel/panel.js").status_code == 403
+        denied = client.get("/panel/panel.js", headers={"Accept": "text/html"})
+        assert denied.status_code == 403
+        assert denied.headers["content-type"].startswith("text/html")
+        assert denied.headers["cache-control"] == "no-store"
+        assert client.get("/panel/").json()["code"] == "interface_disabled"
 
 
 def test_unclassified_route_cannot_use_runtime_path_or_claimed_name_to_bypass():
