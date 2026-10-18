@@ -12,6 +12,7 @@ import stat
 from pathlib import Path
 from typing import Any
 
+from openavc.api.host_policy import ProgrammerRoute, RenderRoute
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 
@@ -21,9 +22,9 @@ from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-router = APIRouter(prefix="/api", dependencies=[Depends(require_programmer_auth)])
+router = APIRouter(route_class=ProgrammerRoute, prefix="/api", dependencies=[Depends(require_programmer_auth)])
 # Open router for serving assets to the panel (no auth required)
-open_router = APIRouter(prefix="/api")
+open_router = APIRouter(route_class=RenderRoute, prefix="/api")
 
 _engine = None
 

@@ -54,6 +54,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Literal
 
+from openavc.api.host_policy import ProgrammerRoute
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
@@ -106,7 +107,7 @@ from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-router = APIRouter(prefix="/audit")
+router = APIRouter(route_class=ProgrammerRoute, prefix="/audit")
 
 _manager: AuditManager | None = None
 _discovery: Any = None

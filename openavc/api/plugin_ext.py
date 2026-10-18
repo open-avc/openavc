@@ -45,6 +45,8 @@ from fastapi.security import HTTPBasicCredentials
 
 from openavc.api import auth as _auth
 from openavc.api.auth import programmer_auth_satisfied
+from openavc.api.host_policy import EndpointPolicy, application_policy, include_policy_router
+from openavc.core.host_policy import HostCategory
 from openavc.middleware import rate_limit as _rate_limit
 from openavc.utils.logger import get_logger
 
@@ -384,6 +386,34 @@ def require_plugin_access(plugin_id: str):
     return _dependency
 
 
+def _plugin_host_policy(plugin_id: str) -> EndpointPolicy:
+    """Bind host access to this registration's plugin and canonical tokens."""
+    guard = require_plugin_access(plugin_id)
+
+    async def authenticate(request):
+        await guard(request, credentials=_auth.basic_credentials(request))
+
+    def category(scope):
+        request = Request(scope)
+        if programmer_auth_satisfied(request, _auth.basic_credentials(request)):
+            return HostCategory.PROGRAMMER
+        token = request.headers.get(PLUGIN_TOKEN_HEADER) or request.query_params.get(PLUGIN_TOKEN_QUERY, "")
+        if token and verify_plugin_token(token, plugin_id):
+            return HostCategory.PROGRAMMER
+        panel_path = panel_path_allowed(plugin_id, request.method, _ext_path_suffix(plugin_id, request.url.path))
+        if token and verify_panel_token(token, plugin_id):
+            if panel_path or not application_policy(scope).snapshot().panel_enabled:
+                return HostCategory.PANEL
+            # An enabled Programmer surface preserves the canonical 401 for a
+            # panel token used outside its declared methods/paths.
+            return HostCategory.PROGRAMMER
+        # Missing/invalid credentials still reach the canonical 401 when the
+        # corresponding surface is available. This never authenticates them.
+        return HostCategory.RENDER if panel_path else HostCategory.PROGRAMMER
+
+    return EndpointPolicy(category, authenticate)
+
+
 def _ext_prefix(plugin_id: str) -> str:
     return f"/api/plugins/{plugin_id}/ext"
 
@@ -421,8 +451,10 @@ def mount_plugin_router(
     # stop→start (e.g. config change) doesn't leave stale duplicates.
     unmount_plugin_router(app, plugin_id)
     previous = {id(route) for route in app.router.routes}
-    app.include_router(
+    include_policy_router(
+        app,
         router,
+        _plugin_host_policy(plugin_id),
         prefix=prefix,
         dependencies=[Depends(require_plugin_access(plugin_id))],
     )
@@ -468,7 +500,7 @@ def mount_plugin_guest_router(app, plugin_id: str, router, alias: str | None = N
     prefix = _guest_prefix(plugin_id)
     unmount_plugin_guest_router(app, plugin_id)
     previous = {id(route) for route in app.router.routes}
-    app.include_router(router, prefix=prefix)
+    include_policy_router(app, router, EndpointPolicy(HostCategory.RUNTIME), prefix=prefix)
     _mark_interface_routes(app, previous, plugin_id, "guest")
     log.info("Mounted plugin '%s' guest HTTP router at %s/*", plugin_id, prefix)
     if alias:
@@ -520,7 +552,7 @@ def _mount_guest_alias(app, plugin_id: str, router, alias: str) -> None:
             )
             return
     previous = {id(route) for route in app.router.routes}
-    app.include_router(router, prefix=f"/{alias}")
+    include_policy_router(app, router, EndpointPolicy(HostCategory.RUNTIME), prefix=f"/{alias}")
     _mark_interface_routes(app, previous, plugin_id, "guest")
     _active_aliases[alias] = plugin_id
     _rate_limit.register_standard_prefix(f"/{alias}")

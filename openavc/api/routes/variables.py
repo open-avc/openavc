@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from openavc.api.host_policy import ProgrammerRoute
 from fastapi import APIRouter
 
 from openavc.api._engine import _get_engine
@@ -9,7 +10,7 @@ from openavc.api.errors import api_error as _api_error
 from openavc.api.models import StateSetRequest
 from openavc.core.state_store import check_state_write
 
-router = APIRouter()
+router = APIRouter(route_class=ProgrammerRoute)
 
 
 @router.get("/state")

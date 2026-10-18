@@ -9,18 +9,20 @@ and asking the process to restart. The neighbouring modules own the rest —
 
 from typing import Any
 
+from openavc.api.host_policy import EndpointPolicy, endpoint_policy, ProgrammerRoute, PublicProgrammerRoute
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPBasicCredentials
 
 from openavc.api._engine import _get_engine
+from openavc.core.host_policy import HostCategory
 from openavc.api.auth import _basic, programmer_auth_satisfied
 from openavc.utils.request_origin import (
     is_local_console_request,
     is_tunneled_request,
 )
 
-router = APIRouter()
-open_router = APIRouter()
+router = APIRouter(route_class=ProgrammerRoute)
+open_router = APIRouter(route_class=PublicProgrammerRoute)
 
 # What a secret reads as on the way out, and the value a PATCH must never
 # take literally on the way back in. One constant so the two halves of that
@@ -46,6 +48,7 @@ _BACKGROUND_TASKS: set = set()
 
 
 @open_router.get("/startup-status")
+@endpoint_policy(EndpointPolicy(HostCategory.RUNTIME))
 async def startup_status() -> dict[str, Any]:
     """Returns whether the engine has finished initializing."""
     return {"ready": True, "error": None}
@@ -79,6 +82,7 @@ async def get_status(
 
 
 @open_router.get("/health")
+@endpoint_policy(EndpointPolicy(HostCategory.RUNTIME))
 async def health_check() -> dict[str, Any]:
     """Health check for monitoring and container orchestration."""
     engine = _get_engine()

@@ -34,6 +34,8 @@ from __future__ import annotations
 import asyncio
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from openavc.api.host_policy import EndpointPolicy, endpoint_policy
+from openavc.core.host_policy import HostCategory
 
 from openavc.api._engine import get_engine_optional
 from openavc.api.auth import check_ws_auth, get_ws_auth_subprotocol
@@ -54,6 +56,7 @@ _IDLE_POLLS_PER_HEARTBEAT = 15
 
 
 @router.websocket("/api/devices/{bridge_id}/ir-learn")
+@endpoint_policy(EndpointPolicy(HostCategory.PROGRAMMER))
 async def ir_learn_endpoint(bridge_id: str, ws: WebSocket) -> None:
     """Drive a learn session on ``bridge_id`` and stream captured codes."""
     query_params = dict(ws.query_params)

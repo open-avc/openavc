@@ -5,6 +5,7 @@ Aggregator module that imports domain-specific routers and exposes
 the two top-level routers (open_router, router) for main.py to mount.
 """
 
+from openavc.api.host_policy import ProgrammerRoute, PublicProgrammerRoute
 from fastapi import APIRouter, Depends
 
 import openavc.api._engine as _engine_mod
@@ -51,9 +52,9 @@ def __getattr__(name):
 
 
 # Open router — no auth required (status, health, setup/auth bootstrap)
-open_router = APIRouter(prefix="/api")
+open_router = APIRouter(route_class=PublicProgrammerRoute, prefix="/api")
 # Protected router — requires programmer auth when configured
-router = APIRouter(prefix="/api", dependencies=[Depends(require_programmer_auth)])
+router = APIRouter(route_class=ProgrammerRoute, prefix="/api", dependencies=[Depends(require_programmer_auth)])
 
 # Include domain routers (protected)
 router.include_router(_variables_routes.router)

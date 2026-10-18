@@ -16,6 +16,7 @@ same way.
 import asyncio
 from typing import Any
 
+from openavc.api.host_policy import ProgrammerRoute
 from fastapi import APIRouter, Body
 
 from openavc.api._engine import _get_engine
@@ -23,7 +24,7 @@ from openavc.api.errors import api_error as _api_error
 from openavc.core.event_bus import check_event_emit
 from openavc.utils.logger import get_logger
 
-router = APIRouter()
+router = APIRouter(route_class=ProgrammerRoute)
 log = get_logger(__name__)
 
 # Strong refs for the fire-and-forget emits -- asyncio only weakly references

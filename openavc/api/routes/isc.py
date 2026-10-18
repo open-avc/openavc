@@ -11,6 +11,7 @@ None whenever the feature is disabled in system config.
 
 from typing import Any
 
+from openavc.api.host_policy import ProgrammerRoute
 from fastapi import APIRouter, HTTPException
 
 from openavc.api._engine import _get_engine
@@ -20,7 +21,7 @@ from openavc.api.models import (
 )
 from openavc.core.isc import ISCRemoteError
 
-router = APIRouter()
+router = APIRouter(route_class=ProgrammerRoute)
 
 
 def _why_isc_is_off(engine) -> dict[str, Any]:

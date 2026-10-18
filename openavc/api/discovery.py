@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from openavc.api.host_policy import ProgrammerRoute
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ConfigDict
@@ -30,6 +31,7 @@ def set_app_engine(engine) -> None:
 
 
 router = APIRouter(
+    route_class=ProgrammerRoute,
     prefix="/api/discovery",
     dependencies=[Depends(require_programmer_auth)],
 )

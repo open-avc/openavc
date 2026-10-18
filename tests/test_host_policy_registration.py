@@ -1,7 +1,8 @@
 """Policy metadata follows the final routing table, not endpoint names."""
 import asyncio
 
-from fastapi import APIRouter, Depends, FastAPI, WebSocket
+from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, WebSocket
+from fastapi.routing import APIRoute
 import pytest
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
@@ -9,7 +10,7 @@ from starlette.staticfiles import StaticFiles
 
 from openavc.api.host_policy import (
     EndpointPolicy, HostPolicyMiddleware, PolicyMount, configure_policy,
-    endpoint_policy, policy_route, validate_policies,
+    endpoint_policy, include_policy_router, policy_route, validate_policies,
 )
 from openavc.core.host_policy import HostCategory, HostPolicy, PolicySnapshot
 
@@ -117,3 +118,46 @@ def test_no_match_and_method_refusals_preserve_programmer_policy_and_runtime_rou
         assert client.get("/health").json() == {"ok": True}
         assert client.post("/health").status_code == 405
     assert asyncio.run(host.apply_current(timeout=0)).observed
+
+
+def test_external_router_keeps_custom_handler_and_schema_with_platform_authority():
+    app, host = application()
+    calls = []
+
+    class CustomRoute(APIRoute):
+        def get_route_handler(self):
+            original = super().get_route_handler()
+
+            async def wrapped(request):
+                calls.append("custom")
+                return await original(request)
+            return wrapped
+
+    async def authenticate(request):
+        calls.append("authenticate")
+        if request.headers.get("x-example-credential") != "allowed":
+            raise HTTPException(401)
+
+    router = APIRouter(route_class=CustomRoute)
+
+    @router.post("/write")
+    @endpoint_policy(EndpointPolicy(HostCategory.RUNTIME))
+    async def write(value: dict = Body()):
+        calls.append("endpoint")
+        return value
+
+    include_policy_router(app, router, EndpointPolicy(HostCategory.PROGRAMMER, authenticate), prefix="/extension")
+    validate_policies(app)
+    assert "requestBody" in app.openapi()["paths"]["/extension/write"]["post"]
+    with TestClient(app) as client:
+        # Invalid JSON would produce 422 if the parser ran before this guard.
+        assert client.post("/extension/write", content=b"not json").status_code == 401
+        assert calls == ["authenticate"]
+        calls.clear()
+        assert client.post("/extension/write", json={"value": 7},
+                           headers={"x-example-credential": "allowed"}).json() == {"value": 7}
+        assert calls == ["authenticate", "custom", "endpoint"]
+        host.current = PolicySnapshot(2, False, True)
+        calls.clear()
+        assert client.post("/extension/write", json={}).status_code == 403
+        assert not calls

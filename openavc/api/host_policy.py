@@ -5,13 +5,14 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-from fastapi import Request
+from fastapi import APIRouter, Request
 from fastapi.routing import APIRoute
 from starlette.requests import HTTPConnection
 from starlette.responses import JSONResponse
 from starlette.routing import Match, Mount
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from openavc.api.auth import authenticate_programmer_request
 from openavc.core.host_policy import AdmissionLease, HostCategory, HostPolicy, HostPolicyDenied
 from openavc.utils.logger import get_logger
 
@@ -295,9 +296,11 @@ class WebSocketPolicy:
 
 class PolicyRoute(APIRoute):
     endpoint_policy: EndpointPolicy | None = None
+    allow_endpoint_override = True
 
     def __init__(self, path, endpoint, **kwargs):
-        declared = getattr(endpoint, _ENDPOINT_POLICY, self.endpoint_policy)
+        declared = (getattr(endpoint, _ENDPOINT_POLICY, self.endpoint_policy)
+                    if self.allow_endpoint_override else self.endpoint_policy)
         if not isinstance(declared, EndpointPolicy):
             raise ValueError("An HTTP route needs an explicit endpoint policy")
         self.endpoint_policy = declared
@@ -320,6 +323,73 @@ def policy_route(policy: EndpointPolicy) -> type[PolicyRoute]:
     class RegisteredPolicyRoute(PolicyRoute):
         endpoint_policy = policy
     return RegisteredPolicyRoute
+
+
+class ProgrammerRoute(PolicyRoute):
+    endpoint_policy = EndpointPolicy(HostCategory.PROGRAMMER, authenticate_programmer_request)
+
+
+class PublicProgrammerRoute(PolicyRoute):
+    """Programmer shell/bootstrap routes keep their existing in-handler guards."""
+    endpoint_policy = EndpointPolicy(HostCategory.PROGRAMMER)
+
+
+class PanelRoute(PolicyRoute):
+    endpoint_policy = EndpointPolicy(HostCategory.PANEL)
+
+
+class RenderRoute(PolicyRoute):
+    endpoint_policy = EndpointPolicy(HostCategory.RENDER)
+
+
+class RuntimeRoute(PolicyRoute):
+    endpoint_policy = EndpointPolicy(HostCategory.RUNTIME)
+
+
+def include_policy_router(app, router: APIRouter, policy: EndpointPolicy, **kwargs) -> None:
+    """Register externally supplied HTTP routes with the platform's policy.
+
+    FastAPI's public inclusion API copies schema/response/dependency settings.
+    Select its route class at that registration point so custom route handlers
+    still run and host authentication precedes the copied body parser. A plugin
+    cannot choose another host category through endpoint metadata.
+    """
+    class ClassifiedRouter(APIRouter):
+        def add_api_route(self, path, endpoint, *, route_class_override=None, **options):
+            original = route_class_override or APIRoute
+            bases = ((original,) if issubclass(original, PolicyRoute)
+                     else (PolicyRoute, original))
+            classified = type("ClassifiedRoute", bases, {
+                "endpoint_policy": policy, "allow_endpoint_override": False,
+            })
+            super().add_api_route(path, endpoint, route_class_override=classified, **options)
+
+    prepared = ClassifiedRouter()
+    prepared.include_router(router)
+    previous = {id(route) for route in app.routes}
+    app.include_router(prepared, **kwargs)
+    for route in app.routes:
+        if id(route) in previous:
+            continue
+        if getattr(route, "methods", None) is None:
+            # WebSocket dependencies remain with FastAPI; HTTP pre-body guards
+            # are not WebSocket authentication functions.
+            route.endpoint_policy = EndpointPolicy(policy.category)
+        else:
+            route.endpoint_policy = policy
+            if not isinstance(route, PolicyRoute) and policy.authenticate is not None:
+                route.app = _EarlyAuthApp(route.app, policy.authenticate)
+
+
+class _EarlyAuthApp:
+    """Pre-body authentication for explicitly registered plain ASGI routes."""
+
+    def __init__(self, app: ASGIApp, authenticate: EarlyGuard):
+        self.app, self.authenticate = app, authenticate
+
+    async def __call__(self, scope, receive, send):
+        await self.authenticate(Request(scope, receive))
+        await self.app(scope, receive, send)
 
 
 class PolicyMount(Mount):

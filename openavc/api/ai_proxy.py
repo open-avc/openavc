@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
+from openavc.api.host_policy import ProgrammerRoute
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
@@ -21,6 +22,7 @@ from openavc.api.auth import require_programmer_auth
 log = logging.getLogger(__name__)
 
 router = APIRouter(
+    route_class=ProgrammerRoute,
     prefix="/api/ai",
     tags=["ai"],
     dependencies=[Depends(require_programmer_auth)],

@@ -34,6 +34,8 @@ import contextlib
 
 import httpx
 import websockets
+from openavc.api.host_policy import EndpointPolicy, ProgrammerRoute, PublicProgrammerRoute, endpoint_policy
+from openavc.core.host_policy import HostCategory
 from fastapi import APIRouter, Depends, Request, WebSocket
 from fastapi.responses import RedirectResponse, Response
 
@@ -63,8 +65,8 @@ log = get_logger(__name__)
 #
 # Registration order carries the split: the API rule is declared first so it
 # matches before the open catch-all sees the path.
-router = APIRouter(dependencies=[Depends(require_programmer_auth)])
-open_router = APIRouter()
+router = APIRouter(route_class=ProgrammerRoute, dependencies=[Depends(require_programmer_auth)])
+open_router = APIRouter(route_class=PublicProgrammerRoute)
 ws_router = APIRouter()
 
 MOUNT = "/simulator"
@@ -237,6 +239,7 @@ async def _forward(path: str, request: Request) -> Response:
 
 
 @ws_router.websocket(MOUNT + "/ws")
+@endpoint_policy(EndpointPolicy(HostCategory.PROGRAMMER))
 async def simulator_ws_proxy(ws: WebSocket) -> None:
     """Pump the simulator's live feed (state, protocol log) through this origin."""
     if not check_ws_auth(dict(ws.query_params), dict(ws.headers)):

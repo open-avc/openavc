@@ -25,10 +25,12 @@ import re
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from openavc.api.host_policy import EndpointPolicy, endpoint_policy, ProgrammerRoute
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 
+from openavc.core.host_policy import HostCategory
 from openavc.api._engine import _get_engine
-from openavc.api.auth import require_claimed_auth
+from openavc.api.auth import authenticate_claimed_request, require_claimed_auth
 from openavc.api.errors import StructuredApiError
 from openavc.api.errors import api_error as _api_error
 from openavc.api.models import (
@@ -76,7 +78,7 @@ async def announce_drivers_changed(driver_id: str | None = None) -> None:
     except Exception:
         log.exception("Could not announce the driver change for '%s'", driver_id)
 
-router = APIRouter()
+router = APIRouter(route_class=ProgrammerRoute)
 
 
 def _parse_semver(v: str) -> tuple[int, int, int]:
@@ -1753,6 +1755,7 @@ async def delete_driver_definition_endpoint(driver_id: str) -> dict:
 
 
 @router.post("/driver-definitions/{driver_id}/reload", dependencies=[Depends(require_claimed_auth)])
+@endpoint_policy(EndpointPolicy(HostCategory.PROGRAMMER, authenticate_claimed_request))
 async def reload_driver_definition(driver_id: str) -> dict:
     """Re-read a YAML (``.avcdriver``) driver from disk and reconnect its devices.
 

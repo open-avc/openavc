@@ -9,9 +9,10 @@ this module is only the HTTP door onto it.
 
 from typing import Any
 
+from openavc.api.host_policy import PublicProgrammerRoute
 from fastapi import APIRouter, HTTPException, Request
 
-open_router = APIRouter()
+open_router = APIRouter(route_class=PublicProgrammerRoute)
 
 
 @open_router.get("/auth/required")

@@ -26,10 +26,12 @@ tenants.
 from pathlib import Path
 from typing import Any
 
+from openavc.api.host_policy import EndpointPolicy, endpoint_policy, ProgrammerRoute
 from fastapi import APIRouter, Depends, HTTPException
 
+from openavc.core.host_policy import HostCategory
 from openavc.api._engine import _get_engine
-from openavc.api.auth import require_claimed_auth
+from openavc.api.auth import authenticate_claimed_request, require_claimed_auth
 from openavc.api.errors import api_error as _api_error
 from openavc.api.models import PythonDriverCreateRequest
 from openavc.drivers.driver_loader import driver_companions, require_mutable_driver_file
@@ -38,7 +40,7 @@ from openavc.drivers.registry import register_driver, require_mutable_driver, un
 
 log = get_logger(__name__)
 
-router = APIRouter()
+router = APIRouter(route_class=ProgrammerRoute)
 
 
 async def _announce(driver_id: str) -> None:
@@ -145,6 +147,7 @@ async def export_python_driver_bundle(driver_id: str):
 
 
 @router.put("/python-drivers/{driver_id}/source", dependencies=[Depends(require_claimed_auth)])
+@endpoint_policy(EndpointPolicy(HostCategory.PROGRAMMER, authenticate_claimed_request))
 async def save_python_driver_source(driver_id: str, body: dict) -> dict:
     """Save the source code of a Python driver file.
 
@@ -195,6 +198,7 @@ async def save_python_driver_source(driver_id: str, body: dict) -> dict:
 
 
 @router.post("/python-drivers", dependencies=[Depends(require_claimed_auth)])
+@endpoint_policy(EndpointPolicy(HostCategory.PROGRAMMER, authenticate_claimed_request))
 async def create_python_driver(body: PythonDriverCreateRequest) -> dict:
     """Create a new Python driver file."""
     from openavc.system_config import DRIVER_REPO_DIR
@@ -227,6 +231,7 @@ async def create_python_driver(body: PythonDriverCreateRequest) -> dict:
 
 
 @router.delete("/python-drivers/{driver_id}", dependencies=[Depends(require_claimed_auth)])
+@endpoint_policy(EndpointPolicy(HostCategory.PROGRAMMER, authenticate_claimed_request))
 async def delete_python_driver(driver_id: str) -> dict:
     """Delete a Python driver file."""
     require_mutable_driver(driver_id)
@@ -263,6 +268,7 @@ async def delete_python_driver(driver_id: str) -> dict:
 
 
 @router.post("/python-drivers/{driver_id}/reload", dependencies=[Depends(require_claimed_auth)])
+@endpoint_policy(EndpointPolicy(HostCategory.PROGRAMMER, authenticate_claimed_request))
 async def reload_python_driver_endpoint(driver_id: str) -> dict:
     """Hot-reload a Python driver and reconnect affected devices."""
     require_mutable_driver(driver_id)

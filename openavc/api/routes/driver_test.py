@@ -25,6 +25,7 @@ routes, and it shares nothing with driver installation or definition CRUD.
 
 from typing import Any, NamedTuple
 
+from openavc.api.host_policy import ProgrammerRoute
 from fastapi import APIRouter, HTTPException
 
 from openavc.api._engine import _get_engine, _rate_limit_test
@@ -38,7 +39,7 @@ from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-router = APIRouter()
+router = APIRouter(route_class=ProgrammerRoute)
 
 
 @router.post("/driver-definitions/{driver_id}/test-command")

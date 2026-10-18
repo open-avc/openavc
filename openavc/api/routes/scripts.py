@@ -4,17 +4,19 @@ import re
 from pathlib import Path
 from typing import Any
 
+from openavc.api.host_policy import EndpointPolicy, endpoint_policy, ProgrammerRoute
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 
+from openavc.core.host_policy import HostCategory
 from openavc.api._engine import _get_engine
-from openavc.api.auth import require_claimed_auth
+from openavc.api.auth import authenticate_claimed_request, require_claimed_auth
 from openavc.api.errors import api_error as _api_error
 from openavc.api.models import ScriptCreateRequest
 from openavc.core.event_references import dead_listeners, project_script_sources
 from openavc.utils.fileio import atomic_write_text
 from openavc.utils.paths import is_safe_script_filename, safe_path_within
 
-router = APIRouter()
+router = APIRouter(route_class=ProgrammerRoute)
 
 
 def _get_scripts_dir() -> Path:
@@ -74,6 +76,7 @@ async def get_script_source(script_id: str) -> dict[str, Any]:
 
 
 @router.put("/scripts/{script_id}/source", dependencies=[Depends(require_claimed_auth)])
+@endpoint_policy(EndpointPolicy(HostCategory.PROGRAMMER, authenticate_claimed_request))
 async def save_script_source(script_id: str, request: Request) -> dict[str, Any]:
     """Save a script's Python source code to disk."""
     cfg = _find_script_config(script_id)
@@ -178,6 +181,7 @@ async def validate_scripts(body: Any = Body(...)) -> dict[str, Any]:
 
 
 @router.post("/scripts", dependencies=[Depends(require_claimed_auth)])
+@endpoint_policy(EndpointPolicy(HostCategory.PROGRAMMER, authenticate_claimed_request))
 async def create_script(data: ScriptCreateRequest) -> dict[str, Any]:
     """Create a new script entry and file."""
     engine = _get_engine()
@@ -247,6 +251,7 @@ async def delete_script(script_id: str) -> dict[str, Any]:
 
 
 @router.post("/scripts/reload", dependencies=[Depends(require_claimed_auth)])
+@endpoint_policy(EndpointPolicy(HostCategory.PROGRAMMER, authenticate_claimed_request))
 async def reload_scripts() -> dict[str, Any]:
     """Hot-reload all scripts."""
     engine = _get_engine()
@@ -265,6 +270,7 @@ async def reload_scripts() -> dict[str, Any]:
 
 
 @router.post("/scripts/{script_id}/reload", dependencies=[Depends(require_claimed_auth)])
+@endpoint_policy(EndpointPolicy(HostCategory.PROGRAMMER, authenticate_claimed_request))
 async def reload_single_script(script_id: str) -> dict[str, Any]:
     """Hot-reload a single script in isolation.
 

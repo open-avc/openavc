@@ -25,6 +25,7 @@ import asyncio
 import time
 from typing import Any
 
+from openavc.api.host_policy import PublicProgrammerRoute
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPBasicCredentials
@@ -43,8 +44,8 @@ from openavc.utils.hostnames import resolvable_hostname
 from openavc.utils.request_origin import is_local_console_request
 from openavc.version import __version__
 
-router = APIRouter()
-open_router = APIRouter()
+router = APIRouter(route_class=PublicProgrammerRoute)
+open_router = APIRouter(route_class=PublicProgrammerRoute)
 
 # ssh_status() shells out to systemctl on a Pi; don't do that for every
 # 3-second poll from the kiosk. Cached with a short TTL.

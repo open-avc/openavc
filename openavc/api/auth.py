@@ -95,11 +95,16 @@ class _Utf8HTTPBasic(HTTPBasic):
     """
 
     async def __call__(self, request: Request) -> HTTPBasicCredentials | None:
-        decoded = _decode_basic_header(request.headers.get("authorization", ""))
-        if decoded is None:
-            return None
-        username, password = decoded
-        return HTTPBasicCredentials(username=username, password=password)
+        return basic_credentials(request)
+
+
+def basic_credentials(request: Request) -> HTTPBasicCredentials | None:
+    """Read the canonical UTF-8 Basic credential without consuming the body."""
+    decoded = _decode_basic_header(request.headers.get("authorization", ""))
+    if decoded is None:
+        return None
+    username, password = decoded
+    return HTTPBasicCredentials(username=username, password=password)
 
 
 #: The one Basic reader for every door. `openavc/api/plugins.py`,
@@ -654,7 +659,9 @@ async def authenticate_programmer_request(request: Request) -> None:
 
 async def authenticate_claimed_request(request: Request) -> None:
     """Require the configured credential before parsing a code-writing body."""
-    await require_claimed_auth(request, credentials=await _basic(request))
+    credentials = await _basic(request)
+    await require_programmer_auth(request, credentials=credentials)
+    await require_claimed_auth(request, credentials=credentials)
 
 
 async def authenticate_local_or_programmer_request(request: Request) -> None:

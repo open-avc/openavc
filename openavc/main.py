@@ -65,6 +65,11 @@ from starlette.responses import HTMLResponse, JSONResponse
 from openavc import config, runtime_flags
 from openavc.api import rest, ws, isc_ws, discovery as discovery_api, plugins as plugins_api, assets as assets_api, themes as themes_api, ai_proxy as ai_proxy_api, ir_learn_ws
 from openavc.api import simulator_proxy
+from openavc.api.host_policy import (
+    EndpointPolicy, HostPolicyMiddleware, PolicyMount,
+    configure_policy, endpoint_policy, validate_policies,
+)
+from openavc.core.host_policy import HostCategory, HostPolicy
 from openavc.api.routes import network as network_routes
 from openavc.api.routes import pair as pair_routes
 from openavc.api.routes import root as root_routes
@@ -348,6 +353,8 @@ async def _initialize_engine(app: FastAPI) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle."""
+    validate_policies(app)
+    app.state.host_policy_started = True
     app.state.engine_ready = False
     app.state.engine_error = None
 
@@ -401,6 +408,19 @@ app = FastAPI(
     version=__version__,
     lifespan=lifespan,
 )
+
+
+def configure_host_policy(provider: HostPolicy) -> None:
+    """Install the host's provider before startup; ordinary hosting is permissive."""
+    configure_policy(app, provider)
+    engine.host_policy = provider
+
+
+configure_host_policy(engine.host_policy)
+# FastAPI installs its OpenAPI/documentation routes during construction. They
+# belong to the Programmer surface and retain their normal document responses.
+for _documentation_route in app.routes:
+    endpoint_policy(EndpointPolicy(HostCategory.PROGRAMMER))(_documentation_route.endpoint)
 
 # Wire engine into API modules. rest.set_engine() populates the single shared
 # slot in openavc.api._engine; ws.py reads that same slot, so it isn't wired
@@ -622,8 +642,24 @@ app.add_middleware(StartupSplashMiddleware)
 
 # Serve Panel UI static files
 from openavc.system_config import WEB_PANEL_DIR, WEB_PROGRAMMER_DIR
+
+
+def _panel_host_category(scope):
+    path = _panel_files.get_path(scope)
+    if path in (".", "index.html"):
+        query = Request(scope).query_params
+        if query.get("edit") == "1" or query.get("preview") == "1":
+            return HostCategory.PROGRAMMER
+        return HostCategory.PANEL
+    return HostCategory.RENDER
+
+
 if WEB_PANEL_DIR.exists():
-    app.mount("/panel", StaticFiles(directory=str(WEB_PANEL_DIR), html=True), name="panel")
+    _panel_files = StaticFiles(directory=str(WEB_PANEL_DIR), html=True)
+    app.router.routes.append(PolicyMount(
+        "/panel", _panel_files,
+        EndpointPolicy(_panel_host_category), name="panel",
+    ))
 
 
 @app.middleware("http")
@@ -643,11 +679,16 @@ async def _panel_no_cache(request, call_next):
 # Serve Programmer UI static files (Vite build output)
 programmer_dir = WEB_PROGRAMMER_DIR
 if programmer_dir.exists():
-    app.mount(
+    app.router.routes.append(PolicyMount(
         "/programmer",
         StaticFiles(directory=str(programmer_dir), html=True),
+        EndpointPolicy(HostCategory.PROGRAMMER),
         name="programmer",
-    )
+    ))
+
+# Added last so admission covers splash, cache and other response middleware as
+# well as route dispatch. SDK hosts replace the provider, not this middleware.
+app.add_middleware(HostPolicyMiddleware)
 
 
 def _is_service_managed() -> bool:

@@ -14,9 +14,10 @@ before a credential exists.
 
 from typing import Any
 
+from openavc.api.host_policy import ProgrammerRoute
 from fastapi import APIRouter, HTTPException, Request
 
-router = APIRouter()
+router = APIRouter(route_class=ProgrammerRoute)
 
 
 @router.get("/network/adapters")

@@ -8,12 +8,13 @@ is fetched at runtime and never bundled (see :mod:`openavc.core.ir_database`).
 
 from typing import Any
 
+from openavc.api.host_policy import ProgrammerRoute
 from fastapi import APIRouter
 
 from openavc.api.errors import api_error as _api_error
 from openavc.core.ir_database import IRDB_HOMEPAGE, IRDB_ISSUES, IRDB_NOTICE, IrDatabase
 
-router = APIRouter()
+router = APIRouter(route_class=ProgrammerRoute)
 
 # One shared, in-memory-cached client for the whole server.
 _db = IrDatabase()

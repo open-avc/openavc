@@ -16,10 +16,13 @@ from fastapi.security import HTTPBasicCredentials
 
 from openavc.api.auth import (
     _basic as _auth_basic,
+    basic_credentials,
     programmer_auth_satisfied,
     require_programmer_auth,
 )
 from openavc.api.errors import api_error as _api_error
+from openavc.api.host_policy import EndpointPolicy, ProgrammerRoute, RenderRoute, endpoint_policy
+from openavc.core.host_policy import HostCategory
 from openavc.api.static_files import serve_static_file
 from openavc.core.plugin_config import (
     missing_required_for_plugin,
@@ -40,7 +43,7 @@ log = get_logger(__name__)
 # actions) matches; event-name splicing does not.
 _ACTION_ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
 
-router = APIRouter(prefix="/api", dependencies=[Depends(require_programmer_auth)])
+router = APIRouter(route_class=ProgrammerRoute, prefix="/api", dependencies=[Depends(require_programmer_auth)])
 # Open router — for static plugin assets (HTML/JS/CSS/images/audio) that the
 # panel runtime fetches as iframe src or media src. Browser resource loads
 # can't attach Authorization headers, so requiring auth here just produces a
@@ -48,7 +51,7 @@ router = APIRouter(prefix="/api", dependencies=[Depends(require_programmer_auth)
 # against path traversal, blocks symlinks, and serves unknown extensions as
 # application/octet-stream, so opening these is the same security shape as
 # /api/projects/{id}/assets/* (also open).
-open_router = APIRouter(prefix="/api")
+open_router = APIRouter(route_class=RenderRoute, prefix="/api")
 
 # Non-erroring Basic scheme: lets an open-router handler read credentials when
 # present without forcing a 401 (which would summon the browser's native dialog
@@ -593,7 +596,14 @@ async def get_plugin_data_info_endpoint(plugin_id: str) -> dict[str, Any]:
 # the rest of the plugin's ext surface stays programmer-only. A panel the gate
 # refuses gets the empty token: this is what reaches a camera feed, and a
 # device that is still waiting for approval must not get one.
+def _token_host_category(scope):
+    request = Request(scope)
+    return (HostCategory.PROGRAMMER
+            if programmer_auth_satisfied(request, basic_credentials(request)) else HostCategory.PANEL)
+
+
 @open_router.get("/plugins/{plugin_id}/ext-token")
+@endpoint_policy(EndpointPolicy(_token_host_category))
 async def get_plugin_ext_token(
     plugin_id: str,
     request: Request,

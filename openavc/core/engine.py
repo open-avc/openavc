@@ -88,6 +88,8 @@ class Engine:
     """
 
     def __init__(self, project_path: str):
+        from openavc.core.host_policy import HostPolicy
+        self.host_policy = HostPolicy()
         self.project_path = Path(project_path)
         self.project: ProjectConfig | None = None
         # Resolved lazily and then held: get_or_create_instance_id() falls back

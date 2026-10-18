@@ -12,6 +12,8 @@ import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from openavc.api.host_policy import EndpointPolicy, endpoint_policy
+from openavc.core.host_policy import HostCategory
 from openavc.utils.logger import get_logger
 
 router = APIRouter()
@@ -49,6 +51,7 @@ def set_isc_manager(manager) -> None:
 
 
 @router.websocket("/isc/ws")
+@endpoint_policy(EndpointPolicy(HostCategory.RUNTIME))
 async def isc_websocket_endpoint(ws: WebSocket) -> None:
     """Accept a peer ISC WebSocket connection."""
     await ws.accept()

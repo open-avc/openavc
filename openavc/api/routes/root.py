@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import html
 
+from openavc.api.host_policy import PublicProgrammerRoute
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -29,7 +30,7 @@ from openavc.system_config import get_system_config
 from openavc.updater.platform import DeploymentType, detect_deployment_type
 from openavc.version import __version__
 
-router = APIRouter()
+router = APIRouter(route_class=PublicProgrammerRoute)
 
 
 def _is_panel_only_deployment() -> bool:

@@ -17,7 +17,9 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from openavc.api.auth import require_local_or_programmer_auth
+from openavc.api.auth import authenticate_local_or_programmer_request, require_local_or_programmer_auth
+from openavc.api.host_policy import EndpointPolicy, policy_route
+from openavc.core.host_policy import HostCategory
 from openavc.api.errors import api_error
 from openavc.api.models import (
     HostnameRequest,
@@ -28,6 +30,7 @@ from openavc.api.models import (
 from openavc.system import network as host_network
 
 router = APIRouter(
+    route_class=policy_route(EndpointPolicy(HostCategory.PROGRAMMER, authenticate_local_or_programmer_request)),
     prefix="/api/system/network",
     dependencies=[Depends(require_local_or_programmer_auth)],
 )

@@ -10,14 +10,15 @@ before auth on a dev instance); pair and unpair are protected.
 
 from typing import Any
 
+from openavc.api.host_policy import ProgrammerRoute, PublicProgrammerRoute
 from fastapi import APIRouter, HTTPException
 
 from openavc.api._engine import _get_engine
 from openavc.api.errors import api_error as _api_error
 from openavc.api.models import CloudPairRequest
 
-router = APIRouter()
-open_router = APIRouter()
+router = APIRouter(route_class=ProgrammerRoute)
+open_router = APIRouter(route_class=PublicProgrammerRoute)
 
 
 @open_router.get("/cloud/status")

@@ -12,12 +12,13 @@ from __future__ import annotations
 
 import html
 
+from openavc.api.host_policy import PublicProgrammerRoute
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from openavc.api._engine import _get_engine
 
-router = APIRouter()
+router = APIRouter(route_class=PublicProgrammerRoute)
 
 
 _PAGE_TEMPLATE = """<!DOCTYPE html>

@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from openavc.api.host_policy import ProgrammerRoute, RenderRoute
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse
 
@@ -22,7 +23,7 @@ from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-router = APIRouter(prefix="/api", dependencies=[Depends(require_programmer_auth)])
+router = APIRouter(route_class=ProgrammerRoute, prefix="/api", dependencies=[Depends(require_programmer_auth)])
 # Open router (no auth): the panel runtime fetches a single theme by id to apply
 # it before the first render. The room panel holds no programmer credential, so a
 # protected GET returns 401 WWW-Authenticate: Basic to a standalone panel, which
@@ -30,7 +31,7 @@ router = APIRouter(prefix="/api", dependencies=[Depends(require_programmer_auth)
 # username/password prompt). Theme data is cosmetic CSS variables — the same
 # security shape as /api/projects/{id}/assets/* (also open). Only the
 # single-theme GET is open; the theme list and all mutations stay protected.
-open_router = APIRouter(prefix="/api")
+open_router = APIRouter(route_class=RenderRoute, prefix="/api")
 
 _engine = None
 

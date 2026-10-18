@@ -40,6 +40,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from openavc.api.host_policy import PanelRoute, ProgrammerRoute
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.security import HTTPBasicCredentials
 from starlette.requests import HTTPConnection
@@ -77,8 +78,8 @@ from openavc.utils.request_origin import (
 
 log = get_logger(__name__)
 
-router = APIRouter()
-open_router = APIRouter()
+router = APIRouter(route_class=ProgrammerRoute)
+open_router = APIRouter(route_class=PanelRoute)
 
 COOKIE_PREFIX = "openavc_panel_"
 

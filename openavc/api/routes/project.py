@@ -3,6 +3,7 @@
 import json
 from typing import Any, Literal
 
+from openavc.api.host_policy import PanelRoute, ProgrammerRoute
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -27,8 +28,8 @@ from openavc.ui.matrix_model import resolve_matrix_config
 from openavc.utils.log_buffer import get_log_buffer
 from openavc.drivers.registry import get_driver_class, is_driver_registered
 
-router = APIRouter()
-open_router = APIRouter()
+router = APIRouter(route_class=ProgrammerRoute)
+open_router = APIRouter(route_class=PanelRoute)
 
 
 # --- Panel lock ---

@@ -16,12 +16,13 @@ state instead of the stale pre-restart one.
 
 from typing import Any
 
+from openavc.api.host_policy import ProgrammerRoute, PublicProgrammerRoute
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from openavc.api.errors import api_error as _api_error
 
-router = APIRouter()
-open_router = APIRouter()
+router = APIRouter(route_class=ProgrammerRoute)
+open_router = APIRouter(route_class=PublicProgrammerRoute)
 
 
 @open_router.get("/certificate")

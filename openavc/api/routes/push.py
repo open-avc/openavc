@@ -11,12 +11,13 @@ demux live in ``openavc/transport/http_listener.py``.
 messages with that method.
 """
 
+from openavc.api.host_policy import RuntimeRoute
 from fastapi import APIRouter, Request, Response
 
 from openavc.transport import http_listener
 from openavc.utils.request_origin import is_tunneled_request
 
-open_router = APIRouter(tags=["push"])
+open_router = APIRouter(route_class=RuntimeRoute, tags=["push"])
 
 _PUSH_METHODS = ["POST", "NOTIFY"]
 

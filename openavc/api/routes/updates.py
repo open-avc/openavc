@@ -8,11 +8,12 @@ never checks for updates never builds one.
 
 from typing import Any
 
+from openavc.api.host_policy import ProgrammerRoute
 from fastapi import APIRouter
 
 from openavc.api._engine import _get_engine
 
-router = APIRouter()
+router = APIRouter(route_class=ProgrammerRoute)
 
 
 def _get_update_manager():

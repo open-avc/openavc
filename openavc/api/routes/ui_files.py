@@ -26,10 +26,12 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from openavc.api.host_policy import EndpointPolicy, endpoint_policy, ProgrammerRoute, RenderRoute
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
+from openavc.core.host_policy import HostCategory
 from openavc.api._engine import _get_engine
-from openavc.api.auth import require_claimed_auth
+from openavc.api.auth import authenticate_claimed_request, require_claimed_auth
 from openavc.api.static_files import serve_static_file
 from openavc.core.custom_ui import (
     MAX_FILE_SIZE,
@@ -49,8 +51,8 @@ from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-router = APIRouter()
-open_router = APIRouter()
+router = APIRouter(route_class=ProgrammerRoute)
+open_router = APIRouter(route_class=RenderRoute)
 
 
 def _ui_dir() -> Path:
@@ -191,6 +193,7 @@ async def list_ui_files(project_id: str) -> dict[str, Any]:
     "/projects/{project_id}/ui/{file_path:path}",
     dependencies=[Depends(require_claimed_auth)],
 )
+@endpoint_policy(EndpointPolicy(HostCategory.PROGRAMMER, authenticate_claimed_request))
 async def write_ui_file(project_id: str, file_path: str, request: Request) -> dict[str, Any]:
     """Create or overwrite a text file in ``ui/`` (the IDE editor's door)."""
     _require_active_project(project_id)
@@ -229,6 +232,7 @@ async def write_ui_file(project_id: str, file_path: str, request: Request) -> di
     "/projects/{project_id}/ui/{file_path:path}",
     dependencies=[Depends(require_claimed_auth)],
 )
+@endpoint_policy(EndpointPolicy(HostCategory.PROGRAMMER, authenticate_claimed_request))
 async def delete_ui_file(project_id: str, file_path: str) -> dict[str, str]:
     """Delete a custom UI file, or a whole control folder.
 
@@ -275,6 +279,7 @@ async def delete_ui_file(project_id: str, file_path: str) -> dict[str, str]:
     "/projects/{project_id}/ui",
     dependencies=[Depends(require_claimed_auth)],
 )
+@endpoint_policy(EndpointPolicy(HostCategory.PROGRAMMER, authenticate_claimed_request))
 async def upload_ui_file(
     project_id: str,
     file: UploadFile = File(...),

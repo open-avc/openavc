@@ -7,11 +7,12 @@ points devices at their simulators instead of real hardware.
 
 from typing import Any
 
+from openavc.api.host_policy import ProgrammerRoute
 from fastapi import APIRouter, HTTPException, Request
 
 from openavc.api._engine import _get_engine
 
-router = APIRouter()
+router = APIRouter(route_class=ProgrammerRoute)
 
 
 @router.get("/simulation/status")

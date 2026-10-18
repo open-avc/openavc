@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from openavc.api.host_policy import ProgrammerRoute
 from fastapi import APIRouter, Body, HTTPException
 
 from openavc.api._engine import _get_engine, _rate_limit_test
@@ -9,7 +10,7 @@ from openavc.api.errors import api_error as _api_error
 from openavc.core.command_params import missing_params_check
 from openavc.core.macro_validation import macro_issues
 
-router = APIRouter()
+router = APIRouter(route_class=ProgrammerRoute)
 
 
 # --- Macros ---

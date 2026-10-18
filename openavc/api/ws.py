@@ -16,10 +16,13 @@ from fnmatch import fnmatch
 from typing import Any, Callable
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from starlette.requests import HTTPConnection
 
 from openavc.api._engine import get_engine_optional
 from openavc.api._engine import set_engine as _shared_set_engine
 from openavc.api.auth import check_ws_auth, get_ws_auth_subprotocol
+from openavc.api.host_policy import EndpointPolicy, endpoint_policy
+from openavc.core.host_policy import HostCategory
 from openavc.api.error_messages import device_error_label, friendly_error
 from openavc.api.panel_access import Admission, admit as admit_panel
 from openavc.core.event_bus import check_event_emit, event_visible
@@ -96,7 +99,18 @@ _integration_connections: dict[str, int] = {}
 _bg_tasks: set[asyncio.Task] = set()
 
 
+def _host_category(scope) -> HostCategory:
+    requested = HTTPConnection(scope).query_params.get("client", "panel")
+    # This chooses which surface is requested, not whether the caller may use
+    # it. The endpoint authenticates Programmer/Preview and admits panels.
+    # Unknown client types retain its ordinary refusal on the Programmer surface.
+    return {"panel": HostCategory.PANEL, "preview": HostCategory.PREVIEW}.get(
+        requested, HostCategory.PROGRAMMER,
+    )
+
+
 @router.websocket("/ws")
+@endpoint_policy(EndpointPolicy(_host_category))
 async def websocket_endpoint(ws: WebSocket) -> None:
     """Main WebSocket endpoint for panel and programmer UIs."""
     global _ws_connection_count
