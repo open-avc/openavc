@@ -10,6 +10,24 @@ from openavc.utils.logger import get_logger
 log = get_logger(__name__)
 
 
+#: Step fields whose null is a setting rather than "unset", by action: a
+#: Wait Until with no timeout waits for ever (and update_macro requires the
+#: field), and a Set State holding null clears the key.
+_MEANINGFUL_NULLS = {"wait_until": "timeout", "state.set": "value"}
+
+
+def _restore_meaningful_nulls(steps: list[dict[str, Any]]) -> None:
+    """Put back the nulls ``exclude_none`` dropped that mean something, in
+    place, through condition branches."""
+    for step in steps:
+        field = _MEANINGFUL_NULLS.get(step.get("action"))
+        if field and field not in step:
+            step[field] = None
+        for branch in ("then_steps", "else_steps"):
+            if isinstance(step.get(branch), list):
+                _restore_meaningful_nulls(step[branch])
+
+
 #: What each outcome of a macro run means, for the AI reading it back. Keyed by
 #: the word `MacroEngine.execute` reports, and about the RUN rather than the
 #: door it was asked through -- so running the macro and firing the trigger that
@@ -181,8 +199,11 @@ class MacroToolsMixin:
         for m in engine.project.macros:
             if m.id == macro_id:
                 # Unset fields left out, as for a UI page: a step carries every
-                # action's optional fields, nearly all null.
-                return m.model_dump(mode="json", exclude_none=True)
+                # action's optional fields, nearly all null. The few nulls that
+                # are settings go back in, so the steps can be written back.
+                dumped = m.model_dump(mode="json", exclude_none=True)
+                _restore_meaningful_nulls(dumped.get("steps", []))
+                return dumped
         return {"error": f"Macro '{macro_id}' not found"}
 
     async def _list_triggers(self, input: dict) -> Any:
