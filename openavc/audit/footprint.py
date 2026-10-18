@@ -531,6 +531,8 @@ class NetworkCheck:
 
     async def start_listeners(self) -> None:
         """Open the mDNS, SSDP and AMX DDP listeners for the session."""
+        if self._refused:
+            raise ConnectionError(self._refused)
         if self._listener_tasks or self._listeners_started is not None:
             return
         if self._given_listeners is not None:
@@ -600,8 +602,6 @@ class NetworkCheck:
 
     async def run(self) -> Footprint:
         """Run every activity and the verdict. Returns the footprint."""
-        if self._refused:
-            raise ConnectionError(self._refused)
         fp = self.footprint
         await self.start_listeners()
         await self._refresh_catalog()

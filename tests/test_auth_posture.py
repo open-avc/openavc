@@ -12,7 +12,7 @@ Covers:
 import base64
 
 import pytest
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.testclient import TestClient
 
 from openavc.api import auth
@@ -86,12 +86,14 @@ def test_state_ok_when_dev_unclaimed():
 def test_no_credential_shipped_is_not_satisfied():
     """A shipped, unclaimed instance must NOT treat 'no password' as open."""
     _set_auth(programmer_password="", api_key="", allow_anonymous=False)
-    assert auth.programmer_auth_satisfied(None, None) is False
+    request = Request({"type": "http", "headers": []})
+    assert auth.programmer_auth_satisfied(request, None) is False
 
 
 def test_no_credential_dev_is_open():
     _set_auth(programmer_password="", api_key="", allow_anonymous=True)
-    assert auth.programmer_auth_satisfied(None, None) is True
+    request = Request({"type": "http", "headers": []})
+    assert auth.programmer_auth_satisfied(request, None) is True
 
 
 # --- claim_instance ----------------------------------------------------------

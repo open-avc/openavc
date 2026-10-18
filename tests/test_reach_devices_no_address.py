@@ -162,6 +162,46 @@ async def test_an_audits_network_check_is_refused(chosen):
         await check.run()
 
 
+async def test_starting_an_audit_refuses_before_opening_its_listeners(chosen, monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import httpx
+    from fastapi import FastAPI
+    from openavc.api.host_policy import HostPolicyMiddleware
+    from openavc.api.routes import audit
+    from openavc.audit import footprint
+    from openavc.audit.report import ReportStore
+    from openavc.audit.session import AuditManager
+    from openavc.core.project_loader import ProjectConfig
+    from openavc.discovery.engine import DiscoveryEngine
+
+    chosen()
+    opened = []
+    def listener(*args, **kwargs):
+        opened.append(kwargs)
+        raise AssertionError('A refused audit attempted to open a listener')
+    for name in ('MDNSScanner', 'SSDPScanner', 'AMXDDPScanner'):
+        monkeypatch.setattr(footprint, name, listener)
+    discovery = DiscoveryEngine()
+    manager = AuditManager(None, discovery)
+    for name in ('_manager', '_discovery', '_store'):
+        monkeypatch.setattr(audit, name, None)
+    project = ProjectConfig.model_validate({'project': {'id': 'example', 'name': 'Example'}})
+    monkeypatch.setattr(audit, '_get_engine', lambda: SimpleNamespace(project=project))
+    audit.configure(manager, discovery, ReportStore(tmp_path / 'audit_reports'))
+    app = FastAPI()
+    app.add_middleware(HostPolicyMiddleware)
+    app.include_router(audit.router, prefix='/api')
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://test') as client:
+            response = await client.post('/api/audit/sessions', json={'address': '192.0.2.10'})
+            assert response.status_code == 400
+            assert response.json()['detail'] == SENTENCE
+            assert opened == []
+            assert manager.current() is None
+    finally:
+        await manager.shutdown()
+
+
 async def test_a_drivers_own_http_client_is_refused_not_left_unbound(chosen):
     import httpx
 

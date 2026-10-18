@@ -243,8 +243,10 @@ async def start_session(body: AuditStartRequest) -> dict[str, Any]:
     try:
         await open_for_session(session, _discovery)
         open_runs(session)
-    except Exception:
+    except Exception as exc:
         await manager.finish(session.id, CANCELLED)
+        if isinstance(exc, ConnectionError):
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         raise
     return {"session": session.to_dict()}
 
