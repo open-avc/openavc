@@ -29,6 +29,7 @@ def _seed() -> dict:
         "variables": [
             {"id": "mode", "type": "string", "default": ""},
             {"id": "spare", "type": "string", "default": ""},
+            {"id": "room_state", "type": "string", "default": ""},
         ],
         "macros": [
             {"id": "lights_on", "name": "Lights On", "steps": []},
@@ -59,12 +60,32 @@ def _seed() -> dict:
                      "conditions": [{"key": "var.mode", "operator": "eq", "value": "present"}]},
                 ],
             },
+            {
+                "id": "stuck", "name": "Stuck",
+                "steps": [
+                    {"action": "help.request", "message": "The room is stuck in $var.room_state."},
+                ],
+            },
         ],
         "ui": {
-            "pages": [{"id": "home", "name": "Home", "elements": []}],
+            "pages": [{"id": "home", "name": "Home", "elements": [
+                # The shape every control is saved in: show and do, each
+                # holding its slots.
+                {"id": "present", "type": "button", "label": "Present",
+                 "bindings": {
+                     "show": {"look": {"key": "var.mode", "condition": {"equals": "present"},
+                                       "style_active": {"bg_color": "#4CAF50"}}},
+                     "do": {"press": [{"action": "macro", "macro": "lights_on"}]},
+                 }},
+                {"id": "progress", "type": "label", "text": "",
+                 "bindings": {"show": {"value": {"source": "macro_progress", "macro": "lights_on",
+                                                 "idle_text": "Ready"}}}},
+                {"id": "mode_text", "type": "label", "text": "",
+                 "bindings": {"show": {"value": {"key": "var.mode", "format": "{value}"}}}},
+            ]}],
             "master_elements": [
                 {"id": "all_on", "type": "button", "label": "All On", "pages": "*",
-                 "bindings": {"do.press": [{"action": "macro", "macro": "lights_on"}]}},
+                 "bindings": {"do": {"press": [{"action": "macro", "macro": "lights_on"}]}}},
             ],
         },
     }
@@ -99,10 +120,15 @@ async def test_a_macro_called_from_another_macro_is_reported(handler) -> None:
     ]
 
 
-async def test_a_master_element_calling_the_macro_is_reported(handler) -> None:
-    """A master element is on every page; a button there is still a caller."""
+async def test_a_control_running_the_macro_is_reported(handler) -> None:
+    """A button's press, a label showing its progress, and a master element,
+    which is on every page."""
     refs = await _refs(handler, "macro", "lights_on")
-    assert [(b["element_id"], b["slot"]) for b in refs["bindings"]] == [("all_on", "do.press")]
+    assert [(b.get("page_id"), b["element_id"], b["slot"]) for b in refs["bindings"]] == [
+        ("home", "present", "do.press"),
+        ("home", "progress", "show.value"),
+        (None, "all_on", "do.press"),
+    ]
 
 
 async def test_an_uncalled_macro_still_reports_nothing(handler) -> None:
@@ -113,6 +139,9 @@ async def test_deleting_a_called_macro_carries_the_impact(handler) -> None:
     result = await handler._delete_macro({"macro_id": "lights_on"})
     assert result["status"] == "deleted"
     assert [m["macro_id"] for m in result["impact"]["macros"]] == ["start", "shutdown"]
+    assert [b["element_id"] for b in result["impact"]["bindings"]] == [
+        "present", "progress", "all_on",
+    ]
 
 
 async def test_a_variable_watched_by_a_trigger_is_reported(handler) -> None:
@@ -128,6 +157,25 @@ async def test_a_variable_a_macro_reads_or_sets_is_reported(handler) -> None:
     assert [(m["macro_id"], m["steps"]) for m in refs["macros"]] == [
         ("start", 1), ("shutdown", 1),
     ]
+
+
+async def test_a_control_showing_the_variable_is_reported(handler) -> None:
+    refs = await _refs(handler, "variable", "mode")
+    assert [(b["element_id"], b["slot"]) for b in refs["bindings"]] == [
+        ("present", "show.look"), ("mode_text", "show.value"),
+    ]
+
+
+async def test_a_variable_named_in_a_help_message_is_reported(handler) -> None:
+    """The message resolves ``$var.x`` inside the sentence, so it is a use."""
+    refs = await _refs(handler, "variable", "room_state")
+    assert [(m["macro_id"], m["steps"]) for m in refs["macros"]] == [("stuck", 1)]
+
+
+async def test_deleting_a_shown_variable_carries_the_impact(handler) -> None:
+    result = await handler._delete_variable({"id": "mode"})
+    assert result["status"] == "deleted"
+    assert [b["element_id"] for b in result["impact"]["bindings"]] == ["present", "mode_text"]
 
 
 async def test_an_unused_variable_still_reports_nothing(handler) -> None:

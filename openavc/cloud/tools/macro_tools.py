@@ -4,6 +4,7 @@ from typing import Any
 
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
 from openavc.core.monitors import drop_monitors_for_variable
+from openavc.core.value_resolver import embedded_refs
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -81,15 +82,53 @@ def _mentions(value: Any, text: str) -> bool:
 
 
 def _step_uses_key(step: Any, key: str) -> bool:
-    """A step that sets ``key``, tests it, or takes ``$key`` as a parameter."""
+    """A step that sets ``key``, tests it, takes ``$key`` as a parameter, or
+    names it in a help message, which resolves ``$key`` inside the sentence."""
     if getattr(step, "key", None) == key:
         return True
     for guard in (getattr(step, "condition", None), getattr(step, "skip_if", None)):
         if guard is not None and getattr(guard, "key", None) == key:
             return True
+    if getattr(step, "action", None) == "help.request" and key in embedded_refs(
+        getattr(step, "message", None)
+    ):
+        return True
     return _mentions(getattr(step, "params", None), f"${key}") or _mentions(
         getattr(step, "value", None), f"${key}"
     )
+
+
+def _tree_has(value: Any, matches: Any) -> bool:
+    """True when ``matches`` accepts any node of a value tree, at any depth."""
+    if matches(value):
+        return True
+    if isinstance(value, (list, tuple)):
+        return any(_tree_has(v, matches) for v in value)
+    if isinstance(value, dict):
+        return any(_tree_has(v, matches) for v in value.values())
+    return False
+
+
+def _binding_slots(bindings: Any, matches: Any) -> list[str]:
+    """The slots of a control's bindings where ``matches`` finds a use.
+
+    A control saves ``{"show": {"look": ..., "value": ...}, "do": {"press":
+    [...]}}``, and the use can sit at any depth under a slot (an action in a
+    press list, a key in a look), so each slot is walked whole and named the
+    way it is written: ``do.press``, ``show.look``.
+    """
+    if not isinstance(bindings, dict):
+        return []
+    slots = []
+    for group, inner in bindings.items():
+        if isinstance(inner, dict):
+            slots += [
+                f"{group}.{slot}" for slot, binding in inner.items()
+                if _tree_has(binding, matches)
+            ]
+        elif _tree_has(inner, matches):
+            slots.append(group)
+    return slots
 
 
 def _ui_elements(project: Any) -> Any:
@@ -498,16 +537,13 @@ class MacroToolsMixin:
                 )
                 if calls:
                     result["macros"].append({"macro_id": m.id, "macro_name": m.name, "steps": calls})
-            # Check UI bindings
+            # Controls that run it on a press, or show its progress.
+            def names_macro(node: Any) -> bool:
+                return isinstance(node, dict) and node.get("macro") == ref_id
+
             for where, el in _ui_elements(p):
-                bindings = el.bindings if hasattr(el, "bindings") and el.bindings else {}
-                if isinstance(bindings, dict):
-                    for slot, binding in bindings.items():
-                        actions = binding if isinstance(binding, list) else [binding] if isinstance(binding, dict) else []
-                        for act in actions:
-                            if isinstance(act, dict) and act.get("action") == "macro" and act.get("macro") == ref_id:
-                                result["bindings"].append({**where, "slot": slot})
-                                break
+                for slot in _binding_slots(getattr(el, "bindings", None), names_macro):
+                    result["bindings"].append({**where, "slot": slot})
             # Check scripts
             result["scripts"] = self._scan_scripts_for_ref(engine, ref_id)
 
@@ -530,16 +566,13 @@ class MacroToolsMixin:
 
         elif ref_type == "variable":
             state_key = f"var.{ref_id}"
-            # Check UI bindings
+            # Controls that show it, write it or take it as a parameter.
+            def names_variable(node: Any) -> bool:
+                return node in (state_key, f"${state_key}")
+
             for where, el in _ui_elements(p):
-                bindings = el.bindings if hasattr(el, "bindings") and el.bindings else {}
-                if isinstance(bindings, dict):
-                    for slot, binding in bindings.items():
-                        actions = binding if isinstance(binding, list) else [binding] if isinstance(binding, dict) else []
-                        for act in actions:
-                            if isinstance(act, dict) and act.get("key") in (ref_id, state_key):
-                                result["bindings"].append({**where, "slot": slot})
-                                break
+                for slot in _binding_slots(getattr(el, "bindings", None), names_variable):
+                    result["bindings"].append({**where, "slot": slot})
             # Macro steps that set it, test it or take it as a parameter, and
             # triggers that watch it or guard on it.
             for m in p.macros:
