@@ -68,20 +68,21 @@ class Envelope:
     """Frozen recipient bytes. Revalidate after queue/lock waits, before send."""
 
     _wire: str
-    _connection: object
+    _original: Recipient
     _programmer: bool
     _scope: MessageScope | None
 
     def for_send(self, recipient: Recipient) -> str | None:
-        if recipient.connection is not self._connection:
+        if recipient.connection is not self._original.connection:
             return None
         if self._programmer and not recipient.programmer:
             return None
         try:
-            if recipient.current() is not True:
-                return None
-            if self._scope is not None and recipient.has_scope(self._scope) is not True:
-                return None
+            for admission in (self._original,) if recipient is self._original else (self._original, recipient):
+                if admission.current() is not True:
+                    return None
+                if self._scope is not None and admission.has_scope(self._scope) is not True:
+                    return None
         except Exception:
             # A broken verifier is not authority. Never log its exception text.
             return None
@@ -110,6 +111,14 @@ def _primitive(value: Any) -> Any:
     if value is None or type(value) in (str, bool):
         return value
     return _number(value)
+
+
+def _json_value(value: Any) -> Any:
+    # Conditions may compare structured custom-event values. The final strict
+    # JSON encoder validates their nested values and freezes the snapshot.
+    if type(value) in (dict, list):
+        return value
+    return _primitive(value)
 
 
 def _strings(value: Any) -> list[str]:
@@ -185,8 +194,8 @@ _MACRO_ROOM = {
 _MACRO_DETAIL = {
     "error": _text, "message": _text, "reason": _text,
     "condition_result": _bool, "branch": _text, "condition_key": _text,
-    "condition_operator": _text, "condition_value": _primitive,
-    "actual_value": _primitive, "timeout": _number, "waited_seconds": _number,
+    "condition_operator": _text, "condition_value": _json_value,
+    "actual_value": _json_value, "timeout": _number, "waited_seconds": _number,
     "on_timeout": _text, "device_results": _list,
 }
 _TRIGGER = {
@@ -194,6 +203,7 @@ _TRIGGER = {
     "trigger_type": _text, "reason": _text, "outcome": _text, "error": _text,
     "delay_ms": _number, "delay": _number, "debounce_ms": _number,
     "pending_until": _number, "queued_at": _number,
+    "wait_seconds": _number, "queue_position": _number,
 }
 _LOG = {
     "timestamp": _number, "level": _text, "source": _text,
@@ -232,7 +242,7 @@ _registry = {
     ),
     "script.error": _rule(protected={
         "script_id": _text, "script": _text, "error": _text, "traceback": _text,
-        "message": _text, "event": _text, "function": _text, "line": _number,
+        "message": _text, "event": _text, "function": _text, "handler": _text, "line": _number,
     }),
     "drivers.changed": _rule(protected={"driver_id": _text}),
     "panel.devices.changed": _rule(protected={}),
@@ -266,8 +276,42 @@ for _name in ("started", "stopped", "error", "missing"):
         protected={"plugin_id": _text, "error": _text, "message": _text},
         required=("plugin_id",),
     )
+for _name, _field in (("commands", "commands"), ("listen", "listen"),
+                      ("outage", "outage"), ("settings", "settings"),
+                      ("progress", "activity"), ("timeline", "entry")):
+    _registry[f"audit.{_name}"] = _rule(
+        protected={"session_id": _text, "seq": _number, "run": _number, _field: _object},
+        required=("session_id", _field), targeted=True, scoped=True,
+    )
+_registry["audit.traffic"] = _rule(
+    protected={"session_id": _text, "seq": _number, "run": _number,
+               "entries": _list, "skipped": _number},
+    required=("session_id", "entries"), targeted=True, scoped=True,
+)
 REGISTRY: Mapping[str, Rule] = MappingProxyType(_registry)
-del _registry, _name
+del _registry, _name, _field
+
+# Event-only producers share the projections above wherever their contract is
+# also sent directly. A namespace prefix alone does not grant room visibility.
+_EVENT_EXACT = MappingProxyType({
+    "system.started": _rule({}),
+    "system.stopping": _rule({}),
+    "system.project.reloaded": _rule({}),
+    "device.orphaned": _rule(protected={"device_id": _text, "driver": _text}),
+    "device.pending_settings_applied": _rule(protected={
+        "device_id": _text, "applied": _object, "remaining": _object,
+    }),
+})
+_EVENT_SUFFIX = MappingProxyType({
+    "device.connected": _rule({"device_id": _text}),
+    "device.disconnected": _rule({"device_id": _text}),
+    "device.error": _rule({"device_id": _text}, {"error": _text, "source": _text}),
+    **{f"ui.{name}": _rule({
+        "element_id": _text, "value": _primitive, "input": _primitive,
+        "output": _primitive, "audio": _bool,
+    }) for name in ("press", "release", "hold", "change", "submit", "select",
+                   "toggle_off", "route", "page")},
+})
 
 
 class OutboundPolicy:
@@ -294,35 +338,81 @@ class OutboundPolicy:
             if recipient.client_type not in ("panel", "preview", "programmer"):
                 return None
             kind = _text(message["type"])
+            if kind == "event":
+                if not targeted:
+                    return None
+                payload = self._event(message, recipient, scope)
+                if payload is None:
+                    return None
+                return self._envelope(kind, payload, recipient, scope)
             rule = REGISTRY.get(kind)
             if rule is None:
                 self._reject("unknown")
                 return None
-            if rule.targeted and not targeted:
+            payload = self._values(kind, message, rule, recipient, targeted, scope)
+            if payload is None:
                 return None
-            if rule.scoped and not isinstance(scope, MessageScope):
-                return None
-            if rule.room is None and not recipient.programmer:
-                return None
-            if any(key not in message for key in rule.required):
-                raise InvalidMessage("required field absent")
-            payload = _fields(message, rule.room or {})
-            if recipient.programmer:
-                payload.update(_fields(message, rule.protected))
-            if rule.guidance is not None:
-                guidance = message.get("room_guidance")
-                failed = kind == "error" or kind.startswith("macro.") or message.get("success") is False
-                if failed and not recipient.programmer:
-                    payload[rule.guidance] = (
-                        _text(guidance.text) if isinstance(guidance, RoomText)
-                        else "The action could not be completed. Contact support."
-                    )
-            # Serialization makes nested authored/diagnostic values immutable.
-            # No default=str: an arbitrary object's repr is not a wire schema.
-            wire = json.dumps({"type": kind, **payload}, allow_nan=False)
-            envelope = Envelope(wire, recipient.connection, recipient.programmer,
-                                scope if rule.scoped else None)
-            return envelope if envelope.for_send(recipient) is not None else None
+            return self._envelope(kind, payload, recipient, scope if rule.scoped else None)
         except (InvalidMessage, KeyError, TypeError, ValueError, RecursionError, OverflowError):
             self._reject("shape")
             return None
+
+    @staticmethod
+    def _envelope(kind, payload, recipient, scope):
+        # Serialization makes nested authored/diagnostic values immutable.
+        # No default=str: an arbitrary object's repr is not a wire schema.
+        wire = json.dumps({"type": kind, **payload}, allow_nan=False)
+        envelope = Envelope(wire, recipient, recipient.programmer, scope)
+        return envelope if envelope.for_send(recipient) is not None else None
+
+    @staticmethod
+    def _values(kind, message, rule, recipient, targeted, scope):
+        if rule.targeted and not targeted:
+            return None
+        if rule.scoped and not isinstance(scope, MessageScope):
+            return None
+        if rule.room is None and not recipient.programmer:
+            return None
+        if any(key not in message for key in rule.required):
+            raise InvalidMessage("required field absent")
+        payload = _fields(message, rule.room or {})
+        if recipient.programmer:
+            payload.update(_fields(message, rule.protected))
+        if rule.guidance is not None:
+            guidance = message.get("room_guidance")
+            failed = kind == "error" or kind.startswith("macro.") or message.get("success") is False
+            if failed and not recipient.programmer:
+                payload[rule.guidance] = (
+                    _text(guidance.text) if isinstance(guidance, RoomText)
+                    else "The action could not be completed. Contact support."
+                )
+        return payload
+
+    def _event(self, message, recipient, scope):
+        event = _text(message["event"])
+        data = _object(message["payload"])
+        if event.startswith("state."):
+            # State has its own coalesced delivery path.
+            return None
+        if event.startswith("custom.") and event[7:].strip():
+            projected = data  # Deliberately authored public event contract.
+        else:
+            rule = _EVENT_EXACT.get(event) or REGISTRY.get(event)
+            kind = event
+            if rule is None:
+                parts = event.split(".", 2)
+                if len(parts) == 3 and parts[2]:
+                    kind = ".".join(parts[:2])
+                    rule = _EVENT_SUFFIX.get(kind)
+                    if parts[0] == "macro":
+                        rule = REGISTRY.get(kind)
+            if rule is None:
+                self._reject("unknown")
+                return None
+            projected = self._values(kind, data, rule, recipient, True, scope)
+            if projected is None:
+                return None
+        result = {"event": event, "payload": projected}
+        if "timestamp" in message:
+            result["timestamp"] = _number(message["timestamp"])
+        return result

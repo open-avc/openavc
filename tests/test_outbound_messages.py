@@ -167,3 +167,72 @@ def test_authority_verifier_failure_is_closed_and_does_not_log_secret(caplog):
         raise RuntimeError("private-verifier-data")
     assert OutboundPolicy().project({"type": "ping"}, recipient(current=broken)) is None
     assert "private-verifier-data" not in caplog.text
+
+
+def test_replacement_authority_cannot_release_old_queued_bytes():
+    valid = True
+    original = recipient("programmer", current=lambda: valid)
+    envelope = OutboundPolicy().project({"type": "script.error", "error": "protected"}, original)
+    assert envelope is not None
+    valid = False
+    new_sign_in = replace(original, current=lambda: True)
+    assert envelope.for_send(new_sign_in) is None
+
+
+def test_structured_trigger_conditions_are_retained_for_programmer():
+    p = OutboundPolicy()
+    value = {"channels": [1, 2], "mode": {"label": "speech"}}
+    message = {"type": "macro.progress", "macro_id": "acme", "action": "conditional",
+               "status": "evaluated", "condition_result": True, "condition_value": value,
+               "actual_value": value}
+    result = delivered(p, message, recipient("programmer"))
+    assert result["condition_value"] == value and result["condition_result"] is True
+    assert "actual_value" not in delivered(p, message, recipient())
+
+
+@pytest.mark.parametrize("kind", ["panel", "preview", "programmer"])
+def test_authored_custom_event_preserves_payload_and_freezes_it(kind):
+    c, p = recipient(kind), OutboundPolicy()
+    data = {"labels": ["welcome"], "arbitrary": {"nested": True}, "type": "author-owned"}
+    envelope = p.project({"type": "event", "event": "custom.welcome", "payload": data,
+                          "timestamp": 12.5}, c, targeted=True)
+    assert envelope is not None
+    data["labels"].append("later")
+    received = json.loads(envelope.for_send(c))
+    assert received == {"type": "event", "event": "custom.welcome", "timestamp": 12.5,
+                        "payload": {"labels": ["welcome"], "arbitrary": {"nested": True},
+                                    "type": "author-owned"}}
+
+
+def test_event_envelope_cannot_make_nested_diagnostic_public_or_override_type():
+    p, c = OutboundPolicy(), recipient()
+    message = {"type": "event", "event": "macro.progress.acme", "timestamp": 1,
+               "payload": {"macro_id": "acme", "type": "custom.public",
+                           "description": "Select input", "actual_value": {"key": "private"},
+                           "device_results": [{"error": "private"}]}}
+    result = delivered(p, message, c, targeted=True)
+    assert result["event"] == "macro.progress.acme"
+    assert result["payload"] == {"macro_id": "acme", "description": "Select input"}
+    admin = delivered(p, message, recipient("programmer"), targeted=True)
+    assert admin["payload"]["actual_value"] == {"key": "private"}
+
+
+@pytest.mark.parametrize("event", ["system.unknown", "device.unknown.acme", "ui.unknown.acme",
+                                  "plugin.private_event", "state.changed.var.a"])
+def test_internal_prefix_is_not_event_visibility_authority(event):
+    p = OutboundPolicy()
+    for kind in ("panel", "programmer"):
+        assert p.project({"type": "event", "event": event, "payload": {"private": "marker"}},
+                         recipient(kind), targeted=True) is None
+
+
+def test_device_and_ui_event_correlations_survive_without_nested_details():
+    p, c = OutboundPolicy(), recipient()
+    for event, data, expected in (
+        ("device.connected.acme", {}, {}),
+        ("device.error.acme", {"device_id": "acme", "error": "private"}, {"device_id": "acme"}),
+        ("ui.change.level", {"element_id": "level", "value": -12, "private": "marker"},
+         {"element_id": "level", "value": -12}),
+    ):
+        assert delivered(p, {"type": "event", "event": event, "payload": data},
+                         c, targeted=True)["payload"] == expected
