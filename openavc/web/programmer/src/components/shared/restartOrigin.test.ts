@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { configuredOrigin, restartOrigin } from "./restartPollHelpers";
+import { configuredOrigin, restartOrigin, runningOrigin } from "./restartPollHelpers";
 
 describe("restart destination", () => {
   it("stays on a product proxy while its internal listener restarts", () => {
@@ -33,5 +33,26 @@ describe("restart destination", () => {
   it("normalizes default HTTPS ports for direct access", () => {
     expect(configuredOrigin({ tls: { enabled: true, port: 443 } }, "http://product:8080"))
       .toBe("https://product");
+  });
+  it("follows a saved port change after the page has left Settings and come back", () => {
+    // The saved port is the new one; the server still runs on the old.
+    const saved = { network: { http_port: 8082 }, _listen: { http_port: 8080, https_port: null } };
+    const page = "http://product:8080";
+    expect(restartOrigin(page, runningOrigin(saved, page), configuredOrigin(saved, page)))
+      .toBe("http://product:8082");
+  });
+  it("still stays on a proxy whose address is not the running listener", () => {
+    const saved = { network: { http_port: 8082 }, _listen: { http_port: 8080, https_port: null } };
+    const page = "https://product";
+    expect(restartOrigin(page, runningOrigin(saved, page), configuredOrigin(saved, page)))
+      .toBe("https://product");
+  });
+  it("reads an https page against the running HTTPS listener", () => {
+    expect(runningOrigin({ _listen: { http_port: 8080, https_port: 8443 } }, "https://product:8443"))
+      .toBe("https://product:8443");
+  });
+  it("falls back to the saved config when the server does not report its ports", () => {
+    expect(runningOrigin({ network: { http_port: 8080 } }, "http://product:8080"))
+      .toBe("http://product:8080");
   });
 });

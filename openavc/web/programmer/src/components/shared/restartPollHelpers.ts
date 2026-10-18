@@ -30,6 +30,32 @@ export function configuredOrigin(
   return url.origin;
 }
 
+/** The listener this server is running, on the page's host: its HTTPS one
+ *  for an https page when one runs, else its HTTP one, from the ports the
+ *  server reports (`_listen`). A saved port does not move the running
+ *  listener until the restart, so this, not the saved config, says whether
+ *  the page reached the server directly. The saved config when the server
+ *  does not report its ports. */
+export function runningOrigin(
+  config: {
+    tls?: { enabled?: boolean; port?: number };
+    network?: { http_port?: number };
+    _listen?: { http_port?: number; https_port?: number | null };
+  } | null,
+  current: string,
+): string {
+  const ports = config?._listen;
+  if (typeof ports?.http_port !== "number") return configuredOrigin(config, current);
+  const url = new URL(current);
+  if (url.protocol === "https:" && ports.https_port) {
+    url.port = String(ports.https_port);
+  } else {
+    url.protocol = "http:";
+    url.port = String(ports.http_port);
+  }
+  return url.origin;
+}
+
 /** `origin` with its host replaced, keeping its scheme and port: where the
  *  same listener answers on another address of this computer. */
 export function withHost(origin: string, host: string): string {

@@ -11,7 +11,7 @@ import { adapterName, ownScreenOpensProgrammer, restartPlan, sameListenChoice, t
 import { VariableKeyPicker } from "../components/shared/VariableKeyPicker";
 import { useProjectStore } from "../store/projectStore";
 import { RestartProgressDialog } from "../components/shared/RestartProgressDialog";
-import { configuredOrigin, restartOrigin, withHost } from "../components/shared/restartPollHelpers";
+import { configuredOrigin, restartOrigin, runningOrigin, withHost } from "../components/shared/restartPollHelpers";
 import { showError, showSuccess } from "../store/toastStore";
 import * as api from "../api/restClient";
 import { ApiError, parseApiError } from "../api/errors";
@@ -527,7 +527,7 @@ export function SystemSettingsView() {
 
   useEffect(() => {
     api.getSystemConfig().then((fresh) => {
-      originalServerOrigin.current ??= configuredOrigin(fresh, window.location.origin);
+      originalServerOrigin.current ??= runningOrigin(fresh, window.location.origin);
       setConfig(fresh);
     }).catch((e) => showError("Failed to load config: " + parseApiError(e)));
     api.getSystemVersion().then((v) => {

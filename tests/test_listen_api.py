@@ -91,6 +91,23 @@ class TestWhatGetReports:
         assert _choose(c, "adapter", ETHERNET).status_code == 200
         assert c.get("/api/system/config").json()["_listen"]["restart_needed"] is True
 
+    def test_the_ports_running_now_not_a_saved_port(self, api, monkeypatch):
+        # The Settings page compares its own address with these to know
+        # whether a restart moves it: a saved port moves only at the restart.
+        from openavc import config
+
+        monkeypatch.setattr(config, "HTTP_PORT", 8080)
+        monkeypatch.setattr(config, "TLS_ENABLED", False)
+        c, _ = api()
+        assert c.patch("/api/system/config", json={"network": {"http_port": 8082}}).status_code == 200
+        body = c.get("/api/system/config").json()
+        assert body["network"]["http_port"] == 8082
+        assert body["_listen"]["http_port"] == 8080
+        assert body["_listen"]["https_port"] is None
+        monkeypatch.setattr(config, "TLS_ENABLED", True)
+        monkeypatch.setattr(config, "TLS_PORT", 8443)
+        assert c.get("/api/system/config").json()["_listen"]["https_port"] == 8443
+
     def test_the_adapters_route_lists_each_adapter_once(self, api, monkeypatch):
         from openavc.discovery import network_scanner
 
