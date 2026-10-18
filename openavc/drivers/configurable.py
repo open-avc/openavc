@@ -705,12 +705,18 @@ class ConfigurableDriver(BaseDriver):
             self.config, self._definition.get("config_derived")
         )
 
-    async def connect(self) -> None:
+    async def _connect_once(self, attempt: object) -> None:
         """Connect and send on_connect initialization commands.
 
         Defers polling until after on_connect and initial state queries
         complete, so the watchdog doesn't start counting before the
         device is fully initialized.
+
+        This is the body BaseDriver.connect() runs under its lock, so one
+        attempt's setup is never undone by another's. Held back in
+        connect(), a second connect started while the first still dialed
+        read the held-back 0 as the poll interval and, finishing last, put 0
+        back: the device polled nothing again until it was edited.
 
         The declarative `auth:` login handshake runs inside _post_connect()
         — i.e. BEFORE BaseDriver reports the device connected — so
@@ -746,13 +752,13 @@ class ConfigurableDriver(BaseDriver):
             self._auth_mode = True
 
         try:
-            await super().connect()
+            await super()._connect_once(attempt)
         except Exception:
             self._auth_mode = False
             raise
         finally:
             # Restore even when the attempt fails: leaving the zeroed value
-            # in config would make the NEXT connect() save 0 as the interval
+            # in config would make the NEXT connect save 0 as the interval
             # to restore, permanently disabling polling after one bad attempt.
             self.config["poll_interval"] = saved_poll_interval
 

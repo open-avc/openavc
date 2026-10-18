@@ -244,19 +244,19 @@ async def test_osc_state_queries_at_start_up_keep_their_floor_only_without_a_del
 
 @pytest.fixture
 def connect_without_a_socket(monkeypatch: pytest.MonkeyPatch) -> list[float]:
-    """``super().connect()`` stubbed (the driver keeps the wire it was given,
-    and start-up runs in _initial_sync() as in the real one) and
+    """BaseDriver's connect body stubbed (the driver keeps the wire it was
+    given, and start-up runs in _initial_sync() as in the real one) and
     ``start_polling`` recorded instead of started, so a test runs the first
     poll itself."""
     started: list[float] = []
 
-    async def no_socket(self: Any) -> None:
+    async def no_socket(self: Any, attempt: object) -> None:
         await self._initial_sync()
 
     async def record_start(self: Any, interval: float) -> None:
         started.append(interval)
 
-    monkeypatch.setattr(base_mod.BaseDriver, "connect", no_socket)
+    monkeypatch.setattr(base_mod.BaseDriver, "_connect_once", no_socket)
     monkeypatch.setattr(base_mod.BaseDriver, "start_polling", record_start)
     return started
 
