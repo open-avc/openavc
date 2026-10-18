@@ -321,9 +321,12 @@ control updates immediately.
 The key behind each one is `ui.<control id>.<property>`, so a script writes the
 same values with `openavc.state.set("ui.btn_power.label", "Turn Off")`.
 
-An override stands until you clear it. Delete the key (or set it back) and the
-control returns to the way it was authored, so a macro that changes a label for
-a meeting should have a counterpart that clears it afterwards.
+An override stands until you clear it. In the step, choose **Clear** where the
+value's type is picked (Text, Number, Boolean, Clear) and the control returns to
+the way it was authored, so a macro that changes a label for a meeting should
+have a counterpart that clears it afterwards. A script clears it with
+`openavc.state.set("ui.btn_power.label", None)`. An empty text value is not a
+clear: it leaves the control with no words.
 
 Two things it does not reach: a control's *value* (a slider's position, a
 toggle's on/off) and anything not in the table above. For those, bind the

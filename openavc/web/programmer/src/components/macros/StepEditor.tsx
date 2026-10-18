@@ -618,6 +618,7 @@ function StateSetEditor({
               <TypedValueInput
                 value={step.value}
                 onChange={(value) => onChange({ value })}
+                canClear={(step.key ?? "").startsWith("ui.")}
               />
             )}
             <button
@@ -651,27 +652,42 @@ function StateSetEditor({
 
 // --- Typed value input (explicit type, no guessing) ---
 
+// A control override (ui.<id>.*) is undone by writing null, which the panel
+// reads as "no override": Clear is that choice. An empty text value is not
+// the same thing; it draws a button with no words.
 function TypedValueInput({
   value,
   onChange,
+  canClear = false,
 }: {
   value: unknown;
-  onChange: (v: string | number | boolean) => void;
+  onChange: (v: string | number | boolean | null) => void;
+  canClear?: boolean;
 }) {
+  const cleared = canClear && value === null;
   const kind = valueKind(value);
   return (
     <>
       <select
-        value={kind}
-        onChange={(e) => onChange(convertValue(value, e.target.value as ValueKind))}
+        value={cleared ? "clear" : kind}
+        onChange={(e) => {
+          const next = e.target.value;
+          if (next === "clear") onChange(null);
+          else onChange(convertValue(value, next as ValueKind));
+        }}
         title="How the value is stored"
         style={{ ...inputStyle, flex: "0 0 auto", width: 92 }}
       >
         <option value="text">Text</option>
         <option value="number">Number</option>
         <option value="boolean">Boolean</option>
+        {canClear && <option value="clear">Clear</option>}
       </select>
-      {kind === "boolean" ? (
+      {cleared ? (
+        <span style={{ ...hintStyle, flex: 1 }}>
+          Puts the control back as authored.
+        </span>
+      ) : kind === "boolean" ? (
         <select
           value={String(value === true)}
           onChange={(e) => onChange(e.target.value === "true")}
