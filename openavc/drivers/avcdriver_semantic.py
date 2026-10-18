@@ -49,6 +49,7 @@ from openavc.drivers.spec import (
     PUSH_TYPE_KEYS,
     REQUIRED_FIELDS,
     SEND_FRAME_TYPES,
+    SETUP_RESULT_CONTRACTS,
     SILENCE_CHECK_TRANSPORTS,
     STRUCT_LENGTH_SIZES,
     VALUE_TYPES,
@@ -3956,6 +3957,12 @@ def _validate_action_entry(
     params = entry.get("params")
     if params is not None and not isinstance(params, dict):
         errors.append(f"{where}: 'params' must be a mapping")
+
+    if "result_contract" in entry:
+        if kind != "setup":
+            errors.append(f"{where}: 'result_contract' is only valid on a kind:setup action")
+        elif entry["result_contract"] not in SETUP_RESULT_CONTRACTS:
+            errors.append(f"{where}: 'result_contract' must be one of {list(SETUP_RESULT_CONTRACTS)}")
 
     url = entry.get("url")
     if kind == "link":

@@ -273,6 +273,51 @@
   },
   "transport": "tcp"
  },
+ "action_result_contract_on_command": {
+  "actions": [
+   {
+    "id": "noop",
+    "result_contract": "setup/v1"
+   }
+  ],
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "action_result_contract_unknown": {
+  "actions": [
+   {
+    "id": "provision",
+    "kind": "setup",
+    "result_contract": "unknown"
+   }
+  ],
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "action_setup_kind_in_yaml": {
   "actions": [
    {

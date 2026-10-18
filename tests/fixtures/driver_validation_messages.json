@@ -35,6 +35,13 @@
  "action_params_not_mapping": [
   "actions[0]: 'params' must be a mapping"
  ],
+ "action_result_contract_on_command": [
+  "actions[0]: 'result_contract' is only valid on a kind:setup action"
+ ],
+ "action_result_contract_unknown": [
+  "actions[0]: 'result_contract' must be one of ['setup/v1']",
+  "actions[0]: kind 'setup' requires a Python driver (a run_setup_action handler); YAML drivers support kind 'command' only"
+ ],
  "action_setup_kind_in_yaml": [
   "actions[0]: kind 'setup' requires a Python driver (a run_setup_action handler); YAML drivers support kind 'command' only"
  ],

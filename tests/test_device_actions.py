@@ -112,6 +112,7 @@ def test_resolve_setup_action_keeps_params_and_availability():
             "kind": "setup",
             "label": "Enable Remote",
             "availability": "offline",
+            "result_contract": "setup/v1",
             "params": {"password": {"type": "password"}},
         }]
     )
@@ -120,7 +121,19 @@ def test_resolve_setup_action_keeps_params_and_availability():
     assert a["kind"] == "setup"
     assert a["availability"] == "offline"
     assert a["params"] == {"password": {"type": "password"}}
+    assert a["result_contract"] == "setup/v1"
     assert "command" not in a
+
+
+@pytest.mark.parametrize("kind,contract,valid", [
+    ("setup", "setup/v1", True), ("setup", "guess-from-keys", False),
+    ("setup", None, False), ("command", "setup/v1", False),
+])
+def test_setup_result_contract_is_explicit_and_survives_resolution(kind, contract, valid):
+    info = _driver_info_with(actions=[{"id": "power_on", "kind": kind, "result_contract": contract}])
+    assert (not validate_actions(info)) is valid
+    if kind == "setup":
+        assert resolve_device_actions(info)[0]["result_contract"] == contract
 
 
 def test_resolve_passes_through_visible_when():

@@ -299,6 +299,10 @@ ACTION_KINDS: tuple[str, ...] = ("command", "setup", "link")
 # run_setup_action handler, which the declarative runtime doesn't have.
 PYTHON_ONLY_ACTION_KINDS: tuple[str, ...] = ("setup",)
 
+# Explicit typed setup ingress. Legacy dictionaries need a separately qualified
+# installed-source adapter; a coincidental success/ok key is not a contract.
+SETUP_RESULT_CONTRACTS: tuple[str, ...] = ("setup/v1",)
+
 # How an action's visibility tracks the device's connection state.
 AVAILABILITIES: tuple[str, ...] = ("online", "offline", "always")
 
@@ -1693,6 +1697,12 @@ DEFS = {
                 'extra': {
                     'ref': 'paramEntry',
                 },
+            },
+            'result_contract': {
+                'type': 'string',
+                'enum': SETUP_RESULT_CONTRACTS,
+                'since': '0.37.0',
+                'doc': 'kind:"setup" only. setup/v1 returns a typed SetupResult and registers optional credentials separately before save or reconnect. Missing legacy contracts require an installed-source-qualified adapter before invocation.',
             },
             'visible_when': {
                 'ref': 'visibleWhen',

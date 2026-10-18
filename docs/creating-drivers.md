@@ -3142,6 +3142,15 @@ device is offline*, over a connection the handler opens itself, and that may
 rewrite the device's config and reconnect when it succeeds. Python drivers
 only; a YAML driver has nowhere to put the handler.
 
+`result_contract: "setup/v1"` declares the typed result interface. Its handler
+returns `SetupResult` from `openavc.core.setup_results`, with an explicit outcome,
+operator summary, diagnostic findings and separate save/reconnect states. A
+generated credential is registered separately before saving or reconnecting; it
+must never be placed in a result, progress message or exception. Missing legacy
+declarations require a qualified adapter for that installed driver version and
+source before the typed invocation path can use them. A `success` or `ok` key
+alone does not select a result contract.
+
 Declare it beside your other actions, then implement `run_setup_action`:
 
 ```python

@@ -291,5 +291,9 @@ def _resolve_action_entry(
     else:  # setup
         params = entry.get("params")
         resolved["params"] = params if isinstance(params, dict) else {}
+        # Preserve even an unknown declaration for the invocation boundary to
+        # refuse; silently dropping it would turn it into a legacy contract.
+        if "result_contract" in entry:
+            resolved["result_contract"] = entry["result_contract"]
 
     return resolved

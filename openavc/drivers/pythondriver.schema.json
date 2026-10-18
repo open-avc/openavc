@@ -1541,6 +1541,13 @@
             "$ref": "#/$defs/paramEntry"
           }
         },
+        "result_contract": {
+          "type": "string",
+          "enum": [
+            "setup/v1"
+          ],
+          "description": "kind:\"setup\" only. setup/v1 returns a typed SetupResult and registers optional credentials separately before save or reconnect. Missing legacy contracts require an installed-source-qualified adapter before invocation. Requires platform 0.37.0."
+        },
         "visible_when": {
           "$ref": "#/$defs/visibleWhen",
           "description": "Show the action only while this condition holds."

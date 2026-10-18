@@ -136,7 +136,7 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   oscArg: new Set(["type", "value"]),
   udpSendEntry: new Set(["broadcast", "host", "magic_packet", "payload", "port"]),
   commandEntry: new Set(["address", "args", "available_offline", "body", "confirm", "headers", "help", "label", "method", "params", "path", "query_for", "query_params", "raw", "restarts_device_for", "send", "sets", "udp"]),
-  actionEntry: new Set(["availability", "command", "confirm", "icon", "id", "kind", "label", "params", "url", "visible_when"]),
+  actionEntry: new Set(["availability", "command", "confirm", "icon", "id", "kind", "label", "params", "result_contract", "url", "visible_when"]),
   visibleWhenCondition: new Set(["key", "operator", "value"]),
   mappingEntry: new Set(["arg", "contains", "group", "json_path", "key", "map", "state", "type", "value"]),
   responseEntry: new Set(["address", "after_json", "child_list", "child_set", "json", "mappings", "match", "only_when", "require", "set", "throttle"]),
@@ -833,6 +833,13 @@ export interface DriverActionDef {
    * command's params.
    */
   params?: Record<string, DriverParamDef>;
+  /**
+   * kind:"setup" only. setup/v1 returns a typed SetupResult and registers
+   * optional credentials separately before save or reconnect. Missing legacy
+   * contracts require an installed-source-qualified adapter before invocation.
+   * Requires platform 0.37.0.
+   */
+  result_contract?: "setup/v1";
   /** Show the action only while this condition holds. */
   visible_when?: DriverVisibleWhen;
 }

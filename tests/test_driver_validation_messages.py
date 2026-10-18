@@ -774,6 +774,8 @@ CASES: dict[str, Any] = {
     "action_visible_when_unknown_operator": _d(actions=[{"id": "noop", "visible_when": {"key": "device.x.power", "operator": "resembles"}}]),
     "action_command_undeclared": _d(actions=[{"id": "ghost"}]),
     "action_setup_kind_in_yaml": _d(actions=[{"id": "provision", "kind": "setup"}]),
+    "action_result_contract_on_command": _d(actions=[{"id": "noop", "result_contract": "setup/v1"}]),
+    "action_result_contract_unknown": _d(actions=[{"id": "provision", "kind": "setup", "result_contract": "unknown"}]),
     "action_param_pattern_redos": _d(actions=[{"id": "noop", "params": {"level": {"pattern": "(a+)+$"}}}]),
     # --- state variables ---
     "state_variables_not_mapping": _d(state_variables=["power"]),
