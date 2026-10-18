@@ -5,7 +5,7 @@ import { WhenStateEditor } from "./WhenStateEditor";
 import {
   buildQueryEntry,
   carryQueryExtras,
-  firstGateValue,
+  firstGateEntry,
   gateFieldNames,
   isEachChild,
   isOpaque,
@@ -292,7 +292,7 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
                       i,
                       stateGate
                         ? undefined
-                        : { [gateVariables[0].name]: firstGateValue(gateVariables[0]) },
+                        : Object.fromEntries([firstGateEntry(gateVariables)!]),
                     )
                   }
                   aria-label={stateGate ? "Remove the state condition" : "Send only while the device reports a state"}

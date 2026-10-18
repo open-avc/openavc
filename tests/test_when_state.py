@@ -176,7 +176,10 @@ async def test_a_held_poll_leaves_the_device_in_standby_and_connected(
         assert drv.get_state("offline_reason") is None
         assert drv._unread_replies_hold is False
         assert _driver_log(caplog) == []
-        assert any("Polling paused" in m for m in _driver_log(caplog, level=logging.INFO))
+        paused = [m for m in _driver_log(caplog, level=logging.INFO) if "Polling paused" in m]
+        # Said in the words the Builder shows, with what the device reports.
+        assert paused and "Standby is false" in paused[0] and "Standby true" in paused[0]
+        assert "{" not in paused[0]
 
         await drv.send_command("wake")
         assert await _until(lambda: drv.get_state("standby") is False, 3.0)

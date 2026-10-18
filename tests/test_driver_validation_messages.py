@@ -885,6 +885,9 @@ CASES: dict[str, Any] = {
     "when_state_string_not_text": _d(
         polling={"when_state": {"power": 1}, "queries": ["PWR?\r"]},
     ),
+    "when_state_string_empty": _d(
+        polling={"when_state": {"power": ""}, "queries": ["PWR?\r"]},
+    ),
     "each_child_undeclared_type": _d(
         polling={"queries": [{"each_child": "relay", "send": "Z{child_id}?\r"}]}
     ),

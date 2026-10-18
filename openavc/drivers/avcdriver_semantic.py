@@ -251,7 +251,9 @@ def _when_state_errors(
     The gate reads the device's own state at runtime; a name that is not a
     device-level variable never holds a value, so the entry would run as if
     ungated forever, and a value the variable can never take shuts it for
-    good. Both are refused here, where the author can see them.
+    good. Both are refused here, where the author can see them. So is empty
+    text: a condition left blank reads as none, but it shuts the gate
+    whenever the device reports any text at all.
     """
     if not isinstance(gate, dict) or not gate:
         return [
@@ -296,7 +298,12 @@ def _when_state_errors(
                 if not isinstance(v, dict) or "value" in v
             ]
         for value in values:
-            if vtype == "boolean":
+            if isinstance(value, str) and not value.strip():
+                errors.append(
+                    f"{where}: when_state.{var} has no value. Type the value "
+                    f"the device reports, or remove the condition"
+                )
+            elif vtype == "boolean":
                 if not isinstance(value, bool):
                     errors.append(
                         f"{where}: when_state.{var} is a boolean; write true "

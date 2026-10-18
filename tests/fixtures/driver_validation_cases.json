@@ -9310,6 +9310,30 @@
   },
   "transport": "tcp"
  },
+ "when_state_string_empty": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "polling": {
+   "queries": [
+    "PWR?\r"
+   ],
+   "when_state": {
+    "power": ""
+   }
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "when_state_string_not_text": {
   "commands": {
    "noop": {

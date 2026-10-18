@@ -979,6 +979,9 @@
  "when_state_string_bare_boolean": [
   "polling: when_state.power value True is not text; YAML reads a bare true, false, on, off, yes or no as a boolean. Put it in quotes."
  ],
+ "when_state_string_empty": [
+  "polling: when_state.power has no value. Type the value the device reports, or remove the condition"
+ ],
  "when_state_string_not_text": [
   "polling: when_state.power holds text; put 1 in quotes"
  ],

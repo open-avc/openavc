@@ -3,7 +3,7 @@ import type { DriverDefinition, DriverWhenState } from "../../api/types";
 import {
   buildQueryEntry,
   carryQueryExtras,
-  firstGateValue,
+  firstGateEntry,
   gateFieldNames,
   isEachChild,
   listReadOptions,
@@ -334,7 +334,7 @@ export function PollingConfig({ draft, onUpdate }: PollingConfigProps) {
                       i,
                       stateGate
                         ? undefined
-                        : { [gateVariables[0].name]: firstGateValue(gateVariables[0]) },
+                        : Object.fromEntries([firstGateEntry(gateVariables)!]),
                     )
                   }
                   aria-label={stateGate ? "Remove the state condition" : "Send only while the device reports a state"}

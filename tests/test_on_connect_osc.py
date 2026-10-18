@@ -122,3 +122,53 @@ async def test_gated_osc_args_item_respects_gate(monkeypatch):
     )
     await driver.connect()
     assert not any(b"/main/mute" in m for m in driver.transport.sent)
+
+ACME_OSC_SLEEPY = {
+    **ACME_OSC_BRINGUP,
+    "id": "acme_osc_sleepy",
+    "name": "Acme OSC Sleepy",
+    "state_variables": {
+        "standby": {"type": "boolean", "label": "Standby"},
+        "level": {"type": "float", "label": "Level"},
+    },
+    "responses": [
+        {"address": "/acme/standby", "mappings": [{"arg": 0, "state": "standby", "type": "boolean"}]},
+        {"address": "/acme/level", "mappings": [{"arg": 0, "state": "level", "type": "float"}]},
+    ],
+    "on_connect": ["/acme/hello"],
+    "polling": {"queries": ["/acme/level"], "when_state": {"standby": False}},
+}
+
+
+def _sleepy_driver(standby, monkeypatch):
+    """The sleepy unit after a reconnect: its last report of standby is still
+    in state when the connection opens again."""
+
+    async def fake_super_connect(self) -> None:
+        self.transport = FakeTransport()
+        await self._initial_sync()
+
+    monkeypatch.setattr(base_mod.BaseDriver, "connect", fake_super_connect)
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    cls = create_configurable_driver_class(ACME_OSC_SLEEPY)
+    driver = cls("dev1", {"host": "127.0.0.1", "port": 10023}, state, events)
+    driver.set_state("standby", standby)
+    return driver
+
+
+async def test_a_reconnect_to_a_unit_in_standby_asks_no_reply_address(monkeypatch):
+    # Any message wakes the unit, so the automatic ask of every reply address
+    # is held back by the poll's state condition, as the poll itself is.
+    driver = _sleepy_driver(True, monkeypatch)
+    await driver.connect()
+    assert driver.transport.sent == [_osc("/acme/hello")]
+
+
+async def test_a_reconnect_to_an_awake_unit_asks_every_reply_address(monkeypatch):
+    driver = _sleepy_driver(False, monkeypatch)
+    await driver.connect()
+    assert driver.transport.sent == [
+        _osc("/acme/hello"), _osc("/acme/standby"), _osc("/acme/level"),
+    ]
