@@ -437,9 +437,13 @@ async def test_a_device_that_comes_back_in_standby_comes_online(managed_quiet) -
     dev["answer"], dev["standby"] = True, True
     mark = len(dev["lines"])
     dev["kick"]()
-    assert await _until(lambda: state.get("device.acme1.connected") is True, 3.0)
+    # The driver announces it; the reconnect loop then clears the reason.
+    assert await _until(
+        lambda: state.get("device.acme1.connected") is True
+        and state.get("device.acme1.offline_reason") is None,
+        3.0,
+    )
     assert state.get("device.acme1.standby") is True
-    assert state.get("device.acme1.offline_reason") is None
     assert state.get("device.acme1.offline_detail") is None
     await asyncio.sleep(_INTERVAL * 6)
     assert state.get("device.acme1.connected") is True
