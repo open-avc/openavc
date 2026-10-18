@@ -476,6 +476,15 @@ class NetworkCheck:
         # device leaves from the address its own connections use: for a
         # device at a 169.254 address, the adapter's 169.254 address.
         self._listen_ip = source_ip if source_ip is not None else _control_interface()
+        # The adapter chosen in Reach devices through with no address: the
+        # check is refused rather than sent through another adapter.
+        self._refused = ""
+        if source_ip is None and not self._listen_ip:
+            from openavc import reach_devices
+
+            unusable = reach_devices.unusable_choice()
+            if unusable is not None:
+                self._refused = reach_devices.no_address_sentence(unusable.adapter_name)
         self._source_ip = self._listen_ip
         self._source_adapter = ""
         if source_ip is None and self._listen_ip and is_link_local(ip):
@@ -591,6 +600,8 @@ class NetworkCheck:
 
     async def run(self) -> Footprint:
         """Run every activity and the verdict. Returns the footprint."""
+        if self._refused:
+            raise ConnectionError(self._refused)
         fp = self.footprint
         await self.start_listeners()
         await self._refresh_catalog()

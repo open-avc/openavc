@@ -58,12 +58,38 @@ def control_bind_address(host: Any) -> str | None:
 
     Settings' Reach devices through pins device traffic to one adapter
     (``openavc/reach_devices.py``); :func:`local_address_for` applies it.
+    Raises :class:`ConnectionFaultError` (``unreachable``) when that adapter
+    has no address at all, except for a host on this computer, which is
+    never bound.
     """
     from openavc import reach_devices
 
     pinned = reach_devices.address()
+    if not pinned and not _is_loopback(host):
+        # An adapter chosen with nothing to send from: refused, never left to
+        # the operating system, which would route it through another adapter.
+        unusable = reach_devices.unusable_choice()
+        if unusable is not None:
+            if unusable.link_local_address and is_link_local(host):
+                return unusable.link_local_address
+            from openavc.core.connection_fault import UNREACHABLE, ConnectionFaultError
+
+            where = str(host or "").strip() or "the device"
+            raise ConnectionFaultError(
+                f"Can't reach {where}. "
+                + reach_devices.no_address_sentence(unusable.adapter_name),
+                code=UNREACHABLE,
+            )
     link_local = reach_devices.link_local_address() if pinned and is_link_local(host) else ""
     return local_address_for(host, pinned, link_local)
+
+
+def _is_loopback(host: Any) -> bool:
+    name = str(host or "").strip().strip("[]").lower()
+    try:
+        return name == "localhost" or ipaddress.ip_address(name).is_loopback
+    except ValueError:
+        return False
 
 
 def local_address_for(
@@ -85,11 +111,7 @@ def local_address_for(
     if not control_ip:
         return None
     name = str(host or "").strip().strip("[]").lower()
-    try:
-        loopback = name == "localhost" or ipaddress.ip_address(name).is_loopback
-    except ValueError:
-        loopback = False
-    if loopback:
+    if _is_loopback(name):
         return None
     if link_local_ip and is_link_local(name):
         return link_local_ip

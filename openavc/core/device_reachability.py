@@ -42,6 +42,7 @@ from typing import Any
 import httpx
 
 from openavc.core.connection_fault import (
+    ConnectionFaultError,
     no_address_message,
     NO_RESPONSE,
     TRANSPORT_DISCONNECTED,
@@ -223,13 +224,24 @@ def _port_problem(port: Any, cfg: dict[str, Any]) -> str | None:
     return None
 
 
+def _bind_for(host: str) -> tuple[str | None, str | None]:
+    """Where a test connection leaves from, or why it cannot leave at all
+    (the adapter chosen in Reach devices through has no address)."""
+    try:
+        return control_bind_address(host), None
+    except ConnectionFaultError as exc:
+        return None, str(exc)
+
+
 async def _open_tcp(host: str, port: Any, cfg: dict[str, Any]) -> str | None:
     if not host:
         return _NO_HOST
     problem = _port_problem(port, cfg)
     if problem:
         return problem
-    bind = control_bind_address(host)
+    bind, refused = _bind_for(host)
+    if refused:
+        return refused
     try:
         _reader, writer = await asyncio.wait_for(
             asyncio.open_connection(
@@ -261,7 +273,9 @@ async def _point_datagram_socket(host: str, port: Any, cfg: dict[str, Any]) -> s
     problem = _port_problem(port, cfg)
     if problem:
         return problem
-    bind = control_bind_address(host)
+    bind, refused = _bind_for(host)
+    if refused:
+        return refused
     try:
         infos = await asyncio.get_running_loop().getaddrinfo(
             host, int(port), type=socket.SOCK_DGRAM
@@ -286,7 +300,9 @@ async def _head(host: str, port: Any, cfg: dict[str, Any]) -> str | None:
             return _NO_HOST
     verify = bool(cfg.get("verify_ssl", True))
     kwargs: dict[str, Any] = {"timeout": _CONNECT_TIMEOUT_S, "verify": verify}
-    bind = control_bind_address(host)
+    bind, refused = _bind_for(host)
+    if refused:
+        return refused
     if bind:
         # httpx ignores the client's `verify` once it is handed a transport.
         kwargs["transport"] = httpx.AsyncHTTPTransport(local_address=bind, verify=verify)

@@ -111,7 +111,10 @@ async def probe_web_ui(
         return None
     from openavc.transport.endpoint import control_bind_address
 
-    bind = control_bind_address(host)
+    try:
+        bind = control_bind_address(host)
+    except ConnectionError:
+        return None
 
     async def _reachable(port: int) -> bool:
         try:
