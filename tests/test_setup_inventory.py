@@ -1,5 +1,6 @@
 """Read-only source capture follows actual load paths without executing drivers."""
 import hashlib
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -21,7 +22,11 @@ def capture(root, *, library=None, bundles=None):
 def bundle(path, members):
     with zipfile.ZipFile(path, "w") as archive:
         for name, data in members:
-            archive.writestr(name, data)
+            # ZipInfo normalizes backslashes on Windows. These fixtures include
+            # literal malformed archive names, so preserve their written bytes.
+            info = zipfile.ZipInfo(name)
+            info.filename = info.orig_filename = name
+            archive.writestr(info, data)
 
 
 def test_flat_primary_selection_keeps_helpers_and_nested_entries_visible(tmp_path):
@@ -87,7 +92,10 @@ def test_linked_root_and_source_keep_aliases_without_modifying_originals(tmp_pat
     assert row["path"] == str(alias / "linked.py")
     assert row["location"]["resolved"] == str(outside.resolve())
     targets = {c["link_target"] for c in row["location"]["chain"] if "link_target" in c}
-    assert str(outside) in targets and str(root) in targets
+    # Windows readlink retains the extended-length prefix of its substitute
+    # name. Capture must preserve that OS spelling, not rewrite the alias.
+    assert targets == {os.readlink(root / "linked.py"), os.readlink(alias)}
+    assert {Path(target).resolve() for target in targets} == {outside.resolve(), root.resolve()}
     assert (root / "linked.py").is_symlink() and outside.read_bytes() == b"external source"
 
 
@@ -105,6 +113,8 @@ def test_ambiguous_archive_never_yields_a_partial_capture(tmp_path, names):
     archive = tmp_path / "ambiguous.zip"
     bundle(archive, [(name, b"source") for name in names])
     before = archive.read_bytes()
+    with zipfile.ZipFile(archive) as written:
+        assert [info.orig_filename for info in written.infolist()] == list(names)
     with pytest.raises(ValueError):
         capture(root, bundles={"pending": archive})
     assert archive.read_bytes() == before
