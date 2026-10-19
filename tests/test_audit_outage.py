@@ -357,7 +357,9 @@ async def test_a_connection_that_drops_again_is_waited_out(driver):
         await _until(lambda: test.status == DONE, timeout=30.0)
 
         record = test.to_dict()
-        assert record["reconnected_at"] < record["dropped_again_at"] < record["reconnected_again_at"]
+        # A reconnect and immediate reset can share a Windows wall-clock tick.
+        # Timestamp precision is not the ordering oracle; the timeline is.
+        assert record["reconnected_at"] <= record["dropped_again_at"] <= record["reconnected_again_at"]
         assert record["measured"]["dropped_again_after"] is not None
         assert record["measured"]["reconnected_again_after"] is not None
         # What came back is counted from the reconnect that held.
@@ -367,7 +369,7 @@ async def test_a_connection_that_drops_again_is_waited_out(driver):
         assert "the connection dropped again" in sentence
         assert ", and the driver reconnected" in sentence
         kinds = [e.kind for e in session.timeline]
-        assert "outage.dropped_again" in kinds and "outage.reconnected_again" in kinds
+        assert kinds.index("outage.reconnected") < kinds.index("outage.dropped_again") < kinds.index("outage.reconnected_again")
     finally:
         await run.stop()
         await unit.close()
