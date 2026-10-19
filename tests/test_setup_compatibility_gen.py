@@ -149,3 +149,15 @@ def test_literal_cli_generation_and_check_detects_modified_output(history, tmp_p
     altered = command("--check")
     assert altered.returncode != 0 and "differs" in altered.stderr
     assert output.read_bytes() != original  # check never overwrites a bad artifact
+
+
+def test_explicit_runtime_surface_qualification_survives_generation(history):
+    data = copy.deepcopy(history.manifest)
+    data["sources"][0]["actions"][0]["runtime_surfaces"] = ["commands"]
+    revision = commit_manifest(history, data)
+    descriptor, = parse_descriptors(generator.build_resource(history.repo, revision)["descriptors"])
+    assert descriptor.runtime_surfaces == ("commands",)
+    data["sources"][0]["actions"][0]["runtime_surfaces"] = ["config_schema"]
+    revision = commit_manifest(history, data)
+    with pytest.raises(ValueError, match="runtime control surfaces"):
+        generator.build_resource(history.repo, revision)

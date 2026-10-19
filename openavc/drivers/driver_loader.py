@@ -20,6 +20,7 @@ from dataclasses import dataclass
 import hashlib
 import importlib.util
 import inspect
+import json
 import os
 import sys
 import tempfile
@@ -107,11 +108,13 @@ def _handler_defaults(handler, driver_class):
     )
 
 
-def loaded_python_source(driver: Any) -> PythonDriverSource | None:
+def loaded_python_source(driver: Any, *, runtime_surfaces: tuple[str, ...] = ()) -> PythonDriverSource | None:
     """Return the loader's receipt only while class, handler and metadata match.
 
     Never re-read a path to identify an already running class. An instance-local
     handler replacement or a metadata-only impersonation cannot borrow a receipt.
+    Qualified runtime control surfaces may differ only on the instance; the
+    loaded class declaration and every setup action remain exact.
     """
     cls = driver if isinstance(driver, type) else type(driver)
     entry = _PYTHON_SOURCES.get(cls)
@@ -127,8 +130,12 @@ def loaded_python_source(driver: Any) -> PythonDriverSource | None:
     try:
         if _handler_defaults(handler, cls) != defaults:
             return None
-        if _declaration(driver.DRIVER_INFO) != receipt.declaration:
+        if _declaration(cls.DRIVER_INFO) != receipt.declaration:
             return None
+        if driver is not cls:
+            from openavc.drivers.setup_compatibility import instance_declaration_matches
+            if not instance_declaration_matches(json.loads(receipt.declaration), driver.DRIVER_INFO, runtime_surfaces):
+                return None
     except (TypeError, ValueError, AttributeError):
         return None
     return receipt

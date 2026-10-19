@@ -3176,8 +3176,16 @@ Maintainers generate the offline resource from a committed
 source identifies `revision` (the full Git commit), `path`, `source_sha256`,
 `driver_id`, `driver_version`, and an `actions` list. Each action supplies
 `action_id`, `profile`, `roles`, `diagnostics`, and optionally `generated_secret`
+and `runtime_surfaces`
 from the compatibility schema. Keep historical source references when the current
 driver changes. Qualify the result mapping and its dependencies before adding it.
+
+For a driver that builds its control schema per instance, `runtime_surfaces`
+lists the qualified sections: `commands`, `state_variables`, `device_settings`,
+`child_entity_types`, or `actions`. Unlisted sections must match the loaded class
+declaration. Action shaping may only remove original non-setup entries, preserving
+order; every setup entry stays unchanged. The full instance declaration is fixed
+when setup is prepared, so a subsequent change requires a new preparation.
 
 Run with the OpenAVC platform environment and a local drivers Git repository:
 

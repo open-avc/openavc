@@ -125,7 +125,7 @@ def build_resource(repo: Path, revision: str, manifest_path: str = MANIFEST_PATH
         if type(entry["actions"]) is not list or not 1 <= len(entry["actions"]) <= 64:
             raise ValueError("A bounded nonempty action list is required")
         for mapping in entry["actions"]:
-            _object(mapping, ("action_id", "profile", "roles", "diagnostics"), ("generated_secret",))
+            _object(mapping, ("action_id", "profile", "roles", "diagnostics"), ("generated_secret", "runtime_surfaces"))
             matches = [a for a in info.get("actions", []) if type(a) is dict and a.get("id") == mapping["action_id"]]
             if len(matches) != 1 or matches[0].get("kind") != "setup" or "result_contract" in matches[0]:
                 raise ValueError("Select one legacy setup action from the loaded declaration")

@@ -70,6 +70,19 @@
       "maxLength": 160,
       "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
     },
+    "runtime_surfaces": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "commands",
+          "state_variables",
+          "device_settings",
+          "child_entity_types",
+          "actions"
+        ]
+      }
+    },
     "diagnostics": {
       "type": "array",
       "maxItems": 64,

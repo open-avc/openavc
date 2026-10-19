@@ -172,3 +172,20 @@ def test_selection_is_frozen_and_canonical_digest_keeps_false_zero_null_distinct
     assert dict(selected.roles)["success"] == "passed"
     assert len({declaration_digest({"value": v}) for v in (False, 0, None)}) == 3
     assert declaration_digest({"b": 1, "a": "x"}) == declaration_digest({"a": "x", "b": 1})
+
+
+@pytest.mark.parametrize("value", [["id"], ["config_schema"], ["commands", "commands"], "commands", [None], [{}]])
+def test_runtime_surface_declaration_is_finite_and_unique(value):
+    with pytest.raises(ValueError):
+        SetupCompatibility.parse(descriptor(runtime_surfaces=value))
+
+
+def test_runtime_action_shaping_only_removes_non_setup_entries_in_order():
+    from openavc.drivers.setup_compatibility import instance_declaration_matches
+    original = {"id": "acme", "actions": [
+        {"id": "first", "kind": "command"}, {"id": "check", "kind": "setup"},
+        {"id": "last", "kind": "command"}]}
+    for selected, expected in [([1], True), ([0, 1], True), ([1, 2], True),
+                               ([2, 1], False), ([0, 2], False), ([1, 1], False)]:
+        current = {**original, "actions": [original["actions"][i] for i in selected]}
+        assert instance_declaration_matches(original, current, ("actions",)) is expected

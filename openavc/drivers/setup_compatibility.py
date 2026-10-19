@@ -20,6 +20,7 @@ from openavc.drivers.spec import SETUP_COMPATIBILITY_ROLES, SETUP_DIAGNOSTIC_TYP
 MAX_DIAGNOSTICS = 64
 MAX_ITEMS = 512
 MAX_SAFE_INTEGER = 2**53 - 1
+RUNTIME_SURFACES = ("commands", "state_variables", "device_settings", "child_entity_types", "actions")
 _KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,79}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -31,6 +32,41 @@ def declaration_json(value: dict) -> str:
 
 def declaration_digest(value: dict) -> str:
     return hashlib.sha256(declaration_json(value).encode("utf-8")).hexdigest()
+
+
+def instance_declaration_matches(declared: dict, current: dict, surfaces: tuple[str, ...]) -> bool:
+    """Compare an instance with the class snapshot under its exact qualification.
+
+    Runtime control schemas may be constructed from configuration or device role.
+    Setup declarations never vary: action shaping can only remove original
+    non-setup actions. This is metadata qualification, not a Python sandbox.
+    The run owner separately freezes the whole instance declaration at prepare.
+    """
+    if type(current) is not dict or any(key not in RUNTIME_SURFACES for key in surfaces):
+        return False
+    for key in surfaces:
+        if key == "actions":
+            original, actual = declared.get(key, []), current.get(key, [])
+            if (type(original) is not list or type(actual) is not list
+                    or any(type(action) is not dict for action in original + actual)):
+                return False
+            original_ids = [action.get("id") for action in original]
+            actual_ids = [action.get("id") for action in actual]
+            if (any(type(value) is not str for value in original_ids + actual_ids)
+                    or len(set(original_ids)) != len(original_ids)
+                    or len(set(actual_ids)) != len(actual_ids)):
+                return False
+            originals = {action["id"]: declaration_json(action) for action in original}
+            if any(originals.get(action["id"]) != declaration_json(action) for action in actual):
+                return False
+            if actual_ids != [key for key in original_ids if key in actual_ids]:
+                return False
+            if any(action["id"] not in actual_ids for action in original if action.get("kind") == "setup"):
+                return False
+        elif key in current and type(current[key]) is not dict:
+            return False
+    return declaration_json({k: v for k, v in declared.items() if k not in surfaces}) == declaration_json(
+        {k: v for k, v in current.items() if k not in surfaces})
 
 
 def _object(value, required, optional=()):
@@ -97,12 +133,13 @@ class SetupCompatibility:
     diagnostics: tuple[DiagnosticField, ...]
     generated_secret: str | None
     descriptor_sha256: str
+    runtime_surfaces: tuple[str, ...] = ()
 
     @classmethod
     def parse(cls, value) -> SetupCompatibility:
         _object(value, ("schema", "driver_id", "driver_version", "action_id", "source_sha256",
                         "declaration_sha256", "action_sha256", "profile", "roles", "diagnostics"),
-                ("generated_secret",))
+                ("generated_secret", "runtime_surfaces"))
         if value["schema"] != "setup-compatibility/v1":
             raise ValueError("Unsupported setup compatibility schema")
         profile = value["profile"]
@@ -133,10 +170,14 @@ class SetupCompatibility:
                 raise ValueError("Generated credentials must have a separate pairing role")
         elif profile == "pairing/v1":
             raise ValueError("Pairing requires a declared generated credential")
+        surfaces = value.get("runtime_surfaces", [])
+        if (type(surfaces) is not list or any(type(key) is not str or key not in RUNTIME_SURFACES for key in surfaces)
+                or len(set(surfaces)) != len(surfaces)):
+            raise ValueError("Only distinct qualified runtime control surfaces are supported")
         return cls(_text(value["driver_id"], key=True), _text(value["driver_version"]),
                    _text(value["action_id"], key=True), _digest(value["source_sha256"]),
                    _digest(value["declaration_sha256"]), _digest(value["action_sha256"]),
-                   profile, roles, tuple(diagnostics), secret, declaration_digest(value))
+                   profile, roles, tuple(diagnostics), secret, declaration_digest(value), tuple(surfaces))
 
     def read_roles(self, result: dict) -> dict:
         if type(result) is not dict:
@@ -194,6 +235,8 @@ def descriptor_schema() -> dict:
                 "action_id": key, "source_sha256": digest, "declaration_sha256": digest,
                 "action_sha256": digest, "profile": {"enum": list(SETUP_COMPATIBILITY_ROLES)},
                 "roles": {"type": "object"}, "generated_secret": key,
+                "runtime_surfaces": {"type": "array", "uniqueItems": True,
+                                     "items": {"enum": list(RUNTIME_SURFACES)}},
                 "diagnostics": {"type": "array", "maxItems": MAX_DIAGNOSTICS, "items": {
                     "type": "object", "additionalProperties": False,
                     "required": ["key", "label", "type", "required", "nullable"], "properties": {

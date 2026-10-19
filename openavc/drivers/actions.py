@@ -107,7 +107,7 @@ class SetupIngress:
             return False
         if self.compatibility is not None:
             from openavc.drivers.driver_loader import loaded_python_source
-            return (loaded_python_source(driver) is self.source_receipt
+            return (loaded_python_source(driver, runtime_surfaces=self.compatibility.runtime_surfaces) is self.source_receipt
                     and get_driver_class(self.compatibility.driver_id) is self.driver_class)
         return True
 
@@ -133,15 +133,16 @@ def _setup_ingress(driver, entry: dict) -> SetupIngress | None:
     if "result_contract" in entry:
         return None  # Unknown explicit versions never fall back to legacy.
     from openavc.drivers.driver_loader import loaded_python_source
-    receipt = loaded_python_source(driver)
+    receipt = loaded_python_source(type(driver))
     if receipt is None or get_driver_class(driver.DRIVER_INFO.get("id")) is not type(driver):
         return None
     for descriptor in bundled_descriptors():
         if (descriptor.driver_id == driver.DRIVER_INFO.get("id")
                 and descriptor.driver_version == driver.DRIVER_INFO.get("version")
                 and descriptor.action_id == entry["id"] and descriptor.source_sha256 == receipt.sha256
-                and descriptor.declaration_sha256 == declaration_digest(driver.DRIVER_INFO)
-                and descriptor.action_sha256 == declaration_digest(entry)):
+                and descriptor.declaration_sha256 == declaration_digest(json.loads(receipt.declaration))
+                and descriptor.action_sha256 == declaration_digest(entry)
+                and loaded_python_source(driver, runtime_surfaces=descriptor.runtime_surfaces) is receipt):
             return SetupIngress(type(driver), handler, handler.__code__, declaration, receipt, descriptor, registration)
     return None
 

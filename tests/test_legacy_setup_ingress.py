@@ -50,10 +50,10 @@ class AcmeLegacy(BaseDriver):
 
 
 @pytest.fixture
-async def legacy(env, tmp_path, monkeypatch):
+async def legacy(env, tmp_path, monkeypatch, request):
     runner, engine, _ = env
     path = tmp_path / "acme_legacy.py"
-    path.write_text(SOURCE, encoding="utf-8")
+    path.write_text(getattr(request, "param", SOURCE), encoding="utf-8")
     cls = driver_loader.load_python_driver_file(path)
     assert cls is not None
     # Isolate registration while still using the registry's public writer.
@@ -71,7 +71,7 @@ async def legacy(env, tmp_path, monkeypatch):
         "driver_version": "1.0.0", "action_id": "pair",
         "source_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         "declaration_sha256": declaration_digest(cls.DRIVER_INFO),
-        "action_sha256": declaration_digest(cls.DRIVER_INFO["actions"][0]),
+        "action_sha256": declaration_digest(next(a for a in cls.DRIVER_INFO["actions"] if a["kind"] == "setup")),
         "profile": "pairing/v1", "roles": {"paired": "paired"},
         "generated_secret": "app_key", "diagnostics": [
             {"key": "count", "label": "Checks", "type": "integer", "required": True, "nullable": False}],
@@ -250,3 +250,81 @@ async def test_registration_is_rechecked_after_reconnect_admission_wait(legacy):
     assert legacy.driver.effects == []
     assert "acme" not in legacy.engine.devices._intentional_disconnect
     assert legacy.runner.results.status(prepared["capability"], current=allowed)["status"] == "terminal"
+
+
+RUNTIME_SOURCE = SOURCE.replace('from openavc.drivers.base', 'import copy\nfrom openavc.drivers.base').replace(
+    '"actions": [{', '"actions": [{"id": "choose", "kind": "command"}, {', 1).replace(
+    '    async def connect(self):', '''    def __init__(self, device_id, config, state, events):
+        self.DRIVER_INFO = copy.deepcopy(type(self).DRIVER_INFO)
+        self.DRIVER_INFO["commands"] = {"choose": {"params": {"slot": {"type": "integer"}}}}
+        self.DRIVER_INFO["state_variables"] = {"temperature": {"type": "number"}}
+        self.DRIVER_INFO["actions"] = [a for a in self.DRIVER_INFO["actions"] if a["kind"] == "setup"]
+        super().__init__(device_id, config, state, events)
+    async def connect(self):''', 1)
+
+
+def qualify_runtime(rig, monkeypatch):
+    raw = {**rig.raw, "runtime_surfaces": ["commands", "state_variables", "actions"]}
+    selected = SetupCompatibility.parse(raw)
+    monkeypatch.setattr(actions, "bundled_descriptors", lambda: (selected,))
+    return selected
+
+
+@pytest.mark.parametrize("legacy", [RUNTIME_SOURCE], indirect=True)
+async def test_exact_instance_surface_mapping_preserves_setup(legacy, monkeypatch):
+    rig = legacy
+    assert driver_loader.loaded_python_source(rig.cls) is not None
+    assert driver_loader.loaded_python_source(rig.driver) is None  # no general exception
+    with pytest.raises(SetupContractRequired):
+        prepare(rig)
+    selected = qualify_runtime(rig, monkeypatch)
+    assert driver_loader.loaded_python_source(rig.driver, runtime_surfaces=selected.runtime_surfaces) is not None
+    prepared = prepare(rig)
+    assert rig.driver.effects == []
+    status = await start(rig, prepared)
+    assert status["result"]["outcome"] == "succeeded"
+    assert rig.driver.effects == ["paired"]
+
+
+@pytest.mark.parametrize("legacy", [RUNTIME_SOURCE], indirect=True)
+@pytest.mark.parametrize("change", ["identity", "config_schema", "setup", "duplicate", "added_action", "class", "handler"])
+async def test_qualified_surfaces_cannot_lend_identity_to_other_metadata(legacy, monkeypatch, change):
+    rig = legacy
+    qualify_runtime(rig, monkeypatch)
+    info = rig.driver.DRIVER_INFO
+    if change == "identity":
+        info["version"] = "other"
+    elif change == "config_schema":
+        info["config_schema"] = None  # absent and null differ
+    elif change == "setup":
+        info["actions"][0]["params"]["save"]["type"] = "string"
+    elif change == "duplicate":
+        info["actions"].append(copy.deepcopy(info["actions"][0]))
+    elif change == "added_action":
+        info["actions"].append({"id": "other", "kind": "link", "url": "https://example.invalid"})
+    elif change == "class":
+        rig.cls.DRIVER_INFO["commands"]["new"] = {}
+    else:
+        async def replacement(self, action, params, progress):
+            self.effects.append("wrong-code")
+        from types import MethodType
+        rig.driver.run_setup_action = MethodType(replacement, rig.driver)
+    with pytest.raises(SetupContractRequired):
+        prepare(rig)
+    assert rig.driver.effects == [] and not rig.runner._tasks
+
+
+@pytest.mark.parametrize("legacy", [RUNTIME_SOURCE], indirect=True)
+async def test_allowed_surface_change_during_admission_still_refuses_effects(legacy, monkeypatch):
+    rig = legacy
+    qualify_runtime(rig, monkeypatch)
+    original = rig.engine.devices.begin_setup
+    async def changed_begin(device_id):
+        await original(device_id)
+        rig.driver.DRIVER_INFO["commands"]["choose"]["params"]["slot"]["max"] = 4
+    rig.engine.devices.begin_setup = changed_begin
+    prepared = prepare(rig)
+    status = await start(rig, prepared)
+    assert status["status"] == "terminal"
+    assert rig.driver.effects == []
+    assert "acme" not in rig.engine.devices._intentional_disconnect
