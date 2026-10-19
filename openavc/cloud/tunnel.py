@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from http.cookiejar import CookieJar, DefaultCookiePolicy
 import json
 import ssl
 from dataclasses import dataclass, field
@@ -53,6 +54,16 @@ FORWARDED_HEADERS = frozenset({
     "x-forwarded-for", "x-forwarded-proto", "x-forwarded-host",
     "x-forwarded-port", "x-forwarded-server", "forwarded", "x-real-ip",
 })
+
+
+class _BrowserOwnedCookies(DefaultCookiePolicy):
+    """The shared proxy transports browser cookies; it never retains its own."""
+
+    def set_ok(self, cookie, request):
+        return False
+
+    def return_ok(self, cookie, request):
+        return False
 
 
 @dataclass
@@ -112,6 +123,7 @@ class TunnelHandler:
             # here at all until the local server has answered with headers.
             self._http_client = httpx.AsyncClient(
                 timeout=httpx.Timeout(30.0, read=300.0), verify=False,
+                cookies=CookieJar(policy=_BrowserOwnedCookies()),
             )
         return self._http_client
 
@@ -435,6 +447,10 @@ class TunnelHandler:
             for k, v in headers.items():
                 if k.lower() not in skip:
                     req_headers[k] = v
+            if not any(k.lower() == "cookie" for k in req_headers):
+                # An absent browser Cookie is explicit, including on an already
+                # constructed client. httpx otherwise fills it from its jar.
+                req_headers["Cookie"] = ""
 
             # Mark the request as tunneled. It is about to arrive at the local
             # server over loopback, which is the identity the console uses to

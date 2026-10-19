@@ -3,11 +3,41 @@
 import asyncio
 import base64
 import json
+import httpx
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from tests.helpers import tunnel_stream_client
+
+
+@pytest.mark.parametrize("supplied", [None, "", "unrelated=browser", "retained=second-browser"])
+async def test_shared_tunnel_client_never_supplies_another_browsers_cookie(mock_agent, monkeypatch, supplied):
+    from openavc.cloud import tunnel
+
+    received = []
+    def loopback(request):
+        received.append(request.headers.get("cookie", ""))
+        return httpx.Response(200, headers={"set-cookie": "retained=first-browser; Path=/; Secure; HttpOnly"},
+                              json={"ok": True})
+
+    client_type = httpx.AsyncClient
+    monkeypatch.setattr(tunnel.httpx, "AsyncClient", lambda **options:
+                        client_type(**options, transport=httpx.MockTransport(loopback)))
+    handler = tunnel.TunnelHandler(mock_agent)
+    monkeypatch.setattr(handler, "_loopback_origin", lambda port: "https://localhost:8443")
+    first = tunnel.TunnelConnection("first", 8080, data_ws=AsyncMock())
+    second = tunnel.TunnelConnection("second", 8080, data_ws=AsyncMock())
+    try:
+        await handler._handle_http_request(first, {"id": "one", "path": "/api/setup-actions/transfer"})
+        forwarded = json.loads(first.data_ws.send.call_args.args[0])
+        assert "retained=first-browser" in forwarded["headers"]["set-cookie"]
+        headers = {} if supplied is None else {"Cookie": supplied}
+        await handler._handle_http_request(second, {"id": "two", "path": "/api/setup-actions/transfer", "headers": headers})
+        assert received == ["", supplied or ""]
+        assert not list(handler._http_client.cookies.jar)
+    finally:
+        await handler.stop()
 
 
 @pytest.fixture
