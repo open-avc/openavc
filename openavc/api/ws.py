@@ -282,14 +282,25 @@ async def _run_ws_connection(
         # Catch-all: isolates unexpected WebSocket errors so cleanup always runs
         log.exception("WebSocket error")
     finally:
-        if ping_task and not ping_task.done():
-            ping_task.cancel()
-        _cleanup_log_subscription(ws_id)
-        _cleanup_event_subscription(ws_id, engine)
-        _cleanup_audit_subscription(ws_id)
-        if integration:
-            _integration_disconnected(engine, integration)
-        engine.ws.remove_client(ws)
+        # Slow interactions may outlive the message that started them, but
+        # never this connection or its admitted authority. Include work still
+        # inside the initial hold, and await cancellation before the policy
+        # wrapper records this connection as drained.
+        interactions = _ui_events_running.pop(ws_id, set())
+        for task in interactions:
+            task.cancel()
+        try:
+            if interactions:
+                await asyncio.gather(*interactions, return_exceptions=True)
+        finally:
+            if ping_task and not ping_task.done():
+                ping_task.cancel()
+            _cleanup_log_subscription(ws_id)
+            _cleanup_event_subscription(ws_id, engine)
+            _cleanup_audit_subscription(ws_id)
+            if integration:
+                _integration_disconnected(engine, integration)
+            engine.ws.remove_client(ws)
 
 
 def integration_name(raw: str) -> str:
@@ -490,7 +501,7 @@ _FLAT_PRIMITIVE_REQUIRED = "Value must be a flat primitive (str, int, float, boo
 # and sends its error frame when it does, so the panel's later presses and
 # releases are not held behind it.
 UI_EVENT_HOLD_SEC = 0.5
-_ui_events_running: set[asyncio.Task] = set()
+_ui_events_running: dict[int, set[asyncio.Task]] = {}
 
 
 async def _run_ui_event(
@@ -506,10 +517,17 @@ async def _run_ui_event(
     task = asyncio.ensure_future(
         _ui_event(ws, msg_type, engine, event_type, element_id, data)
     )
-    done, _ = await asyncio.wait({task}, timeout=UI_EVENT_HOLD_SEC)
-    if not done:
-        _ui_events_running.add(task)
-        task.add_done_callback(_ui_events_running.discard)
+    ws_id = id(ws)
+    interactions = _ui_events_running.setdefault(ws_id, set())
+    interactions.add(task)
+
+    def completed(finished: asyncio.Task) -> None:
+        interactions.discard(finished)
+        if not interactions and _ui_events_running.get(ws_id) is interactions:
+            _ui_events_running.pop(ws_id)
+
+    task.add_done_callback(completed)
+    await asyncio.wait({task}, timeout=UI_EVENT_HOLD_SEC)
 
 
 async def _ui_event(
