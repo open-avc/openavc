@@ -80,6 +80,16 @@ class _Capture:
         self.sources = {}
         self.total_bytes = 0
         self.source_count = 0
+        self.retained_names = 0
+
+    def names(self, entries):
+        # Membership lists occur in root, library and optional-parent records,
+        # even when no source/member row is selected. Bound their aggregate
+        # retained size too, counting repeated roles without dropping either.
+        self.retained_names += len(entries)
+        if self.retained_names > _MAX_ENTRIES:
+            raise ValueError("The source inventory exceeds its retained membership limit.")
+        return [entry.name for entry in entries]
 
     def observe(self, path):
         value = _location(path)
@@ -135,7 +145,7 @@ class _Capture:
                                               expected_identity=observed["identity"]))
             self.member(row)
         return {"role": role, "kind": "primary_directory", "location": root,
-                "entries": [entry.name for entry in entries]}
+                "entries": self.names(entries)}
 
     def archive(self, path, role):
         observed = self.observe(path)
@@ -192,27 +202,28 @@ class _Capture:
             if stat.S_ISDIR(observed["identity"][2]):
                 # Record complete child membership even when no bundle exists.
                 _, children = self.directory(entry)
-                row.update(disposition="library_directory", entries=[child.name for child in children])
+                row.update(disposition="library_directory", entries=self.names(children))
                 if "bundle.zip" in row["entries"]:
                     bundles.append(self.archive(entry / "bundle.zip", role))
             self.member(row)
         return {"role": role, "kind": "saved_library", "location": root,
-                "entries": [entry.name for entry in entries], "bundles": bundles}
+                "entries": self.names(entries), "bundles": bundles}
 
     def optional_directory(self, path, role, read):
         # lstat distinguishes an absent child from a present dangling link.
         # Observe the required parent even when the child is present, retaining
         # the same complete membership proof across both dispositions.
         parent, entries = self.directory(path.parent)
+        parent_entries = self.names(entries)
         try:
             path.lstat()
         except FileNotFoundError:
-            if path.name in [entry.name for entry in entries]:
+            if path.name in parent_entries:
                 raise ValueError("The optional source directory changed during inventory.") from None
             return {"role": role, "kind": "absent_directory", "path": str(path.absolute()),
-                    "parent": parent, "parent_entries": [entry.name for entry in entries]}
+                    "parent": parent, "parent_entries": parent_entries}
         return {**read(path, role), "optional": True, "parent": parent,
-                "parent_entries": [entry.name for entry in entries]}
+                "parent_entries": parent_entries}
 
     def templates(self, path, role):
         root, entries = self.directory(path)
@@ -228,7 +239,7 @@ class _Capture:
                 row["disposition"] = "template_bundle"
             self.member(row)
         return {"role": role, "kind": "template_directory", "location": root,
-                "entries": [entry.name for entry in entries], "bundles": bundles}
+                "entries": self.names(entries), "bundles": bundles}
 
     def recheck(self):
         for spelling in list(self.directories):

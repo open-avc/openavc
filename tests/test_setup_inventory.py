@@ -312,3 +312,27 @@ def test_optional_and_template_sources_share_the_total_capture_bound(tmp_path, m
     with pytest.raises(ValueError, match="source limit"):
         inventory.capture_source_inputs(primary_roots={}, library_roots={}, bundles={},
             optional_primary_roots={"persistent": drivers}, template_roots={"candidate": templates})
+
+
+@pytest.mark.parametrize("same_parent", [False, True])
+def test_retained_optional_parent_names_share_an_aggregate_bound(tmp_path, monkeypatch, same_parent):
+    first, second = tmp_path / "first", tmp_path / "second"
+    for parent in (first, second):
+        parent.mkdir()
+        for i in range(3):
+            (parent / str(i)).write_bytes(b"not a primary")
+    monkeypatch.setattr(inventory, "_MAX_ENTRIES", 3)
+    with pytest.raises(ValueError, match="retained membership limit"):
+        inventory.capture_source_inputs(primary_roots={}, library_roots={}, bundles={},
+            optional_primary_roots={"one": first / "drivers", "two": (first if same_parent else second) / "other"})
+
+
+def test_unselected_library_child_names_share_the_report_bound(tmp_path, monkeypatch):
+    for name in ("first", "second"):
+        child = tmp_path / name
+        child.mkdir()
+        for i in range(3):
+            (child / str(i)).write_bytes(b"not a bundle")
+    monkeypatch.setattr(inventory, "_MAX_ENTRIES", 3)
+    with pytest.raises(ValueError, match="retained membership limit"):
+        inventory.capture_source_inputs(primary_roots={}, library_roots={"saved": tmp_path}, bundles={})
