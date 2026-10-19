@@ -215,3 +215,67 @@ async def test_canonical_credentials_work_and_bad_credentials_do_not_consume_upl
     await app(request_scope, receive, send)
     assert consumed and sent[0]["status"] == 200
     assert sent[-1]["body"] == b'{"ok":true}'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("throws", [False, True])
+async def test_unavailable_response_is_scoped_refusal_not_authentication_failure(throws):
+    from openavc.api.host_policy import bind_response_availability
+    app, host, router = application()
+
+    def available():
+        if throws:
+            raise ValueError("private result diagnostic")
+        return False
+
+    @router.get("/sample")
+    async def sample(request: Request):
+        bind_response_availability(request, available)
+        return {"credential": "withheld"}
+
+    app.include_router(router)
+    sent = []
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        sent.append(message)
+
+    await app(scope(method="GET"), receive, send)
+    assert sent[0]["status"] == 410
+    assert b"result_unavailable" in sent[-1]["body"]
+    assert b"withheld" not in sent[-1]["body"]
+    assert b"private result diagnostic" not in sent[-1]["body"]
+    assert not host._admissions
+
+
+@pytest.mark.asyncio
+async def test_unavailable_after_headers_closes_without_result_bytes():
+    from openavc.api.host_policy import bind_response_availability
+    app, host, router = application()
+    available = [True]
+
+    @router.get("/sample")
+    async def sample(request: Request):
+        bind_response_availability(request, lambda: available[0])
+
+        async def chunks():
+            available[0] = False
+            yield b"withheld-result"
+        return StreamingResponse(chunks())
+
+    app.include_router(router)
+    sent = []
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        sent.append(message)
+
+    await app(scope(method="GET"), receive, send)
+    assert sent[0]["status"] == 200
+    assert b"withheld-result" not in b"".join(m.get("body", b"") for m in sent)
+    assert sent[-1] == {"type": "http.response.body", "body": b"", "more_body": False}
+    assert not host._admissions

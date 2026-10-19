@@ -301,8 +301,15 @@ async def test_acknowledgement_while_http_secret_response_waits_prevents_plainte
         assert ack.status_code == 200
         release.set()
         response = await asyncio.wait_for(pending, 2)
-        assert response.status_code in (401, 403, 410)
+        assert response.status_code == 410
+        assert response.json()["code"] == "result_unavailable"
+        assert response.headers["cache-control"] == "no-store"
         assert "invented-generated-key" not in response.text
+        # A normal result-availability race must not ask the auth interceptor
+        # to clear a still-valid login and eject the operator from the wizard.
+        still_signed_in = await rig.client.post("/api/setup-actions/status", json=body)
+        assert still_signed_in.status_code == 200
+        assert still_signed_in.json()["secret"]["state"] == "acknowledged"
     finally:
         release.set()
         await asyncio.gather(pending, return_exceptions=True)

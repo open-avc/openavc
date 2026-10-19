@@ -42,6 +42,7 @@ from openavc.utils.logger import get_logger
 EarlyGuard = Callable[[Request], Awaitable[None]]
 CategoryResolver = Callable[[Scope], HostCategory]
 _ADMISSION = "openavc.host_admission"
+_RESPONSE_AVAILABILITY = "openavc.response_availability"
 _ENDPOINT_POLICY = "__openavc_endpoint_policy__"
 log = get_logger(__name__)
 
@@ -53,6 +54,10 @@ class _PolicyRevoked(asyncio.CancelledError):
     ``except Exception`` handlers must not recover from it and start an effect.
     Keep the core's admission refusal separate from this connection teardown.
     """
+
+
+class _ResponseUnavailable(asyncio.CancelledError):
+    """A retained result changed, without revoking the caller's credentials."""
 
 
 @dataclass(frozen=True)
@@ -127,6 +132,27 @@ def bind_request_authority(request: HTTPConnection, check: Callable[[], bool]) -
     lease = request.scope.get(_ADMISSION)
     if isinstance(lease, AdmissionLease):
         lease.require_current(check)
+
+
+def bind_response_availability(request: Request, check: Callable[[], bool]) -> None:
+    """Recheck a result's availability at actual send without invalidating auth.
+
+    Ack, expiry or replacement of a retained result is a scoped 410, not a 401
+    that signs a still-authenticated operator out. Canonical request/host checks
+    remain on the admission lease. This guard grants no execution authority.
+    """
+    request_admission(request)  # An unguarded standalone response is unsupported.
+    request.scope.setdefault(_RESPONSE_AVAILABILITY, []).append(check)
+
+
+def _require_response_available(scope: Scope) -> None:
+    for check in scope.get(_RESPONSE_AVAILABILITY, ()):
+        try:
+            available = check() is True
+        except Exception:
+            available = False
+        if not available:
+            raise _ResponseUnavailable("The response result is no longer available")
 
 
 def require_current_request(request: Request) -> None:
@@ -235,6 +261,7 @@ class HTTPPolicy:
         async def guarded_send(message):
             nonlocal started, complete
             check()
+            _require_response_available(scope)
             if message["type"] == "http.response.start":
                 started = True
             await send(message)
@@ -256,9 +283,12 @@ class HTTPPolicy:
 
         watcher = asyncio.create_task(watch())
         revoked = False
+        unavailable = False
         try:
             try:
                 await self.app(scope, guarded_receive, guarded_send)
+            except _ResponseUnavailable:
+                revoked = unavailable = True
             except (HostPolicyDenied, _PolicyRevoked):
                 revoked = True
             except asyncio.CancelledError:
@@ -273,7 +303,14 @@ class HTTPPolicy:
                     pass
             if revoked:
                 if not started:
-                    await _denied(scope, receive, send)
+                    if unavailable and lease.revalidate():
+                        await JSONResponse(
+                            {"detail": "This result is no longer available. Check its current status.",
+                             "code": "result_unavailable"},
+                            status_code=410, headers={"Cache-Control": "no-store"},
+                        )(scope, receive, send)
+                    else:
+                        await _denied(scope, receive, send)
                 elif not complete:
                     # A fixed-length response cannot be replaced after its headers;
                     # the server's short-body handling closes that transport.
@@ -281,6 +318,7 @@ class HTTPPolicy:
         finally:
             lease.close()
             scope.pop(_ADMISSION, None)
+            scope.pop(_RESPONSE_AVAILABILITY, None)
 
 
 class WebSocketPolicy:

@@ -14,7 +14,7 @@ from starlette.responses import JSONResponse
 
 from openavc.api._engine import _get_engine
 from openavc.api.auth import authenticated_programmer_grant
-from openavc.api.host_policy import ProgrammerRoute, bind_request_authority, request_admission
+from openavc.api.host_policy import ProgrammerRoute, bind_response_availability, request_admission
 from openavc.api.models import ActionInvokeRequest
 from openavc.core.device_manager import DeviceNotFoundError
 from openavc.core.outbound_messages import SetupScope
@@ -83,7 +83,7 @@ async def _current(request: Request):
 
 
 def _bind_result(request, runner, capability, *, generation=None):
-    bind_request_authority(request, runner.results.access_guard(capability, secret_generation=generation))
+    bind_response_availability(request, runner.results.access_guard(capability, secret_generation=generation))
 
 
 @router.post("/devices/{device_id}/actions/{action_id}/prepare")
