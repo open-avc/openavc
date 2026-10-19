@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import stat
@@ -46,15 +47,26 @@ def _read_regular(path: Path) -> bytes:
     for part in (path, *path.parents):
         if part.is_symlink():
             raise ValueError("Use a protected regular-file snapshot without symbolic links.")
-    before = path.stat()
+    def identity(value):
+        return (value.st_dev, value.st_ino, value.st_mode, value.st_size,
+                value.st_mtime_ns, value.st_ctime_ns)
+
+    before = path.lstat()
     if not stat.S_ISREG(before.st_mode) or before.st_size > _MAX_BYTES:
         raise ValueError("The supplied source is not a bounded regular file.")
-    with path.open("rb") as stream:
+    # Nonblocking prevents a regular-to-pipe swap parking an installer; fstat
+    # checks the opened object before any read. O_NOFOLLOW is unavailable on
+    # Windows, where descriptor/path identity still must agree. Installation
+    # adapters remain responsible for protected roots and the final recheck.
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+    with os.fdopen(os.open(path, flags), "rb") as stream:
+        opened = os.fstat(stream.fileno())
+        if not stat.S_ISREG(opened.st_mode) or identity(opened) != identity(before):
+            raise ValueError("The supplied source changed before inspection; capture it again.")
         data = stream.read(_MAX_BYTES + 1)
-    after = path.stat()
-    if (len(data) > _MAX_BYTES or (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
-            != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)):
-        raise ValueError("The supplied source changed during inspection; capture it again.")
+        if (len(data) > _MAX_BYTES or identity(os.fstat(stream.fileno())) != identity(before)
+                or identity(path.lstat()) != identity(before)):
+            raise ValueError("The supplied source changed during inspection; capture it again.")
     return data
 
 

@@ -118,3 +118,39 @@ def test_literal_cli_checks_without_starting_the_server(snapshot, tmp_path, entr
                             timeout=10, creationflags=CREATE_NO_WINDOW)
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["activation_authorized"] is False
+
+
+@pytest.mark.parametrize('replacement', ['regular', 'fifo'])
+def test_opened_descriptor_cannot_borrow_restored_path_identity(tmp_path, monkeypatch, replacement):
+    import os
+    from openavc.drivers.setup_preflight import _read_regular
+    if replacement == 'fifo' and not hasattr(os, 'mkfifo'):
+        pytest.skip('POSIX FIFO behavior; regular-file identity is checked on every platform')
+    path = tmp_path / 'installed.py'
+    path.write_bytes(b'original installed bytes')
+    alternate = tmp_path / 'alternate.py'
+    if replacement == 'fifo':
+        os.mkfifo(alternate)
+    else:
+        alternate.write_bytes(b'other bytes must not pass')
+    saved = tmp_path / 'saved.py'
+    real_open = os.open
+    swaps = []
+    def changed_open(file, flags, *args, **kwargs):
+        if Path(file) != path:
+            return real_open(file, flags, *args, **kwargs)
+        if replacement == 'fifo':
+            assert flags & os.O_NONBLOCK
+        path.rename(saved)
+        alternate.rename(path)
+        try:
+            descriptor = real_open(file, flags, *args, **kwargs)
+        finally:
+            path.rename(alternate)
+            saved.rename(path)
+        swaps.append(True)
+        return descriptor
+    monkeypatch.setattr(os, 'open', changed_open)
+    with pytest.raises(ValueError, match='changed before'):
+        _read_regular(path)
+    assert swaps == [True] and path.read_bytes() == b'original installed bytes'
