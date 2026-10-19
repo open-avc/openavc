@@ -95,7 +95,9 @@ def test_linked_root_and_source_keep_aliases_without_modifying_originals(tmp_pat
     # Windows readlink retains the extended-length prefix of its substitute
     # name. Capture must preserve that OS spelling, not rewrite the alias.
     assert targets == {os.readlink(root / "linked.py"), os.readlink(alias)}
-    assert {Path(target).resolve() for target in targets} == {outside.resolve(), root.resolve()}
+    assert len(targets) == 2
+    assert all(any(Path(target).samefile(original) for target in targets)
+               for original in (outside, root))
     assert (root / "linked.py").is_symlink() and outside.read_bytes() == b"external source"
 
 
