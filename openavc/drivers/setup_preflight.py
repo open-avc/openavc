@@ -134,7 +134,7 @@ def check_sources(sources: list[Path], *, resource: Path, expected_resource_sha2
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--resource", required=True, type=Path)
+    parser.add_argument("--resource", type=Path, default=Path(__file__).with_name("setup-compatibility.json"))
     parser.add_argument("--expect-resource", required=True)
     parser.add_argument("--target-sha256", required=True)
     parser.add_argument("--source", required=True, type=Path, action="append")

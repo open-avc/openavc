@@ -10,6 +10,11 @@ Usage:
 import os
 import sys
 
+# Candidate inspection must run before configuration, logging or service setup.
+if len(sys.argv) > 1 and sys.argv[1] == '--setup-preflight':
+    from openavc.drivers.setup_preflight import main as _setup_preflight
+    sys.exit(_setup_preflight(sys.argv[2:]))
+
 # In frozen (PyInstaller) builds, this exe doubles as the simulator entry point.
 # simulation.py launches: sys.executable --simulator --config <path>
 if getattr(sys, 'frozen', False) and len(sys.argv) > 1 and sys.argv[1] == '--simulator':

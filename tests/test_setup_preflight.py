@@ -107,10 +107,11 @@ def test_symlink_input_and_parent_and_directory_refuse(snapshot, tmp_path):
         run(files=[directory])
 
 
-def test_literal_cli_checks_without_starting_the_server(snapshot, tmp_path):
+@pytest.mark.parametrize("entry", [("openavc.drivers.setup_preflight",), ("openavc.main", "--setup-preflight")])
+def test_literal_cli_checks_without_starting_the_server(snapshot, tmp_path, entry):
     source, _, resource, run = snapshot
     run()
-    result = subprocess.run([sys.executable, "-m", "openavc.drivers.setup_preflight", "--resource", str(resource),
+    result = subprocess.run([sys.executable, "-m", *entry, "--resource", str(resource),
                              "--expect-resource", hashlib.sha256(resource.read_bytes()).hexdigest(),
                              "--target-sha256", "4" * 64, "--source", str(source)],
                             cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True,

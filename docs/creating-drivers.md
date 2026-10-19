@@ -3208,6 +3208,9 @@ python -m openavc.drivers.setup_preflight --resource /candidate/setup-compatibil
 
 Repeat `--source` for each primary source. Use hashes from the qualified target
 build. An unknown or edited source, or an uncovered setup action, is refused.
+The server executable exposes the same check as `openavc --setup-preflight`;
+omit `--resource` to inspect its bundled resource. Neither entrypoint starts the
+server or loads instance settings.
 The JSON report covers only the supplied files and does not authorize activation.
 The installer must inventory active and retained projects, bundled drivers,
 dependencies and clients, then recheck their snapshot before replacing the running
