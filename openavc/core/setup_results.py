@@ -169,6 +169,7 @@ class _ResultSlot:
     transfer_digest: bytes | None = field(default=None, repr=False)
     transfer_capability: str | None = field(default=None, repr=False)
     transfer_origin: str | None = field(default=None, repr=False)
+    transfer_path: str | None = field(default=None, repr=False)
 
 
 class SetupResultStore:
@@ -220,6 +221,7 @@ class SetupResultStore:
         slot.transfer_digest = None
         slot.transfer_capability = None
         slot.transfer_origin = None
+        slot.transfer_path = None
 
     def prune(self) -> None:
         now = self._clock()
@@ -285,7 +287,37 @@ class SetupResultStore:
         """Runner-only frozen inputs; these must never enter an HTTP/WS result."""
         return json.loads(self._access(capability, current, principal).request)
 
-    def open_transfer(self, capability: str, *, origin: str, current: Callable[[], bool],
+    def _transfer_scope_available(self, origin: str, api_path: str) -> None:
+        if (not isinstance(origin, str) or not origin or len(origin) > 512
+                or not isinstance(api_path, str) or not api_path.startswith("/") or len(api_path) > 512):
+            raise SetupConflict("A bounded browser origin and API path are required")
+        self.prune()
+        if any(slot.transfer_origin == origin and slot.transfer_path == api_path
+               for slot in self._slots.values()):
+            raise SetupConflict("Another setup input is waiting to be continued in this browser location")
+
+    def prepare_transfer(self, request: dict, *, target: object, origin: str, api_path: str,
+                         original_grant: Callable[[], bool], current: Callable[[], bool],
+                         principal: str | None = None, binding: object = None) -> tuple[PreparedSetup, str]:
+        """Atomically reserve one legacy handoff per browser-visible API location.
+
+        Two old requests without a cookie must not allocate hidden drafts and
+        overwrite each other's transfer cookie. Normal prepares are unaffected.
+        """
+        self._transfer_scope_available(origin, api_path)
+        item = self.prepare(request, target=target, original_grant=original_grant,
+                            current=current, principal=principal, binding=binding)
+        try:
+            ticket = self.open_transfer(item.capability, origin=origin, api_path=api_path,
+                                        current=current, principal=principal)
+        except BaseException:
+            slot = self._slots.pop(self._digest(item.capability), None)
+            if slot is not None:
+                self._erase(slot)
+            raise
+        return item, ticket
+
+    def open_transfer(self, capability: str, *, origin: str, current: Callable[[], bool], api_path: str = "/api",
                       principal: str | None = None) -> str:
         """Retain one bounded browser handoff beside an unconsumed reservation.
 
@@ -293,8 +325,7 @@ class SetupResultStore:
         slot, task or result is created. Claim, expiry and revocation erase it.
         The HTTP adapter owns cookie scope and same-origin browser checks.
         """
-        if not isinstance(origin, str) or not origin or len(origin) > 512:
-            raise SetupConflict("A bounded browser origin is required")
+        self._transfer_scope_available(origin, api_path)
         slot = self._access(capability, current, principal)
         if slot.phase != "prepared" or slot.transfer_digest is not None:
             raise SetupConflict("This setup attempt cannot create another handoff")
@@ -302,46 +333,58 @@ class SetupResultStore:
         slot.transfer_digest = self._digest(ticket)
         slot.transfer_capability = capability
         slot.transfer_origin = origin
+        slot.transfer_path = api_path
         return ticket
 
-    def _transfer_slot(self, ticket: str, origin: str, current: Callable[[], bool],
+    def _transfer_slot(self, ticket: str, origin: str, api_path: str, current: Callable[[], bool],
                        principal: str | None) -> _ResultSlot:
         self.prune()
         digest = self._digest(ticket)
         for slot in self._slots.values():
-            if slot.transfer_digest == digest and slot.transfer_origin == origin:
+            if (slot.transfer_digest == digest and slot.transfer_origin == origin
+                    and slot.transfer_path == api_path):
                 if slot.phase == "prepared" and slot.transfer_capability is not None:
                     return self._access(slot.transfer_capability, current, principal)
                 break
         raise SetupUnavailable("This retained setup input is unavailable")
 
     def recover_transfer(self, ticket: str, *, origin: str, current: Callable[[], bool],
+                         api_path: str = "/api",
                          principal: str | None = None) -> tuple[PreparedSetup, dict]:
         """Protected adapter only: return the same prepared capability and input.
 
         Repeated/lost transfer responses cannot create or start another attempt.
         This ticket never retrieves results or generated credentials.
         """
-        slot = self._transfer_slot(ticket, origin, current, principal)
+        slot = self._transfer_slot(ticket, origin, api_path, current, principal)
         return PreparedSetup(slot.run_id, slot.transfer_capability), json.loads(slot.request)
 
-    def transfer_guard(self, ticket: str, *, origin: str,
+    def transfer_guard(self, ticket: str, *, origin: str, api_path: str = "/api",
                        principal: str | None = None) -> Callable[[], bool]:
         def available() -> bool:
             try:
-                self._transfer_slot(ticket, origin, lambda: True, principal)
+                self._transfer_slot(ticket, origin, api_path, lambda: True, principal)
                 return True
             except SetupUnavailable:
                 return False
         return available
 
     def discard_transfer(self, ticket: str, *, origin: str, current: Callable[[], bool],
+                         api_path: str = "/api",
                          principal: str | None = None) -> None:
         """Release only an unstarted draft; never erase a consumed run's identity."""
-        slot = self._transfer_slot(ticket, origin, current, principal)
+        slot = self._transfer_slot(ticket, origin, api_path, current, principal)
         key = self._digest(slot.transfer_capability)
         self._erase(slot)
         del self._slots[key]
+
+    def match_transfer(self, ticket: str, request: dict, *, target: object, origin: str, api_path: str,
+                       current: Callable[[], bool], principal: str | None = None) -> PreparedSetup:
+        """A legacy retry may recover the same draft, never overwrite its inputs."""
+        slot = self._transfer_slot(ticket, origin, api_path, current, principal)
+        if target is not slot.target or _json_bytes(request, 16384) != slot.request:
+            raise SetupConflict("Another setup input is already retained; continue or discard it first")
+        return PreparedSetup(slot.run_id, slot.transfer_capability)
 
     def prepared_binding(self, capability: str, *, current: Callable[[], bool], principal: str | None = None):
         """Runner-only immutable ingress selected before effects; never a DTO."""

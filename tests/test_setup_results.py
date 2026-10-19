@@ -92,6 +92,49 @@ def test_browser_transfer_retries_keep_one_reservation_without_effects_or_result
         prepared(store)  # Consumed identity still occupies its active slot.
 
 
+async def test_legacy_requests_without_a_cookie_reserve_only_one_visible_draft():
+    store = SetupResultStore(max_slots=2)
+    target = object()
+
+    async def reserve():
+        try:
+            return store.prepare_transfer(request(), target=target, origin="https://cloud.invalid",
+                api_path="/tunnel/one/api", original_grant=allowed, current=allowed)
+        except SetupConflict:
+            return None
+
+    responses = await asyncio.gather(reserve(), reserve())
+    assert sum(value is not None for value in responses) == 1
+    item, ticket = next(value for value in responses if value is not None)
+    assert store.match_transfer(ticket, request(), target=target, origin="https://cloud.invalid",
+        api_path="/tunnel/one/api", current=allowed) == item
+    changed = request()
+    changed["params"]["save"] = 0  # JSON type identity, not Python False == 0.
+    with pytest.raises(SetupConflict):
+        store.match_transfer(ticket, changed, target=target, origin="https://cloud.invalid",
+            api_path="/tunnel/one/api", current=allowed)
+    with pytest.raises(SetupConflict):
+        store.match_transfer(ticket, request(), target=object(), origin="https://cloud.invalid",
+            api_path="/tunnel/one/api", current=allowed)
+    prepared(store)  # Refusal allocated no hidden slot; normal capacity remains.
+    assert store.recover_transfer(ticket, origin="https://cloud.invalid",
+        api_path="/tunnel/one/api", current=allowed) == (item, request())
+
+
+def test_transfer_cookie_path_is_part_of_recovery_discard_and_final_send_identity():
+    store = SetupResultStore()
+    item, ticket = store.prepare_transfer(request(), target=object(), origin="https://cloud.invalid",
+        api_path="/tunnel/one/api", original_grant=allowed, current=allowed)
+    store.prepare_transfer(request(), target=object(), origin="https://cloud.invalid",
+        api_path="/tunnel/two/api", original_grant=allowed, current=allowed)
+    for method in (store.recover_transfer, store.discard_transfer):
+        with pytest.raises(SetupUnavailable):
+            method(ticket, origin="https://cloud.invalid", api_path="/tunnel/two/api", current=allowed)
+    assert not store.transfer_guard(ticket, origin="https://cloud.invalid", api_path="/tunnel/two/api")()
+    assert store.transfer_guard(ticket, origin="https://cloud.invalid", api_path="/tunnel/one/api")()
+    assert store.status(item.capability, current=allowed)["status"] == "prepared"
+
+
 @pytest.mark.parametrize("loss", ["expiry", "grant", "current", "origin", "principal"])
 def test_browser_transfer_never_outlives_its_authority_or_retention(loss):
     now, grant = [0.0], [True]
