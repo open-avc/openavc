@@ -188,3 +188,109 @@ async def test_a_drivers_own_http_client_is_refused_not_left_unbound(chosen):
         with pytest.raises(httpx.ConnectError) as refused:
             await client.get("/status")
     assert str(refused.value) == "Can't reach 192.0.2.10. " + SENTENCE
+
+
+def _reconnect_once(dm, device_id, driver, config):
+    """Run one cycle of the automatic reconnect loop for ``driver``: the
+    second wait ends it."""
+    import asyncio
+    from unittest.mock import patch
+
+    dm._devices[device_id] = driver
+    dm._device_configs[device_id] = {"id": device_id, "driver": driver.DRIVER_INFO["id"], "config": config}
+    waits = 0
+
+    async def wait(_seconds):
+        nonlocal waits
+        waits += 1
+        if waits > 1:
+            raise asyncio.CancelledError
+
+    async def run():
+        with patch("asyncio.sleep", wait):
+            try:
+                await dm._reconnect_loop(device_id)
+            except asyncio.CancelledError:
+                pass
+
+    return run()
+
+
+async def test_a_driver_that_keeps_off_the_adapter_still_reconnects(chosen, monkeypatch):
+    # A driver may keep a connection off the chosen adapter (a cloud service
+    # is not equipment on site), so the check before an automatic reconnect
+    # leaves the adapter to the connect.
+    from openavc.core.device_manager import DeviceManager
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
+    from openavc.drivers.base import BaseDriver
+    from openavc.drivers.registry import _DRIVER_REGISTRY
+
+    class AcmeCloud(BaseDriver):
+        DRIVER_INFO = {
+            "id": "acme_cloud_no_address_test", "name": "Acme Cloud", "manufacturer": "Acme",
+            "category": "utility", "transport": "http",
+            "default_config": {"host": "", "port": 443}, "commands": {},
+            "state_variables": {}, "config_schema": {},
+        }
+        connects = 0
+
+        async def connect(self):
+            AcmeCloud.connects += 1
+            self._connected = True
+            self.state.set(f"device.{self.device_id}.connected", True, source="driver")
+
+        async def send_command(self, command, params=None):
+            return None
+
+    chosen()
+    monkeypatch.setitem(_DRIVER_REGISTRY, AcmeCloud.DRIVER_INFO["id"], AcmeCloud)
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    dm = DeviceManager(state, events)
+    config = {"host": "cloud.acme.example", "port": 443}
+    driver = AcmeCloud("cloud", dict(config), state, events)
+    try:
+        await _reconnect_once(dm, "cloud", driver, config)
+        assert AcmeCloud.connects == 1
+        assert state.get("device.cloud.connected") is True
+    finally:
+        await dm.disconnect_all()
+
+
+async def test_an_http_device_retrying_still_names_the_adapter(chosen, monkeypatch):
+    # The connect refuses with the sentence before it dials, so a device on
+    # the platform's own connection reads the same as before.
+    from openavc.core.device_manager import DeviceManager
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
+    from openavc.drivers.base import BaseDriver
+    from openavc.drivers.registry import _DRIVER_REGISTRY
+
+    class AcmeHttp(BaseDriver):
+        DRIVER_INFO = {
+            "id": "acme_http_no_address_test", "name": "Acme Http", "manufacturer": "Acme",
+            "category": "utility", "transport": "http",
+            "default_config": {"host": "", "port": 80}, "commands": {},
+            "state_variables": {}, "config_schema": {},
+        }
+
+        async def send_command(self, command, params=None):
+            return None
+
+    chosen()
+    monkeypatch.setitem(_DRIVER_REGISTRY, AcmeHttp.DRIVER_INFO["id"], AcmeHttp)
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    dm = DeviceManager(state, events)
+    config = {"host": "192.0.2.10", "port": 80}
+    driver = AcmeHttp("panel_http", dict(config), state, events)
+    try:
+        await _reconnect_once(dm, "panel_http", driver, config)
+        assert state.get("device.panel_http.connected") is not True
+        assert state.get("device.panel_http.offline_reason") == UNREACHABLE
+        assert state.get("device.panel_http.offline_detail") == "Can't reach 192.0.2.10. " + SENTENCE
+    finally:
+        await dm.disconnect_all()
