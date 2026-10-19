@@ -874,6 +874,13 @@
     },
     {
       "actions": [],
+      "declaration_sha256": "86c30017070c9367f903fab329fd57ef53e8174bc9abf39ca6c95b1c0ce2dff9",
+      "driver_id": "dante_ddm",
+      "driver_version": "1.7.7",
+      "source_sha256": "2a756d5c9e3e3e9a4c6ad8ea2e5a88fa417cd174869d18d9940ff09504a1a33a"
+    },
+    {
+      "actions": [],
       "declaration_sha256": "3791a0731982844772042145cb1aaa64abafaba4fd17e54b20db503bed68dc3f",
       "driver_id": "darwin_control",
       "driver_version": "1.2.2",
@@ -1315,5 +1322,5 @@
       "source_sha256": "aece22862625c6cb27525de23c23faddd15b8e7e185d9a5630b278094db90186"
     }
   ],
-  "source_revision": "31ae3701e83ce65882a04739de65ad9f1f817ac8"
+  "source_revision": "9316e97eb470fac05a231eb04120671b0e1cfef5"
 }
