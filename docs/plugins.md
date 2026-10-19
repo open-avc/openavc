@@ -23,7 +23,7 @@ Plugins extend OpenAVC with system-wide integrations, control surfaces, sensors,
 3. Find the plugin you want (use search or filter by category)
 4. Click **Install**
 
-The plugin is downloaded and saved to `plugin_repo/`. It appears in the Installed tab as disabled.
+The plugin is downloaded and saved to `plugin_repo/`. It appears in the Installed tab as disabled. A plugin that needs a newer OpenAVC is refused with "requires OpenAVC v<version> or later": update OpenAVC, then install it. A refused update leaves the installed version in place.
 
 Installs come from the official plugin repository and nowhere else. A plugin installs as a directory, and every file is checked against the SHA-256 the repository publishes for it before being written: a file that doesn't match, one the repository doesn't publish, and one it publishes that never arrives all stop the install, leaving nothing behind. A plugin runs inside the server with the capabilities it declares, so read what those are before enabling one — see the [network and security guide](it-network-guide.md) for what the check does and does not prove.
 
@@ -59,6 +59,8 @@ Plugins declare which platforms they support. The Browse view filters by your cu
 If the plugin requires configuration before it can start (for example, an MQTT broker URL), a **Setup Dialog** appears with the required fields. Fill them in and click Save.
 
 If the plugin has sensible defaults for all settings, it starts immediately.
+
+A plugin that needs a port of its own, such as the Video Panel's UDP 8189, has that port opened in the host firewall while it runs; on Windows the rule is named like `OpenAVC plugin UDP 8189`. The [Network and Security Cut Sheet](it-network-guide.md) covers the cases where the port cannot be opened automatically.
 
 ### Configure a Plugin
 
@@ -171,7 +173,7 @@ For audio/video routing plugins (Dante, NDI). Shows a grid of inputs (columns) a
 1. Go to the **Installed** tab
 2. Click **Uninstall** on the plugin
 
-If the plugin is currently running, it is automatically stopped before being removed. The plugin files are removed from `plugin_repo/` and its configuration is removed from the project.
+If the plugin is currently running, it is automatically stopped before being removed. The plugin files are removed from `plugin_repo/` and its configuration is removed from the project. On Windows its firewall rule is removed too, and uninstalling OpenAVC removes any that are left.
 
 ---
 

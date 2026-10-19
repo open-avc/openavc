@@ -54,7 +54,7 @@ leaving it backend-only.
 
 ## Development setup
 
-You need Python 3.11+ and Node 20+.
+You need Python 3.11+ and Node.js 22 or 24.
 
 ```bash
 git clone https://github.com/<your-username>/openavc.git

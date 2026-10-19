@@ -73,7 +73,7 @@ The Simulator UI shows your virtual devices and lets you interact with them from
 
 **Error injection** on each device card lets you toggle error conditions (corrupted data, device-specific errors) to test how your macros and triggers handle failures. Every device offers **Device stops responding**: the device accepts connections but sends nothing, no replies and no unsolicited updates, until you turn it off. Use it to test how OpenAVC reports a device that hangs, and that the device comes back once it answers again.
 
-**Capacity** on each TCP, serial or UDP device card limits how much the device can take in. Switch on **Limit what this device can take in** and the device holds only **Receive buffer** bytes it has not read yet, takes one message per **Time per message**, and loses what arrives while the buffer is full. The card counts the bytes lost. **When full** sets what the device does then: **Discard what does not fit**, or **Stop answering** until the connection closes (a UDP device stays silent until you switch Capacity off). Use it to check that a driver paces what it sends: a poll that floods the device leaves values unfilled, or takes the device offline. The numbers come from the driver when it declares them; otherwise the card shows the simulator's own, which are not any device's. Changes apply at once, to connections already open.
+**Capacity** on each device card, except an HTTP, MQTT or WebSocket device, limits how much the device can take in. Switch on **Limit what this device can take in** and the device holds only **Receive buffer** bytes it has not read yet, takes one message per **Time per message**, and loses what arrives while the buffer is full. The card counts the bytes lost. **When full** sets what the device does then: **Discard what does not fit**, or **Stop answering until it reconnects** (on a UDP or OSC device, **Stop answering until this is switched off**). Use it to check that a driver paces what it sends: a poll that floods the device leaves values unfilled, or takes the device offline. The numbers come from the driver when it declares them; otherwise the card shows the simulator's own, which are not any device's. Changes apply at once, to connections already open.
 
 ## How It Works
 
@@ -90,6 +90,8 @@ When you add or remove devices while simulation is active, the simulator automat
 All YAML drivers (`.avcdriver`) get basic simulation automatically — the simulator reverses their command and response definitions to generate protocol handlers. This handles simple request/response patterns out of the box. For more realistic behavior (correct state tracking, conditional responses, realistic delays), add a `simulator:` section to your `.avcdriver` file. All community drivers include this section.
 
 Python drivers need a companion simulator file (`_sim.py`) placed alongside the driver.
+
+While simulation runs, a device whose driver has no simulator stays disconnected, and its page names the driver. Add a simulator for it, or stop simulation to control the real device.
 
 Check the Browse Drivers view for the simulator badge (play icon) to see which community drivers include enhanced simulation support.
 
@@ -111,7 +113,7 @@ requires the same credentials as the rest of the API.
 | `/api/devices/{id}/stop` | POST | Stop simulating a device |
 | `/api/devices/{id}/state` | POST | Change device state |
 | `/api/devices/{id}/errors/{mode}` | POST | Inject or clear an error |
-| `/api/devices/{id}/capacity` | POST | Switch a device's capacity limit and set its numbers: `{"enabled": true, "rx_buffer": 64, "process_ms": 20, "on_overflow": "discard"}`, any subset. Answers 400, with the reason, for a number out of range or an HTTP device |
+| `/api/devices/{id}/capacity` | POST | Switch a device's capacity limit and set its numbers: `{"enabled": true, "rx_buffer": 64, "process_ms": 20, "on_overflow": "discard"}`, any subset. Answers 400, with the reason, for a number out of range or a device with no capacity setting (HTTP, MQTT, WebSocket) |
 | `/api/devices/{id}/log` | GET | Protocol log for a device |
 | `/api/network` | GET/POST | Network condition settings |
 | `/api/network/preset` | POST | Apply a named preset |

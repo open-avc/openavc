@@ -105,6 +105,7 @@ Inside the flow, every OpenAVC node shows the connection on its status dot, and 
 
 ## Troubleshooting
 
+- **Node-RED on another computer never connects.** In the Programmer, **Settings › Network › Accept connections from** has to include the network Node-RED is on.
 - **The device or macro list is empty.** Deploy the server node first; the lists come from the system through its connection.
 - **The dialog says the system asks for an API key before it will list this.** The system has a Programmer password, and the server node has no key. Devices and state keys still list; commands and macros need the key. Add it to the server node, or type the id.
 - **Every node shows "disconnected: the server refused the API key", and the Node-RED log says the same.** The key is wrong or was regenerated. Paste the current one from **Settings › Access**.

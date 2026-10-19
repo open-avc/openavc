@@ -46,7 +46,7 @@ After the third attempt nothing tries again on its own. The Updates view keeps s
 Only the application code is updated. Your data is never touched:
 
 - Projects and scripts are preserved
-- Installed drivers are preserved
+- Installed drivers are preserved, at the versions you installed. They do not update with OpenAVC: after an update, open **Devices > Drivers > Browse Community** and click **Update** on each driver that shows it.
 - System configuration (system.json) is preserved
 - Cloud pairing credentials are preserved
 

@@ -10,10 +10,10 @@ The primary way to schedule actions in OpenAVC is with a **schedule trigger** on
 
 1. Click **Macros** in the sidebar
 2. Create a macro called `nightly_shutdown` with steps to power off devices
-3. Click the **Triggers** tab in the macro editor
-4. Click **Add Trigger**, select type **Schedule**
+3. Under **Triggers**, above the steps, click **Add Trigger**
+4. Select type **Schedule**
 5. Use the visual cron builder or type a cron expression: `0 22 * * 1-5` (10 PM weekdays)
-6. Optionally add guard conditions (e.g., only fire if `var.room_active` equals `true`)
+6. Optionally click **Add Condition** to add a guard (e.g., only fire if `var.room_active` equals **Yes**)
 
 Schedule triggers support all the same safety features as other triggers:
 
@@ -71,7 +71,7 @@ Schedule triggers execute macros, not scripts directly. To run a script function
 2. In your script, use `@on_event("custom.hourly_check")` to handle it
 3. Add a **Schedule** trigger to the macro with your cron expression
 
-This keeps all scheduling visible in one place (the Triggers tab) rather than split between macros and scripts.
+This keeps all scheduling visible in one place (each macro's **Triggers**) rather than split between macros and scripts.
 
 ## Script Timers
 

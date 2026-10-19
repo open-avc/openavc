@@ -14,6 +14,8 @@ Manages user-defined variables and shows where each is used. Variables are the g
 - **Default value**: initial value on system start
 - **Description** (optional): freeform text explaining the variable's purpose. Shows in tooltips and the Variable Key Picker throughout the IDE.
 
+**Current Value:** a variable's detail panel shows the value it holds now and lets you change it. A boolean variable's **Default Value** and **Current Value** are Yes / No choices.
+
 State key format: `var.<name>` (e.g., `var.room_active`, `var.current_source`)
 
 **Persistence:** By default, variables reset to their default value when the server restarts. Enable **Persist Across Restarts** in the variable's detail panel to save the current value to disk. Persisted values survive reboots and power outages, so the system comes back in the same state it was in. Useful for room mode, last selected source, and similar stateful values. Persisted values are stored in `state.json` alongside the project file. Changes are saved to disk with a 1-second debounce to avoid excessive disk writes during rapid state changes, and writes are atomic (using a temporary file and rename) to prevent corruption if the server loses power mid-write. Persisted values are loaded before any scripts or triggers run at startup, so your automation always sees the correct state from the start.
@@ -86,7 +88,7 @@ Tagging alone is enough. The reading shows up with its value and label, and noth
 
 If you want to be told when it goes wrong, open the monitor and fill in two things:
 
-- **Normal is.** For a number, the range it should stay inside. For anything else, the values that mean everything is fine. Anything you tick is normal; anything else is not.
+- **Normal is.** For a number, the range it should stay inside, its limits included. For anything else, the values that mean everything is fine. Anything you tick is normal; anything else is not.
 - **Tell me if it stays wrong for.** How many minutes it has to be wrong before an alert is raised. Leave it blank to be told straight away.
 
 The delay matters more than it looks. A projector that is off is perfectly normal at 3am and a problem ten minutes into a lecture, and a mute that has been on for four seconds is somebody pressing a button.
@@ -103,7 +105,7 @@ Rounding never changes the judgement. A reading outside its limits that happens 
 
 ### Words instead of raw values
 
-A reading with a handful of possible values can carry a word for each one, so a panel or a card reads "Occupied" rather than `true`, or "No Signal" rather than `none`. Naming a value does not say anything about whether it is healthy. That is the tick beside it.
+A reading with a handful of possible values can carry a word for each one, so the Dashboard tile and the cloud health card read "Occupied" rather than Yes, or "No Signal" rather than `none`. Naming a value does not say anything about whether it is healthy. That is the tick beside it.
 
 ### Where the alert goes
 

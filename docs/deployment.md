@@ -53,7 +53,7 @@ For multi-instance setups using ISC auto-discovery, allow UDP broadcast on port 
 
 The standard installs keep the OS firewall in step with the features you enable — turning on HTTPS or Short URLs in Settings never needs a manual firewall edit:
 
-- **Windows installer:** adds one program-scoped rule for `openavc-server.exe` with no fixed port list. Inbound traffic is accepted only on ports the server is actually listening on, so HTTPS (8443 or custom), Short URLs (80), custom HTTP ports, and plugin media ports work the moment they're enabled — and nothing is left open that the server isn't serving. Installs made before this rule shipped are upgraded automatically the next time the installer runs. An update keeps the rule as you left it, including the addresses it allows ([Hardened Deployment Profile](hardened-deployment.md#windows)).
+- **Windows installer:** adds one program-scoped rule for `openavc-server.exe` with no fixed port list. Inbound traffic is accepted only on ports the server is actually listening on, so HTTPS (8443 or custom), Short URLs (80) and custom HTTP ports work the moment they're enabled, and nothing is left open that the server isn't serving. A port that a plugin's own program listens on, such as the Video Panel's UDP 8189, gets a rule of its own (`OpenAVC plugin UDP 8189`) while the plugin needs it; uninstalling OpenAVC removes these rules. Installs made before this rule shipped are upgraded automatically the next time the installer runs. An update keeps the rule as you left it, including the addresses it allows ([Hardened Deployment Profile](hardened-deployment.md#windows)).
 - **Linux (service installs) and Raspberry Pi:** a root helper (`firewall-sync.sh`) runs each time the service starts and syncs ufw or firewalld (whichever is active) with the configured listeners: the HTTP port, the HTTPS port when TLS is on, and port 80 when Short URLs are on. Feature toggles take a restart to apply, so the firewall follows automatically. Ports the helper opened are closed again when the feature is turned off; rules you added yourself are never touched. Hosts with no active firewall are left alone. Existing installs pick this up with their next in-app update.
 - **Docker:** the container cannot (and should not) manage the host firewall. With the single-room compose file (host networking), open the ports on the host exactly as you would for a native install. With bridge networking (multi-room), Docker's published ports handle reachability itself.
 - **macOS:** the macOS application firewall is app-based and off by default; when enabled, its default settings automatically allow signed software — which the OpenAVC server is — to receive incoming connections. If your organization disables that auto-allow, approve OpenAVC once in System Settings > Network > Firewall.
@@ -212,7 +212,7 @@ You can also read and modify system configuration through the REST API:
 
 ## Updates
 
-OpenAVC checks for updates automatically (every hour by default) via the GitHub Releases API. No data is sent to GitHub.
+OpenAVC checks for updates automatically (once a day by default) via the GitHub Releases API. No data is sent to GitHub.
 
 **Check for updates:** `GET /api/system/updates/check`
 

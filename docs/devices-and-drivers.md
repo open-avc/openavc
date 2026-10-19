@@ -30,13 +30,13 @@ A driver that speaks RS-232 can connect either directly to a serial port on the 
 
 Inexpensive USB-to-serial adapters show up here automatically. Plug one into the OpenAVC server and it appears as a selectable port, named like `COM3` on Windows or `/dev/ttyUSB0` on Linux. The list shows the server's own ports, so the adapter must be plugged into the machine running OpenAVC, not the computer you are browsing from. Click **Refresh** after plugging one in, or choose **Enter path manually** for a port that is not attached yet.
 
-When you pick a USB adapter that reports a serial number, OpenAVC remembers that adapter and reconnects to it even if the operating system assigns a different port name after a reboot or replug. Set the baud rate, parity, data bits, stop bits, and flow control to match the device, following its manual.
+When you pick a USB adapter that reports a serial number, OpenAVC remembers that adapter and reconnects to it even if the operating system assigns a different port name after a reboot or replug. The baud rate, parity, data bits, stop bits and flow control start at the driver's own settings (9600 8N1 with no flow control when the driver has none). Change any that the device's manual gives differently.
 
 ## Testing Commands
 
 After adding a device, click it in the device list to open the detail panel:
 
-- **Connection status**: green dot = connected, red dot = disconnected
+- **Connection status**: green dot = connected, red dot = disconnected, amber dot = paused or restarting (hover for which). A device paused for a Device Audit or for Live Test in the Driver Builder says so on its page, with **Resume** to reconnect it.
 - **Live state**: real-time values for all state variables (power, input, etc.). A fractional reading is rounded to the precision its driver declares; hover it for the full value.
 - **Command testing**: select a command from the dropdown, fill any parameters, click **Send**. The line below says it was sent, and shows the device's answer when the driver returns one.
 - **Raw log**: see the bytes sent and received for debugging
@@ -130,7 +130,7 @@ Every device exposes state variables at `device.<id>.<property>`. Examples:
 - `device.switcher_1.input_1_output`: "1", "2", "3"
 - `device.dsp_1.mic_1_mute`: true, false
 
-These state keys are the building blocks of your system. They appear in UI bindings, macros, triggers, and scripts. You do not need to memorize them. The IDE provides autocomplete and pickers everywhere a state key is needed.
+These state keys are the building blocks of your system. They appear in UI bindings, macros, triggers, and scripts. You do not need to memorize them. The IDE provides autocomplete and pickers everywhere a state key is needed. The Programmer shows true and false as Yes and No; the stored value does not change.
 
 ## Child Entities
 
@@ -158,7 +158,7 @@ The readings stay too, marked **last heard** rather than left looking current. A
 
 A device's sub-units are listed as soon as the driver knows how many there are, which for most drivers is before the device has ever been reached. You can build panels and macros against a room's equipment before any of it is racked.
 
-**Some settings fill themselves in.** A setting marked **From the device** in the device form (a model, a channel count, a MAC address) is what you pick while the equipment is not there yet, and what the simulator plays. The first time the real device connects, what it reports is saved into that setting, so a wrong pick is corrected and the value is kept after a restart. Simulation never changes it.
+**Some settings fill themselves in.** A setting marked **From the device** in the device form (a model, a channel count, a MAC address) is what you pick while the equipment is not there yet, and what the simulator plays. When the real device connects, what it reports is saved into that setting, so a wrong pick is corrected and the value is kept after a restart. Simulation never changes it.
 
 Some drivers cover a whole family of frames, so how many sub-units *this* one has is a setting on the device rather than something it reports — a matrix switcher with an **Input Count** and an **Output Count**, for example. Until you fill those in there are no sub-units to list, and no amount of connecting or refreshing will produce any. The empty list names the setting to fill in when that is the case, and the sub-units appear as soon as you save it.
 
@@ -170,9 +170,9 @@ Commands that act on a specific sub-unit (route this decoder to that encoder, re
 
 The device detail panel includes several management actions:
 
-- **Edit.** Change the device's name, driver, or settings. Picking another driver keeps the device's IP address (or the serial port or bridge port it is connected through) and its login, and fills in the rest from the new driver's defaults; picking the device's own driver again brings back its saved settings. What you save is what the form shows: a connection setting you clear, or leave behind by switching to another connection type, is removed.
+- **Edit.** Change the device's name, driver, or settings. Picking another driver keeps the device's IP address (or the serial port or bridge port it is connected through) and its login, and fills in the rest from the new driver's defaults; picking the device's own driver again brings back its saved settings. What you save is what the form shows: a connection setting you clear, or leave behind by switching to another connection type, is removed. A required setting (red asterisk) left blank is refused, as in Add Device.
 - **Enable/Disable.** Temporarily disable a device without removing it from the project. Disabled devices do not connect or poll.
-- **Test Connection.** Opens a connection to the device's address without using the driver (a TCP connection, an HTTP request, or the serial port), and shows the address it tried, including a port that comes from the driver's default. A success means something answered at that address, not that it is the right device: whether the device itself replies shows on its card. A UDP device has no connection to open, so the test only checks that its address is valid.
+- **Test.** Opens a connection to the address and port the device connects to, without using the driver (a TCP connection, an HTTP request, or the serial port), and shows that address, such as "Connected to 10.0.0.5:4000 (3 ms)". A success means something answered at that address, not that it is the right device: whether the device itself replies shows on its card. A UDP device has no connection to open, so the test only checks that its address has a route. While simulation runs, the test reaches the simulator, not the equipment.
 - **Reconnect.** Force an immediate reconnect attempt on a disconnected device.
 - **Duplicate.** Create a copy of the device with a new ID, pre-filled with the same driver and settings.
 - **Device Log.** Filtered log view showing only activity for the selected device (commands sent, responses received, errors).
@@ -186,7 +186,7 @@ Programmer's logs for diagnosis.
 
 An offline device shows the reason on its card and detail view (unreachable, connection refused, login rejected, and so on), and OpenAVC keeps retrying in the background for as long as the device is in the project. There is no cut-off: a display unplugged on Friday comes back by itself on Monday without anyone opening the Programmer. The first couple of attempts are a second or two apart and it then settles to one every five seconds.
 
-**A device that never answers is offline too.** A connection that opens does not prove the device is there: something else can be listening on that address and port. When a driver polls and nothing comes back from three polls in a row, the card shows the device as not responding, and says when nothing has answered at all, which usually means the wrong address or port, or a driver that does not match the device. A driver with its own keep-alive check takes the device offline the same way when the check goes unanswered. Either way, OpenAVC keeps retrying, and the device stays offline until it answers again, rather than showing connected again on every retry. While its connection is open it still takes commands, so a display that goes quiet in standby can still be switched on from a panel or a macro, and a macro step set to skip when the device is offline still sends it.
+**A device that never answers is offline too.** A connection that opens does not prove the device is there: something else can be listening on that address and port. When a driver polls a device over TCP, UDP or OSC and nothing comes back from three polls in a row, the card shows the device as not responding, and says when nothing has answered at all, which usually means the wrong address or port, or a driver that does not match the device. A driver with its own keep-alive check takes the device offline the same way when the check goes unanswered, on any connection; over serial, only that check does. Either way, OpenAVC keeps retrying, and the device stays offline until it answers again, rather than showing connected again on every retry. While its connection is open it still takes commands, so a display that goes quiet in standby can still be switched on from a panel or a macro, and a macro step set to skip when the device is offline still sends it.
 
 **A device whose replies the driver cannot read stays connected, and the log says so.** When three polls in a row bring replies and the driver reads none of them, the log shows a warning with the last reply, or says that none of the replies ends the way the driver expects. That is usually the wrong port (a telnet login prompt, a web server) or a driver that does not match the device. If the driver's own keep-alive check then takes the device offline, the card says the same.
 
@@ -248,14 +248,12 @@ The body of the detail panel shows:
 
 Build custom drivers without code using the visual editor:
 
-1. **General.** Name, manufacturer, model, category, description.
-2. **Transport.** TCP, serial, or HTTP connection settings (port, baud rate, auth, etc.).
-3. **State Variables.** Declare what state the driver exposes with types and defaults.
-4. **Commands.** Define commands with send strings and parameter substitution.
-5. **Responses.** Regex-based response parsing to extract state from device replies.
-6. **Polling.** Automatic status queries on a timer (power, input, lamp hours).
-7. **Device Settings.** Configurable values that live on the hardware (NDI name, video format, etc.).
-8. **Simulator.** Define simulated behavior for testing without real hardware.
+1. **General.** Name, manufacturer, category, description and setup help.
+2. **Connection.** The transport (TCP, serial, UDP, OSC, HTTP) and its settings, sign-in, and what is sent on connect.
+3. **Behavior.** State variables, commands, responses, polling and device settings.
+4. **Discovery.** How a network scan recognizes the device.
+5. **Simulation.** Simulated behavior for testing without real hardware.
+6. **Test.** Send the driver's commands to a device and read what comes back.
 
 For most IP-controlled devices with a documented protocol, the Driver Builder can produce a working driver in 15-30 minutes. For serial devices, set the transport to serial and define the baud rate, data bits, and stop bits in the Transport tab.
 
@@ -323,11 +321,11 @@ The scan runs through several phases: ping sweep, port scanning, device probes (
 
 Each discovered device lands in one of three states:
 
-- **Identified**: a fingerprint matched a driver. The device card shows the driver and a one-line evidence string (e.g. "mDNS announcement on `_pjlink._tcp.local.`"). Click **Add to Project** to add it with a pre-filled config: its address, and, when the driver has a MAC Address setting (the ones that wake a display or projector with Wake-on-LAN), the MAC the scan read. A device across a router from this server shows no MAC in the scan; enter that one under Edit Device. When the driver needs a setting the scan cannot read, such as a username and password, the card asks for it before adding the device, the way Add Device does. When more than one driver fits the same device (two drivers' fingerprints both matched, or a cross-vendor probe matched alongside a vendor-specific driver), the card offers each of them in a dropdown, the best fit first. The device is named by the manufacturer and model the scan read, or by its driver's name when the scan read no model. A device the project already has shows **In the project as** with **Go to Device** instead.
+- **Identified**: a fingerprint matched a driver. The device card shows the driver and a one-line evidence string (e.g. "mDNS announcement on `_pjlink._tcp.local.`"). Click **Add to Project** to add it with a pre-filled config: its address, and, when the driver has a MAC Address setting (the ones that wake a display or projector with Wake-on-LAN), the MAC the scan read. A device across a router from this server shows no MAC in the scan; enter that one under Edit Device. When the driver needs a setting the scan cannot read, such as a username and password, the card shows that field and the button reads **Confirm & Add**; the device is added once it is filled in. When more than one driver fits the same device (two drivers' fingerprints both matched, or a cross-vendor probe matched alongside a vendor-specific driver), each of them is in the card's dropdown, a manufacturer's own driver ahead of a generic one such as PJLink, and the line above it ends "(also matches ...)". The device is named by the manufacturer and model the scan read, or by its driver's name when the scan read no model. A device the project already has shows **In the project as** with **Go to Device** instead.
 - **Possible**: hints (MAC address prefix, hostname pattern, open port, manufacturer alias) narrowed the device to a candidate list, but no fingerprint identified it outright. Confirm the right driver and add.
 - **Unknown**: the device is on the network but no driver matched. The card shows what we know (IP, MAC, OUI vendor, open ports). Pick a driver manually or hide the device.
 
-Each card also shows IP / hostname, manufacturer, category (the identifying driver's category, or the one its MAC address prefix suggests), open ports, model and firmware (when the device reports them), and an optional **Why?** reveal that lists every signal observed during the scan (mDNS announcement, SSDP announcement, TCP/UDP probe response, MAC address prefix, hostname match, SNMP enterprise number, manufacturer name, open port) — useful for debugging. **Audit this device** on a result opens a [device audit](device-audit.md) of it.
+Each card also shows IP / hostname, manufacturer, category (the identifying driver's category, or the one its MAC address prefix suggests), open ports, model and firmware (when the device reports them), and **Why this match?**, which lists every signal observed during the scan (mDNS announcement, SSDP announcement, TCP/UDP probe response, MAC address prefix, hostname match, SNMP enterprise number, manufacturer name, open port). **Audit this device** on a result opens a [device audit](device-audit.md) of it.
 
 If the suggested driver is a community driver you haven't installed yet, click **Install & Add** to install it and add the device in one step.
 
@@ -374,3 +372,4 @@ To test one device and its driver in detail and write a report you can send to t
 - [UI Builder](ui-builder.md). Visual panel designer for touch panels
 - [Creating Drivers](creating-drivers.md). Build device drivers (YAML, Driver Builder, and Python)
 - [Connecting Devices Through a Bridge](connecting-through-a-bridge.md). Route serial devices over an IP-to-serial bridge
+- [OpenAVC Built Into Equipment](manufacturer-equipment.md). Add a product with OpenAVC built in, and product hardware

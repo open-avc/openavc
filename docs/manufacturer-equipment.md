@@ -8,8 +8,8 @@ include the full OpenAVC server and control its own hardware locally.
 
 Use **Devices > Discovery** and add the discovered product: its card asks for the
 product's username and password before adding it. Or choose **OpenAVC built-in
-product** in **Add Device** and enter the product's address, control port and
-credentials. The product supplies its commands, settings, state and
+product** in **Add Device** and enter its **Host**, **Port** (9443 unless the
+product's documentation gives another), **Username** and **Password**. The product supplies its commands, settings, state and
 channels when connected. Use them in panels, macros and scripts like other
 devices.
 
@@ -36,7 +36,7 @@ The product running OpenAVC appears automatically in every project, marked
 an amplifier running OpenAVC. Its manufacturer supplies the hardware connection.
 You can change its project label and its **Wait for completion** (as above, on
 its device page), use its controls, save declared device settings and label its
-channels. It cannot be uninstalled, duplicated or replaced with another driver.
+channels. It cannot be deleted, uninstalled, duplicated or replaced with another driver.
 
 **Disable** stops OpenAVC control in the current project. It does not turn off
 the equipment. **Test** checks the local connection even while project control

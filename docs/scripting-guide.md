@@ -215,7 +215,7 @@ state.delete("var.temp_countdown")
 
 All state values are flat primitives: `str`, `int`, `float`, `bool`, or `None`. No nested objects.
 
-State key namespaces: `device.<id>.*` (device state), `var.*` (user variables), `ui.*` (UI state), `system.*` (system info), `plugin.<id>.*` (plugin state), `isc.*` (remote instances). Scripts can read any key and write to `var.*`.
+State key namespaces: `device.<id>.*` (device state), `var.*` (user variables), `ui.*` (UI state), `system.*` (system info), `plugin.<id>.*` (plugin state), `isc.*` (remote instances). Scripts can read any key, and write `var.*` keys and the `ui.*` overrides below.
 
 #### Controlling UI Elements from Scripts
 
@@ -235,7 +235,7 @@ state.set("ui.btn_locked.opacity", 0.3)
 state.set("ui.btn_power.label", None)
 ```
 
-Available override keys for any element: `label`, `bg_color`, `text_color`, `opacity`, `visible`. The element ID is the same ID shown in the UI Builder properties panel.
+Available override keys for any element: `label`, `bg_color`, `text_color`, `opacity`, `visible`. The element ID is the same ID shown in the UI Builder properties panel. `label` replaces a control's caption where it has one; an image, a clock or a control with no caption has none for it to replace.
 
 #### Comparing State Values
 
