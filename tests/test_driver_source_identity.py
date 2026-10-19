@@ -185,3 +185,27 @@ def test_changed_inheritance_cannot_preserve_super_dispatch_receipt(path):
     replacement = type("OtherParent", (original_base,), {})
     cls.__bases__ = (replacement,)
     assert loader.loaded_python_source(cls) is None
+
+
+def test_no_setup_declaration_receipt_never_grants_setup_handler_authority(path):
+    raw = source("unused").split(b"    async def run_setup_action", 1)[0]
+    path.write_bytes(raw)
+    cls = loader.load_python_driver_file(path)
+    receipt = loader.loaded_python_declaration(cls)
+    assert receipt.sha256 == hashlib.sha256(raw).hexdigest()
+    assert receipt.setup_handler is False
+    assert loader.loaded_python_source(cls) is None
+    assert loader.loaded_python_declaration(object.__new__(cls)) is None
+    cls.DRIVER_INFO["actions"] = [{"id": "pair", "kind": "setup", "result_contract": "setup/v1"}]
+    assert loader.loaded_python_declaration(cls) is None
+    assert loader.loaded_python_source(cls) is None
+
+
+def test_inherited_stub_with_declared_setup_cannot_receive_declaration_coverage(path):
+    raw = source("unused").split(b"    async def run_setup_action", 1)[0]
+    raw = raw.replace(b'"version": "1.0"', b'"version": "1.0", "actions": [{"id": "pair", "kind": "setup", "result_contract": "setup/v1"}]')
+    path.write_bytes(raw)
+    cls = loader.load_python_driver_file(path)
+    assert cls is not None
+    assert loader.loaded_python_declaration(cls) is None
+    assert loader.loaded_python_source(cls) is None

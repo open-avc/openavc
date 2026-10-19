@@ -182,14 +182,16 @@ def test_coverage_keeps_unmapped_setup_actions_from_actual_loaded_source(history
     assert [row['action_id'] for row in result['descriptors']] == ['check']
 
 
-@pytest.mark.parametrize("kind,expected", [("none", "passed"), ("typed", "passed"),
+@pytest.mark.parametrize("kind,expected", [("none", "passed"), ("none_inherited", "passed"), ("typed", "passed"),
                                            ("legacy", "refused"), ("unknown", "refused")])
 def test_coverage_only_input_uses_actual_declaration_and_never_fabricates_a_mapping(history, kind, expected):
     from openavc.drivers.setup_preflight import check_sources
 
     source = SOURCE
-    if kind == "none":
+    if kind in ("none", "none_inherited"):
         source = source.replace(b'"actions": [{"id": "check", "kind": "setup", "params": {}}]', b'"actions": []')
+        if kind == "none_inherited":
+            source = source[:source.index(b'    async def run_setup_action')]
     elif kind in ("typed", "unknown"):
         contract = b"setup/v1" if kind == "typed" else b"setup/v99"
         source = source.replace(b'"kind": "setup"', b'"kind": "setup", "result_contract": "' + contract + b'"')
@@ -203,7 +205,7 @@ def test_coverage_only_input_uses_actual_declaration_and_never_fabricates_a_mapp
     result = generator.build_resource(history.repo, revision)
     assert result["descriptors"] == []
     assert result["source_coverage"][0]["source_sha256"] == hashlib.sha256(source).hexdigest()
-    assert len(result["source_coverage"][0]["actions"]) == (0 if kind == "none" else 1)
+    assert len(result["source_coverage"][0]["actions"]) == (0 if kind in ("none", "none_inherited") else 1)
     resource = history.repo / "coverage.json"
     resource.write_text(json.dumps(result))
     report = check_sources([history.source.resolve()], resource=resource.resolve(),

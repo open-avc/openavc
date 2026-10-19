@@ -66,7 +66,7 @@ COMPANION_SUFFIXES: tuple[str, ...] = ("_discovery.py", "_sim.py")
 
 @dataclass(frozen=True)
 class PythonDriverSource:
-    """Identity of the primary source executed for one loaded setup handler.
+    """Identity of an executed primary source and its captured declaration.
 
     This receipt does not qualify imported helper modules or sandbox extension
     code. Compatibility declarations must account for any such dependencies.
@@ -75,6 +75,7 @@ class PythonDriverSource:
     path: str
     sha256: str
     declaration: str
+    setup_handler: bool = True
 
 
 _PYTHON_SOURCES: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
@@ -116,11 +117,28 @@ def loaded_python_source(driver: Any, *, runtime_surfaces: tuple[str, ...] = ())
     Qualified runtime control surfaces may differ only on the instance; the
     loaded class declaration and every setup action remain exact.
     """
+    return _loaded_python_receipt(driver, runtime_surfaces=runtime_surfaces, require_setup=True)
+
+
+def loaded_python_declaration(driver_class: type) -> PythonDriverSource | None:
+    """Build-tool provenance, including a class with no setup implementation.
+
+    Declaration-only receipts cannot qualify a setup handler. The runtime
+    resolver continues to use loaded_python_source for that stronger contract.
+    """
+    if not isinstance(driver_class, type):
+        return None
+    return _loaded_python_receipt(driver_class, runtime_surfaces=(), require_setup=False)
+
+
+def _loaded_python_receipt(driver, *, runtime_surfaces, require_setup):
     cls = driver if isinstance(driver, type) else type(driver)
     entry = _PYTHON_SOURCES.get(cls)
     if entry is None:
         return None
     receipt, original_handler, code, defaults = entry
+    if require_setup and not receipt.setup_handler:
+        return None
     handler = getattr(driver, "run_setup_action", None)
     handler = getattr(handler, "__func__", handler)
     if handler is not original_handler():
@@ -142,12 +160,19 @@ def loaded_python_source(driver: Any, *, runtime_surfaces: tuple[str, ...] = ())
 
 
 def _record_python_source(driver_class: type, filepath: Path, source: bytes) -> None:
+    from openavc.drivers.base import BaseDriver
+
     handler = getattr(driver_class, "run_setup_action", None)
     handler = getattr(handler, "__func__", handler)
-    # An inherited/imported handler is not defined by this primary snapshot.
-    if not inspect.isfunction(handler) or handler.__module__ != driver_class.__module__:
+    actions = driver_class.DRIVER_INFO.get("actions", [])
+    declaration_only = (handler is BaseDriver.run_setup_action and type(actions) is list
+                        and not any(type(action) is dict and action.get("kind") == "setup" for action in actions))
+    # Only the canonical unimplemented base stub is permitted for declaration
+    # coverage, and only with no setup actions. It grants no handler authority.
+    if not inspect.isfunction(handler):
         return
-    if handler.__code__.co_filename != str(filepath):
+    if not declaration_only and (handler.__module__ != driver_class.__module__
+                                or handler.__code__.co_filename != str(filepath)):
         return
     try:
         declaration = _declaration(driver_class.DRIVER_INFO)
@@ -155,7 +180,8 @@ def _record_python_source(driver_class: type, filepath: Path, source: bytes) -> 
     except (TypeError, ValueError):
         return
     _PYTHON_SOURCES[driver_class] = (
-        PythonDriverSource(str(filepath), hashlib.sha256(source).hexdigest(), declaration),
+        PythonDriverSource(str(filepath), hashlib.sha256(source).hexdigest(), declaration,
+                           setup_handler=not declaration_only),
         weakref.ref(handler),
         handler.__code__, defaults,
     )

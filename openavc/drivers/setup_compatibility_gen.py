@@ -70,12 +70,12 @@ def _blob(repo: Path, revision: str, path: str) -> bytes:
 
 def _capture(path: Path, output: Path) -> None:
     """Child process: use the loader's actual captured bytes and declaration."""
-    from openavc.drivers.driver_loader import load_python_driver_file, loaded_python_source
+    from openavc.drivers.driver_loader import load_python_driver_file, loaded_python_declaration
 
     cls = load_python_driver_file(path)
-    receipt = loaded_python_source(cls) if cls is not None else None
+    receipt = loaded_python_declaration(cls) if cls is not None else None
     if receipt is None:
-        raise ValueError("The historical handler has no qualified loaded-source identity")
+        raise ValueError("The historical source has no captured declaration identity")
     output.write_text(declaration_json({"sha256": receipt.sha256,
                                        "declaration": json.loads(receipt.declaration)}), encoding="utf-8")
 

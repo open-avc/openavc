@@ -3185,6 +3185,9 @@ driver with no setup actions or only typed `setup/v1` actions. Generation still
 loads the exact committed source and records its complete declaration and setup
 action list. An unmapped legacy or unsupported setup action remains in coverage
 and fails source eligibility; an empty mapping list does not qualify it.
+Drivers with no setup actions can retain the base class's unimplemented setup
+method. Their captured declaration provides source coverage only; it cannot
+qualify an inherited setup implementation.
 
 For a driver that builds its control schema per instance, `runtime_surfaces`
 lists the qualified sections: `commands`, `state_variables`, `device_settings`,
