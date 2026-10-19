@@ -40,17 +40,19 @@ def _text(value):
     return value
 
 
-def _read_regular(path: Path, *, max_bytes: int = _MAX_BYTES) -> bytes:
+def _file_identity(value):
+    return (value.st_dev, value.st_ino, value.st_mode, value.st_size,
+            value.st_mtime_ns, value.st_ctime_ns)
+
+
+def _read_regular(path: Path, *, max_bytes: int = _MAX_BYTES,
+                  expected_identity: list | tuple | None = None) -> bytes:
     # Refuse links in every component, including the final source. Capture and
     # recheck file identity; the caller must still recheck the whole snapshot at
     # cutover. This is a read-only check, not a filesystem transaction or sandbox.
     for part in (path, *path.parents):
         if part.is_symlink():
             raise ValueError("Use a protected regular-file snapshot without symbolic links.")
-    def identity(value):
-        return (value.st_dev, value.st_ino, value.st_mode, value.st_size,
-                value.st_mtime_ns, value.st_ctime_ns)
-
     def common_identity(value):
         # Windows pathname stat and fstat do not expose identical ctime/mode
         # semantics. Compare their shared object facts, then retain each full
@@ -61,6 +63,8 @@ def _read_regular(path: Path, *, max_bytes: int = _MAX_BYTES) -> bytes:
     if type(max_bytes) is not int or not 0 < max_bytes <= 250 * 1024 * 1024:
         raise ValueError("The file inspection bound is invalid.")
     before = path.lstat()
+    if expected_identity is not None and _file_identity(before) != tuple(expected_identity):
+        raise ValueError("The source differs from its captured location identity.")
     if not stat.S_ISREG(before.st_mode) or before.st_size > max_bytes:
         raise ValueError("The supplied source is not a bounded regular file.")
     # Nonblocking prevents a regular-to-pipe swap parking an installer; fstat
@@ -73,8 +77,8 @@ def _read_regular(path: Path, *, max_bytes: int = _MAX_BYTES) -> bytes:
         if not stat.S_ISREG(opened.st_mode) or common_identity(opened) != common_identity(before):
             raise ValueError("The supplied source changed before inspection; capture it again.")
         data = stream.read(max_bytes + 1)
-        if (len(data) > max_bytes or identity(os.fstat(stream.fileno())) != identity(opened)
-                or identity(path.lstat()) != identity(before)):
+        if (len(data) > max_bytes or _file_identity(os.fstat(stream.fileno())) != _file_identity(opened)
+                or _file_identity(path.lstat()) != _file_identity(before)):
             raise ValueError("The supplied source changed during inspection; capture it again.")
     return data
 

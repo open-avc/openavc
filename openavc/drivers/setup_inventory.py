@@ -20,7 +20,7 @@ import unicodedata
 import zipfile
 
 from openavc.drivers.setup_compatibility import declaration_digest
-from openavc.drivers.setup_preflight import _read_regular
+from openavc.drivers.setup_preflight import _file_identity, _read_regular
 from openavc.drivers.source_names import is_driver_file
 
 _MAX_ENTRIES = 10_000
@@ -39,8 +39,7 @@ class SourceCapture:
 
 
 def _identity(value):
-    return [value.st_dev, value.st_ino, value.st_mode, value.st_size,
-            value.st_mtime_ns, value.st_ctime_ns]
+    return list(_file_identity(value))
 
 
 def _location(path: Path) -> dict:
@@ -132,14 +131,16 @@ class _Capture:
             if entry.match("*.py") and is_driver_file(entry):
                 if not stat.S_ISREG(mode):
                     raise ValueError("A selected Python source is not a regular file.")
-                self.source(row, _read_regular(Path(observed["resolved"])))
+                self.source(row, _read_regular(Path(observed["resolved"]),
+                                              expected_identity=observed["identity"]))
             self.member(row)
         return {"role": role, "kind": "primary_directory", "location": root,
                 "entries": [entry.name for entry in entries]}
 
     def archive(self, path, role):
         observed = self.observe(path)
-        data = _read_regular(Path(observed["resolved"]), max_bytes=_MAX_ARCHIVE_BYTES)
+        data = _read_regular(Path(observed["resolved"]), max_bytes=_MAX_ARCHIVE_BYTES,
+                             expected_identity=observed["identity"])
         digest = hashlib.sha256(data).hexdigest()
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             infos = archive.infolist()

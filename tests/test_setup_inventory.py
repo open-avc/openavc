@@ -154,6 +154,37 @@ def test_error_or_limit_does_not_become_empty(tmp_path, monkeypatch):
         capture(tmp_path)
 
 
+@pytest.mark.parametrize("kind", ["primary", "bundle"])
+def test_bytes_cannot_borrow_an_earlier_location_identity(tmp_path, monkeypatch, kind):
+    root = tmp_path / "drivers"
+    root.mkdir()
+    path = tmp_path / "selected.zip" if kind == "bundle" else root / "selected.py"
+    replacement = tmp_path / "replacement"
+    if kind == "bundle":
+        bundle(path, [("drivers/a.py", b"original")])
+        bundle(replacement, [("drivers/a.py", b"replacement")])
+    else:
+        path.write_bytes(b"original")
+        replacement.write_bytes(b"replacement")
+    saved = tmp_path / "held"
+    before = path.read_bytes()
+    read = inventory._read_regular
+    def substitute(file, **kwargs):
+        if file != path:
+            return read(file, **kwargs)
+        path.rename(saved)
+        replacement.rename(path)
+        try:
+            return read(file, **kwargs)
+        finally:
+            path.rename(replacement)
+            saved.rename(path)
+    monkeypatch.setattr(inventory, "_read_regular", substitute)
+    with pytest.raises(ValueError, match="captured location"):
+        capture(root, bundles={"pending": path} if kind == "bundle" else None)
+    assert path.read_bytes() == before
+
+
 def test_capture_import_has_no_loader_configuration_or_service_side_effect(tmp_path):
     code = """
 import sys
