@@ -50,6 +50,7 @@ from openavc.drivers.child_ids import (
 from openavc.drivers.registry import get_driver_class, is_driver_registered
 from openavc.core.device_config import bridge_first, connection_of
 from openavc.core.event_bus import EventBus, detach_emit_chain
+from openavc.core.installed_equipment import driver_label, missing_driver_reason
 from openavc.core.state_store import StateStore
 from openavc.core.device_traffic import get_traffic_recorder
 from openavc.utils.log_redaction import get_secret_registry, redact_config
@@ -439,7 +440,7 @@ class DeviceManager:
         # Look up driver class
         driver_class = get_driver_class(driver_id)
         if driver_class is None:
-            log.warning(f"Driver '{driver_id}' not found for device '{device_id}' — device is orphaned")
+            log.warning(f"Device '{device_id}' is orphaned: {missing_driver_reason(driver_id)}")
             self._orphaned_devices[device_id] = device_config
             self._device_configs[device_id] = device_config
             self.state.set(f"device.{device_id}.name", name, source="config")
@@ -447,7 +448,7 @@ class DeviceManager:
             self.state.set(f"device.{device_id}.orphaned", True, source="config")
             self.state.set(
                 f"device.{device_id}.orphan_reason",
-                f"Driver '{driver_id}' is not installed",
+                missing_driver_reason(driver_id),
                 source="config",
             )
             await self.events.emit("device.orphaned", {"device_id": device_id, "driver": driver_id})
@@ -475,7 +476,7 @@ class DeviceManager:
         )
 
         self.state.set(f"device.{device_id}.enabled", True, source="config")
-        log.info(f"Added device '{device_id}' ({name}) using driver '{driver_id}'")
+        log.info(f"Added device '{device_id}' ({name}) using {driver_label(driver_id)}")
 
         # A pause carried across the instance swap: the registration above still
         # runs (and bring_up still preps the bridge port for whenever it
@@ -1100,7 +1101,7 @@ class DeviceManager:
                 "connected": False,
                 "connection": connection_of(config).address(),
                 "orphaned": True,
-                "orphan_reason": f"Driver '{config.get('driver', '')}' is not installed",
+                "orphan_reason": missing_driver_reason(config.get("driver", "")),
                 "state": self.state.get_namespace(f"device.{device_id}"),
                 "commands": {},
                 "driver_info": {},
@@ -1195,7 +1196,7 @@ class DeviceManager:
                     "connected": False,
                     "connection": connection_of(config).address(),
                     "orphaned": True,
-                    "orphan_reason": f"Driver '{config.get('driver', '')}' is not installed",
+                    "orphan_reason": missing_driver_reason(config.get("driver", "")),
                 })
 
         # Disabled devices

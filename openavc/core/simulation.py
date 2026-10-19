@@ -137,6 +137,11 @@ _ADDRESS_IN_USE_MARKERS = (
 # wandering somewhere unrecognisable.
 _UI_PORT_SEARCH_SPAN = 200
 
+# How often, and how far apart, a fresh simulator is asked which port each
+# device got before the start falls back to guessing them in sequence.
+_PORT_QUERY_ATTEMPTS = 10
+_PORT_QUERY_RETRY_S = 0.3
+
 _PERMISSION_DENIED_MARKERS = (
     "forbidden by its access permissions",
     "10013",
@@ -565,11 +570,18 @@ class SimulationManager:
         set_running_ui_port(ui_port)
 
         # Query the simulator API for actual port assignments instead of
-        # assuming sequential allocation (ports may differ if some are busy)
+        # assuming sequential allocation (ports may differ if some are busy).
+        # The list holds only the devices the simulator runs: one whose driver
+        # has no simulator is left out, and an answer can be empty when no
+        # device in the project has one. That is still an answer, and every
+        # device it leaves out takes the no-simulator path below.
+        answered = False
         try:
             import aiohttp
             async with aiohttp.ClientSession() as session:
-                for attempt in range(10):
+                for attempt in range(_PORT_QUERY_ATTEMPTS):
+                    if attempt:
+                        await asyncio.sleep(_PORT_QUERY_RETRY_S)
                     try:
                         resp = await session.get(
                             f"{self._sim_ui_url}/api/devices", timeout=aiohttp.ClientTimeout(total=2)
@@ -582,14 +594,15 @@ class SimulationManager:
                                 if did and port:
                                     self._sim_ports[did] = port
                                     self._sim_tls[did] = bool(dev.get("tls"))
+                            answered = True
                             break
                     except Exception:
-                        await asyncio.sleep(0.3)
+                        pass
         except Exception as e:
             log.warning("Could not query simulator for port assignments: %s", e)
 
-        # Fallback: if API query failed, use sequential assignment
-        if not self._sim_ports:
+        # Fallback: if the simulator never answered, use sequential assignment
+        if not answered:
             import socket
             log.warning("Falling back to sequential port assignment")
             port = simulator_device_port_base()

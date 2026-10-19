@@ -484,8 +484,35 @@ async def _send_ws_error(
 
 _FLAT_PRIMITIVE_REQUIRED = "Value must be a flat primitive (str, int, float, bool, or null)"
 
+# A panel's messages are handled one at a time, in order. An interaction is
+# waited for this long before the next message is read; one still running
+# then (a command to a device that is slow to confirm it) finishes on its own
+# and sends its error frame when it does, so the panel's later presses and
+# releases are not held behind it.
+UI_EVENT_HOLD_SEC = 0.5
+_ui_events_running: set[asyncio.Task] = set()
+
 
 async def _run_ui_event(
+    ws: WebSocket,
+    msg_type: str,
+    engine: Any,
+    event_type: str,
+    element_id: str,
+    data: dict[str, Any] | None = None,
+) -> None:
+    """Run one panel interaction, holding the panel's message loop at most
+    ``UI_EVENT_HOLD_SEC`` for it."""
+    task = asyncio.ensure_future(
+        _ui_event(ws, msg_type, engine, event_type, element_id, data)
+    )
+    done, _ = await asyncio.wait({task}, timeout=UI_EVENT_HOLD_SEC)
+    if not done:
+        _ui_events_running.add(task)
+        task.add_done_callback(_ui_events_running.discard)
+
+
+async def _ui_event(
     ws: WebSocket,
     msg_type: str,
     engine: Any,

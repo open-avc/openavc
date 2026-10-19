@@ -31,6 +31,7 @@ import {
   dropdownEmptyHintStyle,
 } from "../../shared/SearchableDropdown";
 import { valueText } from "../../shared/booleanWords";
+import { driverLabel } from "../../shared/driverLabel";
 
 /** Shape of one entry in DRIVER_INFO.state_variables (per-device, from
  *  getDevice — instance-building drivers only populate it there). Child
@@ -343,7 +344,7 @@ export function DeviceValuePicker({
             const connected = useConnectionStore.getState().liveState[`device.${d.id}.connected`];
             return (
               <option key={d.id} value={d.id}>
-                {connected ? "● " : "○ "}{d.name} ({d.driver})
+                {connected ? "● " : "○ "}{d.name} ({driverLabel(d.driver)})
               </option>
             );
           })}

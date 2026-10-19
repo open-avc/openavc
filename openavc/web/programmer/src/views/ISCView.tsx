@@ -80,7 +80,8 @@ export function ISCView() {
         fetch(`${prefix}/api/isc/instances`).then((r) => r.json()),
       ]);
       setStatus(statusRes);
-      setPeers(Array.isArray(peersRes) ? peersRes : []);
+      // The server answers {"instances": [...]}.
+      setPeers(Array.isArray(peersRes?.instances) ? peersRes.instances : []);
     } catch (err) {
       console.warn("ISC status fetch failed:", err);
       setStatus({ enabled: false });

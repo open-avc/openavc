@@ -16,6 +16,13 @@ After the equipment restarts, OpenAVC reconnects and reads its current protocol
 and capabilities before accepting more commands. An incompatible product stays
 disconnected. Commands interrupted by the restart are not replayed.
 
+A command is reported as done when the product confirms it finished. OpenAVC
+waits for that confirmation for up to the advanced **Wait for completion**
+setting, 5 seconds unless you change it; raise it for hardware that takes
+longer, such as a motor. A command still running after the wait is reported as
+not confirmed. It may still finish, so check the product's status before
+sending it again.
+
 HTTPS certificate verification is on by default. Products should provide a
 certificate trusted by the server. The advanced **Verify HTTPS certificate**
 setting controls this check for a remote connection. Turning it off accepts
@@ -26,9 +33,9 @@ untrusted certificates for that connection.
 The product running OpenAVC appears automatically in every project, marked
 **Product hardware**. This is the product itself, such as the audio channels of
 an amplifier running OpenAVC. Its manufacturer supplies the hardware connection.
-You can change its project label, use its controls, save declared device
-settings and label its channels. It cannot be uninstalled, duplicated or
-replaced with another driver.
+You can change its project label and its **Wait for completion** (as above, on
+its device page), use its controls, save declared device settings and label its
+channels. It cannot be uninstalled, duplicated or replaced with another driver.
 
 **Disable** stops OpenAVC control in the current project. It does not turn off
 the equipment. **Test** checks the local connection even while project control

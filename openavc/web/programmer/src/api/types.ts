@@ -703,6 +703,8 @@ export interface DeviceConnectionTest {
 
 export interface DeviceInfo {
   ownership?: "manufacturer";
+  /** Product hardware only: Wait for completion's default and limit, in seconds. */
+  completion_wait?: { default: number; max: number };
   physical_identity?: string;
   permitted_actions?: string[];
   id: string;

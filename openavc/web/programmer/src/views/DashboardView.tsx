@@ -27,6 +27,7 @@ import {
   ABNORMAL, NORMAL, monitorLabel, monitorReading, monitorStatus,
 } from "../api/monitorHelpers";
 import { parseApiError } from "../api/errors";
+import { driverLabel } from "../components/shared/driverLabel";
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -1230,8 +1231,8 @@ export function DashboardView() {
                           <div style={{ fontWeight: 500, fontSize: "var(--font-size-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {String(dev.name)}
                           </div>
-                          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                            {String(dev.driver)}{!isEnabled ? " (disabled)" : ""}
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {driverLabel(String(dev.driver))}{!isEnabled ? " (disabled)" : ""}
                           </div>
                         </div>
                       </div>

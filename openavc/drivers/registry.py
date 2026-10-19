@@ -190,7 +190,10 @@ def list_registered_drivers() -> list[dict[str, Any]]:
             "default_config": driver_class.DRIVER_INFO.get("default_config", {}),
             "state_variables": driver_class.DRIVER_INFO.get("state_variables", {}),
             "help": driver_class.DRIVER_INFO.get("help", {}),
-            "discovery": driver_class.DRIVER_INFO.get("discovery", {}),
+            # Present only when the driver declares a block: the hint loader
+            # reads a present block as asked-for and warns when it is empty.
+            **({"discovery": driver_class.DRIVER_INFO["discovery"]}
+               if "discovery" in driver_class.DRIVER_INFO else {}),
             "device_settings": driver_class.DRIVER_INFO.get("device_settings", {}),
             # The models the driver lists (the catalog carries the same list for
             # catalog drivers; this is where an imported driver's comes from).

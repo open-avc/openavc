@@ -387,10 +387,21 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
     # both pass and one edit would be silently lost.
     try:
         if mode == "import":
+            import asyncio
+
+            from openavc.core.backup_manager import create_backup
             from openavc.core.installed_equipment import InstalledEquipmentError
             from openavc.core.project_diff import ProjectOrigin
 
             try:
+                # Asked before the backup, so a project this server refuses
+                # leaves no backup behind. apply_project asks again under its lock.
+                engine.installed_equipment.compose(project, for_load=True)
+                # Import replaces the running project, as opening one from the
+                # library does, and keeps the one it replaces the same way.
+                await asyncio.to_thread(
+                    create_backup, engine.project_path, f"Before importing '{project.project.name}'"
+                )
                 new_revision = await engine.apply_project(
                     project, expected_revision=expected_rev, origin=ProjectOrigin.LOAD
                 )

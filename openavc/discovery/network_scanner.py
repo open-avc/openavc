@@ -23,14 +23,66 @@ _IS_MACOS = platform.system() == "Darwin"
 
 
 # Adapter name patterns for virtual/non-physical interfaces.
-# These never host real AV devices and just slow down scans.
+# These never host real AV devices and just slow down scans. Hyper-V's cards
+# on a host read "Hyper-V Virtual Ethernet Adapter" (the "vEthernet (...)"
+# connections) and "Hyper-V Virtual Switch Extension Adapter"; a Windows
+# guest's card reads "Microsoft Hyper-V Network Adapter" and is that machine's
+# real network, so only the host's are named.
 _VIRTUAL_ADAPTER_PATTERNS = re.compile(
-    r"hyper-v|virtualbox|vmware|vmnet|docker|veth|wsl|"
+    r"hyper-v virtual|virtualbox|vmware|vmnet|docker|veth|wsl|"
     r"vEthernet|ham|loopback|pseudo|teredo|isatap|"
     r"vpn|tap-|tun\d|wireguard|nordlynx|mullvad|"
     r"br-[0-9a-f]|cni\d|flannel|calico|virbr|podman",
     re.IGNORECASE,
 )
+
+# A Hyper-V host's own card, by description or by connection name.
+_HYPERV_HOST_CARD = re.compile(r"hyper-v virtual ethernet|^vethernet \(", re.IGNORECASE)
+
+# Hyper-V gives the cards it makes a MAC from its own range (the Default
+# Switch, WSL's, an Internal switch). An External switch's card on the host
+# takes over the physical card's MAC along with its address instead.
+_HYPERV_MAC_PREFIX = "00155d"
+
+
+def _is_virtual_adapter(label: str, mac: str = "") -> bool:
+    """Whether an adapter is one that carries no network of its own.
+
+    ``label`` is ifaddr's description or the OS's connection name. A Hyper-V
+    host card whose MAC is not one Hyper-V made is an External switch's: the
+    wired network itself, moved onto ``vEthernet (<switch>)``.
+    """
+    if not _VIRTUAL_ADAPTER_PATTERNS.search(label):
+        return False
+    digits = re.sub(r"[^0-9a-f]", "", (mac or "").lower())
+    if _HYPERV_HOST_CARD.search(label) and len(digits) == 12:
+        return digits.startswith(_HYPERV_MAC_PREFIX)
+    return True
+
+
+def _macs_by_ip() -> dict[str, str]:
+    """Each IPv4 address's adapter MAC, from psutil (ifaddr has none).
+    Empty when psutil cannot say, which leaves the name filter alone."""
+    found: dict[str, str] = {}
+    try:
+        import psutil
+
+        for addrs in psutil.net_if_addrs().values():
+            mac = next((a.address for a in addrs if a.family == psutil.AF_LINK), "")
+            for a in addrs:
+                if a.family == socket.AF_INET:
+                    found[a.address] = mac
+    except (ImportError, OSError, RuntimeError) as exc:
+        log.debug("Adapter MACs unavailable: %s", exc)
+    return found
+
+
+def _ifaddr_is_virtual(adapter: Any, macs: dict[str, str]) -> bool:
+    """``_is_virtual_adapter`` for an ifaddr adapter, its MAC found by address."""
+    mac = next(
+        (macs[ip.ip] for ip in adapter.ips if isinstance(ip.ip, str) and ip.ip in macs), "",
+    )
+    return _is_virtual_adapter(adapter.nice_name, mac)
 
 
 def ips_without_link() -> set[str]:
@@ -80,11 +132,12 @@ def get_network_adapters() -> list[dict[str, Any]]:
     """
     adapters: list[dict[str, Any]] = []
     no_link = ips_without_link()
+    macs = _macs_by_ip()
     try:
         import ifaddr
 
         for adapter in ifaddr.get_adapters():
-            if _VIRTUAL_ADAPTER_PATTERNS.search(adapter.nice_name):
+            if _ifaddr_is_virtual(adapter, macs):
                 continue
             for ip_info in adapter.ips:
                 if not isinstance(ip_info.ip, str):
@@ -112,7 +165,7 @@ def get_network_adapters() -> list[dict[str, Any]]:
     # (if available), joined by address: on Windows psutil says "Ethernet"
     # where ifaddr says "Realtek ... Controller", so a join by name never
     # matches there. The virtual filter above still reads ifaddr's
-    # description ("Hyper-V Virtual Ethernet Adapter").
+    # description ("Hyper-V Virtual Ethernet Adapter"), with psutil's MAC.
     try:
         import psutil
         mac_by_ip: dict[str, str] = {}
@@ -241,7 +294,7 @@ def get_adapter_inventory() -> list[dict[str, Any]]:
             if any(item["name"] == name for item in inventory.values()):
                 continue
             mac = next((a.address for a in addrs if a.family == psutil.AF_LINK), "")
-            if not mac or _VIRTUAL_ADAPTER_PATTERNS.search(name):
+            if not mac or _is_virtual_adapter(name, mac):
                 continue
             if _NOT_A_NETWORK_PATTERNS.search(name) or _LINUX_PSEUDO_PATTERNS.match(name):
                 continue
@@ -315,11 +368,12 @@ def get_interface_ips() -> list[str]:
     """
     ips: list[str] = []
     no_link = ips_without_link()
+    macs = _macs_by_ip()
     try:
         import ifaddr
 
         for adapter in ifaddr.get_adapters():
-            if _VIRTUAL_ADAPTER_PATTERNS.search(adapter.nice_name):
+            if _ifaddr_is_virtual(adapter, macs):
                 continue
             for ip_info in adapter.ips:
                 if not isinstance(ip_info.ip, str):
@@ -403,11 +457,12 @@ def get_local_subnets(interface_ip: str | None = None) -> list[str]:
     """
     subnets: list[str] = []
     no_link = ips_without_link()
+    macs = _macs_by_ip()
     try:
         import ifaddr
 
         for adapter in ifaddr.get_adapters():
-            if _VIRTUAL_ADAPTER_PATTERNS.search(adapter.nice_name):
+            if _ifaddr_is_virtual(adapter, macs):
                 log.debug("Skipping virtual adapter: %s", adapter.nice_name)
                 continue
             for ip_info in adapter.ips:
