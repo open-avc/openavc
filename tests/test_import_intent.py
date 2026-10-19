@@ -92,3 +92,19 @@ async def test_invalid_input_never_replaces_the_active_project(rig, mode):
     response = await client.put("/api/project?mode=" + mode, json={"openavc_version": "0.14.0", "project": []})
     assert response.status_code == 422
     assert engine.project_path.read_bytes() == before
+
+
+async def test_an_import_keeps_the_project_it_replaces(rig):
+    from openavc.core.backup_manager import list_backups
+
+    engine, client = rig
+    saved = await client.put("/api/project", json=engine.project.model_dump(mode="json"))
+    assert saved.status_code == 200
+    assert list_backups(engine.project_path) == []
+    refused = await client.put("/api/project?mode=import", json=document(builtin=True, model="acme_switcher"))
+    assert refused.status_code == 422
+    assert list_backups(engine.project_path) == []
+    imported = await client.put("/api/project?mode=import", json=document())
+    assert imported.status_code == 200
+    [backup] = list_backups(engine.project_path)
+    assert (backup.reason, backup.project_name) == ("Before importing 'Imported'", "Before")
