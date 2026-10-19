@@ -38,6 +38,8 @@ from openavc.core.connection_fault import (
     TRANSPORT_DISCONNECTED,
     ConnectionFault,
     ConnectionFaultError,
+    bridge_port_missing,
+    bridge_port_missing_message,
     classify_connection_fault,
     default_child_fault_message,
     default_fault_message,
@@ -1245,6 +1247,11 @@ class BaseDriver(ABC):
         # transport or driver-owned session is built: an empty address dials
         # this computer, and the card then blamed a refused port on a device
         # nobody had given an address. Every driver passes through here.
+        # A bridge with no port chosen leaves the binding unresolved, so the
+        # device would dial its own transport with nothing to dial, and the
+        # card asked for an IP address its Edit Device form does not show.
+        if bridge_port_missing(self.config):
+            raise ConnectionFaultError(bridge_port_missing_message(), code=INVALID_CONFIG)
         if self.address_missing():
             raise ConnectionFaultError(no_address_message(), code=INVALID_CONFIG)
 

@@ -267,6 +267,30 @@ async def test_an_ir_device_tests_the_bridge_it_sends_through(drivers, listener)
     assert listener.accepted == [1]
 
 
+@pytest.mark.parametrize("transport", ["tcp", "serial"])
+async def test_a_bridge_chosen_without_its_port_asks_for_the_port(drivers, transport):
+    """Saved on Through a bridge before its port was picked: there is nothing
+    to try, and the test says which choice is missing instead of asking for
+    an IP address and then naming the bridge."""
+    from openavc.core.connection_fault import bridge_port_missing_message
+
+    drivers("acme_reach_np_bridge", "tcp", {"port": 4998}, bridge={"ports": [
+        {"id": "s1", "kind": "serial", "passthrough_port": 4999},
+    ]})
+    drivers(f"acme_reach_np_dev_{transport}", transport, {})
+    bridge = DeviceConfig(id="br4", driver="acme_reach_np_bridge", name="Rack Bridge", config={})
+    dev = DeviceConfig(id="pj2", driver=f"acme_reach_np_dev_{transport}", name="Projector", config={})
+    project = _project(bridge, dev, connections={
+        "br4": {"host": "10.9.8.7"},
+        "pj2": {"bridge": "br4", "bridge_port": ""},
+    })
+
+    result = await _test(dev, project)
+
+    assert result["success"] is False
+    assert result["error"] == bridge_port_missing_message()
+
+
 async def test_a_device_whose_bridge_is_gone_says_so(drivers):
     drivers("acme_reach_orphan_ir", "tcp", {})
     ir = DeviceConfig(id="tv2", driver="acme_reach_orphan_ir", name="TV", config={})

@@ -29,7 +29,7 @@ Once added, open the bridge's device card. It shows a **Bridge Ports** section l
 
 1. Add (or edit) the serial device that is wired to the bridge, and pick its driver.
 2. In **Connection settings**, the device shows a picker with three choices: **Network (IP)**, **Direct serial**, and **Through a bridge**. Choose **Through a bridge**.
-3. Pick the bridge from the list, then pick the port the device is wired to (for the iTach IP2SL there is one port, "RS-232 Port 1").
+3. Pick the bridge from the list, then pick the port the device is wired to (for the iTach IP2SL there is one port, "RS-232 Port 1"). Save asks for both.
 4. Set the serial line settings the device expects: baud rate, parity, data bits, and stop bits. These come straight from the device's manual (for example 9600 8N1).
 5. Save.
 

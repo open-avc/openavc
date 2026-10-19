@@ -770,19 +770,23 @@ export function ConnectionModePicker({
           </div>
         ) : (
           <>
+            {/* Marked as the save asks (missingBridgeFields): the bridge for a
+                serial device, and the port of whichever bridge is picked. */}
             {field(
               isIr ? "IR bridge" : "Bridge",
-              <select value={configValues.bridge ?? ""} onChange={(e) => onBridgeChange(e.target.value)} style={{ width: "100%" }}>
+              <select value={configValues.bridge ?? ""} onChange={(e) => onBridgeChange(e.target.value)} aria-required={!isIr || undefined} style={{ width: "100%" }}>
                 <option value="">Select a bridge...</option>
                 {bridges.map((b) => <option key={b.id} value={b.id}>{b.name || b.id}</option>)}
               </select>,
+              !isIr,
             )}
             {configValues.bridge && field(
               isIr ? "IR emitter port" : "Bridge port",
-              <select value={configValues.bridge_port ?? ""} onChange={(e) => set("bridge_port", e.target.value)} style={{ width: "100%" }}>
+              <select value={configValues.bridge_port ?? ""} onChange={(e) => set("bridge_port", e.target.value)} aria-required style={{ width: "100%" }}>
                 <option value="">Select a port...</option>
                 {bridgePorts.map((p) => <option key={p.id} value={p.id}>{p.label || p.id}</option>)}
               </select>,
+              true,
             )}
             {/* Serial devices set line params here; IR devices have none. */}
             {configValues.bridge && !isIr && serialParams}
@@ -1025,6 +1029,7 @@ export function AddDeviceDialog({
     const built = buildConfigFromForm(configValues, schema, configOriginals, {
       defaults: driverInfo?.default_config,
       connection: requiredConnection(driverInfo, connMode),
+      ir: driverIrCapable(driverInfo),
     });
     if (!built.ok) {
       setError(built.error);
@@ -1415,6 +1420,7 @@ export function EditDeviceDialog({
         : buildConfigFromForm(configValues, schema, configOriginals, {
         defaults: driverInfo?.default_config,
         connection: requiredConnection(driverInfo, connMode),
+        ir: driverIrCapable(driverInfo),
       });
       if (!built.ok) {
         setError(built.error);
