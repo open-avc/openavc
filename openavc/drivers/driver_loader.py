@@ -85,7 +85,7 @@ def _declaration(info: Any) -> str:
     return declaration_json(info)
 
 
-def _handler_defaults(handler):
+def _handler_defaults(handler, driver_class):
     def immutable(value):
         if value is None or type(value) in (str, bytes, bool, int, float):
             return (type(value).__name__, value.hex() if type(value) is float else value)
@@ -94,10 +94,16 @@ def _handler_defaults(handler):
         raise ValueError("Mutable setup handler defaults are not source-qualified")
 
     if handler.__closure__:
-        raise ValueError("Setup handler closures are not primary-source-qualified")
+        # Python creates this cell for zero-argument super(). It is class
+        # identity, not a captured mutable input. Other closures stay refused.
+        if (handler.__code__.co_freevars != ("__class__",)
+                or len(handler.__closure__) != 1
+                or handler.__closure__[0].cell_contents is not driver_class):
+            raise ValueError("Setup handler closures are not primary-source-qualified")
     return (
         immutable(handler.__defaults__),
         tuple((key, immutable(value)) for key, value in sorted((handler.__kwdefaults__ or {}).items())),
+        tuple(weakref.ref(base) for base in driver_class.__mro__[1:]),
     )
 
 
@@ -119,7 +125,7 @@ def loaded_python_source(driver: Any) -> PythonDriverSource | None:
     if handler.__code__ is not code:
         return None
     try:
-        if _handler_defaults(handler) != defaults:
+        if _handler_defaults(handler, cls) != defaults:
             return None
         if _declaration(driver.DRIVER_INFO) != receipt.declaration:
             return None
@@ -138,7 +144,7 @@ def _record_python_source(driver_class: type, filepath: Path, source: bytes) -> 
         return
     try:
         declaration = _declaration(driver_class.DRIVER_INFO)
-        defaults = _handler_defaults(handler)
+        defaults = _handler_defaults(handler, driver_class)
     except (TypeError, ValueError):
         return
     _PYTHON_SOURCES[driver_class] = (

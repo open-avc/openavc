@@ -142,3 +142,46 @@ def test_mutable_defaults_do_not_receive_primary_source_qualification(path):
     cls = loader.load_python_driver_file(path)
     assert cls is not None
     assert loader.loaded_python_source(cls) is None
+
+
+def test_compiler_class_cell_preserves_zero_argument_super_but_not_changed_identity(path):
+    path.write_bytes(source("old").replace(b'return "old"', b'return super().run_setup_action(action, params, progress)'))
+    cls = loader.load_python_driver_file(path)
+    handler = cls.run_setup_action
+    assert handler.__code__.co_freevars == ("__class__",)
+    assert loader.loaded_python_source(cls) is not None
+    handler.__closure__[0].cell_contents = type("Other", (), {})
+    assert loader.loaded_python_source(cls) is None
+    handler.__closure__[0].cell_contents = cls
+    assert loader.loaded_python_source(cls) is not None
+    del handler.__closure__[0].cell_contents
+    assert loader.loaded_python_source(cls) is None
+
+
+def test_general_closure_is_not_qualified_by_the_class_cell_exception(path):
+    path.write_bytes(b'''from openavc.drivers.base import BaseDriver
+def make_driver():
+    mutable = []
+    class AcmeClosure(BaseDriver):
+        DRIVER_INFO = {"id": "acme_snapshot", "name": "Acme", "version": "1.0"}
+        async def send_command(self, command, params=None):
+            return None
+        async def run_setup_action(self, action, params, progress):
+            mutable.append(action)
+            return super().run_setup_action(action, params, progress)
+    return AcmeClosure
+AcmeClosure = make_driver()
+''')
+    cls = loader.load_python_driver_file(path)
+    assert cls is not None
+    assert loader.loaded_python_source(cls) is None
+
+
+def test_changed_inheritance_cannot_preserve_super_dispatch_receipt(path):
+    path.write_bytes(source("old").replace(b'return "old"', b'return super().run_setup_action(action, params, progress)'))
+    cls = loader.load_python_driver_file(path)
+    assert loader.loaded_python_source(cls) is not None
+    original_base = cls.__bases__[0]
+    replacement = type("OtherParent", (original_base,), {})
+    cls.__bases__ = (replacement,)
+    assert loader.loaded_python_source(cls) is None
