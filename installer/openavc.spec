@@ -18,6 +18,12 @@ block_cipher = None
 # Project root (one level up from installer/)
 PROJECT_ROOT = Path(SPECPATH).parent
 
+# Setup compatibility is required runtime data, including offline installs.
+# Refuse a missing input instead of filtering it out with optional data below.
+SETUP_COMPATIBILITY = PROJECT_ROOT / 'openavc' / 'drivers' / 'setup-compatibility.json'
+if not SETUP_COMPATIBILITY.is_file():
+    raise FileNotFoundError('Generate the setup compatibility resource before building OpenAVC.')
+
 # Collect data files: (source, dest_in_bundle)
 datas = [
     # Frontend builds
@@ -28,6 +34,7 @@ datas = [
     (str(PROJECT_ROOT / 'openavc' / 'simulator'), 'openavc/simulator'),
     # Driver definitions (built-in YAML drivers)
     (str(PROJECT_ROOT / 'openavc' / 'drivers' / 'definitions'), 'openavc/drivers/definitions'),
+    (str(SETUP_COMPATIBILITY), 'openavc/drivers'),
     # Built-in starter project templates (project_library.ensure_starter_projects
     # seeds the project library from here on first run; it silently skips when
     # the directory is missing, so leaving this out ships an empty starter

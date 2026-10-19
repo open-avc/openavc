@@ -215,7 +215,7 @@ def bundled_descriptors() -> tuple[SetupCompatibility, ...]:
         return ()
     if len(data) > 4 * 1024 * 1024:
         raise ValueError("Setup compatibility resource is too large")
-    resource = _object(json.loads(data), ("schema", "source_revision", "descriptors"))
+    resource = _object(json.loads(data), ("schema", "source_revision", "descriptors"), ("source_coverage",))
     if resource["schema"] != "setup-compatibility-resource/v1" or not re.fullmatch(r"[0-9a-f]{40}", resource["source_revision"]):
         raise ValueError("Unsupported setup compatibility resource")
     return parse_descriptors(resource["descriptors"])

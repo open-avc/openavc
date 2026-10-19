@@ -129,6 +129,16 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: git clone --depth 1 https://github.com/open-avc/openavc-drivers.git "$RUNNER_TEMP/openavc-drivers"
 
+      - name: Check the pinned offline setup resource
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          revision=$(python -c 'import json; print(json.load(open("openavc/drivers/setup-compatibility.json"))["source_revision"])')
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          git -C "$RUNNER_TEMP/openavc-drivers" fetch --unshallow origin
+          git -C "$RUNNER_TEMP/openavc-drivers" fetch origin "$revision"
+          python -m openavc.drivers.setup_compatibility_gen --drivers "$RUNNER_TEMP/openavc-drivers" --revision "$revision" --output openavc/drivers/setup-compatibility.json --check
+
       # The uninstaller's [Code] is compiled and run against real firewall
       # rules by tests/test_windows_firewall_live.py; release.yml installs the
       # same compiler to build the installer.

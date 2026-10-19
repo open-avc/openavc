@@ -108,7 +108,7 @@ def build_resource(repo: Path, revision: str, manifest_path: str = MANIFEST_PATH
         raise ValueError("Unsupported setup generation manifest")
     if not 1 <= len(manifest["sources"]) <= 1024:
         raise ValueError("A bounded nonempty source list is required")
-    descriptors = []
+    descriptors, coverage = [], []
     for entry in manifest["sources"]:
         _object(entry, ("revision", "path", "source_sha256", "driver_id", "driver_version", "actions"))
         if not _path(entry["path"]).endswith(".py"):
@@ -124,6 +124,14 @@ def build_resource(repo: Path, revision: str, manifest_path: str = MANIFEST_PATH
             raise ValueError("Loaded source identity does not match the maintained input")
         if type(entry["actions"]) is not list or not 1 <= len(entry["actions"]) <= 64:
             raise ValueError("A bounded nonempty action list is required")
+        setup_actions = [action for action in info.get("actions", [])
+                         if type(action) is dict and action.get("kind") == "setup"]
+        coverage.append({"source_sha256": digest, "driver_id": entry["driver_id"],
+                         "driver_version": entry["driver_version"],
+                         "declaration_sha256": declaration_digest(info), "actions": [
+                             {"action_id": action["id"], "action_sha256": declaration_digest(action),
+                              "result_contract": action.get("result_contract")}
+                             for action in setup_actions]})
         for mapping in entry["actions"]:
             _object(mapping, ("action_id", "profile", "roles", "diagnostics"), ("generated_secret", "runtime_surfaces"))
             matches = [a for a in info.get("actions", []) if type(a) is dict and a.get("id") == mapping["action_id"]]
@@ -137,7 +145,9 @@ def build_resource(repo: Path, revision: str, manifest_path: str = MANIFEST_PATH
             descriptors.append(descriptor)
     parse_descriptors(descriptors)  # conflicting or duplicate exact tuples refuse
     descriptors.sort(key=lambda d: (d["driver_id"], d["driver_version"], d["source_sha256"], d["action_id"]))
-    return {"schema": "setup-compatibility-resource/v1", "source_revision": revision, "descriptors": descriptors}
+    coverage.sort(key=lambda row: (row["driver_id"], row["driver_version"], row["source_sha256"]))
+    return {"schema": "setup-compatibility-resource/v1", "source_revision": revision,
+            "source_coverage": coverage, "descriptors": descriptors}
 
 
 def main(argv=None):

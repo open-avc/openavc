@@ -1,0 +1,899 @@
+{
+  "descriptors": [
+    {
+      "action_id": "test_connection",
+      "action_sha256": "23b82af9bb75c2adeb95c922cca61f86237f83c461dfac18059d00d768ee4eb6",
+      "declaration_sha256": "92863f0f7c1235f8848d0b2d2110c81d1cce5552ef45b1e1c6eb0007854cfc5c",
+      "diagnostics": [],
+      "driver_id": "apc_rack_pdu",
+      "driver_version": "1.0.2",
+      "profile": "boolean-check/v1",
+      "roles": {
+        "message": "message",
+        "success": "success"
+      },
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "d41dba8e83f9b2c97f358aa940d26bdcdc59b39b4baf063e8d0f9026a01a76ed"
+    },
+    {
+      "action_id": "test_connection",
+      "action_sha256": "e052c87afc3f1c33e9038cb4d1eda7634a63a6a320c3587d13f7dbd823b1ef0b",
+      "declaration_sha256": "0c480bde2850e26ed05610b519d74aa15893cbe61fe18070b0b86b2d2c378d36",
+      "diagnostics": [],
+      "driver_id": "avproedge_mxnet_10g",
+      "driver_version": "1.0.1",
+      "profile": "boolean-check/v1",
+      "roles": {
+        "message": "message",
+        "success": "success"
+      },
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "4e15f693ac30d58ec43ba933b9dfb6ea766d5b38bb02c0a91acbcd554a1ee3d9"
+    },
+    {
+      "action_id": "test_connection",
+      "action_sha256": "e052c87afc3f1c33e9038cb4d1eda7634a63a6a320c3587d13f7dbd823b1ef0b",
+      "declaration_sha256": "dc9d080559b40e65da8a23d2fbd70ec034c61ebc84d022ff9090559270557ed3",
+      "diagnostics": [],
+      "driver_id": "avproedge_mxnet_1g",
+      "driver_version": "1.4.3",
+      "profile": "boolean-check/v1",
+      "roles": {
+        "message": "message",
+        "success": "success"
+      },
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "172f930deb759f1ae63181dc19d4e8c03594d353c357afd249fdc46cd4d9b10d"
+    },
+    {
+      "action_id": "test_pulse",
+      "action_sha256": "a99fc69be9b1e9e08ed8d43b14fee62bc2fc6b7734f86fc34e884257a3a510d3",
+      "declaration_sha256": "7db02f55b9e95a128c3ca41b773addd7a31cffdd4331d09aa33d956c7ff2929c",
+      "diagnostics": [
+        {
+          "key": "model",
+          "label": "Model",
+          "nullable": true,
+          "required": true,
+          "type": "string"
+        },
+        {
+          "key": "serial",
+          "label": "Serial",
+          "nullable": true,
+          "required": true,
+          "type": "string"
+        },
+        {
+          "key": "firmware",
+          "label": "Firmware",
+          "nullable": true,
+          "required": true,
+          "type": "string"
+        },
+        {
+          "key": "state",
+          "label": "State",
+          "nullable": true,
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "driver_id": "barco_pulse",
+      "driver_version": "1.1.2",
+      "profile": "session-check/v1",
+      "roles": {
+        "authenticated": "authenticated"
+      },
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "68058535a905ce7141fe4315b34167a07069d8c38e5eff2340ab270afd711f77"
+    },
+    {
+      "action_id": "test_connection",
+      "action_sha256": "066c168e7d082480c667c60d12e1506a974b54fea00de72c3a7d3ece253fa00f",
+      "declaration_sha256": "90d18cdb5273612e38213ba7c682c14aba0f19fac6e7e97d469a60b93ba577f1",
+      "diagnostics": [
+        {
+          "key": "firmware",
+          "label": "Firmware",
+          "nullable": false,
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "driver_id": "biamp_tesira_ttp",
+      "driver_version": "3.1.6",
+      "profile": "block-check/v1",
+      "roles": {
+        "answered": "blocks_ok",
+        "count": "blocks_checked",
+        "failed": "blocks_failed"
+      },
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "79176aab88ca65abf513f648345cd417d59e8cd38319415b895bc84251562840"
+    },
+    {
+      "action_id": "test_connection",
+      "action_sha256": "214a12987311676b8a16b9ddb062f427e8f0550583a03dca6b9604a103fcd153",
+      "declaration_sha256": "b2609c29510ec97c38f79b63eab75c9da1dac0562cb1330ec7892fd69ac1fdbd",
+      "diagnostics": [],
+      "driver_id": "blackmagic_videohub",
+      "driver_version": "1.3.6",
+      "profile": "boolean-check/v1",
+      "roles": {
+        "message": "message",
+        "success": "success"
+      },
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "4dc68dccfc73cbf9f09077c694b84751767a28c2e729885fd7973955e14fd879"
+    },
+    {
+      "action_id": "test_connection",
+      "action_sha256": "0e7e15f4689e3dc7f47a84e477ab4f7108b4fbb5a25500eb44ba6b3e9fd3b92a",
+      "declaration_sha256": "d0f5650bc59207aeeae67368bfaee2a96a9ceab4b171c33e6c846b3de2c69b1b",
+      "diagnostics": [
+        {
+          "key": "push_supported",
+          "label": "Push supported",
+          "nullable": false,
+          "required": true,
+          "type": "boolean"
+        },
+        {
+          "key": "parameter_set",
+          "label": "Parameter set",
+          "nullable": true,
+          "required": true,
+          "type": "integer"
+        },
+        {
+          "key": "ip_address",
+          "label": "IP address",
+          "nullable": true,
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "driver_id": "bose_controlspace",
+      "driver_version": "1.0.6",
+      "profile": "probe-check/v1",
+      "roles": {
+        "answered": "answered",
+        "message": "message",
+        "problems": "problems",
+        "rejected": "rejected",
+        "silent": "silent",
+        "success": "ok"
+      },
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "f7add21d6038722faaf18cdbc574289aae561f29887a4a976e14c8c74b36fb8f"
+    },
+    {
+      "action_id": "test_connection",
+      "action_sha256": "72848e0dcd8cc1ec8345e8521e15e4c401587c0b609113355c4a00e898e27c7b",
+      "declaration_sha256": "eecde447dfbb138116bf378ab50d2c5caed2a3a86788df6971a20d15d1aef82a",
+      "diagnostics": [
+        {
+          "key": "unit_node",
+          "label": "Unit node",
+          "nullable": false,
+          "required": true,
+          "type": "string"
+        },
+        {
+          "key": "nodes_seen",
+          "label": "Reported node",
+          "nullable": false,
+          "required": true,
+          "type": "strings"
+        }
+      ],
+      "driver_id": "bss_soundweb_london",
+      "driver_version": "1.1.8",
+      "profile": "probe-check/v1",
+      "roles": {
+        "answered": "answered",
+        "message": "message",
+        "problems": "problems",
+        "silent": "silent",
+        "success": "ok"
+      },
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "b59aaeef3cd74aa72655ea2565ee033da0286009c03daf86320b91c76fad7c1f"
+    },
+    {
+      "action_id": "set_up_nvx",
+      "action_sha256": "2f38f8522b28aaa4aecbccbdd735040cd92b8f0c3db1ae604f49505136c3b3e6",
+      "declaration_sha256": "dcba94fa172b151c6c82cba032c8fc7c0ce90206704b58d6583ea76ccbb53dcd",
+      "diagnostics": [
+        {
+          "key": "username",
+          "label": "Username",
+          "nullable": false,
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "driver_id": "crestron_nvx",
+      "driver_version": "2.2.0",
+      "profile": "provisioning-claim/v1",
+      "roles": {
+        "accepted": "provisioned"
+      },
+      "runtime_surfaces": [
+        "commands",
+        "state_variables",
+        "actions"
+      ],
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "e9455818fc48c6a1802d5d283b5159c89d4ab926273cd08bd2395fbf2ab86271"
+    },
+    {
+      "action_id": "test_password",
+      "action_sha256": "765a0d809a7cbdee7afeae54327178a10b7932191b1109c39598b95fbd846183",
+      "declaration_sha256": "d0f15ddecfab9bbf6b2f224872da42380ecef119cf31f340654fd950daf8a784",
+      "diagnostics": [
+        {
+          "key": "reachable",
+          "label": "Reachable",
+          "nullable": false,
+          "required": true,
+          "type": "boolean"
+        },
+        {
+          "key": "saved",
+          "label": "Driver reported saved",
+          "nullable": false,
+          "required": true,
+          "type": "boolean"
+        },
+        {
+          "key": "display_name",
+          "label": "Display name",
+          "nullable": false,
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "driver_id": "mersive_solstice",
+      "driver_version": "1.4.4",
+      "profile": "credential-check/v1",
+      "roles": {
+        "message": "message",
+        "success": "auth_ok"
+      },
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "a6ef82c584f49c50206941dd69531da4c00bec63bba9829a6a1754af9fce1727"
+    },
+    {
+      "action_id": "enable_ssh",
+      "action_sha256": "08bcfb5fa7b15e8e94bdc40f427a0bba9c50a419ff96726dc367014c7183fb85",
+      "declaration_sha256": "e30126f2c01216e120575bba6e585bc6f9deb68e5df55a20c30497ce87dcc208",
+      "diagnostics": [
+        {
+          "key": "transport",
+          "label": "Transport",
+          "nullable": false,
+          "required": true,
+          "type": "string"
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "nullable": false,
+          "required": true,
+          "type": "integer"
+        }
+      ],
+      "driver_id": "netgear_m4250_m4350",
+      "driver_version": "1.4.10",
+      "profile": "provisioning-claim/v1",
+      "roles": {
+        "accepted": "ssh_enabled"
+      },
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "7169c800269725a68654e71acc0ffb24281ce25e4501641ee81d85c2652f95e4"
+    },
+    {
+      "action_id": "test_credentials",
+      "action_sha256": "c6d976690afcc57bcc3fb1dbf76331911975171cd0718f297f7246ba6de4c696",
+      "declaration_sha256": "5d058cf229aec4bb432dce1f6e023adb2636ddbd0448e40e26d06ce78eb0f50f",
+      "diagnostics": [
+        {
+          "key": "reachable",
+          "label": "Reachable",
+          "nullable": false,
+          "required": true,
+          "type": "boolean"
+        },
+        {
+          "key": "saved",
+          "label": "Driver reported saved",
+          "nullable": false,
+          "required": true,
+          "type": "boolean"
+        },
+        {
+          "key": "protocol",
+          "label": "Protocol",
+          "nullable": false,
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "driver_id": "panasonic_display",
+      "driver_version": "1.0.5",
+      "profile": "credential-check/v1",
+      "roles": {
+        "enabled": "auth_enabled",
+        "message": "message",
+        "success": "auth_ok"
+      },
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "c23b9e26f1df2339eda74127cffaa38dd57a107f1669359d658e4e0079e428a4"
+    },
+    {
+      "action_id": "test_ntcontrol",
+      "action_sha256": "3c0611bba2b42d86c60d12c5f648aee72510a7ed4371e887348956c68e424d15",
+      "declaration_sha256": "b9a3d512240d571b994a5201451c2353a227be630c1ed980aae4099282f52356",
+      "diagnostics": [
+        {
+          "key": "reachable",
+          "label": "Reachable",
+          "nullable": false,
+          "required": true,
+          "type": "boolean"
+        },
+        {
+          "key": "saved",
+          "label": "Driver reported saved",
+          "nullable": false,
+          "required": true,
+          "type": "boolean"
+        }
+      ],
+      "driver_id": "panasonic_pt",
+      "driver_version": "1.4.7",
+      "profile": "credential-check/v1",
+      "roles": {
+        "enabled": "auth_enabled",
+        "message": "message",
+        "success": "auth_ok"
+      },
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "d0cc65faf157b2252af06c92fa959ac852f5ba6c69cef0d34a25e1e32e0705d5"
+    },
+    {
+      "action_id": "pair_bridge",
+      "action_sha256": "3f4896083b20c2f3c88e68b9beac906f632c6bb460215c2b36c50f1a39a9cb51",
+      "declaration_sha256": "efe25bc48a93016c4d49df9ee2c212500996a5f1ebfb100243719224dcb94ce2",
+      "diagnostics": [
+        {
+          "key": "bridge_name",
+          "label": "Bridge name",
+          "nullable": false,
+          "required": true,
+          "type": "string"
+        },
+        {
+          "key": "bridge_id",
+          "label": "Bridge ID",
+          "nullable": false,
+          "required": true,
+          "type": "string"
+        },
+        {
+          "key": "saved",
+          "label": "Driver reported saved",
+          "nullable": false,
+          "required": true,
+          "type": "boolean"
+        }
+      ],
+      "driver_id": "philips_hue",
+      "driver_version": "3.0.3",
+      "generated_secret": "app_key",
+      "profile": "pairing/v1",
+      "roles": {
+        "paired": "paired"
+      },
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "5669ae050c5634aa8fa116a51ed533606f8481e3d18ad398efe19ce2866aa9e9"
+    },
+    {
+      "action_id": "test_login",
+      "action_sha256": "6d83d1fed5a266849bf3f2bbbf5fb7073fe5dff444495586ea46c871683a3110",
+      "declaration_sha256": "bd3e51c2da84e481af76f459df5e8545f9cce595dea3d416c2bda4157ba0c426",
+      "diagnostics": [
+        {
+          "key": "reachable",
+          "label": "Reachable",
+          "nullable": false,
+          "required": true,
+          "type": "boolean"
+        },
+        {
+          "key": "saved",
+          "label": "Driver reported saved",
+          "nullable": false,
+          "required": true,
+          "type": "boolean"
+        }
+      ],
+      "driver_id": "poly_studio",
+      "driver_version": "1.4.4",
+      "profile": "credential-check/v1",
+      "roles": {
+        "message": "message",
+        "success": "auth_ok"
+      },
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "7ef104b14535c1e74719deee3e1e7af118669787fac79c2b656b50726c1b93c6"
+    },
+    {
+      "action_id": "test_connection",
+      "action_sha256": "675e6c0800c381dcfbb688512f6cea6c9bf0c38dbeb48c07059161318a5b1763",
+      "declaration_sha256": "c06ec0931c1e3525cfcb91428c091a40899888f693d88cf150c784688f3b90ed",
+      "diagnostics": [
+        {
+          "key": "platform",
+          "label": "Platform",
+          "nullable": false,
+          "required": true,
+          "type": "string"
+        },
+        {
+          "key": "design",
+          "label": "Design",
+          "nullable": false,
+          "required": true,
+          "type": "string"
+        },
+        {
+          "key": "hint",
+          "label": "Guidance",
+          "nullable": false,
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "driver_id": "qsc_qrc",
+      "driver_version": "4.3.4",
+      "profile": "inventory-check/v1",
+      "roles": {
+        "count": "component_count",
+        "items": "components",
+        "reachable": "reachable"
+      },
+      "runtime_surfaces": [
+        "commands"
+      ],
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "22bae254e58945d82ab3ce1c4f96b180aff1fe538cc94f5e7e9804fd0cd5d588"
+    },
+    {
+      "action_id": "test_connection",
+      "action_sha256": "bf43228ff063a684e709cf6c6d4807c2c8b27ecf670a31b5bd9e4a4cdb2dd18d",
+      "declaration_sha256": "aa5916bf79e229c6ba52d5d0051c02f904c574739731c5d975fff076bcb2afe4",
+      "diagnostics": [],
+      "driver_id": "snmp_v2c",
+      "driver_version": "1.0.0",
+      "profile": "boolean-check/v1",
+      "roles": {
+        "message": "message",
+        "success": "success"
+      },
+      "runtime_surfaces": [
+        "commands",
+        "state_variables",
+        "device_settings",
+        "child_entity_types"
+      ],
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "189dd5f287ca7c6beb4836f4b895badfee15cf4335b1f22da6b7ab17d80c6791"
+    },
+    {
+      "action_id": "test_psk",
+      "action_sha256": "db7217bc68f8c985e32a25d4e49e4100abb23d61c517d837697af8262fb1561b",
+      "declaration_sha256": "5ae0ccbc73a9fb42d467fde527867470c38492e5f1e9f98be41542363336e8d3",
+      "diagnostics": [
+        {
+          "key": "reachable",
+          "label": "Reachable",
+          "nullable": false,
+          "required": true,
+          "type": "boolean"
+        },
+        {
+          "key": "saved",
+          "label": "Driver reported saved",
+          "nullable": false,
+          "required": true,
+          "type": "boolean"
+        },
+        {
+          "key": "model",
+          "label": "Model",
+          "nullable": false,
+          "required": true,
+          "type": "string"
+        }
+      ],
+      "driver_id": "sony_bravia",
+      "driver_version": "1.5.8",
+      "profile": "credential-check/v1",
+      "roles": {
+        "message": "message",
+        "success": "auth_ok"
+      },
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "19b675e84b2a16e1f9f6b7d94c067c02a54a294033cd26740cceb201258e9eef"
+    },
+    {
+      "action_id": "test_adcp",
+      "action_sha256": "4d0423dcc2b04c7c516c8c30833c39eadf82e645237b27435ebd8f7701df4b0e",
+      "declaration_sha256": "8d7cd43844e45cc9e48ce2c775ea3e0f9d778a378818bb07db6d9b141efac3e5",
+      "diagnostics": [
+        {
+          "key": "reachable",
+          "label": "Reachable",
+          "nullable": false,
+          "required": true,
+          "type": "boolean"
+        },
+        {
+          "key": "saved",
+          "label": "Driver reported saved",
+          "nullable": false,
+          "required": true,
+          "type": "boolean"
+        }
+      ],
+      "driver_id": "sony_vpl",
+      "driver_version": "1.4.4",
+      "profile": "credential-check/v1",
+      "roles": {
+        "enabled": "auth_enabled",
+        "message": "message",
+        "success": "auth_ok"
+      },
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "33f295ec6a712c4c40dd046165c78059196d6078ae4b162ea1c6158621f352e9"
+    },
+    {
+      "action_id": "test_login",
+      "action_sha256": "7f79d054b69df789f54e136b9264871d2dbf9ce9a932ce96e46789abe49e3330",
+      "declaration_sha256": "a140b0eccbc5a7968bfd2c37fb1bc047ac2e2f24081288440b2836cf98736d29",
+      "diagnostics": [],
+      "driver_id": "tvone_coriomaster",
+      "driver_version": "1.0.4",
+      "profile": "boolean-check/v1",
+      "roles": {
+        "message": "message",
+        "success": "success"
+      },
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "9f54049b2bfcfd64cd88ea1cf2fb54ac919545ccacb9a78ac57134e4e7737cd7"
+    },
+    {
+      "action_id": "test_login",
+      "action_sha256": "7f79d054b69df789f54e136b9264871d2dbf9ce9a932ce96e46789abe49e3330",
+      "declaration_sha256": "b8681b94db26f595921e63b8652132c7202f9eb1a2e4671aeeb609950c426bc1",
+      "diagnostics": [],
+      "driver_id": "tvone_coriomatrix",
+      "driver_version": "1.0.4",
+      "profile": "boolean-check/v1",
+      "roles": {
+        "message": "message",
+        "success": "success"
+      },
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "af150ce2d73525e14d4f6c63ab6d6c0791065895fb3679c26a8595af319f8a6b"
+    },
+    {
+      "action_id": "enable_telnet",
+      "action_sha256": "cf05b3246cb14fb8cd4138c4475905b12cb6b07235445336d6a716594a400560",
+      "declaration_sha256": "563cd5f3dfe3972e724de78bdb8bb58a21e54ed5264161318f3a1bc6ea262fb0",
+      "diagnostics": [],
+      "driver_id": "vaddio_conferenceshot_av",
+      "driver_version": "1.1.3",
+      "profile": "provisioning-claim/v1",
+      "roles": {
+        "accepted": "success",
+        "message": "message"
+      },
+      "schema": "setup-compatibility/v1",
+      "source_sha256": "427e4d4b6f1c1eabeece0e2f398a8681684fb82a6e755f67186331e34fa5bf9d"
+    }
+  ],
+  "schema": "setup-compatibility-resource/v1",
+  "source_coverage": [
+    {
+      "actions": [
+        {
+          "action_id": "test_connection",
+          "action_sha256": "23b82af9bb75c2adeb95c922cca61f86237f83c461dfac18059d00d768ee4eb6",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "92863f0f7c1235f8848d0b2d2110c81d1cce5552ef45b1e1c6eb0007854cfc5c",
+      "driver_id": "apc_rack_pdu",
+      "driver_version": "1.0.2",
+      "source_sha256": "d41dba8e83f9b2c97f358aa940d26bdcdc59b39b4baf063e8d0f9026a01a76ed"
+    },
+    {
+      "actions": [
+        {
+          "action_id": "test_connection",
+          "action_sha256": "e052c87afc3f1c33e9038cb4d1eda7634a63a6a320c3587d13f7dbd823b1ef0b",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "0c480bde2850e26ed05610b519d74aa15893cbe61fe18070b0b86b2d2c378d36",
+      "driver_id": "avproedge_mxnet_10g",
+      "driver_version": "1.0.1",
+      "source_sha256": "4e15f693ac30d58ec43ba933b9dfb6ea766d5b38bb02c0a91acbcd554a1ee3d9"
+    },
+    {
+      "actions": [
+        {
+          "action_id": "test_connection",
+          "action_sha256": "e052c87afc3f1c33e9038cb4d1eda7634a63a6a320c3587d13f7dbd823b1ef0b",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "dc9d080559b40e65da8a23d2fbd70ec034c61ebc84d022ff9090559270557ed3",
+      "driver_id": "avproedge_mxnet_1g",
+      "driver_version": "1.4.3",
+      "source_sha256": "172f930deb759f1ae63181dc19d4e8c03594d353c357afd249fdc46cd4d9b10d"
+    },
+    {
+      "actions": [
+        {
+          "action_id": "test_pulse",
+          "action_sha256": "a99fc69be9b1e9e08ed8d43b14fee62bc2fc6b7734f86fc34e884257a3a510d3",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "7db02f55b9e95a128c3ca41b773addd7a31cffdd4331d09aa33d956c7ff2929c",
+      "driver_id": "barco_pulse",
+      "driver_version": "1.1.2",
+      "source_sha256": "68058535a905ce7141fe4315b34167a07069d8c38e5eff2340ab270afd711f77"
+    },
+    {
+      "actions": [
+        {
+          "action_id": "test_connection",
+          "action_sha256": "066c168e7d082480c667c60d12e1506a974b54fea00de72c3a7d3ece253fa00f",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "90d18cdb5273612e38213ba7c682c14aba0f19fac6e7e97d469a60b93ba577f1",
+      "driver_id": "biamp_tesira_ttp",
+      "driver_version": "3.1.6",
+      "source_sha256": "79176aab88ca65abf513f648345cd417d59e8cd38319415b895bc84251562840"
+    },
+    {
+      "actions": [
+        {
+          "action_id": "test_connection",
+          "action_sha256": "214a12987311676b8a16b9ddb062f427e8f0550583a03dca6b9604a103fcd153",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "b2609c29510ec97c38f79b63eab75c9da1dac0562cb1330ec7892fd69ac1fdbd",
+      "driver_id": "blackmagic_videohub",
+      "driver_version": "1.3.6",
+      "source_sha256": "4dc68dccfc73cbf9f09077c694b84751767a28c2e729885fd7973955e14fd879"
+    },
+    {
+      "actions": [
+        {
+          "action_id": "test_connection",
+          "action_sha256": "0e7e15f4689e3dc7f47a84e477ab4f7108b4fbb5a25500eb44ba6b3e9fd3b92a",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "d0f5650bc59207aeeae67368bfaee2a96a9ceab4b171c33e6c846b3de2c69b1b",
+      "driver_id": "bose_controlspace",
+      "driver_version": "1.0.6",
+      "source_sha256": "f7add21d6038722faaf18cdbc574289aae561f29887a4a976e14c8c74b36fb8f"
+    },
+    {
+      "actions": [
+        {
+          "action_id": "test_connection",
+          "action_sha256": "72848e0dcd8cc1ec8345e8521e15e4c401587c0b609113355c4a00e898e27c7b",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "eecde447dfbb138116bf378ab50d2c5caed2a3a86788df6971a20d15d1aef82a",
+      "driver_id": "bss_soundweb_london",
+      "driver_version": "1.1.8",
+      "source_sha256": "b59aaeef3cd74aa72655ea2565ee033da0286009c03daf86320b91c76fad7c1f"
+    },
+    {
+      "actions": [
+        {
+          "action_id": "set_up_nvx",
+          "action_sha256": "2f38f8522b28aaa4aecbccbdd735040cd92b8f0c3db1ae604f49505136c3b3e6",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "dcba94fa172b151c6c82cba032c8fc7c0ce90206704b58d6583ea76ccbb53dcd",
+      "driver_id": "crestron_nvx",
+      "driver_version": "2.2.0",
+      "source_sha256": "e9455818fc48c6a1802d5d283b5159c89d4ab926273cd08bd2395fbf2ab86271"
+    },
+    {
+      "actions": [
+        {
+          "action_id": "test_password",
+          "action_sha256": "765a0d809a7cbdee7afeae54327178a10b7932191b1109c39598b95fbd846183",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "d0f15ddecfab9bbf6b2f224872da42380ecef119cf31f340654fd950daf8a784",
+      "driver_id": "mersive_solstice",
+      "driver_version": "1.4.4",
+      "source_sha256": "a6ef82c584f49c50206941dd69531da4c00bec63bba9829a6a1754af9fce1727"
+    },
+    {
+      "actions": [
+        {
+          "action_id": "enable_ssh",
+          "action_sha256": "08bcfb5fa7b15e8e94bdc40f427a0bba9c50a419ff96726dc367014c7183fb85",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "e30126f2c01216e120575bba6e585bc6f9deb68e5df55a20c30497ce87dcc208",
+      "driver_id": "netgear_m4250_m4350",
+      "driver_version": "1.4.10",
+      "source_sha256": "7169c800269725a68654e71acc0ffb24281ce25e4501641ee81d85c2652f95e4"
+    },
+    {
+      "actions": [
+        {
+          "action_id": "test_credentials",
+          "action_sha256": "c6d976690afcc57bcc3fb1dbf76331911975171cd0718f297f7246ba6de4c696",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "5d058cf229aec4bb432dce1f6e023adb2636ddbd0448e40e26d06ce78eb0f50f",
+      "driver_id": "panasonic_display",
+      "driver_version": "1.0.5",
+      "source_sha256": "c23b9e26f1df2339eda74127cffaa38dd57a107f1669359d658e4e0079e428a4"
+    },
+    {
+      "actions": [
+        {
+          "action_id": "test_ntcontrol",
+          "action_sha256": "3c0611bba2b42d86c60d12c5f648aee72510a7ed4371e887348956c68e424d15",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "b9a3d512240d571b994a5201451c2353a227be630c1ed980aae4099282f52356",
+      "driver_id": "panasonic_pt",
+      "driver_version": "1.4.7",
+      "source_sha256": "d0cc65faf157b2252af06c92fa959ac852f5ba6c69cef0d34a25e1e32e0705d5"
+    },
+    {
+      "actions": [
+        {
+          "action_id": "pair_bridge",
+          "action_sha256": "3f4896083b20c2f3c88e68b9beac906f632c6bb460215c2b36c50f1a39a9cb51",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "efe25bc48a93016c4d49df9ee2c212500996a5f1ebfb100243719224dcb94ce2",
+      "driver_id": "philips_hue",
+      "driver_version": "3.0.3",
+      "source_sha256": "5669ae050c5634aa8fa116a51ed533606f8481e3d18ad398efe19ce2866aa9e9"
+    },
+    {
+      "actions": [
+        {
+          "action_id": "test_login",
+          "action_sha256": "6d83d1fed5a266849bf3f2bbbf5fb7073fe5dff444495586ea46c871683a3110",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "bd3e51c2da84e481af76f459df5e8545f9cce595dea3d416c2bda4157ba0c426",
+      "driver_id": "poly_studio",
+      "driver_version": "1.4.4",
+      "source_sha256": "7ef104b14535c1e74719deee3e1e7af118669787fac79c2b656b50726c1b93c6"
+    },
+    {
+      "actions": [
+        {
+          "action_id": "test_connection",
+          "action_sha256": "675e6c0800c381dcfbb688512f6cea6c9bf0c38dbeb48c07059161318a5b1763",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "c06ec0931c1e3525cfcb91428c091a40899888f693d88cf150c784688f3b90ed",
+      "driver_id": "qsc_qrc",
+      "driver_version": "4.3.4",
+      "source_sha256": "22bae254e58945d82ab3ce1c4f96b180aff1fe538cc94f5e7e9804fd0cd5d588"
+    },
+    {
+      "actions": [
+        {
+          "action_id": "test_connection",
+          "action_sha256": "bf43228ff063a684e709cf6c6d4807c2c8b27ecf670a31b5bd9e4a4cdb2dd18d",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "aa5916bf79e229c6ba52d5d0051c02f904c574739731c5d975fff076bcb2afe4",
+      "driver_id": "snmp_v2c",
+      "driver_version": "1.0.0",
+      "source_sha256": "189dd5f287ca7c6beb4836f4b895badfee15cf4335b1f22da6b7ab17d80c6791"
+    },
+    {
+      "actions": [
+        {
+          "action_id": "test_psk",
+          "action_sha256": "db7217bc68f8c985e32a25d4e49e4100abb23d61c517d837697af8262fb1561b",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "5ae0ccbc73a9fb42d467fde527867470c38492e5f1e9f98be41542363336e8d3",
+      "driver_id": "sony_bravia",
+      "driver_version": "1.5.8",
+      "source_sha256": "19b675e84b2a16e1f9f6b7d94c067c02a54a294033cd26740cceb201258e9eef"
+    },
+    {
+      "actions": [
+        {
+          "action_id": "test_adcp",
+          "action_sha256": "4d0423dcc2b04c7c516c8c30833c39eadf82e645237b27435ebd8f7701df4b0e",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "8d7cd43844e45cc9e48ce2c775ea3e0f9d778a378818bb07db6d9b141efac3e5",
+      "driver_id": "sony_vpl",
+      "driver_version": "1.4.4",
+      "source_sha256": "33f295ec6a712c4c40dd046165c78059196d6078ae4b162ea1c6158621f352e9"
+    },
+    {
+      "actions": [
+        {
+          "action_id": "test_login",
+          "action_sha256": "7f79d054b69df789f54e136b9264871d2dbf9ce9a932ce96e46789abe49e3330",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "a140b0eccbc5a7968bfd2c37fb1bc047ac2e2f24081288440b2836cf98736d29",
+      "driver_id": "tvone_coriomaster",
+      "driver_version": "1.0.4",
+      "source_sha256": "9f54049b2bfcfd64cd88ea1cf2fb54ac919545ccacb9a78ac57134e4e7737cd7"
+    },
+    {
+      "actions": [
+        {
+          "action_id": "test_login",
+          "action_sha256": "7f79d054b69df789f54e136b9264871d2dbf9ce9a932ce96e46789abe49e3330",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "b8681b94db26f595921e63b8652132c7202f9eb1a2e4671aeeb609950c426bc1",
+      "driver_id": "tvone_coriomatrix",
+      "driver_version": "1.0.4",
+      "source_sha256": "af150ce2d73525e14d4f6c63ab6d6c0791065895fb3679c26a8595af319f8a6b"
+    },
+    {
+      "actions": [
+        {
+          "action_id": "enable_telnet",
+          "action_sha256": "cf05b3246cb14fb8cd4138c4475905b12cb6b07235445336d6a716594a400560",
+          "result_contract": null
+        }
+      ],
+      "declaration_sha256": "563cd5f3dfe3972e724de78bdb8bb58a21e54ed5264161318f3a1bc6ea262fb0",
+      "driver_id": "vaddio_conferenceshot_av",
+      "driver_version": "1.1.3",
+      "source_sha256": "427e4d4b6f1c1eabeece0e2f398a8681684fb82a6e755f67186331e34fa5bf9d"
+    }
+  ],
+  "source_revision": "9767fd1e5f59999ece32711621cf9636bf3788ab"
+}

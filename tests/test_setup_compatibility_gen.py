@@ -79,6 +79,11 @@ def test_actual_computed_declaration_from_historical_blob_ignores_checkout_edits
     assert descriptor.declaration_sha256 == declaration_digest(expected)
     assert descriptor.action_sha256 == declaration_digest(expected["actions"][0])
     assert result["source_revision"] == history.revision
+    assert result["source_coverage"] == [{
+        "source_sha256": descriptor.source_sha256, "driver_id": "acme_historical", "driver_version": "1.0.0",
+        "declaration_sha256": declaration_digest(expected), "actions": [{
+            "action_id": "check", "action_sha256": declaration_digest(expected["actions"][0]),
+            "result_contract": None}]}]
 
 
 @pytest.mark.parametrize("field,value,reason", [
@@ -161,3 +166,17 @@ def test_explicit_runtime_surface_qualification_survives_generation(history):
     revision = commit_manifest(history, data)
     with pytest.raises(ValueError, match="runtime control surfaces"):
         generator.build_resource(history.repo, revision)
+
+
+def test_coverage_keeps_unmapped_setup_actions_from_actual_loaded_source(history):
+    source = SOURCE.replace(b'"actions": [{"id": "check"', b'"actions": [{"id": "other", "kind": "setup"}, {"id": "check"')
+    history.source.write_bytes(source)
+    git(history.repo, 'add', history.source.name)
+    git(history.repo, 'commit', '-m', 'Fixture with another setup action')
+    data = copy.deepcopy(history.manifest)
+    data['sources'][0]['revision'] = git(history.repo, 'rev-parse', 'HEAD')
+    data['sources'][0]['source_sha256'] = hashlib.sha256(source).hexdigest()
+    revision = commit_manifest(history, data)
+    result = generator.build_resource(history.repo, revision)
+    assert [row['action_id'] for row in result['source_coverage'][0]['actions']] == ['other', 'check']
+    assert [row['action_id'] for row in result['descriptors']] == ['check']

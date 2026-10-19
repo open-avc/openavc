@@ -122,3 +122,21 @@ def test_resource_dirs_are_bundled():
     }
     missing = required - dests
     assert not missing, f"openavc.spec datas is missing resource dirs: {missing}"
+
+
+def test_setup_compatibility_is_required_and_reaches_frozen_datas(tmp_path):
+    """Execute the data-collection preamble, including the actual missing filter."""
+    import shutil
+    import pytest
+    prefix = SPEC_PATH.read_text().split('# Hidden imports that PyInstaller')[0]
+    namespace = {'SPECPATH': str(tmp_path / 'installer')}
+    with pytest.raises(FileNotFoundError, match='setup compatibility'):
+        exec(compile(prefix, str(SPEC_PATH), 'exec'), namespace)
+    resource = tmp_path / 'openavc/drivers/setup-compatibility.json'
+    resource.parent.mkdir(parents=True)
+    original = REPO_ROOT / 'openavc/drivers/setup-compatibility.json'
+    shutil.copyfile(original, resource)
+    namespace = {'SPECPATH': str(tmp_path / 'installer')}
+    exec(compile(prefix, str(SPEC_PATH), 'exec'), namespace)
+    assert (str(resource), 'openavc/drivers') in namespace['datas']
+    assert resource.read_bytes() == original.read_bytes()
