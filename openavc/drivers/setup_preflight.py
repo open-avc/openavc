@@ -40,7 +40,7 @@ def _text(value):
     return value
 
 
-def _read_regular(path: Path) -> bytes:
+def _read_regular(path: Path, *, max_bytes: int = _MAX_BYTES) -> bytes:
     # Refuse links in every component, including the final source. Capture and
     # recheck file identity; the caller must still recheck the whole snapshot at
     # cutover. This is a read-only check, not a filesystem transaction or sandbox.
@@ -58,8 +58,10 @@ def _read_regular(path: Path) -> bytes:
         return (value.st_dev, value.st_ino, stat.S_IFMT(value.st_mode),
                 value.st_size, value.st_mtime_ns)
 
+    if type(max_bytes) is not int or not 0 < max_bytes <= 250 * 1024 * 1024:
+        raise ValueError("The file inspection bound is invalid.")
     before = path.lstat()
-    if not stat.S_ISREG(before.st_mode) or before.st_size > _MAX_BYTES:
+    if not stat.S_ISREG(before.st_mode) or before.st_size > max_bytes:
         raise ValueError("The supplied source is not a bounded regular file.")
     # Nonblocking prevents a regular-to-pipe swap parking an installer; fstat
     # checks the opened object before any read. O_NOFOLLOW is unavailable on
@@ -70,8 +72,8 @@ def _read_regular(path: Path) -> bytes:
         opened = os.fstat(stream.fileno())
         if not stat.S_ISREG(opened.st_mode) or common_identity(opened) != common_identity(before):
             raise ValueError("The supplied source changed before inspection; capture it again.")
-        data = stream.read(_MAX_BYTES + 1)
-        if (len(data) > _MAX_BYTES or identity(os.fstat(stream.fileno())) != identity(opened)
+        data = stream.read(max_bytes + 1)
+        if (len(data) > max_bytes or identity(os.fstat(stream.fileno())) != identity(opened)
                 or identity(path.lstat()) != identity(before)):
             raise ValueError("The supplied source changed during inspection; capture it again.")
     return data

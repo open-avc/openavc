@@ -44,24 +44,16 @@ from openavc.drivers.registry import (
     unregister_driver,
 )
 from openavc.drivers.spec import REQUIRED_FIELDS as REQUIRED_FIELDS
+from openavc.drivers.source_names import (
+    COMPANION_SUFFIXES as COMPANION_SUFFIXES,
+    is_driver_file as _is_driver_file,
+)
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
 
 # File extension for driver definitions
 DRIVER_EXTENSION = ".avcdriver"
-
-# Sibling companion files that live next to drivers but aren't drivers
-# themselves. Discovery companions (`<id>_discovery.py`) expose
-# ``async def probe(ctx)`` for the discovery engine; Python simulators
-# (`<id>_sim.py`) expose a Simulator class for the device simulator.
-# Neither has a ``DRIVER_INFO`` constant or a BaseDriver subclass, so
-# the runtime loader silently skips them — but they would otherwise
-# leak into the Code tab and the Installed Drivers panel as if they
-# were standalone Python drivers. Filter them at the listing layer
-# alongside underscore-prefixed files (which are conventional
-# helpers / private modules).
-COMPANION_SUFFIXES: tuple[str, ...] = ("_discovery.py", "_sim.py")
 
 
 @dataclass(frozen=True)
@@ -259,16 +251,6 @@ def driver_companions(main_path: Path) -> list[Path]:
             for suffix in COMPANION_SUFFIXES
         ]
     return [path for path in candidates if path.is_file()]
-
-
-def _is_driver_file(filepath: Path) -> bool:
-    """Return False for companion / helper .py files that aren't drivers."""
-    name = filepath.name
-    if name.startswith("_"):
-        return False
-    if any(name.endswith(suf) for suf in COMPANION_SUFFIXES):
-        return False
-    return True
 
 
 def _discovery_hint_errors(driver_def: dict[str, Any]) -> list[str]:
