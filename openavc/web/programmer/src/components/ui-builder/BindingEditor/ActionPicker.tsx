@@ -343,7 +343,8 @@ function StateSetConfig({
               key,
               ...(useElementValue
                 ? { value_from: "element" }
-                : { value: value?.value }),
+                // Clear (null) means something only on a control override.
+                : { value: value?.value === null && !key.startsWith("ui.") ? "" : value?.value }),
             })
           }
           showDeviceState={false}
@@ -387,10 +388,37 @@ function StateSetConfig({
         // on the "Use element's selected value" option above, so this picker
         // deliberately offers no "This control" group (no eventContext).
         const isDynamic = isDynamicParamValue(value?.value);
+        // A control override (ui.<id>.*) is undone by writing null, which the
+        // panel reads as "no override": Clear is that choice. An emptied value
+        // is not the same thing; it draws a button with no words.
+        const canClear = String(value?.key ?? "").startsWith("ui.");
+        const cleared = canClear && value?.value === null;
         return (
           <div>
             <label style={labelStyle}>Value</label>
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              {canClear && (
+                <select
+                  value={cleared ? "clear" : "set"}
+                  onChange={(e) =>
+                    onChange({
+                      action: "state.set",
+                      key: value?.key,
+                      value: e.target.value === "clear" ? null : "",
+                    })
+                  }
+                  title="Set the control or clear it"
+                  style={{ flex: "0 0 auto", padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
+                >
+                  <option value="set">Set to</option>
+                  <option value="clear">Clear</option>
+                </select>
+              )}
+              {cleared ? (
+                <span style={{ flex: 1, fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+                  Puts the control back as authored.
+                </span>
+              ) : <>
               {isDynamic ? (
                 <VariableKeyPicker
                   value={String(value?.value).slice(1)}
@@ -446,6 +474,7 @@ function StateSetConfig({
               >
                 $
               </button>
+              </>}
             </div>
           </div>
         );

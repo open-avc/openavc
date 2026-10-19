@@ -741,8 +741,9 @@ The same five are available on a button's own **Does** bucket, and to scripts as
 `openavc.state.set("ui.<control id>.<property>", value)`.
 
 An override stands until it is cleared (choose **Clear** as the value in the
-macro step), so a macro that renames a button for a meeting wants a counterpart
-that puts it back. For anything the table does not
+macro step, or **Clear** in front of the value in a button's Set Variable or
+Control action), so a macro that renames a button for a meeting wants a
+counterpart that puts it back. For anything the table does not
 cover, and for state that should survive a panel reconnect, bind the control to
 a variable and change the variable instead. Full detail:
 [Macros and Triggers](macros-and-triggers.md#changing-a-control-from-a-macro).
