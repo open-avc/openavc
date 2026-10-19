@@ -3,7 +3,7 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 import pytest
 
 from openavc.api.error_messages import friendly_error
@@ -45,7 +45,9 @@ async def test_known_outcome_survives(door, outcome, status, phrase, monkeypatch
             )
         elif door == "action":
             await devices.invoke_device_action(
-                "local", "increment", devices.ActionInvokeRequest(params={})
+                "local", "increment", devices.ActionInvokeRequest(params={}),
+                Request({"type": "http", "method": "POST",
+                         "path": "/api/devices/local/actions/increment", "headers": []}),
             )
         else:
             await devices.set_device_setting(
