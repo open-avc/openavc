@@ -113,26 +113,60 @@ def test_capture_assessment_uses_retained_bytes_and_preserves_occurrences(snapsh
 
 
 @pytest.mark.parametrize("change", ["bytes", "omitted", "report", "count"])
-def test_capture_cannot_borrow_different_bytes_or_membership(snapshot, tmp_path, change):
+def test_returned_views_cannot_change_captured_bytes_or_membership(snapshot, tmp_path, change):
     from openavc.drivers.setup_inventory import capture_source_inputs
     source, _, resource, run = snapshot
     run()
     captured = capture_source_inputs(primary_roots={"root": tmp_path}, library_roots={}, bundles={})
+    report, sources = captured.report, captured.source_bytes
     if change == "bytes":
-        captured.source_bytes[hashlib.sha256(source.read_bytes()).hexdigest()] = b"other bytes"
+        sources[hashlib.sha256(source.read_bytes()).hexdigest()] = b"other bytes"
     elif change == "omitted":
-        captured.source_bytes.clear()
+        sources.clear()
     elif change == "report":
-        captured.report["members"].clear()
+        report["members"].clear()
     else:
         from openavc.drivers.setup_compatibility import declaration_digest
-        captured.report["source_count"] += 1
-        captured.report["census_sha256"] = declaration_digest(
-            {key: value for key, value in captured.report.items() if key != "census_sha256"})
-    with pytest.raises(ValueError):
-        assess_capture(captured, resource=resource,
-                       expected_resource_sha256=hashlib.sha256(resource.read_bytes()).hexdigest(),
-                       target_sha256="4" * 64)
+        report["source_count"] += 1
+        report["census_sha256"] = declaration_digest(
+            {key: value for key, value in report.items() if key != "census_sha256"})
+    result = assess_capture(captured, resource=resource,
+                            expected_resource_sha256=hashlib.sha256(resource.read_bytes()).hexdigest(),
+                            target_sha256="4" * 64)
+    assert result["source_eligibility"] == "passed"
+    assert result["capture"]["source_count"] == 1
+    assert result["sources"][0]["source_sha256"] == hashlib.sha256(source.read_bytes()).hexdigest()
+
+
+@pytest.mark.parametrize("change", ["omit", "reclassify", "role"])
+def test_editing_report_and_hash_cannot_hide_an_actual_unknown_source(snapshot, tmp_path, change):
+    from openavc.drivers.setup_inventory import capture_source_inputs
+    from openavc.drivers.setup_compatibility import declaration_digest
+    source, _, resource, run = snapshot
+    run()
+    source.write_bytes(b"unknown installed source")
+    captured = capture_source_inputs(primary_roots={"root": tmp_path}, library_roots={}, bundles={})
+    report, blobs = captured.report, captured.source_bytes
+    if change == "omit":
+        report["members"].clear()
+        report["source_count"] = report["source_bytes"] = 0
+        blobs.clear()
+    else:
+        row = next(row for row in report["members"] if row["disposition"] == "primary_python")
+        if change == "reclassify":
+            row["disposition"] = "outside_primary_selection"
+            report["source_count"] = report["source_bytes"] = 0
+            blobs.clear()
+        else:
+            row["role"] = "invented"
+    report["census_sha256"] = declaration_digest(
+        {key: value for key, value in report.items() if key != "census_sha256"})
+    result = assess_capture(captured, resource=resource,
+                            expected_resource_sha256=hashlib.sha256(resource.read_bytes()).hexdigest(),
+                            target_sha256="4" * 64)
+    assert result["source_eligibility"] == "refused"
+    selected = [row for row in result["capture"]["members"] if row["disposition"] == "primary_python"]
+    assert len(selected) == 1 and selected[0]["role"] == "root"
 
 
 def test_empty_capture_is_observation_not_installation_acceptance(snapshot, tmp_path):

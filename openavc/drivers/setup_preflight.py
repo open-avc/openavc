@@ -9,7 +9,6 @@ alone never proves coverage of all its setup actions.
 from __future__ import annotations
 
 import argparse
-import copy
 import hashlib
 import json
 import os
@@ -157,11 +156,11 @@ def assess_capture(capture, *, resource: Path, expected_resource_sha256: str,
         SourceCapture, _MAX_ENTRIES, _MAX_SOURCES, _MAX_TOTAL_SOURCE_BYTES,
     )
 
-    if not isinstance(capture, SourceCapture):
+    if type(capture) is not SourceCapture:
         raise ValueError("Supply a canonical source capture.")
-    # The dataclass freezes its attributes, not the dictionaries inside them.
-    # Take one private snapshot and validate its correspondence before using it.
-    report, sources = copy.deepcopy(capture.report), dict(capture.source_bytes)
+    # These are detached views of the capture owner's immutable observations,
+    # not a caller's rehashed JSON report or mutable retained-byte dictionary.
+    report, sources = capture.report, capture.source_bytes
     _object(report, ("schema", "scope", "installation_complete", "activation_authorized",
                      "roots", "members", "source_count", "source_bytes", "census_sha256"))
     census = report.pop("census_sha256")

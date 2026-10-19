@@ -13,13 +13,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import io
+import json
 import os
 from pathlib import Path
 import stat
 import unicodedata
 import zipfile
 
-from openavc.drivers.setup_compatibility import declaration_digest
+from openavc.drivers.setup_compatibility import declaration_digest, declaration_json
 from openavc.drivers.setup_preflight import _file_identity, _read_regular
 from openavc.drivers.source_names import is_driver_file
 
@@ -28,14 +29,33 @@ _MAX_SOURCES = 4096
 _MAX_SOURCE_BYTES = 4 * 1024 * 1024
 _MAX_TOTAL_SOURCE_BYTES = 64 * 1024 * 1024
 _MAX_ARCHIVE_BYTES = 250 * 1024 * 1024
+_CAPTURE_OWNER = object()
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class SourceCapture:
-    """Observed membership and immutable bytes, with no activation authority."""
+    """An owned immutable snapshot; public dictionaries are detached copies.
 
-    report: dict
-    source_bytes: dict[str, bytes]
+    Only capture_source_inputs constructs observations. This is not a sandbox
+    against hostile Python code, nor authentication of a serialized report.
+    """
+
+    _report_json: str
+    _source_blobs: tuple[tuple[str, bytes], ...]
+
+    def __init__(self, report, source_bytes, *, _owner=None):
+        if _owner is not _CAPTURE_OWNER:
+            raise TypeError("Create source observations through capture_source_inputs.")
+        object.__setattr__(self, "_report_json", declaration_json(report))
+        object.__setattr__(self, "_source_blobs", tuple(sorted(source_bytes.items())))
+
+    @property
+    def report(self) -> dict:
+        return json.loads(self._report_json)
+
+    @property
+    def source_bytes(self) -> dict[str, bytes]:
+        return dict(self._source_blobs)
 
 
 def _identity(value):
@@ -283,4 +303,5 @@ Re-run under the owner's write exclusion before stop, comparing the census hash.
             "installation_complete": False, "activation_authorized": False,
             "roots": roots, "members": capture.members,
             "source_count": capture.source_count, "source_bytes": capture.total_bytes}
-    return SourceCapture({**body, "census_sha256": declaration_digest(body)}, capture.sources)
+    return SourceCapture({**body, "census_sha256": declaration_digest(body)}, capture.sources,
+                         _owner=_CAPTURE_OWNER)
