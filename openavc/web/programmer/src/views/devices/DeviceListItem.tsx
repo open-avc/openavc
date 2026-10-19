@@ -1,5 +1,6 @@
 import { useConnectionStore } from "../../store/connectionStore";
 import { DeviceStatusDot } from "../../components/shared/DeviceStatusDot";
+import { driverLabel } from "../../components/shared/driverLabel";
 
 export function DeviceListItem({
   deviceId,
@@ -74,7 +75,9 @@ export function DeviceListItem({
           color: orphaned ? "var(--color-warning, #f59e0b)" : "var(--text-muted)",
           display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap",
         }}>
-          <span>{driver}{orphaned ? " (not installed)" : ""}</span>
+          <span style={{ minWidth: 0, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {driverLabel(driver)}{orphaned ? " (not installed)" : ""}
+          </span>
           {groupNames && groupNames.length > 0 && groupNames.map((gn) => (
             <span key={gn} style={{
               fontSize: 9, padding: "0 4px", borderRadius: 3,

@@ -46,6 +46,7 @@ import { ConfigTableEditor } from "./ConfigTableEditor";
 import { BridgeIrPort } from "./BridgeIrPort";
 import { ApiError, parseApiError } from "../../api/errors";
 import { useConnectionTestResult } from "./useConnectionTestResult";
+import { driverLabel } from "../../components/shared/driverLabel";
 
 export function DeviceDetail({
   deviceId,
@@ -582,7 +583,7 @@ export function DeviceDetail({
         </div>
         <div style={{ marginLeft: 22, display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
           <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
-            {deviceInfo?.driver ?? ""}
+            {driverLabel(deviceInfo?.driver)}
           </span>
           <span style={{ color: "var(--border-color)" }}>&middot;</span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>

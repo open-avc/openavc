@@ -15,6 +15,7 @@ import { useSettled } from "../../components/shared/useSettled";
 import { MonitorControl } from "../../components/shared/MonitorControl";
 import { HelpBanner, UsageRow, buildStateUsageMap, typeBadgeStyle, sectionTitle } from "./variablesShared";
 import { valueText } from "../../components/shared/booleanWords";
+import { driverLabel } from "../../components/shared/driverLabel";
 
 /** What the driver says about one reading — the shape both the row badge and
  *  the Monitor form read. Device-level and child readings share it. */
@@ -266,7 +267,7 @@ export function DeviceStatesSubTab() {
                       }} />
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 500, color: "var(--text-primary)" }}>{d.name}</div>
-                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{d.driver}</div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{driverLabel(d.driver)}</div>
                       </div>
                       <Cpu size={14} style={{ color: "var(--text-muted)", flexShrink: 0, opacity: 0.5 }} />
                     </div>
@@ -287,7 +288,7 @@ export function DeviceStatesSubTab() {
                 {selectedDevice.name}
               </div>
               <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
-                {selectedDevice.driver} &middot; device.{selectedDevice.id}.*
+                {driverLabel(selectedDevice.driver)} &middot; device.{selectedDevice.id}.*
               </div>
             </div>
 

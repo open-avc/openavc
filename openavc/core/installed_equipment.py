@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 
 def model_driver_id(model):
@@ -11,6 +12,27 @@ def model_driver_id(model):
     if not isinstance(model, str) or not model.strip():
         raise InstalledEquipmentError("The product firmware has no product hardware model configured.")
     return "openavc_builtin_" + hashlib.sha256(model.encode("utf-8")).hexdigest()
+
+
+# The shape of every model_driver_id. The Programmer reads a device line by the
+# same rule (components/shared/driverLabel.ts), so the hash never shows there.
+_PRODUCT_HARDWARE_ID = re.compile(r"openavc_builtin_[0-9a-f]{64}")
+
+
+def is_product_hardware_id(driver_id):
+    return isinstance(driver_id, str) and _PRODUCT_HARDWARE_ID.fullmatch(driver_id) is not None
+
+
+def driver_label(driver_id):
+    """A driver as a log line names it."""
+    return "the product hardware" if is_product_hardware_id(driver_id) else f"driver '{driver_id}'"
+
+
+def missing_driver_reason(driver_id):
+    """What a device whose driver is not here says about it."""
+    if is_product_hardware_id(driver_id):
+        return "Product hardware from another product model is not available on this server."
+    return f"Driver '{driver_id}' is not installed"
 
 
 
