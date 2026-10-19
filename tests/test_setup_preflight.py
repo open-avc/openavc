@@ -120,6 +120,37 @@ def test_literal_cli_checks_without_starting_the_server(snapshot, tmp_path, entr
     assert json.loads(result.stdout)["activation_authorized"] is False
 
 
+@pytest.mark.parametrize("changed_after_read", [False, True])
+def test_descriptor_change_time_is_compared_with_the_same_stat_source(tmp_path, monkeypatch, changed_after_read):
+    """Windows 3.12 lstat ctime is creation time; fstat ctime is change time."""
+    import os
+    from types import SimpleNamespace
+
+    from openavc.drivers.setup_preflight import _read_regular
+
+    path = tmp_path / "installed.py"
+    path.write_bytes(b"unchanged source")
+    real_fstat = os.fstat
+    calls = []
+
+    def descriptor_stat(fd):
+        value = real_fstat(fd)
+        fields = {key: getattr(value, key) for key in (
+            "st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns")}
+        fields["st_ctime_ns"] += 1000
+        if calls and changed_after_read:
+            fields["st_ctime_ns"] += 1
+        calls.append(True)
+        return SimpleNamespace(**fields)
+
+    monkeypatch.setattr(os, "fstat", descriptor_stat)
+    if changed_after_read:
+        with pytest.raises(ValueError, match="changed during"):
+            _read_regular(path)
+    else:
+        assert _read_regular(path) == b"unchanged source"
+
+
 @pytest.mark.parametrize('replacement', ['regular', 'fifo'])
 def test_opened_descriptor_cannot_borrow_restored_path_identity(tmp_path, monkeypatch, replacement):
     import os
@@ -141,6 +172,12 @@ def test_opened_descriptor_cannot_borrow_restored_path_identity(tmp_path, monkey
             return real_open(file, flags, *args, **kwargs)
         if replacement == 'fifo':
             assert flags & os.O_NONBLOCK
+        if sys.platform == 'win32':
+            # Windows refuses renaming the open handle (WinError 32). Return
+            # the other real descriptor while the original path is unchanged:
+            # the identity guard must still reject it before reading bytes.
+            swaps.append(True)
+            return real_open(alternate, flags, *args, **kwargs)
         path.rename(saved)
         alternate.rename(path)
         try:

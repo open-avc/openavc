@@ -51,6 +51,13 @@ def _read_regular(path: Path) -> bytes:
         return (value.st_dev, value.st_ino, value.st_mode, value.st_size,
                 value.st_mtime_ns, value.st_ctime_ns)
 
+    def common_identity(value):
+        # Windows pathname stat and fstat do not expose identical ctime/mode
+        # semantics. Compare their shared object facts, then retain each full
+        # snapshot for the same-method mutation checks below.
+        return (value.st_dev, value.st_ino, stat.S_IFMT(value.st_mode),
+                value.st_size, value.st_mtime_ns)
+
     before = path.lstat()
     if not stat.S_ISREG(before.st_mode) or before.st_size > _MAX_BYTES:
         raise ValueError("The supplied source is not a bounded regular file.")
@@ -61,10 +68,10 @@ def _read_regular(path: Path) -> bytes:
     flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
     with os.fdopen(os.open(path, flags), "rb") as stream:
         opened = os.fstat(stream.fileno())
-        if not stat.S_ISREG(opened.st_mode) or identity(opened) != identity(before):
+        if not stat.S_ISREG(opened.st_mode) or common_identity(opened) != common_identity(before):
             raise ValueError("The supplied source changed before inspection; capture it again.")
         data = stream.read(_MAX_BYTES + 1)
-        if (len(data) > _MAX_BYTES or identity(os.fstat(stream.fileno())) != identity(before)
+        if (len(data) > _MAX_BYTES or identity(os.fstat(stream.fileno())) != identity(opened)
                 or identity(path.lstat()) != identity(before)):
             raise ValueError("The supplied source changed during inspection; capture it again.")
     return data
