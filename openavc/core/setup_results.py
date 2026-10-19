@@ -72,6 +72,19 @@ def _json_bytes(value: Any, limit: int) -> bytes:
     return data
 
 
+def encode_setup_credentials(values: dict[str, str]) -> bytes:
+    """Validate the complete credential payload against its reserved byte budget.
+
+    Ingress adapters and the store use the identical JSON representation, which
+    includes field names, punctuation and escaped Unicode/control characters.
+    """
+    if (not isinstance(values, dict) or not values or any(
+            not isinstance(k, str) or not k or not isinstance(v, str) or not v
+            for k, v in values.items())):
+        raise ValueError("Declared nonempty setup credentials required")
+    return _json_bytes(values, 16384)
+
+
 @dataclass(frozen=True)
 class SetupField:
     """A declared diagnostic value, visible only with the protected finding."""
@@ -313,11 +326,7 @@ class SetupResultStore:
     def publish_secret(self, slot: _ResultSlot, values: dict[str, str]) -> int:
         """Called by a declared adapter before saving/reconnecting can raise."""
         self._owned_active(slot)
-        if (not isinstance(values, dict) or not values or any(
-                not isinstance(k, str) or not k or not isinstance(v, str) or not v
-                for k, v in values.items())):
-            raise ValueError("Declared nonempty setup credentials required")
-        data = _json_bytes(values, 16384)
+        data = encode_setup_credentials(values)
         self.prune()
         slot.secret_generation += 1
         if not slot.revoked:

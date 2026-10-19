@@ -28,7 +28,8 @@
     "driver_version": {
       "type": "string",
       "minLength": 1,
-      "maxLength": 160
+      "maxLength": 160,
+      "pattern": "\\S"
     },
     "action_id": {
       "type": "string",
@@ -92,7 +93,8 @@
           "label": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 160
+            "maxLength": 160,
+            "pattern": "\\S"
           },
           "type": {
             "enum": [

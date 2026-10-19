@@ -9,7 +9,7 @@ import json
 import pytest
 
 from openavc.core.setup_legacy import generated_secret, result_from_legacy
-from openavc.core.setup_results import Outcome
+from openavc.core.setup_results import Outcome, SetupCapacityError, SetupResultStore
 from openavc.drivers.setup_compatibility import (
     SetupCompatibility, declaration_digest, parse_descriptors,
 )
@@ -121,6 +121,27 @@ def test_optional_absent_and_reported_null_diagnostics_remain_distinct():
     present = result_from_legacy(selected, {"passed": True, "note": "", "firmware": None}).payload()
     assert len(absent["findings"]) == 1
     assert present["findings"][1]["fields"][0]["value"] is None
+
+
+@pytest.mark.parametrize("value,accepted", [("a" * 16374, True), ("a" * 16375, False),
+    ("é" * 2729, True), ("é" * 2730, False), ('"' * 8192, False)])
+def test_extracted_credentials_fit_the_actual_reserved_json_bytes(value, accepted):
+    selected = SetupCompatibility.parse(descriptor("pairing/v1", {"paired": "paired"}, generated_secret="key"))
+    store = SetupResultStore()
+    target = object()
+    def current():
+        return True
+    prepared = store.prepare({}, target=target, original_grant=current, current=current)
+    slot = store.claim(prepared.capability, {}, target=target, current=current)
+    if not accepted:
+        with pytest.raises(SetupCapacityError):
+            generated_secret(selected, {"key": value})
+        with pytest.raises(SetupCapacityError):
+            store.publish_secret(slot, {"key": value})
+        return
+    secret = generated_secret(selected, {"key": value})
+    assert store.publish_secret(slot, secret) == 1
+    assert store.retrieve(prepared.capability, current=current)["values"] == secret
 
 
 @pytest.mark.parametrize("change", [

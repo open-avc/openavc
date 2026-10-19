@@ -160,7 +160,7 @@ def parse_descriptors(values) -> tuple[SetupCompatibility, ...]:
 
 def descriptor_schema() -> dict:
     """Generate editor schema from the same finite profile/diagnostic vocabulary."""
-    text = {"type": "string", "minLength": 1, "maxLength": 160}
+    text = {"type": "string", "minLength": 1, "maxLength": 160, "pattern": r"\S"}
     key = {**text, "pattern": "^" + _KEY.pattern.replace("\\Z", "$")}
     digest = {"type": "string", "pattern": "^[0-9a-f]{64}$"}
     required = ("schema", "driver_id", "driver_version", "action_id", "source_sha256",

@@ -8,7 +8,7 @@ Generated credentials are extracted separately before diagnostics are constructe
 from __future__ import annotations
 
 from openavc.core.outbound_messages import RoomText
-from openavc.core.setup_results import Outcome, SetupField, SetupFinding, SetupResult
+from openavc.core.setup_results import Outcome, SetupField, SetupFinding, SetupResult, encode_setup_credentials
 from openavc.drivers.setup_compatibility import SetupCompatibility
 
 
@@ -18,9 +18,11 @@ def generated_secret(descriptor: SetupCompatibility, values: dict) -> dict[str, 
     if key is None or key not in values:
         return None
     value = values[key]
-    if type(value) is not str or not value or len(value.encode("utf-8")) > 16384:
+    if type(value) is not str:
         raise ValueError("Declared generated credential is invalid")
-    return {key: value}
+    secret = {key: value}
+    encode_setup_credentials(secret)
+    return secret
 
 
 def result_from_legacy(descriptor: SetupCompatibility, raw: dict) -> SetupResult:
