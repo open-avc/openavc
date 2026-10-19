@@ -16,13 +16,17 @@ Each valid driver is registered in the global driver registry.
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
+import hashlib
 import importlib.util
 import inspect
+import json
 import os
 import sys
 import tempfile
 from pathlib import Path
 from typing import Sequence, Any
+import weakref
 
 import yaml
 
@@ -58,6 +62,80 @@ DRIVER_EXTENSION = ".avcdriver"
 # alongside underscore-prefixed files (which are conventional
 # helpers / private modules).
 COMPANION_SUFFIXES: tuple[str, ...] = ("_discovery.py", "_sim.py")
+
+
+@dataclass(frozen=True)
+class PythonDriverSource:
+    """Identity of the primary source executed for one loaded setup handler.
+
+    This receipt does not qualify imported helper modules or sandbox extension
+    code. Compatibility declarations must account for any such dependencies.
+    """
+
+    path: str
+    sha256: str
+    declaration: str
+
+
+_PYTHON_SOURCES: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+
+
+def _declaration(info: Any) -> str:
+    return json.dumps(info, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def loaded_python_source(driver: Any) -> PythonDriverSource | None:
+    """Return the loader's receipt only while class, handler and metadata match.
+
+    Never re-read a path to identify an already running class. An instance-local
+    handler replacement or a metadata-only impersonation cannot borrow a receipt.
+    """
+    cls = driver if isinstance(driver, type) else type(driver)
+    entry = _PYTHON_SOURCES.get(cls)
+    if entry is None:
+        return None
+    receipt, original_handler = entry
+    handler = getattr(driver, "run_setup_action", None)
+    handler = getattr(handler, "__func__", handler)
+    if handler is not original_handler():
+        return None
+    try:
+        if _declaration(driver.DRIVER_INFO) != receipt.declaration:
+            return None
+    except (TypeError, ValueError, AttributeError):
+        return None
+    return receipt
+
+
+def _record_python_source(driver_class: type, filepath: Path, source: bytes) -> None:
+    handler = getattr(driver_class, "run_setup_action", None)
+    handler = getattr(handler, "__func__", handler)
+    # An inherited/imported handler is not defined by this primary snapshot.
+    if not inspect.isfunction(handler) or handler.__module__ != driver_class.__module__:
+        return
+    if handler.__code__.co_filename != str(filepath):
+        return
+    try:
+        declaration = _declaration(driver_class.DRIVER_INFO)
+    except (TypeError, ValueError):
+        return
+    _PYTHON_SOURCES[driver_class] = (
+        PythonDriverSource(str(filepath), hashlib.sha256(source).hexdigest(), declaration),
+        weakref.ref(handler),
+    )
+
+
+def _execute_python_source(filepath: Path, module_name: str, source: bytes):
+    """Execute one captured source snapshot, retaining normal module metadata."""
+    spec = importlib.util.spec_from_file_location(module_name, filepath)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not create module spec for {filepath}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    # SourceFileLoader can select timestamp-valid but stale bytecode. The code
+    # object and receipt must describe exactly the same captured bytes instead.
+    exec(compile(source, str(filepath), "exec", dont_inherit=True), module.__dict__)
+    return module
 
 
 def declared_driver_info(filename: str, content: bytes) -> dict[str, Any]:
@@ -408,25 +486,26 @@ def load_python_driver_file(filepath: Path) -> type | None:
     """
     Load a Python driver module from a .py file and return the BaseDriver subclass.
 
-    Uses importlib to dynamically load the module, then scans it for classes
+    Captures source bytes to load the module, then scans it for classes
     that are subclasses of BaseDriver (but not BaseDriver itself).
 
     Returns the driver class, or None if no valid driver was found.
     """
+    try:
+        source = filepath.read_bytes()
+    except OSError:
+        log.exception(f"Failed to read Python driver from {filepath}")
+        return None
+    return _load_python_driver_snapshot(filepath, source)
+
+
+def _load_python_driver_snapshot(filepath: Path, source: bytes) -> type | None:
     from openavc.drivers.base import BaseDriver
 
     module_name = f"openavc_driver_{filepath.stem}"
 
     try:
-        spec = importlib.util.spec_from_file_location(module_name, filepath)
-        if spec is None or spec.loader is None:
-            log.warning(f"Could not create module spec for {filepath}")
-            return None
-
-        module = importlib.util.module_from_spec(spec)
-        # Add to sys.modules so relative imports within the driver work
-        sys.modules[module_name] = module
-        spec.loader.exec_module(module)
+        module = _execute_python_source(filepath, module_name, source)
     except ModuleNotFoundError as exc:
         # A driver installed before the platform moved under `openavc` still
         # says `from server.…` / `from simulator.…`, and those names are gone.
@@ -444,7 +523,7 @@ def load_python_driver_file(filepath: Path) -> type | None:
             log.exception(f"Failed to load Python driver from {filepath}")
         sys.modules.pop(module_name, None)
         return None
-    except Exception:  # Catch-all: exec_module runs arbitrary driver code
+    except Exception:  # Catch-all: importing runs arbitrary driver code
         log.exception(f"Failed to load Python driver from {filepath}")
         # Drop the half-initialized module: leaving it resident for the process
         # lifetime leaks state, defeats the "module not loaded" health check in
@@ -469,6 +548,7 @@ def load_python_driver_file(filepath: Path) -> type | None:
         log.warning(f"No BaseDriver subclass with DRIVER_INFO found in {filepath}")
     else:
         _warn_python_driver_info_issues(driver_class)
+        _record_python_source(driver_class, filepath, source)
 
     return driver_class
 
@@ -959,13 +1039,8 @@ def reload_python_driver(
     # --- Step 1: Validate new code by importing into a temp module ---
     new_driver_class = None
     try:
-        spec = importlib.util.spec_from_file_location(temp_module_name, filepath)
-        if spec is None or spec.loader is None:
-            return {"status": "error", "error": f"Could not create module spec for {filepath}"}
-
-        temp_module = importlib.util.module_from_spec(spec)
-        sys.modules[temp_module_name] = temp_module
-        spec.loader.exec_module(temp_module)
+        source = filepath.read_bytes()
+        temp_module = _execute_python_source(filepath, temp_module_name, source)
 
         # Find BaseDriver subclass
         for _name, obj in inspect.getmembers(temp_module, inspect.isclass):
@@ -1028,14 +1103,14 @@ def reload_python_driver(
 
     # --- Step 3: Remove old module and load properly ---
     # Keep a handle on the old module so we can restore it if the canonical
-    # re-import fails after Step-1 validation already passed (a TOCTOU edit /
-    # delete of the file between validation and here, or an environment error).
+    # execution fails after Step-1 validation already passed (an environment error
+    # or driver code with different behavior under the canonical module name).
     # Without the restore, sys.modules would be left empty while the old class
     # stays registered — registry and sys.modules disagreeing, with no repair.
     old_module = sys.modules.get(module_name)
     sys.modules.pop(module_name, None)
 
-    final_class = load_python_driver_file(filepath)
+    final_class = _load_python_driver_snapshot(filepath, source)
     if final_class is None:
         # Reload failed after validation passed. The old class is still
         # registered (Step 4 hasn't run), so restore its module to keep

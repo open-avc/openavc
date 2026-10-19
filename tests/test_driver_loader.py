@@ -880,11 +880,11 @@ def test_reload_step3_failure_preserves_old_driver(tmp_path, monkeypatch):
     old_module = sys.modules.get(module_name)
     assert old_module is not None
 
-    # Simulate the canonical re-import failing after Step-1 validation passed
-    # (a TOCTOU edit/delete of the file between validation and reload).
+    # Simulate canonical execution failing after Step-1 validation passed
+    # (driver code can behave differently under its canonical module name).
     import openavc.drivers.driver_loader as dl
 
-    monkeypatch.setattr(dl, "load_python_driver_file", lambda fp: None)
+    monkeypatch.setattr(dl, "_load_python_driver_snapshot", lambda fp, source: None)
 
     try:
         result = reload_python_driver(filepath)
