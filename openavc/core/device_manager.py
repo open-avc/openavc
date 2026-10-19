@@ -16,6 +16,7 @@ import random
 import time
 from collections.abc import Callable
 from typing import Any, TYPE_CHECKING
+from urllib.parse import urlsplit
 
 from openavc.core.connection_fault import (
     BRIDGE_OFFLINE,
@@ -197,6 +198,25 @@ _MAX_RESTART_WINDOW_SECONDS = 600.0
 # Bounded by the site's own interval where that is already tighter (see
 # _reconnect_delay for why this one case earns a shorter wait at all).
 _RESTART_RECONNECT_INTERVAL = 2.0
+
+
+def _dial_target(host: Any, port: Any) -> tuple[Any, Any]:
+    """The name and port the reconnect check dials for a device's host.
+
+    A host field may hold a URL (some drivers ask for a service's address
+    that way): the check dials its name, on its own port or the scheme's,
+    as the client will. Any other host is dialed as it is.
+    """
+    text = str(host or "").strip()
+    if "://" not in text:
+        return host, port
+    parts = urlsplit(text)
+    try:
+        own_port = parts.port
+    except ValueError:
+        own_port = None
+    scheme_port = {"https": 443, "http": 80}.get(parts.scheme.lower())
+    return parts.hostname or "", own_port or scheme_port or port
 
 
 def _probe_fault(
@@ -2452,6 +2472,7 @@ class DeviceManager:
         host, port, transport = self._connection_descriptor(driver)
         if (transport or "").lower() not in _PROBE_FIRST_TRANSPORTS:
             return None
+        host, port = _dial_target(host, port)
         if not host or port in (None, "", 0):
             return None
         # From the adapter the connect itself will use (Reach devices through).
@@ -2459,8 +2480,12 @@ class DeviceManager:
 
         try:
             bind = control_bind_address(host)
-        except ConnectionFaultError as exc:
-            return exc
+        except ConnectionFaultError:
+            # The chosen adapter has no address. The connect decides: every
+            # connection the platform builds refuses with the same sentence
+            # before it dials, and a driver may keep a connection off the
+            # adapter (a cloud service is not equipment on site).
+            return None
         try:
             _, writer = await asyncio.wait_for(
                 asyncio.open_connection(
