@@ -902,6 +902,27 @@
     },
     {
       "actions": [],
+      "declaration_sha256": "4366f0172bb4af1f9bfc847ef66db15d1469862918741b141d5c34a8c49bb6f9",
+      "driver_id": "epson_escvp",
+      "driver_version": "1.5.0",
+      "source_sha256": "0e1be4a56d31bdb0821d1b18c4b598a40b99c70cd7172e71f6d95e6d53e385b1"
+    },
+    {
+      "actions": [],
+      "declaration_sha256": "c691479021ca7b96fab6b61244f37aa6d1c258e688b937544b31ab836cebdf1e",
+      "driver_id": "epson_escvp",
+      "driver_version": "1.5.0",
+      "source_sha256": "18d695cec41e26d401124b8b33a3091f7242bf4299a46443d78b0768e46cda29"
+    },
+    {
+      "actions": [],
+      "declaration_sha256": "5abe4604bbbb0790751f46b19f55ead6d5b2a1bbbfc9eb8024a5c87a4be810a7",
+      "driver_id": "epson_escvp",
+      "driver_version": "1.5.0",
+      "source_sha256": "a96efb9b1915d51ac8cfd0534baeaf75456a4b542f78515b60cae27262bf458e"
+    },
+    {
+      "actions": [],
       "declaration_sha256": "f3bab1be033a261072f6d9a913e9b16c9a2c0d671e3fb237113df6d926612e97",
       "driver_id": "extron_nav",
       "driver_version": "1.1.3",
@@ -1322,5 +1343,5 @@
       "source_sha256": "aece22862625c6cb27525de23c23faddd15b8e7e185d9a5630b278094db90186"
     }
   ],
-  "source_revision": "9316e97eb470fac05a231eb04120671b0e1cfef5"
+  "source_revision": "727f989add754680d3c3ad5a27d22fd008c6e4bc"
 }
