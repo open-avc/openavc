@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from openavc.core.outbound_messages import MessageScope, OutboundPolicy, Recipient, RoomText
+from openavc.core.outbound_messages import MessageScope, OutboundPolicy, Recipient, RoomText, SetupScope
 
 
 def recipient(kind="panel", **kwargs):
@@ -167,6 +167,23 @@ def test_authority_verifier_failure_is_closed_and_does_not_log_secret(caplog):
         raise RuntimeError("private-verifier-data")
     assert OutboundPolicy().project({"type": "ping"}, recipient(current=broken)) is None
     assert "private-verifier-data" not in caplog.text
+
+
+@pytest.mark.parametrize("field", [
+    {"label": "Detail", "value": {"nested": "private"}},
+    {"label": "Detail", "value": float("nan")},
+    {"label": " ", "value": "private"},
+    {"label": "Detail", "value": "private", "credential": "hidden"},
+])
+def test_setup_diagnostic_fields_refuse_nested_or_undeclared_data(field):
+    scope = SetupScope()
+    client = recipient("programmer", has_scope=lambda value: value is scope)
+    message = {"type": "action.progress", "run_id": "run", "status": "terminal", "progress": None,
+               "secret": {"state": "none", "generation": 0}, "result": {
+                   "outcome": "unverified", "summary": "Check device", "config_save": "unknown",
+                   "reconnect": "not_requested", "findings": [{"code": "check.details",
+                       "outcome": "unverified", "detail": "", "fields": [field]}]}}
+    assert OutboundPolicy().project(message, client, targeted=True, scope=scope) is None
 
 
 def test_replacement_authority_cannot_release_old_queued_bytes():

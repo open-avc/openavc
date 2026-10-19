@@ -27,7 +27,7 @@ from openavc.core.outbound_messages import RoomText
 from openavc.core.project_loader import DeviceConfig, ProjectConfig, ProjectMeta
 from openavc.core.setup_actions import SetupActionRunner, SetupContractRequired, SetupHandshakeRequired
 from openavc.core.setup_results import (
-    Outcome, SetupConflict, SetupProgress, SetupResult, SetupUnavailable,
+    Outcome, SetupConflict, SetupField, SetupFinding, SetupProgress, SetupResult, SetupUnavailable,
 )
 from openavc.core.state_store import StateStore
 from openavc.core.ws_hub import WSHub
@@ -66,7 +66,11 @@ class AcmePairingDriver(BaseDriver):
             await progress(SetupProgress("pair.saving", "Saving", 95))
             await self.request_config_update({"app_key": "invented-generated-key"})
             await self.request_reconnect()
-        return SetupResult(Outcome.SUCCEEDED, RoomText("Pairing complete."))
+        return SetupResult(Outcome.SUCCEEDED, RoomText("Pairing complete."), (
+            SetupFinding("pair.details", Outcome.SUCCEEDED, "Device report", (
+                SetupField("Checks", 0), SetupField("Authenticated", False), SetupField("Firmware", None),
+            )),
+        ))
 
 
 @pytest.fixture
@@ -362,6 +366,10 @@ async def test_http_subscription_routes_progress_to_the_exact_programmer_without
     await rig.engine.ws.flush_sends()
     assert requester.frames[-1]["status"] == "terminal"
     assert requester.frames[-1]["result"]["outcome"] == "succeeded"
+    assert requester.frames[-1]["result"]["findings"][0]["fields"] == [
+        {"label": "Checks", "value": 0}, {"label": "Authenticated", "value": False},
+        {"label": "Firmware", "value": None},
+    ]
     assert all(frame["run_id"] == prepared["run_id"] for frame in requester.frames)
     assert not other.frames and not panel.frames and not preview.frames
     assert "invented-generated-key" not in str(requester.frames)

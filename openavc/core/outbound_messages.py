@@ -270,9 +270,19 @@ def _setup_result(value):
         raise InvalidMessage("typed setup result required")
     findings = []
     for finding in _list(value["findings"]):
-        if not isinstance(finding, dict) or set(finding) != {"code", "outcome", "detail"} or finding["outcome"] not in outcomes:
+        if (not isinstance(finding, dict)
+                or set(finding) not in ({"code", "outcome", "detail"}, {"code", "outcome", "detail", "fields"})
+                or finding["outcome"] not in outcomes):
             raise InvalidMessage("typed setup finding required")
-        findings.append(_fields(finding, {"code": _text, "outcome": _text, "detail": _text}))
+        projected = _fields(finding, {"code": _text, "outcome": _text, "detail": _text})
+        if "fields" in finding:
+            projected["fields"] = []
+            for field in _list(finding["fields"]):
+                if (not isinstance(field, dict) or set(field) != {"label", "value"}
+                        or not _text(field["label"]).strip()):
+                    raise InvalidMessage("typed setup diagnostic field required")
+                projected["fields"].append(_fields(field, {"label": _text, "value": _primitive}))
+        findings.append(projected)
     return {**_fields(value, {"outcome": _text, "summary": _text, "config_save": _text, "reconnect": _text}),
             "findings": findings}
 

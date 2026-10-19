@@ -24,7 +24,8 @@ class AcmePairing(BaseDriver):
         "id": "acme_pairing", "name": "Acme Pairing Fixture", "version": "1.0.0",
         "manufacturer": "Acme", "category": "controller", "transport": "tcp",
         "state_variables": {}, "commands": {},
-        "config_schema": {"effect_path": {"type": "string"}, "fail_after_save": {"type": "boolean"}, "app_key": {"type": "password"}},
+        "config_schema": {"effect_path": {"type": "string"}, "release_path": {"type": "string"},
+                          "fail_after_save": {"type": "boolean"}, "app_key": {"type": "password"}},
         "actions": [{"id": "pair", "label": "Pair Device", "kind": "setup", "result_contract": "setup/v1",
                      "availability": "always", "params": {"save": {"type": "boolean", "label": "Save settings", "default": False}}}],
     }
@@ -41,7 +42,11 @@ class AcmePairing(BaseDriver):
             stream.write("paired\\n")
         self.register_setup_secret({"app_key": "invented-browser-key"})
         await progress(SetupProgress("pair.created", "Device paired", 100))
-        await asyncio.sleep(0.15)
+        if self.config.get("release_path"):
+            while not Path(self.config["release_path"]).exists():
+                await asyncio.sleep(0.01)
+        else:
+            await asyncio.sleep(0.15)
         if params.get("save"):
             await progress(SetupProgress("pair.saving", "Saving settings", 90))
             engine = self._setup_context._engine
@@ -73,13 +78,16 @@ class AcmePairing(BaseDriver):
 ])
 def test_setup_result_through_wizard(server_factory, page, tmp_path, case, claimed, save, fail, lost):
     effect = tmp_path / "equipment-effects.txt"
+    release = tmp_path / "allow-completion"
+    delayed = case == "unsaved-signed-in"
     env = {}
     if claimed:
         env.update(OPENAVC_PROGRAMMER_USERNAME="admin", OPENAVC_PROGRAMMER_PASSWORD="fixture-setup-password",
                    OPENAVC_ALLOW_ANONYMOUS="false")
     server = server_factory(env=env, drivers={"acme_pairing.py": DRIVER}, project_overrides={
         "devices": [{"id": "pairing", "name": "Pairing fixture", "driver": "acme_pairing",
-                     "config": {"effect_path": str(effect), "fail_after_save": fail}}],
+                     "config": {"effect_path": str(effect), "fail_after_save": fail,
+                                "release_path": str(release) if delayed else ""}}],
     })
     frames = []
     page.on("websocket", lambda ws: ws.on("framereceived", lambda frame: frames.append(frame)))
@@ -99,13 +107,28 @@ def test_setup_result_through_wizard(server_factory, page, tmp_path, case, claim
     page.get_by_test_id("quick-action-pair").click()
     dialog = page.get_by_role("dialog", name="Pair Device", exact=True)
     dialog.get_by_role("combobox").select_option("true" if save else "false")
-    dialog.get_by_role("button", name="Start", exact=True).click()
+    if delayed:
+        # Neither initial HTTP response may deliver the result. Completion must
+        # arrive through the already established, capability-bound subscription.
+        with page.expect_response("**/setup-actions/subscribe") as subscribed, page.expect_response("**/actions/pair/start") as started:
+            dialog.get_by_role("button", name="Start", exact=True).click()
+        assert subscribed.value.status == started.value.status == 200
+        assert subscribed.value.json()["status"] != "terminal"
+        assert started.value.json()["status"] != "terminal"
+        release.write_text("complete")
+    else:
+        dialog.get_by_role("button", name="Start", exact=True).click()
     expect(dialog.get_by_text("Outcome not confirmed" if fail else "Completed", exact=True)).to_be_visible(timeout=15000)
     assert effect.read_text().splitlines() == ["paired"]
     assert "invented-browser-key" not in str(frames)
     if not fail:
         for value in ("0", "No", "Not reported", "<example>"):
             expect(dialog.get_by_text(value, exact=True)).to_be_visible()
+    if delayed:
+        terminal = [json.loads(frame) for frame in frames if isinstance(frame, str)
+                    and json.loads(frame).get("type") == "action.progress"
+                    and json.loads(frame).get("status") == "terminal"]
+        assert terminal and terminal[-1]["result"]["findings"][0]["fields"][0]["value"] == 0
     if save and not fail:
         expect(dialog.get_by_text("Generated credentials were saved with the device settings.")).to_be_visible()
         expect(dialog.get_by_role("button", name="Reveal credentials")).to_have_count(0)
@@ -120,7 +143,7 @@ def test_setup_result_through_wizard(server_factory, page, tmp_path, case, claim
             expect(dialog.get_by_text("Not confirmed", exact=True)).to_be_visible()
         dialog.get_by_role("button", name="Copy app_key").click()
         expect(dialog.get_by_text("Copied!")).to_be_visible()
-    out = Path(__file__).resolve().parents[2] / "build/outbound-policy/browser-typed-fields"
+    out = Path(__file__).resolve().parents[2] / "build/outbound-policy/browser-typed-fields-live"
     out.mkdir(parents=True, exist_ok=True)
     page.screenshot(path=str(out / f"{case}.png"), full_page=True)
     if not save or fail:
