@@ -116,3 +116,29 @@ def test_only_unchanged_loaded_class_and_handler_can_use_the_receipt(path, monke
     assert loader.loaded_python_source(cls) is not None
     monkeypatch.setitem(cls.DRIVER_INFO, "version", "2.0")
     assert loader.loaded_python_source(cls) is None
+
+
+@pytest.mark.parametrize("mutation", ["code", "defaults", "kwdefaults"])
+def test_in_place_executable_mutation_invalidates_source_identity(path, mutation):
+    path.write_bytes(source("old"))
+    cls = loader.load_python_driver_file(path)
+    handler = cls.run_setup_action
+    assert loader.loaded_python_source(cls) is not None
+
+    async def changed(self, action, params, progress):
+        return "changed"
+
+    if mutation == "code":
+        handler.__code__ = changed.__code__
+    elif mutation == "defaults":
+        handler.__defaults__ = (None,)
+    else:
+        handler.__kwdefaults__ = {"extra": None}
+    assert loader.loaded_python_source(cls) is None
+
+
+def test_mutable_defaults_do_not_receive_primary_source_qualification(path):
+    path.write_bytes(source("old").replace(b"params, progress):", b"params, progress=[]):"))
+    cls = loader.load_python_driver_file(path)
+    assert cls is not None
+    assert loader.loaded_python_source(cls) is None

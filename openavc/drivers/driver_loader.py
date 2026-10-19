@@ -84,6 +84,22 @@ def _declaration(info: Any) -> str:
     return json.dumps(info, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
+def _handler_defaults(handler):
+    def immutable(value):
+        if value is None or type(value) in (str, bytes, bool, int, float):
+            return (type(value).__name__, value.hex() if type(value) is float else value)
+        if type(value) is tuple:
+            return ("tuple", tuple(immutable(item) for item in value))
+        raise ValueError("Mutable setup handler defaults are not source-qualified")
+
+    if handler.__closure__:
+        raise ValueError("Setup handler closures are not primary-source-qualified")
+    return (
+        immutable(handler.__defaults__),
+        tuple((key, immutable(value)) for key, value in sorted((handler.__kwdefaults__ or {}).items())),
+    )
+
+
 def loaded_python_source(driver: Any) -> PythonDriverSource | None:
     """Return the loader's receipt only while class, handler and metadata match.
 
@@ -94,12 +110,16 @@ def loaded_python_source(driver: Any) -> PythonDriverSource | None:
     entry = _PYTHON_SOURCES.get(cls)
     if entry is None:
         return None
-    receipt, original_handler = entry
+    receipt, original_handler, code, defaults = entry
     handler = getattr(driver, "run_setup_action", None)
     handler = getattr(handler, "__func__", handler)
     if handler is not original_handler():
         return None
+    if handler.__code__ is not code:
+        return None
     try:
+        if _handler_defaults(handler) != defaults:
+            return None
         if _declaration(driver.DRIVER_INFO) != receipt.declaration:
             return None
     except (TypeError, ValueError, AttributeError):
@@ -117,11 +137,13 @@ def _record_python_source(driver_class: type, filepath: Path, source: bytes) -> 
         return
     try:
         declaration = _declaration(driver_class.DRIVER_INFO)
+        defaults = _handler_defaults(handler)
     except (TypeError, ValueError):
         return
     _PYTHON_SOURCES[driver_class] = (
         PythonDriverSource(str(filepath), hashlib.sha256(source).hexdigest(), declaration),
         weakref.ref(handler),
+        handler.__code__, defaults,
     )
 
 
