@@ -9,6 +9,7 @@ import { PanelRequestBanner } from "./components/shared/PanelRequestBanner";
 import { PanelAccessNotice } from "./components/shared/PanelAccessNotice";
 import { ListenNotice } from "./components/shared/ListenNotice";
 import { DeviceAuditHost } from "./views/devices/audit/DeviceAuditHost";
+import { RetainedSetupHost } from "./views/devices/RetainedSetupHost";
 import { Login } from "./components/Login";
 import { Setup } from "./components/Setup";
 import { DashboardView } from "./views/DashboardView";
@@ -300,6 +301,7 @@ function AuthedApp() {
       {showShortcuts && <ShortcutsPanel onClose={() => setShowShortcuts(false)} />}
       <MissingDriversWatcher />
       <DeviceAuditHost />
+      <RetainedSetupHost />
     </div>
   );
 }

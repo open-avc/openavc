@@ -4,10 +4,11 @@ import { Dialog } from "../../components/shared/Dialog";
 import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
 import { CopyButton } from "../../components/shared/CopyButton";
 import type { DeviceAction } from "../../api/types";
-import type { SetupStage } from "../../api/setupClient";
+import type { RetainedSetup, SetupStage } from "../../api/setupClient";
 import { ActionParamFields, buildParams, hasMissingRequired, seedParamValues } from "./actionParamFields";
 import { hasInvalidParams } from "../../components/shared/paramValidation";
 import { useSetupRun } from "./useSetupRun";
+import { useProjectStore } from "../../store/projectStore";
 
 const stageLabel: Record<SetupStage, string> = {
   not_requested: "Not requested", reported_complete: "Reported complete", failed: "Failed", unknown: "Not confirmed",
@@ -18,12 +19,16 @@ const buttonStyle: React.CSSProperties = {
 };
 
 /** A prepared run is retained until close. Recovery reads it, never pairs again. */
-export function SetupActionWizard({ deviceId, action, onClose, onComplete }: {
+export function SetupActionWizard({ deviceId, action, onClose, onComplete, retained }: {
   deviceId: string; action: DeviceAction; onClose: () => void; onComplete?: () => void;
+  retained?: RetainedSetup;
 }) {
-  const [values, setValues] = useState<Record<string, string>>(() => seedParamValues(action.params));
+  const deviceName = useProjectStore((s) => s.project?.devices.find((device) => device.id === deviceId)?.name ?? deviceId);
+  const [values, setValues] = useState<Record<string, string>>(() => retained
+    ? Object.fromEntries(Object.entries(retained.params).map(([key, value]) => [key, String(value ?? "")]))
+    : seedParamValues(action.params));
   const [confirmClose, setConfirmClose] = useState(false);
-  const run = useSetupRun(deviceId, action.id);
+  const run = useSetupRun(deviceId, action.id, retained);
   const result = run.status?.result;
   const terminal = run.status?.status === "terminal";
   const input = !run.status && !run.pending;
@@ -31,12 +36,13 @@ export function SetupActionWizard({ deviceId, action, onClose, onComplete }: {
 
   useEffect(() => { if (run.status?.run_id) setValues({}); }, [run.status?.run_id]);
 
-  const close = useCallback(() => {
+  const close = useCallback(async () => {
+    if (!await run.discardRetained()) { setConfirmClose(false); return; }
     run.dispose();
     setValues({});
     onComplete?.();
     onClose();
-  }, [run.dispose, onComplete, onClose]);
+  }, [run.dispose, run.discardRetained, onComplete, onClose]);
   const requestClose = () => {
     if (run.needsRetention || run.pending) setConfirmClose(true);
     else close();
@@ -45,6 +51,8 @@ export function SetupActionWizard({ deviceId, action, onClose, onComplete }: {
   return <>
     <Dialog title={action.label} onClose={requestClose}>
       {input ? <>
+        {retained && <><p>Device: {deviceName}</p>
+          <p role="status">Your setup inputs were retained. Setup has not started. Review them, then choose Start.</p></>}
         <p style={{ marginBottom: "var(--space-lg)", color: "var(--text-secondary)" }}>
           {typeof action.confirm === "string" ? action.confirm :
             "This runs the device's setup action. It may change settings or reconnect the device."}

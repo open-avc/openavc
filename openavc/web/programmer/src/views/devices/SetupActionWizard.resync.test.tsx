@@ -19,11 +19,11 @@ vi.mock("../../api/restClient", () => ({
   ConflictError: class ConflictError extends Error {},
 }));
 
-const { prepareSetup, startSetup, setupStatus, subscribeSetup, unsubscribeSetup, retrieveSetup, acknowledgeSetup } = vi.hoisted(() => ({
+const { prepareSetup, startSetup, setupStatus, subscribeSetup, unsubscribeSetup, retrieveSetup, acknowledgeSetup, discardSetupTransfer } = vi.hoisted(() => ({
   prepareSetup: vi.fn(), startSetup: vi.fn(), setupStatus: vi.fn(), subscribeSetup: vi.fn(),
-  unsubscribeSetup: vi.fn(), retrieveSetup: vi.fn(), acknowledgeSetup: vi.fn(),
+  unsubscribeSetup: vi.fn(), retrieveSetup: vi.fn(), acknowledgeSetup: vi.fn(), discardSetupTransfer: vi.fn(),
 }));
-vi.mock("../../api/setupClient", () => ({ prepareSetup, startSetup, setupStatus, subscribeSetup, unsubscribeSetup, retrieveSetup, acknowledgeSetup }));
+vi.mock("../../api/setupClient", () => ({ prepareSetup, startSetup, setupStatus, subscribeSetup, unsubscribeSetup, retrieveSetup, acknowledgeSetup, discardSetupTransfer }));
 
 const { wsHandlers, disconnectHandlers } = vi.hoisted(() => ({
   disconnectHandlers: [] as Array<() => void>,
@@ -99,6 +99,7 @@ beforeEach(() => {
   unsubscribeSetup.mockReset().mockResolvedValue({ unsubscribed: true });
   retrieveSetup.mockReset().mockResolvedValue({ generation: 1, values: { app_key: "invented-secret" } });
   acknowledgeSetup.mockReset().mockResolvedValue({ acknowledged: 1 });
+  discardSetupTransfer.mockReset().mockResolvedValue({ discarded: "r1" });
   getProject.mockReset().mockImplementation(async () => ({
     ...project(22),
     _etag: '"after"',
@@ -306,5 +307,67 @@ describe("prepared setup attempt ownership", () => {
     }
     expect(prepareSetup).toHaveBeenCalledTimes(1);
     expect(startSetup).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("retained inputs after an older page refresh", () => {
+  const resumedAction: DeviceAction = { ...action, params: {
+    note: { type: "string", label: "Note", required: true },
+    password: { type: "password", label: "Device password", required: true },
+    save: { type: "boolean", label: "Save settings" },
+  } };
+  const retained = () => ({ run_id: "r1", status: "prepared" as const,
+    capability: "private-capability", device_id: "dev1", action: resumedAction,
+    params: { note: "retained-note", password: "invented-input", save: false } });
+
+  it("shows retained inputs without starting and uses the same reservation on Start", async () => {
+    render(<SetupActionWizard deviceId="dev1" action={resumedAction} retained={retained()} onClose={() => {}} />);
+    expect(screen.getByDisplayValue("retained-note")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("invented-input")).toHaveAttribute("type", "password");
+    expect(screen.getByRole("combobox")).toHaveValue("false");
+    expect(prepareSetup).not.toHaveBeenCalled();
+    expect(startSetup).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Start", exact: true }));
+    await waitFor(() => expect(startSetup).toHaveBeenCalledWith("dev1", action.id,
+      "private-capability", retained().params));
+    expect(prepareSetup).not.toHaveBeenCalled();
+    expect(discardSetupTransfer).not.toHaveBeenCalled();
+  });
+
+  it("discards an unstarted reservation before preparing edited inputs", async () => {
+    let discard!: () => void;
+    discardSetupTransfer.mockImplementationOnce(() => new Promise<void>((resolve) => { discard = resolve; }));
+    render(<SetupActionWizard deviceId="dev1" action={resumedAction} retained={retained()} onClose={() => {}} />);
+    await userEvent.type(screen.getByDisplayValue("retained-note"), " changed");
+    await userEvent.click(screen.getByRole("button", { name: "Start", exact: true }));
+    expect(discardSetupTransfer).toHaveBeenCalledWith("r1");
+    expect(prepareSetup).not.toHaveBeenCalled();
+    expect(startSetup).not.toHaveBeenCalled();
+    await act(async () => discard());
+    await waitFor(() => expect(startSetup).toHaveBeenCalled());
+    expect(prepareSetup).toHaveBeenCalledWith("dev1", action.id, { ...retained().params, note: "retained-note changed" });
+  });
+
+  it("never prepares a replacement when another tab consumed the retained attempt", async () => {
+    discardSetupTransfer.mockRejectedValueOnce(new ApiError(410, "unavailable"));
+    render(<SetupActionWizard deviceId="dev1" action={resumedAction} retained={retained()} onClose={() => {}} />);
+    await userEvent.type(screen.getByDisplayValue("retained-note"), " changed");
+    await userEvent.click(screen.getByRole("button", { name: "Start", exact: true }));
+    await screen.findByRole("alert");
+    expect(prepareSetup).not.toHaveBeenCalled();
+    expect(startSetup).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue("retained-note changed")).toBeInTheDocument();
+  });
+
+  it.each([false, true])("explicit close forgets the draft even if it expired: %s", async (expired) => {
+    if (expired) discardSetupTransfer.mockRejectedValueOnce(new ApiError(410, "unavailable"));
+    const close = vi.fn();
+    render(<SetupActionWizard deviceId="dev1" action={resumedAction} retained={retained()} onClose={close} />);
+    await userEvent.click(screen.getByRole("button", { name: "Cancel", exact: true }));
+    expect(close).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Close and discard access" }));
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
+    expect(discardSetupTransfer).toHaveBeenCalledWith("r1");
+    expect(startSetup).not.toHaveBeenCalled();
   });
 });

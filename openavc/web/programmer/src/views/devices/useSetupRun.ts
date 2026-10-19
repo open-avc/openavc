@@ -10,9 +10,12 @@ interface Attempt extends api.PreparedSetup {
   acknowledged: number;
 }
 const rank = { prepared: 0, claimed: 1, running: 2, terminal: 3 };
+const sameParams = (a: Record<string, unknown>, b: Record<string, unknown>) =>
+  JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
 
 /** One in-memory attempt. Recovery never prepares another physical operation. */
-export function useSetupRun(deviceId: string, actionId: string) {
+export function useSetupRun(deviceId: string, actionId: string, retained?: api.RetainedSetup) {
+  const transfer = useRef(retained);
   const attempt = useRef<Attempt | null>(null);
   const active = useRef(true);
   const starting = useRef(false);
@@ -130,10 +133,21 @@ export function useSetupRun(deviceId: string, actionId: string) {
     setPending(true);
     setError("");
     try {
-      const prepared = await api.prepareSetup(deviceId, actionId, params);
+      let prepared: api.PreparedSetup;
+      const draft = transfer.current;
+      if (draft && sameParams(draft.params, params)) prepared = draft;
+      else {
+        if (draft) {
+          await api.discardSetupTransfer(draft.run_id);
+          transfer.current = undefined;
+          if (!active.current) return;
+        }
+        prepared = await api.prepareSetup(deviceId, actionId, params);
+      }
       if (!active.current) return; // abandoned prepare has no physical effect
       const owner: Attempt = { ...prepared, params, connection: null, acknowledged: 0 };
       attempt.current = owner; // retain the capability BEFORE start is sent
+      transfer.current = undefined;
       accept({ ...prepared, progress: null, result: null, secret: { state: "none", generation: 0 } }, owner);
       const connection = getConnectionId();
       if (connection) void subscribe(owner, connection);
@@ -196,6 +210,25 @@ export function useSetupRun(deviceId: string, actionId: string) {
     }
   }, []);
 
+  const discardRetained = useCallback(async () => {
+    const draft = transfer.current;
+    if (!draft) return true;
+    try {
+      await api.discardSetupTransfer(draft.run_id);
+      transfer.current = undefined;
+      return true;
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 410) {
+        // Explicit close may forget an expired/already-consumed draft. This
+        // never permits the edit/start path to prepare another operation.
+        transfer.current = undefined;
+        return true;
+      }
+      if (active.current) setError(parseApiError(e));
+      return false;
+    }
+  }, []);
+
   useEffect(() => {
     active.current = true;
     const unmessage = onMessage((msg) => {
@@ -215,7 +248,7 @@ export function useSetupRun(deviceId: string, actionId: string) {
     return () => { unmessage(); undisconnect(); dispose(); };
   }, [deviceId, actionId, accept, subscribe, dispose]);
 
-  const needsRetention = !!status && (status.status !== "terminal" || status.secret.state === "available");
+  const needsRetention = !!transfer.current || (!!status && (status.status !== "terminal" || status.secret.state === "available"));
   useEffect(() => {
     if (!needsRetention || unavailable) return;
     // Also covers lost final socket frames. Only status is retried, never work.
@@ -230,5 +263,5 @@ export function useSetupRun(deviceId: string, actionId: string) {
   }, [needsRetention, pending]);
 
   return { status, steps, secret, error, unavailable, pending, secretBusy,
-    needsRetention, start, retryPrepared, refresh, reveal, acknowledge, dispose };
+    needsRetention, start, retryPrepared, refresh, reveal, acknowledge, dispose, discardRetained };
 }

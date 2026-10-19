@@ -16,6 +16,7 @@ from openavc.api._engine import _get_engine
 from openavc.api.auth import authenticated_programmer_grant
 from openavc.api.host_policy import ProgrammerRoute, bind_response_availability, request_admission
 from openavc.api.models import ActionInvokeRequest
+from openavc.api.setup_transfer import active_transfer, browser_location, expire_cookie
 from openavc.core.device_manager import DeviceNotFoundError
 from openavc.core.outbound_messages import SetupScope
 from openavc.core.setup_actions import SetupActionInProgress, SetupContractRequired
@@ -76,6 +77,14 @@ class SubscriptionRequest(CapabilityRequest):
     connection_id: str = Field(pattern=r"^[A-Za-z0-9_-]{32}$")
 
 
+class TransferRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class DiscardTransferRequest(TransferRequest):
+    run_id: str = Field(pattern=r"^[0-9a-f]{32}$")
+
+
 async def _current(request: Request):
     grant = await authenticated_programmer_grant(request)
     lease = request_admission(request)
@@ -84,6 +93,52 @@ async def _current(request: Request):
 
 def _bind_result(request, runner, capability, *, generation=None):
     bind_response_availability(request, runner.results.access_guard(capability, secret_generation=generation))
+
+
+def _transfer_location(request):
+    if request.headers.get("x-openavc-setup-transfer") != "1":
+        raise HTTPException(400, "Refresh this page to continue setup.")
+    return browser_location(request)
+
+
+@router.post("/setup-actions/transfer")
+async def recover_setup_transfer(body: TransferRequest, request: Request):
+    location = _transfer_location(request)
+    _, lease = await _current(request)
+    runner = _get_engine().setup_actions
+    active, stale = active_transfer(request, runner, location, lease.revalidate)
+    if active is None:
+        response = JSONResponse({"pending": None, "cleared": bool(stale)})
+        if stale:
+            expire_cookie(response, stale[0], location)
+        return response
+    _, ticket, item, frozen = active
+    # Revalidate the retained selection and exact target without resolving a new
+    # adapter or exposing its private configuration/source binding.
+    runner.prepare_transfer(frozen["device_id"], frozen["action_id"], frozen["params"],
+        origin=location.origin, api_path=location.api_path, ticket=ticket,
+        original_grant=lambda: False, current=lease.revalidate)
+    bind_response_availability(request, runner.results.transfer_guard(
+        ticket, origin=location.origin, api_path=location.api_path))
+    return {"pending": {"run_id": item.run_id, "capability": item.capability,
+                        "status": "prepared", "device_id": frozen["device_id"],
+                        "action": frozen["action"], "params": frozen["params"]}, "cleared": False}
+
+
+@router.post("/setup-actions/discard-transfer")
+async def discard_setup_transfer(body: DiscardTransferRequest, request: Request):
+    location = _transfer_location(request)
+    _, lease = await _current(request)
+    runner = _get_engine().setup_actions
+    active, _ = active_transfer(request, runner, location, lease.revalidate)
+    if active is None or active[2].run_id != body.run_id:
+        raise SetupUnavailable("This unstarted setup input is no longer available")
+    name, ticket, _, _ = active
+    runner.results.discard_transfer(ticket, origin=location.origin, api_path=location.api_path,
+                                    current=lease.revalidate)
+    response = JSONResponse({"discarded": body.run_id})
+    expire_cookie(response, name, location)
+    return response
 
 
 @router.post("/devices/{device_id}/actions/{action_id}/prepare")

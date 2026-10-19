@@ -250,6 +250,168 @@ async def api_pair(rig):
     return data
 
 
+@pytest.fixture
+async def transfer_env(api_env, monkeypatch):
+    from openavc.api.routes import devices
+    rig = api_env
+    monkeypatch.setattr(devices, "_get_engine", lambda: rig.engine)
+    rig.client._transport.app.include_router(devices.router, prefix="/api")
+    rig.client.headers.update({"Origin": "http://fixture", "Referer": "http://fixture/programmer/",
+                               "X-OpenAVC-Setup-Transfer": "1"})
+    return rig
+
+
+async def old_setup(rig, **kwargs):
+    return await rig.client.post("/api/devices/acme/actions/pair", json={"params": {"save": False}}, **kwargs)
+
+
+async def test_old_browser_refresh_recovers_same_inputs_without_pairing_then_starts_once(transfer_env):
+    rig = transfer_env
+    first = await old_setup(rig)
+    assert first.status_code == 409 and first.json()["code"] == "setup_input_retained"
+    assert len(first.headers.get_list("set-cookie")) == 1
+    cookie = first.headers["set-cookie"]
+    assert "HttpOnly" in cookie and "SameSite=strict" in cookie and "Path=/api" in cookie
+    assert "capability" not in first.text and "save" not in first.text
+    assert (await old_setup(rig)).status_code == 409
+    read = await rig.client.post("/api/setup-actions/transfer", json={})
+    assert read.status_code == 200 and read.headers["cache-control"] == "no-store"
+    data = read.json()["pending"]
+    assert data["params"] == {"save": False} and data["device_id"] == "acme"
+    assert set(data) == {"params", "device_id", "action", "run_id", "capability", "status"}
+    assert (await rig.client.post("/api/setup-actions/transfer", json={})).json() == read.json()
+    assert rig.driver.pair_count == 0 and len(rig.runner.results._slots) == 1
+    body = {"capability": data["capability"], "params": data["params"]}
+    for _ in range(2):
+        assert (await rig.client.post("/api/devices/acme/actions/pair/start", json=body)).status_code == 200
+    await drain(rig.runner)
+    assert rig.driver.pair_count == 1
+    result = await rig.client.post("/api/setup-actions/retrieve", json={"capability": data["capability"]})
+    assert result.json()["values"] == {"app_key": "invented-generated-key"}
+    stale = await rig.client.post("/api/setup-actions/transfer", json={})
+    assert stale.json() == {"pending": None, "cleared": True}
+    assert "Max-Age=0" in stale.headers["set-cookie"]
+
+
+@pytest.mark.parametrize("headers", [
+    {"Origin": ""}, {"Origin": "http://elsewhere"}, {"Origin": "null"},
+    {"Referer": "http://fixture/panel/"}, {"Referer": "http://elsewhere/programmer/"},
+    {"Referer": "http://fixture/../programmer/"},
+])
+async def test_old_setup_refuses_nonbrowser_or_cross_origin_before_retaining_input(transfer_env, headers):
+    rig = transfer_env
+    response = await old_setup(rig, headers=headers)
+    assert response.status_code == 409 and "set-cookie" not in response.headers
+    assert not rig.runner.results._slots and rig.driver.pair_count == 0
+
+
+async def test_transfer_retries_cannot_replace_inputs_and_late_discard_cannot_clear_a_new_draft(transfer_env):
+    rig = transfer_env
+    await old_setup(rig)
+    data = (await rig.client.post("/api/setup-actions/transfer", json={})).json()["pending"]
+    refused = await rig.client.post("/api/devices/acme/actions/pair", json={"params": {"save": True}})
+    assert refused.status_code == 409 and "not retained" in refused.text
+    assert (await rig.client.post("/api/setup-actions/transfer", json={})).json()["pending"] == data
+    discarded = await rig.client.post("/api/setup-actions/discard-transfer", json={"run_id": data["run_id"]})
+    assert discarded.status_code == 200
+    assert (await old_setup(rig)).status_code == 409
+    replacement = (await rig.client.post("/api/setup-actions/transfer", json={})).json()["pending"]
+    late = await rig.client.post("/api/setup-actions/discard-transfer", json={"run_id": data["run_id"]})
+    assert late.status_code == 410 and "set-cookie" not in late.headers
+    assert replacement["run_id"] != data["run_id"]
+    assert (await rig.client.post("/api/setup-actions/transfer", json={})).json()["pending"] == replacement
+    assert rig.driver.pair_count == 0
+
+
+@pytest.mark.parametrize("change", ["token", "host", "source"])
+async def test_transfer_cannot_rebind_an_original_grant_or_changed_source(transfer_env, change):
+    rig = transfer_env
+    await old_setup(rig)
+    if change == "token":
+        rig.tokens.revoke(rig.token)
+        replacement, _ = rig.tokens.issue(auth.credential_fingerprint())
+        rig.client.headers["Authorization"] = "Bearer " + replacement
+    elif change == "host":
+        rig.host.current = PolicySnapshot(2, True, True)
+    else:
+        rig.driver.config["host"] = "changed-target"
+    response = await rig.client.post("/api/setup-actions/transfer", json={})
+    assert response.status_code == 409 if change == "source" else response.json()["pending"] is None
+    assert "capability" not in response.text and rig.driver.pair_count == 0
+
+
+async def test_duplicate_cookie_refusal_and_stale_cleanup_are_bounded(transfer_env):
+    rig = transfer_env
+    await old_setup(rig)
+    name, value = next(iter(rig.client.cookies.items()))
+    response = await rig.client.post("/api/setup-actions/transfer", json={},
+        headers={"Cookie": f"{name}={value}; {name}={value}"})
+    assert response.status_code == 409 and "capability" not in response.text
+    assert rig.driver.pair_count == 0 and len(rig.runner.results._slots) == 1
+    data = (await rig.client.post("/api/setup-actions/transfer", json={})).json()["pending"]
+    await rig.client.post("/api/setup-actions/discard-transfer", json={"run_id": data["run_id"]})
+    stale = "; ".join(f"openavc_setup_{i:032x}={'a' * 43}" for i in range(8))
+    full = await old_setup(rig, headers={"Cookie": stale})
+    assert full.status_code == 409 and "not retained" in full.text
+    assert len(full.headers.get_list("set-cookie")) == 1 and not rig.runner.results._slots
+
+
+async def test_discard_while_transfer_response_waits_blocks_capability_and_inputs(transfer_env, monkeypatch):
+    rig = transfer_env
+    await old_setup(rig)
+    data = (await rig.client.post("/api/setup-actions/transfer", json={})).json()["pending"]
+    entered, release = asyncio.Event(), asyncio.Event()
+    original = JSONResponse.__call__
+
+    async def held(response, scope, receive, send):
+        if scope["path"] == "/api/setup-actions/transfer" and response.status_code == 200:
+            entered.set()
+            await release.wait()
+        await original(response, scope, receive, send)
+
+    monkeypatch.setattr(JSONResponse, "__call__", held)
+    pending = asyncio.create_task(rig.client.post("/api/setup-actions/transfer", json={}))
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+        assert (await rig.client.post("/api/setup-actions/discard-transfer", json={"run_id": data["run_id"]})).status_code == 200
+        release.set()
+        response = await asyncio.wait_for(pending, 2)
+        assert response.status_code == 410 and data["capability"] not in response.text
+        assert '"save"' not in response.text and rig.driver.pair_count == 0
+    finally:
+        release.set()
+        await asyncio.gather(pending, return_exceptions=True)
+
+
+async def test_tunnel_browser_path_and_secure_cookie_do_not_follow_internal_loopback_host(transfer_env):
+    rig = transfer_env
+    rig.client._transport.client = ("127.0.0.1", 12345)
+    tunnel = {"Origin": "https://remote.example", "Referer": "https://remote.example/tunnel/fixture/programmer/",
+              "X-OpenAVC-Tunneled": "1"}
+    first = await old_setup(rig, headers=tunnel)
+    assert first.status_code == 409 and first.json()["code"] == "setup_input_retained"
+    cookie = first.headers["set-cookie"]
+    assert "Path=/tunnel/fixture/api" in cookie and "Secure" in cookie
+    forwarded = {**tunnel, "Cookie": cookie.split(";", 1)[0]}
+    response = await rig.client.post("/api/setup-actions/transfer", json={}, headers=forwarded)
+    assert response.status_code == 200 and response.json()["pending"]["params"] == {"save": False}
+    wrong_path = {**forwarded, "Referer": "https://remote.example/tunnel/other/programmer/"}
+    wrong = await rig.client.post("/api/setup-actions/transfer", json={}, headers=wrong_path)
+    assert wrong.json()["pending"] is None and "capability" not in wrong.text
+    assert rig.driver.pair_count == 0
+
+
+async def test_transfer_requires_current_auth_and_explicit_client_header(transfer_env):
+    rig = transfer_env
+    await old_setup(rig)
+    for headers, code in [({"Authorization": ""}, 401), ({"X-OpenAVC-Setup-Transfer": ""}, 400)]:
+        response = await rig.client.post("/api/setup-actions/transfer", json={}, headers=headers)
+        assert response.status_code == code and "capability" not in response.text
+    bad = await rig.client.post("/api/setup-actions/discard-transfer", json={"run_id": "private-invalid-marker"})
+    assert bad.status_code == 422 and "private-invalid-marker" not in bad.text
+    assert rig.driver.pair_count == 0
+
+
 async def test_real_http_prepare_completion_keeps_original_authority_and_repeat_retrieval(api_env):
     rig = api_env
     data = await api_pair(rig)

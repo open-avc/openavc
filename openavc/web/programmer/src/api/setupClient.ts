@@ -1,4 +1,5 @@
 import { request } from "./base";
+import type { DeviceAction } from "./types";
 
 export type SetupOutcome = "succeeded" | "failed" | "degraded" | "unverified";
 export type SetupStage = "not_requested" | "reported_complete" | "failed" | "unknown";
@@ -18,6 +19,20 @@ export interface SetupStatus {
 }
 export interface PreparedSetup { run_id: string; capability: string; status: "prepared" }
 export interface SetupSecret { generation: number; values: Record<string, string> }
+export interface RetainedSetup extends PreparedSetup {
+  device_id: string;
+  action: DeviceAction;
+  params: Record<string, unknown>;
+}
+
+const transferPost = <T>(path: string, body: unknown) => request<T>(path, {
+  method: "POST", cache: "no-store", body: JSON.stringify(body),
+  headers: { "Content-Type": "application/json", "X-OpenAVC-Setup-Transfer": "1" },
+});
+export const recoverSetupTransfer = () =>
+  transferPost<{ pending: RetainedSetup | null; cleared: boolean }>("/setup-actions/transfer", {});
+export const discardSetupTransfer = (run_id: string) =>
+  transferPost<{ discarded: string }>("/setup-actions/discard-transfer", { run_id });
 
 const post = <T>(path: string, body: unknown) => request<T>(path, {
   method: "POST", cache: "no-store", body: JSON.stringify(body),

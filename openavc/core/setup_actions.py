@@ -225,6 +225,29 @@ class SetupActionRunner:
                                     current=current, principal=principal, binding=binding)
         return {"run_id": item.run_id, "capability": item.capability, "status": "prepared"}
 
+    def prepare_transfer(self, device_id: str, action_id: str, params: dict, *,
+                         origin: str, api_path: str, original_grant: Callable[[], bool],
+                         current: Callable[[], bool], ticket: str | None = None) -> dict:
+        """Adapt an old browser request into an inert retained input, never a run."""
+        if ticket is not None:
+            item, frozen = self.results.recover_transfer(ticket, origin=origin, api_path=api_path, current=current)
+            binding = self.results.prepared_binding(item.capability, current=current)
+            driver = self._engine.devices.get_driver(device_id)
+            if (frozen["device_id"] != device_id or frozen["action_id"] != action_id
+                    or not isinstance(binding, _PreparedIngress) or not binding.ingress.current(driver)):
+                raise SetupConflict("The retained setup input no longer matches this request")
+            bound = self._binding(device_id, driver, binding.action(), params)
+            item = self.results.match_transfer(ticket, bound, target=driver, origin=origin,
+                                                api_path=api_path, current=current)
+        else:
+            driver, action = self._definition(device_id, action_id)
+            binding = _PreparedIngress(json.dumps(action, sort_keys=True, separators=(",", ":"), allow_nan=False),
+                                       action.setup_ingress)
+            item, ticket = self.results.prepare_transfer(self._binding(device_id, driver, action, params),
+                target=driver, origin=origin, api_path=api_path, original_grant=original_grant,
+                current=current, binding=binding)
+        return {"run_id": item.run_id, "ticket": ticket}
+
     async def start(self, device_id: str, action: dict, params: dict, *,
                     capability: str | None = None, current: Callable[[], bool] | None = None,
                     principal: str | None = None) -> dict:

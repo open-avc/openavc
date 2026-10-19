@@ -111,6 +111,15 @@ Which buttons appear is up to the driver. A button may also be hidden until it's
 
 One button shows up on its own: if the device has its own web page (it answers on a standard web port), an **Open Web UI** button appears and opens that page in a new browser tab. No driver setup is needed for most equipment.
 
+Setup actions show progress, the device's result, and separate save/reconnect
+outcomes. Use **Check status** after an interrupted response. **Reveal credentials**
+opens any unsaved generated credentials; save them before closing the attempt.
+
+An older open page may ask you to refresh before setup can start. When the message
+says your inputs were retained, refresh the same page while still signed in.
+Review the restored inputs and choose **Start**. The refresh itself does not run
+the action. Retained inputs expire after five minutes or a server restart.
+
 ## Device State
 
 Every device exposes state variables at `device.<id>.<property>`. Examples:

@@ -468,7 +468,7 @@ def test_old_one_post_setup_refuses_before_starting_work(actions_client):
     resp = c.post("/api/devices/dev1/actions/enable_remote", json={"params": {"x": 1}})
     assert resp.status_code == 409
     assert resp.headers["cache-control"] == "no-store"
-    assert "Reopen" in resp.json()["detail"]
+    assert "not retained" in resp.json()["detail"]
     engine.devices.send_command.assert_not_awaited()
     assert not engine.setup_actions._tasks
     assert not engine.setup_actions._active

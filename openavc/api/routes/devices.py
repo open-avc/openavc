@@ -628,13 +628,13 @@ async def ir_import(bridge_id: str, body: IRImportRequest) -> dict[str, Any]:
 
 @router.post("/devices/{device_id}/actions/{action_id}")
 async def invoke_device_action(
-    device_id: str, action_id: str, body: ActionInvokeRequest
-) -> dict[str, Any]:
+    device_id: str, action_id: str, body: ActionInvokeRequest, request: Request
+):
     """Invoke a driver-declared action by id.
 
     ``kind:"command"`` actions route to the device's command path (which
     requires the device to be connected). Setup actions require the protected
-    prepare/start handshake; this one-POST endpoint refuses before any effect.
+    prepare/start handshake; an older browser retains inputs for refresh here.
     The action's meaning remains in the driver.
     """
     from openavc.drivers.actions import resolve_device_actions
@@ -702,19 +702,10 @@ async def invoke_device_action(
                    f"not via the invoke endpoint",
         )
 
-    # Keep the old door explicit: callers without a retained result reservation
-    # must be refused before credential-creating work can start.
-    from openavc.core.setup_actions import SetupActionInProgress, SetupHandshakeRequired
+    from openavc.api.setup_transfer import retain_legacy_setup
 
     try:
-        return await engine.setup_actions.start(device_id, action, body.params)
-    except SetupHandshakeRequired as e:
-        raise HTTPException(status_code=409, detail=str(e), headers={"Cache-Control": "no-store"}) from e
-    except SetupActionInProgress as e:
-        raise HTTPException(
-            status_code=409,
-            detail=f"A setup action is already running on device '{device_id}'",
-        ) from e
+        return await retain_legacy_setup(request, engine.setup_actions, device_id, action_id, body.params)
     except DeviceNotFoundError as e:
         # The pre-check above already answered the ordinary case; this is the
         # device going away between the two, so it says what the runner found.
