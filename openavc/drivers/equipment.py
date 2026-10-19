@@ -178,10 +178,11 @@ class EquipmentDriver(BaseDriver):
                          "advanced": True, "learned_from": "_sdk_identity"},
             "reported_model": {"type": "string", "label": "Equipment model", "default": "",
                             "advanced": True, "learned_from": "_sdk_model"},
-            "host": {"type": "string", "label": "Host", "default": ""},
+            "host": {"type": "string", "label": "Host", "default": "", "required": True},
             "port": {"type": "integer", "label": "Port", "default": 9443},
-            "username": {"type": "string", "label": "Username", "default": ""},
-            "password": {"type": "string", "label": "Password", "default": "", "secret": True},
+            "username": {"type": "string", "label": "Username", "default": "", "required": True},
+            "password": {"type": "string", "label": "Password", "default": "", "secret": True,
+                         "required": True},
             "verify_ssl": {"type": "boolean", "label": "Verify HTTPS certificate", "default": True,
                            "advanced": True, "description": "Verify the equipment's certificate against trusted certificate authorities."},
             "completion_wait": {"type": "number", "label": "Wait for completion (seconds)",
@@ -227,8 +228,16 @@ class EquipmentDriver(BaseDriver):
             local = "token" in self.config
             if not local:
                 host = self.config.get("host", "")
-                if not host or not self.config.get("username") or not self.config.get("password"):
-                    raise ConnectionFaultError("Enter this product's host, username and password in its connection settings.", code="auth_failed")
+                missing = [word for key, word in (("host", "host"), ("username", "username"),
+                                                  ("password", "password"))
+                           if not self.config.get(key)]
+                if missing:
+                    words = missing[0] if len(missing) == 1 else (
+                        ", ".join(missing[:-1]) + " and " + missing[-1])
+                    raise ConnectionFaultError(
+                        f"Enter this product's {words} in its connection settings.",
+                        code="auth_failed",
+                    )
                 self.config["url"] = str(URL.build(scheme="https", host=host, port=int(self.config.get("port", 9443))))
             # The platform can redirect the host/port for simulation. Keep
             # the permanent endpoint intact so stopping simulation restores it.

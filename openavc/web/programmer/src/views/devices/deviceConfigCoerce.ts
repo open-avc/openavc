@@ -209,27 +209,37 @@ const PICKER_FIELD_CONNECTIONS: Record<string, ConnectionMode[]> = {
 
 const isBlank = (v: unknown) => v == null || (typeof v === "string" && v.trim() === "");
 
-// The label of each required field the form leaves blank, in schema order. A
-// field counts as filled when the form holds a value or the driver has a
+// Each required field the form leaves blank, key and label, in schema order.
+// A field counts as filled when the form holds a value or the driver has a
 // default for it, which is what the device would run with. A table field is
 // set up on the device page, never in the dialog, so it is not asked here.
-export function missingRequiredFields(
+export function missingRequiredKeys(
   values: Record<string, string>,
   schema: Record<string, Record<string, unknown>>,
   defaults: Record<string, unknown> | undefined,
   connection: ConnectionMode,
-): string[] {
-  const missing: string[] = [];
+): { key: string; label: string }[] {
+  const missing: { key: string; label: string }[] = [];
   for (const [key, field] of Object.entries(schema)) {
     if (field?.required !== true || field.type === "table") continue;
     if (SERIAL_PICKER_FIELDS.has(key) || IR_PICKER_FIELDS.has(key)) {
       if (!PICKER_FIELD_CONNECTIONS[key]?.includes(connection)) continue;
     }
     if (isBlank(values[key]) && isBlank(defaults?.[key])) {
-      missing.push(String(field.label || key));
+      missing.push({ key, label: String(field.label || key) });
     }
   }
   return missing;
+}
+
+// The label of each required field the form leaves blank (missingRequiredKeys).
+export function missingRequiredFields(
+  values: Record<string, string>,
+  schema: Record<string, Record<string, unknown>>,
+  defaults: Record<string, unknown> | undefined,
+  connection: ConnectionMode,
+): string[] {
+  return missingRequiredKeys(values, schema, defaults, connection).map((m) => m.label);
 }
 
 // The bridge binding a device on Through a bridge leaves out, by the labels

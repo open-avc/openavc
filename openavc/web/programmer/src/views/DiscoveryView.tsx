@@ -21,6 +21,8 @@ import {
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { CopyButton } from "../components/shared/CopyButton";
 import { DeviceSettingsSetupDialog, hasDriverSetupSettings } from "../components/shared/DeviceSettingsSetupDialog";
+import { ConfigFieldInputs } from "./devices/DeviceDialogs";
+import { buildConfigFromForm, missingRequiredKeys } from "./devices/deviceConfigCoerce";
 import { useDiscoveryStore } from "../store/discoveryStore";
 import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
@@ -1359,6 +1361,20 @@ function DriverAddRow({
   const [addedDeviceId, setAddedDeviceId] = useState<string | null>(null);
   const devices = useProjectStore((s) => s.project?.devices);
 
+  // What the scan cannot supply: a required setting the driver has no default
+  // for (a product's username and password, a model). The card asks for it
+  // before adding, as Add Device does. The address is the scan's, and so is
+  // the port (the one it found, else the driver's).
+  const installedInfo = isCommunity ? undefined : installedDrivers.find((d) => d.id === driverId);
+  const askedKeys = useMemo(() => {
+    if (!installedInfo) return [];
+    const schema = (installedInfo.config_schema ?? {}) as Record<string, Record<string, unknown>>;
+    return missingRequiredKeys({ host: device.ip }, schema, installedInfo.default_config, "network")
+      .map((m) => m.key)
+      .filter((key) => key !== "port");
+  }, [installedInfo, device.ip]);
+  const [askedValues, setAskedValues] = useState<Record<string, string>>({});
+
   const handleAdd = async () => {
     setError(null);
 
@@ -1391,23 +1407,41 @@ function DriverAddRow({
       return;
     }
 
-    // Installed driver — show setup help once before adding
+    // Installed driver — show its setup help, and ask for what the scan cannot
+    // supply, once before adding
     if (!showSetup) {
+      let help: string | null = null;
       try {
-        const help = await api.getDriverHelp(driverId);
-        if (help.setup) {
-          setSetupText(help.setup);
-          setShowSetup(true);
-          return;
-        }
+        help = (await api.getDriverHelp(driverId)).setup || null;
       } catch {
-        // No help — fall through and add directly
+        // No help — add directly unless a setting has to be asked
       }
+      if (help || askedKeys.length > 0) {
+        setSetupText(help);
+        setShowSetup(true);
+        return;
+      }
+    }
+
+    let config: Record<string, unknown> | undefined;
+    if (askedKeys.length > 0) {
+      const schema = (installedInfo?.config_schema ?? {}) as Record<string, Record<string, unknown>>;
+      const asked = Object.fromEntries(askedKeys.map((key) => [key, schema[key]]));
+      const built = buildConfigFromForm(askedValues, asked, {}, { defaults: {}, connection: "network" });
+      if (!built.ok) {
+        setError(built.error);
+        return;
+      }
+      config = built.config;
     }
 
     setBusy(true);
     try {
-      const result = await api.discoveryAddDevice({ ip: device.ip, driver_id: driverId });
+      const result = await api.discoveryAddDevice({
+        ip: device.ip,
+        driver_id: driverId,
+        ...(config ? { config } : {}),
+      });
       setAddedDeviceId(result.device_id);
       const di = installedDrivers.find((d) => d.id === driverId);
       if (di && hasDriverSetupSettings(di)) {
@@ -1473,6 +1507,17 @@ function DriverAddRow({
         >
           <strong>Setup Instructions:</strong>
           <div style={{ marginTop: 4, color: "var(--text-muted)" }}>{setupText}</div>
+        </div>
+      )}
+
+      {showSetup && askedKeys.length > 0 && (
+        <div style={{ marginTop: "var(--space-sm)" }}>
+          <ConfigFieldInputs
+            configKeys={askedKeys}
+            driverInfo={installedInfo}
+            configValues={askedValues}
+            setConfigValues={setAskedValues}
+          />
         </div>
       )}
 
