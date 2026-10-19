@@ -155,6 +155,7 @@ class _ResultSlot:
     original_grant: Callable[[], bool] = field(repr=False)
     principal: str | None = field(repr=False)
     deadline: float
+    binding: object = field(default=None, repr=False)
     phase: str = "prepared"
     revoked: bool = False
     sequence: int = 0
@@ -221,7 +222,7 @@ class SetupResultStore:
                 del self._slots[key]
 
     def prepare(self, request: dict, *, target: object, original_grant: Callable[[], bool],
-                current: Callable[[], bool], principal: str | None = None) -> PreparedSetup:
+                current: Callable[[], bool], principal: str | None = None, binding: object = None) -> PreparedSetup:
         """Freeze validated device/action/contract/parameters; perform no effects."""
         self.prune()
         if not self._allowed(current) or not self._allowed(original_grant):
@@ -240,7 +241,7 @@ class SetupResultStore:
             capability = secrets.token_urlsafe(32)
             key = self._digest(capability)
         slot = _ResultSlot(uuid4().hex, request_bytes, target, original_grant,
-                           principal, self._clock() + self._prepare_ttl)
+                           principal, self._clock() + self._prepare_ttl, binding)
         self._slots[key] = slot
         return PreparedSetup(slot.run_id, capability)
 
@@ -273,6 +274,10 @@ class SetupResultStore:
                      principal: str | None = None) -> dict:
         """Runner-only frozen inputs; these must never enter an HTTP/WS result."""
         return json.loads(self._access(capability, current, principal).request)
+
+    def prepared_binding(self, capability: str, *, current: Callable[[], bool], principal: str | None = None):
+        """Runner-only immutable ingress selected before effects; never a DTO."""
+        return self._access(capability, current, principal).binding
 
     def dispatch_inputs(self, slot: _ResultSlot) -> dict:
         self._owned_active(slot)
@@ -367,6 +372,7 @@ class SetupResultStore:
             slot.result = payload
         # Execution has ended; the store no longer retains the driver instance.
         slot.target = None
+        slot.binding = None
 
     def status(self, capability: str, *, current: Callable[[], bool], principal: str | None = None) -> dict:
         slot = self._access(capability, current, principal)

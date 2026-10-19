@@ -3165,6 +3165,10 @@ has its own declared role and cannot also be a diagnostic. Missing and reported
 null values remain distinct; counts must be nonnegative integers. Descriptors
 alone do not enable a handler: the loaded code and its dependencies must match the
 qualified source, and the runtime must include the applicable compatibility data.
+The setup reservation keeps that selected adapter. Changing the loaded handler,
+registration, declaration or device configuration before start requires preparing
+again. A qualified pairing adapter captures its declared generated key before a
+configuration save can fail; saved keys are not offered for retrieval again.
 
 Each `SetupFinding` can include `fields=(SetupField("Checks", 3), ...)` from the
 same module. These named diagnostic values appear in the authorized wizard.

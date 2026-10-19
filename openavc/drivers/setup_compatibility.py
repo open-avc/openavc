@@ -12,6 +12,8 @@ import hashlib
 import json
 import math
 import re
+from functools import lru_cache
+from pathlib import Path
 
 from openavc.drivers.spec import SETUP_COMPATIBILITY_ROLES, SETUP_DIAGNOSTIC_TYPES
 
@@ -156,6 +158,26 @@ def parse_descriptors(values) -> tuple[SetupCompatibility, ...]:
         seen.add(key)
         result.append(item)
     return tuple(result)
+
+
+@lru_cache(maxsize=1)
+def bundled_descriptors() -> tuple[SetupCompatibility, ...]:
+    """Read the shipped immutable resource once; no catalog/network fallback.
+
+    Missing data qualifies no legacy code. Installation preflight must refuse
+    activation when installed actions need tuples absent from this resource.
+    """
+    path = Path(__file__).with_name("setup-compatibility.json")
+    try:
+        data = path.read_bytes()
+    except FileNotFoundError:
+        return ()
+    if len(data) > 4 * 1024 * 1024:
+        raise ValueError("Setup compatibility resource is too large")
+    resource = _object(json.loads(data), ("schema", "source_revision", "descriptors"))
+    if resource["schema"] != "setup-compatibility-resource/v1" or not re.fullmatch(r"[0-9a-f]{40}", resource["source_revision"]):
+        raise ValueError("Unsupported setup compatibility resource")
+    return parse_descriptors(resource["descriptors"])
 
 
 def descriptor_schema() -> dict:

@@ -649,7 +649,7 @@ async def invoke_device_action(
         )
 
     action = next(
-        (a for a in resolve_device_actions(driver.DRIVER_INFO) if a["id"] == action_id),
+        (a for a in resolve_device_actions(driver.DRIVER_INFO, driver=driver) if a["id"] == action_id),
         None,
     )
     if action is None:

@@ -1170,6 +1170,7 @@ class DeviceManager:
                 driver.DRIVER_INFO,
                 driver.config,
                 detected_web_ui_url=self._detected_web_ui_urls.get(device_id),
+                driver=driver,
             ),
             "driver_info": driver.DRIVER_INFO,
         }

@@ -59,10 +59,15 @@ Resolved action shape (one dict per entry, consumed by the REST API + IDE):
 from __future__ import annotations
 
 from typing import Any
+from dataclasses import dataclass, field
+import json
 
 from openavc.core.web_ui_probe import web_ui_url_for_http_config
 from openavc.drivers.avcdriver_semantic import validate_actions as validate_actions
 from openavc.drivers.spec import ACTION_KINDS, AVAILABILITIES
+from openavc.drivers.setup_compatibility import (
+    SetupCompatibility, bundled_descriptors, declaration_digest, declaration_json,
+)
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -73,6 +78,72 @@ _DEFAULT_WEB_UI_URL = "https://{host}"
 _WEB_UI_ACTION_ID = "open_web_ui"
 
 _DEFAULT_AVAILABILITY = "online"
+
+
+@dataclass(frozen=True)
+class SetupIngress:
+    """Selection retained by one prepare, not a mutable action-ID registry."""
+
+    driver_class: type = field(repr=False)
+    handler: object = field(repr=False)
+    code: object = field(repr=False)
+    declaration: str = field(repr=False)
+    source_receipt: object = field(default=None, repr=False)
+    compatibility: SetupCompatibility | None = None
+    registration: object = field(default=None, repr=False)
+
+    def current(self, driver) -> bool:
+        from openavc.drivers.registry import get_driver_class
+        handler = getattr(driver, "run_setup_action", None)
+        handler = getattr(handler, "__func__", handler)
+        if type(driver) is not self.driver_class or handler is not self.handler or getattr(handler, "__code__", None) is not self.code:
+            return False
+        try:
+            if declaration_json(driver.DRIVER_INFO) != self.declaration:
+                return False
+        except (TypeError, ValueError):
+            return False
+        if get_driver_class(driver.DRIVER_INFO.get("id")) is not self.registration:
+            return False
+        if self.compatibility is not None:
+            from openavc.drivers.driver_loader import loaded_python_source
+            return (loaded_python_source(driver) is self.source_receipt
+                    and get_driver_class(self.compatibility.driver_id) is self.driver_class)
+        return True
+
+
+class ResolvedAction(dict):
+    """Public JSON fields with a separate, non-serialized trusted binding."""
+
+    def __init__(self, values: dict, setup_ingress: SetupIngress):
+        super().__init__(values)
+        self.setup_ingress = setup_ingress
+
+
+def _setup_ingress(driver, entry: dict) -> SetupIngress | None:
+    from openavc.drivers.registry import get_driver_class
+    handler = getattr(driver, "run_setup_action", None)
+    handler = getattr(handler, "__func__", handler)
+    if handler is None or not hasattr(handler, "__code__"):
+        return None
+    declaration = declaration_json(driver.DRIVER_INFO)
+    registration = get_driver_class(driver.DRIVER_INFO.get("id"))
+    if entry.get("result_contract") == "setup/v1":
+        return SetupIngress(type(driver), handler, handler.__code__, declaration, registration=registration)
+    if "result_contract" in entry:
+        return None  # Unknown explicit versions never fall back to legacy.
+    from openavc.drivers.driver_loader import loaded_python_source
+    receipt = loaded_python_source(driver)
+    if receipt is None or get_driver_class(driver.DRIVER_INFO.get("id")) is not type(driver):
+        return None
+    for descriptor in bundled_descriptors():
+        if (descriptor.driver_id == driver.DRIVER_INFO.get("id")
+                and descriptor.driver_version == driver.DRIVER_INFO.get("version")
+                and descriptor.action_id == entry["id"] and descriptor.source_sha256 == receipt.sha256
+                and descriptor.declaration_sha256 == declaration_digest(driver.DRIVER_INFO)
+                and descriptor.action_sha256 == declaration_digest(entry)):
+            return SetupIngress(type(driver), handler, handler.__code__, declaration, receipt, descriptor, registration)
+    return None
 
 
 def _command_availability(cmd: Any) -> str:
@@ -100,6 +171,7 @@ def resolve_device_actions(
     driver_info: dict[str, Any],
     config: dict[str, Any] | None = None,
     detected_web_ui_url: str | None = None,
+    *, driver: Any = None,
 ) -> list[dict[str, Any]]:
     """Fold a driver's ``actions`` + ``quick_actions`` into one resolved list.
 
@@ -127,6 +199,16 @@ def resolve_device_actions(
             action = _resolve_action_entry(entry, commands)
             if action is None or action["id"] in seen:
                 continue
+            if action["kind"] == "setup" and driver is not None and driver_info is driver.DRIVER_INFO:
+                try:
+                    ingress = _setup_ingress(driver, entry)
+                except (TypeError, ValueError, OSError):
+                    # Invalid compatibility data cannot break unrelated control
+                    # buttons, nor qualify a setup action for execution.
+                    ingress = None
+                if ingress is not None:
+                    action = ResolvedAction(json.loads(declaration_json(action)), ingress)
+                    action["result_contract"] = "setup/v1"
             resolved.append(action)
             seen.add(action["id"])
 

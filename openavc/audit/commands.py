@@ -215,7 +215,7 @@ def _command_actions(driver: Any) -> tuple[dict[str, str], set[str]]:
     config = getattr(driver, "config", None)
     confirms: dict[str, str] = {}
     promoted: set[str] = set()
-    for action in resolve_device_actions(info, config if isinstance(config, dict) else None):
+    for action in resolve_device_actions(info, config if isinstance(config, dict) else None, driver=driver):
         name = action.get("command")
         if action.get("kind") != "command" or not isinstance(name, str):
             continue

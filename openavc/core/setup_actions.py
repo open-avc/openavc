@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
+import json
+import hashlib
 from typing import Any
 
 from openavc.core.client_origin import current_setup_device
@@ -22,9 +24,10 @@ from openavc.core.device_manager import DeviceNotFoundError
 from openavc.core.outbound_messages import RoomText
 from openavc.core.setup_results import (
     Outcome, SetupConflict, SetupFinding, SetupProgress, SetupResult,
-    SetupResultStore, SetupUnavailable, StageState,
+    SetupResultStore, SetupUnavailable, StageState, encode_setup_credentials,
 )
-from openavc.drivers.actions import resolve_device_actions
+from openavc.core.setup_legacy import generated_secret, result_from_legacy
+from openavc.drivers.actions import ResolvedAction, SetupIngress, resolve_device_actions
 from openavc.drivers.base import normalize_and_validate_command_params
 from openavc.utils.logger import get_logger
 
@@ -51,6 +54,15 @@ class SetupContractRequired(ValueError):
     """No declared or qualified installed-source result adapter is selected."""
 
 
+@dataclass(frozen=True)
+class _PreparedIngress:
+    action_json: str
+    ingress: SetupIngress
+
+    def action(self):
+        return ResolvedAction(json.loads(self.action_json), self.ingress)
+
+
 class SetupActionContext:
     """Per-run handle the platform installs on a driver for the duration of a
     ``run_setup_action`` call. Backs ``request_config_update`` /
@@ -58,18 +70,29 @@ class SetupActionContext:
     bring the device back online without reaching into platform internals.
     """
 
-    def __init__(self, engine: Any, device_id: str, *, results=None, slot=None):
+    def __init__(self, engine: Any, device_id: str, *, results=None, slot=None, compatibility=None):
         self._engine = engine
         self._device_id = device_id
         self._results = results
         self._slot = slot
+        self._compatibility = compatibility
+        self._registered_secret_digest = None
         self.config_save = StageState.NOT_REQUESTED
         self.reconnect_state = StageState.NOT_REQUESTED
 
     def register_secret(self, values: dict[str, str]) -> int:
         if self._results is None:
             raise RuntimeError("No protected setup result reservation")
-        return self._results.publish_secret(self._slot, values)
+        digest = hashlib.sha256(encode_setup_credentials(values)).digest()
+        generation = self._results.publish_secret(self._slot, values)
+        self._registered_secret_digest = digest
+        return generation
+
+    def capture_returned_secret(self, values: dict[str, str]) -> None:
+        # A repeated saved key must not reopen retrieval, but a different key
+        # returned after an earlier save still requires its own recovery copy.
+        if hashlib.sha256(encode_setup_credentials(values)).digest() != self._registered_secret_digest:
+            self.register_secret(values)
 
     async def apply_config_update(self, delta: dict[str, Any]) -> None:
         """Persist a connection/config delta and merge it into the live driver.
@@ -88,6 +111,10 @@ class SetupActionContext:
         """
         if not isinstance(delta, dict) or not delta:
             return
+        if self._compatibility is not None:
+            secret = generated_secret(self._compatibility, delta)
+            if secret is not None:
+                self.register_secret(secret)
         engine = self._engine
         if getattr(engine, "project", None) is None:
             raise RuntimeError("No project loaded")
@@ -172,14 +199,16 @@ class SetupActionRunner:
         driver = self._engine.devices.get_driver(device_id)
         if driver is None:
             raise DeviceNotFoundError(f"Device '{device_id}' not found or has no live driver")
-        action = next((a for a in resolve_device_actions(driver.DRIVER_INFO)
+        action = next((a for a in resolve_device_actions(driver.DRIVER_INFO, driver=driver)
                        if a["id"] == action_id and a["kind"] == "setup"), None)
-        if action is None or action.get("result_contract") != "setup/v1":
+        if not isinstance(action, ResolvedAction) or action.get("result_contract") != "setup/v1":
             raise SetupContractRequired("This setup action needs a qualified result contract before it can run.")
         return driver, action
 
     def _binding(self, device_id: str, driver, action: dict, params: dict) -> dict:
+        ingress = action.setup_ingress
         return {"device_id": device_id, "action_id": action["id"], "action": action,
+                "ingress": ingress.compatibility.descriptor_sha256 if ingress.compatibility else "setup/v1",
                 "driver_version": driver.DRIVER_INFO.get("version"),
                 "project_revision": getattr(self._engine, "_project_revision", None),
                 "config": driver.config,
@@ -189,9 +218,11 @@ class SetupActionRunner:
                 original_grant: Callable[[], bool], current: Callable[[], bool],
                 principal: str | None = None) -> dict:
         driver, action = self._definition(device_id, action_id)
+        binding = _PreparedIngress(json.dumps(action, sort_keys=True, separators=(",", ":"), allow_nan=False),
+                                   action.setup_ingress)
         item = self.results.prepare(self._binding(device_id, driver, action, params),
                                     target=driver, original_grant=original_grant,
-                                    current=current, principal=principal)
+                                    current=current, principal=principal, binding=binding)
         return {"run_id": item.run_id, "capability": item.capability, "status": "prepared"}
 
     async def start(self, device_id: str, action: dict, params: dict, *,
@@ -210,7 +241,11 @@ class SetupActionRunner:
                 frozen["action_id"], frozen["action"]["params"], params)}
             self.results.claim(capability, repeated, target=None, current=current, principal=principal)
             return self.results.status(capability, current=current, principal=principal)
-        driver, declared = self._definition(device_id, action["id"])
+        binding = self.results.prepared_binding(capability, current=current, principal=principal)
+        driver = self._engine.devices.get_driver(device_id)
+        if not isinstance(binding, _PreparedIngress) or not binding.ingress.current(driver):
+            raise SetupConflict("The setup source or registration changed before start")
+        declared = binding.action()
         if device_id in self._active:
             raise SetupActionInProgress(device_id, self._active[device_id])
         bound = self._binding(device_id, driver, declared, params)
@@ -220,7 +255,7 @@ class SetupActionRunner:
         self._active[device_id] = slot.run_id
         # Freeze again through the owner's stored bytes, never caller aliases.
         inputs = self.results.dispatch_inputs(slot)
-        coroutine = self._run(device_id, driver, inputs, slot,
+        coroutine = self._run(device_id, driver, inputs, slot, binding,
                               self.results.access_guard(capability, principal=principal))
         try:
             task = asyncio.create_task(coroutine)
@@ -267,10 +302,12 @@ class SetupActionRunner:
                     self._observers.pop(run_id, None)
                 log.warning("Setup progress subscriber refused a notification")
 
-    async def _run(self, device_id: str, driver, inputs: dict, slot, original: Callable[[], bool]) -> None:
+    async def _run(self, device_id: str, driver, inputs: dict, slot, binding: _PreparedIngress,
+                   original: Callable[[], bool]) -> None:
         dm = self._engine.devices
         action_id = inputs["action_id"]
-        context = SetupActionContext(self._engine, device_id, results=self.results, slot=slot)
+        compatibility = binding.ingress.compatibility
+        context = SetupActionContext(self._engine, device_id, results=self.results, slot=slot, compatibility=compatibility)
         outcome = SetupResult(Outcome.UNVERIFIED, RoomText("Setup did not finish."))
         began = False
 
@@ -280,21 +317,32 @@ class SetupActionRunner:
             self.results.progress(slot, value.code, value.detail, value.percent)
             self._notify(slot.run_id)
 
+        async def legacy_progress(detail: str, percent: float | None = None) -> None:
+            await progress(SetupProgress("legacy.progress", detail, percent))
+
         try:
             await dm.begin_setup(device_id)
             began = True
             # begin_setup can wait for reconnect cancellation. Recheck after it
             # and before invoking the handler; this is not a runtime target lease.
-            live, declared = self._definition(device_id, action_id)
-            if live is not driver:
+            live = dm.get_driver(device_id)
+            if live is not driver or not binding.ingress.current(driver):
                 raise SetupConflict("The setup target changed before dispatch")
+            declared = binding.action()
             self.results.require_inputs(slot, self._binding(device_id, live, declared, inputs["params"]))
             if not original():
                 raise SetupUnavailable("Setup permission changed before dispatch")
             driver._set_setup_context(context)
             self.results.running(slot)
             await progress(SetupProgress("setup.starting", "Starting", 0))
-            outcome = await driver.run_setup_action(action_id, inputs["params"], progress)
+            raw = await driver.run_setup_action(action_id, inputs["params"], legacy_progress if compatibility else progress)
+            if compatibility is not None:
+                secret = generated_secret(compatibility, raw) if isinstance(raw, dict) else None
+                if secret is not None:
+                    context.capture_returned_secret(secret)
+                outcome = result_from_legacy(compatibility, raw)
+            else:
+                outcome = raw
             if not isinstance(outcome, SetupResult):
                 raise TypeError("The setup result contract requires a typed result")
             # Validate before cleanup so malformed handler output gets the same
