@@ -1,4 +1,5 @@
 """Unsupported simulated devices must not fall back to their hardware paths."""
+import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -9,7 +10,7 @@ from openavc.api import rest
 from openavc.api.error_messages import friendly_error
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
-from openavc.core.simulation import SimulationManager
+from openavc.core.simulation import _PORT_QUERY_ATTEMPTS, SimulationManager
 from openavc.core.state_store import StateStore
 
 
@@ -190,9 +191,10 @@ async def test_a_command_is_refused_in_the_cards_words(rig):
         await manager.send_command("missing", "wake")
     assert friendly_error(refused.value, device="Missing Widget") == card
 
+    app = rest_app()  # importing main sets its own engine, so import it first
     rest.set_engine(SimpleNamespace(devices=manager, state=manager.state))
     try:
-        resp = TestClient(rest_app()).post("/api/devices/missing/command", json={"command": "wake"})
+        resp = TestClient(app).post("/api/devices/missing/command", json={"command": "wake"})
     finally:
         rest.set_engine(None)
     assert resp.status_code == 503
@@ -203,3 +205,60 @@ def rest_app():
     from openavc.main import app
 
     return app
+
+
+# Starting a run where the simulator runs none of the selected devices: its
+# port list comes back empty, which is an answer, not a failed query.
+
+
+class _Pipe:
+    async def readline(self):
+        return b""
+
+
+@pytest.fixture
+def start_run(rig, monkeypatch):
+    import openavc.core.simulation as simulation
+    from tests.test_simulation_sync import _FakeResp, _install_fake_aiohttp
+
+    manager, _ = rig
+    monkeypatch.setattr(simulation, "_choose_ui_port", lambda preferred: preferred)
+    monkeypatch.setattr(simulation, "_PORT_QUERY_RETRY_S", 0)
+    process = SimpleNamespace(stdout=_Pipe(), stderr=_Pipe(), returncode=None)
+    monkeypatch.setattr(simulation.asyncio, "create_subprocess_exec", AsyncMock(return_value=process))
+    started = []
+
+    async def start(device_ids, status, devices=()):
+        engine = SimpleNamespace(devices=manager, state=manager.state, project=object())
+        simulator = SimulationManager(engine)
+        simulator._await_simulator_ready = AsyncMock()
+        calls = _install_fake_aiohttp(
+            monkeypatch, lambda m, u, j: _FakeResp(status, json_data={"devices": list(devices)}))
+        started.append(simulator)
+        await simulator._do_start(device_ids)
+        return simulator, calls
+
+    yield start
+    for simulator in started:
+        simulator._monitor_task.cancel()
+        os.unlink(simulator._config_path)
+    simulation.set_running_ui_port(None)
+
+
+@pytest.mark.asyncio
+async def test_a_run_that_simulates_nothing_points_nothing_at_a_port(rig, start_run):
+    manager, _ = rig
+    missing = manager._devices["missing"]
+    simulator, _ = await start_run(["missing"], 200)
+    assert simulator._sim_ports == {}
+    assert missing.config["port"] == 9000
+    assert missing.connects == 0
+    assert manager.state.get("device.missing.offline_reason") == "no_simulator"
+
+
+@pytest.mark.asyncio
+async def test_a_simulator_that_never_answers_still_gets_sequential_ports(rig, start_run):
+    manager, _ = rig
+    simulator, calls = await start_run(["ordinary"], 503)
+    assert len(calls) == _PORT_QUERY_ATTEMPTS
+    assert simulator._sim_ports["ordinary"] == manager._devices["ordinary"].config["port"] != 9000

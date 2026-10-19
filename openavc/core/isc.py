@@ -1076,8 +1076,22 @@ class ISCManager:
             return
 
         if existing and existing.source == "discovered":
-            # Known but not connected — update last_seen
+            # Known but not connected. A beacon from another address, port or
+            # scheme says where the peer can be reached now (a new lease, a
+            # restart on another port, HTTPS turned on): its reconnect loop
+            # dials whatever is recorded here, so record it and cut the wait.
             existing.last_seen = time()
+            endpoint = (host, peer_port, peer_scheme)
+            if (existing.host, existing.port, existing.scheme) != endpoint:
+                log.debug(
+                    f"ISC: «{existing.name}» ({peer_id[:8]}) is now at "
+                    f"{peer_scheme}://{host}:{peer_port}"
+                )
+                existing.host, existing.port, existing.scheme = endpoint
+                wake = self._reconnect_wakeups.get(peer_id)
+                if wake is not None:
+                    wake.set()
+                self._push_isc_update()
             return
 
         log.info(f"ISC: Discovered «{peer_name}» ({peer_id[:8]}) at {peer_scheme}://{host}:{peer_port}")
@@ -1153,14 +1167,29 @@ class ISCManager:
             if self._reconnect_wakeups.get(peer_id) is wake:
                 del self._reconnect_wakeups[peer_id]
 
+    def _dial_endpoint(self, peer_id: str, host: str, port: int, scheme: str) -> tuple[str, int, str]:
+        """Where to dial ``peer_id`` now: the peer's latest beacon, recorded
+        on its PeerInfo by ``_handle_beacon``, else the endpoint the loop was
+        started with (a manual peer's entry moves to its real id once it
+        answers; an inbound one records no address)."""
+        peer = self._peers.get(peer_id)
+        if peer is None or not peer.host:
+            return host, port, scheme
+        return peer.host, peer.port, peer.scheme
+
     async def _outbound_loop_body(
         self, peer_id: str, host: str, port: int, scheme: str, wake: asyncio.Event,
     ) -> None:
-        """Connect, then reconnect on a schedule ``wake`` can cut short."""
+        """Connect, then reconnect on a schedule ``wake`` can cut short.
+
+        Every attempt dials where the peer was last heard from, so a peer
+        that comes back on another address, port or scheme is reached there.
+        """
         attempt = 0
         auth_fails = 0
         delay: float | None = None
         while self._running:
+            host, port, scheme = self._dial_endpoint(peer_id, host, port, scheme)
             try:
                 await self._outbound_connect(peer_id, host, port, scheme)
                 attempt = 0  # Reset on successful connection
@@ -1195,6 +1224,15 @@ class ISCManager:
             if not self._running:
                 return
 
+            # A beacon during that attempt moved the peer: try the new
+            # endpoint now, on a fresh schedule, rather than after a backoff
+            # earned at the old one.
+            if self._dial_endpoint(peer_id, host, port, scheme) != (host, port, scheme):
+                attempt = 0
+                auth_fails = 0
+                delay = None
+                continue
+
             # Back off — auth rejections use the longer fixed delay; otherwise
             # walk the standard escalating schedule.
             if delay is None:
@@ -1208,14 +1246,16 @@ class ISCManager:
             except asyncio.TimeoutError:
                 pass
             else:
-                # A reload asked for the retry now. Start the schedule over
-                # as well: the person who just changed the key needs to see
-                # whether it took, and the next failure is only reported at
-                # WARNING when it is the first one.
-                log.info(
-                    f"ISC: Configuration changed — retrying peer "
-                    f"{peer_id[:8]} now"
-                )
+                # A reload, or a beacon from where the peer is now, asked for
+                # the retry now. Start the schedule over as well: the person
+                # who just changed the key needs to see whether it took, and
+                # the next failure is only reported at WARNING when it is the
+                # first one. A move was already logged by _handle_beacon.
+                if self._dial_endpoint(peer_id, host, port, scheme) == (host, port, scheme):
+                    log.info(
+                        f"ISC: Configuration changed — retrying peer "
+                        f"{peer_id[:8]} now"
+                    )
                 attempt = 0
                 auth_fails = 0
             delay = None

@@ -15,6 +15,7 @@ import {
 import { connectedDot } from "../../shared/ConnectedDot";
 import * as api from "../../../api/restClient";
 import { valueText } from "../../shared/booleanWords";
+import { driverLabel } from "../../shared/driverLabel";
 
 interface ActionPickerProps {
   value: Record<string, unknown> | null;
@@ -210,7 +211,7 @@ function DeviceCommandConfig({
             }} />
             <span>{deviceInfo.connected ? "Connected" : "Offline"}</span>
             <span style={{ color: "var(--border-color)" }}>|</span>
-            <span>{deviceInfo.driver}</span>
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{driverLabel(deviceInfo.driver)}</span>
             {deviceInfo.state && String(deviceInfo.state.host || "") && (
               <>
                 <span style={{ color: "var(--border-color)" }}>|</span>

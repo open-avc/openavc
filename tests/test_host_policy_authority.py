@@ -187,6 +187,70 @@ async def test_committed_settings_acknowledgement_preserves_host_revocation(rig,
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('hold', [0, 10])
+@pytest.mark.parametrize('change', ['logout', 'host', 'disconnect'])
+async def test_slow_ui_work_drains_with_its_connection(rig, monkeypatch, hold, change):
+    monkeypatch.setattr(ws, 'UI_EVENT_HOLD_SEC', hold)
+    rig.engine.project.ui.pages = ProjectConfig.model_validate({
+        'project': {'id': 'example', 'name': 'Example'},
+        'ui': {'pages': [{'id': 'page', 'name': 'Page', 'elements': [{
+            'id': 'button', 'type': 'button', 'bindings': {'do': {'press': [
+                {'action': 'state.set', 'key': 'var.late_effect', 'value': 1},
+            ]}},
+        }]}]},
+    }).ui.pages
+    entered, cleaning, release_cleanup, ready = (asyncio.Event() for _ in range(4))
+
+    async def subscriber(event, payload):
+        entered.set()
+        try:
+            await asyncio.Future()
+        finally:
+            cleaning.set()
+            await release_cleanup.wait()
+
+    handler = rig.engine.events.on('ui.press.button', subscriber)
+    queue = asyncio.Queue()
+    await queue.put({'type': 'websocket.connect'})
+
+    async def send(message):
+        if message['type'] == 'websocket.send' and json.loads(message.get('text', '{}')).get('type') == 'ui.definition':
+            ready.set()
+
+    task = asyncio.create_task(rig.app(scope('/ws?client=programmer', rig.token, socket=True), queue.get, send))
+    try:
+        await asyncio.wait_for(ready.wait(), 1)
+        await queue.put({'type': 'websocket.receive', 'text': json.dumps({'type': 'ui.press', 'element_id': 'button'})})
+        await asyncio.wait_for(entered.wait(), 1)
+        await asyncio.sleep(.02)  # hold=0 has returned to receive; hold=10 has not.
+        if change == 'logout':
+            assert (await http(rig, '/api/auth/session', method='DELETE'))[1]['revoked']
+        elif change == 'host':
+            rig.host.current = PolicySnapshot(2, False, True)
+            rig.host.refresh()
+        else:
+            if hold:
+                # Transport disconnect arrives through receive after the hold.
+                task.cancel()
+            else:
+                await queue.put({'type': 'websocket.disconnect', 'code': 1000})
+        await asyncio.wait_for(cleaning.wait(), 1)
+        assert rig.host._admissions and not task.done()
+        assert rig.engine.state.get('var.late_effect') is None
+        release_cleanup.set()
+        await asyncio.wait_for(asyncio.gather(task, return_exceptions=True), 1)
+        assert not rig.host._admissions
+        assert rig.engine.state.get('var.late_effect') is None
+        assert not ws._ui_events_running
+    finally:
+        release_cleanup.set()
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        rig.engine.events.off(handler)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('fail', [False, True])
 async def test_completed_save_only_allows_its_response(rig, fail):
     router = APIRouter(route_class=ProgrammerRoute)
