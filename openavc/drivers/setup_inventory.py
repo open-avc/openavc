@@ -199,6 +199,37 @@ class _Capture:
         return {"role": role, "kind": "saved_library", "location": root,
                 "entries": [entry.name for entry in entries], "bundles": bundles}
 
+    def optional_directory(self, path, role, read):
+        # lstat distinguishes an absent child from a present dangling link.
+        # Observe the required parent even when the child is present, retaining
+        # the same complete membership proof across both dispositions.
+        parent, entries = self.directory(path.parent)
+        try:
+            path.lstat()
+        except FileNotFoundError:
+            if path.name in [entry.name for entry in entries]:
+                raise ValueError("The optional source directory changed during inventory.") from None
+            return {"role": role, "kind": "absent_directory", "path": str(path.absolute()),
+                    "parent": parent, "parent_entries": [entry.name for entry in entries]}
+        return {**read(path, role), "optional": True, "parent": parent,
+                "parent_entries": [entry.name for entry in entries]}
+
+    def templates(self, path, role):
+        root, entries = self.directory(path)
+        bundles = []
+        for entry in entries:
+            observed = self.observe(entry)
+            row = {"role": role, "path": str(entry.absolute()), "location": observed,
+                   "disposition": "outside_template_selection"}
+            # Match the runtime's flat glob selection, including native case
+            # semantics. A selected non-file refuses instead of disappearing.
+            if entry.match("*.zip"):
+                bundles.append(self.archive(entry, role))
+                row["disposition"] = "template_bundle"
+            self.member(row)
+        return {"role": role, "kind": "template_directory", "location": root,
+                "entries": [entry.name for entry in entries], "bundles": bundles}
+
     def recheck(self):
         for spelling in list(self.directories):
             self.directory(Path(spelling))
@@ -208,24 +239,34 @@ class _Capture:
 
 
 def capture_source_inputs(*, primary_roots: dict[str, Path],
-                          library_roots: dict[str, Path], bundles: dict[str, Path]) -> SourceCapture:
+                          library_roots: dict[str, Path], bundles: dict[str, Path],
+                          optional_primary_roots: dict[str, Path] | None = None,
+                          optional_library_roots: dict[str, Path] | None = None,
+                          template_roots: dict[str, Path] | None = None) -> SourceCapture:
     """Capture named existing locations; completeness of installation roles is separate.
 
 Role names associate this capture with an owning adapter's manifest. They do not
 define discovery rules or prove the adapter supplied all actual roots. Missing
-roots fail; optional absence must be established by the owner before this call.
+roots fail. Optional directories require an observed existing parent, and their
+absence is retained and rechecked. Template roots select every flat ZIP.
 Re-run under the owner's write exclusion before stop, comparing the census hash.
 """
-    groups = (primary_roots, library_roots, bundles)
+    groups = (primary_roots, library_roots, bundles, optional_primary_roots or {},
+              optional_library_roots or {}, template_roots or {})
     roles = [role for group in groups for role in group]
     if (not roles or len(roles) > 64 or len(set(roles)) != len(roles)
             or any(type(role) is not str or not role or len(role) > 100 for role in roles)):
         raise ValueError("Supply a bounded, distinct, nonempty set of named source locations.")
     capture = _Capture()
     roots = []
-    for values, read in zip(groups, (capture.primary, capture.library, capture.archive)):
+    for values, read in zip(groups[:3], (capture.primary, capture.library, capture.archive)):
         for role, path in sorted(values.items()):
             roots.append(read(Path(path).absolute(), role))
+    for values, read in zip(groups[3:5], (capture.primary, capture.library)):
+        for role, path in sorted(values.items()):
+            roots.append(capture.optional_directory(Path(path).absolute(), role, read))
+    for role, path in sorted(groups[5].items()):
+        roots.append(capture.templates(Path(path).absolute(), role))
     capture.recheck()
     body = {"schema": "setup-source-capture/v1", "scope": "supplied_locations",
             "installation_complete": False, "activation_authorized": False,

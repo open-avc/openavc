@@ -208,3 +208,105 @@ assert not {'openavc.system_config', 'openavc.drivers.driver_loader', 'openavc.c
                             cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True,
                             timeout=10, creationflags=CREATE_NO_WINDOW)
     assert result.returncode == 0, result.stderr
+
+
+def test_optional_absence_records_parent_and_never_claims_installation_completeness(tmp_path):
+    (tmp_path / "existing.txt").write_text("retained")
+    result = inventory.capture_source_inputs(primary_roots={}, library_roots={}, bundles={},
+        optional_primary_roots={"persistent": tmp_path / "drivers"},
+        optional_library_roots={"saved": tmp_path / "library"})
+    assert result.report["source_count"] == 0
+    assert {row["role"] for row in result.report["roots"]} == {"persistent", "saved"}
+    for row in result.report["roots"]:
+        assert row["kind"] == "absent_directory"
+        assert row["parent"]["resolved"] == str(tmp_path.resolve())
+        assert row["parent_entries"] == ["existing.txt"]
+    assert result.report["installation_complete"] is False
+    assert result.report["activation_authorized"] is False
+    assert not (tmp_path / "drivers").exists() and not (tmp_path / "library").exists()
+
+
+@pytest.mark.parametrize("kind", ["dangling", "file", "missing_parent"])
+def test_optional_errors_are_not_absence(tmp_path, kind):
+    path = tmp_path / "drivers"
+    if kind == "dangling":
+        path.symlink_to(tmp_path / "absent", target_is_directory=True)
+    elif kind == "file":
+        path.write_text("not a directory")
+    else:
+        path = tmp_path / "missing" / "drivers"
+    with pytest.raises((ValueError, FileNotFoundError)):
+        inventory.capture_source_inputs(primary_roots={}, library_roots={}, bundles={},
+                                        optional_primary_roots={"persistent": path})
+
+
+def test_optional_present_alias_keeps_distinct_role_obligations(tmp_path):
+    actual = tmp_path / "actual"
+    actual.mkdir()
+    (actual / "a.py").write_bytes(b"never imported")
+    alias = tmp_path / "alias"
+    alias.symlink_to(actual, target_is_directory=True)
+    result = inventory.capture_source_inputs(primary_roots={"installed": actual},
+        library_roots={}, bundles={}, optional_primary_roots={"retained": alias})
+    assert result.report["source_count"] == 2
+    assert len(result.source_bytes) == 1
+    assert {row["role"] for row in result.report["members"]} == {"installed", "retained"}
+    retained = next(row for row in result.report["roots"] if row["role"] == "retained")
+    assert retained["optional"] is True and retained["location"]["path"] == str(alias)
+
+
+def test_an_optional_source_inserted_after_enumeration_refuses(tmp_path, monkeypatch):
+    original = inventory._Capture.recheck
+    def insert(self):
+        root = tmp_path / "drivers"
+        root.mkdir()
+        (root / "new.py").write_text("never imported")
+        original(self)
+    monkeypatch.setattr(inventory._Capture, "recheck", insert)
+    with pytest.raises(ValueError, match="changed during inventory"):
+        inventory.capture_source_inputs(primary_roots={}, library_roots={}, bundles={},
+                                        optional_primary_roots={"persistent": tmp_path / "drivers"})
+
+
+def test_templates_capture_every_flat_zip_and_keep_other_members_visible(tmp_path):
+    bundle(tmp_path / "first.zip", [("drivers/one.py", b"first")])
+    bundle(tmp_path / "second.zip", [("drivers/two.py", b"second")])
+    (tmp_path / "plain.avc").write_text("{}")
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    bundle(nested / "not_flat.zip", [("drivers/three.py", b"not selected")])
+    result = inventory.capture_source_inputs(primary_roots={}, library_roots={}, bundles={},
+                                            template_roots={"candidate": tmp_path})
+    assert result.report["source_count"] == 2
+    assert set(result.source_bytes.values()) == {b"first", b"second"}
+    root, = result.report["roots"]
+    assert root["kind"] == "template_directory"
+    assert root["entries"] == ["first.zip", "nested", "plain.avc", "second.zip"]
+    assert len(root["bundles"]) == 2
+    assert {row["disposition"] for row in result.report["members"]} == {
+        "primary_python", "outside_template_selection", "template_bundle"}
+
+
+@pytest.mark.parametrize("kind", ["directory", "dangling"])
+def test_selected_template_type_errors_refuse(tmp_path, kind):
+    path = tmp_path / "invalid.zip"
+    if kind == "directory":
+        path.mkdir()
+    else:
+        path.symlink_to(tmp_path / "missing")
+    with pytest.raises((ValueError, FileNotFoundError)):
+        inventory.capture_source_inputs(primary_roots={}, library_roots={}, bundles={},
+                                        template_roots={"candidate": tmp_path})
+
+
+def test_optional_and_template_sources_share_the_total_capture_bound(tmp_path, monkeypatch):
+    drivers = tmp_path / "drivers"
+    drivers.mkdir()
+    (drivers / "a.py").write_bytes(b"one")
+    templates = tmp_path / "templates"
+    templates.mkdir()
+    bundle(templates / "next.zip", [("drivers/b.py", b"two")])
+    monkeypatch.setattr(inventory, "_MAX_SOURCES", 1)
+    with pytest.raises(ValueError, match="source limit"):
+        inventory.capture_source_inputs(primary_roots={}, library_roots={}, bundles={},
+            optional_primary_roots={"persistent": drivers}, template_roots={"candidate": templates})
