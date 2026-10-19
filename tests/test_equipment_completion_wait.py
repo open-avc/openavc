@@ -52,7 +52,9 @@ async def peer(tmp_path, monkeypatch):
         config_schema={}, state_variables={"counter": {"type": "integer"}},
         commands={"increment": {"params": {}}})
     state = {"session": "first", "delay": 0.0, "final": "completed", "forget": False,
-             "posts": [], "reads": [], "results": {}}
+             "posts": [], "reads": [], "results": {}, "read_ids": asyncio.Queue(),
+             "completion_gate": None}
+    finishing = []
 
     async def description(request):
         return web.json_response({"protocol": PROTOCOL, "identity": "example-unit",
@@ -68,11 +70,18 @@ async def peer(tmp_path, monkeypatch):
         state["posts"].append((time.monotonic(), body["id"]))
         result = state["results"][body["id"]] = {"id": body["id"], "outcome": "pending"}
         final = state["final"]
+        completion_gate = state["completion_gate"]
 
         def finish():
             result["outcome"] = final
 
-        if state["delay"]:
+        if completion_gate is not None:
+            async def finish_when_released():
+                await completion_gate.wait()
+                finish()
+            finishing.append(asyncio.create_task(finish_when_released()))
+            await asyncio.sleep(ANSWER_WINDOW)
+        elif state["delay"]:
             asyncio.get_running_loop().call_later(state["delay"], finish)
             await asyncio.sleep(min(state["delay"], ANSWER_WINDOW))
         else:
@@ -85,6 +94,7 @@ async def peer(tmp_path, monkeypatch):
     async def result(request):
         ident = int(request.match_info["ident"])
         state["reads"].append(ident)
+        state["read_ids"].put_nowait(ident)
         if state["forget"] or ident not in state["results"]:
             return web.json_response({"error": "unknown_request", "message": "No retained result."}, status=404)
         return web.json_response(state["results"][ident])
@@ -114,6 +124,9 @@ async def peer(tmp_path, monkeypatch):
     try:
         yield connect, state
     finally:
+        for task in finishing:
+            task.cancel()
+        await asyncio.gather(*finishing, return_exceptions=True)
         for driver in drivers:
             await driver.disconnect()
         await runner.cleanup()
@@ -184,18 +197,21 @@ async def test_a_new_equipment_session_ends_the_wait_without_sending_again(peer)
     connect, state = peer
     driver = await connect()
     state["delay"] = 5
+    restarted_at = []
 
     async def restart():
-        await asyncio.sleep(0.5)
+        # Change the session only after a command was accepted and the client
+        # is reading its pending outcome, never during durable ID reservation.
+        await asyncio.wait_for(state["read_ids"].get(), 5)
+        restarted_at.append(time.monotonic())
         state["session"] = "second"
 
-    started = time.monotonic()
     restarting = asyncio.create_task(restart())
     with pytest.raises(CommandOutcomeError) as unconfirmed:
         await driver.send_command("increment")
     await restarting
     assert unconfirmed.value.outcome == "uncertain"
-    assert time.monotonic() - started < 2
+    assert time.monotonic() - restarted_at[0] < 2
     assert len(state["posts"]) == 1
 
 
@@ -216,16 +232,24 @@ async def test_a_result_the_equipment_no_longer_holds_is_unconfirmed(peer):
 async def test_a_second_command_is_sent_while_the_first_is_waiting(peer):
     connect, state = peer
     driver = await connect()
-    state["delay"] = 1.0
+    completion = state["completion_gate"] = asyncio.Event()
     first = asyncio.create_task(driver.send_command("increment"))
-    await asyncio.sleep(0.4)
-    state["delay"] = 0.0
-    assert (await driver.send_command("increment"))["outcome"] == "completed"
-    assert not first.done()
-    assert (await first)["outcome"] == "completed"
-    (sent_first, id_first), (sent_second, id_second) = state["posts"]
-    assert id_second > id_first
-    assert sent_second - sent_first < 0.6
+    try:
+        await asyncio.wait_for(state["read_ids"].get(), 5)
+        state["completion_gate"] = None
+        # The first result cannot complete before this explicit release. This
+        # tests lock ownership rather than scheduler/filesystem speed.
+        assert (await driver.send_command("increment"))["outcome"] == "completed"
+        assert not first.done()
+        completion.set()
+        assert (await first)["outcome"] == "completed"
+        (_, id_first), (_, id_second) = state["posts"]
+        assert id_second > id_first
+    finally:
+        completion.set()
+        if not first.done():
+            first.cancel()
+        await asyncio.gather(first, return_exceptions=True)
 
 
 def test_the_setting_is_offered_for_network_equipment():
