@@ -73,15 +73,34 @@ def _json_bytes(value: Any, limit: int) -> bytes:
 
 
 @dataclass(frozen=True)
+class SetupField:
+    """A declared diagnostic value, visible only with the protected finding."""
+
+    label: str
+    value: str | bool | int | float | None
+
+    def payload(self) -> dict:
+        if not isinstance(self.label, str) or not self.label.strip():
+            raise TypeError("Setup field label required")
+        if self.value is not None and type(self.value) not in (str, bool, int, float):
+            raise TypeError("Setup field value must be a flat primitive")
+        if type(self.value) is float and not math.isfinite(self.value):
+            raise ValueError("Setup field value must be finite")
+        return {"label": self.label, "value": self.value}
+
+
+@dataclass(frozen=True)
 class SetupFinding:
     code: str
     outcome: Outcome
     detail: str = ""
+    fields: tuple[SetupField, ...] = ()
 
     def payload(self) -> dict:
         if not isinstance(self.outcome, Outcome) or not isinstance(self.detail, str):
             raise TypeError("Typed setup finding required")
-        return {"code": _code(self.code), "outcome": self.outcome.value, "detail": self.detail}
+        return {"code": _code(self.code), "outcome": self.outcome.value, "detail": self.detail,
+                **({"fields": [value.payload() for value in self.fields]} if self.fields else {})}
 
 
 @dataclass(frozen=True)

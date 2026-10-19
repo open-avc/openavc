@@ -3151,6 +3151,12 @@ declarations require a qualified adapter for that installed driver version and
 source before the typed invocation path can use them. A `success` or `ok` key
 alone does not select a result contract.
 
+Each `SetupFinding` can include `fields=(SetupField("Checks", 3), ...)` from the
+same module. These named diagnostic values appear in the authorized wizard.
+Values are strings, numbers, booleans or `None`; use one finding per reported
+item instead of nesting arbitrary device dictionaries. Credentials belong in
+the separate protected credential result, never in diagnostic fields.
+
 Declare the contract beside your other action fields:
 
 ```python

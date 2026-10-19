@@ -12,7 +12,7 @@ import pytest
 
 from openavc.core.outbound_messages import RoomText
 from openavc.core.setup_results import (
-    Outcome, SetupCapacityError, SetupConflict, SetupFinding, SetupResult,
+    Outcome, SetupCapacityError, SetupConflict, SetupField, SetupFinding, SetupResult,
     SetupResultStore, SetupUnavailable, StageState,
 )
 
@@ -204,6 +204,28 @@ def test_unknown_wrong_expired_and_process_lost_capabilities_never_create_work()
     with pytest.raises(SetupUnavailable):
         restarted.claim(item.capability, request(), target=target, current=allowed)
     assert not restarted._slots
+
+
+def test_protected_diagnostic_fields_retain_false_zero_and_unknown_without_aliases():
+    store = SetupResultStore()
+    item, slot = started(store)
+    store.complete(slot, SetupResult(Outcome.UNVERIFIED, RoomText("No checks were confirmed."), (
+        SetupFinding("check.summary", Outcome.UNVERIFIED, "The device returned limited detail.", (
+            SetupField("Checks", 0), SetupField("Authenticated", False), SetupField("Firmware", None),
+        )),
+    )))
+    status = store.status(item.capability, current=allowed)
+    fields = status["result"]["findings"][0]["fields"]
+    assert fields == [{"label": "Checks", "value": 0}, {"label": "Authenticated", "value": False},
+                      {"label": "Firmware", "value": None}]
+    fields[0]["value"] = 99
+    assert store.status(item.capability, current=allowed)["result"]["findings"][0]["fields"][0]["value"] == 0
+
+
+@pytest.mark.parametrize("value", [{"unknown": "nested"}, [1], float("nan"), float("inf")])
+def test_structured_diagnostic_values_require_explicit_flat_fields(value):
+    with pytest.raises((TypeError, ValueError)):
+        SetupField("Detail", value).payload()
 
 
 def test_bad_results_and_oversize_publications_refuse_without_erasing_retained_secret():

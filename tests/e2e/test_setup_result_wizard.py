@@ -16,7 +16,7 @@ DRIVER = '''
 import asyncio
 from pathlib import Path
 from openavc.drivers.base import BaseDriver
-from openavc.core.setup_results import Outcome, SetupProgress, SetupResult
+from openavc.core.setup_results import Outcome, SetupField, SetupFinding, SetupProgress, SetupResult
 from openavc.core.outbound_messages import RoomText
 
 class AcmePairing(BaseDriver):
@@ -56,7 +56,12 @@ class AcmePairing(BaseDriver):
             finally:
                 engine.apply_project = original
             await self.request_reconnect()
-        return SetupResult(Outcome.SUCCEEDED, RoomText("Device pairing completed."))
+        return SetupResult(Outcome.SUCCEEDED, RoomText("Device pairing completed."), (
+            SetupFinding("pair.details", Outcome.SUCCEEDED, "Device report", (
+                SetupField("Checks", 0), SetupField("Optional service", False),
+                SetupField("Firmware", None), SetupField("Device label", "<example>"),
+            )),
+        ))
 '''
 
 
@@ -98,6 +103,9 @@ def test_setup_result_through_wizard(server_factory, page, tmp_path, case, claim
     expect(dialog.get_by_text("Outcome not confirmed" if fail else "Completed", exact=True)).to_be_visible(timeout=15000)
     assert effect.read_text().splitlines() == ["paired"]
     assert "invented-browser-key" not in str(frames)
+    if not fail:
+        for value in ("0", "No", "Not reported", "<example>"):
+            expect(dialog.get_by_text(value, exact=True)).to_be_visible()
     if save and not fail:
         expect(dialog.get_by_text("Generated credentials were saved with the device settings.")).to_be_visible()
         expect(dialog.get_by_role("button", name="Reveal credentials")).to_have_count(0)
@@ -112,7 +120,7 @@ def test_setup_result_through_wizard(server_factory, page, tmp_path, case, claim
             expect(dialog.get_by_text("Not confirmed", exact=True)).to_be_visible()
         dialog.get_by_role("button", name="Copy app_key").click()
         expect(dialog.get_by_text("Copied!")).to_be_visible()
-    out = Path(__file__).resolve().parents[2] / "build/outbound-policy/browser"
+    out = Path(__file__).resolve().parents[2] / "build/outbound-policy/browser-typed-fields"
     out.mkdir(parents=True, exist_ok=True)
     page.screenshot(path=str(out / f"{case}.png"), full_page=True)
     if not save or fail:

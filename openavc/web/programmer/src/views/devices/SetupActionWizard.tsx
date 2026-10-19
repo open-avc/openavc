@@ -72,7 +72,14 @@ export function SetupActionWizard({ deviceId, action, onClose, onComplete }: {
             <span><strong>{{ succeeded: "Completed", failed: "Failed", degraded: "Partly completed", unverified: "Outcome not confirmed" }[result.outcome]}</strong><br />{result.summary}</span>
           </p>
           {result.findings.length > 0 && <ul>{result.findings.map((finding, i) =>
-            <li key={`${finding.code}-${i}`}>{finding.detail || finding.code}</li>)}</ul>}
+            <li key={`${finding.code}-${i}`}>{finding.detail || finding.code}
+              {finding.fields?.length ? <dl style={{ fontSize: "var(--font-size-sm)" }}>
+                {finding.fields.map((field, j) => <div key={`${field.label}-${j}`}>
+                  <dt>{field.label}</dt><dd>{field.value === null ? "Not reported" :
+                    typeof field.value === "boolean" ? (field.value ? "Yes" : "No") : String(field.value)}</dd>
+                </div>)}
+              </dl> : null}
+            </li>)}</ul>}
           <dl style={{ fontSize: "var(--font-size-sm)" }}>
             <dt>Save settings</dt><dd>{stageLabel[result.config_save]}</dd>
             <dt>Reconnect</dt><dd>{stageLabel[result.reconnect]}</dd>

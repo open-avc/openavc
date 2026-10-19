@@ -9,7 +9,8 @@ export interface SetupStatus {
   result: {
     outcome: SetupOutcome;
     summary: string;
-    findings: Array<{ code: string; outcome: SetupOutcome; detail: string }>;
+    findings: Array<{ code: string; outcome: SetupOutcome; detail: string;
+      fields?: Array<{ label: string; value: string | number | boolean | null }> }>;
     config_save: SetupStage;
     reconnect: SetupStage;
   } | null;

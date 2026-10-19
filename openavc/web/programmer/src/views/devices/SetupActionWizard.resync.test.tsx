@@ -160,6 +160,21 @@ describe("a tab that ran a setup wizard", () => {
 });
 
 describe("prepared setup attempt ownership", () => {
+  it("shows reported values without turning zero or false into missing results", async () => {
+    const status = completed();
+    status.result!.outcome = "unverified";
+    status.result!.findings = [{ code: "check.summary", outcome: "unverified", detail: "Limited device report", fields: [
+      { label: "Checks", value: 0 }, { label: "Authenticated", value: false },
+      { label: "Firmware", value: null }, { label: "Device name", value: "<script>marker</script>" },
+    ] }];
+    startSetup.mockResolvedValueOnce(status);
+    await runWizard();
+    expect(await screen.findByText("Outcome not confirmed")).toBeInTheDocument();
+    for (const text of ["0", "No", "Not reported", "<script>marker</script>"])
+      expect(screen.getByText(text)).toBeInTheDocument();
+    expect(document.querySelector("script")).toBeNull();
+  });
+
   it("keeps one reservation through double clicks and a lost start response", async () => {
     let prepared!: (value: unknown) => void;
     prepareSetup.mockImplementationOnce(() => new Promise((resolve) => { prepared = resolve; }));
