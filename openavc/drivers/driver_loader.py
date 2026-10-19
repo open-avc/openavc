@@ -20,7 +20,6 @@ from dataclasses import dataclass
 import hashlib
 import importlib.util
 import inspect
-import json
 import os
 import sys
 import tempfile
@@ -81,7 +80,9 @@ _PYTHON_SOURCES: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 
 
 def _declaration(info: Any) -> str:
-    return json.dumps(info, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    from openavc.drivers.setup_compatibility import declaration_json
+
+    return declaration_json(info)
 
 
 def _handler_defaults(handler):

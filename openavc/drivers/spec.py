@@ -303,6 +303,23 @@ PYTHON_ONLY_ACTION_KINDS: tuple[str, ...] = ("setup",)
 # installed-source adapter; a coincidental success/ok key is not a contract.
 SETUP_RESULT_CONTRACTS: tuple[str, ...] = ("setup/v1",)
 
+# Finite semantics for source-qualified legacy setup results. Each role maps to
+# one declared top-level result key, never a path, expression or callback. The
+# trailing ? marks an optional role declaration; present result roles are strict.
+SETUP_COMPATIBILITY_ROLES: dict[str, dict[str, str]] = {
+    "boolean-check/v1": {"success": "boolean", "message": "string"},
+    "probe-check/v1": {"success": "boolean", "answered": "strings", "silent": "strings",
+                       "rejected?": "strings", "problems": "strings", "message": "string"},
+    "block-check/v1": {"count": "integer", "answered": "strings", "failed": "strings"},
+    "inventory-check/v1": {"reachable": "boolean", "count": "integer", "items": "strings"},
+    "credential-check/v1": {"success": "boolean", "enabled?": "boolean", "message": "string"},
+    "session-check/v1": {"authenticated": "boolean"},
+    "pairing/v1": {"paired": "boolean"},
+    "provisioning-claim/v1": {"accepted": "boolean", "message?": "string"},
+}
+SETUP_DIAGNOSTIC_TYPES: tuple[str, ...] = ("string", "boolean", "integer", "number", "strings")
+
+
 # How an action's visibility tracks the device's connection state.
 AVAILABILITIES: tuple[str, ...] = ("online", "offline", "always")
 

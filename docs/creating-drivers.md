@@ -3151,6 +3151,21 @@ declarations require a qualified adapter for that installed driver version and
 source before the typed invocation path can use them. A `success` or `ok` key
 alone does not select a result contract.
 
+Compatibility descriptors use the published
+[setup compatibility schema](../openavc/drivers/setup-compatibility.schema.json).
+Each descriptor identifies exact source and declaration SHA-256 values, the
+action's input declaration, and a versioned result profile. Profiles distinguish
+boolean checks, probe/block checks, limited inventory, credential/session checks,
+pairing and provisioning claims. A reachable connection or a returned provisioning
+claim is not proof that every check or hardware change succeeded.
+
+Diagnostic mappings name individual top-level result fields and their types.
+They do not evaluate expressions or search nested objects. A generated credential
+has its own declared role and cannot also be a diagnostic. Missing and reported
+null values remain distinct; counts must be nonnegative integers. Descriptors
+alone do not enable a handler: the loaded code and its dependencies must match the
+qualified source, and the runtime must include the applicable compatibility data.
+
 Each `SetupFinding` can include `fields=(SetupField("Checks", 3), ...)` from the
 same module. These named diagnostic values appear in the authorized wizard.
 Values are strings, numbers, booleans or `None`; use one finding per reported

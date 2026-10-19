@@ -28,6 +28,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
     [
         "openavc/drivers/avcdriver.schema.json",
         "openavc/drivers/pythondriver.schema.json",
+        "openavc/drivers/setup-compatibility.schema.json",
         "openavc/web/programmer/src/api/types.gen.ts",
     ],
 )

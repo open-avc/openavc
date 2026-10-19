@@ -1,0 +1,468 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Source-qualified setup compatibility descriptor",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "driver_id",
+    "driver_version",
+    "action_id",
+    "source_sha256",
+    "declaration_sha256",
+    "action_sha256",
+    "profile",
+    "roles",
+    "diagnostics"
+  ],
+  "properties": {
+    "schema": {
+      "const": "setup-compatibility/v1"
+    },
+    "driver_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+    },
+    "driver_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "action_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+    },
+    "source_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "declaration_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "action_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "profile": {
+      "enum": [
+        "boolean-check/v1",
+        "probe-check/v1",
+        "block-check/v1",
+        "inventory-check/v1",
+        "credential-check/v1",
+        "session-check/v1",
+        "pairing/v1",
+        "provisioning-claim/v1"
+      ]
+    },
+    "roles": {
+      "type": "object"
+    },
+    "generated_secret": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+    },
+    "diagnostics": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "label",
+          "type",
+          "required",
+          "nullable"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "type": {
+            "enum": [
+              "string",
+              "boolean",
+              "integer",
+              "number",
+              "strings"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "nullable": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "boolean-check/v1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "roles": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "success",
+              "message"
+            ],
+            "properties": {
+              "success": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+              }
+            }
+          }
+        },
+        "not": {
+          "required": [
+            "generated_secret"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "probe-check/v1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "roles": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "success",
+              "answered",
+              "silent",
+              "problems",
+              "message"
+            ],
+            "properties": {
+              "success": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+              },
+              "answered": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+              },
+              "silent": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+              },
+              "rejected": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+              },
+              "problems": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+              }
+            }
+          }
+        },
+        "not": {
+          "required": [
+            "generated_secret"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "block-check/v1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "roles": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "count",
+              "answered",
+              "failed"
+            ],
+            "properties": {
+              "count": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+              },
+              "answered": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+              },
+              "failed": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+              }
+            }
+          }
+        },
+        "not": {
+          "required": [
+            "generated_secret"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "inventory-check/v1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "roles": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "reachable",
+              "count",
+              "items"
+            ],
+            "properties": {
+              "reachable": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+              },
+              "count": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+              },
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+              }
+            }
+          }
+        },
+        "not": {
+          "required": [
+            "generated_secret"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "credential-check/v1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "roles": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "success",
+              "message"
+            ],
+            "properties": {
+              "success": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+              },
+              "enabled": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+              }
+            }
+          }
+        },
+        "not": {
+          "required": [
+            "generated_secret"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "session-check/v1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "roles": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "authenticated"
+            ],
+            "properties": {
+              "authenticated": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+              }
+            }
+          }
+        },
+        "not": {
+          "required": [
+            "generated_secret"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "pairing/v1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "roles": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "paired"
+            ],
+            "properties": {
+              "paired": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+              }
+            }
+          }
+        },
+        "required": [
+          "generated_secret"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "provisioning-claim/v1"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "roles": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "accepted"
+            ],
+            "properties": {
+              "accepted": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160,
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+              }
+            }
+          }
+        },
+        "not": {
+          "required": [
+            "generated_secret"
+          ]
+        }
+      }
+    }
+  ]
+}

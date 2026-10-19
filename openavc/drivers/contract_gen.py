@@ -180,8 +180,11 @@ def render_schema(tier: str) -> str:
 def artifacts(repo_root: Path) -> dict[Path, str]:
     """Map of output path -> rendered content for every generated artifact."""
     from openavc.drivers.contract_gen_ts import render_types_ts
+    from openavc.drivers.setup_compatibility import descriptor_schema
 
     return {
+        repo_root / "openavc" / "drivers" / "setup-compatibility.schema.json":
+            json.dumps(descriptor_schema(), indent=2, ensure_ascii=False) + "\n",
         repo_root / "openavc" / "drivers" / "avcdriver.schema.json":
             render_schema("yaml"),
         repo_root / "openavc" / "drivers" / "pythondriver.schema.json":
