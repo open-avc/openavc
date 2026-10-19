@@ -559,6 +559,35 @@ async def test_a_failed_step_says_why_in_words_somebody_can_read(failing_engine,
     assert payload["message"] == "Ceiling Projector is not connected."
 
 
+@pytest.mark.parametrize("audience", ["panel", "preview", "programmer"])
+async def test_a_loaded_macro_failure_reaches_its_existing_clients(failing_engine, core, audience):
+    """Loaded project steps include null fields for the other action kinds."""
+    import json
+
+    from openavc.core.outbound_messages import OutboundPolicy, Recipient
+    from openavc.core.project_loader import MacroConfig
+
+    _, events = core
+    seen = _collect(events, "macro.step_error.*")
+    macro = MacroConfig(id="on", name="System On", steps=[{
+        "action": "device.command", "device": "projector", "command": "power_on",
+    }])
+    failing_engine.load_macros([macro.model_dump()])
+    await failing_engine.execute("on")
+
+    client = Recipient(object(), audience, lambda: True)
+    envelope = OutboundPolicy().project({"type": "macro.step_error", **seen[0][1]}, client)
+    assert envelope is not None
+    delivered = json.loads(envelope.for_send(client))
+    expected = "Ceiling Projector is not connected."
+    if audience != "programmer":
+        expected += " Check its power and network connection, or contact support."
+    assert delivered["message"] == expected
+    assert delivered["call_chain"] == ["on"]
+    assert delivered["group"] is None
+    assert ("error" in delivered) == (audience == "programmer")
+
+
 async def test_a_macro_that_fails_mid_run_still_reports_completed(failing_engine, core):
     """Why the message has to ride the step, not the end of the run.
 

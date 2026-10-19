@@ -159,6 +159,10 @@ def _text(value: Any) -> str:
     return value
 
 
+def _optional_text(value: Any) -> str | None:
+    return None if value is None else _text(value)
+
+
 def _bool(value: Any) -> bool:
     if type(value) is not bool:
         raise InvalidMessage("boolean required")
@@ -298,7 +302,8 @@ _MACRO_ROOM = {
     "macro_id": _text, "name": _text, "macro_name": _text, "run_id": _text,
     "step_index": _number, "total_steps": _number, "step_path": _path,
     "action": _text, "description": _text, "status": _text,
-    "device": _text, "group": _text, "command": _text,
+    # Project-loaded steps retain null for fields belonging to other actions.
+    "device": _optional_text, "group": _optional_text, "command": _optional_text,
     "call_chain": _strings, "outcome": _text, "failed_steps": _number,
 }
 _MACRO_DETAIL = {
