@@ -624,24 +624,38 @@ class _Socket:
     def __init__(self):
         self.frames = []
 
-    async def send_json(self, frame):
-        self.frames.append(frame)
+    async def send_text(self, text):
+        self.frames.append(json.loads(text))
 
 
 @pytest.mark.asyncio
 async def test_a_slow_interaction_does_not_hold_the_next_one(monkeypatch):
+    from openavc.core.state_store import StateStore
+    from openavc.core.ws_hub import WSHub
+
     monkeypatch.setattr(ws, "UI_EVENT_HOLD_SEC", 0.05)
     engine, socket = _SlowEngine(), _Socket()
-    async with asyncio.timeout(1):
-        await ws._run_ui_event(socket, "ui.press", engine, "press", "slow")
-        await ws._run_ui_event(socket, "ui.release", engine, "release", "fast")
-    assert engine.handled == ["fast"] and socket.frames == []
-    engine.finish.set()
-    async with asyncio.timeout(1):
-        while not socket.frames:
-            await asyncio.sleep(0.01)
-    assert engine.handled == ["fast", "slow"]
-    assert socket.frames == [{
-        "type": "error", "source_type": "ui.press", "element_id": "slow",
-        "message": "The product did not confirm the command finished.",
-    }]
+    engine.ws = WSHub(StateStore())
+    monkeypatch.setattr(ws, "get_engine_optional", lambda: engine)
+    engine.ws.add_client(socket, client_type="programmer", authority=lambda: True)
+    try:
+        async with asyncio.timeout(1):
+            await ws._run_ui_event(socket, "ui.press", engine, "press", "slow")
+            await ws._run_ui_event(socket, "ui.release", engine, "release", "fast")
+        assert engine.handled == ["fast"] and socket.frames == []
+        engine.finish.set()
+        async with asyncio.timeout(1):
+            while not socket.frames:
+                await asyncio.sleep(0.01)
+        assert engine.handled == ["fast", "slow"]
+        assert socket.frames == [{
+            "type": "error", "source_type": "ui.press", "element_id": "slow",
+            "message": "The product did not confirm the command finished.",
+        }]
+    finally:
+        engine.finish.set()
+        tasks = ws._ui_events_running.pop(id(socket), set())
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        engine.ws.remove_client(socket)
