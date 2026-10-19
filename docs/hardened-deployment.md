@@ -193,7 +193,7 @@ In Docker, who can connect is set in the compose file, and Settings shows it loc
 
 ### Plugin ports
 
-The Video Panel and Present plugins open UDP and TCP ports of their own while they run, listed in the [cut sheet](it-network-guide.md#listening-ports-inbound-to-the-openavc-host). Restrict them the same way, to the networks their panels, presenters and decoders are on.
+The Video Panel and Present plugins open UDP and TCP ports of their own while they run, listed in the [cut sheet](it-network-guide.md#listening-ports-inbound-to-the-openavc-host). Restrict them the same way, to the networks their panels, presenters and decoders are on. On Windows each port has a rule of its own, named like `OpenAVC plugin UDP 8189`: `Set-NetFirewallRule -DisplayName "OpenAVC plugin UDP 8189" -RemoteAddress 10.20.30.0/24`. The rule is removed when no running plugin needs the port, and added again allowing every address the next time one does.
 
 ---
 
@@ -202,7 +202,7 @@ The Video Panel and Present plugins open UDP and TCP ports of their own while th
 If nginx, Caddy, HAProxy or another proxy is in front of OpenAVC:
 
 1. Have the proxy set `X-Forwarded-For` to the client's address. In nginx that is `proxy_set_header X-Forwarded-For $remote_addr;`. Caddy sets it by default.
-2. Set `network.trust_forwarded_for` to `true`. Unless the proxy reaches OpenAVC over loopback, also list it in `network.trusted_proxies`, as an address or a range: `["10.20.30.5"]`, or `OPENAVC_TRUSTED_PROXIES=10.20.30.5`. That means a proxy on another machine, and any proxy in front of Docker with published ports, which arrives from the Docker network: list that network's range, which `docker network inspect <network> --format '{{(index .IPAM.Config 0).Subnet}}'` prints. OpenAVC reads `X-Forwarded-For` only from loopback and these proxies.
+2. Set `network.trust_forwarded_for` to `true`. Unless the proxy reaches OpenAVC over loopback, also list it in `network.trusted_proxies`, as an address or a range: `["10.20.30.5"]`, or `OPENAVC_TRUSTED_PROXIES=10.20.30.5`. That means a proxy on another machine, and any proxy in front of Docker with published ports, which arrives from the Docker network: list that network's range, which `docker network inspect <network> --format '{{(index .IPAM.Config 0).Subnet}}'` prints. OpenAVC reads `X-Forwarded-For` only from loopback and these proxies. uvicorn's `FORWARDED_ALLOW_IPS` variable has no effect.
 3. Make the proxy the only way to reach OpenAVC.
    - **Proxy on the same machine:** set Settings > Network > **Accept connections from** to **This computer only**. In Docker, set `OPENAVC_BIND=127.0.0.1` under `environment:` with host networking, or publish on loopback, `"127.0.0.1:8081:8080"`, with published ports.
    - **Proxy on another machine:** allow 8080 and 8443 from the proxy's address only.
@@ -221,7 +221,7 @@ A machine with one adapter on the AV network and another on the campus network i
 - **Reach devices through:** choose the AV adapter. Device connections and discovery scans then use that adapter only. While it has no address at all (unplugged before it ever had one), they are refused, and say so, rather than sent through another network.
 - **Advertise on the network** announces only where Accept connections from allows, and not at all for This computer only. Turn it off unless the Panel app's list of systems is used.
 
-Both choices name the adapter, not its address, so a new address from DHCP is followed. If the chosen adapter is unplugged or has no address when OpenAVC starts, OpenAVC accepts connections from this computer only, says so on the Dashboard and in Settings, and listens on the adapter again when it comes back.
+Both choices name the adapter, not its address, so a new address from DHCP is followed. While the adapter chosen under Accept connections from is unplugged or has no address, OpenAVC accepts connections from this computer only, with a note on the Dashboard and in Settings, and listens on the adapter again when it is back.
 
 Before OpenAVC 0.37.0, the web ports listen on every adapter whatever Settings says, and Reach devices through is called Control interface. On those versions, restrict the web ports with the firewall rules above.
 

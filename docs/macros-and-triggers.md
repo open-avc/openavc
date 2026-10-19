@@ -21,7 +21,7 @@ Use the search box at the top of the macro list to filter by name.
 | **Group Command** | Send a command to all devices in a group at once | `projectors` -> `power_on` |
 | **Delay** | Wait N seconds between steps | Wait 15 seconds for projector warmup |
 | **Wait Until** | Pause until a state value matches a condition | Wait until the projector reports it is warm |
-| **Set Variable or Control** | Set a user variable, or change a control on the panel | `var.room_active` = `true`, or `ui.btn_power.label` = `Turn Off` |
+| **Set Variable or Control** | Set a user variable, or change a control on the panel | `var.room_active` = Yes, or `ui.btn_power.label` = `Turn Off` |
 | **Emit Event** | Fire a custom event on the event bus | `room.shutdown_complete` |
 | **Run Macro** | Execute another macro as a sub-routine | Run `select_hdmi1` |
 | **Conditional** | If/else branching based on state | If projector is already on, skip power-on |
@@ -53,7 +53,7 @@ Here is a real-world example of a `system_on` macro for a conference room:
 
 | Step | Type | Details |
 |------|------|---------|
-| 1 | Set Variable | `var.room_active` = `true` |
+| 1 | Set Variable or Control | `var.room_active` = Yes |
 | 2 | Device Command | `screen_1` -> `lower` |
 | 3 | Device Command | `projector_main` -> `power_on` |
 | 4 | Delay | 20 seconds (projector warmup) |
@@ -301,7 +301,7 @@ still run; it does not make the failure stop being one.
 
 ## Variables in Macros
 
-The **Set Variable or Control** step picks its target from the Variable Picker (a searchable dropdown that shows every variable with its current value, and a **Create New Variable** option inline) rather than a free-text key, so there is nothing to misspell. Its value field then matches the variable's type: a boolean variable gets a **Yes / No** dropdown, and the **$** toggle lets you copy another variable, device state, or system value in. Variables let macros share state. For example, the `system_on` macro sets `var.room_active` to `true`, and UI buttons use that variable for feedback.
+The **Set Variable or Control** step picks its target from the Variable Picker (a searchable dropdown that shows every variable with its current value, and a **Create New Variable** option inline) rather than a free-text key, so there is nothing to misspell. Its value field then matches the variable's type: a boolean variable gets a **Yes / No** dropdown, and the **$** toggle lets you copy another variable, device state, or system value in. Variables let macros share state. For example, the `system_on` macro sets `var.room_active` to Yes, and UI buttons use that variable for feedback.
 
 ## Changing a Control from a Macro
 
@@ -312,7 +312,7 @@ control updates immediately.
 
 | Property | Value | Effect |
 |----------|-------|--------|
-| **Label** | text | The words on the control, or its caption on a slider, dropdown or meter, replacing the ones it was given. An image or a clock has none to replace |
+| **Label** | text | The words on the control, or its caption on a slider, dropdown or meter, replacing the ones it was given. An image, a clock or a control with no caption has none to replace |
 | **Visible** | Yes / No | Show or hide the control |
 | **Background colour** | a colour, e.g. `#e67e22` | Fills the control |
 | **Text colour** | a colour, e.g. `#ffffff` | Colours its words |
@@ -370,7 +370,7 @@ The schedule trigger includes a visual cron builder with two modes: a **field-by
 
 **Fire Now:** Click the **Fire Now** button on any trigger to manually execute it immediately, without waiting for the condition to be met. Useful for testing.
 
-**Condition Preview:** State change triggers show a live preview: "If this condition were evaluated now, it would be: TRUE/FALSE" with the current state values displayed.
+**Condition Preview:** under a trigger's **Conditions**, a live line reads "Evaluated now: ALL TRUE, trigger would fire" or "FALSE, trigger would not fire", with each key's current value beside it.
 
 **Event Autocomplete:** The event pattern field in event triggers suggests events from your configured devices, macros, and scripts as you type.
 
@@ -385,7 +385,7 @@ Trigger safety features prevent runaway automation:
 - **Overlap policy.** Choose what happens when a trigger fires while its macro is still running: `skip` (ignore the new fire, the default), `queue` (run it once the current one finishes), or `allow` (run them concurrently).
 - **Stop on error.** Set `stop_on_error: true` on a macro to halt execution if a step fails (default is to continue). If a sub-macro stops on an error, its **Run Macro** step fails in the caller. The caller then follows its own Stop on Error setting. Enable it on both macros when later steps depend on the sub-macro succeeding. A sub-macro set to Continue on Error completes its remaining steps and returns normally, and the caller carries on — but the caller's own run still reports as failed, because a step it asked for did not do what it asked.
 
-Example: A "projector auto-off" trigger watches `device.projector_main.power` for `"on"`, with a guard condition that `var.room_active` equals `false`. This shuts down a projector that someone turned on manually without using the panel, but only if the room is not in active use.
+Example: A "projector auto-off" trigger watches `device.projector_main.power` for `"on"`, with a guard condition that `var.room_active` equals No. This shuts down a projector that someone turned on manually without using the panel, but only if the room is not in active use.
 
 ### How a trigger reports itself
 

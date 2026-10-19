@@ -47,7 +47,7 @@ The editor has six tabs across the top, each grouping a single concern:
 | **Connection** | Transport (TCP/serial/UDP/OSC/HTTP/Bridge, plus "Also Usable Over" for multi-transport drivers), Bridge Ports (`bridge`), Authentication, Push Notifications (`push`), Connection Watchdog (`liveness`), Connect Sequence (`on_connect`), Frame Parser, Configuration Fields (`config_schema` + computed fields) |
 | **Behavior** | State Variables, Child Entity Types (`child_entity_types`, with the instances roster, ID format and per-field cloud priority), Commands, Responses (including per-child routing), Polling, Actions, Device Settings |
 | **Discovery** | Discovery fingerprints (mDNS, SSDP, AMX DDP beacon, TCP/UDP probes, Python file) and hints (OUI, hostname, open port, manufacturer alias, SNMP PEN) |
-| **Simulation** | Simulator definition (initial state, controls, command handlers, error modes) |
+| **Simulation** | Simulator definition (initial state, controls, command handlers, error modes, capacity) |
 | **Test** | Live tester — runs commands through the real driver runtime against a device |
 
 The Connection and Behavior tabs use collapsible sub-sections. Each section header shows a count or status hint (`5 commands`, `enabled`, `none`) so you can scan a tab without expanding everything. Sections that are populated open by default; empty optional ones (Authentication, Connect Sequence, Frame Parser, Polling, Device Settings, Configuration Fields) collapse on a fresh driver to keep the surface clean.
@@ -56,7 +56,7 @@ Every section header carries a "Learn more" link that opens the matching part of
 
 ### Validation
 
-Validation runs on every keystroke. Issues appear as inline rows at the top of the affected tab, and the tab label shows a colored dot — red for errors (block save), amber for warnings (publish-quality, don't block).
+Validation runs on every keystroke. Issues appear as inline rows at the top of the affected tab, and the tab label shows a colored dot: red for errors (block save), amber for warnings (never block a save).
 
 What's flagged:
 
@@ -66,6 +66,7 @@ What's flagged:
 - **Commands**: any `{placeholder}` in the wire string (send/path/body/headers/query_params/address/args) that doesn't resolve to a declared parameter or config field. Catches typos that would otherwise leave a literal `{level}` on the wire.
 - **Parameter names**: illegal characters surface as an inline error instead of being silently stripped.
 - **Polling** (warnings): a poll that takes longer than its interval, and a device that could stop answering with nothing to notice (see [Checking the file against the driver contract](#checking-the-file-against-the-driver-contract)).
+- **Parameter labels** (warnings): a command parameter with no label.
 
 ### Step-by-step walkthrough
 
@@ -81,7 +82,7 @@ Fill in identity:
 
 | Field | Example | Notes |
 |-------|---------|-------|
-| Driver ID | `acme_sw4` | Lowercase letters, digits, underscores. Renamable later if no devices in the current project reference it. |
+| Driver ID | `acme_sw4` | Lowercase letters, digits, underscores. Renamable later, but not to another driver's ID; devices in the current project that use the old ID then need reassigning. |
 | Driver Name | `Acme SW4 Switcher` | Shown in the Add Device dialog. |
 | Manufacturer | `Acme` | |
 | Category | Switcher | Dropdown — pick the closest fit. |
@@ -103,11 +104,13 @@ The **Publishing** section holds catalog metadata (`min_platform_version`, `prot
 
 The Transport section is required — pick TCP, serial, UDP, OSC, HTTP, or Bridge (for a device with no address of its own that emits through a bridge's port, such as an IR-controlled device). Transport-specific fields appear:
 
-- **TCP**: default port, message delimiter, optional inter-command delay, TLS.
+- **TCP**: default port, message delimiter, TLS.
 - **Serial**: baudrate, parity, bytesize, stopbits.
 - **HTTP**: base URL form, default headers, auth (token / api key), timeout.
 - **OSC**: dual UDP socket settings.
 - **UDP**: default port.
+
+Every transport but Bridge has **Inter-Command Delay (seconds)**, the shortest gap between commands. Over HTTP, each request waits that long after the previous response, and requests go one at a time.
 
 The transport also decides what the Add Device dialog asks for: an IP address and port for TCP, UDP, OSC and HTTP, the serial port for serial, nothing for Bridge. The Builder writes those fields into the driver (`host` and `port` in `config_schema`) and swaps them when the transport changes. A network driver that lacks them gets them when you open it in the Builder; save it to keep them.
 
@@ -120,7 +123,7 @@ When the same command and response strings work byte-identically over more than 
 The other Connection sub-sections are optional:
 
 - **Authentication** — for devices that present a `login:` / `password:` prompt over Telnet or SSH after connect (Lutron HomeWorks QS, some Cisco gear, legacy serial-over-IP gateways). Off by default.
-- **Connect Sequence** (`on_connect`) — wire strings sent automatically on every connect. Common uses: turning on the device's feedback mode, asking for a full state dump, subscribing to OSC updates.
+- **Connect Sequence** (`on_connect`): wire strings sent automatically on every connect. Common uses: turning on the device's feedback mode, asking for a full state dump, subscribing to OSC updates. Each step can be held back while the device reports a state, and can name the state variable its reply reports (**Reports**).
 - **Frame Parser** — advanced. Only for binary protocols framed by length prefix or fixed length. Most drivers leave this off and rely on the message delimiter instead.
 - **Configuration Fields** (`config_schema`) — per-device settings users fill in on the Add Device dialog (display IDs, instance tags, custom passwords). Become `{placeholders}` in command strings. **Filled In From** picks a state variable the device reports the field's value in (a model, a channel count), so it fills itself in once the device connects (`learned_from`, below). The **Computed Fields** table underneath builds derived values from other config fields via templates (`config_derived`), so one friendly field can drive several address forms.
 
@@ -128,7 +131,7 @@ The other Connection sub-sections are optional:
 
 Order matters here. Build them in the order they appear:
 
-**State Variables** — the read-only properties the driver reports. Each entry has a type (string, integer, number, boolean, enum), a required label, optional help text, and for numerics optional min/max/step and a unit (used by the simulator and panel UI to auto-generate sliders, and by the UI Builder to match a bound control to the driver's range). Tick **Control** on the variables an integrator would bind a panel control to — the UI Builder's value picker lists those first.
+**State Variables**: the read-only properties the driver reports. Each entry has a type (string, integer, number, boolean, enum), a required label, optional help text, and for numerics optional min/max/step and a unit (used by the simulator and panel UI to auto-generate sliders, and by the UI Builder to match a bound control to the driver's range). Tick **Control** on the variables an integrator would bind a panel control to; the UI Builder's value picker lists those first. A numeric variable also takes scale, offset and no-reading values, for a device that sends its own numbers (see the `state_variables` entry below).
 
 | Variable ID | Label | Type | Notes |
 |-------------|-------|------|-------|
@@ -142,9 +145,9 @@ Order matters here. Build them in the order they appear:
 - **HTTP**: method, path, body, headers, query params. Every field supports `{placeholders}`.
 - **OSC**: address + a typed argument list (`f`/`i`/`s`/`h`/`d`/`T`/`F`/`N`).
 
-**Parameters** for each command let users fill in what to send. Each parameter has a type, optional required flag, label, help, default, and (numeric) min/max bounds, (enum) allowed values, or (free text) a `pattern` regex the value must match. Renaming a parameter also renames its `{placeholder}` in that command's send string, path, body, headers, OSC address and arguments, and Sets State rows.
+**Parameters** for each command let users fill in what to send. Each parameter has a type, optional required flag, label, help, default, and (numeric) min/max bounds and scale/offset, (enum) allowed values, or (free text) a `pattern` regex the value must match. Renaming a parameter also renames its `{placeholder}` in that command's send string, path, body, headers, OSC address and arguments, and Sets State rows.
 
-**A parameter's label** is its name on every form that sends the command: the device page, a macro step, a button's action, Quick Actions and a device audit. With no label, the key is shown made readable: `input_id` reads "Input ID", and a last word that is a unit goes in brackets, so `timeout_ms` reads "Timeout (ms)" and `gain_db` "Gain (dB)". Give a parameter a label whenever that still reads poorly: a key like `value`, `src` or `ch` says little on a form. The Driver Builder's Validate lists each parameter with no label as a warning; a warning never stops the driver from saving or loading.
+**A parameter's label** is its name on every form that sends the command: the device page, a macro step, a button's action, Quick Actions and a device audit. With no label, the key is shown made readable: `input_id` reads "Input ID", and a last word that is a unit goes in brackets, so `timeout_ms` reads "Timeout (ms)" and `gain_db` "Gain (dB)". Give a parameter a label whenever that still reads poorly: a key like `value`, `src` or `ch` says little on a form. The Driver Builder lists each parameter with no label as a warning on the Behavior tab; a warning never stops the driver from saving or loading.
 
 **What the runtime enforces.** Everything you declare about a parameter is checked before the command reaches the device, however the command was run — a panel button, a macro, a schedule, the REST API, or the AI assistant. A value outside `min`/`max`, of the wrong type, or failing a `pattern` is refused, and the reason names the parameter: `'route': 'output' must be at most 8, got 99`. **Required** works the same way — leave a required parameter out and the command is refused with `'route': 'output' is required` rather than sending something incomplete. Tick Required only when the command genuinely cannot run without the value; if you would rather the driver filled in something the user did not give, that is a **Default**, not a requirement.
 
@@ -183,11 +186,11 @@ The **set:** shorthand is also supported (`set: {mute: "$1"}` for capture-group 
 
 A response rule can also switch its kind to **JSON body** for devices that reply with JSON (most HTTP APIs): rows map a JSON field path (`status.power`, dot paths and list indices allowed) to a state variable, with optional type coercion and value map, and **Only when body has key(s)** scopes the rule to bodies carrying a named key — useful when different endpoints reuse a field name. All rows of a JSON rule apply to a matching body, so one reply can populate many variables. Once a JSON rule has read a body the text rules don't see it; a text rule that must read something the JSON rows don't — an error field arriving beside the readings — is marked **Also run after JSON rules** (below its pattern, shown once the driver has a JSON rule).
 
-**Polling** — periodic queries that keep state fresh on devices that don't push updates. List the command names (or raw query strings) to send each cycle. The cadence (seconds) is the **Poll Interval** field, stored as `default_config.poll_interval`.
+**Polling**: periodic queries that keep state fresh on devices that don't push updates. List the command names (or raw query strings) to send each cycle. The cadence (seconds) is the **Poll Interval** field, stored as `default_config.poll_interval`. **Pause Polling** holds the poll back while the device reports a state, such as a unit in standby that any command wakes, and each query can carry a state condition of its own (`when_state`, below). A per-child query takes how many children one reply covers (**Children per query**), for a list read a page at a time.
 
 **Actions** — promote commands to one-click buttons at the top of the device view. Each action picks a command (or opens a URL for a `link` action), with optional label, icon, confirmation prompt, availability (online / offline / always), input-field overrides, and visibility conditions. The **Open Web UI button** setting is auto-detect by default — a device with a browser page gets the button on its own — with **Always show** (optionally a URL template like `http://{host}:8080`) and **Never show** as overrides. Drivers using the older flat `quick_actions` list show it here read-only with a one-click conversion into full actions.
 
-**Device Settings** — writable values stored on the device hardware (labels, IDs, lock codes). Pending writes queue while the device is offline and replay on reconnect. Less common than state variables — most drivers don't need this.
+**Device Settings**: writable values stored on the device hardware (labels, IDs, lock codes). Pending writes queue while the device is offline and replay on reconnect. **+ Wire value map** sends the device's own word for a value, such as `ON` and `OFF`. Less common than state variables; most drivers don't need this.
 
 **Routing** — for devices that switch something. Says which ports are routed to, which property reports what is routed there, and which command does the routing, so a **Matrix** control can be set up from the device instead of typed in port by port. Every field is a pick from what you have already declared. Leave it off for anything that doesn't switch, and leave it off for an ordinary switcher too — OpenAVC reads the driver and works that out. Turn it on when it wouldn't: a routing command that needs a fixed extra value (one command covering video, audio and USB, told which by a `signal` parameter), a device that routes itself and has no output ports to list, or a property that reads like routing and isn't. See [`routing` section](#routing-section).
 
@@ -222,7 +225,7 @@ Skip the Discovery tab entirely if the device has no network announcement and no
 
 #### 6. Simulation tab (optional)
 
-Adds simulator support so the driver can be exercised without real hardware. Most drivers can rely on auto-generated simulation; the editor here lets you customize initial state, push behavior, command handlers, error modes, and (for richer simulators) state machines and controls. See [Writing Simulators](https://docs.openavc.com/writing-simulators/) for the full guide.
+Adds simulator support so the driver can be exercised without real hardware. Most drivers can rely on auto-generated simulation; the editor here lets you customize initial state, push behavior, command handlers, error modes, the device's **Capacity**, and (for richer simulators) state machines and controls. See [Writing Simulators](https://docs.openavc.com/writing-simulators/) for the full guide.
 
 #### 7. Test tab: run it against a device
 
@@ -242,7 +245,7 @@ Each result shows what was sent, every received chunk (with `\r` and `\n` made v
 
 **Production-device conflict warning.** When you type a host and port that's already used by a device in your project, the panel surfaces a warning above the Send button identifying the device. Many AV devices (Sony BVM, Christie projectors, Crestron 3-Series console) accept only one TCP control session at a time, so testing would kick the live device offline. You can:
 
-- **Pause device** — cleanly disconnect the production driver and suppress auto-reconnect for the duration of the test. The panel offers a **Resume** button to bring it back online. Closing the test tab automatically resumes any devices the panel paused, and as a safety net the server resumes a paused device on its own if the test session disappears without cleaning up (browser crash, lost connection). A paused device shows a Paused badge on the Devices page with its own Resume button. Saving the driver mid-test, or saving the project from another tab, reloads the device without bringing it back online, so an edit-and-retest loop can't drop the production device onto the port you're testing.
+- **Pause device**: cleanly disconnect the production driver and suppress auto-reconnect for the duration of the test. The panel offers a **Resume** button to bring it back online. Closing the test tab automatically resumes any devices the panel paused, and as a safety net the server resumes a paused device on its own if the test session disappears without cleaning up (browser crash, lost connection). A paused device's page reads "Paused for Live Test in the Driver Builder. It reconnects when you leave the Test tab.", with a **Resume** button, and its status dot's tooltip reads "Paused for Live Test". Saving the driver mid-test, or saving the project from another tab, reloads the device without bringing it back online, so an edit-and-retest loop can't drop the production device onto the port you're testing.
 - **Connect anyway** — proceed without pausing. Use this when you know the device is already gone (e.g. it's been physically disconnected), or when the device tolerates multiple sessions.
 
 The check is TCP-only; UDP, HTTP, and OSC don't have the single-session problem.
@@ -378,14 +381,14 @@ commands:
     send: "{input}!\r\n"             # e.g., "3!\r\n" to select input 3
     help: Route a specific input to all outputs.
     params:
-      input: { type: integer, required: true, help: "Input number (1-based)" }
+      input: { type: integer, required: true, label: Input, help: "Input number (1-based)" }
 
   set_volume:
     label: Set Volume
     send: "{level}V\r\n"             # e.g., "45V\r\n" to set volume to 45
     help: Set the audio volume level.
     params:
-      level: { type: integer, required: true, help: "Volume level 0-100" }
+      level: { type: integer, required: true, label: Volume, help: "Volume level 0-100" }
 
   mute_on:
     label: Mute On
@@ -802,7 +805,7 @@ child_entity_types:
 - `id_format`: How the controller addresses this sub-unit.
   - `type: integer` (default): numbered sub-units. `min`/`max` bound the valid range; `pad_width` zero-pads the ID when it appears in state keys (omit it, or set it to `0`, to leave the ID unpadded).
   - `type: string`: sub-units keyed by a device-native **name** instead of a number (a Q-SYS component Code Name, an MQTT topic leaf, a zone name). The name must be `[A-Za-z0-9_-]` only (so it's safe in a state key and in glob subscriptions) and at most `max_length` characters (default 128). Sanitize the device's native name to that charset and keep the original in the child's `label`.
-- `state_variables`: Same shape as device `state_variables` (types: `string`, `integer`, `number`, `float`, `boolean`, `enum`), including the optional `min`/`max`/`step`/`unit` numeric metadata and the `control: true` flag — a child variable flagged as a control is what the UI Builder's value picker and the `options_from: child_schema` command cascade list first. The platform always adds four keys per child, so you don't declare those: a boolean `online`, a string `label` (the user's own name for the unit), and `offline_reason` / `offline_detail` for saying what is wrong with one (see [Saying what is wrong with a sub-unit](#saying-what-is-wrong-with-a-sub-unit)). You may still declare any of them if you want your own label, help text or `cloud_priority` on it — yours wins, and the others are still added. Each variable may carry an optional `cloud_priority`:
+- `state_variables`: Same shape as device `state_variables` (types: `string`, `integer`, `number`, `float`, `boolean`, `enum`), including the optional `min`/`max`/`step`/`unit` numeric metadata, the `scale`/`offset`/`unknown` conversion and the `control: true` flag: a child variable flagged as a control is what the UI Builder's value picker and the `options_from: child_schema` command cascade list first. The platform always adds four keys per child, so you don't declare those: a boolean `online`, a string `label` (the user's own name for the unit), and `offline_reason` / `offline_detail` for saying what is wrong with one (see [Saying what is wrong with a sub-unit](#saying-what-is-wrong-with-a-sub-unit)). You may still declare any of them if you want your own label, help text or `cloud_priority` on it; yours wins, and the others are still added. Each variable may carry an optional `cloud_priority`:
   - `high` — relayed to the cloud at the fast top-level cadence (for latency-sensitive fields like routing or mute).
   - `low` — relayed at the slow verbose cadence (for chatty per-IO state).
   - omitted — the default per-child cadence.
@@ -1122,7 +1125,7 @@ set_input:
   send: "{input}!\r"
   help: Switch the active input source on the switcher.
   params:
-    input: { type: integer, required: true, help: "Input number (1-based)" }
+    input: { type: integer, required: true, label: Input, help: "Input number (1-based)" }
 ```
 
 - `send`: The raw bytes to send. `{param_name}` placeholders are substituted at runtime. Config values like `{set_id}` are also available. Supported escape sequences: `\r`, `\n`, `\t`, `\\`, `\xHH` (hex byte).
@@ -1134,7 +1137,7 @@ set_input:
 - `help`: Optional description of what the command does. Shown in the Programmer IDE command testing panel, macro editor, UI builder, and used by the AI assistant to understand commands. A device audit shows it as "What it should do" when it asks whoever is testing whether the command worked, so write what the device does in words a person watching it can check ("Mutes the output channel"), and give every command one.
 
 > **Command framing.** When a text protocol wraps every command in a fixed header and terminator, declare them once at the driver level with `command_prefix` and `command_suffix` and author bare `send` strings. For example, `command_prefix: "!1"` and `command_suffix: "\r"` turn a command whose `send` is `PWR01` into `!1PWR01\r` on the wire. Both are opt-in and byte-stream only (TCP/serial/UDP); an OSC or HTTP command is never framed, and a single command can opt out with `raw: true`. To poll a framed command, list its **name** in `polling.queries` (it runs as that command, so the frame is applied and the response is matched) rather than re-typing the framed string.
-- `params`: Parameter definitions. Each key matches a `{placeholder}` in the send string. Each parameter can include an optional `help` field describing what values are expected.
+- `params`: Parameter definitions. Each key matches a `{placeholder}` in the send string. Give each a `label`, its name on every form that sends the command (with none, forms show the key made readable and validation warns), and optionally `help` describing what values are expected.
 
 Parameter types are `string`, `integer`, `number`, `boolean`, `enum`, and `child_id`. A `child_id` parameter targets one of the driver's declared `child_entity_types` — set `child_type` to the type name. The command picker offers a dropdown of that device's registered children, and the integer local ID is substituted into the `{placeholder}`:
 
@@ -1419,7 +1422,7 @@ If the same state variable appears in both, the `mappings:` entry wins.
 
 Responses are checked in order. The first matching pattern wins.
 
-**Throttling high-rate telemetry.** A response entry may declare `throttle: <seconds>` to write the rule at most once per window. The first matching frame applies at once. Frames that arrive inside the window are held, and the newest one is written when the window ends, so the last value of a burst always lands: a talker who stops moving, or a meter that comes to rest, shows where it stopped. If something else writes the same value before then (a polled reply, another rule), the newer value stays. Use it on telemetry a device sends many times a second, such as audio level meters and talker or position feedback:
+**Throttling high-rate telemetry.** A response entry may declare `throttle: <seconds>` to write the rule at most once per window. The first matching frame applies at once. Frames that arrive inside the window are held, and the newest one is written when the window ends, so the last value of a burst always lands: a talker who stops moving, or a meter that comes to rest, shows where it stopped. If something else writes that variable first (a polled reply, another rule), the newer value stays. Use it on telemetry a device sends many times a second, such as audio level meters and talker or position feedback:
 
 ```yaml
 - match: 'METER (\d+),(\d+)'
@@ -2368,7 +2371,7 @@ default_config:
   verify_timeout: 0
 ```
 
-The platform also monitors poll responses. If no data arrives from the device for several consecutive poll cycles, it marks the device as disconnected and starts auto-reconnect. This requires polling to be configured (which it should be for most OSC devices).
+After that, a driver that polls, has any `responses` rule and has no `liveness` block goes offline (`no_response`) when three polls in a row get no reply, and stays offline through the reconnects until it answers a poll (see the `polling` section). This requires polling to be configured (which it should be for most OSC devices).
 
 #### Listen Port
 
@@ -2914,9 +2917,9 @@ async def _post_connect(self) -> None:
         await asyncio.sleep(0.1)
 ```
 
-If the connection closes while `_post_connect()` is still waiting (an SSH device's port refused it, or the device hung up before its greeting), the platform cancels the hook and fails the attempt at once with the transport's own error, so a handshake needs no check of its own for a dropped link. Let `asyncio.CancelledError` pass through rather than catching it.
+If the connection closes while `_post_connect()` is still waiting (an SSH device's port refused it, or the device hung up before its greeting), the platform cancels the hook and fails the attempt at once with the transport's own error, so a handshake needs no check of its own for a dropped link. One connect runs at a time: Reconnect, a pause or a disconnect during the handshake cancels it the same way. Let `asyncio.CancelledError` pass through rather than catching it.
 
-A protocol that needs different transport settings keeps the platform's construction (log naming, disconnect wiring, the control-interface binding) and adjusts only what differs:
+A protocol that needs different transport settings keeps the platform's construction (log naming, disconnect wiring, the Reach devices through binding) and adjusts only what differs:
 
 ```python
 def _transport_kwargs(self, transport_type, kwargs):
@@ -2979,7 +2982,7 @@ The device's credentials are masked when the traffic is shown, as on every other
 
 **The network adapter a session you own leaves through.** On a computer connected to more than one network, Settings > Network > **Reach devices through** can send all device traffic out through one adapter. Every platform transport follows it.
 
-- **An `httpx` client** your driver creates follows it too, with nothing to add, and keeps the `verify`, `cert`, `limits` and other settings you gave it, so a device with a self-signed certificate still connects with `verify=False`. A client you give your own `transport=`, `mounts=` or `proxy=` is left exactly as you built it. That is also how a client that reaches a service on the internet rather than a device (a manufacturer's cloud API) stays off the chosen adapter, which may have no route to the internet.
+- **An `httpx` client** your driver creates follows it too, with nothing to add, and keeps the `verify`, `cert`, `limits` and other settings you gave it, so a device with a self-signed certificate still connects with `verify=False`. A client you give your own `transport=`, `mounts=` or `proxy=` is left exactly as you built it. That is also how a client that reaches a service on the internet rather than a device (a manufacturer's cloud API) stays off the chosen adapter, which may have no route to the internet. While the chosen adapter has no address, each request fails with `httpx.ConnectError` naming the adapter.
 - **Anything else** (a socket, a websocket library, a datagram endpoint, a platform transport you build by hand) asks `self.local_address()` and binds to the answer. It returns the chosen adapter's address, or `None` when no adapter is chosen and for a device on this computer (a simulator, a local service), which a socket bound to an adapter cannot reach. For a device at a 169.254 address it returns the adapter's own 169.254 address when the adapter has one. Pass a host when the driver also talks to an address other than the device's own. `local_address()` is new in OpenAVC 0.37.0, and the check that computes `min_platform_version` reads only what a driver declares, not the methods it calls, so set `min_platform_version` to at least `"0.37.0"` yourself. While the chosen adapter has no address at all it raises `ConnectionFaultError` (`unreachable`) naming the adapter, so the connection is refused rather than sent through another network; let it fail the connect, and the device card says which adapter and where to change it.
 
 ```python
@@ -3310,7 +3313,7 @@ These methods can be overridden in your driver subclass:
 | `poll()` | No | No-op. Override to send status queries. |
 | `_create_frame_parser()` | No | Returns `None` (uses delimiter framing). Override for binary protocols. |
 | `_resolve_delimiter()` | No | Checks DRIVER_INFO, then config, then defaults to `b"\r"`. |
-| `_handle_transport_disconnect()` | No | Sets connected=False, emits disconnect event. |
+| `_handle_transport_disconnect()` | No | Sets connected=False, emits disconnect event. A drop while `connect()` is still running ends that connect instead, with no event. |
 
 ### The `poll()` contract
 
@@ -3979,11 +3982,11 @@ simulator:
 | `error_modes` | Failure scenarios for testing error handling. Every simulator already offers `communication_timeout` ("Device stops responding"); declare the ones particular to the device |
 | `capacity` | How much the device can take in at once, for the Simulator UI's **Capacity** setting (requires OpenAVC 0.37.0) |
 
-**Capacity.** A device reads what it receives into a buffer of fixed size and works through it one message at a time; what arrives while the buffer is full is lost. The simulator models this when **Capacity** is switched on for a device in the Simulator UI, so a driver that sends faster than the device can take in fails in the simulator the way it fails on the device. Declare the device's numbers here: `rx_buffer` (bytes it holds before it reads them; what arrives beyond that is lost) and `process_ms` (milliseconds it spends on each message before it takes the next), both required, and `on_overflow`: `discard` (the default; it carries on with what it kept) or `silence` (it stops answering until the connection closes; over UDP, until Capacity is switched off). `process_ms` is not `delays.command_response`, which is how long a reply takes; the simulator answers one message at a time, so a message takes the longer of the two. A driver that declares nothing gets the simulator's own numbers. The setting covers TCP, serial and UDP devices; HTTP devices have none.
+**Capacity.** A device reads what it receives into a buffer of fixed size and works through it one message at a time; what arrives while the buffer is full is lost. The simulator models this when **Capacity** is switched on for a device in the Simulator UI, so a driver that sends faster than the device can take in fails in the simulator the way it fails on the device. Declare the device's numbers here: `rx_buffer` (bytes it holds before it reads them; what arrives beyond that is lost) and `process_ms` (milliseconds it spends on each message before it takes the next), both required, and `on_overflow`: `discard` (the default; it carries on with what it kept) or `silence` (it stops answering until the connection closes; over UDP or OSC, until Capacity is switched off). `process_ms` is not `delays.command_response`, which is how long a reply takes; the simulator answers one message at a time, so a message takes the longer of the two. A driver that declares nothing gets the simulator's own numbers. The setting covers TCP, serial, UDP and OSC devices; HTTP devices have none.
 
 **Control types:** `power`, `slider`, `toggle`, `select`, `matrix`, `indicator`, `meters`, `presets`, `group`.
 
-**Push behavior** is opt-in. Set `push_state: true` to enable it. When enabled, state changes from the simulator UI are pushed to connected drivers using the driver's existing response format. When more than one response rule sets the same value (a rule for the device's special codes ahead of the general one), a push takes the form of the first rule that reads the value back, so 400 goes out as `00400` when the general rule reads five digits. Only set this for devices that actually send unsolicited updates (e.g., Extron verbose mode, Shure subscriptions). Without it, the simulator is poll-only. **Notifications** are optional overrides for the push format. If your device uses a different format for unsolicited messages (for example, value-specific strings like `Amt1`/`Amt0` instead of `Amt{value}`), add a `notifications` section to override the format. Use `'*'` as the key to match any value with `{value}` as a placeholder, or use specific values like `'true'`/`'false'` for exact matches. A notice that reports several fields at once fills the others with `{state.<key>}`, the current value of another simulator state key, and takes the same format specs (`{state.in1_mute:d}`).
+**Push behavior** is opt-in. Set `push_state: true` to enable it. When enabled, state changes from the simulator UI are pushed to connected drivers using the driver's existing response format. When more than one response rule sets the same value (a rule for the device's special codes ahead of the general one), a push takes the form of the first rule that reads the value back, so 400 goes out as `00400` when the general rule reads five digits. Only set this for devices that actually send unsolicited updates (e.g., Extron verbose mode, Shure subscriptions). Without it, the simulator is poll-only. **Notifications** are optional overrides for the push format. If your device uses a different format for unsolicited messages (for example, value-specific strings like `Amt1`/`Amt0` instead of `Amt{value}`), add a `notifications` section to override the format. Use `'*'` as the key to match any value with `{value}` as a placeholder, or use specific values like `'true'`/`'false'` for exact matches. A notice that reports several fields at once fills the others with `{state.<key>}`, the current value of another simulator state key (in the device's own numbers when it declares `scale` or `offset`), and takes the same format specs (`{state.in1_mute:d}`). The catalog build cannot see it, so set `min_platform_version: "0.37.0"` yourself.
 
 **State machines** model a device that takes time to change state, so your driver meets the same waiting and refusing a real one does. Add a `state_machines:` block; each machine declares its `states`, the `initial` one, and the `transitions` between them:
 
@@ -4030,6 +4033,7 @@ For the complete simulator guide with all control types, state machines, and Pyt
 4. **Type coercion mismatch.** If the type is `integer` but the captured value is `"abc"`, it falls back to storing the raw string and logs a warning. Check that the captured text is actually numeric.
 
 5. **Config placeholders in patterns.** If your response pattern uses config values like `{level_control}`, make sure the config field exists and has a value. These are substituted before the regex is compiled.
+6. **Wrong port or wrong driver.** When three polls in a row bring replies that no response rule reads, the device log has a warning naming the last reply, or saying that none of them ends the way the driver expects.
 
 ### Commands not sending or silently failing
 
@@ -4053,7 +4057,7 @@ For the complete simulator guide with all control types, state machines, and Pyt
 
 1. **Validation error on save.** The Driver Builder names the tab that holds the error, and the error is listed at the top of that tab. Common issues: missing `id` or `name`, invalid transport type, malformed regex in a response pattern.
 
-2. **Duplicate driver ID.** If another driver already has the same ID, the save will fail with a 409 Conflict error. Driver IDs must be unique across all sources (built-in, community, user-created).
+2. **Duplicate driver ID.** A save that gives a driver another driver's ID, new or renamed, is refused, and the General tab says `Another driver named "acme_sw4" already exists. Choose a different ID.` Driver IDs must be unique across all sources (built-in, community, user-created).
 
 3. **Python driver missing DRIVER_INFO.** For Python drivers, the file must contain a class that inherits from `BaseDriver` and has a `DRIVER_INFO` dict with at least `id`, `name`, and `transport`.
 

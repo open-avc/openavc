@@ -78,11 +78,14 @@ Coordinate multiple OpenAVC instances across spaces, buildings, and campuses. Au
 ### Windows
 Download the installer from the [Releases](https://github.com/open-avc/openavc/releases) page. Installs as a Windows service with a system tray app. One click to open the Programmer IDE.
 
+### macOS
+Download the installer for Apple Silicon or Intel from the [Releases](https://github.com/open-avc/openavc/releases) page. Runs as a background service with a menu bar app.
+
 ### Raspberry Pi
 Flash the pre-built image to an SD card with [Raspberry Pi Imager](https://www.raspberrypi.com/software/). Power on and access the Programmer at `http://openavc.local:8080`. Connect an HDMI touch display for a built-in touch panel.
 
 ### Docker
-Linux Docker hosts. On Windows or Mac, use the Windows installer instead — Docker Desktop's container networking can't reach AV equipment on your LAN.
+Linux Docker hosts. On Windows or a Mac, use that platform's installer instead: Docker Desktop's container networking can't reach AV equipment on your LAN.
 ```bash
 curl -fsSL https://raw.githubusercontent.com/open-avc/openavc/main/installer/docker-compose.yml -o docker-compose.yml
 docker compose up -d

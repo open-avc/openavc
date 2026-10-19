@@ -85,7 +85,7 @@ value would cover anything typed here.
 
 ## Warnings on the canvas
 
-Some controls contain parts that are a fixed number of pixels and do not shrink with the box. A status LED's dot is 20 pixels whatever you size the element to; a fader's handle is 44 and its number scale another 28. Drag one of those smaller than the parts inside it and the control still draws, with its contents cut off, which reads like a styling bug rather than a sizing one.
+Some controls contain parts that are a fixed number of pixels and do not shrink with the box. A status LED's dot is 20 pixels whatever you size the element to; a fader's handle is 44 and its number scale another 42. Drag one of those smaller than the parts inside it and the control still draws, with its contents cut off, which reads like a styling bug rather than a sizing one.
 
 An orange badge in the corner of an element says something about it will not draw the way it was written. Hover the badge for the whole sentence. It covers:
 
@@ -95,6 +95,7 @@ An orange badge in the corner of an element says something about it will not dra
 - **Hanging outside the page or its container** - by how much, and over which edge. Containers do not clip, so an element that runs past the edge lands on top of whatever sits beside it.
 - **No position at all** - an element with no box fills its container edge to edge and covers whatever is already there.
 - **Smaller than a finger** - the physical size it works out to on a real panel, for controls you actually touch.
+- **A keypad that sends too soon, or never** - a **Send Delay** under 1500 ms, which can send a code before it is finished, or the Phone layout with **Send without Enter** off, which has no way to send.
 - **A binding this control does not use** - every element accepts the same binding slots, but each type only reads some of them. A Status LED reads Appearance for its color but has nowhere to put words, so per-state label text set on one never appears. The badge names the slots that control really reads.
 
 Sizes are worked out against a 1280x800 reference panel, which is what the percentages mean in pixels. Everything here is advice: nothing is blocked, and a control you deliberately made small stays where you put it.
@@ -305,9 +306,9 @@ Two more settings on the slider and fader control the readout and how commands a
 The **Appearance** card changes an element's look based on a state value. This is how buttons light up to show the current selection, the equivalent of feedback joins in Crestron, and how status LEDs map state to color.
 
 - **Source**: pick a category (Variables, Devices, Plugins, System) then the specific state key.
-- **Condition**: when the state key equals a value, the element is "active." For boolean keys you get an ON/OFF toggle; for string keys you get a dropdown of the values the key can take: what the driver declares for it (its listed values, or the choices of the command that sets it) plus whatever the device reports now. So a Wireless button can be bound to `hdmi2` while the display is still on HDMI 1.
+- **Condition**: when the state key equals a value, the element is "active." For boolean keys you get a Yes / No toggle; for string keys you get a dropdown of the values the key can take: what the driver declares for it (its listed values, or the choices of the command that sets it) plus whatever the device reports now. So a Wireless button can be bound to `hdmi2` while the display is still on HDMI 1.
 - **Active appearance**: background color, text color, and optional label text when the condition is true. Buttons and camera presets also get an icon and icon color; a label draws its own icon and cannot change it per state, so those fields are not offered there.
-- **Inactive appearance**: the same, for when the condition is false.
+- **Inactive appearance**: the same, for when the condition is false. A color left empty draws the element's own color.
 - **Live preview**: the editor shows the current value and whether the condition is active or inactive right now.
 
 **Conditional labels** let the element's text change based on state. For example, a power button can show "ON" with a green background when the projector is on, and "OFF" with a dark background when it is off.
@@ -384,7 +385,7 @@ Some things the picker cannot know, and it says so above the lists rather than a
 
 **Source names go under the grid, not above it.** In the crosspoint style the columns are numbered, and a legend under the grid says which source each number is. That legend is one strip: if there are more names than fit, it slides sideways rather than stacking up and taking room away from the grid. Destination names are the row captions down the left, and a name too long for its column is shortened from the end.
 
-**Give the grid the room it needs.** A crosspoint never draws smaller than 44 pixels, because anything less is too small to hit, so a matrix in a box too small for its grid scrolls instead of shrinking. On a 1280 x 800 panel an 8x8 crosspoint grid needs about 455 x 446 pixels and a 16x16 about 815 x 806. The other two styles are much smaller, because neither of them draws a column per source: eight destinations need about 148 x 304 as a list and about 514 x 173 as tiles. The Builder tells you the number for your own matrix if the box you drew is too small.
+**Give the grid the room it needs.** A crosspoint never draws smaller than 44 pixels, because anything less is too small to hit, so a matrix in a box too small for its grid scrolls instead of shrinking. On a 1280 x 800 panel an 8x8 crosspoint grid needs about 455 x 444 pixels and a 16x16 about 815 x 804. The other two styles are much smaller, because neither of them draws a column per source: eight destinations need about 148 x 411 as a list and about 514 x 204 as tiles. The Builder tells you the number for your own matrix if the box you drew is too small.
 
 **Route key is the one to get right.** It is the state key of one destination's routed source, with the destination number replaced by `*`:
 
@@ -410,7 +411,7 @@ The **Does** bucket is one or more **actions**, grouped by the interaction that 
 
 - **Run Macro**: execute a named macro (best for multi-step sequences).
 - **Device Command**: send a command directly (pick device, command, params).
-- **Set Variable**: set a user variable value.
+- **Set Variable or Control**: set a variable, or change a control on the panel (see [Changing a Control While the Program Runs](#changing-a-control-while-the-program-runs)).
 - **Navigate to Page**: switch to another page (or `$back` / `$dismiss` for overlays).
 - **Script Function**: call a Python function in one of your scripts, and pass it values.
 - **Emit Event**: fire a named event, with an optional payload.
@@ -437,6 +438,8 @@ Which interactions a control offers depends on its type:
 
 The interaction also decides which "This control" value the action can read (see the `$` picker below): **On change**, **On submit**, and **On row tap** deliver `$value` (the value the user just set or chose); a matrix **route** delivers `$input` and `$output`; a matrix **mute** delivers `$output` and `$mute`.
 
+A keypad's **On submit** runs when Enter is pressed. With **Send without Enter** ticked, it also runs as soon as **Digits** keys are pressed, or after the **Send Delay** with no key press, which is how a shorter code is sent. The Phone layout has no Enter key, so it sends only that way.
+
 For a **Select**, the **On change** card lets every option run its own action ("different per choice"), so HDMI 1 routes input 1, HDMI 2 routes input 2, and so on. For a **Matrix**, the four routing interactions (video route, audio route, mute, audio mute) are separate cards but share the same crosspoint grid.
 
 #### Dynamic parameter values (the `$` picker)
@@ -448,7 +451,7 @@ When an action sends a **Device Command**, each parameter has a `$` toggle. Turn
 
 This means an action can read a project variable or another device's state directly. For example, a button can send a DSP `set_level` command using `$var.target_volume`, or a projector's "match source" button can send `$device.matrix_1.output_2_source`. You no longer need a macro just to reference a variable or another device.
 
-The **Set Variable** action picks its target with the same state-key picker (variables only -- a device key is read-only and cannot be a write target, which reinforces the device rule). Its value field has the same `$` toggle, so you can store a variable, device state, or system value into another variable. On a keypad's **On submit** or a list's **On row tap**, the toggle also offers **This control** and starts on it, so `$value` stores the digits entered or the row chosen. On an **On change** (a slider, a select), check **Use element's selected value** instead.
+The **Set Variable or Control** action picks its target with the same state-key picker: a variable, or a control's label, colors, opacity or visibility. A device key is read-only and is not offered. Its value field has the same `$` toggle, so you can store a variable, device state, or system value into another variable. On a keypad's **On submit** or a list's **On row tap**, the toggle also offers **This control** and starts on it, so `$value` stores the digits entered or the row chosen. On an **On change** (a slider, a select), check **Use element's selected value** instead.
 
 #### Button behavior modes
 
@@ -536,7 +539,7 @@ The **Style** section has subsections for fine-grained control over element appe
 - **Gradient**: two-color linear gradient (start color, end color, direction)
 - **Padding**: all sides, or horizontal/vertical independently
 - **Font Size**: the size of the element's text, in pixels on the reference panel. Every piece of text inside a control follows it: a keypad's keys and display, a fader's scale and readout, a matrix's tiles and column numbers. Leave it empty to use the panel's default, shown greyed in the box; that number is the size the panel is drawing. A gauge's readout is the one exception: it is sized to its dial.
-- **Typography**: vertical alignment, text transform (uppercase, lowercase, capitalize), letter spacing, line height. Text transform and letter spacing set on a container (a group or a card) apply to everything inside it: the title and every child label, readout and caption. Set them on the element whose text you mean and leave them off the container.
+- **Typography**: vertical alignment, text transform (uppercase, lowercase, capitalize), letter spacing, line height (1.2 times the font size when left empty, the same on every device). Text transform and letter spacing set on a container (a group or a card) apply to everything inside it: the title and every child label, readout and caption. Set them on the element whose text you mean and leave them off the container.
 - **Background Image**: select an image asset with controls for size, position, and opacity (see Asset Management below)
 - **Overflow**: control how content that exceeds the element bounds is handled (visible, hidden, scroll)
 - **Custom Classes**: apply a class from the project stylesheet to this element (see [Custom Styling](#custom-styling))
@@ -632,11 +635,12 @@ reports its own.
 
 A control bound to a device the system cannot reach stops showing a value. It
 draws dimmed with a dashed edge, and where it would print a number it prints
-`--` instead: a fader loses its handle, a gauge empties its arc, a meter goes
-dark, a dropdown shows nothing, and a button bound to a device state goes back
-to its own label and colour rather than claiming the device is on or muted.
+`--` instead: a fader or slider loses its handle, a gauge empties its arc, a
+meter goes dark, a dropdown or text box shows nothing, a status LED shows its
+default color, and a button bound to a device state goes back to its own label
+and color rather than claiming the device is on or muted.
 
-**A button that only sends a command gets a lighter version of the same mark.**
+**A button or camera preset that only sends a command gets a lighter version of the same mark.**
 It keeps its colour, its label and its artwork -- none of those are wrong just
 because the device is away -- and takes the dashed edge on its own, so you can
 see before pressing that it will not do anything. It appears only when *nothing*
@@ -731,17 +735,18 @@ Add a **Set Variable or Control** step to a macro, pick the control from the
 
 | Property | Value | Effect |
 |----------|-------|--------|
-| **Label** | text | The words on the control, or its caption on a slider, dropdown or meter, replacing the ones it was given. An image or a clock has none to replace |
+| **Label** | text | The words on the control, or its caption on a slider, dropdown or meter, replacing the ones it was given. An image, a clock or a control with no caption has none to replace |
 | **Visible** | Yes / No | Show or hide the control |
 | **Background colour** | a colour, e.g. `#e67e22` | Fills the control |
 | **Text colour** | a colour, e.g. `#ffffff` | Colours its words |
 | **Opacity** | 0 to 1 | Below 1 fades it |
 
-The same five are available on a button's own **Does** bucket, and to scripts as
+The same five are available in a button's own **Set Variable or Control** action,
+where the value is typed (`false` hides the control), and to scripts as
 `openavc.state.set("ui.<control id>.<property>", value)`.
 
-An override stands until it is cleared (choose **Clear** as the value in the
-macro step, or **Clear** in front of the value in a button's Set Variable or
+An override stands until it is cleared (choose **Clear** as the macro step's
+value type, or **Clear** in front of the value in a button's Set Variable or
 Control action), so a macro that renames a button for a meeting wants a
 counterpart that puts it back. For anything the table does not
 cover, and for state that should survive a panel reconnect, bind the control to

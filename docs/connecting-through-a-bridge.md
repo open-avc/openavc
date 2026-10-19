@@ -30,7 +30,7 @@ Once added, open the bridge's device card. It shows a **Bridge Ports** section l
 1. Add (or edit) the serial device that is wired to the bridge, and pick its driver.
 2. In **Connection settings**, the device shows a picker with three choices: **Network (IP)**, **Direct serial**, and **Through a bridge**. Choose **Through a bridge**.
 3. Pick the bridge from the list, then pick the port the device is wired to (for the iTach IP2SL there is one port, "RS-232 Port 1"). Save asks for both.
-4. Set the serial line settings the device expects: baud rate, parity, data bits, and stop bits. These come straight from the device's manual (for example 9600 8N1).
+4. Check the serial line settings: baud rate, parity, data bits, stop bits and flow control. They start at the driver's own settings (9600 8N1 when the driver has none); change any that the device's manual gives differently.
 5. Save.
 
 OpenAVC connects the device through the bridge and applies the serial settings to the hardware for you. The device card shows connected, and you control it like any other device.
@@ -78,6 +78,7 @@ A bridge device works on its own, too. Its card has the standard command sender,
 - **The device will not connect.** If the bridge is down, the device says so itself: its card reads "The bridge '<name>' this device sends through is offline", and both come back on their own once the bridge is reachable again. If the bridge's own card shows connected, the problem is between the bridge and the device: check the serial settings match the device's manual exactly, including baud rate and parity, and check the cable.
 - **No response from the device.** This is almost always wiring or line settings. RS-232 needs the correct cable. If a straight-through cable gives nothing, try a null-modem (crossover) cable, or the reverse. Double-check baud rate, data bits, parity, and stop bits against the manual.
 - **The bridge is not in the bridge list.** Make sure the bridge device is added to the project first. The list shows project devices whose driver advertises bridge ports.
+- **The card reads "No bridge port is chosen for this device."** It was saved with a bridge but no port. Open **Edit** and pick the **Bridge port** it is wired to.
 - **Only one connection at a time.** A single serial pass-through port carries one connection. Bind one device per serial port.
 - **The bridge was power-cycled.** Nothing to do. A bridge that comes back re-applies the serial settings for every device bound to its ports, so a unit that lost them to a power cut is set up again without anyone opening the Programmer.
 - **An IR code does nothing.** Aim matters: the emitter has to sit over the device's remote sensor. Use the code's **Test** button while you position it. If a learned code is unreliable, learn it again holding the remote steady and close to the bridge's learning window.

@@ -28,10 +28,10 @@ The fastest way to get started on Windows.
 **What the installer does:**
 
 - Installs to `C:\Program Files\OpenAVC`
-- Stores project data in `C:\ProgramData\OpenAVC`
+- Stores project data in `C:\ProgramData\OpenAVC`, readable only by the OpenAVC service and administrators
 - Creates a Windows service (`OpenAVC`) that starts automatically on boot
 - Adds a system tray app for quick access to the web interface
-- Opens Windows Firewall for port 8080
+- Adds a Windows Firewall rule for the OpenAVC server
 - Creates Start Menu and optional Desktop shortcuts
 
 After installation, open **http://localhost:8080/programmer** in your browser to start building.
@@ -105,7 +105,7 @@ sudo journalctl -u openavc -f    # View logs
 
 Access at **http://localhost:8080/programmer**, or **http://&lt;server-ip&gt;:8080/programmer** from another device. The installed service accepts connections from any network the machine is on, so tablets and panels can reach it.
 
-The first time you open the Programmer, you choose an admin username (prefilled with `admin`) and password. They protect the Programmer and the control API, and you'll enter both on the Programmer's sign-in screen. A tablet or browser that opens the room panel at `/panel` waits until you approve it once in the Programmer; nobody enters a password on the panel. You can change them later in **Settings > Security**.
+The first time you open the Programmer, you choose an admin username (prefilled with `admin`) and password. They protect the Programmer and the control API, and you'll enter both on the Programmer's sign-in screen. A tablet or browser that opens the room panel at `/panel` waits until you approve it once in the Programmer; nobody enters a password on the panel. You can change them later in **Settings > Access > Programmer login**.
 
 To accept connections from one network only, or from this machine only, change **Accept connections from** in Settings > Network.
 

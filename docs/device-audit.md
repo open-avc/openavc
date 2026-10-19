@@ -64,7 +64,12 @@ the one before.
 6. **Commands.** Open a command, press **Send**, then watch or listen to the device and say
    whether it happened. The suggested commands come first. Send only the commands that are safe
    to run on this unit: every command but a status query changes the device, and one that
-   erases or resets it asks before it is sent. **Run all status
+   erases or resets it asks before it is sent. Each command is watched for 10 seconds after it
+   returns, and one whose driver lists what it sets until the driver's next poll could report
+   it (**Wait longer** adds time, **Stop watching** ends it). **Show the traffic** starts at what
+   the command sent. **What changed** lists the values the audit left changed, to set back on
+   the device yourself, and apart from them the values first reported during the audit, with no
+   earlier reading to compare. **Run all status
    queries** sends every query that needs no value. Under **Device settings**, **Write and put
    back** writes a new value, checks that the device reports it, then writes the old value back.
 7. **Power and cable.** The **power cycle** and **cable pull** tests show whether OpenAVC
