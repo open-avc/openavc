@@ -3180,6 +3180,12 @@ and `runtime_surfaces`
 from the compatibility schema. Keep historical source references when the current
 driver changes. Qualify the result mapping and its dependencies before adding it.
 
+Use `actions: []` for a trusted source needing no legacy mappings, including a
+driver with no setup actions or only typed `setup/v1` actions. Generation still
+loads the exact committed source and records its complete declaration and setup
+action list. An unmapped legacy or unsupported setup action remains in coverage
+and fails source eligibility; an empty mapping list does not qualify it.
+
 For a driver that builds its control schema per instance, `runtime_surfaces`
 lists the qualified sections: `commands`, `state_variables`, `device_settings`,
 `child_entity_types`, or `actions`. Unlisted sections must match the loaded class

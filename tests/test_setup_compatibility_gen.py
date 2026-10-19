@@ -180,3 +180,39 @@ def test_coverage_keeps_unmapped_setup_actions_from_actual_loaded_source(history
     result = generator.build_resource(history.repo, revision)
     assert [row['action_id'] for row in result['source_coverage'][0]['actions']] == ['other', 'check']
     assert [row['action_id'] for row in result['descriptors']] == ['check']
+
+
+@pytest.mark.parametrize("kind,expected", [("none", "passed"), ("typed", "passed"),
+                                           ("legacy", "refused"), ("unknown", "refused")])
+def test_coverage_only_input_uses_actual_declaration_and_never_fabricates_a_mapping(history, kind, expected):
+    from openavc.drivers.setup_preflight import check_sources
+
+    source = SOURCE
+    if kind == "none":
+        source = source.replace(b'"actions": [{"id": "check", "kind": "setup", "params": {}}]', b'"actions": []')
+    elif kind in ("typed", "unknown"):
+        contract = b"setup/v1" if kind == "typed" else b"setup/v99"
+        source = source.replace(b'"kind": "setup"', b'"kind": "setup", "result_contract": "' + contract + b'"')
+    history.source.write_bytes(source)
+    git(history.repo, "add", history.source.name)
+    git(history.repo, "commit", "-m", "Fixture coverage source", "--allow-empty")
+    data = copy.deepcopy(history.manifest)
+    data["sources"][0].update(revision=git(history.repo, "rev-parse", "HEAD"),
+                               source_sha256=hashlib.sha256(source).hexdigest(), actions=[])
+    revision = commit_manifest(history, data)
+    result = generator.build_resource(history.repo, revision)
+    assert result["descriptors"] == []
+    assert result["source_coverage"][0]["source_sha256"] == hashlib.sha256(source).hexdigest()
+    assert len(result["source_coverage"][0]["actions"]) == (0 if kind == "none" else 1)
+    resource = history.repo / "coverage.json"
+    resource.write_text(json.dumps(result))
+    report = check_sources([history.source.resolve()], resource=resource.resolve(),
+        expected_resource_sha256=hashlib.sha256(resource.read_bytes()).hexdigest(), target_sha256="4" * 64)
+    assert report["status"] == expected
+    if expected == "refused":
+        assert report["sources"][0]["coverage"]["unsupported_actions"] == ["check"]
+    # A nearby edited source cannot borrow the committed coverage receipt.
+    history.source.write_bytes(source + b"\n# changed installed source\n")
+    refused = check_sources([history.source.resolve()], resource=resource.resolve(),
+        expected_resource_sha256=hashlib.sha256(resource.read_bytes()).hexdigest(), target_sha256="4" * 64)
+    assert refused["sources"][0]["reason"] == "unknown_source"

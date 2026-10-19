@@ -122,8 +122,11 @@ def build_resource(repo: Path, revision: str, manifest_path: str = MANIFEST_PATH
         if (captured["sha256"] != digest or info.get("id") != entry["driver_id"]
                 or info.get("version") != entry["driver_version"]):
             raise ValueError("Loaded source identity does not match the maintained input")
-        if type(entry["actions"]) is not list or not 1 <= len(entry["actions"]) <= 64:
-            raise ValueError("A bounded nonempty action list is required")
+        if type(entry["actions"]) is not list or len(entry["actions"]) > 64:
+            raise ValueError("A bounded action mapping list is required")
+        # An empty mapping list still captures the entire loaded declaration.
+        # Typed-only/no-setup sources need provenance too; uncovered legacy or
+        # unsupported actions remain visible to the source eligibility check.
         setup_actions = [action for action in info.get("actions", [])
                          if type(action) is dict and action.get("kind") == "setup"]
         coverage.append({"source_sha256": digest, "driver_id": entry["driver_id"],
