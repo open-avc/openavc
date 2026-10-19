@@ -162,7 +162,7 @@ class EquipmentDriver(BaseDriver):
         "description": "A manufacturer's product with OpenAVC built in.",
         "help": {
             "overview": "A manufacturer's product with OpenAVC built in.",
-            "setup": "Enter its address and the sign-in printed in its documentation.",
+            "setup": "Enter its address and the username and password its documentation gives.",
         },
         "source_url": "https://github.com/open-avc/openavc",
         "transport": "http",
