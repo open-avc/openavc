@@ -5,6 +5,14 @@ const clean = { saving: false, dirty: false, revision: "r1" };
 const dirty = { saving: false, dirty: true, revision: "r1" };
 
 describe("decideProjectReload", () => {
+  it("reconciles a setup save independently of the wizard while preserving other-tab conflict handling", () => {
+    const message = { type: "project.reloaded" as const, revision: "r2", origin_client: "me", setup_device_id: "device" };
+    for (const state of [clean, dirty, { ...dirty, saving: true }]) {
+      expect(decideProjectReload(state, message, "me")).toBe("setup-save");
+    }
+    expect(decideProjectReload(dirty, message, "another-tab")).toBe("warn-other-session");
+    expect(decideProjectReload(clean, message, "another-tab")).toBe("refetch");
+  });
   it("treats a broadcast carrying this tab's id as its own", () => {
     expect(decideProjectReload(dirty, { type: "project.reloaded", revision: "r2", origin_client: "me" }, "me")).toBe("own");
     expect(decideProjectReload(clean, { type: "project.reloaded", revision: "r2", origin_client: "me" }, "me")).toBe("own");

@@ -30,6 +30,11 @@ _CLIENT_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 current_client_id: ContextVar[str | None] = ContextVar(
     "openavc_client_id", default=None,
 )
+# A setup save finishes after its initiating request. Its tab must reconcile
+# even when the wizard has closed; the ordinary own-edit echo rule cannot apply.
+current_setup_device: ContextVar[str | None] = ContextVar(
+    "openavc_setup_device", default=None,
+)
 
 
 def parse_client_id(value: str | None) -> str | None:
@@ -45,4 +50,8 @@ def parse_client_id(value: str | None) -> str | None:
 def reload_origin() -> dict[str, str]:
     """The ``origin_client`` field for a ``project.reloaded`` broadcast."""
     client_id = current_client_id.get()
-    return {"origin_client": client_id} if client_id else {}
+    result = {"origin_client": client_id} if client_id else {}
+    device_id = current_setup_device.get()
+    if device_id:
+        result["setup_device_id"] = device_id
+    return result

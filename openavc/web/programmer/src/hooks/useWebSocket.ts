@@ -4,7 +4,7 @@ import * as ws from "../api/wsClient";
 import { useConnectionStore } from "../store/connectionStore";
 import { useLogStore } from "../store/logStore";
 import type { LogEntry, StepPathSegment, TriggerRun } from "../store/logStore";
-import { useProjectStore } from "../store/projectStore";
+import { syncAfterSetupAction, useProjectStore } from "../store/projectStore";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
 import { useUiFilesStore } from "../store/uiFilesStore";
 import { useDiscoveryStore } from "../store/discoveryStore";
@@ -173,6 +173,11 @@ export function useWebSocket() {
       if (msg.type === "project.reloaded") {
         const store = useProjectStore.getState();
         const decision = decideProjectReload(store, msg as unknown as ProjectReloadMessage);
+        if (decision === "setup-save") {
+          // This outlives the wizard without retaining its capability or key.
+          void syncAfterSetupAction(msg.setup_device_id as string);
+          return;
+        }
         // Our own change: a save in flight takes its revision from the PUT
         // response, and a device page save re-syncs the store itself.
         // Nothing to refetch and nothing to warn about.

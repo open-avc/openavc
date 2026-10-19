@@ -6,6 +6,7 @@ export interface ProjectReloadMessage {
   // The tab that made the change, when a Programmer request made it. Absent
   // for a persist nobody's tab made (a learned config, a cloud push).
   origin_client?: string | null;
+  setup_device_id?: string;
 }
 
 export interface ProjectStoreSnapshot {
@@ -15,9 +16,9 @@ export interface ProjectStoreSnapshot {
 }
 
 export type ProjectReloadDecision =
+  | "setup-save"
   // Our own save echoing back while its PUT is still in flight, our own edit
-  // through a dedicated endpoint, or a setup wizard this tab started: the
-  // caller re-syncs the store (syncDeviceConfig, syncAfterSetupAction).
+  // through a dedicated endpoint: the caller re-syncs the store.
   | "own"
   // Nothing of ours is unsaved: refetch quietly.
   | "refetch"
@@ -33,6 +34,7 @@ export function decideProjectReload(
   msg: ProjectReloadMessage,
   clientId: string = CLIENT_ID,
 ): ProjectReloadDecision {
+  if (msg.origin_client === clientId && typeof msg.setup_device_id === "string" && msg.setup_device_id) return "setup-save";
   if (store.saving) return "own";
   if (msg.origin_client && msg.origin_client === clientId) return "own";
   if (!store.dirty) return "refetch";

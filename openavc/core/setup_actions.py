@@ -16,6 +16,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
 
+from openavc.core.client_origin import current_setup_device
 from openavc.core.device_config import apply_config_delta
 from openavc.core.device_manager import DeviceNotFoundError
 from openavc.core.outbound_messages import RoomText
@@ -127,7 +128,11 @@ class SetupActionContext:
         # Persistence can precede a failed reconcile. An exception is not a
         # receipt that nothing was saved; the project owner still owns that fact.
         self.config_save = StageState.UNKNOWN
-        await engine.apply_project(project)
+        origin = current_setup_device.set(device_id)
+        try:
+            await engine.apply_project(project)
+        finally:
+            current_setup_device.reset(origin)
         self.config_save = StageState.REPORTED_COMPLETE
         if generation is not None:
             self._results.secret_saved(self._slot, generation)

@@ -84,7 +84,7 @@ def test_macro_lifecycle_balances_old_panel_and_preserves_safe_failure_guidance(
 
 def test_project_revision_and_edit_origin_remain_programmer_only():
     p = OutboundPolicy()
-    message = {"type": "project.reloaded", "revision": "r2", "origin_client": "editor-tab"}
+    message = {"type": "project.reloaded", "revision": "r2", "origin_client": "editor-tab", "setup_device_id": "device"}
     assert delivered(p, message, recipient()) == {"type": "project.reloaded"}
     assert delivered(p, message, recipient("programmer")) == message
 

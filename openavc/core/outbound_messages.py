@@ -325,7 +325,7 @@ _registry = {
     "ui.definition": _rule({"ui": _ui}, required=("ui",)),
     "ui.navigate": _rule({"page_id": _text}, required=("page_id",)),
     "ui.files": _rule({"version": _text}, {"path": _text}, required=("version",)),
-    "project.reloaded": _rule({}, {"revision": _text, "origin_client": _text}),
+    "project.reloaded": _rule({}, {"revision": _text, "origin_client": _text, "setup_device_id": _text}),
     "project.replaced": _rule({}, {"project_name": _text, "source": _text}),
     "command.ack": _rule(
         {"device_id": _text, "command": _text, "success": _bool},

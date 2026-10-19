@@ -265,9 +265,15 @@ async def test_apply_config_update_bumps_revision_without_bounce(tmp_path):
     """
     from openavc.drivers.registry import register_driver, unregister_driver
     from openavc.core.engine import Engine
+    from openavc.core.client_origin import current_client_id, current_setup_device
 
     register_driver(_ProvisionDriver)
     engine = Engine(str(tmp_path / "p.avc"))
+    sent = []
+    async def capture(message, namespaces=None):
+        sent.append(message)
+    engine.broadcast_ws = capture
+    token = current_client_id.set("original-tab")
     try:
         engine.project = ProjectConfig(
             project=ProjectMeta(id="t", name="Test"),
@@ -294,7 +300,13 @@ async def test_apply_config_update_bumps_revision_without_bounce(tmp_path):
         assert engine.project.connections["dev1"]["port"] == 9999
         assert engine.project.devices[0].config["provisioned"] == "yes"
         assert driver_before.config["port"] == 9999
+        reloads = [message for message in sent if message["type"] == "project.reloaded"]
+        assert len(reloads) == 1
+        assert reloads[0]["origin_client"] == "original-tab"
+        assert reloads[0]["setup_device_id"] == "dev1"
+        assert current_setup_device.get() is None
     finally:
+        current_client_id.reset(token)
         await engine.devices._cancel_reconnect("dev1")
         await engine.devices.disconnect_all()
         unregister_driver("acme_provision")

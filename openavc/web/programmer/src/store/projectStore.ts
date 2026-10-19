@@ -324,11 +324,9 @@ export async function syncDeviceConfig(
  * Re-sync the store after a device's setup wizard finished, whether it worked
  * or not (a wizard can save new settings before a later step fails).
  *
- * The wizard writes the device's settings on the server from a run this tab
- * started, so the project.reloaded that follows names this tab and the
- * WebSocket handler leaves the refetch to the caller (hooks/projectReload.ts).
- * Nothing else hands this tab the new project, so without this its ETag stayed
- * behind the server's and its next save was refused as another session's.
+ * The global project.reloaded consumer calls this for this tab's setup saves,
+ * even after the wizard closes. The wizard also reconciles its terminal result
+ * because saving may have preceded a failure or a lost socket frame.
  *
  * Clean store: refetch. Store with unsaved edits (or a save in flight): a
  * refetch would clobber them, so mirror just this device's persisted config
