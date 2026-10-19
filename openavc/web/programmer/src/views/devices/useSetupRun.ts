@@ -87,6 +87,16 @@ export function useSetupRun(deviceId: string, actionId: string) {
     catch (e) { failed(e, owner); }
   }, [accept, failed]);
 
+  const secretFailed = useCallback(async (e: unknown, owner: Attempt) => {
+    if (!valid(owner)) return;
+    setSecret(null);
+    // A credential generation can disappear while the reservation remains
+    // usable (saving, acknowledgement or replacement). Reconcile this same
+    // capability before treating a refused credential read as a lost run.
+    if (e instanceof ApiError && e.status === 410) await refresh();
+    else failed(e, owner);
+  }, [failed, refresh, valid]);
+
   const subscribe = useCallback(async (owner: Attempt, connection: string) => {
     if (!valid(owner)) return;
     owner.connection = connection;
@@ -151,13 +161,13 @@ export function useSetupRun(deviceId: string, actionId: string) {
     setSecretBusy(true);
     try {
       const value = await api.retrieveSetup(owner.capability);
-      if (valid(owner) && latest.current?.secret.state === "available" &&
+      if (valid(owner) && !deniedResult.current && latest.current?.secret.state === "available" &&
           latest.current.secret.generation === value.generation && value.generation > owner.acknowledged) {
         setSecret(value);
       }
-    } catch (e) { failed(e, owner); }
+    } catch (e) { await secretFailed(e, owner); }
     finally { if (active.current) setSecretBusy(false); }
-  }, [failed, secretBusy, valid]);
+  }, [secretFailed, secretBusy, valid]);
 
   const acknowledge = useCallback(async () => {
     const owner = attempt.current;
@@ -170,9 +180,9 @@ export function useSetupRun(deviceId: string, actionId: string) {
         setSecret(null);
         if (latest.current) accept(latest.current, owner);
       }
-    } catch (e) { failed(e, owner); }
+    } catch (e) { await secretFailed(e, owner); }
     finally { if (active.current) setSecretBusy(false); }
-  }, [accept, failed, secret, secretBusy, valid]);
+  }, [accept, secretFailed, secret, secretBusy, valid]);
 
   const dispose = useCallback(() => {
     active.current = false;

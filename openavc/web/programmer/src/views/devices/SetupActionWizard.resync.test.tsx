@@ -264,4 +264,32 @@ describe("prepared setup attempt ownership", () => {
     expect(screen.queryByDisplayValue("invented-secret")).toBeNull();
     expect(screen.queryByRole("button", { name: "Reveal credentials" })).toBeNull();
   });
+
+  it.each(["replacement", "saved", "revoked"])("reconciles a refused secret read against the same attempt: %s", async (change) => {
+    startSetup.mockResolvedValueOnce({ ...completed(), secret: { state: "available", generation: 1 } });
+    let refused!: (error: unknown) => void;
+    retrieveSetup.mockImplementationOnce(() => new Promise((_resolve, reject) => { refused = reject; }));
+    await runWizard();
+    await userEvent.click(screen.getByRole("button", { name: "Reveal credentials" }));
+    if (change === "revoked") setupStatus.mockRejectedValueOnce(new ApiError(410, "unavailable"));
+    else setupStatus.mockResolvedValueOnce({ ...completed(), secret: {
+      state: change === "replacement" ? "available" : "reported_saved",
+      generation: change === "replacement" ? 2 : 1,
+    } });
+    await act(async () => refused(new ApiError(410, "unavailable")));
+    expect(setupStatus).toHaveBeenCalledWith("private-capability");
+    expect(screen.queryByDisplayValue("invented-secret")).toBeNull();
+    if (change === "replacement") {
+      retrieveSetup.mockResolvedValueOnce({ generation: 2, values: { app_key: "replacement-secret" } });
+      await userEvent.click(await screen.findByRole("button", { name: "Reveal credentials" }));
+      expect(await screen.findByDisplayValue("replacement-secret")).toBeTruthy();
+      await userEvent.click(screen.getByRole("button", { name: "I've saved these credentials" }));
+      expect(acknowledgeSetup).toHaveBeenCalledWith("private-capability", 2);
+    } else {
+      expect(screen.queryByRole("button", { name: "Reveal credentials" })).toBeNull();
+      expect(!!screen.queryByRole("button", { name: "Check status" })).toBe(change === "saved");
+    }
+    expect(prepareSetup).toHaveBeenCalledTimes(1);
+    expect(startSetup).toHaveBeenCalledTimes(1);
+  });
 });
