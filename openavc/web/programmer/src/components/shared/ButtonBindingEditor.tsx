@@ -151,7 +151,12 @@ export function ButtonBindingEditor({
     if (action.action === "device.command") {
       return action.device && action.command ? `${action.device}.${action.command}` : "Incomplete";
     }
-    if (action.action === "state.set") return action.key ? `Set ${action.key}` : "Incomplete";
+    if (action.action === "state.set") {
+      if (!action.key) return "Incomplete";
+      return String(action.key).startsWith("ui.") && action.value === null
+        ? `${action.key} cleared`
+        : `Set ${action.key}`;
+    }
     if (action.action === "ui.navigate" || action.action === "navigate") {
       // Two spellings because this editor renders two subsystems, not because
       // either is an alias: a panel binding says "ui.navigate" (matching the

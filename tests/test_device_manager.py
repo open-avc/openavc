@@ -464,6 +464,30 @@ async def test_expensive_transports_probe_before_connecting(dm, core):
     assert state.get("device.sshdev.offline_reason") == "unreachable"
 
 
+@pytest.mark.parametrize("host,dialed", [
+    ("https://acme.example", ("acme.example", 443)),
+    ("http://acme.example", ("acme.example", 80)),
+    ("https://acme.example:8443/api", ("acme.example", 8443)),
+], ids=["https", "http", "own-port"])
+async def test_the_reconnect_check_dials_the_name_in_a_url(dm, core, monkeypatch, host, dialed):
+    """A host field may hold a URL (a service's address, as some drivers ask
+    for it): the check dials the name and port the URL names, never the URL
+    as a name, which no lookup resolves."""
+    state, events = core
+    driver = MockDriver(
+        "urldev", {"host": host, "port": 9999, "transport": "http"}, state, events,
+    )
+    calls = []
+
+    async def open_connection(name, port, **kwargs):
+        calls.append((name, port))
+        raise ConnectionRefusedError("refused")
+
+    monkeypatch.setattr(asyncio, "open_connection", open_connection)
+    assert await dm._probe_failure("urldev", driver) is not None
+    assert calls == [dialed]
+
+
 async def test_cheap_transports_are_not_probed_twice(dm, core):
     """TCP connects about as cheaply as any probe, so it isn't gated."""
     state, events = core

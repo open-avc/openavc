@@ -1,6 +1,7 @@
 """Linux host descriptors preserve hostname and alternate IPv6 spellings."""
 
 from contextlib import ExitStack
+import errno
 import os
 import socket
 import sys
@@ -21,16 +22,31 @@ def _plan(monkeypatch, *hosts):
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Firmware listener inheritance is supported on Linux")
 
 
+def _localhost_parents(stack):
+    # An ephemeral IPv6 port can already belong to an IPv4 listener. Retain both
+    # reservations together before handing descriptors to the child.
+    for _ in range(100):
+        with ExitStack() as attempt:
+            ipv6 = attempt.enter_context(socket.socket(socket.AF_INET6, socket.SOCK_STREAM))
+            ipv6.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+            ipv6.bind(("::1", 0))
+            ipv4 = attempt.enter_context(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
+            try:
+                ipv4.bind(("127.0.0.1", ipv6.getsockname()[1]))
+            except OSError as exc:
+                if exc.errno != errno.EADDRINUSE:
+                    raise
+                continue
+            stack.enter_context(attempt.pop_all())
+            return [ipv6, ipv4]
+    raise RuntimeError("Could not reserve the same loopback port for both families")
+
+
 @pytest.mark.parametrize("mode", ["http", "tls", "http-redirect"])
 def test_localhost_passes_both_families_and_retains_both_parent_sockets(monkeypatch, mode):
     with ExitStack() as stack:
-        ipv6 = stack.enter_context(socket.socket(socket.AF_INET6, socket.SOCK_STREAM))
-        ipv6.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
-        ipv6.bind(("::1", 0))
-        port = ipv6.getsockname()[1]
-        ipv4 = stack.enter_context(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
-        ipv4.bind(("127.0.0.1", port))
-        parents = [ipv6, ipv4]
+        parents = _localhost_parents(stack)
+        port = parents[0].getsockname()[1]
         for parent in parents:
             parent.listen()
         descriptors = [os.dup(parent.fileno()) for parent in parents]
