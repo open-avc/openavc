@@ -2,8 +2,9 @@
 
 A driver whose Model is required with no default is created through the API.
 Add Device refuses it blank and names it, then saves once a Model is picked.
-The same device switched to "Through a bridge" saves with no IP address,
-before any bridge exists: the address is asked only of a network connection.
+The same device switched to "Through a bridge" before any bridge exists is
+asked for the bridge, never an IP address: the address is asked only of a
+network connection.
 
 Boots a real ``openavc.main`` subprocess (the ``openavc_server`` fixture in
 conftest) and drives a real Chromium. Invented device ("Acme").
@@ -101,15 +102,14 @@ def test_add_device_refuses_a_blank_required_model_and_names_it(openavc_server, 
     assert saved["config"]["model"] == "w12"
     assert saved["connection"]["host"] == "10.0.0.5"
 
-    # --- Through a bridge, before any bridge exists: no IP address asked ---
+    # --- Through a bridge, before any bridge exists: the bridge is asked ---
     dialog = _open_add_device(page)
     _type(dialog.get_by_label("Device ID"), "acme_cam_bridged")
     dialog.get_by_role("button", name="Through a bridge").click()
     dialog.get_by_label(re.compile(r"^Model")).select_option("w20")
     dialog.get_by_role("button", name="Add Device").click()
-    expect(page.locator('h3:has-text("Add Device")')).to_have_count(0, timeout=EXPECT_TIMEOUT)
-    saved = _device(page, handle.base_url, "acme_cam_bridged")
-    assert saved is not None
-    assert saved["config"]["model"] == "w20"
-    assert "host" not in saved["connection"]
+    refusal = dialog.get_by_text("Bridge is required.", exact=True)
+    expect(refusal).to_be_visible(timeout=EXPECT_TIMEOUT)
+    expect(dialog.get_by_text("IP Address is required.", exact=True)).to_have_count(0)
+    assert _device(page, handle.base_url, "acme_cam_bridged") is None
     assert not errors, errors

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildConfigFromForm,
   coerceConfigValue,
+  missingBridgeFields,
   missingRequiredFields,
   prefillConfigValues,
   requiredFieldsMessage,
@@ -107,6 +108,38 @@ describe("buildConfigFromForm", () => {
 // Device, named by its label. Only what the device would run with counts: a
 // driver default fills a field, and the connection picker's host and port are
 // asked only of the connection that uses them.
+// Through a bridge, the device needs the bridge and the port it is wired to:
+// without the port the binding never resolves. The labels are the picker's.
+describe("the bridge binding", () => {
+  it("asks for the bridge, then the port on it", () => {
+    expect(missingBridgeFields({}, "bridge")).toEqual(["Bridge"]);
+    expect(missingBridgeFields({ bridge: "itach1" }, "bridge")).toEqual(["Bridge port"]);
+    expect(missingBridgeFields({ bridge: "itach1", bridge_port: " " }, "bridge")).toEqual(["Bridge port"]);
+    expect(missingBridgeFields({ bridge: "itach1", bridge_port: "serial:1" }, "bridge")).toEqual([]);
+  });
+
+  it("asks nothing of a network or direct serial connection", () => {
+    expect(missingBridgeFields({}, "network")).toEqual([]);
+    expect(missingBridgeFields({ bridge: "itach1" }, "serial")).toEqual([]);
+  });
+
+  it("asks an IR device only for the emitter port of a bridge it names", () => {
+    expect(missingBridgeFields({}, "bridge", true)).toEqual([]);
+    expect(missingBridgeFields({ bridge: "itach_ir" }, "bridge", true)).toEqual(["IR emitter port"]);
+  });
+
+  it("refuses the save with the bridge first, and never asks for an IP address", () => {
+    const schema = {
+      host: { type: "string", required: true, label: "IP Address" },
+      model: { type: "string", required: true, label: "Model" },
+    };
+    const built = buildConfigFromForm({ bridge: "itach1" }, schema, {}, {
+      defaults: {}, connection: "bridge",
+    });
+    expect(built).toEqual({ ok: false, error: "Bridge port and Model are required." });
+  });
+});
+
 describe("required config fields", () => {
   const camera = {
     host: { type: "string", required: true, label: "IP Address" },

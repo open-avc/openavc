@@ -136,6 +136,29 @@ def no_address_message() -> str:
     return _NO_ADDRESS_MESSAGE
 
 
+_BRIDGE_PORT_MISSING_MESSAGE = (
+    "No bridge port is chosen for this device. In Edit Device, choose the "
+    "port on the bridge that the device is wired to."
+)
+
+
+def bridge_port_missing(config: dict[str, Any]) -> bool:
+    """True when ``config`` names a bridge but no port on it.
+
+    Such a binding never resolves, so the device has nowhere to connect, and
+    its Edit Device form is on Through a bridge with no IP address field.
+    Asked by BaseDriver before dialing, by the connection test, and by the
+    required check that refuses saving one (core/required_config.py).
+    """
+    return bool(config.get("bridge")) and not str(config.get("bridge_port") or "").strip()
+
+
+def bridge_port_missing_message() -> str:
+    """What a device :func:`bridge_port_missing` holds for says: on its card
+    (an ``invalid_config`` fault) and from the connection test."""
+    return _BRIDGE_PORT_MISSING_MESSAGE
+
+
 def default_fault_message(code: str, where: str = "the device") -> str:
     """The taxonomy's standard integrator-facing sentence for ``code``."""
     template = _DEFAULT_MESSAGES.get(code) or _DEFAULT_MESSAGES[TRANSPORT_DISCONNECTED]

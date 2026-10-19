@@ -4,8 +4,8 @@ import userEvent from "@testing-library/user-event";
 
 // A driver's required config field is refused blank at Add and Edit Device,
 // by its label. The IP address is asked only of the connection the picker is
-// set to: a device switched to "Through a bridge" saves without one, even
-// before a bridge is picked.
+// set to: a device switched to "Through a bridge" is asked for the bridge and
+// the port it is wired to instead, never an IP address.
 
 vi.mock("../../api/restClient", () => ({
   listDrivers: vi.fn(),
@@ -107,14 +107,15 @@ describe("required config fields in the device dialogs", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it("does not ask for an IP address through a bridge, before a bridge is picked", async () => {
+  it("asks for the bridge, not an IP address, through a bridge before one is picked", async () => {
     render(<AddDeviceDialog onClose={() => {}} />);
     await pickCamera();
     await userEvent.click(screen.getByRole("button", { name: "Through a bridge" }));
     await userEvent.selectOptions(screen.getByLabelText(/^Model/), "w12");
     await userEvent.click(screen.getByRole("button", { name: "Add Device" }));
-    expect(screen.queryByText(/is required\./)).toBeNull();
-    expect(update).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Bridge is required.")).toBeInTheDocument();
+    expect(screen.queryByText(/IP Address/)).toBeNull();
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("does not ask for an IP address of a direct serial connection", async () => {
@@ -127,9 +128,23 @@ describe("required config fields in the device dialogs", () => {
     expect(update).toHaveBeenCalledTimes(1);
   });
 
-  it("Edit Device reopens a bridge saved before its port on the bridge, asking no IP address", async () => {
+  it("Edit Device reopens a bridge saved before its port on the bridge and asks for the port", async () => {
     const device = { id: "cam1", driver: "acme_camera", name: "Cam", config: { model: "w12" } };
     seedProject([device as DeviceConfig], { cam1: { bridge: "itach1", baudrate: 9600 } });
+    render(<EditDeviceDialog device={device as DeviceConfig} onClose={() => {}} onSaved={() => {}} />);
+    await waitFor(() => expect(screen.getByLabelText(/^Model/)).toHaveValue("w12"));
+
+    await userEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+    expect(screen.getByText("Bridge port is required.")).toBeInTheDocument();
+    expect(screen.queryByText(/IP Address/)).toBeNull();
+    expect(api.updateDevice).not.toHaveBeenCalled();
+  });
+
+  it("Edit Device saves a bridge with its port, asking no IP address", async () => {
+    const device = { id: "cam1", driver: "acme_camera", name: "Cam", config: { model: "w12" } };
+    seedProject([device as DeviceConfig], {
+      cam1: { bridge: "itach1", bridge_port: "serial:1", baudrate: 9600 },
+    });
     render(<EditDeviceDialog device={device as DeviceConfig} onClose={() => {}} onSaved={() => {}} />);
     await waitFor(() => expect(screen.getByLabelText(/^Model/)).toHaveValue("w12"));
 

@@ -103,6 +103,27 @@ async def test_connect_refuses_before_any_session_is_built():
     assert _AcmeOwnSession.built == 0
 
 
+@pytest.mark.parametrize("transport", ["tcp", "serial"])
+async def test_a_bridge_chosen_without_its_port_asks_for_the_port(transport):
+    """Saved on Through a bridge before its port was picked, the binding never
+    resolves. The card says which choice is missing, not an IP address its
+    Edit Device form does not show, and nothing is dialed."""
+    from openavc.core.connection_fault import bridge_port_missing_message
+
+    _AcmeOwnSession.built = 0
+    driver = _driver(
+        {"bridge": "itach1", "bridge_port": "", "host": None, "port": None},
+        transport=transport, cls=_AcmeOwnSession,
+    )
+    with pytest.raises(ConnectionFaultError) as caught:
+        await driver.connect()
+    assert caught.value.fault_code == "invalid_config"
+    assert str(caught.value) == bridge_port_missing_message()
+    assert "bridge port" in str(caught.value)
+    assert "IP address" not in str(caught.value)
+    assert _AcmeOwnSession.built == 0
+
+
 def test_the_card_and_the_connection_test_say_the_same_sentence():
     assert device_reachability._NO_HOST == NO_ADDRESS_MESSAGE
 

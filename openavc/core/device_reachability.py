@@ -42,6 +42,8 @@ from typing import Any
 import httpx
 
 from openavc.core.connection_fault import (
+    bridge_port_missing,
+    bridge_port_missing_message,
     ConnectionFaultError,
     no_address_message,
     NO_RESPONSE,
@@ -129,6 +131,8 @@ async def check_reachability(resolved: dict[str, Any], project: Any) -> dict[str
             return await _through_bridge(bridge, project, address)
 
     cfg = resolved.get("config") or {}
+    if bridge_port_missing(cfg):
+        return _failure(bridge_port_missing_message(), address)
     start = time.monotonic()
     try:
         if conn.transport == "serial":

@@ -197,9 +197,9 @@ export type ConnectionMode = "network" | "serial" | "bridge";
 
 // The connection picker's fields a driver may require, and the connections
 // each applies to: no IP address is asked of a device wired by serial or
-// reached through a bridge. The picker's other fields (serial line settings,
-// the bridge binding) are never refused, and a bridge picked before its port
-// is still a bridged device. Mirrors
+// reached through a bridge. The picker's serial line settings are never
+// refused; the bridge binding is asked by missingBridgeFields below, and a
+// bridge picked before its port is still a bridged device. Mirrors
 // PICKER_FIELD_CONNECTIONS in openavc/core/required_config.py, the server's
 // half of this rule; keep the two in sync.
 const PICKER_FIELD_CONNECTIONS: Record<string, ConnectionMode[]> = {
@@ -232,6 +232,24 @@ export function missingRequiredFields(
   return missing;
 }
 
+// The bridge binding a device on Through a bridge leaves out, by the labels
+// the picker shows: the bridge, then the port on it. A bridge without its port
+// never resolves, and the device's card then had nowhere true to send anyone.
+// An IR device is added from its bridge's port, so only a bridge chosen
+// without its port is asked of it. The server refuses the port the same way
+// (missing_for_driver and BRIDGE_PORT_LABEL in openavc/core/required_config.py);
+// a save that names no bridge says nothing a server could ask about.
+export function missingBridgeFields(
+  values: Record<string, string>,
+  connection: ConnectionMode,
+  ir = false,
+): string[] {
+  if (connection !== "bridge") return [];
+  if (isBlank(values.bridge)) return ir ? [] : ["Bridge"];
+  if (isBlank(values.bridge_port)) return [ir ? "IR emitter port" : "Bridge port"];
+  return [];
+}
+
 // "Model is required." / "IP Address and Model are required." The server
 // words its refusal the same way (required_sentence).
 export function requiredFieldsMessage(labels: string[]): string {
@@ -245,14 +263,22 @@ export function requiredFieldsMessage(labels: string[]): string {
 // alone", but an empty usb_serial is a deliberate clear (the user re-picked a
 // manual or no-serial port) and is kept so it overwrites a previously bound
 // adapter serial in the merge. A required field left blank refuses the save
-// (`required`: the driver's default_config and the picker's connection).
+// (`required`: the driver's default_config, the picker's connection, and
+// whether the device is an IR device), as does a bridge binding left out.
 export function buildConfigFromForm(
   values: Record<string, string>,
   schema: Record<string, Record<string, unknown>>,
   originals: Record<string, unknown>,
-  required: { defaults: Record<string, unknown> | undefined; connection: ConnectionMode },
+  required: {
+    defaults: Record<string, unknown> | undefined;
+    connection: ConnectionMode;
+    ir?: boolean;
+  },
 ): { ok: true; config: Record<string, unknown> } | { ok: false; error: string } {
-  const missing = missingRequiredFields(values, schema, required.defaults, required.connection);
+  const missing = [
+    ...missingBridgeFields(values, required.connection, required.ir),
+    ...missingRequiredFields(values, schema, required.defaults, required.connection),
+  ];
   if (missing.length > 0) return { ok: false, error: requiredFieldsMessage(missing) };
   const config: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(values)) {

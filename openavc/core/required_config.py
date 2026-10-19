@@ -31,18 +31,27 @@ What counts:
   connection that uses them: ``host`` to a network connection, ``port`` to a
   network or direct serial one, neither to a device reached through a bridge.
   The picker's other fields (the serial line settings, the bridge binding) are
-  never refused. A bridge picked before its port is still a bridged device:
-  the form shows no IP address for it.
+  never refused, with one exception: a bridge named without its port is
+  refused as "Bridge port is required." (``bridge_port_missing`` in
+  ``core.connection_fault``), since that binding never resolves. Such a device
+  is still bridged: the form shows no IP address for it, so none is asked.
 
-The browser half mirrors ``PICKER_FIELD_CONNECTIONS``, ``PICKER_OWNED_FIELDS``
-and the sentence; keep the two in sync.
+The browser half mirrors ``PICKER_FIELD_CONNECTIONS``, ``PICKER_OWNED_FIELDS``,
+the bridge port and the sentence; keep the two in sync. It also asks for the
+bridge itself on Through a bridge, which a save that names none cannot carry.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from openavc.core.connection_fault import bridge_port_missing
 from openavc.drivers.registry import get_driver_class, get_driver_default_config
+
+#: The label a bridge chosen without its port is refused by, as the Edit
+#: Device form names that field. Mirrors missingBridgeFields in
+#: deviceConfigCoerce.ts.
+BRIDGE_PORT_LABEL = "Bridge port"
 
 #: The connection picker's fields that a driver may require, and the
 #: connections each applies to. Mirrors PICKER_FIELD_CONNECTIONS in
@@ -112,13 +121,15 @@ def required_sentence(labels: list[str]) -> str:
 
 def missing_for_driver(driver_id: str, config: dict[str, Any]) -> list[tuple[str, str]]:
     """The required fields a device on ``driver_id`` leaves blank, where
-    ``config`` is its merged config. Empty when the driver is not installed:
-    with no schema to read there is nothing to refuse."""
+    ``config`` is its merged config, a bridge named without its port first.
+    Empty when the driver is not installed: with no schema to read there is
+    nothing to refuse."""
     cls = get_driver_class(driver_id)
     if cls is None:
         return []
     info = cls.DRIVER_INFO
-    return missing_required_fields(
+    missing = [("bridge_port", BRIDGE_PORT_LABEL)] if bridge_port_missing(config) else []
+    return missing + missing_required_fields(
         info.get("config_schema") or {},
         config,
         connection_kind(config, str(info.get("transport") or "tcp")),

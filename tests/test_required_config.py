@@ -257,14 +257,41 @@ async def test_patch_does_not_ask_for_an_ip_address_of_a_serial_or_bridged_devic
     assert "host" not in load_project(engine.project_path).connections["cam1"]
 
 
-async def test_patch_takes_a_bridge_chosen_before_its_port_as_bridged(camera_engine):
+async def test_patch_asks_for_the_port_of_a_bridge_chosen_without_one(camera_engine):
     """Edit Device on Through a bridge, the bridge picked and its port not yet:
-    the form asks for no IP address, so neither does the save."""
-    client, _engine = camera_engine
+    the form shows no IP address field, so the refusal names the bridge port,
+    the one thing missing, and never the IP address."""
+    client, engine = camera_engine
     config = {"host": None, "port": None, "transport": None, "bridge": "itach1",
               "bridge_port": "", "model": "w12"}
     resp = client.patch("/api/devices/cam1", json={"config": config})
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "Bridge port is required."
+    assert "bridge" not in load_project(engine.project_path).connections["cam1"]
+
+    config["bridge_port"] = "serial:1"
+    assert client.patch("/api/devices/cam1", json={"config": config}).status_code == 200
+
+
+async def test_patch_leaves_alone_a_bridge_port_gap_it_did_not_make(camera_engine):
+    """A device saved on its bridge before its port was required still takes
+    an edit that leaves the binding as it is."""
+    client, engine = camera_engine
+    engine.project.connections["cam1"] = {"bridge": "itach1", "bridge_port": "", "password": "stored"}
+    save_project(engine.project_path, engine.project)
+    resp = client.patch("/api/devices/cam1", json={"config": {"model": "w12"}})
     assert resp.status_code == 200, resp.text
+
+
+def test_a_bridge_named_without_its_port_is_asked_for_the_port():
+    register_driver(_AcmeCamera)
+    try:
+        config = {"bridge": "itach1", "bridge_port": " ", "model": "w12", "password": "x"}
+        assert missing_for_driver("acme_camera", config) == [("bridge_port", "Bridge port")]
+        config["bridge_port"] = "serial:1"
+        assert missing_for_driver("acme_camera", config) == []
+    finally:
+        unregister_driver("acme_camera")
 
 
 async def test_patch_renaming_or_disabling_an_older_device_is_not_refused(camera_engine):

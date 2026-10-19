@@ -1025,6 +1025,7 @@ export function AddDeviceDialog({
     const built = buildConfigFromForm(configValues, schema, configOriginals, {
       defaults: driverInfo?.default_config,
       connection: requiredConnection(driverInfo, connMode),
+      ir: driverIrCapable(driverInfo),
     });
     if (!built.ok) {
       setError(built.error);
@@ -1415,6 +1416,7 @@ export function EditDeviceDialog({
         : buildConfigFromForm(configValues, schema, configOriginals, {
         defaults: driverInfo?.default_config,
         connection: requiredConnection(driverInfo, connMode),
+        ir: driverIrCapable(driverInfo),
       });
       if (!built.ok) {
         setError(built.error);
