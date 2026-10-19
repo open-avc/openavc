@@ -1,8 +1,8 @@
 """Report known device-command outcomes without implying safe automatic replay."""
 
 MESSAGES = {
-    "uncertain": "The product has not confirmed completion. Inspect readback; do not replay this command.",
-    "pending": "The product has not confirmed completion. Inspect readback; do not replay this command.",
+    "uncertain": "The product did not confirm the command finished. It may still finish, so check the product's status before sending it again.",
+    "pending": "The product did not confirm the command finished. It may still finish, so check the product's status before sending it again.",
     "failed": "The command did not finish successfully. Equipment state may have changed; check its current status before trying again.",
     "rejected": "The equipment could not accept the command. Check its current status before trying again.",
 }
