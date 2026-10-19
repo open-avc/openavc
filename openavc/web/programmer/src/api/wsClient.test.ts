@@ -186,3 +186,19 @@ describe("wsClient reconnect", () => {
     window.removeEventListener(AUTH_REQUIRED_EVENT, authRequired);
   });
 });
+
+it("keeps the server routing ID only for the current connection", () => {
+  ws.connect();
+  const current = open();
+  expect(ws.getConnectionId()).toBeNull();
+  current.onmessage!({ data: JSON.stringify({ type: "connection.ready", connection_id: "server-route-1" }) } as MessageEvent);
+  expect(ws.getConnectionId()).toBe("server-route-1");
+  close(1006);
+  expect(ws.getConnectionId()).toBeNull();
+  ws.disconnect();
+  ws.connect();
+  open().onmessage!({ data: JSON.stringify({ type: "connection.ready", connection_id: "server-route-2" }) } as MessageEvent);
+  expect(ws.getConnectionId()).toBe("server-route-2");
+  ws.disconnect();
+  expect(ws.getConnectionId()).toBeNull();
+});

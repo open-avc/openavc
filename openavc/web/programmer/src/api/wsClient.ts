@@ -5,6 +5,9 @@ type MessageHandler = (msg: Record<string, unknown>) => void;
 type LifecycleHandler = () => void;
 
 let socket: WebSocket | null = null;
+// A server-issued route to this exact Programmer socket, never an access grant.
+let connectionId: string | null = null;
+export function getConnectionId(): string | null { return connectionId; }
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectDelay = 2000;
 const MAX_RECONNECT_DELAY = 15000;
@@ -70,6 +73,7 @@ function probeSession(): void {
 
 export function connect(): void {
   if (socket && socket.readyState <= WebSocket.OPEN) return;
+  connectionId = null;
 
   // Pass the session token as a Sec-WebSocket-Protocol subprotocol so the
   // server can authenticate the upgrade request — browsers can't attach
@@ -105,6 +109,9 @@ export function connect(): void {
   socket.onmessage = (event) => {
     try {
       const msg = JSON.parse(event.data);
+      if (msg.type === "connection.ready" && typeof msg.connection_id === "string") {
+        connectionId = msg.connection_id;
+      }
       // Respond to server heartbeat
       if (msg.type === "ping") {
         send({ type: "pong" });
@@ -119,6 +126,7 @@ export function connect(): void {
   };
 
   socket.onclose = (ev) => {
+    connectionId = null;
     if (ev.code === 4013) { window.location.reload(); return; }
     socket = null;
     for (const handler of disconnectHandlers) {
@@ -178,6 +186,7 @@ export function onDisconnect(handler: LifecycleHandler): () => void {
 }
 
 export function disconnect(): void {
+  connectionId = null;
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;

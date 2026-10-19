@@ -667,6 +667,7 @@ export interface ActionParam {
 export interface DeviceAction {
   id: string;
   kind: "command" | "setup" | "link";
+  result_contract?: "setup/v1";
   label: string;
   icon?: string | null; // lucide icon name
   confirm?: boolean | string | null; // string = custom confirmation message

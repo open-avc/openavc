@@ -1,313 +1,110 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Loader2, Check, AlertTriangle } from "lucide-react";
 import { Dialog } from "../../components/shared/Dialog";
-import * as api from "../../api/restClient";
-import { onMessage } from "../../api/wsClient";
+import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
+import { CopyButton } from "../../components/shared/CopyButton";
 import type { DeviceAction } from "../../api/types";
-import {
-  ActionParamFields,
-  buildParams,
-  hasMissingRequired,
-  seedParamValues,
-} from "./actionParamFields";
+import type { SetupStage } from "../../api/setupClient";
+import { ActionParamFields, buildParams, hasMissingRequired, seedParamValues } from "./actionParamFields";
 import { hasInvalidParams } from "../../components/shared/paramValidation";
-import { parseApiError } from "../../api/errors";
-import { syncAfterSetupAction } from "../../store/projectStore";
+import { useSetupRun } from "./useSetupRun";
 
-type Phase = "input" | "running" | "done" | "error";
+const stageLabel: Record<SetupStage, string> = {
+  not_requested: "Not requested", reported_complete: "Reported complete", failed: "Failed", unknown: "Not confirmed",
+};
+const buttonStyle: React.CSSProperties = {
+  padding: "var(--space-sm) var(--space-lg)", borderRadius: "var(--border-radius)",
+  background: "var(--bg-hover)", display: "inline-flex", gap: "var(--space-xs)", alignItems: "center",
+};
 
-interface Step {
-  step: string;
-  pct: number | null;
-  status: string;
-}
-
-/**
- * The sentence the handler wrote for the operator, out of the terminal event's
- * `result` object. Drivers put their whole finding here — the model they
- * reached, the firmware, the endpoint counts the operator is meant to
- * sanity-check — so it is shown in full rather than summarised. A result with
- * no message (or no result at all) is normal; the step log stands on its own.
- */
-function resultMessage(result: unknown): string {
-  if (!result || typeof result !== "object") return "";
-  const message = (result as Record<string, unknown>).message;
-  return typeof message === "string" ? message.trim() : "";
-}
-
-/**
- * Setup-action wizard — runs a driver-declared provisioning action (kind:"setup")
- * that can execute while the device is offline. Collects any input params, fires
- * the action, then streams its `action.progress` WebSocket events as a live step
- * log until the run reports "done" or "error", and shows the terminal event's
- * `result.message` — the handler's own report of what it found. The action's
- * meaning lives in the driver; this dialog only renders what it says.
- *
- * A failed run always arrives as status "error", whether the handler raised or
- * returned success:false (the server decides that, see core/setup_actions.py),
- * so "done" here means it worked.
- */
-export function SetupActionWizard({
-  deviceId,
-  action,
-  onClose,
-  onComplete,
-}: {
-  deviceId: string;
-  action: DeviceAction;
-  onClose: () => void;
-  onComplete?: () => void;
+/** A prepared run is retained until close. Recovery reads it, never pairs again. */
+export function SetupActionWizard({ deviceId, action, onClose, onComplete }: {
+  deviceId: string; action: DeviceAction; onClose: () => void; onComplete?: () => void;
 }) {
-  const [phase, setPhase] = useState<Phase>("input");
-  const [values, setValues] = useState<Record<string, string>>(() =>
-    seedParamValues(action.params),
-  );
-  const [steps, setSteps] = useState<Step[]>([]);
-  const [summary, setSummary] = useState<string>("");
-  const [error, setError] = useState<string>("");
-  const unsubRef = useRef<null | (() => void)>(null);
+  const [values, setValues] = useState<Record<string, string>>(() => seedParamValues(action.params));
+  const [confirmClose, setConfirmClose] = useState(false);
+  const run = useSetupRun(deviceId, action.id);
+  const result = run.status?.result;
+  const terminal = run.status?.status === "terminal";
+  const input = !run.status && !run.pending;
+  const blocked = hasMissingRequired(action.params, values) || hasInvalidParams(action.params, values);
 
-  // Stop listening if the wizard unmounts mid-run.
-  useEffect(() => () => unsubRef.current?.(), []);
-
-  const hasParams = Object.keys(action.params).length > 0;
-  const blocked =
-    hasMissingRequired(action.params, values) ||
-    hasInvalidParams(action.params, values);
-  const confirmNote = typeof action.confirm === "string" ? action.confirm : null;
-
-  const startRun = useCallback(async () => {
-    setPhase("running");
-    setSteps([]);
-    setSummary("");
-    setError("");
-    // Subscribe BEFORE the POST so an early progress event can't be missed.
-    // One run per device+action is guaranteed server-side, so that pair is a
-    // sufficient filter.
-    unsubRef.current = onMessage((msg) => {
-      if (msg.type !== "action.progress") return;
-      if (msg.device_id !== deviceId || msg.action_id !== action.id) return;
-      const status = String(msg.status ?? "running");
-      setSteps((prev) => [
-        ...prev,
-        { step: String(msg.step ?? ""), pct: (msg.pct as number | null) ?? null, status },
-      ]);
-      if (status === "done" || status === "error") {
-        // The run may have saved new settings for this device.
-        void syncAfterSetupAction(deviceId);
-      }
-      if (status === "done") {
-        setSummary(resultMessage(msg.result));
-        setPhase("done");
-        unsubRef.current?.();
-      } else if (status === "error") {
-        setError(String(msg.error ?? msg.step ?? "Setup failed"));
-        setPhase("error");
-        unsubRef.current?.();
-      }
-    });
-    try {
-      await api.invokeDeviceAction(
-        deviceId,
-        action.id,
-        buildParams(action.params, values),
-      );
-    } catch (e) {
-      unsubRef.current?.();
-      setError(parseApiError(e));
-      setPhase("error");
-    }
-  }, [deviceId, action, values]);
+  useEffect(() => { if (run.status?.run_id) setValues({}); }, [run.status?.run_id]);
 
   const close = useCallback(() => {
-    unsubRef.current?.();
+    run.dispose();
+    setValues({});
     onComplete?.();
     onClose();
-  }, [onClose, onComplete]);
+  }, [run.dispose, onComplete, onClose]);
+  const requestClose = () => {
+    if (run.needsRetention || run.pending) setConfirmClose(true);
+    else close();
+  };
 
-  const btnStyle = (variant: "primary" | "muted"): React.CSSProperties => ({
-    padding: "var(--space-sm) var(--space-lg)",
-    borderRadius: "var(--border-radius)",
-    background: variant === "primary" ? "var(--accent-bg)" : "var(--bg-hover)",
-    color: variant === "primary" ? "var(--text-on-accent)" : "var(--text-primary)",
-    display: "flex",
-    alignItems: "center",
-    gap: "var(--space-xs)",
-  });
-
-  return (
-    <Dialog
-      title={action.label}
-      onClose={phase === "running" ? () => {} : close}
-    >
-      {phase === "input" ? (
-        <>
-          <div
-            style={{
-              marginBottom: "var(--space-lg)",
-              fontSize: "var(--font-size-sm)",
-              color: "var(--text-secondary)",
-            }}
-          >
-            {confirmNote ??
-              "This changes the device configuration to bring it online. It runs while the device is offline and reconnects when finished."}
-          </div>
-          {hasParams && (
-            <div style={{ marginBottom: "var(--space-lg)" }}>
-              <ActionParamFields
-                params={action.params}
-                values={values}
-                onChange={(name, val) => setValues((v) => ({ ...v, [name]: val }))}
-                deviceId={deviceId}
-              />
-            </div>
-          )}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
-            <button onClick={close} style={btnStyle("muted")}>
-              Cancel
-            </button>
-            <button
-              onClick={startRun}
-              disabled={blocked}
-              style={{
-                ...btnStyle(blocked ? "muted" : "primary"),
-                color: blocked ? "var(--text-muted)" : "var(--text-on-accent)",
-              }}
-            >
-              Start
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <StepLog steps={steps} phase={phase} error={error} />
-          {phase === "done" && summary && (
-            // Below the log, not inside it: the log scrolls, and this is the
-            // one line the operator has to actually read.
-            <div
-              style={{
-                marginTop: "var(--space-md)",
-                display: "flex",
-                alignItems: "flex-start",
-                gap: "var(--space-xs)",
-                padding: "var(--space-md)",
-                borderRadius: "var(--border-radius)",
-                background: "var(--color-success-bg)",
-                border: "1px solid var(--color-success)",
-                fontSize: "var(--font-size-sm)",
-                color: "var(--text-primary)",
-                lineHeight: 1.5,
-              }}
-            >
-              <Check
-                size={14}
-                style={{ color: "var(--color-success)", flexShrink: 0, marginTop: 3 }}
-              />
-              <span>{summary}</span>
-            </div>
-          )}
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "var(--space-lg)" }}>
-            <button
-              onClick={close}
-              disabled={phase === "running"}
-              style={{
-                ...btnStyle(phase === "error" ? "muted" : "primary"),
-                opacity: phase === "running" ? 0.6 : 1,
-                cursor: phase === "running" ? "default" : "pointer",
-              }}
-            >
-              {phase === "running" && (
-                <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
-              )}
-              {phase === "running" ? "Running…" : "Close"}
-            </button>
-          </div>
-        </>
-      )}
-    </Dialog>
-  );
-}
-
-function StepLog({
-  steps,
-  phase,
-  error,
-}: {
-  steps: Step[];
-  phase: Phase;
-  error: string;
-}) {
-  return (
-    <div
-      style={{
-        background: "var(--bg-base)",
-        borderRadius: "var(--border-radius)",
-        border: "1px solid var(--border-color)",
-        padding: "var(--space-md)",
-        maxHeight: 240,
-        overflowY: "auto",
-      }}
-    >
-      {steps.length === 0 && phase === "running" && (
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
+  return <>
+    <Dialog title={action.label} onClose={requestClose}>
+      {input ? <>
+        <p style={{ marginBottom: "var(--space-lg)", color: "var(--text-secondary)" }}>
+          {typeof action.confirm === "string" ? action.confirm :
+            "This runs the device's setup action. It may change settings or reconnect the device."}
+        </p>
+        <ActionParamFields params={action.params} values={values}
+          onChange={(name, value) => setValues((old) => ({ ...old, [name]: value }))} deviceId={deviceId} />
+      </> : <>
+        {!terminal && !run.unavailable && <p role="status" style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
-          Starting…
-        </div>
-      )}
-      {steps.map((s, i) => {
-        const isLast = i === steps.length - 1;
-        const icon =
-          s.status === "done" ? (
-            <Check size={14} style={{ color: "var(--color-success)" }} />
-          ) : s.status === "error" ? (
-            <AlertTriangle size={14} style={{ color: "var(--color-error)" }} />
-          ) : isLast && phase === "running" ? (
-            <Loader2 size={14} style={{ animation: "spin 1s linear infinite", color: "var(--accent)" }} />
-          ) : (
-            <Check size={14} style={{ color: "var(--text-muted)" }} />
-          );
-        return (
-          <div
-            key={i}
-            style={{
-              // flex-start, not center: a failure step carries the driver's
-              // whole sentence and wraps to several lines.
-              display: "flex",
-              alignItems: "flex-start",
-              gap: "var(--space-xs)",
-              fontSize: "var(--font-size-sm)",
-              lineHeight: 1.5,
-              padding: "2px 0",
-              color: s.status === "error" ? "var(--color-error)" : "var(--text-primary)",
-            }}
-          >
-            <span style={{ flexShrink: 0, width: 16, display: "flex", paddingTop: 3 }}>
-              {icon}
-            </span>
-            <span style={{ flex: 1 }}>{s.step}</span>
-            {s.pct != null && (
-              <span style={{ color: "var(--text-muted)", fontSize: 11, flexShrink: 0 }}>
-                {s.pct}%
+          {run.status?.status === "prepared" ? "Ready to start this attempt." : "Setup in progress"}
+        </p>}
+        {run.steps.length > 0 && <div aria-label="Setup progress" style={{
+          background: "var(--bg-base)", border: "1px solid var(--border-color)",
+          borderRadius: "var(--border-radius)", padding: "var(--space-md)", maxHeight: 220, overflowY: "auto",
+        }}>
+          {run.steps.map((step) => <div key={step.sequence} style={{ display: "flex", gap: "var(--space-sm)", marginBottom: 4 }}>
+            <span style={{ flex: 1 }}>{step.detail}</span>
+            {step.percent != null && <span>{step.percent}%</span>}
+          </div>)}
+        </div>}
+        {result && <div style={{ marginTop: "var(--space-md)" }}>
+          <p role="status" style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+            {result.outcome === "succeeded" ? <Check size={16} color="var(--color-success)" /> :
+              <AlertTriangle size={16} color="var(--color-warning)" />}
+            <span><strong>{{ succeeded: "Completed", failed: "Failed", degraded: "Partly completed", unverified: "Outcome not confirmed" }[result.outcome]}</strong><br />{result.summary}</span>
+          </p>
+          {result.findings.length > 0 && <ul>{result.findings.map((finding, i) =>
+            <li key={`${finding.code}-${i}`}>{finding.detail || finding.code}</li>)}</ul>}
+          <dl style={{ fontSize: "var(--font-size-sm)" }}>
+            <dt>Save settings</dt><dd>{stageLabel[result.config_save]}</dd>
+            <dt>Reconnect</dt><dd>{stageLabel[result.reconnect]}</dd>
+          </dl>
+        </div>}
+        {!run.unavailable && run.status?.secret.state === "available" && <section aria-label="Unsaved credentials" style={{ marginTop: "var(--space-lg)" }}>
+          <p>Generated credentials are available for this attempt. Save them before closing. A server restart or expiry removes this copy.</p>
+          {run.secret ? <>
+            {Object.entries(run.secret.values).map(([key, value]) => <label key={key} style={{ display: "block", marginBottom: 8 }}>
+              {key}<span style={{ display: "flex", gap: 8 }}>
+                <input aria-label={key} value={value} readOnly autoComplete="off" spellCheck={false} style={{ minWidth: 0, flex: 1 }} />
+                <CopyButton value={value} title={`Copy ${key}`} />
               </span>
-            )}
-          </div>
-        );
-      })}
-      {phase === "error" && error && !steps.some((s) => s.status === "error") && (
-        <div
-          style={{
-            marginTop: "var(--space-xs)",
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--space-xs)",
-            color: "var(--color-error)",
-            fontSize: "var(--font-size-sm)",
-          }}
-        >
-          <AlertTriangle size={14} />
-          {error}
-        </div>
-      )}
-    </div>
-  );
+            </label>)}
+            <button style={buttonStyle} disabled={run.secretBusy} onClick={() => void run.acknowledge()}>I've saved these credentials</button>
+          </> : <button style={buttonStyle} disabled={run.secretBusy} onClick={() => void run.reveal()}>Reveal credentials</button>}
+        </section>}
+        {run.status?.secret.state === "reported_saved" && <p>Generated credentials were saved with the device settings.</p>}
+        {run.status?.secret.state === "acknowledged" && <p>The retained credential copy has been cleared.</p>}
+      </>}
+      {run.error && <p role="alert" style={{ color: "var(--color-error)" }}>{run.error}</p>}
+      <div style={{ display: "flex", justifyContent: "flex-end", flexWrap: "wrap", gap: "var(--space-sm)", marginTop: "var(--space-lg)" }}>
+        {run.status && !run.unavailable && <button style={buttonStyle} onClick={() => void run.refresh()}>Check status</button>}
+        {run.status?.status === "prepared" && !run.unavailable && <button style={buttonStyle}
+          disabled={run.pending} onClick={() => void run.retryPrepared()}>Start this attempt</button>}
+        <button style={buttonStyle} onClick={requestClose}>{input ? "Cancel" : "Close"}</button>
+        {input && <button disabled={blocked} style={{ ...buttonStyle, background: "var(--accent-bg)", color: "var(--text-on-accent)" }}
+          onClick={() => { void run.start(buildParams(action.params, values)); }}>Start</button>}
+      </div>
+    </Dialog>
+    {confirmClose && <ConfirmDialog title="Close this setup attempt?" destructive
+      message="Closing loses access to this attempt's result and any unsaved credentials. It does not stop work already sent to the device or revoke its credentials."
+      confirmLabel="Close and discard access" cancelLabel="Keep open" onConfirm={close} onCancel={() => setConfirmClose(false)} />}
+  </>;
 }
