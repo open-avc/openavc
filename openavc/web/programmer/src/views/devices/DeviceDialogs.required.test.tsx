@@ -118,6 +118,37 @@ describe("required config fields in the device dialogs", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  it("marks Bridge and Bridge port as required, as the save asks for both", async () => {
+    const bridgeDriver = {
+      id: "acme_bridge",
+      name: "Acme Bridge",
+      manufacturer: "Acme",
+      category: "utility",
+      transport: "tcp",
+      commands: {},
+      default_config: {},
+      config_schema: {},
+      bridge: { ports: [
+        { id: "serial:1", kind: "serial", label: "Serial 1" },
+        { id: "serial:2", kind: "serial", label: "Serial 2" },
+      ] },
+    } as unknown as DriverInfo;
+    vi.mocked(api.listDrivers).mockResolvedValue([camera, bridgeDriver]);
+    seedProject([{ id: "rack", driver: "acme_bridge", name: "Rack Bridge", config: {} } as DeviceConfig]);
+    render(<AddDeviceDialog onClose={() => {}} />);
+    await pickCamera();
+    await userEvent.click(screen.getByRole("button", { name: "Through a bridge" }));
+
+    const bridge = screen.getByDisplayValue("Select a bridge...");
+    expect(bridge).toHaveAttribute("aria-required", "true");
+    expect(bridge.previousElementSibling?.textContent).toBe("Bridge*");
+
+    await userEvent.selectOptions(bridge, "rack");
+    const port = screen.getByDisplayValue("Select a port...");
+    expect(port).toHaveAttribute("aria-required", "true");
+    expect(port.previousElementSibling?.textContent).toBe("Bridge port*");
+  });
+
   it("does not ask for an IP address of a direct serial connection", async () => {
     render(<AddDeviceDialog onClose={() => {}} />);
     await pickCamera();
