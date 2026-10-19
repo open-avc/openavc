@@ -100,7 +100,12 @@ export function ActionPicker({ value, project, onChange, forChangeBinding, allow
         />
       )}
       {actionType === "state.set" && (
-        <StateSetConfig value={value} onChange={onChange} forChangeBinding={forChangeBinding} />
+        <StateSetConfig
+          value={value}
+          onChange={onChange}
+          forChangeBinding={forChangeBinding}
+          eventTokens={eventTokens}
+        />
       )}
       {actionType === navigateAction && (
         <NavigateConfig
@@ -324,12 +329,19 @@ function StateSetConfig({
   value,
   onChange,
   forChangeBinding,
+  eventTokens,
 }: {
   value: Record<string, unknown> | null;
   onChange: (v: Record<string, unknown>) => void;
   forChangeBinding?: boolean;
+  eventTokens?: { key: string; label: string }[];
 }) {
   const useElementValue = value?.value_from === "element";
+  // A change binding stores the touched value through "Use element's selected
+  // value" below, so its "$" stays on state keys. Any other slot that delivers
+  // a value (a keypad's digits, a list row's value) offers it here as "This
+  // control", the same as a Device Command parameter.
+  const controlTokens = forChangeBinding ? undefined : eventTokens;
 
   return (
     <>
@@ -384,9 +396,8 @@ function StateSetConfig({
       {!useElementValue && (() => {
         // A fixed value (with true/false/number coercion) or a "$" reference to
         // a variable / device state / system value, resolved at runtime — the
-        // same picker pattern as a command parameter. The "touched value" lives
-        // on the "Use element's selected value" option above, so this picker
-        // deliberately offers no "This control" group (no eventContext).
+        // same picker pattern as a command parameter, with the slot's own
+        // tokens (controlTokens) where it has them.
         const isDynamic = isDynamicParamValue(value?.value);
         // A control override (ui.<id>.*) is undone by writing null, which the
         // panel reads as "no override": Clear is that choice. An emptied value
@@ -426,6 +437,7 @@ function StateSetConfig({
                     onChange({ action: "state.set", key: value?.key, value: `$${key}` })
                   }
                   showDeviceState
+                  eventContext={controlTokens}
                   placeholder="Select state key..."
                   style={{ flex: 1 }}
                 />
@@ -450,7 +462,13 @@ function StateSetConfig({
                   onChange({
                     action: "state.set",
                     key: value?.key,
-                    value: isDynamic ? "" : "$var.",
+                    // Turning "$" on seeds the slot's own value ($value)
+                    // where it delivers one: that is what is wanted there.
+                    value: isDynamic
+                      ? ""
+                      : controlTokens?.length
+                        ? `$${controlTokens[0].key}`
+                        : "$var.",
                   })
                 }
                 title={

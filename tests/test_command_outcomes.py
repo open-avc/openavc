@@ -16,8 +16,8 @@ from openavc.drivers.command_outcome import CommandOutcomeError
 @pytest.mark.parametrize(
     "outcome,status,phrase",
     [
-        ("pending", 409, "not confirmed completion"),
-        ("uncertain", 409, "not confirmed completion"),
+        ("pending", 409, "check the product's status before sending it again"),
+        ("uncertain", 409, "check the product's status before sending it again"),
         ("failed", 502, "Equipment state may have changed"),
         ("rejected", 409, "could not accept"),
     ],

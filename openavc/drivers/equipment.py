@@ -154,12 +154,16 @@ class AsyncRequestJournal:
 class EquipmentDriver(BaseDriver):
     DRIVER_INFO = {
         "id": "openavc_equipment",
-        "name": "OpenAVC equipment",
+        "name": "OpenAVC built-in product",
         "manufacturer": "OpenAVC",
         "category": "utility",
         "version": "0.0.1",
         "author": "OpenAVC",
-        "description": "Control equipment described by the OpenAVC SDK.",
+        "description": "A manufacturer's product with OpenAVC built in.",
+        "help": {
+            "overview": "A manufacturer's product with OpenAVC built in.",
+            "setup": "Enter its address and the sign-in printed in its documentation.",
+        },
         "source_url": "https://github.com/open-avc/openavc",
         "transport": "http",
         "commands": {},
@@ -370,9 +374,9 @@ class EquipmentDriver(BaseDriver):
                         ident,
                         {
                             key: None
-                            for key in self.DRIVER_INFO["child_entity_types"][kind][
-                                "state_variables"
-                            ]
+                            for key in self.DRIVER_INFO["child_entity_types"][kind].get(
+                                "state_variables", {}
+                            )
                         },
                     )
                 await self.events.emit(f"device.disconnected.{self.device_id}")

@@ -238,9 +238,11 @@ class InstalledEquipment:
 
             class InstalledDriver(EquipmentDriver):
                 DRIVER_INFO = {
-                    **{key: value for key, value in EquipmentDriver.DRIVER_INFO.items() if key != "discovery"},
+                    **{key: value for key, value in EquipmentDriver.DRIVER_INFO.items()
+                       if key not in ("discovery", "help")},
                     "id": self.driver_id,
                     "name": "Product hardware",
+                    "description": "The hardware of the product running OpenAVC.",
                     "config_schema": {},
                     "default_config": {},
                 }
