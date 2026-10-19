@@ -102,6 +102,9 @@ EXPECTED_CONTROL = {
     ("POST", "/api/devices/{bridge_id}/ir-emit"),
     ("POST", "/api/devices/{bridge_id}/ir-import"),
     ("POST", "/api/devices/{device_id}/actions/{action_id}"),
+    # Both halves of authenticated setup use the commissioning budget.
+    ("POST", "/api/devices/{device_id}/actions/{action_id}/prepare"),
+    ("POST", "/api/devices/{device_id}/actions/{action_id}/start"),
     ("POST", "/api/devices/{device_id}/children/refresh"),
     ("POST", "/api/devices/{device_id}/command"),
     ("POST", "/api/devices/{device_id}/pause"),

@@ -157,6 +157,8 @@ def test_the_change_reaches_programmer_clients_and_never_a_panel(claimed_engine,
     with lan_client().websocket_connect("/ws?client=programmer", headers=_basic_header()) as programmer, \
             lan_client().websocket_connect("/ws?client=panel", headers=cookie_header(claimed_engine, value)) as panel:
         _handshake(programmer)
+        ready = programmer.receive_json()
+        assert ready["type"] == "connection.ready" and ready["connection_id"]
         _handshake(panel)
 
         # A new device asks to connect.

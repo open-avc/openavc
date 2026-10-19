@@ -928,8 +928,14 @@ async def _handle_message(
             await _send_ws_error(ws, msg_type, RoomText("That audit has ended. Start a new one."))
             return
         # The state now, so a client that (re)subscribes draws from it.
-        await _send_ws(ws, {"type": "audit.state", "session_id": session_id, "state": state},
-                       scope=_audit_scopes.get(id(ws)))
+        try:
+            await _send_ws(ws, {"type": "audit.state", "session_id": session_id, "state": state},
+                           scope=_audit_scopes.get(id(ws)))
+        finally:
+            # A finished audit needs authority for this one final reply,
+            # but has no live subscription to retain after it is sent.
+            if state["status"] != "active":
+                _cleanup_audit_subscription(id(ws))
 
     elif msg_type == "audit.unsubscribe":
         _cleanup_audit_subscription(id(ws))

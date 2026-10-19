@@ -84,6 +84,8 @@ UNDOCUMENTED = {
 # and those entries say so, because an entry here is a claim about the
 # contract's shape and a wrong one hides a real cut field.
 NOT_A_CONTRACT_KEY = {
+    "schema": "The setup-compatibility input document's format discriminator, "
+              "not a DRIVER_INFO or .avcdriver definition field.",
     "connected": "A Python driver attribute (self.connected), not a "
                  "definition key.",
     "reject": "A simulator state-machine transition key. The registry models "

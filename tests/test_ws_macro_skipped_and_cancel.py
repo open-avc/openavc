@@ -27,6 +27,7 @@ from openavc.core.engine import Engine
 from openavc.core.event_bus import EventBus
 from openavc.core.macro_engine import MacroEngine
 from openavc.core.state_store import StateStore
+from openavc.core.ws_hub import WSHub
 
 
 class FakeWS:
@@ -53,6 +54,7 @@ def _engine():
     devices.send_command = AsyncMock()
     engine.macros = MacroEngine(engine.state, engine.events, devices)
     engine.isc = None
+    engine.ws = WSHub(engine.state)
     return engine
 
 
@@ -76,8 +78,10 @@ def _slow(macro_id: str, seconds: float, **extra) -> dict:
 
 
 @pytest.fixture
-def engine():
-    return _engine()
+async def engine():
+    engine = _engine()
+    yield engine
+    await engine.ws.close_clients(code=1000, reason="Fixture finished")
 
 
 # --- The run that never starts -----------------------------------------------
@@ -136,6 +140,7 @@ async def test_over_the_socket_the_second_ask_is_acked_and_then_skipped(engine):
     seen = _lifecycle(engine.events)
     engine.macros.load_macros([_slow("warm_up", 0.2, overlap="skip")])
     ws = FakeWS()
+    engine.ws.add_client(ws, client_type="programmer", authority=lambda: True)
     with patch("openavc.api._engine._engine", engine):
         await _handle_message(ws, {"type": "macro.execute", "macro_id": "warm_up"})
         await asyncio.sleep(0.05)
@@ -154,6 +159,7 @@ async def test_cancel_over_the_socket_acks_and_the_run_reports_cancelled(engine)
     seen = _lifecycle(engine.events)
     engine.macros.load_macros([_slow("warm_up", 5.0)])
     ws = FakeWS()
+    engine.ws.add_client(ws, client_type="programmer", authority=lambda: True)
     with patch("openavc.api._engine._engine", engine):
         await _handle_message(ws, {"type": "macro.execute", "macro_id": "warm_up"})
         await asyncio.sleep(0.05)
@@ -174,6 +180,7 @@ async def test_cancel_over_the_socket_acks_and_the_run_reports_cancelled(engine)
 async def test_cancel_of_a_macro_that_is_not_running_says_so(engine):
     engine.macros.load_macros([_slow("warm_up", 5.0)])
     ws = FakeWS()
+    engine.ws.add_client(ws, client_type="programmer", authority=lambda: True)
     with patch("openavc.api._engine._engine", engine):
         await _handle_message(ws, {"type": "macro.cancel", "macro_id": "warm_up"})
     assert ws.frames("macro.cancel.ack") == [
@@ -185,6 +192,7 @@ async def test_cancel_of_a_macro_that_is_not_running_says_so(engine):
 async def test_cancel_refuses_what_execute_refuses(engine):
     engine.macros.load_macros([])
     ws = FakeWS()
+    engine.ws.add_client(ws, client_type="programmer", authority=lambda: True)
     with patch("openavc.api._engine._engine", engine):
         await _handle_message(ws, {"type": "macro.cancel"})
         await _handle_message(ws, {"type": "macro.cancel", "macro_id": "nope"})

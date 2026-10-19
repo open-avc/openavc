@@ -27,6 +27,7 @@ from openavc.audit.session import AuditManager
 from openavc.core.event_bus import EventBus
 from openavc.core.project_loader import DeviceConfig
 from openavc.core.state_store import StateStore
+from openavc.core.ws_hub import WSHub
 from openavc.drivers.base import BaseDriver
 from openavc.drivers.registry import _DRIVER_REGISTRY
 
@@ -409,23 +410,40 @@ async def test_a_session_that_ended_is_not_found(wired):
 # ---------------------------------------------------------------------------
 
 
-class _Hub:
+class _AuditSocket:
     def __init__(self):
-        self.sent: list[tuple[object, dict]] = []
+        self.sent: list[dict] = []
 
-    def send(self, ws, message):
-        self.sent.append((ws, message))
+    async def send_text(self, text):
+        self.sent.append(json.loads(text))
 
 
-async def test_a_programmer_subscribes_and_only_it_hears(wired):
+@pytest.fixture
+async def audit_sockets():
     from openavc.api import ws as wsmod
-    from tests.test_websocket_protocol import FakeWS, _make_engine
 
-    engine = _make_engine()
-    engine.ws = _Hub()
+    engine = SimpleNamespace(ws=WSHub(StateStore()))
+    sockets = []
+
+    def connect(client_type="programmer"):
+        sock = _AuditSocket()
+        sockets.append(sock)
+        engine.ws.add_client(sock, client_type=client_type, authority=lambda: True)
+        return sock
+
+    yield engine, connect
+    for sock in sockets:
+        wsmod._cleanup_audit_subscription(id(sock))
+    await engine.ws.close_clients(code=1000, reason="Fixture finished")
+
+
+async def test_a_programmer_subscribes_and_only_it_hears(wired, audit_sockets):
+    from openavc.api import ws as wsmod
+
+    engine, connect = audit_sockets
     started = await routes.start_session(AuditStartRequest(address="127.0.0.1"))
     session_id = started["session"]["session_id"]
-    first, second = FakeWS(), FakeWS()
+    first, second = connect(), connect()
     with patch("openavc.api._engine._engine", engine):
         await wsmod._handle_message(first, {"type": "audit.subscribe", "session_id": session_id},
                                     "programmer")
@@ -433,11 +451,14 @@ async def test_a_programmer_subscribes_and_only_it_hears(wired):
         assert first.sent[0]["state"]["session_id"] == session_id
 
         wired.manager.current().add_timeline("check.ports", "Open: 23.")
-        assert [(ws, m["type"]) for ws, m in engine.ws.sent] == [(first, "audit.timeline")]
+        await engine.ws.flush_sends()
+        assert [m["type"] for m in first.sent] == ["audit.state", "audit.timeline"]
+        assert second.sent == []
 
         await wsmod._handle_message(first, {"type": "audit.unsubscribe"}, "programmer")
         wired.manager.current().add_timeline("check.ports", "Not delivered.")
-        assert len(engine.ws.sent) == 1
+        await engine.ws.flush_sends()
+        assert len(first.sent) == 2
 
         # A stale session id is an error, not a silent subscription.
         await wsmod._handle_message(second, {"type": "audit.subscribe", "session_id": "gone"},
@@ -446,7 +467,7 @@ async def test_a_programmer_subscribes_and_only_it_hears(wired):
         assert "ended" in second.sent[0]["message"]
 
         # A panel cannot listen in.
-        panel = FakeWS()
+        panel = connect("panel")
         await wsmod._handle_message(panel, {"type": "audit.subscribe", "session_id": session_id},
                                     "panel")
         assert panel.sent[0]["type"] == "error"
@@ -454,12 +475,13 @@ async def test_a_programmer_subscribes_and_only_it_hears(wired):
         # A page that comes back after the audit ended (its socket reconnected
         # past the idle timeout) is told how it ended, and hears nothing more.
         await wired.manager.finish(session_id, "expired")
-        late = FakeWS()
+        late = connect()
         await wsmod._handle_message(late, {"type": "audit.subscribe", "session_id": session_id},
                                     "programmer")
         assert late.sent[0]["type"] == "audit.state"
         assert late.sent[0]["state"]["status"] == "expired"
         assert id(late) not in wsmod._audit_subscriptions
+        assert id(late) not in wsmod._audit_scopes
     wsmod._cleanup_audit_subscription(id(first))
     await wired.manager.shutdown()
 
@@ -503,14 +525,12 @@ def test_every_action_sends_its_state_before_it_replies():
     assert missing == []
 
 
-async def test_a_disconnect_drops_the_subscription(wired):
+async def test_a_disconnect_drops_the_subscription(wired, audit_sockets):
     from openavc.api import ws as wsmod
-    from tests.test_websocket_protocol import FakeWS, _make_engine
 
-    engine = _make_engine()
-    engine.ws = _Hub()
+    engine, connect = audit_sockets
     started = await routes.start_session(AuditStartRequest(address="127.0.0.1"))
-    client = FakeWS()
+    client = connect()
     with patch("openavc.api._engine._engine", engine):
         await wsmod._handle_message(
             client, {"type": "audit.subscribe", "session_id": started["session"]["session_id"]},
@@ -518,6 +538,8 @@ async def test_a_disconnect_drops_the_subscription(wired):
         )
     assert id(client) in wsmod._audit_subscriptions
     wsmod._cleanup_audit_subscription(id(client))
+    delivered = list(client.sent)
     wired.manager.current().add_timeline("check.ports", "Nobody to hear it.")
-    assert engine.ws.sent == []
+    await engine.ws.flush_sends()
+    assert client.sent == delivered
     await wired.manager.shutdown()
