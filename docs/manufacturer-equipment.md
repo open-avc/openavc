@@ -7,7 +7,7 @@ include the full OpenAVC server and control its own hardware locally.
 ## Add equipment over the network
 
 Use **Devices > Discovery** and add the discovered product, or choose
-**OpenAVC equipment** in **Add Device**. Enter the product's address, control
+**OpenAVC built-in product** in **Add Device**. Enter the product's address, control
 port and credentials. The product supplies its commands, settings, state and
 channels when connected. Use them in panels, macros and scripts like other
 devices.
