@@ -216,7 +216,8 @@ async def test_a_result_the_equipment_no_longer_holds_is_unconfirmed(peer):
 async def test_a_second_command_is_sent_while_the_first_is_waiting(peer):
     connect, state = peer
     driver = await connect()
-    state["delay"] = 1.0
+    first_takes = 2.0
+    state["delay"] = first_takes
     first = asyncio.create_task(driver.send_command("increment"))
     await asyncio.sleep(0.4)
     state["delay"] = 0.0
@@ -225,7 +226,9 @@ async def test_a_second_command_is_sent_while_the_first_is_waiting(peer):
     assert (await first)["outcome"] == "completed"
     (sent_first, id_first), (sent_second, id_second) = state["posts"]
     assert id_second > id_first
-    assert sent_second - sent_first < 0.6
+    # Sent before the first could finish: held behind its wait, the second
+    # would leave only after the first completed.
+    assert sent_second - sent_first < first_takes
 
 
 def test_the_setting_is_offered_for_network_equipment():
