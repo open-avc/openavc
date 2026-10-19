@@ -8,7 +8,7 @@ import sys
 
 import pytest
 
-from openavc.drivers.setup_preflight import check_sources
+from openavc.drivers.setup_preflight import assess_capture, check_sources
 from openavc.utils.spawn import CREATE_NO_WINDOW
 
 
@@ -89,6 +89,65 @@ def test_unsupported_explicit_contract_is_not_a_legacy_fallback(snapshot):
     resource["descriptors"] = []
     resource["source_coverage"][0]["actions"][0]["result_contract"] = "setup/v99"
     assert run()["status"] == "refused"
+
+
+def test_capture_assessment_uses_retained_bytes_and_preserves_occurrences(snapshot, tmp_path):
+    from openavc.drivers.setup_inventory import capture_source_inputs
+    source, _, resource, run = snapshot
+    run()
+    sha = hashlib.sha256(resource.read_bytes()).hexdigest()
+    captured = capture_source_inputs(primary_roots={"one": tmp_path, "alias": tmp_path},
+                                     library_roots={}, bundles={})
+    original = source.read_bytes()
+    source.write_bytes(b"changed after capture")
+    result = assess_capture(captured, resource=resource, expected_resource_sha256=sha,
+                            target_sha256="4" * 64)
+    assert result["source_eligibility"] == "passed"
+    assert len(result["sources"]) == 1
+    assert result["capture"]["source_count"] == 2
+    assert {row["role"] for row in result["capture"]["members"]
+            if row["disposition"] == "primary_python"} == {"one", "alias"}
+    assert captured.source_bytes[hashlib.sha256(original).hexdigest()] == original
+    assert source.read_bytes() == b"changed after capture"
+    assert result["installation_complete"] is False and result["activation_authorized"] is False
+
+
+@pytest.mark.parametrize("change", ["bytes", "omitted", "report", "count"])
+def test_capture_cannot_borrow_different_bytes_or_membership(snapshot, tmp_path, change):
+    from openavc.drivers.setup_inventory import capture_source_inputs
+    source, _, resource, run = snapshot
+    run()
+    captured = capture_source_inputs(primary_roots={"root": tmp_path}, library_roots={}, bundles={})
+    if change == "bytes":
+        captured.source_bytes[hashlib.sha256(source.read_bytes()).hexdigest()] = b"other bytes"
+    elif change == "omitted":
+        captured.source_bytes.clear()
+    elif change == "report":
+        captured.report["members"].clear()
+    else:
+        from openavc.drivers.setup_compatibility import declaration_digest
+        captured.report["source_count"] += 1
+        captured.report["census_sha256"] = declaration_digest(
+            {key: value for key, value in captured.report.items() if key != "census_sha256"})
+    with pytest.raises(ValueError):
+        assess_capture(captured, resource=resource,
+                       expected_resource_sha256=hashlib.sha256(resource.read_bytes()).hexdigest(),
+                       target_sha256="4" * 64)
+
+
+def test_empty_capture_is_observation_not_installation_acceptance(snapshot, tmp_path):
+    from openavc.drivers.setup_inventory import capture_source_inputs
+    _, _, resource, run = snapshot
+    run()
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    captured = capture_source_inputs(primary_roots={"observed": empty}, library_roots={}, bundles={})
+    result = assess_capture(captured, resource=resource,
+                            expected_resource_sha256=hashlib.sha256(resource.read_bytes()).hexdigest(),
+                            target_sha256="4" * 64)
+    assert result["source_eligibility"] == "empty"
+    assert "status" not in result
+    assert result["installation_complete"] is False and result["activation_authorized"] is False
 
 
 def test_symlink_input_and_parent_and_directory_refuse(snapshot, tmp_path):

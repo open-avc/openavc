@@ -9,6 +9,7 @@ alone never proves coverage of all its setup actions.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -127,15 +128,76 @@ def _coverage(resource):
     return covered
 
 
-def check_sources(sources: list[Path], *, resource: Path, expected_resource_sha256: str,
-                  target_sha256: str) -> dict:
-    """Return a hash-bound report for the supplied primary-source snapshot only."""
+def _target_coverage(resource, expected_resource_sha256, target_sha256):
     _digest(target_sha256)
     _digest(expected_resource_sha256)
     data = _read_regular(resource.absolute())
     if hashlib.sha256(data).hexdigest() != expected_resource_sha256:
         raise ValueError("The setup resource differs from the qualified target.")
-    covered = _coverage(json.loads(data))
+    return _coverage(json.loads(data))
+
+
+def _source_result(digest, covered):
+    coverage = covered.get(digest)
+    reason = ("unknown_source" if coverage is None else
+              "unsupported_actions" if coverage["unsupported_actions"] else None)
+    return {"source_sha256": digest, "status": "refused" if reason else "passed",
+            "reason": reason, "coverage": coverage}
+
+
+def assess_capture(capture, *, resource: Path, expected_resource_sha256: str,
+                   target_sha256: str) -> dict:
+    """Assess retained primary bytes without reopening or importing installed sources.
+
+    Empty means no primary bytes in these observed locations, never a passing
+    installation. A deployment adapter still owns its required-role census and
+    actual launch association. This function supplies no activation authority.
+    """
+    from openavc.drivers.setup_inventory import (
+        SourceCapture, _MAX_ENTRIES, _MAX_SOURCES, _MAX_TOTAL_SOURCE_BYTES,
+    )
+
+    if not isinstance(capture, SourceCapture):
+        raise ValueError("Supply a canonical source capture.")
+    # The dataclass freezes its attributes, not the dictionaries inside them.
+    # Take one private snapshot and validate its correspondence before using it.
+    report, sources = copy.deepcopy(capture.report), dict(capture.source_bytes)
+    _object(report, ("schema", "scope", "installation_complete", "activation_authorized",
+                     "roots", "members", "source_count", "source_bytes", "census_sha256"))
+    census = report.pop("census_sha256")
+    if (report["schema"] != "setup-source-capture/v1" or report["scope"] != "supplied_locations"
+            or report["installation_complete"] is not False or report["activation_authorized"] is not False
+            or census != declaration_digest(report)
+            or type(report["roots"]) is not list or not 1 <= len(report["roots"]) <= 64
+            or type(report["members"]) is not list or len(report["members"]) > _MAX_ENTRIES
+            or any(type(row) is not dict for row in report["members"])):
+        raise ValueError("The source capture is incomplete or changed.")
+    selected = [row for row in report["members"] if row.get("disposition") == "primary_python"]
+    if (len(selected) > _MAX_SOURCES or type(report["source_count"]) is not int
+            or report["source_count"] != len(selected)
+            or any(type(data) is not bytes or len(data) > _MAX_BYTES
+                   or hashlib.sha256(data).hexdigest() != digest for digest, data in sources.items())
+            or set(sources) != {row.get("source_sha256") for row in selected}
+            or any(row.get("bytes") != len(sources[row["source_sha256"]]) for row in selected)
+            or type(report["source_bytes"]) is not int
+            or report["source_bytes"] != sum(len(sources[row["source_sha256"]]) for row in selected)
+            or report["source_bytes"] > _MAX_TOTAL_SOURCE_BYTES):
+        raise ValueError("The retained primary bytes differ from their source capture.")
+    covered = _target_coverage(resource, expected_resource_sha256, target_sha256)
+    rows = [_source_result(digest, covered) for digest in sorted(sources)]
+    eligibility = ("empty" if not rows else
+                   "passed" if all(row["status"] == "passed" for row in rows) else "refused")
+    return {"schema": "setup-capture-assessment/v1", "scope": "captured_primary_sources",
+            "source_eligibility": eligibility, "installation_complete": False,
+            "activation_authorized": False, "target_sha256": target_sha256,
+            "resource_sha256": expected_resource_sha256, "census_sha256": census,
+            "capture": {**report, "census_sha256": census}, "sources": rows}
+
+
+def check_sources(sources: list[Path], *, resource: Path, expected_resource_sha256: str,
+                  target_sha256: str) -> dict:
+    """Return a hash-bound report for the supplied primary-source snapshot only."""
+    covered = _target_coverage(resource, expected_resource_sha256, target_sha256)
     if not sources or len(sources) > 4096:
         raise ValueError("Supply a bounded nonempty list of installed primary Python sources.")
     rows, seen = [], set()
@@ -145,11 +207,7 @@ def check_sources(sources: list[Path], *, resource: Path, expected_resource_sha2
             raise ValueError("Supply distinct primary Python source paths.")
         seen.add(str(path))
         digest = hashlib.sha256(_read_regular(path)).hexdigest()
-        coverage = covered.get(digest)
-        reason = ("unknown_source" if coverage is None else
-                  "unsupported_actions" if coverage["unsupported_actions"] else None)
-        rows.append({"path": str(path), "source_sha256": digest, "status": "refused" if reason else "passed",
-                     "reason": reason, "coverage": coverage})
+        rows.append({"path": str(path), **_source_result(digest, covered)})
     rows.sort(key=lambda row: row["path"])
     return {"schema": "setup-source-preflight/v1", "status": "passed" if all(row["status"] == "passed" for row in rows) else "refused",
             "scope": "supplied_primary_sources", "activation_authorized": False,
