@@ -166,6 +166,9 @@ class _ResultSlot:
     retrieved_generation: int = 0
     acknowledged_generation: int = 0
     secret_state: str = "none"
+    transfer_digest: bytes | None = field(default=None, repr=False)
+    transfer_capability: str | None = field(default=None, repr=False)
+    transfer_origin: str | None = field(default=None, repr=False)
 
 
 class SetupResultStore:
@@ -210,6 +213,13 @@ class SetupResultStore:
         slot.secret_state = "unavailable"
         slot.progress = None
         slot.result = None
+        SetupResultStore._erase_transfer(slot)
+
+    @staticmethod
+    def _erase_transfer(slot: _ResultSlot) -> None:
+        slot.transfer_digest = None
+        slot.transfer_capability = None
+        slot.transfer_origin = None
 
     def prune(self) -> None:
         now = self._clock()
@@ -275,6 +285,64 @@ class SetupResultStore:
         """Runner-only frozen inputs; these must never enter an HTTP/WS result."""
         return json.loads(self._access(capability, current, principal).request)
 
+    def open_transfer(self, capability: str, *, origin: str, current: Callable[[], bool],
+                      principal: str | None = None) -> str:
+        """Retain one bounded browser handoff beside an unconsumed reservation.
+
+        This is the sole exception to digest-only capability storage. No new
+        slot, task or result is created. Claim, expiry and revocation erase it.
+        The HTTP adapter owns cookie scope and same-origin browser checks.
+        """
+        if not isinstance(origin, str) or not origin or len(origin) > 512:
+            raise SetupConflict("A bounded browser origin is required")
+        slot = self._access(capability, current, principal)
+        if slot.phase != "prepared" or slot.transfer_digest is not None:
+            raise SetupConflict("This setup attempt cannot create another handoff")
+        ticket = secrets.token_urlsafe(32)
+        slot.transfer_digest = self._digest(ticket)
+        slot.transfer_capability = capability
+        slot.transfer_origin = origin
+        return ticket
+
+    def _transfer_slot(self, ticket: str, origin: str, current: Callable[[], bool],
+                       principal: str | None) -> _ResultSlot:
+        self.prune()
+        digest = self._digest(ticket)
+        for slot in self._slots.values():
+            if slot.transfer_digest == digest and slot.transfer_origin == origin:
+                if slot.phase == "prepared" and slot.transfer_capability is not None:
+                    return self._access(slot.transfer_capability, current, principal)
+                break
+        raise SetupUnavailable("This retained setup input is unavailable")
+
+    def recover_transfer(self, ticket: str, *, origin: str, current: Callable[[], bool],
+                         principal: str | None = None) -> tuple[PreparedSetup, dict]:
+        """Protected adapter only: return the same prepared capability and input.
+
+        Repeated/lost transfer responses cannot create or start another attempt.
+        This ticket never retrieves results or generated credentials.
+        """
+        slot = self._transfer_slot(ticket, origin, current, principal)
+        return PreparedSetup(slot.run_id, slot.transfer_capability), json.loads(slot.request)
+
+    def transfer_guard(self, ticket: str, *, origin: str,
+                       principal: str | None = None) -> Callable[[], bool]:
+        def available() -> bool:
+            try:
+                self._transfer_slot(ticket, origin, lambda: True, principal)
+                return True
+            except SetupUnavailable:
+                return False
+        return available
+
+    def discard_transfer(self, ticket: str, *, origin: str, current: Callable[[], bool],
+                         principal: str | None = None) -> None:
+        """Release only an unstarted draft; never erase a consumed run's identity."""
+        slot = self._transfer_slot(ticket, origin, current, principal)
+        key = self._digest(slot.transfer_capability)
+        self._erase(slot)
+        del self._slots[key]
+
     def prepared_binding(self, capability: str, *, current: Callable[[], bool], principal: str | None = None):
         """Runner-only immutable ingress selected before effects; never a DTO."""
         return self._access(capability, current, principal).binding
@@ -306,6 +374,7 @@ class SetupResultStore:
         if target is not slot.target:
             raise SetupConflict("The setup target changed before start")
         slot.phase = "claimed"
+        self._erase_transfer(slot)
         return slot
 
     def _owned_active(self, slot: _ResultSlot) -> None:

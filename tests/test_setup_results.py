@@ -66,6 +66,69 @@ def test_prepare_freezes_inputs_and_requires_exact_target_before_claim():
     assert item.capability not in repr(item)
 
 
+def test_browser_transfer_retries_keep_one_reservation_without_effects_or_results():
+    store = SetupResultStore(max_slots=1)
+    item, target = prepared(store)
+    ticket = store.open_transfer(item.capability, origin="https://instance.invalid", current=allowed)
+    guard = store.transfer_guard(ticket, origin="https://instance.invalid")
+    for _ in range(3):
+        recovered, body = store.recover_transfer(ticket, origin="https://instance.invalid", current=allowed)
+        assert recovered == item and body == request()
+        body["params"]["save"] = True
+        assert store.status(item.capability, current=allowed)["status"] == "prepared"
+    assert guard()
+    with pytest.raises(SetupCapacityError):
+        prepared(store)
+    with pytest.raises(SetupConflict):
+        store.open_transfer(item.capability, origin="https://instance.invalid", current=allowed)
+    with pytest.raises(SetupUnavailable):
+        store.retrieve(ticket, current=allowed)
+    assert store.claim(item.capability, request(), target=target, current=allowed) is not None
+    assert not guard()
+    with pytest.raises(SetupUnavailable):
+        store.recover_transfer(ticket, origin="https://instance.invalid", current=allowed)
+    assert store.claim(item.capability, request(), target=target, current=allowed) is None
+    with pytest.raises(SetupCapacityError):
+        prepared(store)  # Consumed identity still occupies its active slot.
+
+
+@pytest.mark.parametrize("loss", ["expiry", "grant", "current", "origin", "principal"])
+def test_browser_transfer_never_outlives_its_authority_or_retention(loss):
+    now, grant = [0.0], [True]
+    store = SetupResultStore(prepare_ttl=5, clock=lambda: now[0])
+    item, _ = prepared(store, grant=lambda: grant[0], principal="one")
+    ticket = store.open_transfer(item.capability, origin="https://instance.invalid",
+                                 current=allowed, principal="one")
+    if loss == "expiry":
+        now[0] = 5
+    if loss == "grant":
+        grant[0] = False
+    with pytest.raises(SetupUnavailable):
+        store.recover_transfer(ticket,
+            origin="https://other.invalid" if loss == "origin" else "https://instance.invalid",
+            current=(lambda: False) if loss == "current" else allowed,
+            principal="two" if loss == "principal" else "one")
+    if loss == "grant":
+        grant[0] = True
+        assert not store.transfer_guard(ticket, origin="https://instance.invalid", principal="one")()
+
+
+def test_discard_releases_only_the_prepared_transfer_and_cannot_touch_a_started_run():
+    store = SetupResultStore(max_slots=1)
+    item, _ = prepared(store)
+    ticket = store.open_transfer(item.capability, origin="https://instance.invalid", current=allowed)
+    store.discard_transfer(ticket, origin="https://instance.invalid", current=allowed)
+    with pytest.raises(SetupUnavailable):
+        store.status(item.capability, current=allowed)
+    next_item, target = prepared(store)
+    next_ticket = store.open_transfer(next_item.capability, origin="https://instance.invalid", current=allowed)
+    slot = store.claim(next_item.capability, request(), target=target, current=allowed)
+    store.publish_secret(slot, {"app_key": "invented-after-start"})
+    with pytest.raises(SetupUnavailable):
+        store.discard_transfer(next_ticket, origin="https://instance.invalid", current=allowed)
+    assert store.retrieve(next_item.capability, current=allowed)["values"] == {"app_key": "invented-after-start"}
+
+
 async def test_concurrent_starts_and_lost_response_recovery_do_not_dispatch_twice():
     store = SetupResultStore()
     item, target = prepared(store)
