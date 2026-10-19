@@ -448,7 +448,7 @@ When an action sends a **Device Command**, each parameter has a `$` toggle. Turn
 
 This means an action can read a project variable or another device's state directly. For example, a button can send a DSP `set_level` command using `$var.target_volume`, or a projector's "match source" button can send `$device.matrix_1.output_2_source`. You no longer need a macro just to reference a variable or another device.
 
-The **Set Variable** action picks its target with the same state-key picker (variables only -- a device key is read-only and cannot be a write target, which reinforces the device rule). Its value field has the same `$` toggle, so you can store a variable, device state, or system value into another variable. To store the value the user just touched on a slider or list instead, check **Use element's selected value**.
+The **Set Variable** action picks its target with the same state-key picker (variables only -- a device key is read-only and cannot be a write target, which reinforces the device rule). Its value field has the same `$` toggle, so you can store a variable, device state, or system value into another variable. On a keypad's **On submit** or a list's **On row tap**, the toggle also offers **This control** and starts on it, so `$value` stores the digits entered or the row chosen. On an **On change** (a slider, a select), check **Use element's selected value** instead.
 
 #### Button behavior modes
 
