@@ -89,7 +89,11 @@ def _inspect(source: bytes, path: str) -> dict:
         primary = root / PurePosixPath(path).name
         primary.write_bytes(source)
         output = root / "loaded.json"
-        env = dict(os.environ)
+        # Loader imports initialize logging/system configuration. They must not
+        # read the caller's instance settings or create files in its data tree.
+        env = {key: value for key, value in os.environ.items() if not key.startswith("OPENAVC_")}
+        env.update(OPENAVC_DATA_DIR=str(root / "data"), OPENAVC_LOG_DIR=str(root / "logs"),
+                   OPENAVC_PROJECT=str(root / "project" / "project.avc"), PYTHONNOUSERSITE="1")
         env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
         subprocess.run([sys.executable, "-m", "openavc.drivers.setup_compatibility_gen", "--capture", str(primary), str(output)],
                        cwd=root, env=env, check=True, capture_output=True, timeout=60,

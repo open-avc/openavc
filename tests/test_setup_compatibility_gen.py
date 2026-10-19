@@ -106,6 +106,34 @@ def test_conflicting_exact_tuples_cannot_be_generated(history):
         generator.build_resource(history.repo, revision)
 
 
+def test_capture_uses_disposable_application_paths_and_no_caller_settings(history, tmp_path, monkeypatch):
+    caller = tmp_path / "caller"
+    caller.mkdir()
+    (caller / "system.json").write_text('{"logging":{"file_enabled":true}}', encoding="utf-8")
+    monkeypatch.setenv("OPENAVC_DATA_DIR", str(caller))
+    monkeypatch.setenv("OPENAVC_LOG_DIR", str(caller / "logs"))
+    monkeypatch.setenv("OPENAVC_PROJECT", str(caller / "project.avc"))
+    monkeypatch.setenv("OPENAVC_API_KEY", "invented-caller-setting")
+    probe = b'''import os
+from pathlib import Path
+assert "OPENAVC_API_KEY" not in os.environ
+for name in ("OPENAVC_DATA_DIR", "OPENAVC_LOG_DIR", "OPENAVC_PROJECT"):
+    assert Path(os.environ[name]).resolve().is_relative_to(Path(__file__).resolve().parent)
+''' + SOURCE
+    history.source.write_bytes(probe)
+    git(history.repo, "add", history.source.name)
+    git(history.repo, "commit", "-m", "Fixture environment probe")
+    data = copy.deepcopy(history.manifest)
+    data["sources"][0].update(revision=git(history.repo, "rev-parse", "HEAD"),
+                               source_sha256=hashlib.sha256(probe).hexdigest())
+    revision = commit_manifest(history, data)
+    before = {str(p.relative_to(caller)): p.read_bytes() for p in caller.rglob("*") if p.is_file()}
+    result = generator.build_resource(history.repo, revision)
+    assert len(result["descriptors"]) == 1
+    assert {str(p.relative_to(caller)): p.read_bytes() for p in caller.rglob("*") if p.is_file()} == before
+    assert not (caller / "logs").exists()
+
+
 def test_literal_cli_generation_and_check_detects_modified_output(history, tmp_path):
     output = tmp_path / "output.json"
     args = ["--drivers", str(history.repo), "--revision", history.revision, "--output", str(output)]
