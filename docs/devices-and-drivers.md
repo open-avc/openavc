@@ -30,7 +30,7 @@ A driver that speaks RS-232 can connect either directly to a serial port on the 
 
 Inexpensive USB-to-serial adapters show up here automatically. Plug one into the OpenAVC server and it appears as a selectable port, named like `COM3` on Windows or `/dev/ttyUSB0` on Linux. The list shows the server's own ports, so the adapter must be plugged into the machine running OpenAVC, not the computer you are browsing from. Click **Refresh** after plugging one in, or choose **Enter path manually** for a port that is not attached yet.
 
-When you pick a USB adapter that reports a serial number, OpenAVC remembers that adapter and reconnects to it even if the operating system assigns a different port name after a reboot or replug. The baud rate, parity, data bits, stop bits and flow control start at the driver's own settings (9600 8N1 with no flow control when the driver has none). Change any that the device's manual gives differently.
+When you pick a USB adapter that reports a serial number, OpenAVC saves that serial number and reconnects to the adapter even if the operating system assigns a different port name after a reboot or replug. The baud rate, parity, data bits, stop bits and flow control start at the driver's own settings (9600 8N1 with no flow control when the driver has none). Change any that the device's manual gives differently.
 
 ## Testing Commands
 
@@ -175,7 +175,7 @@ Programmer's logs for diagnosis.
 
 ### When a device won't connect
 
-An offline device shows the reason on its card and detail view (unreachable, connection refused, login rejected, and so on), and OpenAVC keeps retrying in the background for as long as the device is in the project. There is no cut-off: a display unplugged on Friday comes back by itself on Monday without anyone opening the Programmer. The first couple of attempts are a second or two apart and it then settles to one every five seconds.
+An offline device shows the reason on its card and detail view (can't reach it, connection refused, not responding, and so on). For a network fault OpenAVC keeps retrying in the background for as long as the device is in the project. There is no cut-off: a display unplugged on Friday comes back by itself on Monday without anyone opening the Programmer. The first couple of attempts are a second or two apart and it then settles to one every five seconds. When the device rejects its username or password, the retries stop until the login is changed under **Edit** or **Reconnect** is pressed.
 
 **A device that never answers is offline too.** A connection that opens does not prove the device is there: something else can be listening on that address and port. When a driver polls a device over TCP, UDP or OSC and nothing comes back from three polls in a row, the card shows the device as not responding, and says when nothing has answered at all, which usually means the wrong address or port, or a driver that does not match the device. A driver with its own keep-alive check takes the device offline the same way when the check goes unanswered, on any connection; over serial, only that check does. Either way, OpenAVC keeps retrying, and the device stays offline until it answers again, rather than showing connected again on every retry. While its connection is open it still takes commands, so a display that goes quiet in standby can still be switched on from a panel or a macro, and a macro step set to skip when the device is offline still sends it.
 
@@ -246,7 +246,7 @@ Build custom drivers without code using the visual editor:
 5. **Simulation.** Simulated behavior for testing without real hardware.
 6. **Test.** Send the driver's commands to a device and read what comes back.
 
-For most IP-controlled devices with a documented protocol, the Driver Builder can produce a working driver in 15-30 minutes. For serial devices, set the transport to serial and define the baud rate, data bits, and stop bits in the Transport tab.
+For most IP-controlled devices with a documented protocol, the Driver Builder can produce a working driver in 15-30 minutes. For serial devices, set the transport to serial and choose Serial under Transport on the Connection tab and set the baud rate, parity, data bits and stop bits there.
 
 See [Creating Drivers](creating-drivers.md) for the complete driver development guide covering all three methods: no-code YAML definitions, the visual Driver Builder, and Python driver classes.
 

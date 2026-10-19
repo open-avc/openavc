@@ -64,7 +64,7 @@ the one before.
 6. **Commands.** Open a command, press **Send**, then watch or listen to the device and say
    whether it happened. The suggested commands come first. Send only the commands that are safe
    to run on this unit: every command but a status query changes the device, and one that
-   erases or resets it asks before it is sent. Each command is watched for 10 seconds after it
+   erases or resets it needs a confirmation before it is sent. Each command is watched for 10 seconds after it
    returns, and one whose driver lists what it sets until the driver's next poll could report
    it (**Wait longer** adds time, **Stop watching** ends it). **Show the traffic** starts at what
    the command sent. **What changed** lists the values the audit left changed, to set back on

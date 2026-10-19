@@ -71,7 +71,7 @@ Schedule triggers execute macros, not scripts directly. To run a script function
 2. In your script, use `@on_event("custom.hourly_check")` to handle it
 3. Add a **Schedule** trigger to the macro with your cron expression
 
-This keeps all scheduling visible in one place (each macro's **Triggers**) rather than split between macros and scripts.
+This keeps every schedule on a macro's **Triggers** rather than split between macros and scripts.
 
 ## Script Timers
 

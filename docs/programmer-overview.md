@@ -124,7 +124,7 @@ The Settings view configures the server itself: networking, authentication, and 
 
 - **Accept connections from**: who can open the panel and the Programmer. **Any network** (the default on an installed system), one network adapter, listed by name and address, or **This computer only** (the default on an install from source). The lines under it say who can connect and the addresses panels open at. A change takes a restart. If it would cut off the browser you are using, a warning shows the address to open the Programmer at instead, and OpenAVC goes back to the previous choice if nobody opens the Programmer that way within 10 minutes. In Docker it is set in the compose file and shown here locked.
 - **Reach devices through**: on a computer connected to more than one network, the adapter that device connections (Wake-on-LAN and sACN included) and discovery scans use, listed by name. **Every connected adapter** by default. A change applies to the next connection or scan, with no restart.
-- **Port**: HTTP port (default 8080)
+- **HTTP port**: default 8080
 - **Programmer login** (under Access): the admin username and password for the Programmer IDE and the API. The password needs at least 8 characters.
 - **API key**: for third-party integrations connecting via REST or WebSocket
 - A setting held by the server's environment (an `OPENAVC_` variable) shows locked, with the variable's name.

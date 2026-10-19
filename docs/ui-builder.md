@@ -177,7 +177,7 @@ A whole page can be yours, the same way one control can. In the page's propertie
 - Master elements still draw over your page, so a nav bar you put on every page is on this one too. That is usually how somebody leaves the page.
 - Overlays, the lock screen and the offline notice all still appear over it.
 
-The page tab shows a `</>` mark so a custom page is recognisable in the strip, and the canvas draws it as you build the rest of the project around it.
+The page tab shows a `</>` mark so a custom page is recognizable in the strip, and the canvas draws it as you build the rest of the project around it.
 
 Writing the page itself is in [Writing a Custom Control](custom-controls.md#writing-a-whole-page).
 
@@ -329,7 +329,7 @@ device.projector_main.power:
   "off"     -> gray (#9E9E9E)
 ```
 
-**A Status LED is lit or unlit by its value, not by the colour the map picked.** Any off-like value (`false`, `0`, an empty string, `off`, `no`) draws the LED dim, whatever colour that value maps to, so an LED whose healthy state is `false` sits dark next to the words it is meant to confirm. Bind the positive sense (mics live, not mics muted); if only the negative variable exists, have the macro that sets it set a positive one too.
+**A Status LED is lit or unlit by its value, not by the color the map picked.** Any off-like value (`false`, `0`, an empty string, `off`, `no`) draws the LED dim, whatever color that value maps to, so an LED whose healthy state is `false` sits dark next to the words it is meant to confirm. Bind the positive sense (mics live, not mics muted); if only the negative variable exists, have the macro that sets it set a positive one too.
 
 **Per-option highlight (Select):** a Select's Appearance card lets you style each dropdown option independently (its background and text color), so the current choice stands out.
 
@@ -365,7 +365,7 @@ A matrix is **two lists**: the sources you can pick from, and the destinations y
 
 A device that routes more than one thing offers one setup per signal. A decoder that routes video, audio and USB separately shows all three, and each one is a separate Matrix element pointed at that signal, so a page that needs two carries two matrices. Devices whose ports are not a plain 1-to-N frame, and devices whose driver says nothing about routing, are set up by hand with the fields below.
 
-**Names: type one and it sticks, leave it and the device keeps it current.** Some switchers name their own ports -- AV-over-IP endpoints, DSP channels, mixer components -- and the picker shows you those names in grey. Leave a row alone and the panel goes on reading the device, so renaming that port at the rack moves every panel with it. Type over it and your name is the one the panel shows from then on, whatever the rack says later. A port nobody has named anywhere reads as its position ("Out 3").
+**Names: type one and it sticks, leave it and the device keeps it current.** Some switchers name their own ports -- AV-over-IP endpoints, DSP channels, mixer components -- and the picker shows you those names in gray. Leave a row alone and the panel goes on reading the device, so renaming that port at the rack moves every panel with it. Type over it and your name is the one the panel shows from then on, whatever the rack says later. A port nobody has named anywhere reads as its position ("Out 3").
 
 **Where a switcher routes audio with a command of its own,** the picker offers to move the audio with the video. Leave it ticked and each route sends both, which is what a room usually wants; untick it when audio needs to break away.
 
@@ -393,7 +393,7 @@ Some things the picker cannot know, and it says so above the lists rather than a
 device.matrix_1.output.*.input
 ```
 
-The panel substitutes 1 through your destination count and reads each key to decide which crosspoint in that row lights up. Leave it blank and the grid still draws, and clicking a crosspoint still routes correctly, but **no crosspoint ever changes colour** -- so the panel shows no feedback about what is currently routed. The Value picker on any output's routed-input state key will show you the exact key to copy; replace the output number with `*`.
+The panel substitutes 1 through your destination count and reads each key to decide which crosspoint in that row lights up. Leave it blank and the grid still draws, and clicking a crosspoint still routes correctly, but **no crosspoint ever changes color** -- so the panel shows no feedback about what is currently routed. The Value picker on any output's routed-input state key will show you the exact key to copy; replace the output number with `*`.
 
 Routing itself is a **Does** action, not a setting: the Video route interaction sends the command, with `$input` and `$output` carrying the source and destination the user touched.
 
@@ -412,7 +412,7 @@ The **Does** bucket is one or more **actions**, grouped by the interaction that 
 - **Run Macro**: execute a named macro (best for multi-step sequences).
 - **Device Command**: send a command directly (pick device, command, params).
 - **Set Variable or Control**: set a variable, or change a control on the panel (see [Changing a Control While the Program Runs](#changing-a-control-while-the-program-runs)).
-- **Navigate to Page**: switch to another page (or `$back` / `$dismiss` for overlays).
+- **Navigate Page**: switch to another page (or `$back` / `$dismiss` for overlays).
 - **Script Function**: call a Python function in one of your scripts, and pass it values.
 - **Emit Event**: fire a named event, with an optional payload.
 
@@ -451,7 +451,7 @@ When an action sends a **Device Command**, each parameter has a `$` toggle. Turn
 
 This means an action can read a project variable or another device's state directly. For example, a button can send a DSP `set_level` command using `$var.target_volume`, or a projector's "match source" button can send `$device.matrix_1.output_2_source`. You no longer need a macro just to reference a variable or another device.
 
-The **Set Variable or Control** action picks its target with the same state-key picker: a variable, or a control's label, colors, opacity or visibility. A device key is read-only and is not offered. Its value field has the same `$` toggle, so you can store a variable, device state, or system value into another variable. On a keypad's **On submit** or a list's **On row tap**, the toggle also offers **This control** and starts on it, so `$value` stores the digits entered or the row chosen. On an **On change** (a slider, a select), check **Use element's selected value** instead.
+The **Set Variable or Control** action's target comes from the same state-key picker: a variable, or a control's label, colors, opacity or visibility. A device key is read-only and is not offered. Its value field has the same `$` toggle, so you can store a variable, device state, or system value into another variable. On a keypad's **On submit** or a list's **On row tap**, the toggle also offers **This control** and starts on it, so `$value` stores the digits entered or the row chosen. On an **On change** (a slider, a select), check **Use element's selected value** instead.
 
 #### Button behavior modes
 
@@ -538,8 +538,8 @@ The **Style** section has subsections for fine-grained control over element appe
 - **Shadow**: presets: `sm`, `md`, `lg`, `glow`, `inset`
 - **Gradient**: two-color linear gradient (start color, end color, direction)
 - **Padding**: all sides, or horizontal/vertical independently
-- **Font Size**: the size of the element's text, in pixels on the reference panel. Every piece of text inside a control follows it: a keypad's keys and display, a fader's scale and readout, a matrix's tiles and column numbers. Leave it empty to use the panel's default, shown greyed in the box; that number is the size the panel is drawing. A gauge's readout is the one exception: it is sized to its dial.
-- **Typography**: vertical alignment, text transform (uppercase, lowercase, capitalize), letter spacing, line height (1.2 times the font size when left empty, the same on every device). Text transform and letter spacing set on a container (a group or a card) apply to everything inside it: the title and every child label, readout and caption. Set them on the element whose text you mean and leave them off the container.
+- **Font Size**: the size of the element's text, in pixels on the reference panel. Every piece of text inside a control follows it: a keypad's keys and display, a fader's scale and readout, a matrix's tiles and column numbers. Leave it empty to use the panel's default, shown grayed in the box; that number is the size the panel is drawing. A gauge's readout is the one exception: it is sized to its dial.
+- **Typography**: vertical alignment, text transform (uppercase, lowercase, capitalize), letter spacing, line height (left empty, the same on every device: 1.3 times the font size on a button, 1.2 on most other text). Text transform and letter spacing set on a container (a group or a card) apply to everything inside it: the title and every child label, readout and caption. Set them on the element whose text you mean and leave them off the container.
 - **Background Image**: select an image asset with controls for size, position, and opacity (see Asset Management below)
 - **Overflow**: control how content that exceeds the element bounds is handled (visible, hidden, scroll)
 - **Custom Classes**: apply a class from the project stylesheet to this element (see [Custom Styling](#custom-styling))
@@ -641,7 +641,7 @@ default color, and a button bound to a device state goes back to its own label
 and color rather than claiming the device is on or muted.
 
 **A button or camera preset that only sends a command gets a lighter version of the same mark.**
-It keeps its colour, its label and its artwork -- none of those are wrong just
+It keeps its color, its label and its artwork -- none of those are wrong just
 because the device is away -- and takes the dashed edge on its own, so you can
 see before pressing that it will not do anything. It appears only when *nothing*
 the button reaches is up: a System On button that drives eight devices is not

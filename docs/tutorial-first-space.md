@@ -90,11 +90,11 @@ A source button needs both buckets: it sends the input command, and it lights up
 3. Click **Test** under the parameters. The projector switches to HDMI 1; the Simulator's log shows the command and the reply.
 4. Under **Bindings > Shows > Appearance**, set the Source to **Projector** and the State Key to **input**. Each key in that list shows its current value in brackets, and `input` reads `digital1`: that is how a PJLink projector names HDMI 1.
 5. For **Active when value equals**, pick `digital1`. The list offers the values the projector has reported, which is why you tested the command first.
-6. Under **When active**, set **Background** to a colour, for example `#4a7d5c`. Leave the inactive look as it is.
+6. Under **When active**, set **Background** to a color, for example `#4a7d5c`. Leave the inactive look as it is.
 
 ### The Wireless button
 
-Add a second Button the same way with the Text `Wireless`, the `input` parameter `hdmi2`, and after clicking **Test**, the condition `digital2`. Give it the same active colour.
+Add a second Button the same way with the Text `Wireless`, the `input` parameter `hdmi2`, and after clicking **Test**, the condition `digital2`. Give it the same active color.
 
 Drag the two buttons side by side. The one whose input is live is lit. Click **HDMI 1** on the projector card in the Simulator tab and watch the highlight move: the button's look follows the projector, not the press.
 
