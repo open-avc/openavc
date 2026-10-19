@@ -25,7 +25,7 @@ import re
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from openavc.core.connection_fault import (
     AUTH_FAILED,
@@ -61,6 +61,9 @@ from openavc.transport.http_client import capture_driver_clients
 from openavc.transport.udp import UDPTransport
 from openavc.utils.log_redaction import collect_secret_values, get_secret_registry
 from openavc.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from openavc.core.setup_results import SetupProgress, SetupResult
 
 # Re-exported for drivers: raise ConnectionFaultError(msg, code=...) instead of
 # wording a plain ConnectionError to hit the classifier's signature tables.
@@ -1817,36 +1820,24 @@ class BaseDriver(ABC):
         self,
         action_id: str,
         params: dict[str, Any],
-        progress: Callable[..., Awaitable[None]],
-    ) -> dict[str, Any]:
-        """Run a declared setup action. May run while the device is offline.
+        progress: Callable[[SetupProgress], Awaitable[None]],
+    ) -> SetupResult:
+        """Run a declared setup action, including while the device is offline.
 
-        ``progress(step, pct=None)`` is awaitable and streams a live progress
-        line to the UI (``pct`` is an optional 0-100 percentage). The handler
-        may open its own transports independent of the device's normal one, and
-        may call ``await self.request_config_update({...})`` to persist new
-        connection settings and ``await self.request_reconnect()`` to bring the
-        device back online over them. Default raises NotImplementedError.
+        Declare ``result_contract: "setup/v1"`` and return a ``SetupResult``
+        with an explicit outcome and operator summary. Report progress with
+        ``await progress(SetupProgress(code, detail, percent))``. A completed
+        handler is not necessarily a successful device operation.
 
-        Return a result dict. A ``"message"`` in it is the sentence the wizard
-        shows the operator when the run finishes, so write it for them: what
-        was found, and any count worth sanity-checking ("Found 5 endpoints —
-        2 encoders, 3 decoders").
+        Register generated credentials with ``register_setup_secret`` before
+        any awaited save/reconnect. Keep them out of progress, findings and
+        summaries. The wizard retrieves them through its protected result.
+        ``request_config_update`` persists settings; ``request_reconnect``
+        reconnects in place. Each stage is reported separately from the result.
 
-        Two ways to report failure, and they are not interchangeable:
-
-        - **Raise** when the action could not run — the host was unreachable,
-          a transport blew up, the driver has nothing to do for this action id.
-          The exception is logged with a traceback.
-        - **Return ``{"success": False, "message": ...}``** when the action ran
-          and the answer is no: a community string the device ignores, a model
-          this driver doesn't drive, a declared value the device has no OID
-          for. The message is the whole report, so say what to check. There is
-          no traceback — an operator typing the wrong IP is not a platform
-          fault.
-
-        Either way the run terminates as ``error`` on the ``action.progress``
-        channel and the wizard renders it as a failure; only the log differs.
+        Use typed findings for expected diagnostic failures. An exception gives
+        an unverified outcome and its class, never its arbitrary message or a
+        claim that no equipment changes occurred. Default raises NotImplementedError.
         """
         raise NotImplementedError(
             f"Driver {self.DRIVER_INFO.get('id', '?')} does not implement "
@@ -1867,6 +1858,22 @@ class BaseDriver(ABC):
                 "request_config_update is only available during a setup action"
             )
         await self._setup_context.apply_config_update(delta)
+
+    def register_setup_secret(self, values: dict[str, str]) -> int:
+        """Retain a newly created credential before an awaited save or reconnect.
+
+        Call immediately after creation, even when saving is requested. Keys are
+        the declared config fields this credential will populate. The result is
+        a generation number, never retrieval authority. Do not put values into
+        progress, return values or exception messages.
+        """
+        if self._setup_context is None:
+            raise RuntimeError("register_setup_secret is only available during a setup action")
+        if not isinstance(values, dict) or any(not isinstance(v, str) for v in values.values()):
+            raise ValueError("Setup credential values must be strings")
+        for value in values.values():
+            self.redact_in_log(value)
+        return self._setup_context.register_secret(values)
 
     async def request_reconnect(self) -> None:
         """Reconnect the device using its current (possibly just-updated)

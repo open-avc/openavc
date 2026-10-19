@@ -16,6 +16,7 @@ from openavc.api import rest, ws
 from openavc.core.device_manager import DeviceManager, DeviceNotFoundError
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
+from openavc.core.setup_actions import SetupActionRunner
 from openavc.drivers.actions import resolve_device_actions, validate_actions
 from openavc.drivers.base import (
     BaseDriver,
@@ -437,12 +438,7 @@ def actions_client():
     engine.devices = MagicMock()
     engine.devices.get_driver = MagicMock(return_value=driver)
     engine.devices.send_command = AsyncMock(return_value=True)
-    # Route-level wiring test: stub the runner; its internals are covered in
-    # test_setup_actions.py with a real SetupActionRunner.
-    engine.setup_actions = MagicMock()
-    engine.setup_actions.start = AsyncMock(
-        return_value={"run_id": "run123", "status": "started", "action_id": "enable_remote"}
-    )
+    engine.setup_actions = SetupActionRunner(engine)
 
     rest.set_engine(engine)
     ws.set_engine(engine)
@@ -467,20 +463,15 @@ def test_invoke_unknown_action_returns_404(actions_client):
     assert resp.status_code == 404
 
 
-def test_invoke_setup_action_starts_run(actions_client):
+def test_old_one_post_setup_refuses_before_starting_work(actions_client):
     c, engine = actions_client
     resp = c.post("/api/devices/dev1/actions/enable_remote", json={"params": {"x": 1}})
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["run_id"] == "run123"
-    assert body["status"] == "started"
-    # Routed to the setup runner, not the command path.
+    assert resp.status_code == 409
+    assert resp.headers["cache-control"] == "no-store"
+    assert "Reopen" in resp.json()["detail"]
     engine.devices.send_command.assert_not_awaited()
-    engine.setup_actions.start.assert_awaited_once()
-    args = engine.setup_actions.start.await_args.args
-    assert args[0] == "dev1"
-    assert args[1]["id"] == "enable_remote"  # the resolved action
-    assert args[2] == {"x": 1}  # params
+    assert not engine.setup_actions._tasks
+    assert not engine.setup_actions._active
 
 
 def test_invoke_action_on_device_without_driver_returns_404(actions_client):

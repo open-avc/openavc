@@ -633,11 +633,9 @@ async def invoke_device_action(
     """Invoke a driver-declared action by id.
 
     ``kind:"command"`` actions route to the device's command path (which
-    requires the device to be connected). ``kind:"setup"`` actions are the
-    offline-capable provisioning wizards — they start a background run via
-    ``engine.setup_actions`` and return a run_id (progress streams over the
-    WS ``action.progress`` channel). The action's *meaning* lives entirely
-    in the driver; this endpoint only dispatches by kind.
+    requires the device to be connected). Setup actions require the protected
+    prepare/start handshake; this one-POST endpoint refuses before any effect.
+    The action's meaning remains in the driver.
     """
     from openavc.drivers.actions import resolve_device_actions
 
@@ -704,13 +702,14 @@ async def invoke_device_action(
                    f"not via the invoke endpoint",
         )
 
-    # kind == "setup": offline-capable provisioning wizard. Kicks off a
-    # background run and returns a run_id; progress streams over the WS
-    # `action.progress` channel until status "done" or "error".
-    from openavc.core.setup_actions import SetupActionInProgress
+    # Keep the old door explicit: callers without a retained result reservation
+    # must be refused before credential-creating work can start.
+    from openavc.core.setup_actions import SetupActionInProgress, SetupHandshakeRequired
 
     try:
         return await engine.setup_actions.start(device_id, action, body.params)
+    except SetupHandshakeRequired as e:
+        raise HTTPException(status_code=409, detail=str(e), headers={"Cache-Control": "no-store"}) from e
     except SetupActionInProgress as e:
         raise HTTPException(
             status_code=409,

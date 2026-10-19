@@ -3151,70 +3151,86 @@ declarations require a qualified adapter for that installed driver version and
 source before the typed invocation path can use them. A `success` or `ok` key
 alone does not select a result contract.
 
-Declare it beside your other actions, then implement `run_setup_action`:
+Declare the contract beside your other action fields:
 
 ```python
 DRIVER_INFO = {
-    ...
-    "actions": [
-        {
-            "id": "test_connection",
-            "kind": "setup",
-            "label": "Test Connection",
-            "icon": "search",
-            "availability": "always",   # this one is worth running online too
-        },
-    ],
+    # Other driver metadata...
+    "actions": [{
+        "id": "test_connection",
+        "kind": "setup",
+        "result_contract": "setup/v1",
+        "label": "Test Connection",
+        "icon": "search",
+        "availability": "always",
+    }],
 }
 ```
 
 ```python
-async def run_setup_action(self, action_id, params, progress) -> dict:
+from openavc.core.outbound_messages import RoomText
+from openavc.core.setup_results import Outcome, SetupFinding, SetupProgress, SetupResult
+
+async def run_setup_action(self, action_id, params, progress) -> SetupResult:
     if action_id != "test_connection":
-        raise ValueError(f"Unknown setup action: {action_id}")
-
-    host = str(self.config.get("host", "")).strip()
-    await progress(f"Connecting to {host}…", 20)          # a live line in the wizard
-    ...
-    return {"success": True, "message": f"Reached {model} with {n} inputs."}
+        raise ValueError("Unknown setup action")
+    await progress(SetupProgress("connection.checking", "Checking the device", 20))
+    # Perform the driver's protocol checks here.
+    return SetupResult(Outcome.SUCCEEDED, RoomText("The device answered."))
 ```
 
-`progress(step, pct=None)` is awaitable and writes one line to the wizard's
-step log; `pct` is an optional 0–100. Inside a run — and only inside one — you
-can also `await self.request_config_update({...})` to persist new connection
-settings and `await self.request_reconnect()` to bring the device up on them.
+Progress includes a stable code, protected detail and optional percentage from
+0 to 100. A percentage of 100 does not finish the action. Return a typed result
+with one of these outcomes:
 
-**Write the message for the person who pressed the button.** It is the whole
-report: what you reached, and any count they should sanity-check before they
-build a room on it ("Found 5 endpoints — 2 encoders, 3 decoders"). The wizard
-shows it under the step log when the run finishes. A result with no `"message"`
-is allowed; the operator then has only the step log to go on.
+| Outcome | Meaning |
+|---|---|
+| `SUCCEEDED` | The checks or operation completed as the driver reports. |
+| `FAILED` | The device or check refused the requested operation. |
+| `DEGRADED` | Some required checks or stages did not complete successfully. |
+| `UNVERIFIED` | The driver cannot establish the outcome. Check the device before repeating the operation. |
 
-**Two ways to report failure, and they are not interchangeable:**
-
-| How | Use it when | What the operator sees |
-|---|---|---|
-| `raise` | The action could not run: the host was unreachable, a transport blew up, the action id means nothing to this driver. | The exception text, as a failure. A traceback goes in the log. |
-| `return {"success": False, "message": ...}` | The action ran and the answer is no: a community string the device ignores, a model this driver does not drive, a value the device has no answer for. | Your message, as a failure. No traceback — somebody typing the wrong address is not a crash. |
-
-Either way the wizard renders a failure, so pick by whether a traceback in the
-log would help anyone. What you must **not** do is return `{"success": True}`
-for a run that did not work: `success` is what the platform reads to decide
-whether the wizard shows a green check.
-
-Since the message is the whole report, say what to check next rather than just
-what went wrong:
+Write the summary for the person who pressed the button: what was found and
+what to check next. A `RoomText` summary must contain no credentials or raw
+protocol diagnostics. Findings have a stable code, outcome and protected detail:
 
 ```python
-return {
-    "success": False,
-    "message": (
-        "No answer. Check the IP address, that SNMP is enabled on the "
-        "device, and that the read community string is correct — a device "
-        "ignores a request whose community it does not recognise."
-    ),
-}
+return SetupResult(
+    Outcome.FAILED,
+    RoomText("The device did not answer. Check its address and control settings."),
+    (SetupFinding("connection.no_reply", Outcome.FAILED, "No reply to the control query."),),
+)
 ```
+
+An uncaught exception produces an unverified result with its exception class.
+Its arbitrary message is not sent to the wizard. Report expected diagnostic
+failures through typed findings, excluding credentials.
+
+Inside a setup run, `await self.request_config_update({...})` saves connection
+or protocol settings and `await self.request_reconnect()` reconnects in place.
+The result reports these stages separately: `not_requested`, `reported_complete`,
+`failed` or `unknown`. A returned save call is not a power-loss durability claim.
+A failed save can leave a partial change; do not describe it as nothing saved.
+
+**Generated credentials:** register the complete generated credential map before
+any awaited operation that could fail. Never put it in progress, findings or the
+summary. For example, after receiving a new key from the device:
+
+```python
+self.register_setup_secret({"app_key": generated_key})
+if params.get("save"):
+    await self.request_config_update({"app_key": generated_key})
+    await self.request_reconnect()
+return SetupResult(Outcome.SUCCEEDED, RoomText("Pairing completed."))
+```
+
+The initiating client prepares a protected result reservation before starting.
+It uses that reservation to recover the same run after a lost response and to
+retrieve an unsaved key. Repeating start with the same reservation cannot repeat
+the device operation. A reported successful save clears the matching retained
+key. Failed saving leaves it available for explicit retrieval and acknowledgement.
+The result is held in memory for a limited time; a server restart loses an
+unsaved key, and removing it from the result does not revoke it on the device.
 
 ### Saying what is wrong with a sub-unit
 

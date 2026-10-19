@@ -69,6 +69,13 @@ class DiagnosticText(str):
 class MessageScope:
     """An opaque server-owned subscription scope; a public ID is not a grant."""
 
+    def __init__(self, current: Callable[[], bool] | None = None):
+        self.current = current or (lambda: True)
+
+
+class SetupScope(MessageScope):
+    """Only the capability-authorized HTTP subscription adapter creates this."""
+
 
 @dataclass(frozen=True)
 class _Publication:
@@ -133,6 +140,8 @@ class Envelope:
         if self._programmer and not recipient.programmer:
             return None
         try:
+            if self._scope is not None and self._scope.current() is not True:
+                return None
             for admission in (self._original,) if recipient is self._original else (self._original, recipient):
                 if admission.current() is not True:
                     return None
@@ -230,13 +239,49 @@ class Rule:
     targeted: bool = False
     scoped: bool = False
     guidance: str | None = None
+    scope_type: type[MessageScope] = MessageScope
 
 
-def _rule(room=None, protected=None, *, required=(), targeted=False, scoped=False, guidance=None):
+def _rule(room=None, protected=None, *, required=(), targeted=False, scoped=False, guidance=None,
+          scope_type=MessageScope):
     return Rule(
         None if room is None else MappingProxyType(room),
-        MappingProxyType(protected or {}), tuple(required), targeted, scoped, guidance,
+        MappingProxyType(protected or {}), tuple(required), targeted, scoped, guidance, scope_type,
     )
+
+
+def _setup_progress(value):
+    if value is None:
+        return None
+    fields = {"code": _text, "detail": _text, "sequence": _number,
+              "percent": lambda number: None if number is None else _number(number)}
+    if not isinstance(value, dict) or set(value) != set(fields):
+        raise InvalidMessage("typed setup progress required")
+    return _fields(value, fields)
+
+
+def _setup_result(value):
+    if value is None:
+        return None
+    outcomes = ("succeeded", "failed", "degraded", "unverified")
+    stages = ("not_requested", "reported_complete", "failed", "unknown")
+    if (not isinstance(value, dict) or set(value) != {"outcome", "summary", "findings", "config_save", "reconnect"}
+            or value["outcome"] not in outcomes or value["config_save"] not in stages or value["reconnect"] not in stages):
+        raise InvalidMessage("typed setup result required")
+    findings = []
+    for finding in _list(value["findings"]):
+        if not isinstance(finding, dict) or set(finding) != {"code", "outcome", "detail"} or finding["outcome"] not in outcomes:
+            raise InvalidMessage("typed setup finding required")
+        findings.append(_fields(finding, {"code": _text, "outcome": _text, "detail": _text}))
+    return {**_fields(value, {"outcome": _text, "summary": _text, "config_save": _text, "reconnect": _text}),
+            "findings": findings}
+
+
+def _setup_secret_status(value):
+    if (not isinstance(value, dict) or set(value) != {"state", "generation"}
+            or value["state"] not in ("none", "available", "unavailable", "reported_saved", "acknowledged")):
+        raise InvalidMessage("credential availability only")
+    return _fields(value, {"state": _text, "generation": _number})
 
 
 _MACRO_ROOM = {
@@ -268,6 +313,12 @@ _LOG = {
 # No fallback rule. New message names require an intentional audience and shape.
 _registry = {
     "ping": _rule({}),
+    "connection.ready": _rule(protected={"connection_id": _text}, required=("connection_id",), targeted=True),
+    "action.progress": _rule(protected={
+        "device_id": _text, "action_id": _text, "run_id": _text, "status": _text,
+        "progress": _setup_progress, "result": _setup_result, "secret": _setup_secret_status,
+    }, required=("run_id", "status", "progress", "result", "secret"),
+        targeted=True, scoped=True, scope_type=SetupScope),
     "state.snapshot": _rule({"state": _state}, required=("state",)),
     "state.update": _rule({"changes": _state}, required=("changes",)),
     "state.delete": _rule({"keys": _strings}, required=("keys",)),
@@ -453,7 +504,7 @@ class OutboundPolicy:
     def _values(kind, message, rule, recipient, targeted, scope):
         if rule.targeted and not targeted:
             return None
-        if rule.scoped and not isinstance(scope, MessageScope):
+        if rule.scoped and not isinstance(scope, rule.scope_type):
             return None
         if rule.room is None and not recipient.programmer:
             return None

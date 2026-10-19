@@ -596,6 +596,7 @@ async def require_programmer_auth(
     authority = programmer_authority(request, credentials)
     if authority is not None:
         _bind_authority(request, authority)
+        request.scope["openavc.programmer_grant"] = authority
         return
 
     raise HTTPException(
@@ -704,6 +705,21 @@ async def require_claimed_auth(
 async def authenticate_programmer_request(request: Request) -> None:
     """Apply canonical Programmer authentication before parsing a request body."""
     await require_programmer_auth(request, credentials=await _basic(request))
+
+
+async def authenticated_programmer_grant(request: Request) -> Callable[[], bool]:
+    """Retain the exact canonical grant for an operation spanning HTTP requests.
+
+    Foreground authentication has normal session activity semantics. The returned
+    verifier is non-refreshing and independent of this request's AdmissionLease.
+    """
+    grant = request.scope.get("openavc.programmer_grant")
+    if grant is None:
+        await require_programmer_auth(request, credentials=await _basic(request))
+        grant = request.scope["openavc.programmer_grant"]
+    if grant() is not True:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return grant
 
 
 async def authenticate_claimed_request(request: Request) -> None:

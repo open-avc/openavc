@@ -230,3 +230,29 @@ def test_failed_task_construction_keeps_consumed_identity():
     # prepared state or represent a lost HTTP response as permission to retry.
     store.complete(slot, SetupResult(Outcome.UNVERIFIED, RoomText("Setup could not start.")))
     assert store.claim(item.capability, request(), target=target, current=allowed) is None
+
+
+@pytest.mark.parametrize("transition", ["acknowledge", "saved", "replace", "revoke", "expire"])
+def test_protected_response_guard_rechecks_the_original_slot_and_secret_generation(transition):
+    now = [0.0]
+    valid = [True]
+    store = SetupResultStore(result_ttl=5, clock=lambda: now[0])
+    item, slot = started(store, grant=lambda: valid[0])
+    generation = store.publish_secret(slot, {"app_key": "held-response-secret"})
+    response = store.retrieve(item.capability, current=allowed)
+    may_send = store.access_guard(item.capability, secret_generation=response["generation"])
+    assert may_send()
+    if transition == "acknowledge":
+        store.acknowledge(item.capability, generation, current=allowed)
+    elif transition == "saved":
+        store.secret_saved(slot, store.saving_generation(slot, {"app_key": "held-response-secret"}))
+    elif transition == "replace":
+        store.publish_secret(slot, {"app_key": "replacement"})
+    elif transition == "revoke":
+        valid[0] = False
+    else:
+        store.complete(slot, result())
+        now[0] = 5
+    assert not may_send()
+    # The old object still exists: only the send adapter can enforce the guard.
+    assert response["values"]["app_key"] == "held-response-secret"

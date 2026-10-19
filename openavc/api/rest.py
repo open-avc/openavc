@@ -28,6 +28,7 @@ from openavc.api.routes import python_drivers as _python_drivers_routes
 from openavc.api.routes import push as _push_routes
 from openavc.api.routes import scripts as _scripts_routes
 from openavc.api.routes import setup as _setup_routes
+from openavc.api.routes import setup_actions as _setup_action_routes
 from openavc.api.routes import simulation as _simulation_routes
 from openavc.api.routes import system as _system_routes
 from openavc.api.routes import tls as _tls_routes
@@ -58,6 +59,7 @@ router = APIRouter(route_class=ProgrammerRoute, prefix="/api", dependencies=[Dep
 
 # Include domain routers (protected)
 router.include_router(_variables_routes.router)
+router.include_router(_setup_action_routes.router)
 router.include_router(_macros_routes.router)
 router.include_router(_events_routes.router)
 router.include_router(_scripts_routes.router)

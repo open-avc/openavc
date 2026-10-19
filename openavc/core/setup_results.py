@@ -103,6 +103,13 @@ class SetupResult:
 
 
 @dataclass(frozen=True)
+class SetupProgress:
+    code: str
+    detail: str
+    percent: float | None = None
+
+
+@dataclass(frozen=True)
 class PreparedSetup:
     run_id: str
     capability: str = field(repr=False)
@@ -213,6 +220,38 @@ class SetupResultStore:
             raise SetupUnavailable("This setup result is unavailable")
         return slot
 
+    def access_guard(self, capability: str, *, principal: str | None = None,
+                     secret_generation: int | None = None) -> Callable[[], bool]:
+        """Additional send-time guard, beside the response/socket's own admission.
+
+        A protected snapshot is not itself authority. Secret responses bind the
+        returned generation so acknowledgement, save or replacement while a send
+        waits cannot release the old bytes. Never retain a closed HTTP lease here.
+        """
+        def available() -> bool:
+            try:
+                slot = self._access(capability, lambda: True, principal)
+                return secret_generation is None or (
+                    slot.secret is not None and slot.secret_generation == secret_generation)
+            except SetupUnavailable:
+                return False
+        return available
+
+    def request_data(self, capability: str, *, current: Callable[[], bool],
+                     principal: str | None = None) -> dict:
+        """Runner-only frozen inputs; these must never enter an HTTP/WS result."""
+        return json.loads(self._access(capability, current, principal).request)
+
+    def dispatch_inputs(self, slot: _ResultSlot) -> dict:
+        self._owned_active(slot)
+        return json.loads(slot.request)
+
+    def require_inputs(self, slot: _ResultSlot, request: dict) -> None:
+        """Recheck exact JSON types after a runner admission wait."""
+        self._owned_active(slot)
+        if _json_bytes(request, 16384) != slot.request:
+            raise SetupConflict("The setup inputs changed before dispatch")
+
     def claim(self, capability: str, request: dict, *, target: object,
               current: Callable[[], bool], principal: str | None = None) -> _ResultSlot | None:
         """Consume once. None means already consumed; caller returns status only.
@@ -275,6 +314,19 @@ class SetupResultStore:
             slot.secret = None
             slot.secret_state = "unavailable" if slot.revoked else "reported_saved"
 
+    def saving_generation(self, slot: _ResultSlot, delta: dict) -> int | None:
+        """Match only an explicitly registered credential, before awaiting save.
+
+        This does not discover secret-looking keys or manufacture a commit
+        receipt. The existing save owner still determines its disposition.
+        """
+        self._owned_active(slot)
+        if slot.secret is not None:
+            values = json.loads(slot.secret)
+            if all(delta.get(key) == value for key, value in values.items()):
+                return slot.secret_generation
+        return None
+
     def complete(self, slot: _ResultSlot, result: SetupResult) -> None:
         self._owned_active(slot)
         if not isinstance(result, SetupResult):
@@ -290,6 +342,10 @@ class SetupResultStore:
 
     def status(self, capability: str, *, current: Callable[[], bool], principal: str | None = None) -> dict:
         slot = self._access(capability, current, principal)
+        return self._status(slot)
+
+    @staticmethod
+    def _status(slot: _ResultSlot) -> dict:
         return {"run_id": slot.run_id, "status": slot.phase,
                 "progress": json.loads(slot.progress) if slot.progress else None,
                 "result": json.loads(slot.result) if slot.result else None,

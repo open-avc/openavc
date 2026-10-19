@@ -17,6 +17,7 @@ and stays the platform-wide entry point for sending a message to panels.
 from __future__ import annotations
 
 import asyncio
+import secrets
 from collections.abc import Callable
 from typing import Any
 
@@ -67,6 +68,9 @@ class WSHub:
         self._admissions: dict[int, tuple[str, str | None]] = {}
         self._policy = OutboundPolicy()
         self._recipients: dict[int, Recipient] = {}
+        self._connection_ids: dict[str, Any] = {}
+        self._connection_keys: dict[int, str] = {}
+        self._subscriptions: dict[int, dict[str, tuple[str, Callable[[], None]]]] = {}
         self._scopes: dict[int, set[MessageScope]] = {}
         # Per-client bounded send queues + their writer tasks: id(ws) -> ...
         # Broadcasts enqueue and return; each writer drains its own client,
@@ -121,7 +125,13 @@ class WSHub:
         panel got past the panel gate, so a revoke or a mode change can find
         exactly the sockets it should close.
         """
+        if ws in self._clients:
+            self._drop_client(ws, cancel_writer=True)
         self._clients.add(ws)
+        connection_id = secrets.token_urlsafe(24)
+        self._connection_ids[connection_id] = ws
+        self._connection_keys[id(ws)] = connection_id
+        self._subscriptions[id(ws)] = {}
         if ns_prefixes:
             self._ns_filters[id(ws)] = ns_prefixes
         self._client_types[id(ws)] = client_type
@@ -165,6 +175,13 @@ class WSHub:
         client on a send failure — it is about to exit on its own.
         """
         self._clients.discard(ws)
+        connection_id = self._connection_keys.pop(id(ws), None)
+        self._connection_ids.pop(connection_id, None)
+        for _, cleanup in tuple(self._subscriptions.pop(id(ws), {}).values()):
+            try:
+                cleanup()
+            except Exception:
+                log.warning("WebSocket subscription cleanup failed")
         self._ns_filters.pop(id(ws), None)
         self._client_types.pop(id(ws), None)
         self._admissions.pop(id(ws), None)
@@ -372,12 +389,39 @@ class WSHub:
             if text is not None:
                 await ws.send_text(text)
 
-    def open_scope(self, ws) -> MessageScope:
+    def connection_id(self, ws) -> str | None:
+        return self._connection_keys.get(id(ws))
+
+    def programmer_connection(self, connection_id: str):
+        """Resolve an actual live recipient. This ID grants no subscription."""
+        ws = self._connection_ids.get(connection_id)
+        recipient = self._recipients.get(id(ws))
+        if recipient is None or not recipient.programmer or recipient.current() is not True:
+            raise ValueError("Programmer connection is no longer available")
+        return ws
+
+    def replace_subscription(self, ws, name: str, owner: str, cleanup: Callable[[], None]) -> None:
+        subscriptions = self._subscriptions.get(id(ws))
+        if subscriptions is None:
+            raise ValueError("WebSocket is not registered")
+        previous = subscriptions.pop(name, None)
+        if previous is not None:
+            previous[1]()
+        subscriptions[name] = (owner, cleanup)
+
+    def close_subscription(self, ws, name: str, owner: str) -> None:
+        subscriptions = self._subscriptions.get(id(ws), {})
+        entry = subscriptions.get(name)
+        if entry is not None and entry[0] == owner:
+            subscriptions.pop(name)
+            entry[1]()
+
+    def open_scope(self, ws, *, scope_type=MessageScope, current=None) -> MessageScope:
         """Create a fresh scope after the adapter authorizes a subscription."""
         scopes = self._scopes.get(id(ws))
         if scopes is None:
             raise ValueError("WebSocket is not registered")
-        scope = MessageScope()
+        scope = scope_type(current)
         scopes.add(scope)
         return scope
 

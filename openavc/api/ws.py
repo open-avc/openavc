@@ -265,6 +265,11 @@ async def _run_ws_connection(
                 "ui": engine.panel_ui(),
             })
 
+        if client_type == "programmer":
+            await engine.ws.send_immediate(ws, {
+                "type": "connection.ready", "connection_id": engine.ws.connection_id(ws),
+            })
+
         # Baseline is on the wire — release queued broadcasts
         engine.ws.mark_client_ready(ws)
 

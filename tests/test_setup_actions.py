@@ -18,6 +18,7 @@ import pytest
 
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
+from openavc.core.outbound_messages import RoomText
 from openavc.core.project_loader import DeviceConfig, ProjectConfig, ProjectMeta
 from openavc.core.setup_actions import (
     SetupActionContext,
@@ -25,6 +26,7 @@ from openavc.core.setup_actions import (
     SetupActionRunner,
 )
 from openavc.core.state_store import StateStore
+from openavc.core.setup_results import Outcome, SetupProgress, SetupResult
 from openavc.drivers.actions import resolve_device_actions
 from openavc.drivers.base import BaseDriver
 
@@ -52,6 +54,7 @@ class _ProvisionDriver(BaseDriver):
             {
                 "id": "enable_remote",
                 "kind": "setup",
+                "result_contract": "setup/v1",
                 "label": "Enable Remote Access",
                 "availability": "offline",
                 "params": {"password": {"type": "password", "required": True}},
@@ -78,45 +81,22 @@ class _ProvisionDriver(BaseDriver):
     async def send_command(self, command: str, params: dict | None = None) -> Any:
         return None
 
-    async def run_setup_action(self, action_id, params, progress) -> dict:
-        await progress("Connecting over the out-of-band channel", 10)
-        await progress("Enabling remote access", 50)
+    async def run_setup_action(self, action_id, params, progress) -> SetupResult:
+        await progress(SetupProgress("remote.connecting", "Connecting over the out-of-band channel", 10))
+        await progress(SetupProgress("remote.enabling", "Enabling remote access", 50))
         # Flip the device into a connectable state, persist new settings,
         # then reconnect over them.
         self._remote_enabled = True
         await self.request_config_update({"port": 9999, "provisioned": "yes"})
-        await progress("Reconnecting", 90)
+        await progress(SetupProgress("remote.reconnecting", "Reconnecting", 90))
         await self.request_reconnect()
-        return {"enabled": True, "password_len": len(params.get("password", ""))}
+        return SetupResult(Outcome.SUCCEEDED, RoomText("Remote access enabled."))
 
 
 class _FailDriver(_ProvisionDriver):
     async def run_setup_action(self, action_id, params, progress) -> dict:
-        await progress("Connecting", 10)
-        raise RuntimeError("the switch rejected the change")
-
-
-class _SoftFailDriver(_ProvisionDriver):
-    """Runs to completion and reports that the answer is no — the shape a
-    Test Connection takes when the address answers but the credential is
-    wrong. No exception, so no traceback; the message is the whole report.
-    """
-
-    async def run_setup_action(self, action_id, params, progress) -> dict:
-        await progress("Connecting", 10)
-        return {
-            "success": False,
-            "message": "Reached the address, but the password was refused.",
-        }
-
-
-class _QuietFailDriver(_ProvisionDriver):
-    """success:false with nothing to say — the platform still has to call it
-    a failure and put a sentence on screen.
-    """
-
-    async def run_setup_action(self, action_id, params, progress) -> dict:
-        return {"success": False}
+        await progress(SetupProgress("remote.connecting", "Connecting", 10))
+        raise RuntimeError("the switch rejected the change: sensitive-diagnostic")
 
 
 class _NoHandlerDriver(_ProvisionDriver):
@@ -179,6 +159,23 @@ def _setup_action(driver) -> dict:
     )
 
 
+async def _start(runner, driver, params=None):
+    """Use the public runner handshake; capture only protected status here.
+
+    Actual socket recipient and final-send checks are in test_setup_handshake.
+    """
+    action = _setup_action(driver)
+    params = {"password": "secret"} if params is None else params
+    prepared = runner.prepare("dev1", action["id"], params,
+                              original_grant=lambda: True, current=lambda: True)
+    snapshots = []
+    runner.observe(prepared["run_id"], lambda: snapshots.append(
+        runner.results.status(prepared["capability"], current=lambda: True)))
+    started = await runner.start("dev1", action, params,
+                                 capability=prepared["capability"], current=lambda: True)
+    return started, snapshots
+
+
 async def _drain(runner: SetupActionRunner) -> None:
     """Await all in-flight setup tasks."""
     tasks = list(runner._tasks)
@@ -191,24 +188,23 @@ async def _drain(runner: SetupActionRunner) -> None:
 
 async def test_setup_action_streams_progress_updates_config_and_reconnects():
     runner, engine, dm, driver = _make_env()
-    action = _setup_action(driver)
-
-    started = await runner.start("dev1", action, {"password": "secret"})
-    assert started["status"] == "started"
+    started, events = await _start(runner, driver)
+    assert started["status"] == "claimed"
     run_id = started["run_id"]
     await _drain(runner)
 
-    events = [m for m in engine.ws_messages if m["type"] == "action.progress"]
-    assert events, "expected action.progress events"
+    assert events, "expected protected progress observations"
     assert all(e["run_id"] == run_id for e in events)
-    assert all(e["device_id"] == "dev1" and e["action_id"] == "enable_remote" for e in events)
+    assert not engine.ws_messages, "setup output must not use a general broadcast"
 
     statuses = [e["status"] for e in events]
     assert "running" in statuses
-    assert statuses[-1] == "done"
+    assert statuses[-1] == "terminal"
 
     done = events[-1]
-    assert done["result"] == {"enabled": True, "password_len": 6}
+    assert done["result"]["outcome"] == "succeeded"
+    assert done["result"]["config_save"] == "reported_complete"
+    assert done["result"]["reconnect"] == "reported_complete"
 
     # The device came back online over the new settings.
     assert driver.get_state("connected") is True
@@ -307,89 +303,46 @@ async def test_apply_config_update_bumps_revision_without_bounce(tmp_path):
 # --- Error path -------------------------------------------------------------
 
 
-async def test_setup_action_error_emits_error_event():
-    runner, engine, dm, driver = _make_env(driver_cls=_FailDriver)
-    action = _setup_action(driver)
-
-    await runner.start("dev1", action, {"password": "x"})
+@pytest.mark.parametrize("driver_cls,cause", [(_FailDriver, "RuntimeError"), (_NoHandlerDriver, "NotImplementedError")])
+async def test_setup_exception_reports_uncertain_outcome_without_raw_diagnostic(driver_cls, cause):
+    runner, engine, dm, driver = _make_env(driver_cls=driver_cls)
+    _, events = await _start(runner, driver)
     await _drain(runner)
 
-    events = [m for m in engine.ws_messages if m["type"] == "action.progress"]
-    assert events[-1]["status"] == "error"
-    assert "rejected" in events[-1]["error"]
+    last = events[-1]
+    assert last["status"] == "terminal"
+    assert last["result"]["outcome"] == "unverified"
+    assert last["result"]["findings"] == [
+        {"code": "setup.exception", "outcome": "failed", "detail": cause}]
+    assert "sensitive-diagnostic" not in str(events)
+    assert not engine.ws_messages
     assert driver.get_state("connected") is False
     assert "dev1" not in dm._intentional_disconnect
-
-    # end_setup resumed auto-reconnect for the still-offline device; cancel it
-    # so the loop doesn't dangle past the test.
     await dm._cancel_reconnect("dev1")
 
 
-async def test_setup_action_success_false_terminates_as_error():
-    # A handler that returns success:false FAILED. `status` is the outcome
-    # every client branches on, so it has to say so — a run that reported a
-    # refused password must never reach the wizard as a green check.
-    runner, engine, dm, driver = _make_env(driver_cls=_SoftFailDriver)
-    action = _setup_action(driver)
-
-    await runner.start("dev1", action, {"password": "wrong"})
-    await _drain(runner)
-
-    last = [m for m in engine.ws_messages if m["type"] == "action.progress"][-1]
-    assert last["status"] == "error"
-    assert last["error"] == "Reached the address, but the password was refused."
-    # The step line carries it too, so the log reads as the failure it is.
-    assert last["step"] == "Reached the address, but the password was refused."
-    # The handler's own result still rides along for anything that wants it.
-    assert last["result"] == {
-        "success": False,
-        "message": "Reached the address, but the password was refused.",
-    }
-    await dm._cancel_reconnect("dev1")
-
-
-async def test_setup_action_success_false_without_a_message_still_says_something():
-    runner, engine, dm, driver = _make_env(driver_cls=_QuietFailDriver)
-    action = _setup_action(driver)
-
-    await runner.start("dev1", action, {"password": "x"})
-    await _drain(runner)
-
-    last = [m for m in engine.ws_messages if m["type"] == "action.progress"][-1]
-    assert last["status"] == "error"
-    assert last["error"] == "Setup action reported failure"
-    await dm._cancel_reconnect("dev1")
-
-
-async def test_setup_action_success_true_still_completes_with_its_result():
-    # The other half of the branch: a truthy success is untouched, result and
-    # all, so the wizard has a message to show.
+@pytest.mark.parametrize("outcome,summary", [
+    (Outcome.FAILED, "Reached the address, but the password was refused."),
+    (Outcome.FAILED, "The device reported failure."),
+    (Outcome.SUCCEEDED, "Found 5 endpoints."),
+])
+async def test_declared_outcome_and_operator_guidance_are_preserved(outcome, summary):
+    # Completion is not success: the wizard must branch on the typed outcome.
+    # Legacy dictionaries need a separately qualified ingress adapter, never a
+    # generic success/ok truthiness guess in the runner.
     runner, engine, dm, driver = _make_env()
-    action = _setup_action(driver)
 
-    async def ok_handler(action_id, params, progress):
-        return {"success": True, "message": "Found 5 endpoints."}
+    async def handler(action_id, params, progress):
+        return SetupResult(outcome, RoomText(summary))
 
-    driver.run_setup_action = ok_handler  # type: ignore[assignment]
-    await runner.start("dev1", action, {"password": "x"})
+    driver.run_setup_action = handler
+    _, events = await _start(runner, driver)
     await _drain(runner)
-
-    last = [m for m in engine.ws_messages if m["type"] == "action.progress"][-1]
-    assert last["status"] == "done"
-    assert last["result"] == {"success": True, "message": "Found 5 endpoints."}
-    await dm._cancel_reconnect("dev1")
-
-
-async def test_setup_action_unimplemented_handler_reports_error():
-    runner, engine, dm, driver = _make_env(driver_cls=_NoHandlerDriver)
-    action = _setup_action(driver)
-
-    await runner.start("dev1", action, {"password": "x"})
-    await _drain(runner)
-
-    last = [m for m in engine.ws_messages if m["type"] == "action.progress"][-1]
-    assert last["status"] == "error"
-    assert last["error"] == "not_implemented"
+    last = events[-1]
+    assert last["status"] == "terminal"
+    assert last["result"]["outcome"] == outcome.value
+    assert last["result"]["summary"] == summary
+    assert not engine.ws_messages
     await dm._cancel_reconnect("dev1")
 
 
@@ -401,19 +354,17 @@ async def test_second_setup_action_while_running_is_rejected():
     gate = asyncio.Event()
 
     async def slow_handler(action_id, params, progress):
-        await progress("waiting", 10)
+        await progress(SetupProgress("remote.waiting", "Waiting", 10))
         await gate.wait()
-        return {"ok": True}
+        return SetupResult(Outcome.SUCCEEDED, RoomText("Ready."))
 
     driver.run_setup_action = slow_handler  # type: ignore[assignment]
-    action = _setup_action(driver)
-
-    await runner.start("dev1", action, {})
+    await _start(runner, driver)
     await asyncio.sleep(0)  # let the task reach the gate
     assert runner.is_running("dev1")
 
     with pytest.raises(SetupActionInProgress):
-        await runner.start("dev1", action, {})
+        await _start(runner, driver)
 
     gate.set()
     await _drain(runner)
@@ -424,7 +375,7 @@ async def test_start_unknown_device_raises_value_error():
     runner, engine, dm, driver = _make_env()
     action = _setup_action(driver)
     with pytest.raises(ValueError):
-        await runner.start("ghost", action, {})
+        runner.prepare("ghost", action["id"], {}, original_grant=lambda: True, current=lambda: True)
 
 
 # --- BaseDriver contract guards ---------------------------------------------
@@ -436,6 +387,8 @@ async def test_request_helpers_raise_outside_a_setup_run():
         await driver.request_config_update({"port": 1})
     with pytest.raises(RuntimeError):
         await driver.request_reconnect()
+    with pytest.raises(RuntimeError):
+        driver.register_setup_secret({"key": "invented"})
 
 
 async def test_default_run_setup_action_raises_not_implemented():
