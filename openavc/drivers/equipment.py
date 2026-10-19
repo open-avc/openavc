@@ -374,9 +374,9 @@ class EquipmentDriver(BaseDriver):
                         ident,
                         {
                             key: None
-                            for key in self.DRIVER_INFO["child_entity_types"][kind][
-                                "state_variables"
-                            ]
+                            for key in self.DRIVER_INFO["child_entity_types"][kind].get(
+                                "state_variables", {}
+                            )
                         },
                     )
                 await self.events.emit(f"device.disconnected.{self.device_id}")

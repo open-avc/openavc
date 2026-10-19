@@ -13,10 +13,12 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 import pytest
 
+from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.drivers.equipment import EquipmentDriver
 from openavc.drivers.equipment_protocol import PROTOCOL
+from openavc.drivers.registry import _DRIVER_REGISTRY
 
 
 @pytest.fixture
@@ -41,7 +43,7 @@ async def equipment_peer(tmp_path, monkeypatch):
         config_schema={}, state_variables={"counter": {"type": "integer"}},
         commands={"increment": {"params": {}}})
     peer = {"protocol": PROTOCOL, "session": "first", "model": model,
-            "commands": [], "descriptions": [], "snapshot_session": None}
+            "commands": [], "descriptions": [], "snapshot_session": None, "children": []}
 
     async def description(request):
         peer["descriptions"].append((peer["session"], peer["protocol"]))
@@ -51,7 +53,7 @@ async def equipment_peer(tmp_path, monkeypatch):
     async def snapshot(request):
         return web.json_response({"identity": "example-unit",
             "session": peer["snapshot_session"] or peer["session"],
-            "state": {"counter": len(peer["commands"])}, "children": []})
+            "state": {"counter": len(peer["commands"])}, "children": peer["children"]})
 
     async def command(request):
         body = await request.json()
@@ -111,6 +113,29 @@ async def test_new_session_rechecks_protocol_and_capabilities_before_control(equ
         assert peer["commands"][-1]["session"] == "second"
         assert len(peer["commands"]) == 2
     assert peer["descriptions"] == [("first", PROTOCOL), ("second", peer["protocol"])]
+
+
+@pytest.mark.asyncio
+async def test_a_product_whose_child_type_declares_no_readings_reconnects_after_a_restart(
+        equipment_peer, monkeypatch):
+    driver, peer = equipment_peer
+    peer["model"]["child_entity_types"] = {"zone": {"label": "Zone"}}
+    peer["children"] = [{"type": "zone", "id": 1, "state": {}}]
+    monkeypatch.setitem(_DRIVER_REGISTRY, "openavc_equipment", EquipmentDriver)
+    state, events = StateStore(), EventBus()
+    state.set_event_bus(events)
+    manager = DeviceManager(state, events)
+    try:
+        await manager.add_device({"id": "amp", "driver": "openavc_equipment", "name": "Amp",
+                                  "config": dict(driver.config)})
+        assert state.get("device.amp.connected") is True
+        peer["session"] = "second"
+        async with asyncio.timeout(10):
+            while len(peer["descriptions"]) < 2 or not state.get("device.amp.connected"):
+                await asyncio.sleep(.05)
+    finally:
+        await manager.disconnect_all()
+    assert peer["descriptions"] == [("first", PROTOCOL), ("second", PROTOCOL)]
 
 
 @pytest.mark.asyncio
