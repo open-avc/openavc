@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -57,6 +58,50 @@ def test_no_shipped_template_names_an_action_nothing_dispatches(path: Path) -> N
         for finding in do_action_findings(element.model_dump(mode="json"))
     ]
     assert dead == []
+
+
+#: The Generic devices whose commands are written in the project itself.
+GENERIC_DRIVERS = {"generic_tcp", "generic_serial", "generic_http"}
+
+
+def _commands_sent(path: Path) -> set[tuple[str, str]]:
+    """Every (device, command) a template's pages, macros and scripts send."""
+    sent: set[tuple[str, str]] = set()
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            if node.get("action") == "device.command":
+                sent.add((node.get("device"), node.get("command")))
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(json.loads(path.read_text(encoding="utf-8")))
+    for script in sorted((TEMPLATES / f"{path.stem}.scripts").glob("*.py")):
+        source = script.read_text(encoding="utf-8")
+        sent.update(re.findall(r'devices\.send\(\s*"(\w+)",\s*"(\w+)"', source))
+    return sent
+
+
+@pytest.mark.parametrize("path", _templates(), ids=lambda p: p.stem)
+def test_a_generic_device_defines_every_command_its_template_sends(path: Path) -> None:
+    """A Generic device has only the commands written in its config. Sent any
+    other, it logs "Unknown command" and nothing reaches the equipment, while
+    the panel carries on as if it had."""
+    project = json.loads(path.read_text(encoding="utf-8"))
+    defined = {
+        d["id"]: (d.get("config") or {}).get("commands") or {}
+        for d in project["devices"]
+        if d["driver"] in GENERIC_DRIVERS
+    }
+    missing = sorted(
+        f"{device} {command}"
+        for device, command in _commands_sent(path)
+        if device in defined and command not in defined[device]
+    )
+    assert missing == []
 
 
 def _engine_on(template: str, tmp_path: Path) -> tuple[Engine, list[tuple]]:

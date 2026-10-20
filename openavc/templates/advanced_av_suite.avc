@@ -26,21 +26,46 @@
       "id": "switcher1",
       "driver": "generic_tcp",
       "name": "Matrix Switcher",
-      "config": {},
+      "config": {
+        "commands": {
+          "set_route": {
+            "label": "Route",
+            "send": "ROUTE {input} {output}"
+          }
+        }
+      },
       "child_entities": {}
     },
     {
       "id": "dsp1",
       "driver": "generic_tcp",
       "name": "DSP",
-      "config": {},
+      "config": {
+        "commands": {
+          "set_fader": {
+            "label": "Set Fader",
+            "send": "FADER {channel} {level}"
+          },
+          "mute": {
+            "label": "Mute",
+            "send": "MUTE {channel} {muted}"
+          }
+        }
+      },
       "child_entities": {}
     },
     {
       "id": "camera1",
       "driver": "generic_tcp",
       "name": "PTZ Camera",
-      "config": {},
+      "config": {
+        "commands": {
+          "recall_preset": {
+            "label": "Recall Preset",
+            "send": "PRESET {preset}"
+          }
+        }
+      },
       "child_entities": {}
     },
     {

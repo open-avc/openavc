@@ -19,7 +19,7 @@ async def volume_changed(event):
     # Map 0-100 -> -60dB to 0dB
     db = (ui_value / 100.0) * 60.0 - 60.0
     log.info(f"Volume: {ui_value}% -> {db:.1f} dB")
-    await devices.send("dsp1", "set_fader", {"channel": "program", "level": db})
+    await devices.send("dsp1", "set_fader", {"channel": "program", "level": round(db, 1)})
 
 
 # --- Projector Status ---
