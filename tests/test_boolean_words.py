@@ -34,6 +34,16 @@ def test_anything_else_reads_as_it_is():
     assert value_text("hdmi2") == "hdmi2"
 
 
+def test_a_whole_number_reads_as_the_programmer_writes_it():
+    """A reading that arrives as 511.0 is written 511, as the Programmer's
+    screens write it beside the sentence. A fraction stays as it is."""
+    assert value_text(511.0) == "511"
+    assert value_text(0.0) == "0"
+    assert value_text(-3.0) == "-3"
+    assert value_text(0.5) == "0.5"
+    assert value_text(-12.25) == "-12.25"
+
+
 def test_no_value_reads_as_the_callers_word():
     assert value_text(None, "not reported") == "not reported"
     assert value_text(None) == "None"

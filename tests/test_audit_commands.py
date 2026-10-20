@@ -660,6 +660,15 @@ def test_the_drops_sentence():
     )
 
 
+def test_a_whole_number_reads_in_the_sentence_as_in_the_rows_under_it():
+    """The rows under a command's sentence write a level that arrives as
+    511.0 as 511, so the sentence does too."""
+    changes = [{"t": 1, "key": "level", "old": 511.0, "new": 0.0}]
+    moved = moved_values(changes, [], {})
+    sentence = trial_sentence({"moved": moved, "traffic": {"received": 1}})
+    assert "went from 511 to 0" in sentence
+
+
 def test_a_value_that_ends_where_it_began_is_not_what_the_command_changed():
     changes = [
         {"t": 1, "key": "online", "old": True, "new": False},

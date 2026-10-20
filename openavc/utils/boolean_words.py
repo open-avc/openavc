@@ -31,10 +31,14 @@ def value_text(value: Any, empty: str | None = None) -> str:
     """A value as a sentence shows it.
 
     A boolean reads Yes / No; ``None`` reads ``empty`` when the caller gives
-    one; anything else is its text.
+    one; a whole number that arrived as a float reads without its ``.0``, as
+    the Programmer writes it (511, not 511.0); anything else is its text.
     """
     if isinstance(value, bool):
         return boolean_word(value)
     if value is None and empty is not None:
         return empty
+    # Below 1e21, where JavaScript's own String() would turn to an exponent.
+    if isinstance(value, float) and value.is_integer() and abs(value) < 1e21:
+        return str(int(value))
     return str(value)
