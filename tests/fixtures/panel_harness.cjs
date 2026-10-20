@@ -4362,6 +4362,85 @@ const tests = {
                 `${id}: back, and unmarked, got "${box(id).className}"`);
         }
     },
+
+    // Preview draws the Builder's copy of the page, which never carries
+    // action_devices: only the server's resolved definition does. So Preview
+    // takes them from the ui.definition the socket brings, by element id, and
+    // the button and the camera preset are marked as /panel marks them.
+    preview_marks_a_press_the_server_says_cannot_land() {
+        const app = mkApp();
+        app.embedded = true;
+        app.editMode = false;
+        const press = { do: { press: [{ action: 'device.command', device: 'd', command: 'on' }] } };
+        const builderCopy = project({
+            elements: [
+                { id: 'btn', type: 'button', label: 'Display On', bindings: press },
+                { id: 'cam', type: 'camera_preset', label: 'Wide', preset_number: 1, bindings: press },
+                { id: 'lbl', type: 'label', text: 'Room' },
+            ],
+            placements: {
+                btn: { x: 5, y: 5, w: 20, h: 10 }, cam: { x: 30, y: 5, w: 20, h: 10 },
+                lbl: { x: 5, y: 30, w: 20, h: 10 },
+            },
+        });
+        renderProject(app, builderCopy);
+        app.state = { 'device.d.connected': false };
+        app.evaluateAllBindings();
+        const box = (id) => app.root.querySelector(`[data-element-id="${id}"]`);
+        assert(!box('btn').classList.contains('action-offline'),
+            'nothing is known about the press before the server says');
+
+        const served = (ids) => {
+            const ui = JSON.parse(JSON.stringify(builderCopy.ui));
+            for (const element of ui.pages[0].elements) {
+                if (ids.includes(element.id)) element.action_devices = ['d'];
+            }
+            return ui;
+        };
+        app.handleMessage({ type: 'ui.definition', ui: served(['btn', 'cam']) });
+        assert(app.uiDef === builderCopy.ui, "the Builder's copy is still the page drawn");
+        for (const id of ['btn', 'cam']) {
+            assert(box(id).classList.contains('action-offline'),
+                `${id}: marked as soon as the server's definition arrives, got "${box(id).className}"`);
+        }
+        assert(!box('lbl').classList.contains('action-offline'), 'a label reaches nothing');
+
+        app.state['device.d.connected'] = true;
+        app.evaluateAllBindings(['device.d.connected']);
+        assert(!box('btn').classList.contains('action-offline'), 'the device is back: unmarked');
+
+        // The press is re-pointed in the Builder and saved: the next
+        // definition says the button reaches nothing, and its mark goes.
+        app.state['device.d.connected'] = false;
+        app.evaluateAllBindings(['device.d.connected']);
+        assert(box('btn').classList.contains('action-offline'), 'marked again');
+        app.handleMessage({ type: 'ui.definition', ui: served(['cam']) });
+        assert(!box('btn').classList.contains('action-offline'),
+            `a button that now reaches nothing loses its mark, got "${box('btn').className}"`);
+        assert(box('cam').classList.contains('action-offline'), 'the preset keeps its mark');
+    },
+
+    // The design canvas never marks a control (its handles and artwork stay
+    // visible), whatever reaches it.
+    the_design_canvas_takes_no_press_marks_from_the_server() {
+        const app = mkApp();
+        app.embedded = true;
+        app.editMode = true;
+        const builderCopy = project({
+            elements: [{ id: 'btn', type: 'button', label: 'Display On',
+                bindings: { do: { press: [{ action: 'device.command', device: 'd', command: 'on' }] } } }],
+            placements: { btn: { x: 5, y: 5, w: 20, h: 10 } },
+        });
+        renderProject(app, builderCopy);
+        app.state = { 'device.d.connected': false };
+        const ui = JSON.parse(JSON.stringify(builderCopy.ui));
+        ui.pages[0].elements[0].action_devices = ['d'];
+        app.handleMessage({ type: 'ui.definition', ui });
+        app.evaluateAllBindings();
+        const btn = app.root.querySelector('[data-element-id="btn"]');
+        assert(!btn.classList.contains('action-offline'), `the canvas is unmarked, got "${btn.className}"`);
+        assert(!app._servedActionDevices, 'the canvas keeps nothing from the server');
+    },
 };
 
 const results = {};

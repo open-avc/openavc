@@ -647,7 +647,10 @@ see before pressing that it will not do anything. It appears only when *nothing*
 the button reaches is up: a System On button that drives eight devices is not
 marked because one display is off, since pressing it still does the other seven.
 Whatever the button runs is followed through to find that out, including a macro
-that calls another macro and a group command.
+that calls another macro and a group command. Editing that macro or group updates
+the mark on every open panel. The UI Builder's **Preview** shows the same marks as
+the panel; a change to what a button sends shows there once the page is saved,
+which the UI Builder does as you work.
 
 **A device that was told to restart says so instead.** Some equipment goes off
 the network when you power it on or reboot it, and its driver can say how long

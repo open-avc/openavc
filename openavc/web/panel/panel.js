@@ -257,6 +257,9 @@ class PanelApp {
         this.statusEl = document.getElementById('connection-status');
         this.bindings = [];          // Active bindings to evaluate on state change
         this.elementMap = {};        // element_id -> {el, elementDef} for ui.* overrides
+        // Preview only: element_id -> the devices its press reaches, from the
+        // server's ui.definition (the Builder's copy never carries them).
+        this._servedActionDevices = null;
         // The in-place text edit in flight, or null. Edit mode only. Held here
         // rather than per-element so the freeze in `_setLabelText` is one
         // comparison, and so opening a second edit closes the first.
@@ -878,8 +881,16 @@ class PanelApp {
                 // Embedded iframes take their definition from the parent
                 // programmer window via postMessage — ignore server-pushed
                 // definitions so in-flight builder edits aren't clobbered by
-                // the last-saved project.
-                if (this.embedded) break;
+                // the last-saved project. All Preview keeps of it is which
+                // devices each control's press reaches, which only the server
+                // can work out (`ui/action_devices.py`).
+                if (this.embedded) {
+                    if (!this.editMode) {
+                        this._servedActionDevices = this._actionDevicesById(msg.ui);
+                        this.evaluateActionAvailability();
+                    }
+                    break;
+                }
                 this.uiDef = msg.ui;
                 this.uiSettings = msg.ui?.settings || {};
                 this._setupViewportListener();
@@ -6428,12 +6439,24 @@ class PanelApp {
      *
      * `action_devices` is resolved on the server (`ui/action_devices.py`);
      * following a macro into a group is not something the renderer can do.
+     * Preview draws the Builder's copy of the page, which never carries it, so
+     * there it comes from the server's own definition, matched by element id
+     * (`_servedActionDevices`): it follows an edit once the Builder saves it.
      */
     evaluateActionAvailability() {
-        for (const entry of Object.values(this.elementMap)) {
+        for (const [id, entry] of Object.entries(this.elementMap)) {
             const el = entry?.el;
-            const devices = entry?.elementDef?.action_devices;
-            if (!el || !el.classList || !Array.isArray(devices) || !devices.length) continue;
+            if (!el || !el.classList) continue;
+            const devices = this._servedActionDevices
+                ? this._servedActionDevices.get(id)
+                : entry?.elementDef?.action_devices;
+            if (!Array.isArray(devices) || !devices.length) {
+                // Preview re-reads this without a re-render when the server's
+                // definition moves, so a control that now reaches nothing has
+                // to lose a mark it was drawn with.
+                el.classList.remove('action-offline');
+                continue;
+            }
             const stranded = devices.every(id => this._deviceOffline(id));
             // Never both: an element already carrying the reading mark has
             // been drained, and adding a second dashed edge over it would draw
@@ -6443,6 +6466,20 @@ class PanelApp {
                 stranded && !el.classList.contains('device-offline'),
             );
         }
+    }
+
+    /** Element id -> the devices its press reaches, from a resolved definition. */
+    _actionDevicesById(ui) {
+        const byId = new Map();
+        const pages = Array.isArray(ui?.pages) ? ui.pages : [];
+        const elements = pages.flatMap(p => (Array.isArray(p?.elements) ? p.elements : []))
+            .concat(Array.isArray(ui?.master_elements) ? ui.master_elements : []);
+        for (const element of elements) {
+            if (element?.id && Array.isArray(element.action_devices)) {
+                byId.set(element.id, element.action_devices);
+            }
+        }
+        return byId;
     }
 
     /**

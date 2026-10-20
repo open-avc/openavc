@@ -243,6 +243,9 @@ SCENARIOS = [
     "every_control_takes_its_overrides_and_gives_them_back",
     "a_cleared_label_override_gives_back_the_words_it_covered",
     "the_unavailable_mark_goes_on_the_control_itself",
+    # Preview marks a press the server says cannot land; the canvas never does.
+    "preview_marks_a_press_the_server_says_cannot_land",
+    "the_design_canvas_takes_no_press_marks_from_the_server",
 ]
 
 

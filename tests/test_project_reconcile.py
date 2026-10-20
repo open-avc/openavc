@@ -5,6 +5,8 @@ Pins the scoped-reconcile contract of Engine.apply_project:
 - a UI-only edit cancels no running macros, stops no triggers, never
   re-fires startup triggers, and never rescans the driver library or
   touches devices — but still broadcasts the new UI definition
+- a macro or device-group edit broadcasts it too: a control's action_devices
+  are worked out through them
 - macro edits cancel running macros and rebuild triggers WITHOUT re-firing
   startup triggers; only a whole new project (LOAD) fires them
 - variable edits seed/sweep var.* keys and rebuild bindings without a
@@ -236,6 +238,48 @@ async def test_non_ui_edit_does_not_broadcast_ui_definition(tmp_path):
     types = [m["type"] for m in broadcasts]
     assert types == ["project.reloaded"]
     assert eng.state.get("system.project_name") == "Renamed"
+
+
+@pytest.mark.parametrize("edit", ["macro", "group"])
+@pytest.mark.asyncio
+async def test_a_macro_or_group_edit_resends_the_panel_definition(tmp_path, edit):
+    """A panel marks a button whose press cannot land from the devices the
+    server works out it reaches, through macros and groups. A macro or group
+    edit changes that answer with no UI change, so the definition is sent
+    again with the new answer."""
+    button = {"id": "btn_on", "type": "button", "bindings": {"do": {"press": [
+        {"action": "macro", "macro": "m_on"} if edit == "macro"
+        else {"action": "group.command", "group": "g_displays", "command": "on"},
+    ]}}}
+    macro = {"id": "m_on", "name": "On", "steps": [], "triggers": []}
+    group = {"id": "g_displays", "name": "Displays", "device_ids": []}
+    base = _project_dict(macros=[macro], ui_elements=[button])
+    base["device_groups"] = [group]
+    path = tmp_path / "project.avc"
+    path.write_text(json.dumps(base), encoding="utf-8")
+    eng = Engine(str(path))
+    eng.project = load_project(eng.project_path)
+    eng._running = True
+
+    broadcasts = []
+
+    async def record_broadcast(msg):
+        broadcasts.append(msg)
+
+    eng.broadcast_ws = record_broadcast
+
+    edited = json.loads(json.dumps(base))
+    if edit == "macro":
+        edited["macros"][0]["steps"] = [
+            {"action": "device.command", "device": "lobby_display", "command": "on"},
+        ]
+    else:
+        edited["device_groups"][0]["device_ids"] = ["lobby_display"]
+    await eng.apply_project(ProjectConfig(**edited))
+
+    assert [m["type"] for m in broadcasts] == ["ui.definition", "project.reloaded"]
+    element = broadcasts[0]["ui"]["pages"][0]["elements"][0]
+    assert element["action_devices"] == ["lobby_display"]
 
 
 # ── EDIT vs LOAD: macros, triggers, startup firing ──

@@ -880,13 +880,16 @@ class Engine:
             if self.mdns_advertiser:
                 self.mdns_advertiser.update_name(self.project.project.name)
 
-        # Push the new UI definition to connected panels — only when the UI
-        # actually changed (panels re-render on every ui.definition).
+        # Push the new UI definition to connected panels — only when what it
+        # carries changed (panels re-render on every ui.definition): the UI, or
+        # the macros and groups its per-element action_devices are worked out
+        # from, so a press's unavailable mark follows a macro edit.
         if diff.ui:
             # The bindings are new, so an action the runtime could not run
             # before is worth saying again -- somebody editing a project is
             # trying to fix something, and silence reads as having fixed it.
             self.ui_events.forget_undispatched_actions()
+        if diff.ui or diff.macros or diff.device_groups:
             await self.broadcast_ws({
                 "type": "ui.definition",
                 "ui": self.panel_ui(),
