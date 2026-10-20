@@ -6,8 +6,8 @@ include the full OpenAVC server and control its own hardware locally.
 
 ## Add equipment over the network
 
-Use **Devices > Discovery** and add the discovered product: its card asks for the
-product's username and password before adding it. Or choose **OpenAVC built-in
+Use **Devices > Discovery** and add the discovered product: its card shows the
+product's **Username** and **Password** fields before adding it. Or choose **OpenAVC built-in
 product** in **Add Device** and enter its **Host**, **Port** (9443 unless the
 product's documentation gives another), **Username** and **Password**. The product supplies its commands, settings, state and
 channels when connected. Use them in panels, macros and scripts like other

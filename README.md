@@ -59,7 +59,7 @@ Design touch panels visually with 18 element types, grid layouts, multiple pages
 Browse and install device drivers from a shared community library, right from the programming interface. Projectors, displays, switchers, DSPs, cameras, and more. Or write your own in YAML (for text protocols) or Python (for anything else).
 
 **Run on Anything**
-Raspberry Pi, Docker container, Windows PC, Linux server, VM, mini PC. OpenAVC is software, not a box. Deploy it on the hardware that makes sense for your installation.
+Raspberry Pi, Docker container, Windows PC, Mac, Linux server, VM, mini PC. OpenAVC is software, not a box. Deploy it on the hardware that makes sense for your installation.
 
 **Cloud Management (Optional)**
 Monitor and manage all your spaces from a single dashboard. Remote access, alerts, fleet operations, and system health. Free tier included. Cloud is entirely optional.

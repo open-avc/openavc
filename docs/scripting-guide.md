@@ -235,7 +235,7 @@ state.set("ui.btn_locked.opacity", 0.3)
 state.set("ui.btn_power.label", None)
 ```
 
-Available override keys for any element: `label`, `bg_color`, `text_color`, `opacity`, `visible`. The element ID is the same ID shown in the UI Builder properties panel. `label` replaces a control's caption where it has one; an image, a clock or a control with no caption has none for it to replace.
+Available override keys for any element: `label`, `bg_color`, `text_color`, `opacity`, `visible`. The element ID is the same ID shown in the UI Builder properties panel. `label` replaces a control's words, or its caption on a slider, dropdown or meter; an image, a clock or a control with no caption has none for it to replace.
 
 #### Comparing State Values
 
