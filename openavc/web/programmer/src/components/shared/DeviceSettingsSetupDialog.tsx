@@ -1,5 +1,6 @@
 import { useState } from "react";
 import * as api from "../../api/restClient";
+import { syncPendingSettings } from "../../store/projectStore";
 import { ApiError, parseApiError } from "../../api/errors";
 import type { DriverInfo } from "../../api/types";
 import { validateSettingValue } from "../driver-builder/deviceSettingsHelpers";
@@ -131,6 +132,10 @@ export function DeviceSettingsSetupDialog({
         setSaving(false);
         return;
       }
+      // Queuing saved the project on the server: bring this tab's copy up to
+      // date, or the device page shows nothing pending and the next save is
+      // refused as another session's.
+      await syncPendingSettings(deviceId);
     }
 
     setResults(newResults);

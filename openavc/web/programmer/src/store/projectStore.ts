@@ -361,3 +361,38 @@ export async function syncAfterSetupAction(deviceId: string): Promise<void> {
     connections,
   });
 }
+
+/**
+ * Re-sync the store after settings were queued for a device that is not
+ * connected (`POST /api/devices/{id}/settings/pending`).
+ *
+ * Queuing saves the project on the server, and the project.reloaded that
+ * follows names this tab, so nothing else refetches (hooks/projectReload.ts).
+ * Without this the device page shows no pending mark until a reload, and the
+ * tab's next save is refused as another session's.
+ *
+ * Clean store: refetch. Store with unsaved edits (or a save in flight): copy
+ * this device's queue as the server holds it (the server merges it and may
+ * coerce values), as syncAfterSetupAction does with config.
+ */
+export async function syncPendingSettings(deviceId: string): Promise<void> {
+  const store = useProjectStore.getState();
+  if (!store.dirty && !store.saving) {
+    await store.load();
+    return;
+  }
+  let server: ProjectConfig;
+  try {
+    server = await api.getProject();
+  } catch {
+    return;
+  }
+  const saved = server.devices.find((d) => d.id === deviceId);
+  const cur = useProjectStore.getState().project;
+  if (!saved || !cur) return;
+  useProjectStore.getState().update({
+    devices: cur.devices.map((d) =>
+      d.id === deviceId ? { ...d, pending_settings: saved.pending_settings } : d,
+    ),
+  });
+}
