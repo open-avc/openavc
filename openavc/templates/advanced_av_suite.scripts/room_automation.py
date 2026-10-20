@@ -8,13 +8,13 @@ Demonstrates the full scripting API:
 - Display status tracking via state change handlers
 - Occupancy-based auto-shutdown with warning timer
 - Presentation mode presets (adjusts DSP and routing per mode)
-- Recurring status polling
+- Following a device's reported value (the occupancy sensor)
 """
 
 from openavc import (
     on_event, on_state_change,
     devices, state, events, log,
-    after, every, cancel_timer,
+    after, cancel_timer,
 )
 
 # --- Source Routing ---
@@ -158,31 +158,13 @@ async def on_system_ready(event):
     state.set("var.mic_mute", True)
 
 
-# --- Recurring Status Poll ---
-# Poll the occupancy sensor every 60 seconds.
+# --- Occupancy Sensor ---
+# The sensor's device polls it (Get Status, marked Poll on its device page)
+# and reports Occupied. Copy that into the room's variable, which the panel
+# and the auto-shutdown above follow.
 
-_poll_timer = None
-
-@on_event("system.started")
-async def start_polling(event):
-    global _poll_timer
-
-    async def poll():
-        try:
-            result = await devices.send("sensor1", "get_status")
-            if result and isinstance(result, dict):
-                occupied = result.get("occupied", False)
-                state.set("var.room_occupied", bool(occupied))
-        except Exception:
-            pass  # Sensor offline — don't crash
-
-    _poll_timer = every(60, poll)
-    log.info("Occupancy polling started (60s interval)")
-
-
-@on_event("system.stopping")
-async def stop_polling(event):
-    global _poll_timer
-    if _poll_timer:
-        cancel_timer(_poll_timer)
-        log.info("Occupancy polling stopped")
+@on_state_change("device.sensor1.occupied")
+async def sensor_occupancy(key, old_value, new_value):
+    if new_value is None:
+        return  # No reading: leave the room as it was
+    state.set("var.room_occupied", bool(new_value))

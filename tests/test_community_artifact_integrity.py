@@ -24,6 +24,14 @@ from fastapi import HTTPException
 from openavc.api.models import CommunityDriverInstallRequest
 from openavc.api.routes.drivers import install_community_driver
 
+# The refusal a person sees once the catalog was fetched again and still
+# disagrees. The hashes go to the log.
+NOT_YET = (
+    "This driver was updated a few minutes ago and cannot be installed yet. "
+    "Try again in five minutes."
+)
+PLUGIN_NOT_YET = NOT_YET.replace("This driver", "This plugin")
+
 CATALOG = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main"
 
 YAML_BODY = """id: acme_widget
@@ -94,7 +102,7 @@ def _catalog_says(monkeypatch, files):
     """Pin what the community catalog publishes for acme_widget."""
     from openavc.utils.community_integrity import ArtifactHashes
 
-    async def _hashes(driver_id):
+    async def _hashes(driver_id, force=False):
         return ArtifactHashes(
             f"Driver '{driver_id}'", files, source="the community driver catalog"
         )
@@ -157,7 +165,7 @@ async def test_install_accepts_bytes_matching_the_catalog(driver_repo, monkeypat
 
 @pytest.mark.asyncio
 async def test_install_refuses_bytes_that_do_not_match_and_writes_nothing(
-    driver_repo, monkeypatch
+    driver_repo, monkeypatch, caplog
 ):
     # The whole point of checking before writing: a refused driver must not be
     # sitting in driver_repo/ where the loader would pick it up on restart.
@@ -173,13 +181,14 @@ async def test_install_refuses_bytes_that_do_not_match_and_writes_nothing(
                 CommunityDriverInstallRequest(driver_id="acme_widget", file_url=url)
             )
     assert exc.value.status_code == 502
-    assert "does not match" in exc.value.detail
+    assert exc.value.detail == NOT_YET
+    assert "does not match" in caplog.text
     assert list(driver_repo.iterdir()) == []
 
 
 @pytest.mark.asyncio
 async def test_install_refuses_a_driver_the_catalog_does_not_publish(
-    driver_repo, monkeypatch
+    driver_repo, monkeypatch, caplog
 ):
     # The catalog has hashes, but not for this path — an artifact appearing at a
     # URL the catalog never listed.
@@ -191,7 +200,8 @@ async def test_install_refuses_a_driver_the_catalog_does_not_publish(
                 CommunityDriverInstallRequest(driver_id="acme_widget", file_url=url)
             )
     assert exc.value.status_code == 502
-    assert "not listed" in exc.value.detail
+    assert exc.value.detail == NOT_YET
+    assert "not listed" in caplog.text
     assert list(driver_repo.iterdir()) == []
 
 
@@ -277,6 +287,103 @@ async def test_optional_python_companion_with_wrong_bytes_is_not_swallowed(
     assert exc.value.status_code == 502
 
 
+# --- A driver updated in the last few minutes ------------------------------
+#
+# The server keeps its copy of the catalog for ten minutes and GitHub's CDN
+# keeps each file for five, so right after a driver update the catalog and the
+# file can disagree with nothing wrong. A disagreement fetches the catalog again
+# (past this server's cache) before refusing.
+
+
+def _catalog_answers(monkeypatch, *copies):
+    """The catalog's files for acme_widget, one copy per fetch; records each
+    fetch's ``force``."""
+    from openavc.utils.community_integrity import ArtifactHashes
+
+    queue = list(copies)
+    calls: list[bool] = []
+
+    async def _hashes(driver_id, force=False):
+        calls.append(force)
+        files = queue.pop(0) if len(queue) > 1 else queue[0]
+        return ArtifactHashes(
+            f"Driver '{driver_id}'", files, source="the community driver catalog"
+        )
+
+    monkeypatch.setattr("openavc.api.routes.drivers._catalog_hashes", _hashes)
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_a_stale_catalog_is_fetched_again_and_the_update_installs(
+    driver_repo, monkeypatch
+):
+    old_yaml = YAML_BODY.replace("Acme Widget", "Acme Widget 1.0")
+    calls = _catalog_answers(
+        monkeypatch,
+        {"audio/acme_widget.avcdriver": _sha(old_yaml.encode("utf-8"))},
+        {"audio/acme_widget.avcdriver": _sha(YAML_BODY.encode("utf-8"))},
+    )
+    url = f"{CATALOG}/audio/acme_widget.avcdriver"
+    with patch("httpx.AsyncClient", return_value=_client(_resp(YAML_BODY))):
+        result = await install_community_driver(
+            CommunityDriverInstallRequest(driver_id="acme_widget", file_url=url)
+        )
+    assert result["status"] == "installed"
+    assert calls == [False, True]
+    assert (driver_repo / "acme_widget.avcdriver").read_bytes() == YAML_BODY.encode("utf-8")
+
+
+@pytest.mark.asyncio
+async def test_the_catalog_is_fetched_again_once_for_a_driver_and_its_companion(
+    driver_repo, monkeypatch, caplog
+):
+    # The YAML only matches the second copy; the companion matches neither.
+    # One refetch for the whole install, then the refusal, and the YAML that
+    # was already written comes back out.
+    yaml_text = YAML_BODY + (
+        "discovery:\n  python:\n    file: ./acme_widget_discovery.py\n"
+    )
+    companion = "async def probe(ctx):\n    return None\n"
+    calls = _catalog_answers(
+        monkeypatch,
+        {
+            "audio/acme_widget.avcdriver": _sha(b"older yaml"),
+            "audio/acme_widget_discovery.py": _sha(b"older companion"),
+        },
+        {
+            "audio/acme_widget.avcdriver": _sha(yaml_text.encode("utf-8")),
+            "audio/acme_widget_discovery.py": _sha(b"newer companion"),
+        },
+    )
+    url = f"{CATALOG}/audio/acme_widget.avcdriver"
+    with patch(
+        "httpx.AsyncClient",
+        side_effect=[_client(_resp(yaml_text)), _client(_resp(companion))],
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await install_community_driver(
+                CommunityDriverInstallRequest(driver_id="acme_widget", file_url=url)
+            )
+    assert exc.value.status_code == 502
+    assert exc.value.detail == NOT_YET
+    assert calls == [False, True]
+    assert "acme_widget_discovery.py" in caplog.text
+    assert list(driver_repo.iterdir()) == []
+
+
+@pytest.mark.asyncio
+async def test_refresh_driver_list_fetches_the_catalog_past_the_cache():
+    from openavc.api.routes import drivers
+
+    cache = MagicMock()
+    cache.get_drivers = AsyncMock(return_value=[{"id": "acme_widget"}])
+    with patch.object(drivers.get_community_drivers, "_cache", cache, create=True):
+        await drivers.get_community_drivers()
+        await drivers.get_community_drivers(refresh=True)
+    assert [c.kwargs["force"] for c in cache.get_drivers.await_args_list] == [False, True]
+
+
 @pytest.mark.asyncio
 async def test_catalog_hashes_are_not_taken_from_the_request(driver_repo):
     # There is deliberately no way for a caller to supply a hash: it would be
@@ -349,11 +456,16 @@ def _stream(content: bytes) -> MagicMock:
     return cm
 
 
-def _plugin_client(manifest, listing, *bodies: bytes) -> MagicMock:
+def _plugin_client(manifest, listing, *bodies: bytes, refetched=None) -> MagicMock:
+    """``refetched`` is the manifest a second fetch returns, for an install
+    whose first check disagrees (that fetch comes after the files)."""
     c = AsyncMock()
     c.__aenter__ = AsyncMock(return_value=c)
     c.__aexit__ = AsyncMock(return_value=False)
-    c.get = AsyncMock(side_effect=[_json(manifest), _json(listing)])
+    gets = [_json(manifest), _json(listing)]
+    if refetched is not None:
+        gets.append(_json(refetched))
+    c.get = AsyncMock(side_effect=gets)
     c.stream = MagicMock(side_effect=[_stream(b) for b in bodies])
     return c
 
@@ -393,7 +505,7 @@ async def test_plugin_install_accepts_matching_files(plugin_dirs):
 
 
 @pytest.mark.asyncio
-async def test_plugin_install_refuses_an_altered_file(plugin_dirs):
+async def test_plugin_install_refuses_an_altered_file(plugin_dirs, caplog):
     src = PLUGIN_SRC.encode("utf-8")
     manifest = {
         "plugins": {
@@ -405,15 +517,55 @@ async def test_plugin_install_refuses_an_altered_file(plugin_dirs):
     tampered = src + b"import os\n"
     with pytest.raises(Exception) as exc:
         await _install(
-            _plugin_client(manifest, [_entry("acme_thing_plugin.py")], tampered)
+            _plugin_client(
+                manifest, [_entry("acme_thing_plugin.py")], tampered, refetched=manifest
+            )
         )
-    assert "does not match" in str(exc.value)
+    assert str(exc.value) == PLUGIN_NOT_YET
+    assert "does not match" in caplog.text
     # Partial install cleaned up — nothing left for the loader to find.
     assert not (plugin_dirs / "acme_thing").exists()
 
 
 @pytest.mark.asyncio
-async def test_plugin_install_refuses_an_injected_extra_file(plugin_dirs):
+async def test_plugin_install_fetches_the_manifest_again_before_refusing(plugin_dirs):
+    # A plugin updated in the last few minutes: the first manifest read is the
+    # previous version's, the second matches what was downloaded.
+    src = PLUGIN_SRC.encode("utf-8")
+    stale = {
+        "plugins": {
+            "acme_thing": {
+                "files": {"utility/acme_thing/acme_thing_plugin.py": _sha(b"previous")}
+            }
+        }
+    }
+    current = {
+        "plugins": {
+            "acme_thing": {
+                "files": {"utility/acme_thing/acme_thing_plugin.py": _sha(src)}
+            }
+        }
+    }
+    result = await _install(
+        _plugin_client(stale, [_entry("acme_thing_plugin.py")], src, refetched=current)
+    )
+    assert result["status"] == "installed"
+    assert (plugin_dirs / "acme_thing" / "acme_thing_plugin.py").read_bytes() == src
+
+
+@pytest.mark.asyncio
+async def test_browse_plugins_refresh_fetches_the_catalog_past_the_cache():
+    from openavc.api import plugins as plugin_routes
+
+    fetch = AsyncMock(return_value=([], None))
+    with patch("openavc.core.plugin_installer.get_community_plugins", fetch):
+        await plugin_routes.browse_plugins()
+        await plugin_routes.browse_plugins(refresh=True)
+    assert [c.kwargs["force"] for c in fetch.await_args_list] == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_plugin_install_refuses_an_injected_extra_file(plugin_dirs, caplog):
     # The case per-file hashes alone don't cover. The listing offers a file the
     # manifest never mentions, so there is no hash for it to fail — it has to be
     # refused for being unlisted.
@@ -432,9 +584,11 @@ async def test_plugin_install_refuses_an_injected_extra_file(plugin_dirs):
                 [_entry("acme_thing_plugin.py"), _entry("backdoor.py")],
                 src,
                 b"import os\n",
+                refetched=manifest,
             )
         )
-    assert "not listed" in str(exc.value)
+    assert str(exc.value) == PLUGIN_NOT_YET
+    assert "not listed" in caplog.text
     assert not (plugin_dirs / "acme_thing").exists()
 
 

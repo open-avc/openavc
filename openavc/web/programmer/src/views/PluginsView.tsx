@@ -16,6 +16,17 @@ import { CollapsibleSection } from "../components/driver-builder/CollapsibleSect
 import { BrowsePlugins } from "../components/plugins/BrowsePlugins";
 import { MarkdownContent } from "../components/ai/MarkdownContent";
 import { isPluginIncompatible } from "./pluginsView.helpers";
+import { useConnectionStore } from "../store/connectionStore";
+import {
+  installableCount,
+  pluginUpdates,
+  type CatalogUpdate,
+} from "../components/shared/catalogUpdates";
+import {
+  UpdateAvailableLine,
+  UpdateRowButton,
+  UpdatesAvailableCount,
+} from "../components/shared/CatalogUpdateControls";
 
 // ──── Helpers ────
 
@@ -103,10 +114,16 @@ function PluginListItem({
   plugin,
   selected,
   onClick,
+  update,
+  updating,
+  onUpdate,
 }: {
   plugin: PluginInfo;
   selected: boolean;
   onClick: () => void;
+  update?: CatalogUpdate;
+  updating: boolean;
+  onUpdate: (update: CatalogUpdate) => void;
 }) {
   const incompatible = isPluginIncompatible(plugin);
   const suffix =
@@ -117,6 +134,14 @@ function PluginListItem({
         : "";
 
   return (
+    <div
+      style={{
+        borderRadius: "var(--border-radius)",
+        background: selected ? "var(--accent-dim)" : "transparent",
+        marginBottom: "var(--space-xs)",
+        transition: "background var(--transition-fast)",
+      }}
+    >
     <button
       onClick={onClick}
       style={{
@@ -126,10 +151,8 @@ function PluginListItem({
         width: "100%",
         padding: "var(--space-md)",
         borderRadius: "var(--border-radius)",
-        background: selected ? "var(--accent-dim)" : "transparent",
+        background: "transparent",
         textAlign: "left",
-        marginBottom: "var(--space-xs)",
-        transition: "background var(--transition-fast)",
         opacity: plugin.status === "running" ? 1 : 0.6,
       }}
     >
@@ -159,6 +182,12 @@ function PluginListItem({
         </div>
       </div>
     </button>
+      {update && (
+        <div style={{ padding: "0 var(--space-md) var(--space-sm) calc(var(--space-md) * 2 + 10px)" }}>
+          <UpdateRowButton update={update} updating={updating} onUpdate={() => onUpdate(update)} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -268,7 +297,22 @@ function MissingPluginBanner({ plugin }: { plugin: PluginInfo }) {
 
 // ──── Plugin Detail View ────
 
-function PluginDetail({ plugin }: { plugin: PluginInfo }) {
+function PluginDetail({
+  plugin,
+  update,
+  updating,
+  updateError,
+  onUpdate,
+  onDismissUpdateError,
+}: {
+  plugin: PluginInfo;
+  /** A newer catalog version of this plugin, when there is one. */
+  update?: CatalogUpdate;
+  updating: boolean;
+  updateError: string | null;
+  onUpdate: (update: CatalogUpdate) => void;
+  onDismissUpdateError: () => void;
+}) {
   const enablePlugin = usePluginStore((s) => s.enablePlugin);
   const disablePlugin = usePluginStore((s) => s.disablePlugin);
   const updateConfig = usePluginStore((s) => s.updateConfig);
@@ -309,10 +353,11 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
     };
   }, [confirmUninstall, plugin.plugin_id]);
 
-  // Fetch full detail (including config_schema) on mount
+  // Fetch full detail (including config_schema) on mount, and again after an
+  // update changes the version.
   useEffect(() => {
     api.getPlugin(plugin.plugin_id).then(setDetailInfo).catch(console.error);
-  }, [plugin.plugin_id, plugin.status]);
+  }, [plugin.plugin_id, plugin.status, plugin.version]);
 
   // Load config values
   useEffect(() => {
@@ -400,6 +445,14 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
             </code>
             <CopyButton value={plugin.plugin_id} title="Copy plugin ID" />
           </div>
+          {update && (
+            <UpdateAvailableLine
+              update={update}
+              updating={updating}
+              onUpdate={() => onUpdate(update)}
+              style={{ marginTop: "var(--space-sm)" }}
+            />
+          )}
         </div>
         {!isMissing && !isIncompat && (
           <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center", flexWrap: "wrap" }}>
@@ -560,6 +613,12 @@ function PluginDetail({ plugin }: { plugin: PluginInfo }) {
           </button>
         )}
       </div>
+
+      <InlineError
+        message={updateError ? `Update failed: ${updateError}` : null}
+        onDismiss={onDismissUpdateError}
+        style={{ marginBottom: "var(--space-md)" }}
+      />
 
       {/* Uninstall error / status, next to the action */}
       <InlineError
@@ -848,18 +907,29 @@ export function PluginsView() {
   const selectedId = usePluginStore((s) => s.selectedId);
   const setSelectedId = usePluginStore((s) => s.setSelectedId);
   const load = usePluginStore((s) => s.load);
+  const loadCommunity = usePluginStore((s) => s.loadCommunity);
+  const communityPlugins = usePluginStore((s) => s.communityPlugins);
+  const installedPlugins = usePluginStore((s) => s.installedPlugins);
+  const installingIds = usePluginStore((s) => s.installingIds);
+  const runningVersion = useConnectionStore(
+    (s) => String(s.liveState["system.version"] ?? ""),
+  );
 
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<"installed" | "browse">("installed");
+  const [updateErrors, setUpdateErrors] = useState<Record<string, string>>({});
 
-  // Load on mount + consume focus
+  // Load on mount + consume focus. The catalog too, for which installed
+  // plugins have a newer version; offline it comes back empty and no update
+  // is shown.
   useEffect(() => {
     load();
+    loadCommunity();
     const focus = useNavigationStore.getState().consumeFocus();
     if (focus?.type === "plugin" && focus.id) {
       setSelectedId(focus.id);
     }
-  }, [load, setSelectedId]);
+  }, [load, loadCommunity, setSelectedId]);
 
   const filtered = plugins.filter(
     (p) =>
@@ -868,6 +938,32 @@ export function PluginsView() {
   );
 
   const selected = plugins.find((p) => p.plugin_id === selectedId) ?? null;
+
+  // Only for a plugin in this list that is installed and can run here: a
+  // missing plugin has nothing to update, and a newer version does not change
+  // which platforms a plugin supports.
+  const allUpdates = pluginUpdates(installedPlugins, communityPlugins, runningVersion);
+  const updates = new Map(
+    plugins
+      .filter((p) => p.status !== "missing" && !isPluginIncompatible(p) && allUpdates.has(p.plugin_id))
+      .map((p) => [p.plugin_id, allUpdates.get(p.plugin_id)!]),
+  );
+
+  // Selects the plugin too, so its page shows the update finishing and any
+  // refusal in full.
+  const handleUpdate = async (update: CatalogUpdate) => {
+    setSelectedId(update.id);
+    setUpdateErrors((prev) => {
+      const next = { ...prev };
+      delete next[update.id];
+      return next;
+    });
+    try {
+      await usePluginStore.getState().updateCommunityPlugin(update.id, update.fileUrl);
+    } catch (e) {
+      setUpdateErrors((prev) => ({ ...prev, [update.id]: parseApiError(e) }));
+    }
+  };
 
   return (
     <ViewContainer
@@ -902,7 +998,12 @@ export function PluginsView() {
             </button>
           </div>
           <button
-            onClick={() => load()}
+            onClick={() => {
+              load();
+              // The catalog now, not the server's cached copy, so a plugin
+              // updated in the last few minutes shows its new version.
+              loadCommunity(true);
+            }}
             style={{
               display: "flex",
               alignItems: "center",
@@ -964,6 +1065,8 @@ export function PluginsView() {
             </div>
           </div>
 
+          <UpdatesAvailableCount count={installableCount(updates)} />
+
           {/* Plugin List */}
           <div style={{ flex: 1, overflow: "auto", padding: "var(--space-sm)" }}>
             {loading && plugins.length === 0 && (
@@ -990,6 +1093,9 @@ export function PluginsView() {
                 plugin={p}
                 selected={selectedId === p.plugin_id}
                 onClick={() => setSelectedId(p.plugin_id)}
+                update={updates.get(p.plugin_id)}
+                updating={installingIds.has(p.plugin_id)}
+                onUpdate={handleUpdate}
               />
             ))}
           </div>
@@ -1009,7 +1115,21 @@ export function PluginsView() {
 
         {/* Right: Detail or Empty */}
         {selected ? (
-          <PluginDetail key={selected.plugin_id} plugin={selected} />
+          <PluginDetail
+            key={selected.plugin_id}
+            plugin={selected}
+            update={updates.get(selected.plugin_id)}
+            updating={installingIds.has(selected.plugin_id)}
+            updateError={updateErrors[selected.plugin_id] ?? null}
+            onUpdate={handleUpdate}
+            onDismissUpdateError={() =>
+              setUpdateErrors((prev) => {
+                const next = { ...prev };
+                delete next[selected.plugin_id];
+                return next;
+              })
+            }
+          />
         ) : (
           <div
             style={{

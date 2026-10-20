@@ -19,14 +19,28 @@
       "id": "dsp1",
       "driver": "generic_tcp",
       "name": "DSP",
-      "config": {},
+      "config": {
+        "commands": {
+          "set_fader": {
+            "label": "Set Fader",
+            "send": "FADER {channel} {level}"
+          }
+        }
+      },
       "child_entities": {}
     },
     {
       "id": "camera1",
       "driver": "generic_tcp",
       "name": "PTZ Camera",
-      "config": {},
+      "config": {
+        "commands": {
+          "recall_preset": {
+            "label": "Recall Preset",
+            "send": "PRESET {preset}"
+          }
+        }
+      },
       "child_entities": {}
     }
   ],

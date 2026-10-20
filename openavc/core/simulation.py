@@ -21,6 +21,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from openavc.drivers.spec import CHILD_RESERVED_PROPS
 from openavc.system_config import APP_DIR, DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR
 from openavc.utils.logger import get_logger
 from openavc.utils.spawn import CREATE_NO_WINDOW
@@ -1028,6 +1029,38 @@ class SimulationManager:
             if isinstance(result, Exception):
                 log.warning("Failed to reconnect %s %s: %s", did, what, result)
 
+    @staticmethod
+    def _forget_simulated_readings(driver: Any) -> None:
+        """Set every reading the simulator gave a device back to None, the
+        value a device holds before it has reported anything.
+
+        The same driver goes on to the equipment, and whatever the equipment
+        does not report on its first connection (a unit in standby holding
+        its queries, a value only a command reply sets) would otherwise keep
+        the simulator's value as if the equipment had reported it. Children
+        stay registered, so what is bound to them stays put, and keep the
+        platform's own keys (presence, fault, label).
+        """
+        info = getattr(driver, "DRIVER_INFO", None) or {}
+        readings = {
+            name: None for name in info.get("state_variables", {})
+            if name != "connected"
+        }
+        if readings:
+            driver.set_states(readings)
+        children = []
+        for child_type in info.get("child_entity_types", {}):
+            for local_id in driver.list_children(child_type):
+                props = {
+                    prop: None
+                    for prop in driver.get_child_schema(child_type, local_id)
+                    if prop not in CHILD_RESERVED_PROPS
+                }
+                if props:
+                    children.append((child_type, local_id, props))
+        if children:
+            driver.set_children_state_batch(children)
+
     async def _restore_connections(self) -> None:
         """Restore original device host/port and reconnect (concurrently —
         stopping simulation on a large project paid the same per-device wait
@@ -1043,6 +1076,11 @@ class SimulationManager:
 
             self._restore_original_config(driver, orig)
             self._handing_back[device_id] = getattr(driver, "transport", None)
+            try:
+                self._forget_simulated_readings(driver)
+            except Exception:
+                # Never at the cost of handing the device back.
+                log.exception("Could not clear %s's simulated readings", device_id)
 
             log.info("Restored %s to %s:%s", device_id, orig["host"], orig["port"])
             restored.append(device_id)

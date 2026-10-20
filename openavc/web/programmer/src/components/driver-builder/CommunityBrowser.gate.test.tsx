@@ -20,6 +20,7 @@ const storeState = {
   installedDrivers: [] as unknown[],
   communityLoading: false,
   communityError: null as string | null,
+  updatingDriverIds: new Set<string>(),
   loadCommunityDrivers: vi.fn(),
   loadInstalledDrivers: vi.fn(),
 };

@@ -168,6 +168,14 @@ For audio/video routing plugins (Dante, NDI). Shows a grid of inputs (columns) a
 
 ---
 
+## Updating Plugins
+
+When the community repository has a newer version of an installed plugin, its row in the **Installed** tab shows **Update to v&lt;version&gt;**, the top of the list counts the updates available, and the plugin's page shows the installed and available versions with an **Update** button. The plugin's card in the **Browse** tab shows **Update** too. A newer version that needs a later release of OpenAVC shows **Needs OpenAVC v&lt;version&gt;** instead of the button.
+
+Updating keeps the plugin's settings. A running plugin is stopped, updated and started again. If the new version cannot be installed or does not load, the previous version is put back.
+
+For a few minutes after a plugin is updated in the repository, GitHub can serve the new files alongside the previous list of hashes, or the other way around. OpenAVC checks a download that doesn't match against a fresh copy of the list before refusing it. If they still disagree, the update is refused with "This plugin was updated a few minutes ago and cannot be installed yet. Try again in five minutes." The refresh button at the top of the Plugins view fetches the repository's list from GitHub again.
+
 ## Uninstalling Plugins
 
 1. Go to the **Installed** tab

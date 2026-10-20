@@ -57,7 +57,8 @@ interface PluginStore {
   communityError: string | null;
   installingIds: Set<string>;
 
-  loadCommunity: () => Promise<void>;
+  /** `refresh` fetches the catalog now instead of the server's cached copy. */
+  loadCommunity: (refresh?: boolean) => Promise<void>;
   loadInstalled: () => Promise<void>;
   installCommunityPlugin: (pluginId: string, fileUrl: string) => Promise<void>;
   uninstallPlugin: (pluginId: string, options?: { removeData?: boolean }) => Promise<void>;
@@ -188,11 +189,11 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
   communityError: null,
   installingIds: new Set(),
 
-  loadCommunity: async () => {
+  loadCommunity: async (refresh) => {
     set({ communityLoading: true, communityError: null });
     try {
       const [community, installed] = await Promise.all([
-        api.browseCommunityPlugins(),
+        api.browseCommunityPlugins(refresh),
         api.listInstalledPlugins(),
       ]);
       set({
@@ -246,15 +247,21 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
   },
 
   updateCommunityPlugin: async (pluginId, fileUrl) => {
+    // One update per plugin at a time, whichever screen asked.
+    if (get().installingIds.has(pluginId)) {
+      throw new Error("This plugin is already being updated.");
+    }
     set((s) => ({ installingIds: new Set(s.installingIds).add(pluginId) }));
     try {
       const result = await api.updatePlugin(pluginId, fileUrl);
       await Promise.all([get().load(), get().loadInstalled()]);
       if (result.status === "update_failed") {
         // The reinstall failed and the previous version was restored.
-        const base = result.error || `Plugin '${pluginId}' could not be updated`;
+        const base = result.error || `Plugin '${pluginId}' could not be updated.`;
         throw new Error(
-          result.rolled_back ? `${base} (kept the previous version)` : base,
+          result.rolled_back
+            ? `${base.replace(/\.?$/, ".")} The previous version is still installed.`
+            : base,
         );
       }
       if (result.status === "load_failed") {

@@ -6,6 +6,11 @@ that config into the definition it builds from, so it can simulate a no-code
 device. Platform tests: invented device ("acme_generic"), synthetic payloads.
 """
 
+import json
+
+from openavc.core.event_bus import EventBus
+from openavc.core.state_store import StateStore
+from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.simulator.yaml_auto import (
     YAMLAutoSimulator,
     _merge_inline_protocol,
@@ -95,6 +100,38 @@ def test_unrecognized_command_is_ignored():
     assert sim.handle_command(b"GIBBERISH") is None
 
 
+# ── A command carrying a value ──────────────────────────────────────────────
+
+# The shapes the device page suggests: a {value} in the command, a reply in a
+# form of its own.
+VALUE_CONFIG = {
+    "delimiter": "\r",
+    "commands": {"set_volume": {"label": "Set Volume", "send": "VOL {level}"}},
+    "responses": [
+        {"mode": "prefix_number", "prefix": "VOL=", "state": "volume", "type": "integer"},
+    ],
+}
+
+
+async def test_a_value_sent_in_a_command_comes_back_from_the_simulator():
+    """What the driver puts on the wire is what the simulator recognizes, and
+    its answer is what the driver reads back."""
+    cls = create_configurable_driver_class({**GENERIC_DEF, "default_config": {}})
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    driver = cls("g1", dict(VALUE_CONFIG), state, events)
+    wire = driver.build_wire("set_volume", {"level": 40})
+
+    sim = _sim(GENERIC_DEF, VALUE_CONFIG)
+    reply = sim.handle_command(wire)
+    assert sim.get_state("volume") == 40
+    assert reply == b"VOL=40\r"
+
+    await driver.on_data_received(reply)
+    assert state.get("device.g1.volume") == 40
+
+
 # ── Driving state from the simulator UI emits the matching string ───────────
 
 
@@ -126,3 +163,82 @@ def test_merge_returns_false_when_no_inline_keys():
     merged, had = _merge_inline_protocol(GENERIC_DEF, {"host": "1.2.3.4"})
     assert had is False
     assert merged is GENERIC_DEF
+
+
+# ── HTTP: JSON-field responses and the status request marked Poll ───────────
+
+HTTP_DEF = {
+    "id": "acme_generic_http",
+    "name": "Acme Generic HTTP",
+    "transport": "http",
+    "state_variables": {},
+    "commands": {},
+    "responses": [],
+}
+
+# The shapes the Commands & Responses editor saves for an HTTP device.
+HTTP_CONFIG = {
+    "commands": {
+        "get_status": {
+            "label": "Get Status", "method": "GET", "path": "/api/status",
+            "poll": True,
+        },
+        "reboot": {"label": "Reboot", "method": "POST", "path": "/api/reboot"},
+    },
+    "responses": [
+        {"mode": "json", "field": "occupied", "state": "occupied",
+         "type": "boolean"},
+        {"mode": "json", "field": "sensor.lux", "state": "lux",
+         "type": "integer"},
+    ],
+}
+
+
+def test_json_field_response_builds_and_seeds_state():
+    sim = _sim(HTTP_DEF, HTTP_CONFIG)
+    assert sim.get_state("occupied") is False
+    assert sim.get_state("lux") == 0
+
+
+def test_http_device_is_shown_as_poll_only():
+    """An HTTP device answers requests and never pushes, so the Simulator
+    card must not say it pushes state changes."""
+    sim = _sim(HTTP_DEF, {"commands": HTTP_CONFIG["commands"]})
+    assert sim._inline_protocol is True
+    assert sim.to_info_dict()["push_state"] is False
+
+
+def test_polled_command_answers_with_the_json_fields():
+    sim = _sim(HTTP_DEF, HTTP_CONFIG)
+    sim.set_state("occupied", True)
+    sim.set_state("lux", 300)
+    reply = sim.handle_command(b"GET /api/status")
+    assert json.loads(reply) == {"occupied": True, "sensor": {"lux": 300}}
+
+
+def test_command_not_marked_poll_gets_no_status_reply():
+    sim = _sim(HTTP_DEF, HTTP_CONFIG)
+    assert sim.handle_command(b"POST /api/reboot") is None
+
+
+def test_polled_command_without_json_fields_is_not_answered():
+    config = {"commands": HTTP_CONFIG["commands"]}
+    sim = _sim(HTTP_DEF, config)
+    assert sim.handle_command(b"GET /api/status") is None
+
+
+async def test_the_driver_reads_the_polled_reply():
+    """What the simulator answers is what the device's own response rows read."""
+    sim = _sim(HTTP_DEF, HTTP_CONFIG)
+    sim.set_state("occupied", True)
+    sim.set_state("lux", 300)
+    reply = sim.handle_command(b"GET /api/status")
+
+    cls = create_configurable_driver_class({**HTTP_DEF, "default_config": {}})
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    driver = cls("g1", dict(HTTP_CONFIG), state, events)
+    await driver.on_data_received(reply)
+    assert state.get("device.g1.occupied") is True
+    assert state.get("device.g1.lux") == 300

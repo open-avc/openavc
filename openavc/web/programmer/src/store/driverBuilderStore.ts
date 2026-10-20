@@ -3,6 +3,7 @@ import yaml from "js-yaml";
 import type { DriverDefinition, DriverInfo, CommunityDriver, InstalledDriver } from "../api/types";
 import * as api from "../api/restClient";
 import { apiErrorList, parseApiError } from "../api/errors";
+import { showError } from "./toastStore";
 import type { SaveRefusal } from "../components/driver-builder/saveRefusal";
 import {
   reconcileAfterSave,
@@ -92,6 +93,10 @@ interface DriverBuilderState {
   installedDrivers: InstalledDriver[];
   communityLoading: boolean;
   communityError: string | null;
+  /** The catalog was asked for at least once this session (it may have failed). */
+  communityLoaded: boolean;
+  /** Drivers being updated right now, from any screen that offers Update. */
+  updatingDriverIds: Set<string>;
 
   loadDefinitions: () => Promise<void>;
   selectDriver: (id: string | null) => void;
@@ -106,7 +111,8 @@ interface DriverBuilderState {
 
   // Driver actions
   loadRegisteredDrivers: () => Promise<void>;
-  loadCommunityDrivers: () => Promise<void>;
+  /** `refresh` fetches the catalog now instead of the server's cached copy. */
+  loadCommunityDrivers: (refresh?: boolean) => Promise<void>;
   loadInstalledDrivers: () => Promise<void>;
   /** Reload every list a driver install, update or removal changes. Called
    *  when the server says a driver changed, whoever changed it. */
@@ -185,6 +191,8 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
     installedDrivers: [],
     communityLoading: false,
     communityError: null,
+    communityLoaded: false,
+    updatingDriverIds: new Set<string>(),
 
     loadDefinitions: async () => {
       const token = defGuard.next();
@@ -386,16 +394,16 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
       }
     },
 
-    loadCommunityDrivers: async () => {
+    loadCommunityDrivers: async (refresh) => {
       const token = communityGuard.next();
       set({ communityLoading: true, communityError: null });
       try {
-        const drivers = await api.fetchCommunityDrivers();
+        const drivers = await api.fetchCommunityDrivers(refresh);
         if (!communityGuard.isCurrent(token)) return;
-        set({ communityDrivers: drivers, communityLoading: false });
+        set({ communityDrivers: drivers, communityLoading: false, communityLoaded: true });
       } catch (e) {
         if (!communityGuard.isCurrent(token)) return;
-        set({ communityError: parseApiError(e), communityLoading: false });
+        set({ communityError: parseApiError(e), communityLoading: false, communityLoaded: true });
       }
     },
 
@@ -447,11 +455,25 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
     },
 
     updateDriver: async (driverId, fileUrl, minPlatformVersion) => {
+      // One update per driver at a time, whichever screen asked: a second one
+      // would rewrite the same files under the first.
+      if (get().updatingDriverIds.has(driverId)) {
+        throw new Error("This driver is already being updated.");
+      }
+      const name =
+        get().installedDrivers.find((d) => d.id === driverId)?.name ?? driverId;
+      set((s) => ({ updatingDriverIds: new Set(s.updatingDriverIds).add(driverId) }));
       let result;
       try {
         result = await api.updateCommunityDriver(driverId, fileUrl, minPlatformVersion);
       } catch (e) {
         throw new Error(parseApiError(e));
+      } finally {
+        set((s) => {
+          const next = new Set(s.updatingDriverIds);
+          next.delete(driverId);
+          return { updatingDriverIds: next };
+        });
       }
       await Promise.all([
         get().loadRegisteredDrivers(),
@@ -459,8 +481,16 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
         get().loadDefinitions(),
       ]);
       // The update itself landed; these are devices that did not come back on
-      // the new code and need looking at in Devices.
-      return result.devices_not_reconnected ?? [];
+      // the new code. Not an update error, so it is reported here rather than
+      // in the screen's error slot, the same from every screen.
+      const stillDown = result.devices_not_reconnected ?? [];
+      if (stillDown.length > 0) {
+        showError(
+          `${name} updated. These devices did not reconnect: ` +
+            `${stillDown.join(", ")}. Open Devices to bring them back.`
+        );
+      }
+      return stillDown;
     },
   };
 });

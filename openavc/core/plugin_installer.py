@@ -48,6 +48,7 @@ from openavc.system_config import PLUGIN_DATA_DIR, PLUGIN_REPO_DIR
 from openavc.utils.community_integrity import (
     PLUGINS_OWNER_REPO,
     ArtifactHashes,
+    CatalogCheck,
     CommunityArtifactError,
     catalog_relpath,
     validate_catalog_url,
@@ -202,6 +203,25 @@ async def _fetch_plugin_hashes(plugin_id: str) -> ArtifactHashes:
     )
 
 
+# What a person sees when a plugin's download and the manifest still disagree
+# after the manifest was fetched again: almost always a plugin updated in the
+# last few minutes, while GitHub's CDN still serves the previous copy of one
+# side. The hashes go to the log (CatalogCheck).
+_PLUGIN_NOT_YET_INSTALLABLE = (
+    "This plugin was updated a few minutes ago and cannot be installed yet. "
+    "Try again in five minutes."
+)
+
+
+async def _plugin_catalog_check(plugin_id: str) -> CatalogCheck:
+    """One install's check against the manifest. The manifest is never cached
+    here, so the one refetch CatalogCheck makes is simply another fetch."""
+    return await CatalogCheck.fetch(
+        lambda _force: _fetch_plugin_hashes(plugin_id),
+        refusal=_PLUGIN_NOT_YET_INSTALLABLE,
+    )
+
+
 _SAFE_ID_RE = re.compile(r"^[a-z0-9_]+$")
 
 
@@ -273,7 +293,7 @@ async def _do_install(plugin_id: str, file_url: str) -> dict[str, Any]:
 
     # Fetched before anything is downloaded, so a plugin whose bytes don't match
     # the catalog is refused with nothing yet written to plugin_repo/.
-    hashes = await _fetch_plugin_hashes(plugin_id)
+    catalog = await _plugin_catalog_check(plugin_id)
 
     try:
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
@@ -282,7 +302,7 @@ async def _do_install(plugin_id: str, file_url: str) -> dict[str, Any]:
                 content = await _download_capped(
                     client, file_url, label="plugin file"
                 )
-                hashes.check(
+                await catalog.check(
                     catalog_relpath(file_url, owner_repo=_CATALOG_OWNER_REPO), content
                 )
                 plugin_dir.mkdir(parents=True, exist_ok=True)
@@ -300,7 +320,7 @@ async def _do_install(plugin_id: str, file_url: str) -> dict[str, Any]:
                 content = await _download_capped(
                     client, file_url, label="plugin archive"
                 )
-                hashes.check(
+                await catalog.check(
                     catalog_relpath(file_url, owner_repo=_CATALOG_OWNER_REPO), content
                 )
                 plugin_dir.mkdir(parents=True, exist_ok=True)
@@ -313,12 +333,12 @@ async def _do_install(plugin_id: str, file_url: str) -> dict[str, Any]:
                 # Extract the path relative to the repo from the raw URL
                 repo_path = file_url.replace(COMMUNITY_REPO_URL + "/", "")
                 await _download_github_directory(
-                    client, repo_path, plugin_dir, hashes=hashes
+                    client, repo_path, plugin_dir, catalog=catalog
                 )
                 # The listing that drove that walk came from the network, so
                 # check it delivered the whole manifest and not a subset —
                 # per-file hashes say nothing about a file that was dropped.
-                hashes.require_complete()
+                catalog.require_complete()
                 log.info(f"Installed plugin '{plugin_id}' from directory")
 
         # Reject the install up front if the plugin needs a newer OpenAVC.
@@ -366,7 +386,7 @@ async def _do_install(plugin_id: str, file_url: str) -> dict[str, Any]:
 
 async def _download_github_directory(
     client: httpx.AsyncClient, repo_path: str, dest_dir: Path,
-    *, budget: "_DownloadBudget | None" = None, hashes: ArtifactHashes | None = None,
+    *, budget: "_DownloadBudget | None" = None, catalog: CatalogCheck | None = None,
     _depth: int = 0, _max_depth: int = 5,
 ) -> None:
     """Recursively download a directory from GitHub using the Contents API."""
@@ -418,8 +438,8 @@ async def _download_github_directory(
                 # Checked before the write. The manifest is keyed by the file's
                 # real repo path, not the sanitized local name, so a listing
                 # that renames a file on the way in cannot find a hash to match.
-                if hashes is not None:
-                    hashes.check(
+                if catalog is not None:
+                    await catalog.check(
                         catalog_relpath(download_url, owner_repo=_CATALOG_OWNER_REPO),
                         content,
                     )
@@ -429,7 +449,7 @@ async def _download_github_directory(
             target.mkdir(parents=True, exist_ok=True)
             await _download_github_directory(
                 client, f"{repo_path}/{name}", target,
-                budget=budget, hashes=hashes,
+                budget=budget, catalog=catalog,
                 _depth=_depth + 1, _max_depth=_max_depth,
             )
 

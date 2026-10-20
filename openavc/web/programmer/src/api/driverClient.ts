@@ -280,8 +280,12 @@ export async function reloadPythonDriver(
 
 // --- Community Drivers ---
 
-export async function fetchCommunityDrivers(): Promise<CommunityDriver[]> {
-  const data = await request<{ drivers: CommunityDriver[] }>("/drivers/community");
+/** The community catalog. `refresh` fetches it now instead of answering from
+ *  the server's cached copy. */
+export async function fetchCommunityDrivers(refresh = false): Promise<CommunityDriver[]> {
+  const data = await request<{ drivers: CommunityDriver[] }>(
+    refresh ? "/drivers/community?refresh=1" : "/drivers/community",
+  );
   return data.drivers;
 }
 

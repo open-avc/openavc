@@ -5,12 +5,10 @@
 import { useState, useEffect } from "react";
 import { Search, Download, Trash2, CheckCircle, Shield, Loader2, RefreshCw, AlertTriangle, ArrowUpCircle } from "lucide-react";
 import { usePluginStore } from "../../store/pluginStore";
+import { useConnectionStore } from "../../store/connectionStore";
 import type { CommunityPlugin } from "../../api/restClient";
-import { hasUpdate } from "../../api/types";
 import { parseApiError } from "../../api/errors";
-
-const COMMUNITY_BASE_URL =
-  "https://raw.githubusercontent.com/open-avc/openavc-plugins/main/";
+import { PLUGIN_CATALOG_BASE_URL, pluginUpdate, type CatalogUpdate } from "../shared/catalogUpdates";
 
 const CATEGORIES = [
   "All",
@@ -37,6 +35,9 @@ export function BrowsePlugins() {
   const installCommunityPlugin = usePluginStore((s) => s.installCommunityPlugin);
   const updateCommunityPlugin = usePluginStore((s) => s.updateCommunityPlugin);
   const uninstallPlugin = usePluginStore((s) => s.uninstallPlugin);
+  const runningVersion = useConnectionStore(
+    (s) => String(s.liveState["system.version"] ?? ""),
+  );
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
@@ -47,7 +48,7 @@ export function BrowsePlugins() {
   }, [loadCommunity]);
 
   const installedIds = new Set(installedPlugins.map((p) => p.id));
-  const installedVersions = new Map(installedPlugins.map((p) => [p.id, p.version]));
+  const installedById = new Map(installedPlugins.map((p) => [p.id, p]));
   // Plugins whose registration failed at install time. Files are on disk
   // but no PLUGIN_INFO class was registered — UI must badge these instead
   // of pretending the install succeeded (A60).
@@ -80,7 +81,7 @@ export function BrowsePlugins() {
       return next;
     });
     try {
-      const fileUrl = `${COMMUNITY_BASE_URL}${plugin.file}`;
+      const fileUrl = `${PLUGIN_CATALOG_BASE_URL}${plugin.file}`;
       await installCommunityPlugin(plugin.id, fileUrl);
     } catch (e) {
       setInstallError((prev) => ({ ...prev, [plugin.id]: parseApiError(e) }));
@@ -95,17 +96,16 @@ export function BrowsePlugins() {
     }
   };
 
-  const handleUpdate = async (plugin: CommunityPlugin) => {
+  const handleUpdate = async (update: CatalogUpdate) => {
     setInstallError((prev) => {
       const next = { ...prev };
-      delete next[plugin.id];
+      delete next[update.id];
       return next;
     });
     try {
-      const fileUrl = `${COMMUNITY_BASE_URL}${plugin.file}`;
-      await updateCommunityPlugin(plugin.id, fileUrl);
+      await updateCommunityPlugin(update.id, update.fileUrl);
     } catch (e) {
-      setInstallError((prev) => ({ ...prev, [plugin.id]: parseApiError(e) }));
+      setInstallError((prev) => ({ ...prev, [update.id]: parseApiError(e) }));
     }
   };
 
@@ -154,7 +154,7 @@ export function BrowsePlugins() {
             />
           </div>
           <button
-            onClick={() => loadCommunity()}
+            onClick={() => loadCommunity(true)}
             style={{
               padding: "var(--space-xs) var(--space-sm)",
               borderRadius: "var(--border-radius)",
@@ -230,21 +230,25 @@ export function BrowsePlugins() {
             gap: "var(--space-md)",
           }}
         >
-          {filtered.map((plugin) => (
-            <PluginCard
-              key={plugin.id}
-              plugin={plugin}
-              installed={installedIds.has(plugin.id)}
-              installing={installingIds.has(plugin.id)}
-              updateAvailable={hasUpdate(installedVersions.get(plugin.id) ?? "", plugin.version)}
-              loadFailed={loadFailures.has(plugin.id)}
-              loadError={loadFailures.get(plugin.id) ?? null}
-              error={installError[plugin.id]}
-              onInstall={() => handleInstall(plugin)}
-              onUpdate={() => handleUpdate(plugin)}
-              onUninstall={() => handleUninstall(plugin.id)}
-            />
-          ))}
+          {filtered.map((plugin) => {
+            const update = pluginUpdate(installedById.get(plugin.id), plugin, runningVersion);
+            return (
+              <PluginCard
+                key={plugin.id}
+                plugin={plugin}
+                installed={installedIds.has(plugin.id)}
+                installing={installingIds.has(plugin.id)}
+                updateAvailable={!!update && !update.blockedBy}
+                updateNeedsPlatform={update?.blockedBy ?? ""}
+                loadFailed={loadFailures.has(plugin.id)}
+                loadError={loadFailures.get(plugin.id) ?? null}
+                error={installError[plugin.id]}
+                onInstall={() => handleInstall(plugin)}
+                onUpdate={() => update && handleUpdate(update)}
+                onUninstall={() => handleUninstall(plugin.id)}
+              />
+            );
+          })}
         </div>
       </div>
 
@@ -270,6 +274,7 @@ function PluginCard({
   installed,
   installing,
   updateAvailable,
+  updateNeedsPlatform,
   loadFailed,
   loadError,
   error,
@@ -281,6 +286,8 @@ function PluginCard({
   installed: boolean;
   installing: boolean;
   updateAvailable: boolean;
+  /** The OpenAVC release the newer version needs, when this system is older. "" = none. */
+  updateNeedsPlatform: string;
   loadFailed: boolean;
   loadError: string | null;
   error?: string;
@@ -410,6 +417,20 @@ function PluginCard({
               >
                 <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
                 Updating...
+              </span>
+            ) : updateNeedsPlatform ? (
+              <span
+                title={`v${plugin.version} needs OpenAVC ${updateNeedsPlatform} or later. Update OpenAVC first.`}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--space-xs)",
+                  fontSize: "var(--font-size-sm)",
+                  color: "var(--text-muted)",
+                }}
+              >
+                <AlertTriangle size={14} />
+                Needs OpenAVC v{updateNeedsPlatform}
               </span>
             ) : loadFailed ? (
               <span

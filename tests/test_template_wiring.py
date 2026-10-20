@@ -17,17 +17,25 @@ devices. The devices are the template's own invented ones (`switcher1`,
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 import shutil
 from pathlib import Path
 
 import pytest
+import yaml
 
 from openavc.core.engine import Engine
+from openavc.core.event_bus import EventBus
 from openavc.core.project_loader import ProjectConfig, load_project
 from openavc.core.script_engine import ScriptEngine
+from openavc.core.state_store import StateStore
+from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.simulator.yaml_auto import YAMLAutoSimulator
 from openavc.ui.page_review import do_action_findings
 
 TEMPLATES = Path(__file__).resolve().parents[1] / "openavc" / "templates"
+DEFINITIONS = Path(__file__).resolve().parents[1] / "openavc" / "drivers" / "definitions"
 
 #: Long enough for a macro's fire-and-forget task and the script handler it
 #: wakes to finish. A binding starts a macro in the background on purpose, so
@@ -50,6 +58,50 @@ def test_no_shipped_template_names_an_action_nothing_dispatches(path: Path) -> N
         for finding in do_action_findings(element.model_dump(mode="json"))
     ]
     assert dead == []
+
+
+#: The Generic devices whose commands are written in the project itself.
+GENERIC_DRIVERS = {"generic_tcp", "generic_serial", "generic_http"}
+
+
+def _commands_sent(path: Path) -> set[tuple[str, str]]:
+    """Every (device, command) a template's pages, macros and scripts send."""
+    sent: set[tuple[str, str]] = set()
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            if node.get("action") == "device.command":
+                sent.add((node.get("device"), node.get("command")))
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(json.loads(path.read_text(encoding="utf-8")))
+    for script in sorted((TEMPLATES / f"{path.stem}.scripts").glob("*.py")):
+        source = script.read_text(encoding="utf-8")
+        sent.update(re.findall(r'devices\.send\(\s*"(\w+)",\s*"(\w+)"', source))
+    return sent
+
+
+@pytest.mark.parametrize("path", _templates(), ids=lambda p: p.stem)
+def test_a_generic_device_defines_every_command_its_template_sends(path: Path) -> None:
+    """A Generic device has only the commands written in its config. Sent any
+    other, it logs "Unknown command" and nothing reaches the equipment, while
+    the panel carries on as if it had."""
+    project = json.loads(path.read_text(encoding="utf-8"))
+    defined = {
+        d["id"]: (d.get("config") or {}).get("commands") or {}
+        for d in project["devices"]
+        if d["driver"] in GENERIC_DRIVERS
+    }
+    missing = sorted(
+        f"{device} {command}"
+        for device, command in _commands_sent(path)
+        if device in defined and command not in defined[device]
+    )
+    assert missing == []
 
 
 def _engine_on(template: str, tmp_path: Path) -> tuple[Engine, list[tuple]]:
@@ -134,3 +186,55 @@ async def test_the_mode_dropdown_applies_its_preset(tmp_path) -> None:
 
     assert ("dsp1", "set_fader", {"channel": "program", "level": -6.0}) in sent
     assert ("dsp1", "mute", {"channel": "mics", "muted": True}) in sent
+
+
+@pytest.mark.asyncio
+async def test_the_occupancy_sensor_drives_the_room(tmp_path) -> None:
+    """The panel's occupancy light and the auto-shutdown countdown follow
+    what the sensor reports."""
+    engine, _sent = _engine_on("advanced_av_suite", tmp_path)
+    engine.state.set("var.system_power", "on", source="test")
+
+    engine.state.set("device.sensor1.occupied", True, source="test")
+    await asyncio.sleep(SETTLE_S)
+    assert engine.state.get("var.room_occupied") is True
+
+    engine.state.set("device.sensor1.occupied", False, source="test")
+    await asyncio.sleep(SETTLE_S)
+    assert engine.state.get("var.room_occupied") is False
+    assert engine.state.get("var.auto_shutdown_warning") is True
+
+    # Someone comes back: the countdown is cancelled.
+    engine.state.set("device.sensor1.occupied", True, source="test")
+    await asyncio.sleep(SETTLE_S)
+    assert engine.state.get("var.auto_shutdown_warning") is False
+
+
+@pytest.mark.asyncio
+async def test_the_simulated_occupancy_sensor_answers_its_poll() -> None:
+    """In simulation the sensor answers its own status request, and its driver
+    reads Occupied from the reply."""
+    # Read, never loaded: loading migrates an older template and saves it back.
+    project = json.loads((TEMPLATES / "advanced_av_suite.avc").read_text(encoding="utf-8"))
+    device = next(d for d in project["devices"] if d["id"] == "sensor1")
+    config = dict(device["config"])
+    definition_path = DEFINITIONS / f"{device['driver']}.avcdriver"
+
+    polled = [
+        c for c in config["commands"].values() if isinstance(c, dict) and c.get("poll")
+    ]
+    assert polled, "the sensor has no status request marked Poll"
+    request = f"{polled[0].get('method', 'GET')} {polled[0]['path']}".encode()
+
+    sim = YAMLAutoSimulator.from_avcdriver(definition_path, "sensor1", config)
+    sim.set_state("occupied", True)
+    reply = sim.handle_command(request)
+    assert reply is not None
+
+    definition = yaml.safe_load(definition_path.read_text(encoding="utf-8"))
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    driver = create_configurable_driver_class(definition)("sensor1", config, state, events)
+    await driver.on_data_received(reply)
+    assert state.get("device.sensor1.occupied") is True

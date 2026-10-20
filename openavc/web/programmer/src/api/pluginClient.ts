@@ -212,8 +212,12 @@ export interface InstalledPlugin {
   error?: string;
 }
 
-export async function browseCommunityPlugins(): Promise<{ plugins: CommunityPlugin[]; error: string | null }> {
-  return request("/plugins/browse");
+/** The community catalog. `refresh` fetches it now instead of answering from
+ *  the server's cached copy. */
+export async function browseCommunityPlugins(
+  refresh = false,
+): Promise<{ plugins: CommunityPlugin[]; error: string | null }> {
+  return request(refresh ? "/plugins/browse?refresh=1" : "/plugins/browse");
 }
 
 export async function listInstalledPlugins(): Promise<{ plugins: InstalledPlugin[] }> {

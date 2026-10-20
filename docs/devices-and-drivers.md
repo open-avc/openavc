@@ -82,9 +82,12 @@ A response turns a reply from the device into a live value you can show on a pan
 - **Contains text**: when the reply contains a fixed string, set the variable to a fixed value. A reply containing `PWR ON` sets `power` to `on`. Add one row per state.
 - **Has a number after**: grab the number that follows a prefix. `VOL=42` sets `volume` to `42`.
 - **Has text after**: grab the rest of the line after a prefix. `NAME=Main Stage` sets `name` to `Main Stage`.
+- **Has a JSON field**: for a JSON reply, read one field by name. A dot reaches inside: `status.power` reads `power` from `{"status": {"power": "on"}}` and sets the variable to `on`.
 - **Matches (advanced)**: for anything else, write a regular expression and pick the capture group.
 
 The variable appears on the device right away and is usable everywhere as `$device.<id>.<name>`: in macro steps, in triggers, and in UI Builder bindings (pick it from the `$` picker on a command parameter or a control's **Value** binding). See [Variables and State](variables-and-state.md) for how `$` references work.
+
+In simulation, a command with a value changes the simulated device when its ID or its placeholder names a response's variable, and the simulator answers with that response's reply. With the `volume` response above, `VOL {level}` with the ID `set_volume`, or `VOL {volume}`, sets `volume` to 42 and gets back `VOL=42`.
 
 ### Polling for live status
 
@@ -94,6 +97,8 @@ Most devices don't announce changes on their own. To keep a status value live (f
 2. In the Commands table, check **Poll** on the commands you want sent on that interval (typically your status queries).
 
 For example, a "Get Power Status" command checked for polling, with an interval of 15, asks the device for its power state every 15 seconds, and your power response rule keeps the variable current. Leave Poll unchecked on action commands like Power On.
+
+In simulation, an HTTP device answers each command checked for Poll with the current values of its **Has a JSON field** rows, so a value you change in the Simulator reaches the device at the next poll.
 
 ### Send raw
 
@@ -236,6 +241,8 @@ The left panel lists all registered drivers. Click a driver to see its details. 
 - **Open in Code Editor** — open a Python driver in the script editor.
 - **Uninstall** — remove the driver from the system. The button is disabled while a device in the current project uses it; the detail panel lists those devices so you know what to move first.
 
+A driver with a newer version in the community library shows **Update to v&lt;version&gt;** on its row, and the top of the list counts the updates available. See [Updating Drivers](#updating-drivers).
+
 The body of the detail panel shows:
 
 - **Overview.** What the driver controls and which devices it supports.
@@ -271,13 +278,27 @@ Search and install drivers from the [community driver library](https://github.co
 
 Available categories include projectors, displays, matrix switchers, DSPs, cameras, lighting, and more. If a driver does not exist for your equipment, you can build one.
 
-Installs come from the official driver library and nowhere else, and the download is checked against the SHA-256 the library publishes for each file before anything is written to disk. A driver whose contents don't match is refused with an error on its card rather than installed. If you see that, refresh the driver list and try again: the usual cause is that the library was updated after the list on screen was loaded. See the [network and security guide](it-network-guide.md) for what this check does and does not prove.
+Installs come from the official driver library and nowhere else, and the download is checked against the SHA-256 the library publishes for each file before anything is written to disk. A driver whose contents don't match is refused with an error on its card rather than installed. See the [network and security guide](it-network-guide.md) for what this check does and does not prove.
 
-### Uninstalling Drivers
+The refresh button beside the search box fetches the library's list from GitHub again, so a driver published or updated in the last few minutes appears at its new version.
+
+### Updating Drivers
+
+Installed drivers stay at the version you installed until you update them. When the community library has a newer version, **Update** appears in three places:
+
+- On the driver's row in the **Installed** tab, as **Update to v&lt;version&gt;**, with a count of the updates available at the top of the list. The driver's detail header shows the installed and available versions with an **Update** button.
+- On the page of each device that uses the driver, under the driver name, for example "Driver update available: v1.5.0 (installed v1.4.3)".
+- On the driver's card in **Browse Community**.
+
+A newer version that needs a later release of OpenAVC shows **Needs OpenAVC v&lt;version&gt;** instead of the button. Update OpenAVC first, then update the driver.
 
 Updating a driver replaces its companion files too, so a driver's simulator and discovery logic stay in step with the driver itself. If a newer version stops shipping one, the old copy is removed rather than left behind.
 
 Devices already using the driver are rebuilt on the new version as part of the update, so there is no need to restart the server to pick it up. If a device does not come back, its name appears in a message and you can reconnect it from Devices.
+
+For a few minutes after a driver is updated in the library, GitHub can serve the new file alongside the previous list of hashes, or the other way around. OpenAVC checks a download that doesn't match against a fresh copy of the list before refusing it. If they still disagree, the update is refused with "This driver was updated a few minutes ago and cannot be installed yet. Try again in five minutes."
+
+### Uninstalling Drivers
 
 To remove a driver you no longer need:
 

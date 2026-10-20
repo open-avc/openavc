@@ -3,8 +3,19 @@ import { Search, Trash2, Pencil, Copy, Code } from "lucide-react";
 import { useDriverBuilderStore } from "../../store/driverBuilderStore";
 import { useProjectStore } from "../../store/projectStore";
 import { useNavigationStore } from "../../store/navigationStore";
+import { useConnectionStore } from "../../store/connectionStore";
 import { parseApiError } from "../../api/errors";
 import { InlineError } from "../shared/InlineError";
+import {
+  driverUpdates,
+  installableCount,
+  type CatalogUpdate,
+} from "../shared/catalogUpdates";
+import {
+  UpdateAvailableLine,
+  UpdateRowButton,
+  UpdatesAvailableCount,
+} from "../shared/CatalogUpdateControls";
 import type {
   ChildEntityStateVarDef,
   ChildEntityTypeSchema,
@@ -59,6 +70,12 @@ export function InstalledDriversView({
   const loadInstalledDrivers = useDriverBuilderStore((s) => s.loadInstalledDrivers);
   const loadDefinitions = useDriverBuilderStore((s) => s.loadDefinitions);
   const uninstallDriver = useDriverBuilderStore((s) => s.uninstallDriver);
+  const communityDrivers = useDriverBuilderStore((s) => s.communityDrivers);
+  const loadCommunityDrivers = useDriverBuilderStore((s) => s.loadCommunityDrivers);
+  const updatingDriverIds = useDriverBuilderStore((s) => s.updatingDriverIds);
+  const runningVersion = useConnectionStore(
+    (s) => String(s.liveState["system.version"] ?? ""),
+  );
   const devices = useProjectStore((s) => s.project?.devices);
   const navigateTo = useNavigationStore((s) => s.navigateTo);
   const selectedId = useDriverBuilderStore((s) => s.installedDriverId);
@@ -68,12 +85,16 @@ export function InstalledDriversView({
   const [confirmUninstall, setConfirmUninstall] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
   const [uninstallError, setUninstallError] = useState<string | null>(null);
+  const [updateErrors, setUpdateErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     loadRegisteredDrivers();
     loadInstalledDrivers();
     loadDefinitions();
-  }, [loadRegisteredDrivers, loadInstalledDrivers, loadDefinitions]);
+    // The catalog, for which installed drivers have a newer version. Offline
+    // it comes back empty and no update is shown.
+    loadCommunityDrivers();
+  }, [loadRegisteredDrivers, loadInstalledDrivers, loadDefinitions, loadCommunityDrivers]);
 
   // Reset confirm/error state when selection changes
   useEffect(() => {
@@ -86,6 +107,14 @@ export function InstalledDriversView({
     installedDrivers.map((d) => [d.id, d])
   );
   const definitionById = new Map(definitions.map((d) => [d.id, d]));
+  const updates = driverUpdates(installedDrivers, communityDrivers, runningVersion);
+  // Counted over the drivers this list shows, so the count and the rows with
+  // an Update button agree.
+  const listedUpdates = new Map(
+    registeredDrivers
+      .filter((d) => !GENERIC_IDS.has(d.id) && updates.has(d.id))
+      .map((d) => [d.id, updates.get(d.id)!]),
+  );
 
   const filteredDrivers = registeredDrivers.filter((d) => {
     if (GENERIC_IDS.has(d.id)) return false;
@@ -116,6 +145,24 @@ export function InstalledDriversView({
       id: driverId,
       detail: filename ? `file:${filename}` : undefined,
     });
+  };
+
+  // Selects the driver too, so its page shows the update finishing and any
+  // refusal in full.
+  const handleUpdate = async (update: CatalogUpdate) => {
+    setSelectedId(update.id);
+    setUpdateErrors((prev) => {
+      const next = { ...prev };
+      delete next[update.id];
+      return next;
+    });
+    try {
+      await useDriverBuilderStore
+        .getState()
+        .updateDriver(update.id, update.fileUrl, update.minPlatformVersion);
+    } catch (e) {
+      setUpdateErrors((prev) => ({ ...prev, [update.id]: parseApiError(e) }));
+    }
   };
 
   const handleUninstall = async () => {
@@ -168,6 +215,8 @@ export function InstalledDriversView({
           </div>
         </div>
 
+        <UpdatesAvailableCount count={installableCount(listedUpdates)} />
+
         {/* Driver list */}
         <div style={{ flex: 1, overflowY: "auto" }}>
           {filteredDrivers.length === 0 ? (
@@ -211,6 +260,7 @@ export function InstalledDriversView({
             filteredDrivers.map((d) => {
               const installedRow = installedById.get(d.id);
               const formatBadge = installedRow?.format === "python" ? "PY" : null;
+              const update = updates.get(d.id);
               return (
                 <div
                   key={d.id}
@@ -269,6 +319,15 @@ export function InstalledDriversView({
                   >
                     {d.manufacturer} &middot; {d.category || "Other"}
                   </div>
+                  {update && (
+                    <div style={{ marginTop: 4 }}>
+                      <UpdateRowButton
+                        update={update}
+                        updating={updatingDriverIds.has(d.id)}
+                        onUpdate={() => handleUpdate(update)}
+                      />
+                    </div>
+                  )}
                 </div>
               );
             })
@@ -320,6 +379,17 @@ export function InstalledDriversView({
             onConfirmUninstall={handleUninstall}
             onCancelUninstall={() => setConfirmUninstall(false)}
             onDismissUninstallError={() => setUninstallError(null)}
+            update={updates.get(selectedDriver.id) ?? null}
+            updating={updatingDriverIds.has(selectedDriver.id)}
+            updateError={updateErrors[selectedDriver.id] ?? null}
+            onUpdate={handleUpdate}
+            onDismissUpdateError={() =>
+              setUpdateErrors((prev) => {
+                const next = { ...prev };
+                delete next[selectedDriver.id];
+                return next;
+              })
+            }
           />
         ) : (
           <div
@@ -359,6 +429,11 @@ export function DriverDetailPanel({
   onConfirmUninstall,
   onCancelUninstall,
   onDismissUninstallError,
+  update = null,
+  updating = false,
+  updateError = null,
+  onUpdate,
+  onDismissUpdateError,
 }: {
   driver: DriverInfo;
   installed: InstalledDriver | null;
@@ -377,6 +452,12 @@ export function DriverDetailPanel({
   onConfirmUninstall: () => void;
   onCancelUninstall: () => void;
   onDismissUninstallError: () => void;
+  /** A newer catalog version of this driver, when there is one. */
+  update?: CatalogUpdate | null;
+  updating?: boolean;
+  updateError?: string | null;
+  onUpdate?: (update: CatalogUpdate) => void;
+  onDismissUpdateError?: () => void;
 }) {
   const help = driver.help;
   const configSchema = driver.config_schema || {};
@@ -525,6 +606,20 @@ export function DriverDetailPanel({
             </span>
           )}
         </div>
+
+        {update && onUpdate && (
+          <UpdateAvailableLine
+            update={update}
+            updating={updating}
+            onUpdate={() => onUpdate(update)}
+            style={{ marginTop: "var(--space-sm)" }}
+          />
+        )}
+        <InlineError
+          message={updateError ? `Update failed: ${updateError}` : null}
+          onDismiss={onDismissUpdateError}
+          style={{ marginTop: "var(--space-sm)" }}
+        />
 
         {/* Uninstall error / in-use warning live next to the action */}
         <InlineError

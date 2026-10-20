@@ -2,39 +2,11 @@ import { useEffect, useState, useCallback } from "react";
 import { Search, CheckCircle, Download, RefreshCw, AlertTriangle, Shield, X, PlayCircle, ArrowUpCircle, Loader2 } from "lucide-react";
 import { useDriverBuilderStore } from "../../store/driverBuilderStore";
 import { useConnectionStore } from "../../store/connectionStore";
-import { showError } from "../../store/toastStore";
 import { Modal } from "../shared/Modal";
-import { hasUpdate, compareSemver } from "../../api/types";
+import { hasUpdate } from "../../api/types";
 import type { CommunityDriver } from "../../api/types";
 import { parseApiError } from "../../api/errors";
-
-/** The platform release a driver needs, when this system is older than it.
- *
- * The catalog has always carried `min_platform_version` and the server has
- * always enforced it, but nothing showed it: the card rendered a live Install
- * button and the refusal only arrived as an error after the click. That was a
- * rare case until the `server` -> `openavc` rename, which gated every Python
- * driver in the catalog at once -- so on a 0.24.x box the whole Python half of
- * the library looked installable and none of it was.
- *
- * Returns "" when the driver is installable, so the caller can treat it as a
- * plain boolean. An unparseable or absent version never blocks: the server is
- * the authority, and this is only here to say so earlier.
- */
-export function blockedByPlatform(
-  running: string,
-  minRequired: string | null | undefined,
-): string {
-  if (!minRequired || !running) return "";
-  try {
-    return compareSemver(minRequired, running) > 0 ? minRequired : "";
-  } catch {
-    return "";
-  }
-}
-
-const COMMUNITY_BASE_URL =
-  "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/";
+import { blockedByPlatform, DRIVER_CATALOG_BASE_URL } from "../shared/catalogUpdates";
 
 const CATEGORIES = [
   "All",
@@ -253,6 +225,9 @@ export function CommunityBrowser() {
   const communityError = useDriverBuilderStore((s) => s.communityError);
   const loadCommunityDrivers = useDriverBuilderStore((s) => s.loadCommunityDrivers);
   const loadInstalledDrivers = useDriverBuilderStore((s) => s.loadInstalledDrivers);
+  // Updates are tracked in the store: Installed Drivers and the device page
+  // offer the same Update, and an update started there is still running here.
+  const updatingDriverIds = useDriverBuilderStore((s) => s.updatingDriverIds);
   // Primitive selector on purpose: subscribing to the whole liveState object
   // would re-render this grid on every unrelated state push.
   const runningVersion = useConnectionStore(
@@ -285,7 +260,7 @@ export function CommunityBrowser() {
 
   const handleInstall = useCallback(
     async (driver: CommunityDriver) => {
-      const fileUrl = `${COMMUNITY_BASE_URL}${driver.file}`;
+      const fileUrl = `${DRIVER_CATALOG_BASE_URL}${driver.file}`;
       setInstallingIds((prev) => new Set(prev).add(driver.id));
       setInstallErrors((prev) => {
         const next = { ...prev };
@@ -309,38 +284,31 @@ export function CommunityBrowser() {
 
   const handleUpdate = useCallback(
     async (driver: CommunityDriver) => {
-      const fileUrl = `${COMMUNITY_BASE_URL}${driver.file}`;
-      setInstallingIds((prev) => new Set(prev).add(driver.id));
+      const fileUrl = `${DRIVER_CATALOG_BASE_URL}${driver.file}`;
       setInstallErrors((prev) => {
         const next = { ...prev };
         delete next[driver.id];
         return next;
       });
       try {
-        const stillDown = await useDriverBuilderStore
+        // A device that did not come back on the new code is reported by the
+        // store, the same from every screen that offers Update.
+        await useDriverBuilderStore
           .getState()
           .updateDriver(driver.id, fileUrl, driver.min_platform_version);
-        // Not an install error: the update landed. The card's slot is worded
-        // "Install failed", so a device that did not come back needs its own
-        // channel or it goes unreported.
-        if (stillDown.length > 0) {
-          showError(
-            `${driver.name} updated. These devices did not reconnect: ` +
-              `${stillDown.join(", ")}. Open Devices to bring them back.`
-          );
-        }
       } catch (e) {
         setInstallErrors((prev) => ({ ...prev, [driver.id]: parseApiError(e) }));
-      } finally {
-        setInstallingIds((prev) => {
-          const next = new Set(prev);
-          next.delete(driver.id);
-          return next;
-        });
       }
     },
     []
   );
+
+  // Refresh fetches the catalog now rather than the server's cached copy, so a
+  // driver updated in the last few minutes shows its new version.
+  const handleRefresh = useCallback(() => {
+    loadCommunityDrivers(true);
+    loadInstalledDrivers();
+  }, [loadCommunityDrivers, loadInstalledDrivers]);
 
   const handleRetry = useCallback(() => {
     loadCommunityDrivers();
@@ -386,7 +354,7 @@ export function CommunityBrowser() {
             }}
           />
           <button
-            onClick={handleRetry}
+            onClick={handleRefresh}
             title="Refresh driver list"
             style={{
               padding: "var(--space-sm)",
@@ -471,7 +439,7 @@ export function CommunityBrowser() {
                   key={`${driver.id}|${card.brand}`}
                   card={card}
                   installed={installedIdSet.has(driver.id)}
-                  installing={installingIds.has(driver.id)}
+                  installing={installingIds.has(driver.id) || updatingDriverIds.has(driver.id)}
                   installError={installErrors[driver.id] || null}
                   updateAvailable={hasUpdate(installedVersions.get(driver.id) ?? "", driver.version)}
                   requiresPlatform={blockedByPlatform(runningVersion, driver.min_platform_version)}
@@ -514,7 +482,7 @@ export function CommunityBrowser() {
         <CommunityDriverDetail
           driver={selectedDriver}
           installed={installedIdSet.has(selectedDriver.id)}
-          installing={installingIds.has(selectedDriver.id)}
+          installing={installingIds.has(selectedDriver.id) || updatingDriverIds.has(selectedDriver.id)}
           installError={installErrors[selectedDriver.id] || null}
           updateAvailable={hasUpdate(installedVersions.get(selectedDriver.id) ?? "", selectedDriver.version)}
           requiresPlatform={blockedByPlatform(runningVersion, selectedDriver.min_platform_version)}

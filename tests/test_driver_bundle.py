@@ -99,7 +99,7 @@ def stub_engine_wiring(monkeypatch):
     # behaviour has its own tests in test_community_artifact_integrity.py.
     from openavc.utils.community_integrity import ArtifactHashes
 
-    async def _no_hashes(driver_id):
+    async def _no_hashes(driver_id, force=False):
         return ArtifactHashes(f"Driver '{driver_id}'", None, source="catalog")
 
     monkeypatch.setattr("openavc.api.routes.drivers._catalog_hashes", _no_hashes)
@@ -642,7 +642,7 @@ async def test_update_refuses_a_companion_that_fails_the_catalog_hash(
     _seed_installed_python_driver(repo, disc=None)
     main_src = "class Foo:\n    DRIVER_INFO = {'id': 'foo'}\n"
 
-    async def _hashes(driver_id):
+    async def _hashes(driver_id, force=False):
         return ArtifactHashes(
             f"Driver '{driver_id}'",
             {
@@ -661,7 +661,7 @@ async def test_update_refuses_a_companion_that_fails_the_catalog_hash(
     with pytest.raises(HTTPException) as exc:
         await _run_update(monkeypatch, repo, client)
     assert exc.value.status_code == 502
-    assert "does not match" in exc.value.detail
+    assert "Try again in five minutes" in exc.value.detail
 
 
 @pytest.mark.asyncio
