@@ -17,6 +17,7 @@ devices. The devices are the template's own invented ones (`switcher1`,
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
 from pathlib import Path
 
@@ -168,10 +169,11 @@ async def test_the_occupancy_sensor_drives_the_room(tmp_path) -> None:
 async def test_the_simulated_occupancy_sensor_answers_its_poll() -> None:
     """In simulation the sensor answers its own status request, and its driver
     reads Occupied from the reply."""
-    project = load_project(TEMPLATES / "advanced_av_suite.avc")
-    device = next(d for d in project.devices if d.id == "sensor1")
-    config = dict(device.config)
-    definition_path = DEFINITIONS / f"{device.driver}.avcdriver"
+    # Read, never loaded: loading migrates an older template and saves it back.
+    project = json.loads((TEMPLATES / "advanced_av_suite.avc").read_text(encoding="utf-8"))
+    device = next(d for d in project["devices"] if d["id"] == "sensor1")
+    config = dict(device["config"])
+    definition_path = DEFINITIONS / f"{device['driver']}.avcdriver"
 
     polled = [
         c for c in config["commands"].values() if isinstance(c, dict) and c.get("poll")
