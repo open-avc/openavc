@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from openavc.api._engine import _get_engine, _rate_limit_test
 from openavc.api.errors import StructuredApiError, api_error as _api_error
+from openavc.api.error_messages import device_error_label, friendly_error
 from openavc.drivers.command_outcome import CommandOutcomeError
 from openavc.api.models import (
     ActionInvokeRequest,
@@ -37,6 +38,7 @@ from openavc.drivers.base import (
     DeviceSettingValueError,
     UnknownCommandError,
     UnknownDeviceSettingError,
+    WakeAddressError,
 )
 from openavc.drivers.child_ids import (
     child_display_name,
@@ -498,6 +500,11 @@ async def send_command(device_id: str, body: CommandRequest) -> dict[str, Any]:
         raise _api_error(404, str(e), e)
     except DeviceNotFoundError as e:
         raise _api_error(404, f"Device '{device_id}' not found", e)
+    except WakeAddressError as e:
+        # A wake with no usable MAC address: the device's setup is not
+        # finished, and the sentence names the setting to fill in.
+        name = device_error_label(device_id, engine.state, engine.project, exc=e)
+        raise _api_error(409, friendly_error(e, device=name), e)
     except AdapterUnavailable as e:
         # The adapter chosen in Reach devices through, not the device: a
         # Wake-on-LAN command runs while the device is off.
@@ -684,6 +691,9 @@ async def invoke_device_action(
             )
         except DeviceNotFoundError as e:
             raise _api_error(404, f"Device '{device_id}' not found", e)
+        except WakeAddressError as e:
+            name = device_error_label(device_id, engine.state, engine.project, exc=e)
+            raise _api_error(409, friendly_error(e, device=name), e)
         except ConnectionError as e:
             raise _not_connected(device_id, e)
         except CommandOutcomeError as e:

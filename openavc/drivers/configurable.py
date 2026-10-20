@@ -32,9 +32,12 @@ from openavc.drivers.base import (
     BaseDriver,
     ConnectionFaultError,
     UnknownDeviceSettingError,
+    WakeAddressError,
     normalize_and_validate_command_params as _normalize_and_validate_command_params,
+    normalize_mac,
 )
 from openavc.drivers.child_ids import coerce_child_local_id, page_starts
+from openavc.drivers.param_labels import param_label
 from openavc.drivers.spec import DEFAULT_LINE_GAP_S, LINE_GAP_TRANSPORTS
 from openavc.drivers.inline_protocol import (
     derive_command_params,
@@ -1811,8 +1814,10 @@ class ConfigurableDriver(BaseDriver):
         transport's protocol, and the side channel speaks its own.
         ``magic_packet`` names the state variable or config field holding the
         device's MAC (state first, because a MAC the device reported on its
-        last connection beats one typed months ago) and sends the Wake-on-LAN
-        packet through :meth:`BaseDriver.wake_on_lan`.
+        last connection beats one typed months ago; a reported value that is
+        not a MAC, such as the all-zero one, gives way to the typed one) and
+        sends the Wake-on-LAN packet through :meth:`BaseDriver.wake_on_lan`.
+        With no usable MAC it raises :class:`WakeAddressError`.
 
         ``host`` defaults to the device's own host and ``port`` may be a
         literal or a {config} placeholder, so a receiver port that is a
@@ -1829,22 +1834,16 @@ class ConfigurableDriver(BaseDriver):
             else None
         )
 
-        mac_field = udp.get("magic_packet")
+        mac_field = str(udp.get("magic_packet") or "")
         if mac_field:
             port = self._resolve_udp_port(
                 where, udp.get("port"), all_params, default=WAKE_ON_LAN_PORT
             )
-            mac = self.get_state(str(mac_field))
-            if not mac:
-                mac = self.config.get(str(mac_field))
-            if not mac:
-                raise ValueError(
-                    f"[{self.device_id}] '{command}' cannot send a Wake-on-LAN "
-                    f"packet: no MAC address in '{mac_field}' yet. It is learned "
-                    f"when the device connects; until then, enter it under "
-                    f"Edit Device."
-                )
-            await self.wake_on_lan(str(mac), host=host, port=port)
+            typed = str(self.config.get(mac_field) or "").strip()
+            mac = normalize_mac(self.get_state(mac_field)) or normalize_mac(typed)
+            if mac is None:
+                raise self._wake_address_error(mac_field, typed)
+            await self.wake_on_lan(mac, host=host, port=port)
             log.debug(f"[{self.device_id}] Sent command '{command}': magic packet")
             return True
 
@@ -1858,6 +1857,26 @@ class ConfigurableDriver(BaseDriver):
         )
         log.debug(f"[{self.device_id}] Sent command '{command}' over UDP: {data!r}")
         return True
+
+    def _wake_address_error(self, mac_field: str, typed: str) -> WakeAddressError:
+        """The refusal for a wake with no usable MAC in ``mac_field``.
+
+        Names the field as Edit Device does, and says the MAC fills itself in
+        only when the driver does read it from the device: a state variable of
+        the same name, or a field the device's report is saved into.
+        """
+        from openavc.core.learned_config import learned_fields
+
+        field_def = (self._definition.get("config_schema") or {}).get(mac_field)
+        field_def = field_def if isinstance(field_def, dict) else {}
+        reported = mac_field in learned_fields(self) or mac_field in (
+            self._definition.get("state_variables") or {}
+        )
+        return WakeAddressError(
+            field_label=param_label(mac_field, field_def),
+            value=typed,
+            reported=reported,
+        )
 
     def _resolve_udp_port(
         self,

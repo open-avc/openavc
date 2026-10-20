@@ -39,6 +39,7 @@ from openavc.drivers.avcdriver_semantic import validate_driver_definition
 from openavc.drivers.base import (
     WAKE_ON_LAN_PORT,
     BaseDriver,
+    WakeAddressError,
     magic_packet,
     normalize_mac,
 )
@@ -180,14 +181,14 @@ def test_magic_packet_reads_state_before_config():
 
 def test_magic_packet_without_a_mac_refuses_and_says_where_to_put_one():
     drv, cap = _driver()
-    with pytest.raises(ValueError, match="no MAC address in 'mac_address' yet"):
+    with pytest.raises(WakeAddressError, match="MAC Address is empty. It is filled in"):
         asyncio.run(drv.send_command("power_on"))
     assert cap.sent == []
 
 
 def test_magic_packet_with_a_bad_mac_names_the_shape_expected():
     drv, cap = _driver({"mac_address": "not a mac"})
-    with pytest.raises(ValueError, match="six hex pairs"):
+    with pytest.raises(WakeAddressError, match="six pairs of hex digits"):
         asyncio.run(drv.send_command("power_on"))
     assert cap.sent == []
 

@@ -174,9 +174,20 @@ def friendly_error(
     if isinstance(exc, ValueError):
         from openavc.core.device_manager import DeviceNotFoundError
 
+        from openavc.drivers.base import WakeAddressError
+
         if isinstance(exc, DeviceNotFoundError):
             target = device or "The requested equipment"
             return f"{target} is unavailable. Contact support."
+        # A wake with no usable MAC address: the device's setup, which only
+        # the Programmer can finish, so a panel says only that.
+        if isinstance(exc, WakeAddressError):
+            if at_panel:
+                return (
+                    f"{device or 'The equipment'} can't be turned on until its "
+                    "setup is finished. Contact support."
+                )
+            return exc.sentence(device)
         msg = str(exc)
         # Already human-readable messages from device_manager / macro_engine
         if "not found" in msg or "not connected" in msg or "blocked" in msg:

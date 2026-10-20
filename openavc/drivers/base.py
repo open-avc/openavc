@@ -217,6 +217,65 @@ class UnknownDeviceSettingError(DeviceSettingValueError):
     """
 
 
+class WakeAddressError(ValueError):
+    """A Wake-on-LAN wake refused: the MAC address it needs is empty, or is
+    not a MAC address.
+
+    Typed so a door can tell it from a driver's other faults without reading
+    its text. Somebody at a panel can open no setting, so they are told the
+    device's setup is not finished; whoever can open Edit Device is told which
+    setting to fill in (``api/error_messages.friendly_error`` does both).
+
+    A driver with its own sentence passes it as the message. Without one, the
+    sentence is built from what the refusal knows, so that a door can put the
+    device's name in it (:meth:`sentence`): ``field_label`` is the setting the
+    MAC goes in, as Edit Device shows it; ``value`` is what that setting holds
+    when it is not a MAC ("" when it is empty); ``reported`` says the driver
+    reads the MAC from the device when it connects, so the setting fills
+    itself in.
+
+    Subclasses ValueError so existing ``except ValueError`` handlers still
+    catch it.
+    """
+
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        field_label: str = "",
+        value: str = "",
+        reported: bool = False,
+    ) -> None:
+        self.field_label = field_label or "MAC Address"
+        self.value = str(value or "").strip()
+        self.reported = reported
+        self._message = message
+        super().__init__(message or self.sentence())
+
+    def sentence(self, device: str = "") -> str:
+        """The refusal for somebody who can open Edit Device, naming the
+        device when its name is given."""
+        if self._message:
+            return self._message
+        subject = device or "The device"
+        if self.value:
+            return (
+                f"{subject} can't be woken: {self.field_label} is "
+                f"'{self.value}', which is not a MAC address (six pairs of hex "
+                f"digits, like aa:bb:cc:dd:ee:ff). Correct it under Edit Device."
+            )
+        if self.reported:
+            return (
+                f"{subject} can't be woken yet: {self.field_label} is empty. It "
+                f"is filled in when {device or 'the device'} connects; until "
+                f"then, enter it under Edit Device."
+            )
+        return (
+            f"{subject} can't be woken: {self.field_label} is empty. Enter it "
+            f"under Edit Device."
+        )
+
+
 class UndeclaredStateError(ValueError):
     """A driver wrote a state variable it never declared in
     ``DRIVER_INFO["state_variables"]``, under strict mode.
@@ -648,14 +707,15 @@ def normalize_mac(value: Any) -> str | None:
 def magic_packet(mac: str) -> bytes:
     """The Wake-on-LAN magic packet for ``mac``: six 0xFF, then the MAC sixteen times.
 
-    Raises ValueError when ``mac`` is not a MAC address, with the message a
-    person fixing the config field needs to read.
+    Raises :class:`WakeAddressError` when ``mac`` is not a MAC address, with
+    the message a person fixing the config field needs to read.
     """
     normalized = normalize_mac(mac)
     if normalized is None:
-        raise ValueError(
+        raise WakeAddressError(
             f"'{mac}' is not a MAC address (expected six hex pairs, "
-            f"like aa:bb:cc:dd:ee:ff)"
+            f"like aa:bb:cc:dd:ee:ff)",
+            value=str(mac),
         )
     return b"\xff" * 6 + bytes.fromhex(normalized.replace(":", "")) * 16
 
@@ -2138,8 +2198,8 @@ class BaseDriver(ABC):
         device's own host), which is what wakes a display whether or not a
         switch between here and there passes broadcast. The direct send is
         best effort: an unroutable host is logged, not raised, because the
-        broadcast already went out. Raises ValueError for a MAC that is not
-        one. Returns the MAC in normalized form.
+        broadcast already went out. Raises :class:`WakeAddressError` for a
+        MAC that is not one. Returns the MAC in normalized form.
         """
         packet = magic_packet(mac)
         normalized = normalize_mac(mac) or mac
