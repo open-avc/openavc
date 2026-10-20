@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { blockedByPlatform } from "./CommunityBrowser";
+import { blockedByPlatform } from "../shared/catalogUpdates";
 
 // The catalog has always carried min_platform_version and the server has always
 // enforced it (422, "requires OpenAVC X or later"). Nothing SHOWED it: the card

@@ -8,7 +8,8 @@
  * does not list (imported by the person, or built into OpenAVC) join under
  * their own manufacturer.
  */
-import { blockedByPlatform, expandDriverToCards } from "../../../components/driver-builder/CommunityBrowser";
+import { expandDriverToCards } from "../../../components/driver-builder/CommunityBrowser";
+import { blockedByPlatform } from "../../../components/shared/catalogUpdates";
 import { hasUpdate } from "../../../api/types";
 import type { CommunityDriver, DriverInfo, InstalledDriver } from "../../../api/types";
 

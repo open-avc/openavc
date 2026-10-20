@@ -294,6 +294,7 @@ The **Browse Community** tab in the Driver Builder view connects to the [OpenAVC
 - Browse community-contributed drivers (both YAML and Python)
 - Filter by category (Projector, Display, Switcher, Audio, Camera, etc.)
 - Install with one click
+- Update an installed driver when a newer version is published ([Updating Drivers](devices-and-drivers.md#updating-drivers))
 
 Installed drivers are saved to `driver_repo/` and immediately available in the "Add Device" dialog.
 

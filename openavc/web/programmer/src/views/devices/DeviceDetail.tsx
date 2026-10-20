@@ -47,6 +47,7 @@ import { BridgeIrPort } from "./BridgeIrPort";
 import { ApiError, parseApiError } from "../../api/errors";
 import { useConnectionTestResult } from "./useConnectionTestResult";
 import { driverLabel } from "../../components/shared/driverLabel";
+import { DriverUpdateLine } from "./DriverUpdateLine";
 
 export function DeviceDetail({
   deviceId,
@@ -593,6 +594,11 @@ export function DeviceDetail({
             <CopyButton value={deviceId} title="Copy device ID" />
           </span>
         </div>
+        {/* Product hardware's driver is part of OpenAVC, and a device whose
+            driver is not installed has the orphan banner below instead. */}
+        {manageable && !orphaned && deviceInfo?.driver && (
+          <DriverUpdateLine driverId={deviceInfo.driver} onUpdated={refetchDeviceInfo} />
+        )}
       </div>
 
       {/* Orphaned device banner */}

@@ -230,6 +230,8 @@ The left panel lists all registered drivers. Click a driver to see its details. 
 - **Open in Code Editor** — open a Python driver in the script editor.
 - **Uninstall** — remove the driver from the system. The button is disabled while a device in the current project uses it; the detail panel lists those devices so you know what to move first.
 
+A driver with a newer version in the community library shows **Update to v&lt;version&gt;** on its row, and the top of the list counts the updates available. See [Updating Drivers](#updating-drivers).
+
 The body of the detail panel shows:
 
 - **Overview.** What the driver controls and which devices it supports.
@@ -265,13 +267,27 @@ Search and install drivers from the [community driver library](https://github.co
 
 Available categories include projectors, displays, matrix switchers, DSPs, cameras, lighting, and more. If a driver does not exist for your equipment, you can build one.
 
-Installs come from the official driver library and nowhere else, and the download is checked against the SHA-256 the library publishes for each file before anything is written to disk. A driver whose contents don't match is refused with an error on its card rather than installed. If you see that, refresh the driver list and try again: the usual cause is that the library was updated after the list on screen was loaded. See the [network and security guide](it-network-guide.md) for what this check does and does not prove.
+Installs come from the official driver library and nowhere else, and the download is checked against the SHA-256 the library publishes for each file before anything is written to disk. A driver whose contents don't match is refused with an error on its card rather than installed. See the [network and security guide](it-network-guide.md) for what this check does and does not prove.
 
-### Uninstalling Drivers
+The refresh button beside the search box fetches the library's list from GitHub again, so a driver published or updated in the last few minutes appears at its new version.
+
+### Updating Drivers
+
+Installed drivers stay at the version you installed until you update them. When the community library has a newer version, **Update** appears in three places:
+
+- On the driver's row in the **Installed** tab, as **Update to v&lt;version&gt;**, with a count of the updates available at the top of the list. The driver's detail header shows the installed and available versions with an **Update** button.
+- On the page of each device that uses the driver, under the driver name, for example "Driver update available: v1.5.0 (installed v1.4.3)".
+- On the driver's card in **Browse Community**.
+
+A newer version that needs a later release of OpenAVC shows **Needs OpenAVC v&lt;version&gt;** instead of the button. Update OpenAVC first, then update the driver.
 
 Updating a driver replaces its companion files too, so a driver's simulator and discovery logic stay in step with the driver itself. If a newer version stops shipping one, the old copy is removed rather than left behind.
 
 Devices already using the driver are rebuilt on the new version as part of the update, so there is no need to restart the server to pick it up. If a device does not come back, its name appears in a message and you can reconnect it from Devices.
+
+For a few minutes after a driver is updated in the library, GitHub can serve the new file alongside the previous list of hashes, or the other way around. OpenAVC checks a download that doesn't match against a fresh copy of the list before refusing it. If they still disagree, the update is refused with "This driver was updated a few minutes ago and cannot be installed yet. Try again in five minutes."
+
+### Uninstalling Drivers
 
 To remove a driver you no longer need:
 
