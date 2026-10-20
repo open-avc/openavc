@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import type { MacroConfig } from "../../api/types";
 import type { MacroIssue } from "../../api/stateClient";
 import * as api from "../../api/restClient";
+import { paramLabel } from "../shared/paramLabel";
 
 export type { MacroIssue };
 
@@ -78,6 +79,54 @@ export function issueLabel(issue: MacroIssue): string {
     if (label) parts.push(`${label} ${Number(match[2]) + 1}`);
   }
   return parts.join(" → ");
+}
+
+/**
+ * What the step and trigger forms call each field a finding can say is not
+ * filled in, by the step's action or the trigger's type. Read by
+ * tests/test_macro_issue_labels.py, which holds it to the platform's list of
+ * required fields.
+ */
+export const MISSING_FIELD_LABELS: Record<string, Record<string, string>> = {
+  "device.command": { device: "Device", command: "Command" },
+  "group.command": { group: "Group", command: "Command" },
+  delay: { seconds: "Seconds" },
+  "state.set": { key: "Variable" },
+  macro: { macro: "Macro" },
+  "event.emit": { event: "Event" },
+  conditional: { condition: "If" },
+  wait_until: { condition: "Wait until", timeout: "Timeout" },
+  "ui.navigate": { page: "Page" },
+  schedule: { cron: "Schedule" },
+  state_change: { state_key: "When" },
+  event: { event_pattern: "Event" },
+};
+
+/** Where a condition's state key is chosen. Its picker has no label of its
+ *  own, so the sentence names the part of the form that holds it. */
+const CONDITION_PLACES: Record<string, string> = {
+  conditional: "If",
+  wait_until: "Wait until",
+};
+
+/**
+ * A finding as the editor says it: by the label on the form it sits under
+ * ("Device is required.", "Level Value is required."), where the platform
+ * says which field is missing. Anything else keeps the platform's sentence.
+ */
+export function issueText(issue: MacroIssue): string {
+  const { missing, action = "" } = issue;
+  if (!missing) return issue.message;
+  if (missing === "param" && issue.param) {
+    return `${issue.param_label || paramLabel(issue.param, undefined)} is required.`;
+  }
+  if (missing === "condition.key" && CONDITION_PLACES[action]) {
+    return `Choose a state key for ${CONDITION_PLACES[action]}.`;
+  }
+  if (missing === "skip_if.key") return "Choose a state key for Skip this step if.";
+  if (missing === "conditions.key") return "Choose a state key.";
+  const label = MISSING_FIELD_LABELS[action]?.[missing];
+  return label ? `${label} is required.` : issue.message;
 }
 
 /** "1 step", "2 steps and 1 trigger" -- the summary line's subject. */

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useId } from "react";
 import type { MacroStep, MacroConfig, DeviceConfig, DeviceInfo, DriverParamDef } from "../../api/types";
 import { ParamInput } from "../shared/ParamInput";
 import { paramLabel } from "../shared/paramLabel";
+import { useCommandLabel } from "./commandLabels";
 import { useProjectStore } from "../../store/projectStore";
 import { SearchableSelect } from "../shared/SearchableSelect";
 import {
@@ -1242,6 +1243,7 @@ function InlineStepCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const typeInfo = getStepType(step.action);
+  const commandLabel = useCommandLabel();
   const devices = useProjectStore((s) => s.project?.devices) ?? [];
 
   return (
@@ -1274,7 +1276,7 @@ function InlineStepCard({
           {typeInfo?.label ?? step.action}
         </span>
         <span style={{ flex: 1, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {typeInfo?.summary(step, devices as any, macros) ?? ""}
+          {typeInfo?.summary(step, devices as any, macros, commandLabel) ?? ""}
         </span>
         <div style={{ display: "flex", gap: 1, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
           {onMove && (

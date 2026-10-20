@@ -199,12 +199,13 @@ describe("macro step editing keeps the field you are typing in", () => {
     // ParamInput labels a bounded numeric with its declared range.
     const field = await screen.findByPlaceholderText("20-20000");
     await user.click(field);
+    const lookups = mocks.getDevice.mock.calls.length;
     await user.type(field, "1000");
 
     expect(document.activeElement).toBe(field);
     expect((seen.macro.steps[0].params as Record<string, unknown>).frequency).toBe("1000");
-    // The device was looked up once, not once per keystroke.
-    expect(mocks.getDevice).toHaveBeenCalledTimes(1);
+    // The device is looked up when the step opens, not once per keystroke.
+    expect(mocks.getDevice).toHaveBeenCalledTimes(lookups);
   });
 
   it("edits the step it is pointed at when two steps sit side by side", async () => {

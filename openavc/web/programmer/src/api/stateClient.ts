@@ -99,6 +99,15 @@ export interface MacroIssue {
   index: number;
   path: string;
   message: string;
+  /** The step's action or the trigger's type, where it is known. */
+  action?: string;
+  /** On a finding that a field is not filled in: which one (`device`,
+   *  `condition.key`, `state_key`...), or `param` for a command parameter. */
+  missing?: string;
+  /** The parameter's key, when `missing` is `param`. */
+  param?: string;
+  /** What the step's form calls that parameter, when its driver is loaded. */
+  param_label?: string;
 }
 
 /**

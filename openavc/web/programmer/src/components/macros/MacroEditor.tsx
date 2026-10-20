@@ -63,7 +63,8 @@ import {
   pluginActionSummary,
 } from "./pluginMacroActions";
 import { CopyButton } from "../shared/CopyButton";
-import { issuesAt, issueLabel, issueSummary, type MacroIssue } from "./macroLint";
+import { issuesAt, issueLabel, issueSummary, issueText, type MacroIssue } from "./macroLint";
+import { CommandLabelContext, stepDeviceIds, useCommandLabel, useCommandLabels } from "./commandLabels";
 import * as api from "../../api/restClient";
 import { parseApiError } from "../../api/errors";
 
@@ -144,8 +145,9 @@ function SortableStepItem({
 
   const labelText = typeInfo?.label ?? pluginAction?.label ?? (isMissingPlugin ? "Missing" : step.action);
   const labelBg = typeInfo?.color ?? (pluginAction ? "#a855f7" : isMissingPlugin ? "#ef4444" : "#666");
+  const commandLabel = useCommandLabel();
   const summaryText = typeInfo
-    ? typeInfo.summary(step, devices as any, allMacros)
+    ? typeInfo.summary(step, devices as any, allMacros, commandLabel)
     : pluginAction
       ? pluginActionSummary(step, pluginAction)
       : isMissingPlugin
@@ -267,7 +269,7 @@ function SortableStepItem({
         {/* Incomplete as built -- amber, and nothing about it blocks a save */}
         {lintIssues.length > 0 && (
           <span
-            title={lintIssues.map((i) => `${issueLabel(i)}: ${i.message}`).join("\n")}
+            title={lintIssues.map((i) => `${issueLabel(i)}: ${issueText(i)}`).join("\n")}
             style={{ display: "flex", flexShrink: 0, color: "#f59e0b" }}
           >
             <AlertTriangle size={14} />
@@ -334,7 +336,7 @@ function SortableStepItem({
               <AlertTriangle size={12} style={{ flexShrink: 0 }} />
               <span>
                 {issue.path.includes(".") ? `${issueLabel(issue)}: ` : ""}
-                {issue.message}
+                {issueText(issue)}
               </span>
             </div>
           ))}
@@ -431,6 +433,7 @@ export function MacroEditor({
     return () => document.removeEventListener("mousedown", handler);
   }, [showAddMenu, showTemplates]);
   const [, setClipboardRevision] = useState(0); // force re-render on copy
+  const commandLabel = useCommandLabels(stepDeviceIds(macro.steps));
 
   const { actions: pluginMacroActions, refresh: refreshPluginActions } = usePluginMacroActions();
 
@@ -829,7 +832,7 @@ export function MacroEditor({
               <strong style={{ color: "var(--text-primary)", fontWeight: 500 }}>
                 {issueLabel(issue)}
               </strong>
-              : {issue.message}
+              : {issueText(issue)}
             </div>
           ))}
         </div>
@@ -871,6 +874,7 @@ export function MacroEditor({
       )}
 
       {/* Triggers + Steps */}
+      <CommandLabelContext.Provider value={commandLabel}>
       <div style={{ flex: 1, overflow: "auto", padding: "var(--space-md)" }}>
         {/* Triggers section */}
         <TriggerList
@@ -1024,7 +1028,7 @@ export function MacroEditor({
                     <div>
                       <div style={{ fontWeight: 500, color: "var(--accent)" }}>Paste Copied Step</div>
                       <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
-                        {(() => { const s = getClipboardStep(); return s ? getStepType(s.action)?.summary(s, devices as any, allMacros) ?? s.action : ""; })()}
+                        {(() => { const s = getClipboardStep(); return s ? getStepType(s.action)?.summary(s, devices as any, allMacros, commandLabel) ?? s.action : ""; })()}
                       </div>
                     </div>
                   </div>
@@ -1220,6 +1224,7 @@ export function MacroEditor({
           )}
         </div>
       </div>
+      </CommandLabelContext.Provider>
 
       {/* Keyframe for spinner */}
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>

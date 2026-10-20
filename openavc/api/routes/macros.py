@@ -7,7 +7,7 @@ from fastapi import APIRouter, Body, HTTPException
 
 from openavc.api._engine import _get_engine, _rate_limit_test
 from openavc.api.errors import api_error as _api_error
-from openavc.core.command_params import missing_params_check
+from openavc.core.command_params import missing_params_check, param_label_check
 from openavc.core.macro_validation import macro_issues
 
 router = APIRouter(route_class=ProgrammerRoute)
@@ -105,6 +105,11 @@ async def validate_macros(body: Any = Body(...)) -> dict[str, Any]:
     missing_params = missing_params_check(
         getattr(engine, "devices", None), getattr(engine, "project", None),
     )
+    # And what the step's form calls each of those parameters, so the editor
+    # can name the field it shows rather than the driver's key for it.
+    param_label = param_label_check(
+        getattr(engine, "devices", None), getattr(engine, "project", None),
+    )
 
     if not isinstance(body, dict) or not isinstance(body.get("macros"), list):
         raise _api_error(400, 'Expected {"macros": [{"id": ..., "steps": [...], "triggers": [...]}]}')
@@ -119,6 +124,7 @@ async def validate_macros(body: Any = Body(...)) -> dict[str, Any]:
                 entry.get("triggers") or [],
                 extra_actions=extra_actions,
                 missing_params=missing_params,
+                param_label=param_label,
             )
         }
     return {"macros": results}

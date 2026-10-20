@@ -34,6 +34,7 @@ from openavc.core.command_params import (
     device_groups,
     missing_params,
     missing_params_check,
+    param_label_check,
 )
 from openavc.core.event_bus import EventBus
 from openavc.core.macro_engine import MacroEngine
@@ -246,6 +247,42 @@ def test_the_macro_lint_places_it_on_the_row_somebody_has_to_open():
         ("step", 1, "steps[1].then_steps[0]"),
         ("step", 1, "steps[1].then_steps[0]"),
     ]
+
+
+def test_the_macro_lint_names_each_missing_parameter_as_the_form_does():
+    """The editor shows the finding under the step's form, so it names the
+    parameter by the form's label: the driver's own, else the key made
+    readable. The sentence the AI tools read keeps the keys."""
+    info = {"commands": {"set_fader": {"params": {
+        "channel": {"type": "child_id", "required": True, "label": "Input Channel"},
+        "level_value": {"type": "number", "required": True},
+    }}}}
+    devices = _devices(amp=_driver(info))
+    issues = macro_issues(
+        [_action()], [],
+        missing_params=missing_params_check(devices, None),
+        param_label=param_label_check(devices, None),
+    )
+    assert [(i["missing"], i["param"], i["param_label"]) for i in issues] == [
+        ("param", "channel", "Input Channel"),
+        ("param", "level_value", "Level Value"),
+    ]
+    assert [i["message"] for i in issues] == [
+        "'set_fader': 'channel' is required",
+        "'set_fader': 'level_value' is required",
+    ]
+
+
+def test_a_group_step_names_the_parameter_from_a_member_that_declares_it():
+    devices = _devices(amp=AMP)
+    project = {"device_groups": [{"id": "amps", "device_ids": ["gone", "amp"]}]}
+    step = {"action": "group.command", "group": "amps", "command": "set_fader", "params": {}}
+    issues = macro_issues(
+        [step], [],
+        missing_params=missing_params_check(devices, project),
+        param_label=param_label_check(devices, project),
+    )
+    assert [i["param_label"] for i in issues] == ["Channel", "Level"]
 
 
 def test_the_macro_lint_is_silent_without_the_driver():

@@ -34,6 +34,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any
 
 from openavc.drivers.base import missing_required_params
+from openavc.drivers.param_labels import param_label
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -130,6 +131,37 @@ def missing_params(
     return found if answered else None
 
 
+def param_label_of(
+    action: Mapping[str, Any],
+    name: str,
+    *,
+    devices: Any,
+    groups: Mapping[str, Sequence[str]] | None = None,
+) -> str | None:
+    """What the step's form calls one of its command's parameters: the label
+    the driver declares, else the key made readable (``param_labels``), read
+    from the same driver lookup as :func:`missing_params`. A group step takes
+    the first member whose driver declares it. None when no driver does."""
+    if not isinstance(action, Mapping):
+        return None
+    command = action.get("command")
+    if not isinstance(command, str) or not command:
+        return None
+    if action.get("action") == "device.command":
+        candidates: Iterable[Any] = [action.get("device")]
+    elif action.get("action") == "group.command" and groups:
+        candidates = groups.get(str(action.get("group") or ""), ())
+    else:
+        return None
+    for device_id in candidates:
+        if not isinstance(device_id, str):
+            continue
+        defs = _declared_params(devices, device_id, command)
+        if defs and name in defs:
+            return param_label(name, defs[name])
+    return None
+
+
 def device_groups(project: Any) -> dict[str, list[str]]:
     """``{group id: member device ids}`` off a loaded project, however it is held.
 
@@ -163,3 +195,14 @@ def missing_params_check(
     """
     groups = device_groups(project) if project is not None else None
     return lambda action: missing_params(action, devices=devices, groups=groups)
+
+
+def param_label_check(
+    devices: Any, project: Any = None
+) -> Callable[[Mapping[str, Any], str], str | None]:
+    """:func:`param_label_of` as one callable, injected the way
+    :func:`missing_params_check` is, for the macro lint's records."""
+    groups = device_groups(project) if project is not None else None
+    return lambda action, name: param_label_of(
+        action, name, devices=devices, groups=groups,
+    )

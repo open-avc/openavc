@@ -1,5 +1,6 @@
 import type { MacroStep, MacroConfig, DeviceConfig, DeviceGroup } from "../../api/types";
 import { quotedValueText } from "../shared/booleanWords";
+import type { CommandLabelOf } from "./commandLabels";
 
 export interface StepTypeInfo {
   action: string;
@@ -9,8 +10,14 @@ export interface StepTypeInfo {
   /** One line for a collapsed step. `macros` is here for the same reason
    *  `devices` is: a step that names another object by id has to be able to
    *  print what that object is called. The trigger table next door has taken
-   *  all three since it was written. */
-  summary: (step: MacroStep, devices: DeviceConfig[], macros: MacroConfig[]) => string;
+   *  all three since it was written. `commandLabel` names a device's command
+   *  the way its Command list does, where the editor has fetched it. */
+  summary: (
+    step: MacroStep,
+    devices: DeviceConfig[],
+    macros: MacroConfig[],
+    commandLabel?: CommandLabelOf,
+  ) => string;
   defaults: () => Partial<MacroStep>;
 }
 
@@ -41,10 +48,11 @@ export const STEP_TYPES: StepTypeInfo[] = [
     label: "Device Command",
     description: "Send a command to a device (power on, switch input, etc.)",
     color: "#3b82f6",
-    summary: (step, devices) => {
+    summary: (step, devices, _macros, commandLabel) => {
       const dev = devices.find((d) => d.id === step.device);
       const name = dev ? dev.name : step.device ?? "?";
-      return `${name} → ${step.command ?? "?"}`;
+      const command = commandLabel?.(step.device, step.command) ?? step.command;
+      return `${name} → ${command ?? "?"}`;
     },
     defaults: () => ({ action: "device.command", device: "", command: "" }),
   },

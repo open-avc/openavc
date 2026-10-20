@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Plus, Trash2, AlertTriangle } from "lucide-react";
 import type { MacroConfig } from "../../api/types";
 import { CopyButton } from "../shared/CopyButton";
-import { issueLabel, issueSummary, type MacroIssuesById } from "./macroLint";
+import { issueLabel, issueSummary, issueText, type MacroIssuesById } from "./macroLint";
 
 interface MacroListProps {
   macros: MacroConfig[];
@@ -167,7 +167,7 @@ export function MacroList({ macros, issues, selectedId, onSelect, onAdd, onDelet
                       color: "#f59e0b",
                     }}
                     title={issues![m.id]
-                      .map((i) => `${issueLabel(i)}: ${i.message}`)
+                      .map((i) => `${issueLabel(i)}: ${issueText(i)}`)
                       .join("\n")}
                   >
                     <AlertTriangle size={11} style={{ flexShrink: 0 }} />

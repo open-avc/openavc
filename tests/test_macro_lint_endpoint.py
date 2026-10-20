@@ -85,7 +85,43 @@ def test_an_incomplete_step_is_reported_against_its_own_row(client):
         "index": 1,
         "path": "steps[1]",
         "message": "delay step requires 'seconds'",
+        "action": "delay",
+        "missing": "seconds",
     }]
+
+
+def test_a_field_left_empty_is_named_so_the_editor_can_use_its_label(client):
+    """The editor says "Device is required." beside the field labelled
+    Device; the sentence stays the one the AI tools read."""
+    http, _ = client
+    issues = _lint(http, {
+        "id": "macro_start",
+        "steps": [
+            {"action": "device.command", "device": "", "command": "power_on"},
+            {
+                "action": "conditional",
+                "condition": {"key": "", "operator": "eq", "value": 1},
+                "then_steps": [],
+            },
+            {"action": "delay", "seconds": 2, "skip_if": {"key": "", "operator": "eq"}},
+            {"action": "delay", "seconds": -1},
+        ],
+        "triggers": [
+            {"id": "t1", "type": "state_change", "state_key": ""},
+            {"id": "t2", "type": "event", "event_pattern": "",
+             "conditions": [{"key": "", "operator": "eq", "value": 1}]},
+        ],
+    })["macro_start"]["issues"]
+    assert [(i["scope"], i["index"], i["action"], i.get("missing")) for i in issues] == [
+        ("step", 0, "device.command", "device"),
+        ("step", 1, "conditional", "condition.key"),
+        ("step", 2, "delay", "skip_if.key"),
+        ("step", 3, "delay", None),
+        ("trigger", 0, "state_change", "state_key"),
+        ("trigger", 1, "event", "event_pattern"),
+        ("trigger", 1, "event", "conditions.key"),
+    ]
+    assert issues[0]["message"] == "device.command step requires 'device'"
 
 
 def test_a_device_command_with_no_command_chosen_is_reported(client):

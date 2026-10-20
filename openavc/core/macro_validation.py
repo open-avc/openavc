@@ -81,6 +81,148 @@ VALID_STATE_TRIGGER_OPS = frozenset({"any"} | VALID_CONDITION_OPS)
 VALID_OVERLAP_MODES = frozenset(("skip", "queue", "allow"))
 
 
+#: What the lint's caller hands in to name a parameter the way the step's form
+#: does: given a step and a parameter's key, its label, or None.
+ParamLabel = Callable[[Mapping[str, Any], str], "str | None"]
+
+
+def _finding(path: str, message: str, **where: Any) -> dict[str, Any]:
+    """One finding: the sentence, the place it was written against, and what
+    the editor needs to say it in the form's own words (``action``,
+    ``missing``, ``param``, ``param_label``). The sentence itself is the one
+    the AI tools and the logs read, so it keeps the field keys."""
+    return {"path": path, "message": message, **{k: v for k, v in where.items() if v is not None}}
+
+
+def _step_findings(
+    step: dict,
+    path: str,
+    *,
+    extra_actions: Collection[str] = (),
+    missing_params: MissingParams | None = None,
+    param_label: ParamLabel | None = None,
+) -> list[dict[str, Any]]:
+    """The findings :func:`validate_macro_step` writes, as records."""
+    found: list[dict[str, Any]] = []
+    action = step.get("action", "")
+    if not action:
+        found.append(_finding(path, "missing 'action' field"))
+        return found
+    if action not in BUILTIN_STEP_ACTIONS and action not in extra_actions:
+        usable = ", ".join(sorted(BUILTIN_STEP_ACTIONS) + sorted(extra_actions))
+        found.append(_finding(
+            path, f"step action '{action}' is not valid. Use: {usable}", action=action,
+        ))
+        return found
+
+    required = STEP_REQUIRED_FIELDS.get(action, ())
+    for field in required:
+        val = step.get(field)
+        if val is None or val == "":
+            found.append(_finding(
+                path, f"{action} step requires '{field}'", action=action, missing=field,
+            ))
+
+    # The step names a command; the command names parameters of its own. The
+    # fields above are all this module can see, and stopping there is what let a
+    # step read as complete while the device refused every run of it. The
+    # sentence is the runtime's own, word for word, for the AI tools and the
+    # logs; the editor names the parameter as its form does, from `param_label`.
+    if missing_params is not None:
+        for name in missing_params(step) or ():
+            found.append(_finding(
+                path, f"'{step.get('command')}': '{name}' is required",
+                action=action, missing="param", param=name,
+                param_label=param_label(step, name) if param_label else None,
+            ))
+
+    if action == "delay":
+        seconds = step.get("seconds")
+        if seconds is not None and (not isinstance(seconds, (int, float)) or seconds < 0):
+            found.append(_finding(
+                path, "delay 'seconds' must be a non-negative number",
+                action=action,
+            ))
+
+    if action == "conditional":
+        cond = step.get("condition")
+        if isinstance(cond, dict):
+            if not cond.get("key"):
+                found.append(_finding(
+                    path, "conditional condition requires 'key'",
+                    action=action, missing="condition.key",
+                ))
+            op = cond.get("operator", "eq")
+            if op not in VALID_CONDITION_OPS:
+                found.append(_finding(
+                    path, f"condition operator '{op}' is not valid",
+                    action=action,
+                ))
+        # Recursively validate then/else steps
+        for branch in ("then_steps", "else_steps"):
+            branch_steps = step.get(branch)
+            if isinstance(branch_steps, list):
+                for i, sub in enumerate(branch_steps):
+                    if isinstance(sub, dict):
+                        found.extend(_step_findings(
+                            sub, f"{path}.{branch}[{i}]",
+                            extra_actions=extra_actions,
+                            missing_params=missing_params,
+                            param_label=param_label,
+                        ))
+
+    if action == "wait_until":
+        cond = step.get("condition")
+        if isinstance(cond, dict):
+            if not cond.get("key"):
+                found.append(_finding(
+                    path, "wait_until condition requires 'key'",
+                    action=action, missing="condition.key",
+                ))
+            op = cond.get("operator", "eq")
+            if op not in VALID_CONDITION_OPS:
+                found.append(_finding(
+                    path, f"wait_until condition operator '{op}' is not valid",
+                    action=action,
+                ))
+        # timeout is required as a field, but may be null to mean "never time out"
+        if "timeout" not in step:
+            found.append(_finding(
+                path,
+                "wait_until requires 'timeout' (number of seconds, or null for no timeout)",
+                action=action, missing="timeout",
+            ))
+        else:
+            tmo = step.get("timeout")
+            if tmo is not None and (not isinstance(tmo, (int, float)) or tmo < 0):
+                found.append(_finding(
+                    path, "wait_until 'timeout' must be a non-negative number or null",
+                    action=action,
+                ))
+        on_timeout = step.get("on_timeout")
+        if on_timeout is not None and on_timeout not in ("fail", "continue"):
+            found.append(_finding(
+                path, "wait_until 'on_timeout' must be 'fail' or 'continue'",
+                action=action,
+            ))
+
+    # Validate skip_if guard
+    skip_if = step.get("skip_if")
+    if isinstance(skip_if, dict):
+        if not skip_if.get("key"):
+            found.append(_finding(
+                path, "skip_if requires 'key'", action=action, missing="skip_if.key",
+            ))
+        op = skip_if.get("operator", "eq")
+        if op not in VALID_CONDITION_OPS:
+            found.append(_finding(
+                path, f"skip_if operator '{op}' is not valid",
+                action=action,
+            ))
+
+    return found
+
+
 def validate_macro_step(
     step: dict,
     path: str,
@@ -101,129 +243,70 @@ def validate_macro_step(
     registry knows, and a caller that does not must produce no finding rather
     than guess. See ``core/command_params``.
     """
-    errors: list[str] = []
-    action = step.get("action", "")
-    if not action:
-        errors.append(f"{path}: missing 'action' field")
-        return errors
-    if action not in BUILTIN_STEP_ACTIONS and action not in extra_actions:
-        usable = ", ".join(sorted(BUILTIN_STEP_ACTIONS) + sorted(extra_actions))
-        errors.append(
-            f"{path}: step action '{action}' is not valid. Use: {usable}"
+    return [
+        f"{f['path']}: {f['message']}"
+        for f in _step_findings(
+            step, path, extra_actions=extra_actions, missing_params=missing_params,
         )
-        return errors
-
-    required = STEP_REQUIRED_FIELDS.get(action, ())
-    for field in required:
-        val = step.get(field)
-        if val is None or val == "":
-            errors.append(f"{path}: {action} step requires '{field}'")
-
-    # The step names a command; the command names parameters of its own. The
-    # fields above are all this module can see, and stopping there is what let a
-    # step read as complete while the device refused every run of it. The
-    # sentence is the runtime's own, word for word, so the lint and the failure
-    # somebody eventually sees are the same sentence.
-    if missing_params is not None:
-        for name in missing_params(step) or ():
-            errors.append(f"{path}: '{step.get('command')}': '{name}' is required")
-
-    if action == "delay":
-        seconds = step.get("seconds")
-        if seconds is not None and (not isinstance(seconds, (int, float)) or seconds < 0):
-            errors.append(f"{path}: delay 'seconds' must be a non-negative number")
-
-    if action == "conditional":
-        cond = step.get("condition")
-        if isinstance(cond, dict):
-            if not cond.get("key"):
-                errors.append(f"{path}: conditional condition requires 'key'")
-            op = cond.get("operator", "eq")
-            if op not in VALID_CONDITION_OPS:
-                errors.append(f"{path}: condition operator '{op}' is not valid")
-        # Recursively validate then/else steps
-        for branch in ("then_steps", "else_steps"):
-            branch_steps = step.get(branch)
-            if isinstance(branch_steps, list):
-                for i, sub in enumerate(branch_steps):
-                    if isinstance(sub, dict):
-                        errors.extend(validate_macro_step(
-                            sub, f"{path}.{branch}[{i}]",
-                            extra_actions=extra_actions,
-                            missing_params=missing_params,
-                        ))
-
-    if action == "wait_until":
-        cond = step.get("condition")
-        if isinstance(cond, dict):
-            if not cond.get("key"):
-                errors.append(f"{path}: wait_until condition requires 'key'")
-            op = cond.get("operator", "eq")
-            if op not in VALID_CONDITION_OPS:
-                errors.append(f"{path}: wait_until condition operator '{op}' is not valid")
-        # timeout is required as a field, but may be null to mean "never time out"
-        if "timeout" not in step:
-            errors.append(
-                f"{path}: wait_until requires 'timeout' (number of seconds, or null for no timeout)"
-            )
-        else:
-            tmo = step.get("timeout")
-            if tmo is not None and (not isinstance(tmo, (int, float)) or tmo < 0):
-                errors.append(f"{path}: wait_until 'timeout' must be a non-negative number or null")
-        on_timeout = step.get("on_timeout")
-        if on_timeout is not None and on_timeout not in ("fail", "continue"):
-            errors.append(f"{path}: wait_until 'on_timeout' must be 'fail' or 'continue'")
-
-    # Validate skip_if guard
-    skip_if = step.get("skip_if")
-    if isinstance(skip_if, dict):
-        if not skip_if.get("key"):
-            errors.append(f"{path}: skip_if requires 'key'")
-        op = skip_if.get("operator", "eq")
-        if op not in VALID_CONDITION_OPS:
-            errors.append(f"{path}: skip_if operator '{op}' is not valid")
-
-    return errors
+    ]
 
 
-def validate_trigger(trigger: dict, path: str) -> list[str]:
-    """Validate a single trigger definition. Returns list of error strings."""
-    errors: list[str] = []
+def _trigger_findings(trigger: dict, path: str) -> list[dict[str, Any]]:
+    """The findings :func:`validate_trigger` writes, as records."""
+    found: list[dict[str, Any]] = []
     ttype = trigger.get("type", "")
     if not ttype:
-        errors.append(f"{path}: missing 'type' field")
-        return errors
+        found.append(_finding(path, "missing 'type' field"))
+        return found
     if ttype not in VALID_TRIGGER_TYPES:
-        errors.append(
-            f"{path}: trigger type '{ttype}' is not valid. "
-            f"Use: schedule, state_change, event, startup"
-        )
-        return errors
+        found.append(_finding(
+            path,
+            f"trigger type '{ttype}' is not valid. "
+            f"Use: schedule, state_change, event, startup",
+            action=ttype,
+        ))
+        return found
 
     if ttype == "schedule":
         cron = trigger.get("cron")
         if not cron or not isinstance(cron, str):
-            errors.append(f"{path}: schedule trigger requires 'cron' (string)")
+            found.append(_finding(
+                path, "schedule trigger requires 'cron' (string)", action=ttype, missing="cron",
+            ))
         elif cron:
             parts = cron.strip().split()
             if len(parts) not in (5, 6):
-                errors.append(f"{path}: cron expression must have 5 or 6 fields, got {len(parts)}")
+                found.append(_finding(
+                    path, f"cron expression must have 5 or 6 fields, got {len(parts)}",
+                    action=ttype,
+                ))
     elif ttype == "state_change":
         if not trigger.get("state_key"):
-            errors.append(f"{path}: state_change trigger requires 'state_key'")
+            found.append(_finding(
+                path, "state_change trigger requires 'state_key'",
+                action=ttype, missing="state_key",
+            ))
         op = trigger.get("state_operator")
         if op and op not in VALID_STATE_TRIGGER_OPS:
-            errors.append(
-                f"{path}: state_operator '{op}' is not valid. "
-                f"Use: any, eq, ne, gt, lt, gte, lte, truthy, falsy"
-            )
+            found.append(_finding(
+                path,
+                f"state_operator '{op}' is not valid. "
+                f"Use: any, eq, ne, gt, lt, gte, lte, truthy, falsy",
+                action=ttype,
+            ))
     elif ttype == "event":
         if not trigger.get("event_pattern"):
-            errors.append(f"{path}: event trigger requires 'event_pattern'")
+            found.append(_finding(
+                path, "event trigger requires 'event_pattern'",
+                action=ttype, missing="event_pattern",
+            ))
 
     overlap = trigger.get("overlap")
     if overlap and overlap not in VALID_OVERLAP_MODES:
-        errors.append(f"{path}: overlap '{overlap}' is not valid. Use: skip, queue, allow")
+        found.append(_finding(
+            path, f"overlap '{overlap}' is not valid. Use: skip, queue, allow",
+            action=ttype,
+        ))
 
     # Validate guard conditions
     conditions = trigger.get("conditions")
@@ -231,12 +314,23 @@ def validate_trigger(trigger: dict, path: str) -> list[str]:
         for i, c in enumerate(conditions):
             if isinstance(c, dict):
                 if not c.get("key"):
-                    errors.append(f"{path}.conditions[{i}]: missing 'key'")
+                    found.append(_finding(
+                        f"{path}.conditions[{i}]", "missing 'key'",
+                        action=ttype, missing="conditions.key",
+                    ))
                 op = c.get("operator", "eq")
                 if op not in VALID_CONDITION_OPS:
-                    errors.append(f"{path}.conditions[{i}]: operator '{op}' is not valid")
+                    found.append(_finding(
+                        f"{path}.conditions[{i}]", f"operator '{op}' is not valid",
+                        action=ttype,
+                    ))
 
-    return errors
+    return found
+
+
+def validate_trigger(trigger: dict, path: str) -> list[str]:
+    """Validate a single trigger definition. Returns list of error strings."""
+    return [f"{f['path']}: {f['message']}" for f in _trigger_findings(trigger, path)]
 
 
 def macro_issues(
@@ -245,6 +339,7 @@ def macro_issues(
     *,
     extra_actions: Collection[str] = (),
     missing_params: MissingParams | None = None,
+    param_label: ParamLabel | None = None,
 ) -> list[dict[str, Any]]:
     """Everything wrong with a macro, placed where an editor can draw it.
 
@@ -259,6 +354,13 @@ def macro_issues(
     ``path``    the full location the message was written against
                 (``steps[2].then_steps[0]``), for the sentence itself.
     ``message`` the sentence, without the path it was prefixed with.
+
+    And what the editor needs to word a finding the way its form is labelled
+    rather than by key: ``action`` (the step's action or the trigger's type)
+    wherever it is known, and, on a finding that a field is not filled in,
+    ``missing`` (``device``, ``condition.key``, ``state_key``...; ``param`` for
+    one of the command's parameters, with ``param`` naming it and, when
+    ``param_label`` can say, ``param_label`` its label on the form).
 
     Nothing here is a warning and nothing is a refusal: every record means the
     step or trigger as written cannot do what it says. Deliberately NOT
@@ -278,43 +380,27 @@ def macro_issues(
     if isinstance(steps, list):
         for i, step in enumerate(steps):
             if isinstance(step, dict):
-                raw = validate_macro_step(
+                found = _step_findings(
                     step, f"steps[{i}]",
                     extra_actions=extra_actions,
                     missing_params=missing_params,
+                    param_label=param_label,
                 )
             else:
-                raw = [f"steps[{i}]: expected an object, got {type(step).__name__}"]
-            issues.extend(_place("step", i, raw))
+                found = [_finding(f"steps[{i}]", f"expected an object, got {type(step).__name__}")]
+            issues.extend({"scope": "step", "index": i, **f} for f in found)
 
     if isinstance(triggers, list):
         for i, trigger in enumerate(triggers):
             if isinstance(trigger, dict):
-                raw = validate_trigger(trigger, f"triggers[{i}]")
+                found = _trigger_findings(trigger, f"triggers[{i}]")
             else:
-                raw = [f"triggers[{i}]: expected an object, got {type(trigger).__name__}"]
-            issues.extend(_place("trigger", i, raw))
+                found = [_finding(
+                    f"triggers[{i}]", f"expected an object, got {type(trigger).__name__}",
+                )]
+            issues.extend({"scope": "trigger", "index": i, **f} for f in found)
 
     return issues
-
-
-def _place(scope: str, index: int, raw_errors: list[str]) -> list[dict[str, Any]]:
-    """Split ``"path: message"`` back into its two halves.
-
-    The rules above write the path into the front of every message, so the
-    split belongs in this module rather than at a caller: both halves of the
-    format live here. A path never contains ``": "``, so the first one is the
-    boundary even for a message that goes on to say ``Use: ...``.
-    """
-    placed: list[dict[str, Any]] = []
-    for raw in raw_errors:
-        path, sep, message = raw.partition(": ")
-        if not sep:
-            path, message = "", raw
-        placed.append(
-            {"scope": scope, "index": index, "path": path, "message": message}
-        )
-    return placed
 
 
 def validate_macro(

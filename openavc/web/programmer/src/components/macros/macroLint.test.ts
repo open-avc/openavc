@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import type { MacroConfig } from "../../api/types";
-import { lintPayload, issuesAt, issueLabel, issueSummary, useMacroLint } from "./macroLint";
+import { lintPayload, issuesAt, issueLabel, issueSummary, issueText, useMacroLint } from "./macroLint";
 import type { MacroIssue } from "./macroLint";
 
 vi.mock("../../api/restClient", () => ({
@@ -58,6 +58,40 @@ describe("issuesAt", () => {
 
   it("is empty for a macro with nothing wrong", () => {
     expect(issuesAt(undefined, "step", 0)).toEqual([]);
+  });
+});
+
+describe("issueText", () => {
+  it("names a field left empty by its label on the form", () => {
+    expect(issueText(issue({
+      message: "device.command step requires 'device'", action: "device.command", missing: "device",
+    }))).toBe("Device is required.");
+    expect(issueText(issue({ action: "state.set", missing: "key" }))).toBe("Variable is required.");
+    expect(issueText(issue({ scope: "trigger", action: "state_change", missing: "state_key" })))
+      .toBe("When is required.");
+  });
+
+  it("names a command parameter as the step's form does", () => {
+    const missing = { message: "'set_level': 'level_value' is required", action: "device.command", missing: "param" };
+    expect(issueText(issue({ ...missing, param: "level_value", param_label: "Level Value" })))
+      .toBe("Level Value is required.");
+    // A driver that is not loaded gives no label: the key made readable.
+    expect(issueText(issue({ ...missing, param: "level_value" }))).toBe("Level Value is required.");
+  });
+
+  it("says where a condition's state key goes, since its picker has no label", () => {
+    expect(issueText(issue({ action: "conditional", missing: "condition.key" })))
+      .toBe("Choose a state key for If.");
+    expect(issueText(issue({ action: "delay", missing: "skip_if.key" })))
+      .toBe("Choose a state key for Skip this step if.");
+    expect(issueText(issue({ scope: "trigger", action: "event", missing: "conditions.key" })))
+      .toBe("Choose a state key.");
+  });
+
+  it("keeps the platform's sentence for anything else", () => {
+    const other = issue({ message: "delay 'seconds' must be a non-negative number", action: "delay" });
+    expect(issueText(other)).toBe("delay 'seconds' must be a non-negative number");
+    expect(issueText(issue({ message: "x", action: "some.plugin_action", missing: "target" }))).toBe("x");
   });
 });
 

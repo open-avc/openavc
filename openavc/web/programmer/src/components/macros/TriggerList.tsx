@@ -6,7 +6,7 @@ import { useState, useEffect, useRef } from "react";
 import { Plus, Trash2, ChevronRight, Eye, EyeOff, Clock, Loader2, Play, AlertTriangle, XCircle } from "lucide-react";
 import type { TriggerConfig, MacroConfig, DeviceConfig } from "../../api/types";
 import { TRIGGER_TYPES, getTriggerType, generateTriggerId } from "./triggerHelpers";
-import { issuesAt, issueLabel, type MacroIssue } from "./macroLint";
+import { issuesAt, issueLabel, issueText, type MacroIssue } from "./macroLint";
 import { TriggerEditor } from "./TriggerEditor";
 import { isFailedRun } from "./triggerRuns";
 import { useLogStore } from "../../store/logStore";
@@ -405,7 +405,7 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                   {/* Will not fire as built */}
                   {lintIssues.length > 0 && (
                     <span
-                      title={lintIssues.map((x) => `${issueLabel(x)}: ${x.message}`).join("\n")}
+                      title={lintIssues.map((x) => `${issueLabel(x)}: ${issueText(x)}`).join("\n")}
                       style={{ display: "flex", flexShrink: 0, color: "#f59e0b" }}
                     >
                       <AlertTriangle size={14} />
@@ -492,7 +492,7 @@ export function TriggerList({ triggers, issues, devices, allMacros, onUpdate }: 
                         <AlertTriangle size={12} style={{ flexShrink: 0 }} />
                         <span>
                           {x.path.includes(".") ? `${issueLabel(x)}: ` : ""}
-                          {x.message}
+                          {issueText(x)}
                         </span>
                       </div>
                     ))}
