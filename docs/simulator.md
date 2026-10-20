@@ -15,7 +15,7 @@ Click the **play button** at the bottom of the sidebar. A confirmation dialog ex
 
 If you close the Simulator UI tab, click **Open Simulator UI**, just above the stop button, to open it again.
 
-Click the **stop button** (same location) to stop simulation and restore real device connections.
+Click the **stop button** (same location) to stop simulation and restore real device connections. The values the simulator reported are cleared, so a device's page and your panels show them blank until the real equipment reports its own.
 
 ### Standalone
 
