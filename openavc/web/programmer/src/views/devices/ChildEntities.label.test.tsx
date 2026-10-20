@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -70,6 +70,7 @@ const PAYLOAD = {
         offline_detail: { type: "string", label: "Fault Detail" },
       },
       summary_fields: ["mute"],
+      label_field: "name",
     },
   },
   children: {
@@ -115,5 +116,116 @@ describe("a child's name", () => {
     // The other platform keys stay: a monitor can be put on them here.
     expect(row.querySelector('td[title="online"]')).not.toBeNull();
     expect(row.querySelector('td[title="offline_reason"]')).not.toBeNull();
+  });
+});
+
+
+/**
+ * The list is fetched when the device connects, and a device usually reports
+ * its channel names a moment after that. The names arrive in live state, so
+ * the Label column reads them there. It used to keep the name from the fetch
+ * and showed "(no label)" beside a Channel Name column that had the names.
+ */
+const NOT_YET_NAMED = {
+  device_id: "mixer",
+  child_entity_types: PAYLOAD.child_entity_types,
+  children: {
+    input: [
+      {
+        ...PAYLOAD.children.input[0],
+        display_name: "",
+        state: { ...PAYLOAD.children.input[0].state, name: null, label: "" },
+      },
+    ],
+  },
+};
+
+function renderPanel(search = "") {
+  return render(
+    <ChildEntities
+      deviceId="mixer"
+      search={search}
+      connected={true}
+      childKeyCount={2}
+      config={{}}
+      driverInfo={{}}
+      monitors={[]}
+      onMonitorsChange={() => {}}
+    />,
+  );
+}
+
+describe("a name the device reports after the list was fetched", () => {
+  afterEach(() => {
+    for (const key of Object.keys(liveState)) delete liveState[key];
+  });
+
+  it("is shown in the Label column", async () => {
+    mocks.listChildEntities.mockResolvedValue(NOT_YET_NAMED);
+    liveState["device.mixer.input.3.name"] = "CH 3";
+    renderPanel();
+
+    expect(await screen.findByTestId("child-label-3")).toHaveTextContent("CH 3");
+  });
+
+  it("is shown on the filter's result", async () => {
+    mocks.listChildEntities.mockResolvedValue(NOT_YET_NAMED);
+    liveState["device.mixer.input.3.name"] = "CH 3";
+    renderPanel("ch 3");
+
+    const results = await screen.findByTestId("child-search-results");
+    expect(within(results).queryByText("(no label)")).toBeNull();
+    expect(within(results).getAllByText("CH 3").length).toBeGreaterThan(0);
+  });
+
+  it("gives way to the driver's own name for the slot while there is none", async () => {
+    mocks.listChildEntities.mockResolvedValue(NOT_YET_NAMED);
+    liveState["device.mixer.input.3.label"] = "Input 3";
+    renderPanel();
+
+    expect(await screen.findByTestId("child-label-3")).toHaveTextContent("Input 3");
+  });
+});
+
+
+/**
+ * A label typed on a row is the name from then on, wherever the panel shows
+ * the child. The row list used to keep it to itself, so a search, or a tab
+ * change, put the old name back on screen although the label was saved.
+ */
+describe("a label typed on a row", () => {
+  afterEach(() => {
+    for (const key of Object.keys(liveState)) delete liveState[key];
+  });
+
+  it("stays after the filter is used and cleared", async () => {
+    mocks.listChildEntities.mockResolvedValue(NOT_YET_NAMED);
+    mocks.patchChildEntity.mockResolvedValue({});
+    liveState["device.mixer.input.3.name"] = "CH 3";
+    const panel = (search: string) => (
+      <ChildEntities
+        deviceId="mixer"
+        search={search}
+        connected={true}
+        childKeyCount={2}
+        config={{}}
+        driverInfo={{}}
+        monitors={[]}
+        onMonitorsChange={() => {}}
+      />
+    );
+    const { rerender } = render(panel(""));
+
+    await userEvent.click(await screen.findByTestId("child-label-3"));
+    const input = screen.getByTestId("child-label-input-3");
+    await userEvent.type(input, "Lobby{Enter}");
+    expect(await screen.findByTestId("child-label-3")).toHaveTextContent("Lobby");
+
+    rerender(panel("ch 3"));
+    const results = await screen.findByTestId("child-search-results");
+    expect(within(results).getByText("Lobby")).toBeInTheDocument();
+
+    rerender(panel(""));
+    expect(await screen.findByTestId("child-label-3")).toHaveTextContent("Lobby");
   });
 });

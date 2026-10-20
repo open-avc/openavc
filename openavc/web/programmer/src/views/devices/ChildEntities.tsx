@@ -7,7 +7,7 @@ import { ApiError, parseApiError } from "../../api/errors";
 import { useConnectionStore } from "../../store/connectionStore";
 import { CHILD_RESERVED_PROPS } from "../../api/types";
 import { CHILD_STALE_TITLE, LastHeard, staleValueStyle } from "./staleReading";
-import { childReadingDeclarations } from "../../api/childStateVars";
+import { childNameFrom, childReadingDeclarations } from "../../api/childStateVars";
 import { useSettled } from "../../components/shared/useSettled";
 import {
   MonitorCell,
@@ -144,6 +144,32 @@ export function ChildEntities({
     const timer = setTimeout(() => setRefreshOutcome(null), 6000);
     return () => clearTimeout(timer);
   }, [refreshOutcome]);
+
+  // A label saved on a row goes into the list this panel fetched, so the
+  // filter's results, and the rows after a search or a tab change, show it
+  // too rather than the name from before the edit.
+  const handleLabelSaved = useCallback(
+    (childType: string, localId: number | string, label: string) => {
+      setData((prev) => prev && {
+        ...prev,
+        children: {
+          ...prev.children,
+          [childType]: (prev.children[childType] ?? []).map((e) =>
+            e.local_id === localId
+              ? {
+                  ...e,
+                  label,
+                  display_name: childNameFrom(
+                    label, e.state, prev.child_entity_types[childType],
+                  ),
+                }
+              : e,
+          ),
+        },
+      });
+    },
+    [],
+  );
 
   const handleDriverRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -334,6 +360,7 @@ export function ChildEntities({
             schema={schema}
             entries={entries}
             emptyMessage={emptyRosterMessage(schema, connected, config, driverInfo)}
+            onLabelSaved={handleLabelSaved}
             declarations={declarations}
             monitors={monitors}
             onMonitorsChange={onMonitorsChange}
@@ -472,6 +499,8 @@ function ChildSearchResults({
       type: string;
       typeLabel: string;
       entry: ChildEntityEntry;
+      /** What the child is called, from its live state. */
+      name: string;
       /** The matched readings, value unformatted: the Monitor control on each
           row judges the real value, not the string drawn beside it. */
       rows: [string, unknown][];
@@ -500,6 +529,7 @@ function ChildSearchResults({
             type,
             typeLabel,
             entry,
+            name: childNameFrom(entry.label, state, tSchema),
             rows,
             stale: !childPresence(state).ok,
           });
@@ -531,7 +561,7 @@ function ChildSearchResults({
         overflow: "auto",
       }}
     >
-      {shown.map(({ type, typeLabel, entry, rows, stale }) => (
+      {shown.map(({ type, typeLabel, entry, name, rows, stale }) => (
         <div
           key={`${type}/${entry.local_id_padded}`}
           data-testid={`child-row-${entry.local_id_padded}`}
@@ -571,7 +601,7 @@ function ChildSearchResults({
               {entry.local_id_padded}
             </span>
             <span style={{ fontSize: "var(--font-size-sm)", fontWeight: 500 }}>
-              {entry.label || entry.display_name || "(no label)"}
+              {name || "(no label)"}
             </span>
           </div>
           {rows.length > 0 && (
@@ -618,6 +648,7 @@ function ChildEntityList({
   schema,
   entries,
   emptyMessage,
+  onLabelSaved,
   declarations,
   monitors,
   onMonitorsChange,
@@ -629,6 +660,8 @@ function ChildEntityList({
   /** What to say when this type has no children, worked out by the panel
       above from what the driver declares and whether the device is up. */
   emptyMessage: ReactNode;
+  /** A label was saved for one of these children. */
+  onLabelSaved: (childType: string, localId: number | string, label: string) => void;
   /** Every child reading's declaration, by suffix under `device.<id>.`. */
   declarations: Map<string, DeclaredReading>;
   monitors: MonitorConfig[];
@@ -640,7 +673,6 @@ function ChildEntityList({
   const [expanded, setExpanded] = useState<Set<number | string>>(new Set());
   const [editing, setEditing] = useState<{ id: number | string; value: string } | null>(null);
   const [savingId, setSavingId] = useState<number | string | null>(null);
-  const [labelOverrides, setLabelOverrides] = useState<Record<string, string>>({});
   const [troubleOnly, setTroubleOnly] = useState(false);
 
   // Reset row-level UI state when the active tab changes.
@@ -648,7 +680,6 @@ function ChildEntityList({
     setExpanded(new Set());
     setEditing(null);
     setSavingId(null);
-    setLabelOverrides({});
     setTroubleOnly(false);
   }, [childType]);
 
@@ -802,11 +833,8 @@ function ChildEntityList({
   }, []);
 
   const startEdit = useCallback((entry: ChildEntityEntry) => {
-    setEditing({
-      id: entry.local_id,
-      value: labelOverrides[entry.local_id] ?? entry.label,
-    });
-  }, [labelOverrides]);
+    setEditing({ id: entry.local_id, value: entry.label });
+  }, []);
 
   const saveEdit = useCallback(async () => {
     if (!editing) return;
@@ -814,14 +842,14 @@ function ChildEntityList({
     setSavingId(id);
     try {
       await api.patchChildEntity(deviceId, childType, id, { label: value });
-      setLabelOverrides((prev) => ({ ...prev, [id]: value }));
+      onLabelSaved(childType, id, value);
       setEditing(null);
     } catch (err) {
       console.error("Failed to update child label", err);
     } finally {
       setSavingId(null);
     }
-  }, [editing, deviceId, childType]);
+  }, [editing, deviceId, childType, onLabelSaved]);
 
   const cancelEdit = useCallback(() => setEditing(null), []);
 
@@ -914,14 +942,17 @@ function ChildEntityList({
             const isSaving = savingId === entry.local_id;
             const liveS = liveStateForChild(entry);
             // What this port is called: the label somebody typed here, else the
-            // name the device itself reports — which the server already resolved
-            // into `display_name` from the child type's `label_field`. Reading
-            // only the project's label made a device-enumerated roster (MXNet
+            // name the device itself reports under the child type's
+            // `label_field`, else the driver's name for the slot. Reading only
+            // the project's label made a device-enumerated roster (MXNet
             // endpoints, Q-SYS components) render as seven "(no label)" rows
-            // while the device was naming every one of them.
-            const authored = labelOverrides[entry.local_id] ?? entry.label;
-            const displayLabel = authored || entry.display_name;
-            const fromDevice = !authored && !!entry.display_name;
+            // while the device was naming every one of them. Read from live
+            // state, not the fetched `display_name`: the list is fetched when
+            // the device connects, and its names usually arrive just after.
+            const authored = entry.label;
+            const reported = childNameFrom("", liveS, schema);
+            const displayLabel = authored || reported;
+            const fromDevice = !authored && !!reported;
             const monitoredCount = monitoredByChild.get(entry.local_id_padded) ?? 0;
             // Nothing is coming from this one any more, so every reading on it
             // is the last one heard rather than a current value. The same fact
@@ -1002,7 +1033,7 @@ function ChildEntityList({
                         }}
                         onBlur={() => void saveEdit()}
                         autoFocus
-                        placeholder={entry.display_name || undefined}
+                        placeholder={reported || undefined}
                         data-testid={`child-label-input-${entry.local_id_padded}`}
                         style={{
                           width: "100%",

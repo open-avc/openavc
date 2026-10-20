@@ -68,6 +68,35 @@ export function childDisplayName(
   );
 }
 
+/** What one child is called, read from its state: the project label, else the
+ *  name the device reports under the type's `label_field`, else what the
+ *  driver's roster calls the slot (its reserved `label`), else "".
+ *
+ *  The same order as the server's `child_display_name` (drivers/child_ids.py),
+ *  which is where `display_name` comes from. The Child Entities panel reads it
+ *  here from live state because a device usually reports its names a moment
+ *  after the list is fetched, and `display_name` is only as new as the fetch. */
+export function childNameFrom(
+  projectLabel: string | null | undefined,
+  state: Record<string, unknown>,
+  tdef: { label_field?: string } | null | undefined,
+): string {
+  const authored = (projectLabel ?? "").trim();
+  if (authored) return authored;
+  const field = tdef?.label_field?.trim();
+  if (field) {
+    const reported = state[field];
+    // A bool is never a name: label_field pointed at a flag.
+    if (reported != null && typeof reported !== "boolean") {
+      const name = String(reported).trim();
+      if (name) return name;
+    }
+  }
+  const seeded = state.label;
+  if (seeded == null || typeof seeded === "boolean") return "";
+  return String(seeded).trim();
+}
+
 /** Every child reading this device has, as the declaration it is authored
  *  against, keyed by its suffix under `device.<id>.`.
  *
