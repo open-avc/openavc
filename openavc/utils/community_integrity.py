@@ -38,12 +38,17 @@ otherwise become uninstallable. That is the honest state of a control that is
 not yet backed by a signature — it is written down here rather than dressed up.
 Once hashes are present, everything is fail-closed: a mismatch, or a file that
 was fetched but is not in the manifest, refuses the install.
+
+**One install, one catalog** (:class:`CatalogCheck`). The catalog and the files
+it hashes reach us separately, and for a few minutes after an artifact is
+updated they can disagree with nothing wrong (see that class). A disagreement
+fetches the catalog once more before refusing; it never relaxes the check.
 """
 
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from urllib.parse import unquote, urlparse
 
 from openavc.utils.logger import get_logger
@@ -65,6 +70,11 @@ _HOST_PREFIXES = {
 
 class CommunityArtifactError(Exception):
     """An artifact was refused: wrong source, wrong bytes, or an extra file."""
+
+
+class ArtifactMismatch(CommunityArtifactError):
+    """A downloaded file disagrees with the catalog: other bytes than it hashes,
+    or a path it does not list. The two refusals a newer catalog can resolve."""
 
 
 def validate_catalog_url(url: str, *, owner_repo: str) -> None:
@@ -159,10 +169,14 @@ class ArtifactHashes:
     def check(self, repo_path: str | None, data: bytes) -> None:
         """Verify one downloaded file. Call BEFORE writing it anywhere.
 
-        Raises :class:`CommunityArtifactError` when the bytes don't match, or
-        when this file isn't in a manifest that exists — an unlisted file is how
-        an extra one would be smuggled in beside the reviewed set.
+        Raises :class:`ArtifactMismatch` when the bytes don't match, or when
+        this file isn't in a manifest that exists — an unlisted file is how an
+        extra one would be smuggled in beside the reviewed set.
         """
+        self.check_digest(repo_path, hashlib.sha256(data).hexdigest())
+
+    def check_digest(self, repo_path: str | None, actual: str) -> None:
+        """:meth:`check` for a file already hashed (its SHA-256, hex)."""
         if not self.declared:
             self._warn_once()
             return
@@ -173,13 +187,12 @@ class ArtifactHashes:
             )
         expected = self.files.get(repo_path)
         if expected is None:
-            raise CommunityArtifactError(
+            raise ArtifactMismatch(
                 f"{self.artifact}: {repo_path!r} is not listed in {self.source} — "
                 "refusing a file the catalog does not publish"
             )
-        actual = hashlib.sha256(data).hexdigest()
         if actual != expected:
-            raise CommunityArtifactError(
+            raise ArtifactMismatch(
                 f"{self.artifact}: {repo_path!r} does not match {self.source} "
                 f"(expected {expected}, got {actual}) — refusing to install it"
             )
@@ -202,3 +215,87 @@ class ArtifactHashes:
                 f"never delivered ({', '.join(missing[:5])}"
                 f"{', …' if len(missing) > 5 else ''}) — refusing an incomplete install"
             )
+
+
+class CatalogCheck:
+    """One install's check of its downloads, fetching the catalog once more
+    before refusing.
+
+    The catalog and the files it hashes are fetched separately, through caches
+    with separate lifetimes: a server may keep its copy of a catalog for minutes,
+    and raw.githubusercontent.com keeps each file for five minutes on its own
+    clock. For a while after an artifact is updated the catalog and a file can
+    disagree in either direction with nothing wrong, and a check against the
+    first copy alone would refuse every update for that whole window.
+
+    So the first disagreement calls ``load(True)``, which must bypass any copy
+    the caller holds, and checks every file this install already accepted
+    against the new copy too: all of an install's files match one catalog or the
+    install is refused. Once per install, never once per file. The hash still
+    comes only from the catalog, and a refetch that comes back with no hashes
+    keeps the copy that refused, so a failed fetch can never turn a refusal into
+    an install.
+
+    The CDN's five minutes cannot be bypassed from here (it ignores query
+    strings and ``Cache-Control: no-cache``), so a disagreement that survives
+    the refetch raises :class:`CommunityArtifactError` with ``refusal``, a
+    sentence for the person who pressed Install, and logs the hashes.
+    """
+
+    def __init__(
+        self,
+        hashes: ArtifactHashes,
+        load: Callable[[bool], Awaitable[ArtifactHashes]],
+        *,
+        refusal: str,
+    ) -> None:
+        self._hashes = hashes
+        self._load = load
+        self._refusal = refusal
+        self._refetched = False
+        self._accepted: dict[str, str] = {}
+
+    @classmethod
+    async def fetch(
+        cls,
+        load: Callable[[bool], Awaitable[ArtifactHashes]],
+        *,
+        refusal: str,
+    ) -> CatalogCheck:
+        """Start a check from the catalog as ``load(False)`` returns it."""
+        return cls(await load(False), load, refusal=refusal)
+
+    @property
+    def hashes(self) -> ArtifactHashes:
+        """The catalog copy in use: the first one, or the refetched one."""
+        return self._hashes
+
+    async def check(self, repo_path: str | None, data: bytes) -> None:
+        """Verify one downloaded file. Call BEFORE writing it anywhere."""
+        digest = hashlib.sha256(data).hexdigest()
+        try:
+            self._hashes.check_digest(repo_path, digest)
+        except ArtifactMismatch as first:
+            if self._refetched:
+                raise self._refuse(first) from first
+            self._refetched = True
+            fresh = await self._load(True)
+            if not fresh.declared:
+                raise self._refuse(first) from first
+            self._hashes = fresh
+            try:
+                for path, accepted in self._accepted.items():
+                    fresh.check_digest(path, accepted)
+                fresh.check_digest(repo_path, digest)
+            except ArtifactMismatch as second:
+                raise self._refuse(second) from second
+        if repo_path:
+            self._accepted[repo_path] = digest
+
+    def require_complete(self) -> None:
+        """:meth:`ArtifactHashes.require_complete` on the catalog copy in use."""
+        self._hashes.require_complete()
+
+    def _refuse(self, cause: ArtifactMismatch) -> CommunityArtifactError:
+        log.warning("%s (refused after fetching the catalog again)", cause)
+        return CommunityArtifactError(self._refusal)

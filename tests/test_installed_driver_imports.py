@@ -115,7 +115,7 @@ async def test_downloaded_alias_refused_before_old_driver_changes(repo, monkeypa
     client.get.return_value = response
     monkeypatch.setattr('httpx.AsyncClient', lambda **kw: client)
     monkeypatch.setattr(drivers, '_catalog_hashes', AsyncMock(return_value=None))
-    monkeypatch.setattr(drivers, '_verify_against_catalog', lambda *args: None)
+    monkeypatch.setattr(drivers, '_verify_against_catalog', AsyncMock(return_value=None))
     url = 'https://raw.githubusercontent.com/open-avc/openavc-drivers/main/utility/acme_kept.py'
     if operation == 'install':
         call = drivers.install_community_driver(CommunityDriverInstallRequest(driver_id='acme_kept', file_url=url))

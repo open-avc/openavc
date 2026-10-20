@@ -92,11 +92,12 @@ async def list_plugins() -> dict[str, Any]:
 
 
 @router.get("/plugins/browse")
-async def browse_plugins() -> dict[str, Any]:
-    """Fetch community plugin catalog from repository."""
+async def browse_plugins(refresh: bool = False) -> dict[str, Any]:
+    """Fetch community plugin catalog from repository (cached; ``refresh``
+    fetches it now)."""
     from openavc.core.plugin_installer import get_community_plugins
 
-    plugins, error = await get_community_plugins()
+    plugins, error = await get_community_plugins(force=refresh)
     return {"plugins": plugins, "error": error}
 
 

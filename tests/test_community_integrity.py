@@ -16,6 +16,8 @@ from openavc.utils.community_integrity import (
     DRIVERS_OWNER_REPO,
     PLUGINS_OWNER_REPO,
     ArtifactHashes,
+    ArtifactMismatch,
+    CatalogCheck,
     CommunityArtifactError,
     catalog_relpath,
     validate_catalog_url,
@@ -244,3 +246,127 @@ def test_dropped_file_refused():
 
 def test_completeness_is_a_no_op_without_a_manifest():
     ArtifactHashes("Plugin 'acme'", None, source="cat").require_complete()
+
+
+# --- One install, one catalog ----------------------------------------------
+#
+# The catalog and the files it hashes are cached separately, so for a few
+# minutes after an update they can disagree with nothing wrong. A disagreement
+# fetches the catalog once more; it never relaxes the check.
+
+REFUSAL = "This driver was updated a few minutes ago and cannot be installed yet."
+
+
+class _Catalog:
+    """A catalog that answers each fetch from a queue of file maps."""
+
+    def __init__(self, *copies):
+        self.copies = list(copies)
+        self.calls: list[bool] = []
+
+    async def load(self, force: bool) -> ArtifactHashes:
+        self.calls.append(force)
+        files = self.copies.pop(0) if len(self.copies) > 1 else self.copies[0]
+        return ArtifactHashes("Driver 'acme'", files, source="cat")
+
+
+def _start(catalog: _Catalog) -> "CatalogCheck":
+    import asyncio
+    return asyncio.run(CatalogCheck.fetch(catalog.load, refusal=REFUSAL))
+
+
+def _run(coro):
+    import asyncio
+    return asyncio.run(coro)
+
+
+def test_mismatch_listed_and_unlisted_are_the_refetchable_refusals():
+    h = ArtifactHashes("Driver 'acme'", {"audio/acme.py": _h(b"one")}, source="cat")
+    with pytest.raises(ArtifactMismatch):
+        h.check("audio/acme.py", b"two")
+    with pytest.raises(ArtifactMismatch):
+        h.check("audio/other.py", b"one")
+    # A file that can't be placed is a URL problem, not a stale catalog.
+    with pytest.raises(CommunityArtifactError) as exc:
+        h.check(None, b"one")
+    assert not isinstance(exc.value, ArtifactMismatch)
+
+
+def test_a_match_never_fetches_the_catalog_again():
+    catalog = _Catalog({"audio/acme.py": _h(b"new")})
+    check = _start(catalog)
+    _run(check.check("audio/acme.py", b"new"))
+    assert catalog.calls == [False]
+
+
+def test_a_stale_catalog_is_fetched_again_and_the_file_installs():
+    catalog = _Catalog({"audio/acme.py": _h(b"old")}, {"audio/acme.py": _h(b"new")})
+    check = _start(catalog)
+    _run(check.check("audio/acme.py", b"new"))
+    assert catalog.calls == [False, True]
+
+
+def test_a_disagreement_that_survives_the_refetch_is_refused_in_words(caplog):
+    catalog = _Catalog({"audio/acme.py": _h(b"old")})
+    check = _start(catalog)
+    with pytest.raises(CommunityArtifactError) as exc:
+        _run(check.check("audio/acme.py", b"new"))
+    assert str(exc.value) == REFUSAL
+    # The hashes are for the log, not the person who pressed Install.
+    assert _h(b"old") in caplog.text and _h(b"new") in caplog.text
+
+
+def test_the_catalog_is_fetched_again_once_per_install_not_per_file():
+    catalog = _Catalog(
+        {"audio/acme.py": _h(b"old"), "audio/acme_sim.py": _h(b"sim")},
+        {"audio/acme.py": _h(b"new"), "audio/acme_sim.py": _h(b"sim2")},
+    )
+    check = _start(catalog)
+    _run(check.check("audio/acme.py", b"new"))
+    with pytest.raises(CommunityArtifactError, match="cannot be installed yet"):
+        _run(check.check("audio/acme_sim.py", b"sim"))
+    assert catalog.calls == [False, True]
+
+
+def test_files_accepted_before_the_refetch_must_match_the_new_copy_too():
+    # The main file matched the first copy, the companion only matches the
+    # second. Installing both would mix two versions of one driver.
+    catalog = _Catalog(
+        {"audio/acme.py": _h(b"v1"), "audio/acme_sim.py": _h(b"sim1")},
+        {"audio/acme.py": _h(b"v2"), "audio/acme_sim.py": _h(b"sim2")},
+    )
+    check = _start(catalog)
+    _run(check.check("audio/acme.py", b"v1"))
+    with pytest.raises(CommunityArtifactError, match="cannot be installed yet"):
+        _run(check.check("audio/acme_sim.py", b"sim2"))
+
+
+def test_a_new_file_the_stale_catalog_does_not_list_installs_after_the_refetch():
+    catalog = _Catalog(
+        {"audio/acme.py": _h(b"v2")},
+        {"audio/acme.py": _h(b"v2"), "audio/acme_sim.py": _h(b"sim")},
+    )
+    check = _start(catalog)
+    _run(check.check("audio/acme.py", b"v2"))
+    _run(check.check("audio/acme_sim.py", b"sim"))
+    check.require_complete()
+
+
+def test_a_refetch_with_no_hashes_never_turns_a_refusal_into_an_install():
+    catalog = _Catalog({"audio/acme.py": _h(b"old")}, None)
+    check = _start(catalog)
+    with pytest.raises(CommunityArtifactError, match="cannot be installed yet"):
+        _run(check.check("audio/acme.py", b"tampered"))
+    assert check.hashes.declared
+
+
+def test_completeness_after_a_refetch_reads_the_new_copy():
+    a, b = b"one", b"two"
+    catalog = _Catalog(
+        {"utility/acme/a.py": _h(b"old")},
+        {"utility/acme/a.py": _h(a), "utility/acme/b.py": _h(b)},
+    )
+    check = _start(catalog)
+    _run(check.check("utility/acme/a.py", a))
+    with pytest.raises(CommunityArtifactError, match="never delivered"):
+        check.require_complete()

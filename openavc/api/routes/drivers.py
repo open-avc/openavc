@@ -273,12 +273,23 @@ def _require_catalog_url(url: str, *, what: str) -> None:
         )
 
 
-async def _catalog_hashes(driver_id: str):
+# What a person sees when a driver's download and the catalog still disagree
+# after the catalog was fetched again: almost always a driver updated in the
+# last few minutes, while GitHub's CDN still serves the previous copy of one
+# side. The hashes go to the log (CatalogCheck).
+_DRIVER_NOT_YET_INSTALLABLE = (
+    "This driver was updated a few minutes ago and cannot be installed yet. "
+    "Try again in five minutes."
+)
+
+
+async def _catalog_hashes(driver_id: str, force: bool = False):
     """The catalog's declared file hashes for ``driver_id``.
 
     Looked up server-side from the community index — never taken from the
     request. A caller-supplied hash would be checked against bytes the same
-    caller chose, which verifies nothing.
+    caller chose, which verifies nothing. ``force`` fetches the index now
+    instead of answering from this server's cached copy.
     """
     from openavc.utils.community_integrity import ArtifactHashes
 
@@ -288,7 +299,7 @@ async def _catalog_hashes(driver_id: str):
 
         if not hasattr(get_community_drivers, "_cache"):
             get_community_drivers._cache = CommunityIndexCache()
-        for entry in await get_community_drivers._cache.get_drivers():
+        for entry in await get_community_drivers._cache.get_drivers(force=force):
             if entry.get("id") == driver_id:
                 candidate = entry.get("files")
                 if isinstance(candidate, dict):
@@ -305,13 +316,24 @@ async def _catalog_hashes(driver_id: str):
     )
 
 
-def _verify_against_catalog(hashes, url: str, data: bytes) -> None:
+async def _catalog_check(driver_id: str):
+    """One install's or update's check against the catalog (main file and
+    companions alike), which fetches the catalog again once before refusing."""
+    from openavc.utils.community_integrity import CatalogCheck
+
+    return await CatalogCheck.fetch(
+        lambda force: _catalog_hashes(driver_id, force=force),
+        refusal=_DRIVER_NOT_YET_INSTALLABLE,
+    )
+
+
+async def _verify_against_catalog(catalog, url: str, data: bytes) -> None:
     """Check downloaded bytes against the catalog before they reach the disk.
 
     502 rather than 422 on a mismatch: the request was fine, the upstream
     served something other than what the catalog says it publishes.
     """
-    if hashes is None:
+    if catalog is None:
         return
     from openavc.utils.community_integrity import (
         DRIVERS_OWNER_REPO,
@@ -319,7 +341,7 @@ def _verify_against_catalog(hashes, url: str, data: bytes) -> None:
         catalog_relpath,
     )
     try:
-        hashes.check(catalog_relpath(url, owner_repo=DRIVERS_OWNER_REPO), data)
+        await catalog.check(catalog_relpath(url, owner_repo=DRIVERS_OWNER_REPO), data)
     except CommunityArtifactError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -442,7 +464,7 @@ async def _download_companion(
     companion_relpath: str,
     driver_repo: Path,
     driver_id: str,
-    hashes=None,
+    catalog=None,
 ) -> Path:
     """Download a YAML driver's sibling Python companion.
 
@@ -495,7 +517,7 @@ async def _download_companion(
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(companion_url)
             resp.raise_for_status()
-            _verify_against_catalog(hashes, companion_url, resp.content)
+            await _verify_against_catalog(catalog, companion_url, resp.content)
             companion_filepath.write_bytes(resp.content)
     except httpx.HTTPStatusError as e:
         raise HTTPException(
@@ -539,7 +561,7 @@ async def _try_download_python_companion(
     main_url: str,
     companion_filename: str,
     driver_repo: Path,
-    hashes=None,
+    catalog=None,
 ) -> CompanionFetch:
     """Best-effort fetch of a Python driver's conventional sibling companion.
 
@@ -575,7 +597,7 @@ async def _try_download_python_companion(
             # A companion that fails the catalog check is NOT swallowed like a
             # fetch error below: "optional" means it may be absent, not that a
             # wrong-bytes copy may be installed. Raises past this handler.
-            _verify_against_catalog(hashes, companion_url, resp.content)
+            await _verify_against_catalog(catalog, companion_url, resp.content)
             companion_filepath.write_bytes(resp.content)
     except (httpx.HTTPStatusError, httpx.RequestError, OSError) as e:
         log.warning(
@@ -586,14 +608,15 @@ async def _try_download_python_companion(
 
 
 @router.get("/drivers/community")
-async def get_community_drivers() -> dict[str, Any]:
-    """Fetch the community driver index from GitHub (cached)."""
+async def get_community_drivers(refresh: bool = False) -> dict[str, Any]:
+    """Fetch the community driver index from GitHub (cached; ``refresh``
+    fetches it now)."""
     from openavc.discovery.community_index import CommunityIndexCache
 
     if not hasattr(get_community_drivers, "_cache"):
         get_community_drivers._cache = CommunityIndexCache()
 
-    drivers = await get_community_drivers._cache.get_drivers()
+    drivers = await get_community_drivers._cache.get_drivers(force=refresh)
     return {"drivers": drivers, "error": None if drivers else "Failed to fetch community drivers"}
 
 
@@ -626,7 +649,7 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
 
     # The catalog's hashes for this driver, read server-side. Fetched before the
     # download so a mismatch is caught with nothing yet written.
-    hashes = await _catalog_hashes(body.driver_id)
+    catalog = await _catalog_check(body.driver_id)
 
     # Determine file type from URL
     if url.endswith(".avcdriver"):
@@ -649,7 +672,7 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
             resp = await client.get(url)
             resp.raise_for_status()
             yaml_text = resp.text
-            _verify_against_catalog(hashes, url, resp.content)
+            await _verify_against_catalog(catalog, url, resp.content)
             require_mutable_driver_file(filename, resp.content)
             filepath.write_bytes(resp.content)
     except httpx.HTTPStatusError as e:
@@ -685,7 +708,7 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
                     companion_relpath=relpath,
                     driver_repo=driver_repo,
                     driver_id=body.driver_id,
-                    hashes=hashes,
+                    catalog=catalog,
                 )
             except HTTPException:
                 filepath.unlink(missing_ok=True)
@@ -733,7 +756,7 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
                     main_url=url,
                     companion_filename=f"{src_stem}{suffix}",
                     driver_repo=driver_repo,
-                    hashes=hashes,
+                    catalog=catalog,
                 )
 
     # Refresh discovery engine with new driver hints
@@ -1228,7 +1251,7 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
     # endpoint pins the source to the official catalog repo.
     _require_catalog_url(file_url, what="Driver URL")
 
-    hashes = await _catalog_hashes(driver_id)
+    catalog = await _catalog_check(driver_id)
 
     # Determine file type from URL
     if file_url.endswith(".avcdriver"):
@@ -1281,7 +1304,7 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
 
     # Check before the swap below unregisters the driver and deletes the old
     # file: a failed update must leave the working driver in place.
-    _verify_against_catalog(hashes, file_url, new_bytes)
+    await _verify_against_catalog(catalog, file_url, new_bytes)
     require_mutable_driver_file(new_filename, new_bytes)
 
     # For YAML drivers, also enforce the version pulled from the file itself
@@ -1312,7 +1335,7 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
                     companion_relpath=relpath,
                     driver_repo=driver_repo,
                     driver_id=driver_id,
-                    hashes=hashes,
+                    catalog=catalog,
                 )
             except HTTPException:
                 new_filepath.unlink(missing_ok=True)
@@ -1350,7 +1373,7 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
                     main_url=file_url,
                     companion_filename=companion_name,
                     driver_repo=driver_repo,
-                    hashes=hashes,
+                    catalog=catalog,
                 )
                 if not fetched.published:
                     # A definite 404: this version dropped the companion, so the

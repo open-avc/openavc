@@ -242,7 +242,7 @@ def no_catalog_hashes(monkeypatch):
     """
     from openavc.utils.community_integrity import ArtifactHashes
 
-    async def _none(driver_id):
+    async def _none(driver_id, force=False):
         return ArtifactHashes(f"Driver '{driver_id}'", None, source="catalog")
 
     monkeypatch.setattr("openavc.api.routes.drivers._catalog_hashes", _none)
