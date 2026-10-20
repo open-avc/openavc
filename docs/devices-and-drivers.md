@@ -82,6 +82,7 @@ A response turns a reply from the device into a live value you can show on a pan
 - **Contains text**: when the reply contains a fixed string, set the variable to a fixed value. A reply containing `PWR ON` sets `power` to `on`. Add one row per state.
 - **Has a number after**: grab the number that follows a prefix. `VOL=42` sets `volume` to `42`.
 - **Has text after**: grab the rest of the line after a prefix. `NAME=Main Stage` sets `name` to `Main Stage`.
+- **Has a JSON field**: for a JSON reply, read one field by name. A dot reaches inside: `status.power` reads `power` from `{"status": {"power": "on"}}` and sets the variable to `on`.
 - **Matches (advanced)**: for anything else, write a regular expression and pick the capture group.
 
 The variable appears on the device right away and is usable everywhere as `$device.<id>.<name>`: in macro steps, in triggers, and in UI Builder bindings (pick it from the `$` picker on a command parameter or a control's **Value** binding). See [Variables and State](variables-and-state.md) for how `$` references work.
@@ -94,6 +95,8 @@ Most devices don't announce changes on their own. To keep a status value live (f
 2. In the Commands table, check **Poll** on the commands you want sent on that interval (typically your status queries).
 
 For example, a "Get Power Status" command checked for polling, with an interval of 15, asks the device for its power state every 15 seconds, and your power response rule keeps the variable current. Leave Poll unchecked on action commands like Power On.
+
+In simulation, an HTTP device answers each command checked for Poll with the current values of its **Has a JSON field** rows, so a value you change in the Simulator reaches the device at the next poll.
 
 ### Send raw
 

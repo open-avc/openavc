@@ -21,13 +21,19 @@ import shutil
 from pathlib import Path
 
 import pytest
+import yaml
 
 from openavc.core.engine import Engine
+from openavc.core.event_bus import EventBus
 from openavc.core.project_loader import ProjectConfig, load_project
 from openavc.core.script_engine import ScriptEngine
+from openavc.core.state_store import StateStore
+from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.simulator.yaml_auto import YAMLAutoSimulator
 from openavc.ui.page_review import do_action_findings
 
 TEMPLATES = Path(__file__).resolve().parents[1] / "openavc" / "templates"
+DEFINITIONS = Path(__file__).resolve().parents[1] / "openavc" / "drivers" / "definitions"
 
 #: Long enough for a macro's fire-and-forget task and the script handler it
 #: wakes to finish. A binding starts a macro in the background on purpose, so
@@ -134,3 +140,54 @@ async def test_the_mode_dropdown_applies_its_preset(tmp_path) -> None:
 
     assert ("dsp1", "set_fader", {"channel": "program", "level": -6.0}) in sent
     assert ("dsp1", "mute", {"channel": "mics", "muted": True}) in sent
+
+
+@pytest.mark.asyncio
+async def test_the_occupancy_sensor_drives_the_room(tmp_path) -> None:
+    """The panel's occupancy light and the auto-shutdown countdown follow
+    what the sensor reports."""
+    engine, _sent = _engine_on("advanced_av_suite", tmp_path)
+    engine.state.set("var.system_power", "on", source="test")
+
+    engine.state.set("device.sensor1.occupied", True, source="test")
+    await asyncio.sleep(SETTLE_S)
+    assert engine.state.get("var.room_occupied") is True
+
+    engine.state.set("device.sensor1.occupied", False, source="test")
+    await asyncio.sleep(SETTLE_S)
+    assert engine.state.get("var.room_occupied") is False
+    assert engine.state.get("var.auto_shutdown_warning") is True
+
+    # Someone comes back: the countdown is cancelled.
+    engine.state.set("device.sensor1.occupied", True, source="test")
+    await asyncio.sleep(SETTLE_S)
+    assert engine.state.get("var.auto_shutdown_warning") is False
+
+
+@pytest.mark.asyncio
+async def test_the_simulated_occupancy_sensor_answers_its_poll() -> None:
+    """In simulation the sensor answers its own status request, and its driver
+    reads Occupied from the reply."""
+    project = load_project(TEMPLATES / "advanced_av_suite.avc")
+    device = next(d for d in project.devices if d.id == "sensor1")
+    config = dict(device.config)
+    definition_path = DEFINITIONS / f"{device.driver}.avcdriver"
+
+    polled = [
+        c for c in config["commands"].values() if isinstance(c, dict) and c.get("poll")
+    ]
+    assert polled, "the sensor has no status request marked Poll"
+    request = f"{polled[0].get('method', 'GET')} {polled[0]['path']}".encode()
+
+    sim = YAMLAutoSimulator.from_avcdriver(definition_path, "sensor1", config)
+    sim.set_state("occupied", True)
+    reply = sim.handle_command(request)
+    assert reply is not None
+
+    definition = yaml.safe_load(definition_path.read_text(encoding="utf-8"))
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    driver = create_configurable_driver_class(definition)("sensor1", config, state, events)
+    await driver.on_data_received(reply)
+    assert state.get("device.sensor1.occupied") is True

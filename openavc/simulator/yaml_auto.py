@@ -35,6 +35,7 @@ import yaml
 
 from openavc.drivers.compiled_protocol import (
     apply_send_frame,
+    build_json_mappings,
     build_send_frame,
     conversion_of,
     decode_delimiter,
@@ -168,10 +169,16 @@ def _merge_inline_protocol(driver_def: dict, config: dict | None) -> tuple[dict,
 
     merged = dict(driver_def)
     merged["commands"] = {**(driver_def.get("commands") or {}), **norm_cmds}
-    sim_responses = [
-        {"match": r["match"], "set": _mappings_to_set(r.get("mappings", []))}
-        for r in canonical
-    ]
+    sim_responses: list[dict] = []
+    for r in canonical:
+        if r.get("json"):
+            # A JSON-field row reads a key out of a reply body, with no line
+            # to match: it is kept in the form a driver file writes it.
+            sim_responses.append(r)
+        elif "match" in r:
+            sim_responses.append(
+                {"match": r["match"], "set": _mappings_to_set(r.get("mappings", []))}
+            )
     merged["responses"] = list(driver_def.get("responses") or []) + sim_responses
     derived = derive_state_vars_from_responses(canonical)
     merged["state_variables"] = {
@@ -339,6 +346,13 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         if self._inline_protocol:
             self._build_inline_response_handlers()
 
+        # Inline HTTP devices: a command marked Poll is the device's status
+        # request, answered with every JSON-field response's current value.
+        self._inline_json_polls: list[re.Pattern] = []
+        self._inline_json_fields: list[dict] = []
+        if self._inline_protocol and self._is_http:
+            self._build_inline_json_polls()
+
         # OSC-specific: build address-based handlers from responses
         self._osc_address_handlers: list[tuple[str, list[dict]]] = []
         self._osc_script_handlers: list[OSCScriptHandler] = []
@@ -377,8 +391,12 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         # push_state: whether this simulator pushes state changes to connected
         # drivers (matching real device behavior). Set in simulator: section.
         # Inline (Generic) devices push by default so driving a variable from
-        # the simulator UI emits the matching string to the panel.
-        self._push_state = sim_section.get("push_state", False) or self._inline_protocol
+        # the simulator UI emits the matching string to the panel. An HTTP one
+        # holds no connection to push on: its driver sees a change at its
+        # next poll.
+        self._push_state = sim_section.get("push_state", False) or (
+            self._inline_protocol and not self._is_http
+        )
 
         # Multicast push emission: when the driver declares
         # `push: {type: multicast}`, notification templates (the simulator
@@ -1221,6 +1239,10 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             m = handler.pattern.match(text)
             if m:
                 return self._with_remainder(text, m, self._execute_script_handler(handler, m))
+
+        for pattern in self._inline_json_polls:
+            if pattern.match(text):
+                return self._inline_json_reply()
 
         # Inline (Generic) devices: match the incoming string against the
         # response patterns and apply their state changes + echo a confirmation.
@@ -2670,6 +2692,45 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 value = src
             self.set_state(state_key, self._coerce_value(state_key, value))
         return (text + self._get_delimiter()).encode()
+
+    def _build_inline_json_polls(self) -> None:
+        """Match each HTTP command marked Poll, when the device reads any JSON
+        field. Nothing is answered for a device without one: a body none of
+        its responses read would only look like the wrong driver."""
+        state_vars = self._driver_def.get("state_variables") or {}
+        for resp in self._driver_def.get("responses") or []:
+            if isinstance(resp, dict) and resp.get("json"):
+                self._inline_json_fields.extend(
+                    m for m in build_json_mappings(resp, state_vars)
+                    if m.get("state") and m.get("key") and "contains" not in m
+                )
+        if not self._inline_json_fields:
+            return
+        for cmd in (self._driver_def.get("commands") or {}).values():
+            if not isinstance(cmd, dict) or not cmd.get("poll") or "send" in cmd:
+                continue
+            method = str(cmd.get("method") or "GET").upper()
+            pattern = re.escape(f"{method} {cmd.get('path') or '/'}")
+            # A {placeholder} in the path matches whatever the driver filled in.
+            pattern = re.sub(r"\\\{\w+\\\}", r"[^\\s|]+", pattern)
+            self._inline_json_polls.append(re.compile(f"^{pattern}(?:\\|.*)?$"))
+
+    def _inline_json_reply(self) -> bytes:
+        """A JSON body holding each JSON field's current value, a dotted key
+        nested the way the driver reads it."""
+        body: dict[str, Any] = {}
+        for mapping in self._inline_json_fields:
+            value = self.get_state(mapping["state"])
+            segments = [s for s in str(mapping["key"]).split(".") if s]
+            if value is None or not segments:
+                continue
+            node = body
+            for seg in segments[:-1]:
+                if not isinstance(node.get(seg), dict):
+                    node[seg] = {}
+                node = node[seg]
+            node[segments[-1]] = value
+        return json.dumps(body).encode()
 
     def _build_osc_address_handlers(self) -> None:
         """Build OSC address → state mapping from responses with 'address' key."""
