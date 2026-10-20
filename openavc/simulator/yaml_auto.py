@@ -58,6 +58,7 @@ from openavc.drivers.compiled_protocol import (
 )
 from openavc.drivers.child_ids import coerce_child_local_id, page_starts
 from openavc.drivers.inline_protocol import (
+    derive_command_params,
     derive_state_vars_from_responses,
     normalize_config_commands,
     normalize_config_responses,
@@ -166,6 +167,16 @@ def _merge_inline_protocol(driver_def: dict, config: dict | None) -> tuple[dict,
 
     if not (norm_cmds or canonical or norm_vars):
         return driver_def, False
+
+    # A {value} in a command is a parameter, as the driver declares it, so the
+    # incoming line is matched with the value in it rather than the braces.
+    config_keys = set(cfg)
+    for cmd in norm_cmds.values():
+        ph_src = " ".join(
+            str(cmd[f]) for f in ("send", "path", "body") if isinstance(cmd.get(f), str)
+        )
+        if "{" in ph_src:
+            cmd["params"] = derive_command_params(ph_src, config_keys, cmd.get("params"))
 
     merged = dict(driver_def)
     merged["commands"] = {**(driver_def.get("commands") or {}), **norm_cmds}

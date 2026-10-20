@@ -100,6 +100,38 @@ def test_unrecognized_command_is_ignored():
     assert sim.handle_command(b"GIBBERISH") is None
 
 
+# ── A command carrying a value ──────────────────────────────────────────────
+
+# The shapes the device page suggests: a {value} in the command, a reply in a
+# form of its own.
+VALUE_CONFIG = {
+    "delimiter": "\r",
+    "commands": {"set_volume": {"label": "Set Volume", "send": "VOL {level}"}},
+    "responses": [
+        {"mode": "prefix_number", "prefix": "VOL=", "state": "volume", "type": "integer"},
+    ],
+}
+
+
+async def test_a_value_sent_in_a_command_comes_back_from_the_simulator():
+    """What the driver puts on the wire is what the simulator recognizes, and
+    its answer is what the driver reads back."""
+    cls = create_configurable_driver_class({**GENERIC_DEF, "default_config": {}})
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    driver = cls("g1", dict(VALUE_CONFIG), state, events)
+    wire = driver.build_wire("set_volume", {"level": 40})
+
+    sim = _sim(GENERIC_DEF, VALUE_CONFIG)
+    reply = sim.handle_command(wire)
+    assert sim.get_state("volume") == 40
+    assert reply == b"VOL=40\r"
+
+    await driver.on_data_received(reply)
+    assert state.get("device.g1.volume") == 40
+
+
 # ── Driving state from the simulator UI emits the matching string ───────────
 
 

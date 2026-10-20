@@ -87,6 +87,8 @@ A response turns a reply from the device into a live value you can show on a pan
 
 The variable appears on the device right away and is usable everywhere as `$device.<id>.<name>`: in macro steps, in triggers, and in UI Builder bindings (pick it from the `$` picker on a command parameter or a control's **Value** binding). See [Variables and State](variables-and-state.md) for how `$` references work.
 
+In simulation, a command with a value changes the simulated device when its ID or its placeholder names a response's variable, and the simulator answers with that response's reply. With the `volume` response above, `VOL {level}` with the ID `set_volume`, or `VOL {volume}`, sets `volume` to 42 and gets back `VOL=42`.
+
 ### Polling for live status
 
 Most devices don't announce changes on their own. To keep a status value live (for example, the projector's real power state), you poll it: send a "get status" command on a timer and let its response rule update the variable.
