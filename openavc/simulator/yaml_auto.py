@@ -2255,6 +2255,9 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         Values are NOT duplicated here — the UI reads them live from the
         state dict, which the per-key WS updates keep current."""
         info = super().to_info_dict()
+        # The Simulator UI card reads this as "Pushes state changes". A device
+        # that sends `notifications:` pushes whatever `push_state` says.
+        info["push_state"] = bool(info.get("push_state")) or self._sends_notifications()
         if not self._child_roster:
             return info
         children: dict[str, Any] = {}
@@ -2992,6 +2995,22 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                     if ref in self._state
                 },
             )
+        )
+
+    def _sends_notifications(self) -> bool:
+        """Whether a ``notifications:`` template can reach the driver: the map
+        has one and the device has a channel for it, the same channels
+        ``_deliver_notification`` picks from. An HTTP device with no push
+        block of its own has none, and neither has an OSC one, which pushes
+        only with ``push_state``, as OSC messages."""
+        if not self._notification_map:
+            return False
+        return bool(
+            self._push_multicast
+            or self.sse_paths
+            or self._push_tcp
+            or self._push_http
+            or not (self._is_http or self._is_osc)
         )
 
     def _deliver_notification(self, msg: str) -> None:

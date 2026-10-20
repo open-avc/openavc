@@ -142,3 +142,44 @@ async def test_tcp_simulator_notify_reaches_every_connected_client():
             w2.close()
     finally:
         await sim.stop()
+
+
+# ── What the Simulator UI card says ──
+#
+# The card reads `push_state` from the device's info: "Pushes state changes"
+# or "Poll-only (no push)". A device that sends `notifications:` pushes, with
+# or without `push_state: true`, so the card says so.
+
+
+@pytest.mark.parametrize("transport", ["tcp", "udp"])
+def test_a_device_that_sends_notifications_is_shown_as_pushing(transport):
+    definition = _definition(transport)
+    assert "push_state" not in definition["simulator"]
+    sim = YAMLAutoSimulator("dev1", config={}, driver_def=definition)
+    assert sim.to_info_dict()["push_state"] is True
+
+
+def test_a_device_that_sends_notifications_to_a_multicast_group_is_shown_as_pushing():
+    definition = {
+        **_definition("tcp"),
+        "push": {"type": "multicast", "group": "239.255.10.10", "port": 17000},
+    }
+    sim = YAMLAutoSimulator("dev1", config={}, driver_def=definition)
+    assert sim.to_info_dict()["push_state"] is True
+
+
+def test_an_http_device_with_nowhere_to_send_notifications_is_poll_only():
+    """An HTTP device holds no connection to push on, so its templates go
+    nowhere unless the driver declares a push channel of its own."""
+    definition = {**_definition("http"), "default_config": {"host": "", "port": 80}}
+    sim = YAMLAutoSimulator("dev1", config={}, driver_def=definition)
+    assert sim.to_info_dict()["push_state"] is False
+
+
+def test_a_device_without_notifications_or_push_state_is_poll_only():
+    definition = _definition("tcp")
+    definition["simulator"] = {
+        k: v for k, v in definition["simulator"].items() if k != "notifications"
+    }
+    sim = YAMLAutoSimulator("dev1", config={}, driver_def=definition)
+    assert sim.to_info_dict()["push_state"] is False
