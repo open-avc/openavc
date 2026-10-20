@@ -383,7 +383,7 @@ def test_a_pin_keypad_that_sends_after_its_first_digit_is_told_the_default():
     assert [f.message for f in early] == [
         "pin (keypad) sends what has been typed 200 ms after the last key press, "
         "shorter than the 1500 ms default, so a code can be sent before it is "
-        "finished. Set auto_send_delay_ms to 1500 or more; an entry of 4 digits "
+        "finished. Set Send Delay to 1500 ms or more; an entry of 4 digits "
         "is sent as soon as the last one is pressed."
     ]
 
@@ -395,6 +395,12 @@ def test_a_phone_keypad_without_auto_send_is_told_it_never_sends():
     )
     findings, _ = review_page(page)
     assert _kinds(findings) == ["keypad_never_sends"]
+    # Named as the keypad's properties name them, not by setting key.
+    assert [f.message for f in findings] == [
+        "dial (keypad) uses the Phone style, which has no Enter key, and Send "
+        "without Enter is off, so nothing typed on it is ever sent. Turn on Send "
+        "without Enter, or choose the Numeric style."
+    ]
 
 
 def test_a_keypad_left_at_its_defaults_is_left_alone():

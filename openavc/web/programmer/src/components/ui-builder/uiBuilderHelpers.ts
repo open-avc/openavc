@@ -5301,9 +5301,9 @@ export function keypadFindings(el: UIElement): ReviewFinding[] {
       elementId: el.id,
       kind: "keypad_never_sends",
       message:
-        `${el.id} (keypad) uses the phone layout, which has no Enter key, and ` +
-        `auto_send is off, so nothing typed on it is ever sent. Turn auto_send ` +
-        `on, or use the numeric layout.`,
+        `${el.id} (keypad) uses the Phone style, which has no Enter key, and ` +
+        `Send without Enter is off, so nothing typed on it is ever sent. Turn on ` +
+        `Send without Enter, or choose the Numeric style.`,
       key: `keypad_never_sends|${el.id}`,
     }];
   }
@@ -5317,8 +5317,8 @@ export function keypadFindings(el: UIElement): ReviewFinding[] {
     message:
       `${el.id} (keypad) sends what has been typed ${delay} ms after the last ` +
       `key press, shorter than the ${KEYPAD_SEND_DELAY_DEFAULT_MS} ms default, so a ` +
-      `code can be sent before it is finished. Set auto_send_delay_ms to ` +
-      `${KEYPAD_SEND_DELAY_DEFAULT_MS} or more; an entry of ${digits} digits is sent ` +
+      `code can be sent before it is finished. Set Send Delay to ` +
+      `${KEYPAD_SEND_DELAY_DEFAULT_MS} ms or more; an entry of ${digits} digits is sent ` +
       `as soon as the last one is pressed.`,
     key: `keypad_sends_early|${el.id}`,
   }];

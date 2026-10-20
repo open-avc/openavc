@@ -1497,9 +1497,9 @@ def keypad_findings(element: Mapping[str, Any]) -> list[Finding]:
         return [Finding(
             el_id,
             "keypad_never_sends",
-            f"{el_id} (keypad) uses the phone layout, which has no Enter key, and "
-            f"auto_send is off, so nothing typed on it is ever sent. Turn auto_send "
-            f"on, or use the numeric layout.",
+            f"{el_id} (keypad) uses the Phone style, which has no Enter key, and "
+            f"Send without Enter is off, so nothing typed on it is ever sent. Turn on "
+            f"Send without Enter, or choose the Numeric style.",
         )]
     digits = element.get("digits")
     if digits is None:
@@ -1516,8 +1516,8 @@ def keypad_findings(element: Mapping[str, Any]) -> list[Finding]:
         "keypad_sends_early",
         f"{el_id} (keypad) sends what has been typed {_num(delay)} ms after the last "
         f"key press, shorter than the {KEYPAD_SEND_DELAY_DEFAULT_MS} ms default, so a "
-        f"code can be sent before it is finished. Set auto_send_delay_ms to "
-        f"{KEYPAD_SEND_DELAY_DEFAULT_MS} or more; an entry of {digits} digits is sent "
+        f"code can be sent before it is finished. Set Send Delay to "
+        f"{KEYPAD_SEND_DELAY_DEFAULT_MS} ms or more; an entry of {digits} digits is sent "
         f"as soon as the last one is pressed.",
     )]
 

@@ -456,15 +456,16 @@ A keypad collects key presses and sends them as one `submit`, with the entry in
 `$value`. `digits` (default %(digits)s) is the most it takes.
 
 - The Enter key sends what has been typed.
-- With `auto_send` on, it also sends as soon as `digits` keys are pressed,
-  **and** `auto_send_delay_ms` (default %(delay)s) after the last key press when
-  fewer are.
+- With `auto_send` on (the UI Builder's **Send without Enter**), it also sends
+  as soon as `digits` keys are pressed, **and** `auto_send_delay_ms` (default
+  %(delay)s; **Send Delay**) after the last key press when fewer are.
 
 So a fixed-length PIN wants `digits` set to its length and the delay left at the
 default. A shorter delay can send a code before it is finished. The review
 answers: *%(early)s*
 
-`keypad_style: "phone"` swaps Clear and Enter for `*` and `#`, so a phone pad
+`keypad_style: "phone"` (the **Phone** style; `"numeric"` is **Numeric**) swaps
+Clear and Enter for `*` and `#`, so a phone pad
 has no Enter key: `auto_send` is the only way it sends, and the pause is the
 only way it sends a code shorter than `digits`. The review answers:
 *%(never)s*
