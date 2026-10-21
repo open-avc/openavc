@@ -25,11 +25,13 @@ import { ConfigFieldInputs } from "./devices/DeviceDialogs";
 import { buildConfigFromForm, missingRequiredKeys } from "./devices/deviceConfigCoerce";
 import { useDiscoveryStore } from "../store/discoveryStore";
 import { useProjectStore } from "../store/projectStore";
+import { useConnectionStore } from "../store/connectionStore";
 import { useNavigationStore } from "../store/navigationStore";
 import { useAuditStore } from "../store/auditStore";
 import { useDriverBuilderStore } from "../store/driverBuilderStore";
 import * as api from "../api/restClient";
 import { parseApiError } from "../api/errors";
+import { blockedByPlatform } from "../components/shared/catalogUpdates";
 import type { DriverInfo, CommunityDriver } from "../api/types";
 import type { DeviceState } from "../api/discoveryClient";
 import { showError } from "../store/toastStore";
@@ -1352,6 +1354,12 @@ function DriverAddRow({
   const entry = driverNameLookup.get(driverId);
   const driverName = entry?.name ?? driverId;
   const isCommunity = entry?.source === "community";
+  // A community driver this OpenAVC is too old for: marked and not offered,
+  // as Browse Drivers does, rather than refused after the click.
+  const runningVersion = useConnectionStore((s) => String(s.liveState["system.version"] ?? ""));
+  const requiresPlatform = isCommunity
+    ? blockedByPlatform(runningVersion, entry?.community?.min_platform_version)
+    : "";
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1477,11 +1485,26 @@ function DriverAddRow({
         <span style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)" }}>
           {sourceLabel}
         </span>
+        {requiresPlatform && (
+          <span
+            title={`This driver needs OpenAVC ${requiresPlatform} or later. Update OpenAVC first, then install it.`}
+            style={{
+              display: "flex", alignItems: "center", gap: 4, marginLeft: "auto",
+              fontSize: "var(--font-size-xs)", color: "var(--text-muted)",
+            }}
+          >
+            <AlertTriangle size={14} />
+            Needs OpenAVC v{requiresPlatform}
+          </span>
+        )}
         <button
           className="btn btn-sm btn-primary"
           onClick={handleAdd}
-          disabled={busy}
-          style={{ marginLeft: "auto" }}
+          disabled={busy || !!requiresPlatform}
+          title={requiresPlatform ? `This driver needs OpenAVC ${requiresPlatform} or later.` : undefined}
+          style={requiresPlatform
+            ? { color: "var(--text-muted)", cursor: "default" }
+            : { marginLeft: "auto" }}
         >
           <Plus size={14} />{" "}
           {busy

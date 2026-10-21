@@ -339,7 +339,7 @@ Each discovered device lands in one of three states:
 
 Each card also shows IP / hostname, manufacturer, category (the identifying driver's category, or the one its MAC address prefix suggests), open ports, model and firmware (when the device reports them), and **Why this match?**, which lists every signal observed during the scan (mDNS announcement, SSDP announcement, TCP/UDP probe response, MAC address prefix, hostname match, SNMP enterprise number, manufacturer name, open port). **Audit this device** on a result opens a [device audit](device-audit.md) of it.
 
-If the suggested driver is a community driver you haven't installed yet, click **Install & Add** to install it and add the device in one step.
+If the suggested driver is a community driver you haven't installed yet, click **Install & Add** to install it and add the device in one step. A community driver that needs a later release of OpenAVC shows **Needs OpenAVC v&lt;version&gt;** beside a greyed **Install & Add**: update OpenAVC first, then add the device.
 
 ### Scan Options
 
