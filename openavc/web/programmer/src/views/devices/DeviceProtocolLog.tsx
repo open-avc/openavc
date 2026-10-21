@@ -1,15 +1,49 @@
-import { useEffect, useRef } from "react";
-import { useLogStore } from "../../store/logStore";
-import { deviceFilterPredicate } from "../logViewHelpers";
+import { useEffect, useRef, useState } from "react";
+import { getRecentLogs } from "../../api/systemClient";
+import { useLogStore, type LogEntry } from "../../store/logStore";
+import { deviceFilterPredicate, withEarlierLines } from "../logViewHelpers";
+
+const SHOWN = 50;
+
+type Line = Pick<LogEntry, "timestamp" | "level" | "source" | "message">;
 
 /** The device page's log: the most recent lines about this device. */
 export function DeviceProtocolLog({ deviceId }: { deviceId: string }) {
-  const logEntries = useLogStore((s) => s.logEntries);
   const listRef = useRef<HTMLDivElement>(null);
-
-  // The same rule as the System Log's Device filter.
-  const deviceLogs = logEntries.filter(deviceFilterPredicate(deviceId));
-  const recent = deviceLogs.slice(-50);
+  // This device's lines, kept here as the live stream brings them: the log
+  // store holds only the last few hundred lines of the whole system, which a
+  // few polling devices turn over in about a minute, so a page left open lost
+  // the lines that say why its device went offline. Seeded with what the
+  // server kept for the device from before the page loaded.
+  const [recent, setRecent] = useState<Line[]>([]);
+  useEffect(() => {
+    // The same rule as the System Log's Device filter.
+    const belongs = deviceFilterPredicate(deviceId);
+    let seenId = -Infinity;
+    let current = true;
+    const take = (entries: LogEntry[]) => {
+      const fresh: LogEntry[] = [];
+      for (let i = entries.length - 1; i >= 0 && entries[i].id > seenId; i--) {
+        if (belongs(entries[i])) fresh.unshift(entries[i]);
+      }
+      if (entries.length > 0) seenId = Math.max(seenId, entries[entries.length - 1].id);
+      if (fresh.length > 0) setRecent((prev) => [...prev, ...fresh].slice(-SHOWN));
+    };
+    setRecent([]);
+    take(useLogStore.getState().logEntries);
+    const unsubscribe = useLogStore.subscribe((state, prev) => {
+      if (state.logEntries !== prev.logEntries) take(state.logEntries);
+    });
+    getRecentLogs(SHOWN, "", deviceId)
+      .then((earlier) => {
+        if (current) setRecent((prev) => withEarlierLines(earlier, prev).slice(-SHOWN));
+      })
+      .catch(() => { /* the live lines still show */ });
+    return () => {
+      current = false;
+      unsubscribe();
+    };
+  }, [deviceId]);
 
   // Tail the newest entry. Depending on the slice LENGTH stops working the
   // moment the window saturates (50 entries, length pinned) — key on the

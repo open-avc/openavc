@@ -744,9 +744,12 @@ async def create_blank(request: Request) -> dict[str, Any]:
 
 
 @router.get("/logs/recent")
-async def get_recent_logs(count: int = 100, category: str = "") -> dict[str, Any]:
-    """Get recent log entries, optionally filtered by category."""
-    return {"logs": get_log_buffer().get_recent(count, category=category)}
+async def get_recent_logs(
+    count: int = 100, category: str = "", device: str = "",
+) -> dict[str, Any]:
+    """Get recent log entries, optionally filtered by category, or to the
+    lines about one device (a device page's Device Log)."""
+    return {"logs": get_log_buffer().get_recent(count, category=category, device=device)}
 
 
 # --- Backups ---

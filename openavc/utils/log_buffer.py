@@ -4,6 +4,12 @@ OpenAVC log buffer — captures Python logging output for streaming.
 Provides a circular buffer that captures all log records and makes them
 available via subscribe/unsubscribe for real-time WebSocket streaming,
 plus a get_recent() method for REST access.
+
+Each device's own lines are also kept on their own (DEVICE_LINES_KEPT a
+device), so a device page can show what a device said a while ago: with a few
+devices polling, the shared ring turns over in about a minute, and a device
+page is opened to see why that device went offline, a minute or more after it
+said so.
 """
 
 from __future__ import annotations
@@ -11,9 +17,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import threading
 import time
 import uuid
-from collections import deque
+from collections import OrderedDict, deque
 from dataclasses import dataclass, asdict
 from typing import Any
 
@@ -44,6 +51,22 @@ def _extract_device(category: str, message: str) -> str:
         return ""
     m = _DEVICE_PREFIX.match(message)
     return m.group(1) if m else ""
+
+
+#: Lines kept for each device on its own, beside the shared ring.
+DEVICE_LINES_KEPT = 100
+#: Devices whose lines are kept; the one heard from least recently goes first.
+DEVICES_KEPT = 256
+
+
+def _names_device(entry: LogEntry, device_id: str, mention: re.Pattern[str]) -> bool:
+    """A line about ``device_id`` (lower case): its own, or a platform line that
+    names it as a whole word. The rule of the System Log's Device filter
+    (``deviceFilterPredicate``, views/logViewHelpers.ts), so a device page
+    shows the same lines from the server as from the live stream."""
+    return entry.device.lower() == device_id or (
+        entry.source.startswith("openavc") and mention.search(entry.message) is not None
+    )
 
 
 #: The module namespace a loaded user script is given (``ScriptEngine._load_script``
@@ -82,13 +105,27 @@ def _categorize_source(name: str, message: str) -> str:
 class LogBuffer:
     """Thread-safe circular buffer for log entries with pub/sub support."""
 
-    def __init__(self, maxlen: int = 500):
+    def __init__(
+        self,
+        maxlen: int = 500,
+        device_maxlen: int = DEVICE_LINES_KEPT,
+        max_devices: int = DEVICES_KEPT,
+    ):
         self._entries: deque[LogEntry] = deque(maxlen=maxlen)
         self._subscribers: dict[str, asyncio.Queue[LogEntry]] = {}
+        # Each device's own lines (entry.device), keyed lower case. Lines come
+        # from any thread that logs, so the map has a lock; the deques are
+        # appended under it too.
+        self._device_entries: OrderedDict[str, deque[LogEntry]] = OrderedDict()
+        self._device_maxlen = device_maxlen
+        self._max_devices = max_devices
+        self._device_lock = threading.Lock()
 
     def append(self, entry: LogEntry) -> None:
         """Add an entry and push to all subscribers."""
         self._entries.append(entry)
+        if entry.device:
+            self._keep_for_device(entry)
         for queue in self._subscribers.values():
             try:
                 queue.put_nowait(entry)
@@ -114,9 +151,42 @@ class LogBuffer:
         """Remove a subscription."""
         self._subscribers.pop(sub_id, None)
 
-    def get_recent(self, count: int = 100, category: str = "") -> list[dict[str, Any]]:
+    def _keep_for_device(self, entry: LogEntry) -> None:
+        key = entry.device.lower()
+        with self._device_lock:
+            lines = self._device_entries.get(key)
+            if lines is None:
+                lines = deque(maxlen=self._device_maxlen)
+                self._device_entries[key] = lines
+                while len(self._device_entries) > self._max_devices:
+                    self._device_entries.popitem(last=False)
+            else:
+                self._device_entries.move_to_end(key)
+            lines.append(entry)
+
+    def _device_lines(self, device: str) -> list[LogEntry]:
+        """This device's own kept lines, with the shared ring's lines that name
+        it, oldest first."""
+        key = device.lower()
+        with self._device_lock:
+            own = list(self._device_entries.get(key, ()))
+        mention = re.compile(
+            rf"(^|[^a-z0-9_-]){re.escape(key)}([^a-z0-9_-]|$)", re.IGNORECASE,
+        )
+        kept = {id(e) for e in own}
+        named = [
+            e for e in list(self._entries)
+            if id(e) not in kept and _names_device(e, key, mention)
+        ]
+        return sorted(own + named, key=lambda e: e.timestamp)
+
+    def get_recent(
+        self, count: int = 100, category: str = "", device: str = "",
+    ) -> list[dict[str, Any]]:
         """Get the ``count`` most recent entries as dicts, optionally
-        filtered to one category.
+        filtered to one category, or to the lines about one device (its own
+        kept lines, which outlast the shared ring, and the platform lines that
+        name it).
 
         The category filter runs over the whole buffer BEFORE the count
         slice — slicing first would return only the matches that happen to
@@ -129,7 +199,7 @@ class LogBuffer:
         """
         if count <= 0:
             return []
-        entries = list(self._entries)
+        entries = self._device_lines(device) if device else list(self._entries)
         if category:
             entries = [e for e in entries if e.category == category]
         if count < len(entries):

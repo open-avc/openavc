@@ -308,3 +308,61 @@ def test_device_field_in_to_dict():
         device="proj1",
     )
     assert entry.to_dict()["device"] == "proj1"
+
+
+# --- A device's own lines ---
+#
+# A device page is opened to see why a device went offline, often a minute or
+# more after it said so; with a few devices polling, the shared ring has turned
+# over by then. Each device's own lines are kept on their own.
+
+
+def _line(message, device="", source="openavc.transport.tcp", category="device", ts=None):
+    return LogEntry(
+        timestamp=time.time() if ts is None else ts, level="DEBUG", source=source,
+        category=category, message=message, device=device,
+    )
+
+
+def test_a_devices_own_lines_outlast_the_shared_ring():
+    buf = LogBuffer(maxlen=5)
+    for i in range(3):
+        buf.append(_line(f"[proj1] TX: line {i}", "proj1", ts=float(i)))
+    for i in range(10):
+        buf.append(_line(f"[proj2] TX: poll {i}", "proj2", ts=10.0 + i))
+
+    assert [e["message"] for e in buf.get_recent()] == [
+        f"[proj2] TX: poll {i}" for i in range(5, 10)
+    ]
+    assert [e["message"] for e in buf.get_recent(50, device="proj1")] == [
+        "[proj1] TX: line 0", "[proj1] TX: line 1", "[proj1] TX: line 2",
+    ]
+    assert [e["message"] for e in buf.get_recent(2, device="proj1")] == [
+        "[proj1] TX: line 1", "[proj1] TX: line 2",
+    ]
+
+
+def test_a_device_gets_the_platform_lines_that_name_it_as_the_device_filter_does():
+    buf = LogBuffer()
+    buf.append(_line("[proj1] TX: PWR?", "proj1", ts=1.0))
+    buf.append(_line("Reconnected device: proj1", source="openavc.core.device_manager", ts=2.0))
+    buf.append(_line("[proj12] TX: PWR?", "proj12", ts=3.0))
+    buf.append(_line(
+        "HTTP Request: GET http://127.0.0.1:19500/api/devices/proj1",
+        source="httpx", category="system", ts=4.0,
+    ))
+    buf.append(_line("Failed to connect 'PROJ1'", source="openavc.core.device_manager", ts=5.0))
+
+    assert [e["message"] for e in buf.get_recent(50, device="proj1")] == [
+        "[proj1] TX: PWR?", "Reconnected device: proj1", "Failed to connect 'PROJ1'",
+    ]
+
+
+def test_the_devices_heard_from_least_recently_are_let_go_first():
+    buf = LogBuffer(maxlen=1, device_maxlen=2, max_devices=2)
+    for name in ("a", "b", "a", "c"):
+        buf.append(_line(f"[{name}] TX", name))
+
+    assert [e["message"] for e in buf.get_recent(50, device="a")] == ["[a] TX", "[a] TX"]
+    assert buf.get_recent(50, device="b") == []
+    assert [e["message"] for e in buf.get_recent(50, device="c")] == ["[c] TX"]

@@ -856,6 +856,7 @@ export interface LogEntryResponse {
   source: string;
   category: string;
   message: string;
+  device?: string;
 }
 
 // --- Project Library types ---

@@ -31,6 +31,26 @@ export function deviceFilterPredicate(
     || ((entry.source ?? "").startsWith("openavc") && mention.test(entry.message));
 }
 
+type DeviceLogLine = Pick<LogEntry, "timestamp" | "level" | "source" | "message">;
+
+/**
+ * The device page's log: the lines the server kept for the device from before
+ * the page loaded (`earlier`), then the ones the live stream brought (`live`,
+ * already filtered to the device), oldest first. A line in both comes once.
+ * The live stream holds only the last few hundred lines of the whole system,
+ * which a few polling devices turn over in about a minute.
+ */
+export function withEarlierLines<T extends DeviceLogLine>(
+  earlier: DeviceLogLine[],
+  live: T[],
+): Array<T | DeviceLogLine> {
+  const key = (e: DeviceLogLine) => `${e.timestamp}|${e.source}|${e.level}|${e.message}`;
+  const seen = new Set(live.map(key));
+  const older = earlier.filter((e) => !seen.has(key(e)));
+  if (older.length === 0) return live;
+  return [...older, ...live].sort((a, b) => a.timestamp - b.timestamp);
+}
+
 /**
  * Render loaded log entries to plain text for the "Download logs" button.
  * One line per entry: an ISO timestamp, the level, the source category, then

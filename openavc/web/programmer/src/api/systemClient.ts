@@ -51,10 +51,12 @@ export async function cloudUnpair(): Promise<{ status: string }> {
 
 export async function getRecentLogs(
   count = 100,
-  category = ""
+  category = "",
+  device = "",
 ): Promise<LogEntryResponse[]> {
   const params = new URLSearchParams({ count: String(count) });
   if (category) params.set("category", category);
+  if (device) params.set("device", device);
   return (await request<{ logs: LogEntryResponse[] }>(`/logs/recent?${params}`)).logs;
 }
 

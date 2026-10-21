@@ -171,7 +171,7 @@ The device detail panel includes several management actions:
 - **Test.** Opens a connection to the address and port the device connects to, without using the driver (a TCP connection, an HTTP request, or the serial port), and shows that address, such as "Connected to 10.0.0.5:4000 (3 ms)". A success means something answered at that address, not that it is the right device: whether the device itself replies shows on its card. A UDP device has no connection to open, so the test only checks that its address has a route. While simulation runs, the test reaches the simulator, not the equipment.
 - **Reconnect.** Force an immediate reconnect attempt on a disconnected device.
 - **Duplicate.** Create a copy of the device with a new ID, pre-filled with the same driver and settings.
-- **Device Log.** Filtered log view showing only activity for the selected device (commands sent, responses received, errors).
+- **Device Log.** Filtered log view showing only activity for the selected device (commands sent, responses received, errors). It opens with the device's most recent lines, including ones from before the page was opened: OpenAVC keeps the last 100 lines of each device while it runs, apart from the other devices' lines.
 
 A panel command aimed at disabled equipment reports that the equipment is
 unavailable, using its configured display name. If the device has been removed,
