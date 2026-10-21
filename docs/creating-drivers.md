@@ -1997,6 +1997,17 @@ device sends nothing back. A `then:` block can instead carry its own `expect` /
 halves must match. It is `tcp_probe` only: a UDP probe is a fire-and-forget
 broadcast with no connection to reuse.
 
+A positive second step is also how to identify a device whose first answer says
+nothing about it: a WebSocket server answers the upgrade with a generic `101
+Switching Protocols`, and only the message sent after it gets the device's own
+greeting. The probe's `extract` rules read the first reply, then the
+certificate, then the second step's reply, each filling only what the ones
+before it left empty, so a model or serial number that only the greeting
+carries still reaches the scan's card (OpenAVC 0.37.1 and later; before that,
+the device is identified with nothing extracted). A WebSocket frame a client
+sends must be masked: a masking key of zeros leaves the payload readable in
+`send_hex`.
+
 Two things to keep in mind. A silence step has to spend its whole timeout
 proving the negative — it cannot stop early the way a matcher can — so give it
 a short `timeout_ms` rather than inheriting the probe's. And silence on the

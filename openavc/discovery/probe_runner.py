@@ -865,6 +865,15 @@ def _judge(
             reserved.setdefault(k, v)
         for k, v in c_extracted.items():
             extracted.setdefault(k, v)
+    if spec.follow_up is not None and obs.follow_up_reply:
+        # The second exchange's reply, when the first only opens the protocol
+        # (an upgrade answered, a session started) and the second is the one
+        # that names the device. It fills in what neither of the above did.
+        f_reserved, f_extracted = _apply_extract(obs.follow_up_reply, spec.extract)
+        for k, v in f_reserved.items():
+            reserved.setdefault(k, v)
+        for k, v in f_extracted.items():
+            extracted.setdefault(k, v)
 
     response: dict[str, object] = {
         "text": payload.decode("latin-1", errors="replace") or cert_subject_str,

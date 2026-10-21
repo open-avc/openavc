@@ -110,6 +110,37 @@ class TestTcpObservations:
         assert obs.matched is False and obs.evidence is None
         assert obs.to_dict()["follow_up"]["ok"] is False
 
+    async def test_the_then_step_reply_fills_the_extracted_fields(self):
+        # A first answer that only opens the protocol (an upgrade, a banner
+        # with no model) and a second that names the device.
+        server, port = await _server([
+            b"HTTP/1.1 101 Switching Protocols\r\n\r\n",
+            b'{"devtype":"Acme Widget 3000","fwVersion":"2.4.1","serial":"AC123"}',
+        ])
+        async with server:
+            spec = _spec(
+                "tcp", port=port, send_ascii="GET /ws HTTP/1.1\r\n\r\n", expect_regex="^HTTP/1.1 101",
+                then={"send_ascii": "HELLO", "expect_regex": '"devtype"', "timeout_ms": 800},
+                extract={
+                    "model": {"regex": r'"devtype":"Acme ([^"]+)"'},
+                    "firmware": {"regex": r'"fwVersion":"([^"]+)"'},
+                },
+            )
+            obs = await observe_tcp_active_probe(spec, target="127.0.0.1", source_ip="")
+        assert obs.matched is True
+        assert obs.evidence.data["response"]["extracted"] == {"model": "Widget 3000", "firmware": "2.4.1"}
+
+    async def test_the_first_reply_wins_where_both_carry_a_field(self):
+        server, port = await _server([b"ACME model=W1\r\n", b"model=W2 ok\r\n"])
+        async with server:
+            spec = _spec(
+                "tcp", port=port, send_ascii="ID?\r", expect_regex="^ACME",
+                then={"send_ascii": "MORE?\r", "expect_regex": "ok", "timeout_ms": 800},
+                extract={"model": {"regex": r"model=(\w+)"}},
+            )
+            obs = await observe_tcp_active_probe(spec, target="127.0.0.1", source_ip="")
+        assert obs.evidence.data["response"]["extracted"] == {"model": "W1"}
+
     async def test_tls_cert_is_recorded_but_evidence_is_unchanged(self, tmp_path):
         from openavc.tls import generate_self_signed
 
