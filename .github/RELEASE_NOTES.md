@@ -1,60 +1,50 @@
-# OpenAVC v0.37.0
+# OpenAVC v0.37.1
 
-A big release: new settings for which networks can reach OpenAVC and which network it uses to reach devices, offline detection for devices that stop responding, YAML driver scaling, settings filled in from the device and paused polling, macro control of every panel element, and a locked-down data folder on Windows.
+Fixes for 0.37.0, update buttons where installed drivers and plugins are listed, and Discovery scans that finish complete on busy networks.
+
+## UI Builder
+
+* Preview shows the dashed edge the panel draws on a button or camera preset whose press cannot reach a device that is up. Editing a macro or device group that a button runs updates that mark on every open panel.
+* A button action that sets another control's Visible now offers Yes or No. A button saved with typed text keeps it until the choice is made again.
+* Smaller fixes: keypad warnings name the keypad's own settings, Send without Enter and Send Delay.
 
 ## Programmer
 
-* New setting under Settings > Network: **Accept connections from**, with Any network, one network adapter, or This computer only. It replaces Bind address and can be changed on Windows, macOS, Linux and Raspberry Pi installs; on Docker, set it in the compose file. The default is Any network.
-* The chosen adapter is followed through DHCP address changes, and panel addresses, the QR code and the Panel app's list use the chosen network. The computer's own screen, the tray and menu bar apps and OpenAVC Cloud remote access work with every option.
-* If a change would cut off the browser you are using, the Programmer shows the address to open next. If nobody opens it there within 10 minutes, the setting goes back to the previous choice.
-* **Control interface** is renamed **Reach devices through** and is picked by adapter name. It now covers every connection to a device, including Python drivers' own connections, SSH, MQTT and Wake-on-LAN. Plugins can use it; Stream Deck and Video Panel do.
-* With Reach devices through set to Every connected adapter, Wake-on-LAN, sACN and Inter-System discovery go out on every adapter, which fixes them on Windows computers with WSL or Hyper-V. Pick one adapter to keep sACN on the lighting network.
-* Windows virtual machines on Hyper-V or Azure now list their network adapter in Settings > Network, and Discovery scans it.
-* True / false values show as Yes / No throughout the Programmer. Saved values do not change.
-* Add Device and Edit Device do not save with a required setting (red asterisk) left blank. Changing a device's driver keeps its address and login.
-* Test Connection tests the address and port the device connects to.
+* An **Update to** button with the new version number appears on each driver in Devices > Drivers > Installed that has a newer version in the community library, with a count at the top, and on the driver's detail page and the page of each device that uses it. The Plugins list and a plugin's page have the same. A version that needs a newer OpenAVC shows **Needs OpenAVC** and the version instead, there and on the Browse Community, Browse Plugins and Discovery cards.
+* Refresh in Browse Community, Browse Plugins and the Plugins view loads the library's current list. An install just after a driver or plugin changes in the library checks the library again before refusing, and if it still cannot install, says to try again in five minutes.
+* Saving is no longer refused with "Project was modified by another session" after renaming a child entity, uninstalling a plugin the project uses, saving a preset in a plugin's own screen, or queuing settings for a device that is not connected yet. Those queued settings show as pending straight away.
+* The Device Log on a device page keeps that device's last 100 lines however busy the other devices are, and a failed connection's log line gives the same reason as the device card.
+* Send Command shows the device's own reason when it refuses a command, and names the device and the command when a driver fails.
+* The trigger editor's Evaluated now preview decides as the trigger does: text without regard to case, on, yes and 1 as Yes, and a number written as text as that number.
+* Smaller fixes: turning off Monitored on a monitor that has a name, a normal range or a delay asks first; macro and trigger warnings name a field by its label; a reopened AI assistant conversation shows each tool call where it came in the reply; the Child Entities Label column shows the names the device reports without a reload; Device Audit writes whole numbers without ".0"; the log shows a username as typed outside its own device's traffic.
 
-## Panel and UI Builder
+## Panel
 
-* Macros and scripts can set the color, opacity, visibility and label of every panel element, not just buttons. A new **Clear** option on the Set Variable or Control step puts the element back the way it was designed.
-* Sliders, dropdowns, text boxes, status LEDs and camera presets show the unavailable mark when their device is offline.
-* Fixed: an element kept its Appearance color after the condition stopped being true, so an input picker could show several inputs lit at once.
-* Panel text has the same line height on every device, and keypads, dropdowns and text boxes use the theme font. Text on Windows panels is about 10% tighter where no Line Height is set.
-* Keypads: new **Mask Display** option for PIN entry. "Send after all digits entered" is renamed **Send without Enter**, with a warning when Send Delay is under 1500 ms. On submit can save the digits to a variable.
+* A panel shown inside another page, such as a signage player or a dashboard's web card, works again on a system with a Programmer password. Since 0.37.0 it showed System Offline.
 
 ## Device control and drivers
 
-* A device that stops responding is marked offline (Not responding) after three polls in a row get no reply, over TCP, UDP and OSC. Commands still go out while the connection is open, so a display that stops responding in standby can still be turned on.
-* When a device's replies do not match its driver, such as a device on the wrong port, a warning with the last reply is written to its log.
-* When a device rejects its username or password, it is marked offline with Authentication failed, and automatic reconnects stop until the login is changed or Reconnect is pressed.
-* YAML drivers: **scale** and **offset** convert a device's raw numbers, for example gain sent as 000 to 060 shown as -18 to +42 dB.
-* YAML device settings can send the device's own word for a value, such as ON and OFF.
-* **Filled In From**: a setting such as the model, channel count or MAC address is filled in from the device when it connects.
-* **Pause Polling**: polling, a single poll query or a start-up step can wait while the device is in a state such as standby.
-* A response rule can read one reply that lists every output's route or mute, and update all outputs from it.
-* YAML drivers send start-up and poll commands at least 50 ms apart. HTTP drivers now wait the Inter-Command Delay between requests.
-* Discovery: a device added from a scan gets the MAC address from the scan. When more than one driver matches a device, all of them are offered, the manufacturer's driver first.
-* New driver in Add Device: **OpenAVC built-in product**, for a manufacturer's product that has OpenAVC built in.
+* With Settings > Network > Reach devices through set to an adapter that has only a self-assigned 169.254 address (a network with no DHCP server), Wake-on-LAN and sACN go out from that address.
+* A device that stopped answering keeps "The device stopped answering" on its card while it reconnects.
+* A wake command on a device with no MAC address says so: a panel or a macro says the device cannot be turned on until its setup is finished, and Send Command names the MAC Address setting.
+* Pause Polling: a reconnect to a unit in standby no longer sends a connection check that would wake it.
+* Starter projects: the Advanced AV Suite occupancy sensor reports, and the switcher, DSP and camera in the Advanced AV Suite and Conference Room starters take their commands, in simulation too. A system that already opened a starter keeps its copy.
+* For Python driver authors: `WakeAddressError` and `CommandRefusedError` in `openavc.drivers.base` give a missing MAC address or a device's refusal in the driver's own words.
+* Smaller fixes: setup action progress goes to the Programmer only; a product with OpenAVC built in no longer reports a finished command as failed when it restarts right after it.
 
-## Macros and triggers
+## Discovery
 
-* New step: **Clear Help Request**. It sets `system.help_state` back to `idle` and clears the request, so a panel stops showing it. The request stays open in OpenAVC Cloud until it is closed there.
+* A scan on a busy network finishes complete, and keeps every device a driver's check has already recognized.
+* A driver installed from Browse Community runs its own check on the next scan, without a restart.
+* Install & Add asks for a driver's required settings, such as an API key, before adding the device.
+* Smaller fixes: when two of a manufacturer's drivers match a device equally, the one for the model or kind of equipment it reported comes first; a device is no longer named after another device it lists in its own queries; a driver's check can name a device from its answer to a second question.
 
 ## Simulator
 
-* **Device stops responding** on every simulated device, and **Capacity** on TCP, serial, UDP and OSC devices to limit how fast the device reads.
-
-## IT and security
-
-* Windows: the data folder is restricted to the OpenAVC service and administrators, and updates keep the OpenAVC firewall rule as configured.
-* Settings held by the server's environment show as locked, with the variable name.
-* Settings > Access > Programmer login requires at least 8 characters.
-* `X-Forwarded-For` is only trusted from a proxy on the same computer or one listed in the new `network.trusted_proxies` setting. See Updating.
-* New docs page: Hardened Deployment Profile, for managed networks.
+* Stop Simulation clears what the simulator reported, so a device's values stay blank until the real equipment reports its own.
+* A Generic device's command with a value, such as `VOL {level}`, changes the simulated value and replies.
 
 ## Updating
 
-* After updating, update your installed drivers in Devices > Drivers > Browse Community. Installed drivers do not update with OpenAVC, and many new driver versions need 0.37.0.
-* Behind a reverse proxy on another computer, or any proxy in front of Docker with published ports: set `network.trust_forwarded_for` to `true` and list the proxy in `network.trusted_proxies` (or `OPENAVC_TRUSTED_PROXIES`). Otherwise every client behind the proxy shares one rate limit.
-* Rolling back to 0.36.0 keeps the system reachable from every network (on a Mac, from this computer only if that was selected).
+* aiohttp is updated to 3.14.4 for published security advisories.
 * Project format stays at 0.14.0.
