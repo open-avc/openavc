@@ -15,6 +15,8 @@ import {
 import { connectedDot } from "../../shared/ConnectedDot";
 import * as api from "../../../api/restClient";
 import { valueText } from "../../shared/booleanWords";
+import { BooleanOptions } from "../../shared/BooleanOptions";
+import { uiOverrideType } from "../../shared/uiOverrideProperties";
 import { driverLabel } from "../../shared/driverLabel";
 
 interface ActionPickerProps {
@@ -441,6 +443,18 @@ function StateSetConfig({
                   placeholder="Select state key..."
                   style={{ flex: 1 }}
                 />
+              ) : uiOverrideType(value?.key) === "boolean" ? (
+                <select
+                  value={typeof value?.value === "boolean" ? String(value.value) : ""}
+                  onChange={(e) =>
+                    onChange({ action: "state.set", key: value?.key, value: e.target.value === "true" })
+                  }
+                  aria-label="Value"
+                  style={{ flex: 1, padding: "4px 6px", fontSize: "var(--font-size-sm)" }}
+                >
+                  <option value="" disabled>Select...</option>
+                  <BooleanOptions />
+                </select>
               ) : (
                 <input
                   value={String(value?.value ?? "")}

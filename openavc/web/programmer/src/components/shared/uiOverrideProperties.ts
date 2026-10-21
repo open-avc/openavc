@@ -52,6 +52,15 @@ export const UI_OVERRIDE_PROPERTIES: readonly UiOverrideProperty[] = [
   },
 ] as const;
 
+/** The value type a `ui.<elementId>.<property>` key takes, or undefined for a
+ *  key that is not a control override. A picker gives a boolean one Yes / No:
+ *  the panel hides a control only on `false`, never on the word "No". */
+export function uiOverrideType(key: unknown): UiOverrideProperty["type"] | undefined {
+  if (typeof key !== "string" || !key.startsWith("ui.")) return undefined;
+  const name = key.slice(key.lastIndexOf(".") + 1);
+  return UI_OVERRIDE_PROPERTIES.find((p) => p.name === name)?.type;
+}
+
 /** `ui.<elementId>.<property>` for every property, for one element. */
 export function uiOverrideKeys(elementId: string): string[] {
   return UI_OVERRIDE_PROPERTIES.map((p) => `ui.${elementId}.${p.name}`);
