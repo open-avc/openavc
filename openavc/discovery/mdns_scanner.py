@@ -715,6 +715,12 @@ class MDNSScanner:
 
     def _process_response(self, data: bytes, sender_ip: str) -> None:
         """Process a received mDNS response packet."""
+        # A query is what the sender wants to know, not what it is. Its
+        # answer section lists records it has already heard from OTHER
+        # devices (known-answer suppression), so reading them as the
+        # sender's own would put another device's name on its card.
+        if not _is_response(data):
+            return
         try:
             _, records = parse_dns_packet(data)
         except Exception:
@@ -1074,6 +1080,11 @@ def _create_mdns_socket(control_ip: str = "") -> tuple[socket.socket, list[str]]
         raise
 
     return sock, joined
+
+
+def _is_response(data: bytes) -> bool:
+    """Is ``data`` a DNS response (QR bit set), not a query?"""
+    return len(data) >= 12 and bool(data[2] & 0x80)
 
 
 def _is_reverse_address_name(name: str) -> bool:
