@@ -1781,14 +1781,18 @@ class Engine:
 
     # --- WebSocket Management ---
 
-    async def broadcast_ws(self, message: dict[str, Any]) -> None:
+    async def broadcast_ws(
+        self, message: dict[str, Any], *, client_type: str | None = None
+    ) -> None:
         """Send a message to every connected WS client (panels, IDE).
 
         The engine-wide broadcast door — macros, triggers, discovery, and the
         REST routes all reach panels through here. Delivery, per-client
         queues, and namespace filtering live in ``core.ws_hub``.
+        ``client_type`` narrows delivery to one kind of client, as there
+        (``"programmer"`` for a message that is the Programmer's business).
         """
-        await self.ws.broadcast(message)
+        await self.ws.broadcast(message, client_type=client_type)
 
     # --- Panel access ---
 

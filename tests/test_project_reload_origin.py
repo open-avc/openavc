@@ -269,7 +269,7 @@ def test_a_setup_wizard_still_names_the_tab_that_started_it():
     class _Engine:
         devices = _WizardDevices(driver)
 
-        async def broadcast_ws(self, msg, namespaces=None):
+        async def broadcast_ws(self, msg, *, client_type=None):
             if msg.get("status") in ("done", "error"):
                 finished.set()
 

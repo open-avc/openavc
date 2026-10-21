@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from openavc.core.device_manager import DeviceManager
+from openavc.core.engine import Engine
 from openavc.core.event_bus import EventBus
 from openavc.core.project_loader import DeviceConfig, ProjectConfig, ProjectMeta
 from openavc.core.setup_actions import (
@@ -144,6 +146,8 @@ class _FakeEngine:
         )
         self._project_revision = 0
         self.ws_messages: list[dict[str, Any]] = []
+        # Who each message was for: None = every client, as Engine.broadcast_ws.
+        self.ws_client_types: list[str | None] = []
 
     async def apply_project(self, new_project, **kwargs) -> int:
         # Mirror the seam's copy+swap+bump contract; the real reconcile is
@@ -152,8 +156,11 @@ class _FakeEngine:
         self._project_revision += 1
         return self._project_revision
 
-    async def broadcast_ws(self, message: dict[str, Any]) -> None:
+    async def broadcast_ws(
+        self, message: dict[str, Any], *, client_type: str | None = None
+    ) -> None:
         self.ws_messages.append(message)
+        self.ws_client_types.append(client_type)
 
 
 def _make_env(driver_cls=_ProvisionDriver):
@@ -227,6 +234,25 @@ async def test_setup_action_streams_progress_updates_config_and_reconnects():
 
     # Auto-reconnect suppression was lifted at the end.
     assert "dev1" not in dm._intentional_disconnect
+
+
+async def test_progress_goes_to_the_programmer_never_a_panel():
+    # The run's result message is the Programmer's business; a panel shows
+    # nothing of a setup action, so it is never sent one.
+    runner, engine, _dm, driver = _make_env()
+    await runner.start("dev1", _setup_action(driver), {"password": "secret"})
+    await _drain(runner)
+    sent_to = [
+        who for msg, who in zip(engine.ws_messages, engine.ws_client_types)
+        if msg["type"] == "action.progress"
+    ]
+    assert sent_to and set(sent_to) == {"programmer"}
+
+
+async def test_the_engine_door_passes_the_client_type_to_the_hub():
+    hub = SimpleNamespace(broadcast=AsyncMock())
+    await Engine.broadcast_ws(SimpleNamespace(ws=hub), {"type": "x"}, client_type="programmer")
+    hub.broadcast.assert_awaited_once_with({"type": "x"}, client_type="programmer")
 
 
 async def test_none_connection_field_in_delta_is_ignored():

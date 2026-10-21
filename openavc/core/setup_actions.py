@@ -254,7 +254,11 @@ class SetupActionRunner:
         status: str,
         **extra: Any,
     ) -> None:
-        """Broadcast one action.progress event to all WS clients."""
+        """Send one action.progress event to the Programmer's clients.
+
+        Never to a panel: it carries the handler's own result message and
+        nothing on a panel shows it.
+        """
         msg: dict[str, Any] = {
             "type": "action.progress",
             "device_id": device_id,
@@ -279,4 +283,4 @@ class SetupActionRunner:
                 "pct": pct,
                 "status": status,
             }
-        await self._engine.broadcast_ws(msg)
+        await self._engine.broadcast_ws(msg, client_type="programmer")
