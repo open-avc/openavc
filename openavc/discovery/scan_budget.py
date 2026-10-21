@@ -256,12 +256,28 @@ def project_port_scan(alive: int, ports: int, host_concurrency: int) -> float:
     return alive / max(1, host_concurrency) * project_port_scan_host(ports)
 
 
-def project_probes(tcp_jobs: int, udp_sends: int, companions: int) -> float:
-    """Driver probes are rate-limited scan-wide, so the send cap — not the
-    per-probe timeout — sets the cost. Companions run concurrently with
-    each other under their own hard timeout."""
-    sends = max(0, tcp_jobs) + max(0, udp_sends)
-    seconds = sends / PROBE_RATE_PER_SECOND
+def project_probes(
+    tcp_jobs: int, udp_sends: int, companions: int,
+    *, udp_listen: float, tcp_wait: float,
+) -> float:
+    """The phase runs in three stages, one after another.
+
+    UDP: the sends at the scan-wide rate, then the longest probe's listen
+    window (``udp_listen``), which always runs in full because every
+    responder is collected. TCP: the jobs start at the same rate, then the
+    last one started still takes up to ``tcp_wait``, the longest one probe
+    can take. Companions run concurrently under their own hard timeout.
+
+    Counting only the sends left both waits out: measured on a /24 with
+    120 TCP probes and 3 UDP sends, the projection was 12.3s against 14.2s
+    of real work, so the slack meant for a slow network was spent on time
+    the projection already knew about, and the phase was cut every scan.
+    """
+    seconds = 0.0
+    if udp_sends > 0:
+        seconds += udp_sends / PROBE_RATE_PER_SECOND + max(0.0, udp_listen)
+    if tcp_jobs > 0:
+        seconds += tcp_jobs / PROBE_RATE_PER_SECOND + max(0.0, tcp_wait)
     if companions > 0:
         seconds += COMPANION_SECONDS
     return seconds
@@ -530,10 +546,15 @@ def plan_passive_collect(budget: ScanBudget) -> PassiveCollectPlan:
 
 def plan_probes(
     budget: ScanBudget, tcp_jobs: int, udp_sends: int, companions: int,
+    *, udp_listen: float, tcp_wait: float,
 ) -> ProbePlan:
     """Budget phase 7's probe half from the job count, known once the port
-    scan says which hosts have a driver's port open."""
-    projected = project_probes(tcp_jobs, udp_sends, companions)
+    scan says which hosts have a driver's port open, and the declared
+    timeouts of the probes that will run (``project_probes``)."""
+    projected = project_probes(
+        tcp_jobs, udp_sends, companions,
+        udp_listen=udp_listen, tcp_wait=tcp_wait,
+    )
     # Terminal: nothing budgeted follows (the matcher runs outside the
     # deadline entirely), so this phase inherits whatever the earlier ones
     # left rather than being held to its share.
@@ -545,7 +566,13 @@ def plan_probes(
     # UDP broadcasts are kept whole: one send covers a whole subnet, so they
     # are the cheapest identification per packet. The TCP probes are per-host
     # and are what actually scales, so they take the cut.
+    # The UDP stage, listen window included, ends before the first TCP probe
+    # starts. The last TCP probe's own wait is not held back: a probe still
+    # waiting at the deadline loses only itself, since the phase keeps every
+    # probe that already answered, so reserving it would only start fewer.
     spare = allowed - udp_sends / PROBE_RATE_PER_SECOND
+    if udp_sends > 0:
+        spare -= max(0.0, udp_listen)
     if companions > 0:
         # A companion's allowance is its hard timeout, not its expected cost,
         # and it is one fixed block whatever the network size. Reserving all

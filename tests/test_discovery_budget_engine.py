@@ -248,6 +248,65 @@ class TestOverrunIsContained:
         assert set(pipeline.port_scan_hosts) == {"10.77.0.5", "10.77.0.6"}
 
 
+class TestTheProbeWaitsAreCounted:
+    """The probe phase is planned from the waits of the probes that will run,
+    not only from how many there are: the longest UDP listen window, and the
+    longest one TCP probe can take (connect and reply, then its ``then:``
+    step)."""
+
+    def _engine(self) -> DiscoveryEngine:
+        engine = _engine()
+        engine.load_driver_hints_from_registry([
+            {"id": "acme_ctl", "name": "Acme Controller", "manufacturer": "Acme",
+             "category": "audio", "transport": "tcp",
+             "discovery": {"tcp_probe": {
+                 "port": 4321, "send_ascii": "id\r\n", "expect": "Acme",
+                 "timeout_ms": 500,
+                 "then": {"send_ascii": "model\r\n", "expect": "Widget",
+                          "timeout_ms": 2000},
+             }}},
+            # Declares a longer probe, on a port no host has open.
+            {"id": "acme_slow", "name": "Acme Slow", "manufacturer": "Acme",
+             "category": "audio", "transport": "tcp",
+             "discovery": {"tcp_probe": {
+                 "port": 4999, "send_ascii": "id\r\n", "expect": "Acme",
+                 "timeout_ms": 9000,
+             }}},
+            {"id": "acme_beacon", "name": "Acme Beacon", "manufacturer": "Acme",
+             "category": "audio", "transport": "udp",
+             "discovery": {"udp_probe": {
+                 "port": 4400, "send_ascii": "who\r\n", "expect": "Acme",
+                 "timeout_ms": 1500,
+             }}},
+            {"id": "acme_panel", "name": "Acme Panel", "manufacturer": "Acme",
+             "category": "audio", "transport": "udp",
+             "discovery": {"udp_probe": {
+                 "port": 4401, "send_ascii": "who\r\n", "expect": "Acme",
+             }}},
+        ])
+        for ip in ("10.77.0.5", "10.77.0.6"):
+            device = engine._get_or_create(ip)
+            device.alive = True
+            device.open_ports = [4321]
+        return engine
+
+    def test_the_waits_come_from_the_probes_that_will_run(self):
+        engine = self._engine()
+        tcp_jobs, udp_sends, companions, udp_listen, tcp_wait = (
+            engine._count_probe_jobs(["10.77.0.0/24"])
+        )
+        assert (tcp_jobs, udp_sends, companions) == (2, 2, 0)
+        # The UDP probe with no timeout_ms takes the 2s default.
+        assert udp_listen == 2.0
+        # 500 ms to connect, 500 ms for the reply, 2000 ms for the then: step.
+        # acme_slow's 9s is not counted: no host has its port open.
+        assert tcp_wait == 3.0
+
+    def test_no_probes_to_run_means_no_waits(self):
+        engine = _engine()
+        assert engine._count_probe_jobs(["10.77.0.0/24"]) == (0, 0, 0, 0.0, 0.0)
+
+
 class TestProbesThatMatchedSurviveACut:
     """A probe phase that runs out of time keeps every probe that already
     matched. The merge used to run only once every probe had returned, so one

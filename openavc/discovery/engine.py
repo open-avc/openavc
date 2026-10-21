@@ -1342,9 +1342,12 @@ class DiscoveryEngine:
             # hosts turned out to have a driver's port open) and it runs
             # last. Its budget is reserved up front, which is the whole
             # point of budgeting by share rather than in pipeline order.
-            tcp_jobs, udp_sends, companions = self._count_probe_jobs(subnets)
+            (
+                tcp_jobs, udp_sends, companions, udp_listen, tcp_wait,
+            ) = self._count_probe_jobs(subnets)
             probe_plan = budgeting.plan_probes(
                 self._budget, tcp_jobs, udp_sends, companions,
+                udp_listen=udp_listen, tcp_wait=tcp_wait,
             )
             self._apply_plan(budgeting.PHASE_PROBE, probe_plan.warnings)
             log.info(
@@ -1656,28 +1659,48 @@ class DiscoveryEngine:
         # ARP harvest missed (found via mDNS/SSDP on a ping-skipped subnet).
         await self._late_arp_harvest()
 
-    def _count_probe_jobs(self, subnets: list[str]) -> tuple[int, int, int]:
-        """(tcp probe jobs, udp broadcast sends, companions) for this scan.
+    def _count_probe_jobs(
+        self, subnets: list[str],
+    ) -> tuple[int, int, int, float, float]:
+        """(tcp probe jobs, udp broadcast sends, companions, udp listen
+        seconds, tcp wait seconds) for this scan.
 
         Counted before ``_run_custom_probes`` runs so the phase can be budgeted
         from real work rather than a guess. The TCP expression mirrors the job
         list that method builds — same spec/port test, so the projection and
         the execution can't disagree about what the phase is about to do.
+
+        The two waits come from the probes that will run: the longest UDP
+        listen window, and the longest one TCP probe can take (its connect and
+        its reply each get the probe's ``timeout_ms``, then a ``then:`` step
+        its own). Writing the few bytes a probe sends never waits on a fresh
+        connection, so the drains are left out.
         """
         udp_targets = len(_udp_probe_targets_for(subnets))
-        udp_sends = sum(
-            udp_targets for h in self.discovery_hints if h.udp_probe is not None
-        )
+        udp_specs = [h.udp_probe for h in self.discovery_hints if h.udp_probe is not None]
+        udp_sends = udp_targets * len(udp_specs)
+        udp_listen = 0.0
+        if udp_sends:
+            udp_listen = max(spec.timeout_ms for spec in udp_specs) / 1000.0
         tcp_jobs = 0
+        tcp_wait = 0.0
         for hint in self.discovery_hints:
             spec = hint.tcp_probe
             if spec is None:
                 continue
-            tcp_jobs += sum(
+            jobs = sum(
                 1 for ip, dev in self.results.items()
                 if spec.port in (dev.open_ports or []) and _ip_in_subnets(ip, subnets)
             )
-        return tcp_jobs, udp_sends, len(self._discovery_companions)
+            if not jobs:
+                continue
+            tcp_jobs += jobs
+            then_ms = spec.follow_up.timeout_ms if spec.follow_up is not None else 0
+            tcp_wait = max(tcp_wait, (2 * spec.timeout_ms + then_ms) / 1000.0)
+        return (
+            tcp_jobs, udp_sends, len(self._discovery_companions),
+            udp_listen, tcp_wait,
+        )
 
     def _apply_plan(self, key: str, warnings: list[str]) -> None:
         """Record a phase plan: its granted deadline, and any narrowing.

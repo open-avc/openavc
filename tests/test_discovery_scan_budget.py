@@ -159,10 +159,42 @@ class TestProjections:
         assert project_port_scan(10, 50, host_concurrency=20) < one
 
     def test_probe_cost_is_set_by_the_send_rate_limit(self):
-        # 100 sends at the scan-wide 10/sec limiter is 10s, whatever each
-        # probe's own timeout is.
-        assert project_probes(tcp_jobs=100, udp_sends=0, companions=0) == 10.0
-        assert project_probes(tcp_jobs=0, udp_sends=100, companions=0) == 10.0
+        # 100 sends at the scan-wide 10/sec limiter is 10s.
+        assert project_probes(
+            tcp_jobs=100, udp_sends=0, companions=0, udp_listen=0.0, tcp_wait=0.0,
+        ) == 10.0
+        assert project_probes(
+            tcp_jobs=0, udp_sends=100, companions=0, udp_listen=0.0, tcp_wait=0.0,
+        ) == 10.0
+
+    def test_the_waits_count_as_well_as_the_sends(self):
+        # The UDP stage listens out its window after the last send, and the
+        # last TCP probe started still takes its own wait.
+        assert project_probes(
+            tcp_jobs=100, udp_sends=3, companions=0, udp_listen=2.0, tcp_wait=4.0,
+        ) == 0.3 + 2.0 + 10.0 + 4.0
+        # A stage with nothing to run waits for nothing.
+        assert project_probes(
+            tcp_jobs=0, udp_sends=0, companions=0, udp_listen=2.0, tcp_wait=4.0,
+        ) == 0.0
+
+    def test_the_measured_bench_phase_fits_its_projection(self):
+        """Measured on a /24 with 26 hosts: 120 TCP probes and 3 UDP sends
+        took 14.2s with no deadline. Counting the sends alone projected 12.3s,
+        and the 15.4s that left after slack cut the phase every scan.
+        The waits are the catalog's then: a UDP listen of 2s and a 4s TCP
+        probe (8s with its connect)."""
+        projected = project_probes(
+            tcp_jobs=120, udp_sends=3, companions=0, udp_listen=2.0, tcp_wait=8.0,
+        )
+        assert projected >= 14.2
+        budget, _ = _budget("standard")
+        plan = plan_probes(
+            budget, tcp_jobs=120, udp_sends=3, companions=0,
+            udp_listen=2.0, tcp_wait=8.0,
+        )
+        assert plan.warnings == [] and plan.max_tcp_jobs is None
+        assert plan.budget >= projected
 
 
 # --- Grants ------------------------------------------------------------
@@ -243,7 +275,10 @@ class TestTerminalPhasesSurvive:
         clock.advance(project_port_scan(30, len(ports), port.concurrency))
         collect = plan_passive_collect(budget)
         clock.advance(collect.wait_seconds + 15.0)
-        probe = plan_probes(budget, tcp_jobs=40, udp_sends=6, companions=0)
+        probe = plan_probes(
+            budget, tcp_jobs=40, udp_sends=6, companions=0,
+            udp_listen=2.0, tcp_wait=6.0,
+        )
 
         assert arp.warnings == [] and port.warnings == []
         assert collect.warnings == [] and probe.warnings == []
@@ -369,13 +404,19 @@ class TestPassiveCollectNarrowing:
 class TestProbeNarrowing:
     def test_no_cap_when_the_probes_fit(self):
         budget, _ = _budget()
-        plan = plan_probes(budget, tcp_jobs=40, udp_sends=6, companions=0)
+        plan = plan_probes(
+            budget, tcp_jobs=40, udp_sends=6, companions=0,
+            udp_listen=2.0, tcp_wait=6.0,
+        )
         assert plan.max_tcp_jobs is None
         assert plan.warnings == []
 
     def test_caps_per_host_probes_and_names_the_shortfall(self):
         budget, _ = _budget()
-        plan = plan_probes(budget, tcp_jobs=100_000, udp_sends=4, companions=0)
+        plan = plan_probes(
+            budget, tcp_jobs=100_000, udp_sends=4, companions=0,
+            udp_listen=2.0, tcp_wait=6.0,
+        )
         assert plan.max_tcp_jobs is not None
         assert plan.max_tcp_jobs < 100_000
         assert plan.warnings
@@ -385,8 +426,11 @@ class TestProbeNarrowing:
         # One UDP send covers a whole subnet, so it is the cheapest
         # identification per packet — the per-host TCP probes take the cut.
         budget, _ = _budget()
-        plan = plan_probes(budget, tcp_jobs=100_000, udp_sends=4, companions=0)
-        udp_cost = 4 / 10.0
+        plan = plan_probes(
+            budget, tcp_jobs=100_000, udp_sends=4, companions=0,
+            udp_listen=2.0, tcp_wait=6.0,
+        )
+        udp_cost = 4 / 10.0 + 2.0
         assert plan.budget > udp_cost
 
     def test_a_companion_cannot_crowd_out_every_per_host_probe(self):
@@ -399,5 +443,27 @@ class TestProbeNarrowing:
         """
         budget, clock = _budget(total=45.0)
         clock.advance(39.0)  # what was left when the phase was planned live
-        plan = plan_probes(budget, tcp_jobs=26, udp_sends=1, companions=1)
+        plan = plan_probes(
+            budget, tcp_jobs=26, udp_sends=1, companions=1,
+            udp_listen=0.0, tcp_wait=0.0,
+        )
         assert plan.max_tcp_jobs is None or plan.max_tcp_jobs > 0
+
+    def test_a_cut_leaves_time_for_the_udp_listen_but_not_the_last_wait(self):
+        """The UDP stage finishes before the first TCP probe starts, so its
+        listen window comes out of the time to start TCP probes in. The last
+        TCP probe's own wait does not: a probe still waiting at the deadline
+        loses only itself, because the phase keeps every probe that already
+        answered, so reserving it would only start fewer."""
+        def cap(udp_listen: float, tcp_wait: float) -> int:
+            budget, clock = _budget(total=45.0)
+            clock.advance(30.0)
+            plan = plan_probes(
+                budget, tcp_jobs=100_000, udp_sends=3, companions=0,
+                udp_listen=udp_listen, tcp_wait=tcp_wait,
+            )
+            assert plan.max_tcp_jobs is not None
+            return plan.max_tcp_jobs
+
+        assert abs((cap(0.0, 0.0) - cap(2.0, 0.0)) - 20) <= 1
+        assert cap(2.0, 8.0) == cap(2.0, 0.0)
