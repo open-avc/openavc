@@ -6,7 +6,7 @@ A big release: new settings for which networks can reach OpenAVC and which netwo
 
 * New setting under Settings > Network: **Accept connections from**, with Any network, one network adapter, or This computer only. It replaces Bind address and can be changed on Windows, macOS, Linux and Raspberry Pi installs; on Docker, set it in the compose file. The default is Any network.
 * The chosen adapter is followed through DHCP address changes, and panel addresses, the QR code and the Panel app's list use the chosen network. The computer's own screen, the tray and menu bar apps and OpenAVC Cloud remote access work with every option.
-* If a change would cut off the browser you are using, the Programmer shows the address to open next. If nobody opens it there within 10 minutes, the setting goes back to Any network.
+* If a change would cut off the browser you are using, the Programmer shows the address to open next. If nobody opens it there within 10 minutes, the setting goes back to the previous choice.
 * **Control interface** is renamed **Reach devices through** and is picked by adapter name. It now covers every connection to a device, including Python drivers' own connections, SSH, MQTT and Wake-on-LAN. Plugins can use it; Stream Deck and Video Panel do.
 * With Reach devices through set to Every connected adapter, Wake-on-LAN, sACN and Inter-System discovery go out on every adapter, which fixes them on Windows computers with WSL or Hyper-V. Pick one adapter to keep sACN on the lighting network.
 * Windows virtual machines on Hyper-V or Azure now list their network adapter in Settings > Network, and Discovery scans it.
@@ -42,7 +42,7 @@ A big release: new settings for which networks can reach OpenAVC and which netwo
 
 ## Simulator
 
-* **Device stops responding** on every simulated device, and **Capacity** on TCP, serial and UDP devices to limit how fast the device reads.
+* **Device stops responding** on every simulated device, and **Capacity** on TCP, serial, UDP and OSC devices to limit how fast the device reads.
 
 ## IT and security
 
@@ -56,5 +56,5 @@ A big release: new settings for which networks can reach OpenAVC and which netwo
 
 * After updating, update your installed drivers in Devices > Drivers > Browse Community. Installed drivers do not update with OpenAVC, and many new driver versions need 0.37.0.
 * Behind a reverse proxy on another computer, or any proxy in front of Docker with published ports: set `network.trust_forwarded_for` to `true` and list the proxy in `network.trusted_proxies` (or `OPENAVC_TRUSTED_PROXIES`). Otherwise every client behind the proxy shares one rate limit.
-* Rolling back to 0.36.0 keeps the system reachable from every network (on a Mac or Raspberry Pi, from this computer only if that was selected).
+* Rolling back to 0.36.0 keeps the system reachable from every network (on a Mac, from this computer only if that was selected).
 * Project format stays at 0.14.0.
