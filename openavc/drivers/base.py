@@ -1337,9 +1337,14 @@ class BaseDriver(ABC):
             # _liveness_probe). A UDP driver with none of those reads
             # connected against a dead host forever.
             # Set verify_timeout: 0 in config to skip the pre-connect probe on
-            # OSC/HTTP.
+            # OSC/HTTP. It is skipped too while the device's state holds
+            # polling back (_connect_check_held).
             verify_timeout = self.config.get("verify_timeout", 3.0)
-            if verify_timeout > 0 and hasattr(self.transport, "verify"):
+            if (
+                verify_timeout > 0
+                and hasattr(self.transport, "verify")
+                and not self._connect_check_held()
+            ):
                 if not await self.transport.verify(timeout=verify_timeout):
                     self._raise_if_ended(attempt)
                     # Retain the transport's underlying cause (refused /
@@ -2651,6 +2656,17 @@ class BaseDriver(ABC):
         answered would keep the device offline for good. It is announced
         instead once it has answered anything on this connection. Default:
         never.
+        """
+        return False
+
+    def _connect_check_held(self) -> bool:
+        """True when the device's own state holds polling back, so connect()
+        skips the transport's check (an OSC ``/info``, an HTTP HEAD) as well:
+        a unit in standby that any message would wake is left in standby.
+
+        Asked once per connect, before the check would go out. The device
+        then reads connected without having answered, as it stays connected
+        while its polls are held. Default: never.
         """
         return False
 

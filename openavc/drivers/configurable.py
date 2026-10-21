@@ -2236,6 +2236,21 @@ class ConfigurableDriver(BaseDriver):
         """The last poll was held back by ``polling.when_state``."""
         return self._poll_held
 
+    def _connect_check_held(self) -> bool:
+        """``polling.when_state`` holds the poll back now (the state the
+        device reported last, kept from before the reconnect). Read without
+        touching the poll's own paused/resumed bookkeeping, which is the
+        poll loop's."""
+        gate = (self._definition.get("polling") or {}).get("when_state")
+        if not isinstance(gate, dict) or self._state_gate_open(gate):
+            return False
+        wanted, reported = self._describe_state_gate(gate)
+        log.info(
+            f"[{self.device_id}] Connect check skipped: it polls only while "
+            f"{wanted}, and the device reports {reported}"
+        )
+        return True
+
     def _unread_sample(self) -> str:
         return self._last_unread
 

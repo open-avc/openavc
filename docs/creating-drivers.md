@@ -1026,7 +1026,7 @@ on_connect:
 
 ##### Holding a query back on the device's state (`when_state:`, platform 0.37.0)
 
-Some devices wake from standby at any command they receive, so polling them would wake them every interval. `when_state:` sends an entry only while the device's own state variables hold the values you give. On `polling` it holds back the whole poll; on an `on_connect` or `polling.queries` entry it holds back that entry, so a reconnect to a unit in standby leaves it there. An `osc` driver also asks every reply address once its `on_connect` steps have gone; the `polling` gate holds those back as well.
+Some devices wake from standby at any command they receive, so polling them would wake them every interval. `when_state:` sends an entry only while the device's own state variables hold the values you give. On `polling` it holds back the whole poll; on an `on_connect` or `polling.queries` entry it holds back that entry, so a reconnect to a unit in standby leaves it there. An `osc` driver also asks every reply address once its `on_connect` steps have gone; the `polling` gate holds those back as well. Since 0.37.1 the `polling` gate also holds back the check an `osc` or `http` driver makes when it connects (the OSC `/info` query, the HTTP HEAD request), so the device reads connected without having answered, as it stays connected while its polls are held. After a server restart nothing has been reported yet, so the first connect still checks.
 
 ```yaml
 responses:
@@ -2361,9 +2361,11 @@ polling:
     - "renew_subscription"
 ```
 
+Once the `on_connect` steps have gone, the platform also asks every reply address in `responses` that has no wildcard, by sending it with no arguments, so the state is filled in on connect. It does this only for a driver that declares `on_connect`: without start-up steps the state fills in from the polls and from what the device sends. `polling.when_state` holds these back as it holds a poll.
+
 #### Connection Verification
 
-When connecting, the platform sends an OSC `/info` query to verify the device is reachable. If your device doesn't respond to `/info`, add `verify_timeout: 0` to `default_config` to skip the check:
+When connecting, the platform sends an OSC `/info` query to verify the device is reachable. It is not sent while `polling.when_state` holds the poll back (since 0.37.1). If your device doesn't respond to `/info`, add `verify_timeout: 0` to `default_config` to skip the check:
 
 ```yaml
 default_config:
