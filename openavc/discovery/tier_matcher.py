@@ -54,6 +54,7 @@ from openavc.discovery.result import (
     Evidence,
     IdentificationMatch,
     SignalTier,
+    device_info_from_evidence,
 )
 
 log = logging.getLogger("discovery.tier_matcher")
@@ -616,6 +617,55 @@ def _txt_match_satisfied(
 # ---------------------------------------------------------------------------
 
 
+def _model_key(model: str) -> str:
+    """A model name compared without case, spaces or punctuation."""
+    return re.sub(r"[^a-z0-9]", "", model.lower())
+
+
+@dataclass(frozen=True)
+class DriverProfile:
+    """What a driver says about the equipment it controls: its category and
+    the model names it lists. Asked only to break a tie between drivers one
+    kind of signal identified equally well."""
+
+    category: str = ""
+    models: frozenset[str] = frozenset()
+
+    @classmethod
+    def of(cls, driver: dict[str, Any]) -> DriverProfile:
+        """From a driver's catalog or registry entry (``category``,
+        ``compatible_models: [{models: [...]}]``)."""
+        models: set[str] = set()
+        for entry in driver.get("compatible_models") or ():
+            if isinstance(entry, dict):
+                for name in entry.get("models") or ():
+                    if isinstance(name, str) and _model_key(name):
+                        models.add(_model_key(name))
+        category = driver.get("category")
+        return cls(
+            category=category.strip().lower() if isinstance(category, str) else "",
+            models=frozenset(models),
+        )
+
+
+def _reported_by_device(evidence_log: list[Evidence]) -> tuple[set[str], set[str]]:
+    """The categories and model names the device itself gave, from every
+    record: a field a driver's rule set to a literal (``driver_supplied``) is
+    that driver's claim, not the device's, and is left out."""
+    categories: set[str] = set()
+    models: set[str] = set()
+    for ev in evidence_log:
+        info = device_info_from_evidence(ev)
+        supplied = set(ev.data.get("driver_supplied") or ())
+        category = info.get("category")
+        if isinstance(category, str) and category.strip() and "category" not in supplied:
+            categories.add(category.strip().lower())
+        model = info.get("model")
+        if isinstance(model, str) and _model_key(model) and "model" not in supplied:
+            models.add(_model_key(model))
+    return categories, models
+
+
 # The strong tiers in the order they are trusted. A match from an earlier
 # tier ranks ahead of one from a later tier of the same kind (vendor-specific
 # or cross-vendor); every tier is read.
@@ -644,6 +694,9 @@ class TierMatcher:
     # Optional override: candidates ranked by (driver_id, oui_prefix_observed)
     # for tie-breaking in possible state. None = first-encountered order.
     candidate_ranker: object | None = field(default=None, repr=False)
+    # Each driver's category and listed models, by driver id, for the tie
+    # between strong matches (_strong_hits). Empty: the tie goes by driver id.
+    profiles: dict[str, DriverProfile] = field(default_factory=dict, repr=False)
 
     def match(self, evidence_log: list[Evidence]) -> IdentificationMatch:
         """Run the deterministic dispatch."""
@@ -678,22 +731,37 @@ class TierMatcher:
         each came from: a cross-vendor rule names a protocol, not the
         driver, however trusted the signal that carried it. Within each,
         the earlier tier first. One record's rules keep the index's order
-        (most specific first). Between records of one tier nothing says which
-        driver fits better, so the tie goes by driver id: the log is in the
-        order probes answered and announcements arrived, and the answer must
-        not depend on that. A driver a vendor-specific rule identifies counts
-        as vendor-specific even if a cross-vendor rule names it too.
+        (most specific first). Between records of one tier, the driver that
+        fits what the device itself reported comes first: one listing the
+        model it gave, then one of the category it gave (a projector's
+        greeting that a maker's display driver also knows, when PJLink on
+        the same unit names a projector). After that the tie goes by driver
+        id: the log is in the order probes answered and announcements
+        arrived, and the answer must not depend on that. A driver a
+        vendor-specific rule identifies counts as vendor-specific even if a
+        cross-vendor rule names it too.
         """
-        ranked: list[tuple[bool, int, int, str, str, SignalRule, Evidence]] = []
+        categories, models = _reported_by_device(evidence_log)
+
+        def fit(driver_id: str) -> int:
+            profile = self.profiles.get(driver_id)
+            if profile is None:
+                return 0
+            if models & profile.models:
+                return 2
+            return 1 if profile.category and profile.category in categories else 0
+
+        ranked: list[tuple[bool, int, int, int, str, str, SignalRule, Evidence]] = []
         for ev in evidence_log:
             if ev.tier not in _STRONG_TIERS:
                 continue
             tier = _STRONG_TIERS.index(ev.tier)
             for position, rule in enumerate(strong_rules(ev, self.index)):
                 ranked.append(
-                    (rule.generic, tier, position, rule.driver_id, ev.source, rule, ev),
+                    (rule.generic, tier, position, -fit(rule.driver_id),
+                     rule.driver_id, ev.source, rule, ev),
                 )
-        ranked.sort(key=lambda hit: hit[:5])
+        ranked.sort(key=lambda hit: hit[:6])
 
         hits: list[tuple[SignalRule, Evidence]] = []
         seen: set[str] = set()

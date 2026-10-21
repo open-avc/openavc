@@ -41,6 +41,7 @@ from openavc.discovery.companion import (
 )
 from openavc.discovery.tier_matcher import (
     KIND_HOSTNAME,
+    DriverProfile,
     SignalIndex,
     TierMatcher,
     evidence_hostname,
@@ -610,6 +611,11 @@ class DiscoveryEngine:
             for d in installed_kept + catalog_only
             if d.get("id") and isinstance(d.get("category"), str) and d["category"]
         }
+        profiles = {
+            str(d["id"]): DriverProfile.of(d)
+            for d in installed_kept + catalog_only
+            if d.get("id")
+        }
 
         all_hints = installed_hints + community_hints
         self.discovery_hints = all_hints
@@ -626,7 +632,7 @@ class DiscoveryEngine:
             except ValueError as exc2:
                 log.error("Installed-only signal index also rejected: %s", exc2)
                 self.signal_index = SignalIndex()
-        self.tier_matcher = TierMatcher(self.signal_index)
+        self.tier_matcher = TierMatcher(self.signal_index, profiles=profiles)
 
         added = 0
         for hint in all_hints:

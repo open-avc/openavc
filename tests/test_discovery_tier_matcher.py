@@ -18,6 +18,7 @@ from openavc.discovery.tier_matcher import (
     KIND_MDNS,
     KIND_OPEN_PORT,
     KIND_VENDOR_STRING,
+    DriverProfile,
     SignalIndex,
     SignalRule,
     TierMatcher,
@@ -466,6 +467,58 @@ class TestTierMatcherPeerMatches:
         assert result.driver_id == "acme_display"
         assert result.alternatives == ["acme_projector"]
         assert result.source == "probe:custom_acme_display_tcp"
+
+    @staticmethod
+    def _profiled(**profiles):
+        m, projector, display = TestTierMatcherPeerMatches._two_probes()
+        m.profiles = profiles
+        return m, projector, display
+
+    def test_the_driver_of_the_kind_the_device_reported_comes_first(self):
+        # The unit's PJLink answer names a projector; the maker's display
+        # driver knows the same greeting.
+        m, projector, display = self._profiled(
+            acme_projector=DriverProfile(category="projector"),
+            acme_display=DriverProfile(category="display"),
+        )
+        pjlink = evidence_active_probe(
+            "custom_pjlink_tcp", {"category": "projector", "model": "AP-160"}, port=4352,
+        )
+
+        result = m.match([display, projector, pjlink])
+
+        assert result.driver_id == "acme_projector"
+        assert result.alternatives == ["acme_display"]
+
+    def test_a_driver_listing_the_reported_model_comes_before_the_kind(self):
+        m, projector, display = self._profiled(
+            acme_projector=DriverProfile(category="projector", models=frozenset({"ap160"})),
+            acme_display=DriverProfile(category="display"),
+        )
+        report = evidence_active_probe(
+            "custom_other_tcp", {"category": "display", "model": "AP-160"}, port=80,
+        )
+
+        assert m.match([display, projector, report]).driver_id == "acme_projector"
+
+    def test_what_a_driver_s_own_rule_sets_is_not_the_device_s_report(self):
+        m, _projector, display = self._profiled(
+            acme_projector=DriverProfile(category="projector"),
+            acme_display=DriverProfile(category="display"),
+        )
+        projector = evidence_active_probe(
+            "custom_acme_projector_tcp", {"raw": "ACMECONTROL 1", "category": "projector"},
+            port=1024, driver_supplied=["category"], supplied_by="acme_projector",
+        )
+
+        assert m.match([projector, display]).driver_id == "acme_display"
+
+    def test_a_driver_profile_reads_its_category_and_listed_models(self):
+        profile = DriverProfile.of({
+            "id": "acme_projector", "category": "Projector",
+            "compatible_models": [{"manufacturer": "Acme", "models": ["AP-160", "AP 200"]}],
+        })
+        assert profile == DriverProfile(category="projector", models=frozenset({"ap160", "ap200"}))
 
     def test_answer_does_not_depend_on_the_order_the_probes_answered(self):
         m, projector, display = self._two_probes()
