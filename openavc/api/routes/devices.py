@@ -3,6 +3,7 @@
 import re
 from typing import Any
 
+import httpx
 from openavc.api.host_policy import ProgrammerRoute
 from fastapi import APIRouter, HTTPException, Request
 
@@ -35,6 +36,7 @@ from openavc.core.required_config import (
 from openavc.drivers.base import (
     CommandParamError,
     CommandPartialError,
+    CommandRefusedError,
     DeviceSettingValueError,
     UnknownCommandError,
     UnknownDeviceSettingError,
@@ -46,8 +48,10 @@ from openavc.drivers.child_ids import (
     coerce_child_local_id,
 )
 from openavc.drivers.registry import is_driver_registered
+from openavc.utils.logger import get_logger
 
 router = APIRouter(route_class=ProgrammerRoute)
+log = get_logger(__name__)
 
 _MAX_NAME_LEN = 128
 
@@ -480,6 +484,34 @@ def _not_connected(device_id: str, exc: ConnectionError) -> Exception:
     return _api_error(503, f"Device '{device_id}' is not connected", exc)
 
 
+def _driver_failure(device_id: str, command: str, exc: Exception) -> HTTPException:
+    """What Send Command and a device action answer for whatever a driver
+    raised running a command. A ``CommandRefusedError`` is the device saying
+    no, in a sentence written for the reader: 409 with it. A timeout gets the
+    sentence a panel gets, naming the device. Any other exception's text was
+    not written for the reader and may hold what should stay private, so it
+    gets a 500 naming the device and the command. Every one is logged under
+    the device's id, which puts it in the Device Log on the device's page."""
+    engine = _get_engine()
+    refused = isinstance(exc, CommandRefusedError) and str(exc).strip()
+    (log.warning if refused else log.error)(
+        f"[{device_id}] Command '{command}' failed: {type(exc).__name__}: {exc}"
+    )
+    if refused:
+        return HTTPException(status_code=409, detail=str(exc))
+    name = device_error_label(device_id, engine.state, engine.project, exc=exc)
+    if isinstance(exc, (TimeoutError, httpx.TimeoutException)):
+        host = engine.state.get(f"device.{device_id}.host") or ""
+        return HTTPException(status_code=500, detail=friendly_error(exc, device=name, host=host))
+    driver = engine.devices.get_driver(device_id)
+    cmd_def = ((getattr(driver, "DRIVER_INFO", {}) or {}).get("commands") or {}).get(command)
+    label = (cmd_def.get("label") if isinstance(cmd_def, dict) else None) or command
+    return HTTPException(
+        status_code=500,
+        detail=f"{name} couldn't run {label}. The Device Log on its page has the details.",
+    )
+
+
 @router.post("/devices/{device_id}/command")
 async def send_command(device_id: str, body: CommandRequest) -> dict[str, Any]:
     """Send a command to a device."""
@@ -533,9 +565,8 @@ async def send_command(device_id: str, body: CommandRequest) -> dict[str, Any]:
         # Where a driver's own failure lands, whatever it raised. A driver
         # ValueError -- a response its handler could not parse, a helper deep
         # in a protocol -- used to be caught above and reported as a missing
-        # device; it belongs here with the driver's other faults, logged in
-        # full and answered with a sentence of ours.
-        raise _api_error(500, f"Failed to send command '{body.command}' to device '{device_id}'", e)
+        # device; it belongs here with the driver's other faults.
+        raise _driver_failure(device_id, body.command, e) from e
 
 
 @router.post("/devices/{device_id}/send-raw")
@@ -702,9 +733,7 @@ async def invoke_device_action(
                 code="command_incomplete", outcome=e.outcome,
             ) from e
         except Exception as e:
-            raise _api_error(
-                500, f"Failed to run action '{action_id}' on device '{device_id}'", e
-            )
+            raise _driver_failure(device_id, action["command"], e) from e
 
     if action["kind"] == "link":
         # A link action opens the URL client-side; there's nothing to invoke.

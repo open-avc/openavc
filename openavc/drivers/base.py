@@ -177,6 +177,19 @@ class CommandPartialError(RuntimeError):
     """
 
 
+class CommandRefusedError(RuntimeError):
+    """The device refused the command, and the message says why.
+
+    Raise it with the device's own reason ("Encoder 001 is offline") or a
+    sentence of the driver's about the refusal. Send Command and a device
+    action answer it with that sentence; any other exception a driver raises
+    while running a command is kept out of their answer (its text is not
+    written for the reader, and may hold what should stay private) and goes
+    to the device's log instead. A panel and a macro show it as they show any
+    RuntimeError. The message is user-facing -- surface it verbatim.
+    """
+
+
 class UnknownCommandError(ValueError):
     """A caller asked a device for a command name the driver does not declare.
 

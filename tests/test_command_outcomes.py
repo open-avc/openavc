@@ -9,6 +9,7 @@ import pytest
 from openavc.api.error_messages import friendly_error
 from openavc.api.errors import StructuredApiError
 from openavc.api.routes import devices
+from openavc.core.state_store import StateStore
 from openavc.drivers.command_outcome import CommandOutcomeError
 
 
@@ -59,11 +60,14 @@ async def test_known_outcome_survives(door, outcome, status, phrase, monkeypatch
 
 async def test_unexpected_exception_stays_private(monkeypatch):
     engine = SimpleNamespace(
+        state=StateStore(),
+        project=None,
         devices=SimpleNamespace(
             send_command=AsyncMock(
                 side_effect=RuntimeError("private: /firmware/secrets/token")
-            )
-        )
+            ),
+            get_driver=lambda _: None,
+        ),
     )
     monkeypatch.setattr(devices, "_get_engine", lambda: engine)
     with pytest.raises(HTTPException) as caught:
@@ -71,7 +75,9 @@ async def test_unexpected_exception_stays_private(monkeypatch):
             "local", devices.CommandRequest(command="increment", params={})
         )
     assert caught.value.status_code == 500
-    assert caught.value.detail == "Failed to send command 'increment' to device 'local'"
+    assert caught.value.detail == (
+        "local couldn't run increment. The Device Log on its page has the details."
+    )
 
 
 def test_unknown_outcome_cannot_be_used_as_display_text():

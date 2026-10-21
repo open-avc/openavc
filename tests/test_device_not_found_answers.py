@@ -268,7 +268,7 @@ def test_a_drivers_own_value_error_is_not_a_missing_device(client):
     assert resp.status_code == 500
     detail = resp.json()["detail"]
     assert "not found" not in detail.lower()
-    assert detail == "Failed to send command 'power_on' to device 'dev1'"
+    assert detail == "dev1 couldn't run Power On. The Device Log on its page has the details."
     # A 500 names what failed; the driver's own words stay in the server log.
     assert "ERR7" not in detail
 

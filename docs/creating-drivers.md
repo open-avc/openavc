@@ -3318,6 +3318,27 @@ These methods can be overridden in your driver subclass:
 | `_resolve_delimiter()` | No | Checks DRIVER_INFO, then config, then defaults to `b"\r"`. |
 | `_handle_transport_disconnect()` | No | Sets connected=False, emits disconnect event. A drop before `connect()` finishes its handshake (`_post_connect()`) ends that connect instead, with no event. |
 
+### When the device says no: `CommandRefusedError`
+
+When the device refuses a command, raise `CommandRefusedError` from `openavc.drivers.base` with the device's reason, or a sentence of your own about the refusal:
+
+```python
+for line in reply.splitlines():
+    if line.startswith("[ERROR]"):
+        raise CommandRefusedError(line[len("[ERROR]"):].strip())
+```
+
+Send Command on the device page and a Quick Action button show that sentence, and so do a panel and a macro. Any other exception your `send_command` raises stays off the Programmer's screens: Send Command says "<device> couldn't run <command>. The Device Log on its page has the details.", and the exception, with its text, goes to that Device Log. A timeout reads "<device> did not respond in time." Write the refusal for the person on the device page, and keep passwords, tokens and file paths out of it.
+
+`CommandRefusedError` is a `RuntimeError`, new in OpenAVC 0.37.1. A driver that also installs on an older server imports it this way, and raises a plain `RuntimeError` there:
+
+```python
+try:
+    from openavc.drivers.base import CommandRefusedError
+except ImportError:  # OpenAVC before 0.37.1
+    CommandRefusedError = RuntimeError
+```
+
 ### The `poll()` contract
 
 Python drivers that override `poll()` **must propagate transport-level errors**. The polling loop catches `ConnectionError`, `TimeoutError`, `OSError`, and any `httpx.HTTPError` and counts them toward the missed-poll watchdog. After 3 consecutive dry polls, the platform flips `device.<id>.connected` to `False` and emits `device.disconnected.<id>`. A typed `auth_failed` is the exception: the device answered by refusing the credential, so the connection drops on the first one instead of sending it again on two more polls (below).
