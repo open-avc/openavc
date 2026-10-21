@@ -2509,7 +2509,7 @@
                 "discard",
                 "silence"
               ],
-              "description": "What the device does when it loses bytes. discard (the default): carries on with what it kept. silence: stops answering until the connection closes; over UDP, until Capacity is switched off."
+              "description": "What the device does when it loses bytes. discard (the default): carries on with what it kept. silence: stops answering until the connection closes; over UDP or OSC, until Capacity is switched off."
             }
           },
           "additionalProperties": false

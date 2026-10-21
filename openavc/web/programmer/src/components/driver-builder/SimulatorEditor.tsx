@@ -192,15 +192,17 @@ export function SimulatorEditor({ draft, onUpdate }: SimulatorEditorProps) {
         </div>
       </div>
 
-      {/* Capacity */}
-      <div style={rowStyle}>
-        <CapacityEditor
-          capacity={sim.capacity}
-          datagram={draft.transport === "udp" || draft.transport === "osc"}
-          onChange={(capacity) => update({ capacity })}
-          helpStyle={helpStyle}
-        />
-      </div>
+      {/* Capacity: the simulator models none for an HTTP device */}
+      {draft.transport !== "http" && (
+        <div style={rowStyle}>
+          <CapacityEditor
+            capacity={sim.capacity}
+            datagram={draft.transport === "udp" || draft.transport === "osc"}
+            onChange={(capacity) => update({ capacity })}
+            helpStyle={helpStyle}
+          />
+        </div>
+      )}
 
       {/* Error Modes */}
       <div style={rowStyle}>

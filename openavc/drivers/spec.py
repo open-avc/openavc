@@ -2524,7 +2524,7 @@ DEFS = {
                     'on_overflow': {
                         'type': 'string',
                         'enum': ('discard', 'silence'),
-                        'doc': 'What the device does when it loses bytes. discard (the default): carries on with what it kept. silence: stops answering until the connection closes; over UDP, until Capacity is switched off.',
+                        'doc': 'What the device does when it loses bytes. discard (the default): carries on with what it kept. silence: stops answering until the connection closes; over UDP or OSC, until Capacity is switched off.',
                     },
                 },
                 'required': ('rx_buffer', 'process_ms'),
