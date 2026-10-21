@@ -269,6 +269,8 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
                 );
               })()}
               {eachChild && !opaque && (
+                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+                Children per query
                 <input
                   type="number"
                   min={2}
@@ -284,6 +286,7 @@ export function LifecycleEditor({ draft, onUpdate }: LifecycleEditorProps) {
                   title="Children one reply covers. Set it for a list read that answers a page of children starting at the one asked for: the step then goes out once per page. Leave blank to send it once per child."
                   style={{ width: 70, fontSize: "var(--font-size-sm)" }}
                 />
+                </label>
               )}
               {gateVariables.length > 0 && !opaque && (
                 <button

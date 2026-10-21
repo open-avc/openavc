@@ -662,7 +662,7 @@ export function DriverEditor({
                 >
                   Lowercase letters, digits, and underscores only.
                   {devicesUsingDriver.length > 0
-                    ? ` In use by ${devicesUsingDriver.length} device${devicesUsingDriver.length === 1 ? "" : "s"} in the current project. Renaming will orphan them.`
+                    ? ` In use by ${devicesUsingDriver.length} device${devicesUsingDriver.length === 1 ? "" : "s"} in the current project, which will need to be reassigned if it is renamed.`
                     : ""}
                 </div>
               )}

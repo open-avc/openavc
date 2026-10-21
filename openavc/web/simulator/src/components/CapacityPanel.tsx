@@ -24,7 +24,7 @@ export function CapacityPanel({ deviceId, capacity }: { deviceId: string; capaci
     : "off";
   const silenceText =
     capacity.kind === "datagram"
-      ? "Stop answering until this is switched off"
+      ? "Stop answering until Capacity is switched off"
       : "Stop answering until it reconnects";
 
   return (

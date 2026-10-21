@@ -93,8 +93,7 @@ is simply broken. Only the second is a minimum.
 Two kinds of number live here, and the difference matters when one changes:
 
   * declared    the size is a constant in the stylesheet or the renderer:
-                the 20px dot, the 44px fader handle, the 28px scale column,
-                the 2px meter segment. These move only when someone edits
+                the 20px dot, the 44px fader handle, the 2px meter segment. These move only when someone edits
                 that constant.
   * font-driven the size falls out of the panel's text default plus padding:
                 a keypad key, a select's native control, a fader's scale

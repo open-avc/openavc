@@ -417,7 +417,7 @@ export function FeedbackBindingEditor({
       {stateKey && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <label style={labelStyle}>
-            Feedback Mode: <strong>{isMultiState ? "Multi-State" : "Simple (On/Off)"}</strong>
+            Feedback Mode: <strong>{isMultiState ? "Multi-State" : "Simple (Active / Inactive)"}</strong>
           </label>
           <button
             onClick={() => isMultiState ? switchToSimple() : switchToMultiState()}

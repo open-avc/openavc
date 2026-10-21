@@ -75,7 +75,7 @@ describe("the Capacity section", () => {
   it("says when a datagram device stays silent", () => {
     render(<CapacityPanel deviceId="amp1" capacity={capacity({ kind: "datagram" })} />);
     open();
-    expect(screen.getByText("Stop answering until this is switched off")).toBeTruthy();
+    expect(screen.getByText("Stop answering until Capacity is switched off")).toBeTruthy();
   });
 
   it("shows the simulator's reason when a change is refused", async () => {
