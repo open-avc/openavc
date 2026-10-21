@@ -25,6 +25,7 @@ import { Activity, ChevronDown, ChevronRight } from "lucide-react";
 import type { MonitorConfig, MonitorStateEntry } from "../../api/types";
 import { monitorStatus, hasLimits, normalValues, ABNORMAL } from "../../api/monitorHelpers";
 import { booleanWord } from "./booleanWords";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 /** What the driver or the variable already says about this reading. Everything
  *  here is pre-filled and stays editable — a driver's 0–10000 lamp-hour range
@@ -95,22 +96,44 @@ function wordFor(monitor: MonitorConfig, value: string): string {
   return value;
 }
 
+/** What a monitor holds beyond what one click on Monitor wrote, named as the
+ *  panel names it. Removing a monitor with none of these loses nothing, so it
+ *  goes at once; one with any of them asks first. */
+export function monitorSettings(monitor: MonitorConfig, declared?: DeclaredReading): string[] {
+  const out: string[] = [];
+  if (monitor.label && monitor.label !== declared?.label) out.push("Shown as");
+  if (monitor.unit && monitor.unit !== declared?.unit) out.push("Unit");
+  if (monitor.display_decimals != null) out.push("Decimals");
+  if (hasLimits(monitor) || Object.values(monitor.states ?? {}).some((s) => s?.label)) {
+    out.push("Normal is");
+  }
+  if (monitor.duration_seconds) out.push("how long it has to stay wrong");
+  return out;
+}
+
 export function MonitorControl({
   stateKey, declared, monitors, onChange, liveValue, compact,
   open: controlledOpen, onOpenChange, toggleOnly,
 }: Props) {
   const monitor = monitors.find((m) => m.key === stateKey);
   const [ownOpen, setOwnOpen] = useState(false);
+  const [confirmStop, setConfirmStop] = useState(false);
   const open = controlledOpen ?? ownOpen;
   const setOpen = (next: boolean) => {
     if (onOpenChange) onOpenChange(next);
     else setOwnOpen(next);
   };
 
+  const stop = () => {
+    setConfirmStop(false);
+    setOpen(false);
+    onChange(monitors.filter((m) => m.key !== stateKey), `Stop monitoring ${stateKey}`);
+  };
+
   const toggle = () => {
     if (monitor) {
-      setOpen(false);
-      onChange(monitors.filter((m) => m.key !== stateKey), `Stop monitoring ${stateKey}`);
+      if (monitorSettings(monitor, declared).length > 0) setConfirmStop(true);
+      else stop();
       return;
     }
     // One click, and nothing to fill in: everything here is already declared.
@@ -175,6 +198,21 @@ export function MonitorControl({
           declared={declared}
           monitors={monitors}
           onChange={onChange}
+        />
+      )}
+
+      {confirmStop && monitor && (
+        <ConfirmDialog
+          title={`Stop monitoring ${monitor.label || declared?.label || stateKey}?`}
+          message={
+            `This removes the monitor and what was set for it: ` +
+            `${monitorSettings(monitor, declared).join(", ")}. ` +
+            `The Dashboard and the cloud stop showing this reading.`
+          }
+          confirmLabel="Stop monitoring"
+          destructive
+          onConfirm={stop}
+          onCancel={() => setConfirmStop(false)}
         />
       )}
     </div>
