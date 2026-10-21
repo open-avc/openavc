@@ -263,6 +263,9 @@ async def delete_python_driver(driver_id: str) -> dict:
     sys.modules.pop(module_name, None)
 
     log.info(f"Deleted Python driver: {driver_id}")
+    # Discovery stops suggesting it, and stops running its discovery check.
+    from openavc.api.discovery import refresh_all_device_matches
+    await refresh_all_device_matches()
     await _announce(driver_id)
     return {"status": "deleted", "driver_id": driver_id, "removed_companions": removed_companions}
 

@@ -58,15 +58,19 @@ def _get_engine() -> DiscoveryEngine:
 
 
 async def refresh_all_device_matches() -> None:
-    """Reload driver hints and re-match all discovered devices.
+    """Reload driver hints and discovery companions, and re-match all
+    discovered devices.
 
-    Call this after installing or uninstalling drivers so discovery
-    results stay in sync with the current driver registry.
+    Call this after installing, updating or uninstalling drivers so discovery
+    results stay in sync with the current driver registry, and so the next
+    scan runs the ``*_discovery.py`` checks of the drivers there now.
     """
     if _engine is None:
         return
 
     _engine.load_driver_hints_from_registry(list_registered_drivers())
+    from openavc.system_config import DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR
+    _engine.load_discovery_companions_from_dirs([DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR])
     # Re-fold the community catalog so un-installed drivers stay matchable
     # — discovery's whole job is suggesting what to install next.
     await _engine.refresh_signal_index_with_catalog()
