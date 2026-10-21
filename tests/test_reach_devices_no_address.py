@@ -334,3 +334,105 @@ async def test_an_http_device_retrying_still_names_the_adapter(chosen, monkeypat
         assert state.get("device.panel_http.offline_detail") == "Can't reach 192.0.2.10. " + SENTENCE
     finally:
         await dm.disconnect_all()
+
+
+def test_a_broadcast_or_a_multicast_leaves_from_the_adapters_169_254_address(chosen):
+    # A network with no DHCP server: Wake-on-LAN's broadcast and an sACN
+    # universe's group go out from the only address the adapter holds.
+    chosen(SPARE_LINK_LOCAL)
+    assert control_bind_address("255.255.255.255") == "169.254.7.7"
+    assert control_bind_address("239.255.0.1") == "169.254.7.7"
+
+
+def _acme_display():
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
+    from openavc.drivers.base import BaseDriver
+
+    class AcmeDisplay(BaseDriver):
+        DRIVER_INFO = {
+            "id": "acme_display_link_local_test", "name": "Acme Display", "manufacturer": "Acme",
+            "category": "display", "transport": "tcp",
+            "default_config": {"host": "", "port": 4999}, "commands": {},
+            "state_variables": {}, "config_schema": {},
+        }
+
+        async def send_command(self, command, params=None):
+            return None
+
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    return AcmeDisplay("display", {"host": "169.254.20.1", "port": 4999}, state, events)
+
+
+async def test_with_nothing_to_send_from_a_wake_says_the_adapter_is_not_connected(chosen):
+    chosen()
+    display = _acme_display()
+    with pytest.raises(reach_devices.AdapterUnavailable, match="^Not sent: Ethernet 2 isn't connected"):
+        await display.wake_on_lan("00:05:1b:00:00:20")
+
+
+async def test_with_nothing_to_send_from_a_multicast_devices_card_says_the_adapter_has_no_address(
+    chosen, monkeypatch,
+):
+    from openavc.core.device_manager import DeviceManager
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
+    from openavc.drivers.base import BaseDriver
+    from openavc.drivers.registry import _DRIVER_REGISTRY
+
+    class AcmeLights(BaseDriver):
+        DRIVER_INFO = {
+            "id": "acme_lights_no_address_test", "name": "Acme Lights", "manufacturer": "Acme",
+            "category": "lighting", "transport": "udp",
+            "default_config": {"host": "", "port": 5568}, "commands": {},
+            "state_variables": {}, "config_schema": {},
+        }
+
+        async def send_command(self, command, params=None):
+            return None
+
+    chosen()
+    monkeypatch.setitem(_DRIVER_REGISTRY, AcmeLights.DRIVER_INFO["id"], AcmeLights)
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    dm = DeviceManager(state, events)
+    monkeypatch.setattr(dm, "_reconnect_delay", lambda device_id, attempt: 60.0)
+    try:
+        await dm.add_device({
+            "id": "lights", "driver": AcmeLights.DRIVER_INFO["id"], "name": "Lights",
+            "config": {"host": "239.255.0.1", "port": 5568},
+        })
+        assert state.get("device.lights.offline_reason") == UNREACHABLE
+        assert state.get("device.lights.offline_detail") == "Can't reach 239.255.0.1. " + SENTENCE
+    finally:
+        await dm.disconnect_all()
+
+
+async def test_wake_on_lan_goes_out_from_the_adapters_169_254_address(chosen):
+    sent_from: list[tuple[str | None, str, int]] = []
+
+    class Capture:
+        local_addr: str | None = None
+
+        async def send_to(self, data, host, port):
+            sent_from.append((self.local_addr, host, port))
+
+        async def close(self):
+            return None
+
+    async def open_udp(local_addr=None):
+        capture = Capture()
+        capture.local_addr = local_addr
+        return capture
+
+    chosen(SPARE_LINK_LOCAL)
+    display = _acme_display()
+    display._open_udp = open_udp
+    await display.wake_on_lan("00:05:1b:00:00:20")
+    assert sent_from == [
+        ("169.254.7.7", "255.255.255.255", 9),
+        ("169.254.7.7", "169.254.20.1", 9),
+    ]

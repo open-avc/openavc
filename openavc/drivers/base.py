@@ -2176,17 +2176,22 @@ class BaseDriver(ABC):
         if self.udp_redirect is not None:
             target = self.udp_redirect
         data = bytes(payload)
-        # Bound for where it really goes: the simulator's redirect is local.
-        bound = self.local_address(target[0])
         sources: list[str] = []
+        chosen = None
         if target[0] == LIMITED_BROADCAST:
             from openavc import reach_devices
 
             chosen = await asyncio.to_thread(reach_devices.pinned)
-            if chosen is not None:
-                bound = chosen.broadcast_source or None
-                if bound is None:
-                    raise reach_devices.AdapterUnavailable(chosen.adapter_name)
+        if chosen is not None:
+            # Asked before local_address(), whose refusal is a connection's:
+            # a broadcast with nothing to send from says the adapter isn't
+            # connected.
+            bound = chosen.broadcast_source or None
+            if bound is None:
+                raise reach_devices.AdapterUnavailable(chosen.adapter_name)
+        else:
+            # Bound for where it really goes: the simulator's redirect is local.
+            bound = self.local_address(target[0])
         if bound is None and target[0] == LIMITED_BROADCAST:
             from openavc import reach_devices
 

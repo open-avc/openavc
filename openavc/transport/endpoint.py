@@ -60,7 +60,9 @@ def control_bind_address(host: Any) -> str | None:
     (``openavc/reach_devices.py``); :func:`local_address_for` applies it.
     Raises :class:`ConnectionFaultError` (``unreachable``) when that adapter
     has no address at all, except for a host on this computer, which is
-    never bound.
+    never bound. An adapter holding only a 169.254 address (a network with no
+    DHCP server) still reaches a 169.254 device from it, and sends a
+    broadcast or a multicast from it.
     """
     from openavc import reach_devices
 
@@ -72,6 +74,10 @@ def control_bind_address(host: Any) -> str | None:
         if unusable is not None:
             if unusable.link_local_address and is_link_local(host):
                 return unusable.link_local_address
+            if unusable.broadcast_source and _is_broadcast_or_multicast(host):
+                # Leaves from where send_udp and UDPTransport send one: the
+                # adapter's 169.254 address while it holds no other.
+                return unusable.broadcast_source
             from openavc.core.connection_fault import UNREACHABLE, ConnectionFaultError
 
             where = str(host or "").strip() or "the device"
@@ -82,6 +88,15 @@ def control_bind_address(host: Any) -> str | None:
             )
     link_local = reach_devices.link_local_address() if pinned and is_link_local(host) else ""
     return local_address_for(host, pinned, link_local)
+
+
+def _is_broadcast_or_multicast(host: Any) -> bool:
+    """True for 255.255.255.255 or an IPv4 multicast group (224.0.0.0/4)."""
+    try:
+        ip = ipaddress.ip_address(str(host or "").strip())
+    except ValueError:
+        return False
+    return ip.version == 4 and (ip.is_multicast or ip == ipaddress.IPv4Address("255.255.255.255"))
 
 
 def _is_loopback(host: Any) -> bool:
