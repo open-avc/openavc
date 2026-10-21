@@ -11,6 +11,11 @@ from pydantic import BaseModel, ConfigDict
 
 from openavc.api.auth import require_programmer_auth
 from openavc.api.errors import api_error as _api_error
+from openavc.core.required_config import (
+    merged_device_config,
+    missing_for_driver,
+    required_sentence,
+)
 from openavc.discovery.engine import DiscoveryEngine, ScanBlocked
 from openavc.utils.logger import get_logger
 from openavc.drivers.registry import (
@@ -472,6 +477,21 @@ def _scanned_mac_field(driver_id: str) -> str | None:
     return SCANNED_MAC_FIELD
 
 
+class _MissingSettings(HTTPException):
+    """A required setting the scan cannot supply, refused by its label.
+
+    ``keys`` are the settings, so Install & Add can ask for them on the card
+    once the driver is installed, then add the device with them.
+    """
+
+    def __init__(self, missing: list[tuple[str, str]]) -> None:
+        super().__init__(
+            status_code=422,
+            detail=required_sentence([label for _key, label in missing]),
+        )
+        self.keys = [key for key, _label in missing]
+
+
 @router.post("/add-device")
 async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
     """Add a discovered device to the project.
@@ -552,6 +572,16 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
         else:
             protocol_config[key] = value
 
+    # A required setting the scan cannot supply (a password, an API key) is
+    # refused, as Add and Edit Device refuse it; the card asks for it and
+    # sends it in ``config``. See core/required_config.py.
+    missing = missing_for_driver(
+        req.driver_id,
+        merged_device_config(req.driver_id, protocol_config, conn_overrides),
+    )
+    if missing:
+        raise _MissingSettings(missing)
+
     device_config = {
         "id": device_id,
         "driver": req.driver_id,
@@ -624,6 +654,16 @@ async def install_and_match(req: InstallAndMatchRequest) -> dict[str, Any]:
     add_req = AddDeviceRequest(ip=req.ip, driver_id=req.driver_id)
     try:
         result = await add_device(add_req)
+    except _MissingSettings as e:
+        # Installed, but the driver needs settings the scan cannot supply:
+        # the card asks for them, then adds the device the installed way.
+        device = engine.results.get(req.ip)
+        return {
+            "status": "installed_not_added",
+            "error": e.detail,
+            "missing": e.keys,
+            "device": device.to_dict() if device else None,
+        }
     except HTTPException as e:
         # Driver installed but add failed — return partial success
         device = engine.results.get(req.ip)

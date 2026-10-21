@@ -1374,14 +1374,22 @@ function DriverAddRow({
   // before adding, as Add Device does. The address is the scan's, and so is
   // the port (the one it found, else the driver's).
   const installedInfo = isCommunity ? undefined : installedDrivers.find((d) => d.id === driverId);
+  // What the server said it still needs after Install & Add installed the
+  // driver (a port the scan did not find included).
+  const [serverMissing, setServerMissing] = useState<string[]>([]);
   const askedKeys = useMemo(() => {
     if (!installedInfo) return [];
     const schema = (installedInfo.config_schema ?? {}) as Record<string, Record<string, unknown>>;
-    return missingRequiredKeys({ host: device.ip }, schema, installedInfo.default_config, "network")
+    const keys = missingRequiredKeys({ host: device.ip }, schema, installedInfo.default_config, "network")
       .map((m) => m.key)
       .filter((key) => key !== "port");
-  }, [installedInfo, device.ip]);
+    for (const key of serverMissing) {
+      if (!keys.includes(key) && key in schema) keys.push(key);
+    }
+    return keys;
+  }, [installedInfo, device.ip, serverMissing]);
   const [askedValues, setAskedValues] = useState<Record<string, string>>({});
+  const [installedNote, setInstalledNote] = useState(false);
 
   const handleAdd = async () => {
     setError(null);
@@ -1404,6 +1412,21 @@ function DriverAddRow({
         if (result.device) onDeviceUpdated(result.device);
         if (result.status === "ok") {
           onDeviceAdded({ name: result.name || driverName, deviceId: result.device_id });
+        } else if (result.status === "installed_not_added" && result.missing?.length) {
+          // Installed, and the driver needs settings the scan cannot supply:
+          // the card becomes the installed driver's, asking for them before
+          // Confirm & Add, as it does for a driver that was already here.
+          await useDriverBuilderStore.getState().loadRegisteredDrivers();
+          let help: string | null = null;
+          try {
+            help = (await api.getDriverHelp(driverId)).setup || null;
+          } catch {
+            // No help text; the fields are enough
+          }
+          setServerMissing(result.missing);
+          setSetupText(help);
+          setInstalledNote(true);
+          setShowSetup(true);
         } else if (result.status === "installed_not_added") {
           setError(`Driver installed but could not add device: ${result.error}`);
         }
@@ -1530,6 +1553,12 @@ function DriverAddRow({
         >
           <strong>Setup Instructions:</strong>
           <div style={{ marginTop: 4, color: "var(--text-muted)" }}>{setupText}</div>
+        </div>
+      )}
+
+      {showSetup && installedNote && (
+        <div style={{ marginTop: "var(--space-sm)", color: "var(--text-muted)", fontSize: "var(--font-size-xs)" }}>
+          Driver installed. Fill in the settings below, then press Confirm & Add.
         </div>
       )}
 

@@ -194,7 +194,15 @@ export async function discoveryInstallAndMatch(options: {
   ip: string;
   driver_id: string;
   file_url: string;
-}): Promise<{ status: string; device: DiscoveredDevice | null; device_id?: string; name?: string; error?: string }> {
+}): Promise<{
+  status: string;
+  device: DiscoveredDevice | null;
+  device_id?: string;
+  name?: string;
+  error?: string;
+  /** Required settings the scan cannot supply; set with "installed_not_added". */
+  missing?: string[];
+}> {
   return request("/discovery/install-and-match", {
     method: "POST",
     body: JSON.stringify(options),
