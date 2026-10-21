@@ -2991,7 +2991,7 @@ DEFS = {
                     'before sending, on every network this computer is on, '
                     'and keeps only answers from the networks it scanned. '
                     'Omit it when the device answers the sender, as most do. '
-                    'Platform >= 0.37.1.'
+                    'Platform >= 0.37.2.'
                 ),
             },
         },

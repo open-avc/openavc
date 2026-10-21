@@ -904,7 +904,7 @@ export interface DriverDiscoveryProbe {
    * to a fixed port rather than to the port the probe was sent from. The scan
    * listens there before sending, on every network this computer is on, and
    * keeps only answers from the networks it scanned. Omit it when the device
-   * answers the sender, as most do. Platform >= 0.37.1.
+   * answers the sender, as most do. Platform >= 0.37.2.
    */
   reply_port?: number;
 }

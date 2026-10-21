@@ -2043,8 +2043,8 @@ in its warnings; the rest of the scan runs as usual. `extract` rules read a
 binary answer as text, one character per byte, so a field is captured by the
 bytes around it, as above.
 
-`reply_port` is new in OpenAVC 0.37.1. The catalog marks a driver that declares
-it, and OpenAVC before 0.37.1 skips that driver's whole `discovery:` block: the
+`reply_port` is new in OpenAVC 0.37.2. The catalog marks a driver that declares
+it, and OpenAVC before 0.37.2 skips that driver's whole `discovery:` block: the
 driver installs and runs, and its devices are added by their address there.
 
 #### Validation rules
