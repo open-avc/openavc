@@ -580,8 +580,9 @@ class DeviceManager:
         except Exception as e:
             if not await self._discard_if_superseded(device_id, driver):
                 return
-            log.warning(f"Failed to connect '{device_id}': {e}")
-            if self._set_offline_reason(device_id, driver, exc=e) == "auth_failed":
+            code = self._set_offline_reason(device_id, driver, exc=e)
+            log.warning(f"Failed to connect '{device_id}': {self._failure_text(device_id, e)}")
+            if code == "auth_failed":
                 self._pause_reconnect_for_auth(device_id)
             else:
                 self._start_reconnect(device_id)
@@ -1883,6 +1884,18 @@ class DeviceManager:
             port = 443 if cfg.get("ssl") else 80
         return host, port, transport
 
+    def _failure_text(self, device_id: str, exc: BaseException) -> str:
+        """What a failed connect's log line says after the colon: the
+        exception's own text, else the card's sentence (so classify with
+        _set_offline_reason first), else the exception's type. A timeout, or a
+        product that did not answer, raises with no text and left the line
+        ending in a colon while the card gave the reason."""
+        return (
+            str(exc)
+            or self.state.get(f"device.{device_id}.offline_detail")
+            or type(exc).__name__
+        )
+
     def _set_offline_reason(
         self,
         device_id: str,
@@ -2683,11 +2696,13 @@ class DeviceManager:
                     # the device now.
                     return
                 except Exception as e:
-                    if noisy:
-                        log.warning(f"[{device_id}] Reconnect failed: {e}")
                     # Refine the offline reason from this attempt's failure —
                     # the cause can change between attempts (auth vs unreachable).
                     code = self._set_offline_reason(device_id, driver, exc=e)
+                    if noisy:
+                        log.warning(
+                            f"[{device_id}] Reconnect failed: {self._failure_text(device_id, e)}"
+                        )
                     if code == "auth_failed":
                         # The device is reachable but rejecting the login. More
                         # attempts can only trip its lockout — stop here and
@@ -2793,8 +2808,9 @@ class DeviceManager:
                 pass  # ended by a newer press, a pause or a removal
             except Exception as e:
                 self.state.set(f"device.{device_id}.connected", False, source="device_manager")
-                log.warning(f"Reconnect failed for {device_id}: {e}")
-                if self._set_offline_reason(device_id, driver, exc=e) == "auth_failed":
+                code = self._set_offline_reason(device_id, driver, exc=e)
+                log.warning(f"Reconnect failed for {device_id}: {self._failure_text(device_id, e)}")
+                if code == "auth_failed":
                     # The manual attempt was this action's one try.
                     self._pause_reconnect_for_auth(device_id)
                 else:
@@ -2966,6 +2982,8 @@ class DeviceManager:
             pass  # ended by a Reconnect, a pause or a removal meanwhile
         except Exception as e:
             self.state.set(f"device.{device_id}.connected", False, source="device_manager")
-            log.warning(f"resume_device: connect failed for {device_id}: {e}")
             self._set_offline_reason(device_id, driver, exc=e)
+            log.warning(
+                f"resume_device: connect failed for {device_id}: {self._failure_text(device_id, e)}"
+            )
             self._start_reconnect(device_id)
