@@ -554,7 +554,7 @@ def _check_min_openavc_version(plugin_id: str, plugin_dir: Path) -> None:
         if Version(__version__) < Version(min_version):
             raise ValueError(
                 f"Plugin '{plugin_id}' requires OpenAVC v{min_version} or later "
-                f"(current: v{__version__}). Upgrade OpenAVC, then reinstall."
+                f"(current: v{__version__}). Update OpenAVC, then install it again."
             )
     except InvalidVersion:
         # Bad version string in PLUGIN_INFO is a plugin authoring bug,

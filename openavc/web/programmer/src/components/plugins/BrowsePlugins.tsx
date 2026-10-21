@@ -8,7 +8,7 @@ import { usePluginStore } from "../../store/pluginStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import type { CommunityPlugin } from "../../api/restClient";
 import { parseApiError } from "../../api/errors";
-import { PLUGIN_CATALOG_BASE_URL, pluginUpdate, type CatalogUpdate } from "../shared/catalogUpdates";
+import { PLUGIN_CATALOG_BASE_URL, blockedByPlatform, pluginUpdate, type CatalogUpdate } from "../shared/catalogUpdates";
 
 const CATEGORIES = [
   "All",
@@ -240,6 +240,7 @@ export function BrowsePlugins() {
                 installing={installingIds.has(plugin.id)}
                 updateAvailable={!!update && !update.blockedBy}
                 updateNeedsPlatform={update?.blockedBy ?? ""}
+                installNeedsPlatform={blockedByPlatform(runningVersion, plugin.min_openavc_version)}
                 loadFailed={loadFailures.has(plugin.id)}
                 loadError={loadFailures.get(plugin.id) ?? null}
                 error={installError[plugin.id]}
@@ -275,6 +276,7 @@ function PluginCard({
   installing,
   updateAvailable,
   updateNeedsPlatform,
+  installNeedsPlatform,
   loadFailed,
   loadError,
   error,
@@ -288,6 +290,8 @@ function PluginCard({
   updateAvailable: boolean;
   /** The OpenAVC release the newer version needs, when this system is older. "" = none. */
   updateNeedsPlatform: string;
+  /** The OpenAVC release this plugin needs, when this system is older. "" = installable. */
+  installNeedsPlatform: string;
   loadFailed: boolean;
   loadError: string | null;
   error?: string;
@@ -480,9 +484,28 @@ function PluginCard({
             </button>
           </div>
         ) : (
+          <>
+          {installNeedsPlatform && (
+            <span
+              title={`This plugin needs OpenAVC ${installNeedsPlatform} or later. Update OpenAVC first, then install it.`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "var(--space-xs)",
+                marginBottom: "var(--space-xs)",
+                fontSize: "var(--font-size-sm)",
+                color: "var(--text-muted)",
+              }}
+            >
+              <AlertTriangle size={14} />
+              Needs OpenAVC v{installNeedsPlatform}
+            </span>
+          )}
           <button
             onClick={onInstall}
-            disabled={installing}
+            disabled={installing || !!installNeedsPlatform}
+            title={installNeedsPlatform ? `This plugin needs OpenAVC ${installNeedsPlatform} or later.` : undefined}
             style={{
               display: "flex",
               alignItems: "center",
@@ -491,11 +514,11 @@ function PluginCard({
               width: "100%",
               padding: "var(--space-sm)",
               borderRadius: "var(--border-radius)",
-              background: installing ? "var(--bg-hover)" : "var(--accent-bg)",
-              color: installing ? "var(--text-muted)" : "var(--text-on-accent)",
+              background: installing || installNeedsPlatform ? "var(--bg-hover)" : "var(--accent-bg)",
+              color: installing || installNeedsPlatform ? "var(--text-muted)" : "var(--text-on-accent)",
               fontSize: "var(--font-size-sm)",
               fontWeight: 500,
-              cursor: installing ? "default" : "pointer",
+              cursor: installing || installNeedsPlatform ? "default" : "pointer",
               opacity: installing ? 0.7 : 1,
             }}
           >
@@ -511,6 +534,7 @@ function PluginCard({
               </>
             )}
           </button>
+          </>
         )}
       </div>
     </div>
