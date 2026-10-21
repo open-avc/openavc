@@ -1,0 +1,523 @@
+{
+  "_comment": "The condition rule, answer for answer: tests/test_condition_parity.py runs it over openavc/core/condition_eval.py, conditionEval.test.ts over the IDE's mirror. expected is what the runtime answers; 'error' is an operator it refuses.",
+  "cases": [
+    {
+      "name": "text equals regardless of case",
+      "op": "eq",
+      "actual": "ON",
+      "target": "on",
+      "expected": true
+    },
+    {
+      "name": "the same text in another case is not different",
+      "op": "ne",
+      "actual": "ON",
+      "target": "on",
+      "expected": false
+    },
+    {
+      "name": "different text",
+      "op": "eq",
+      "actual": "on",
+      "target": "off",
+      "expected": false
+    },
+    {
+      "name": "different text is different",
+      "op": "ne",
+      "actual": "on",
+      "target": "off",
+      "expected": true
+    },
+    {
+      "name": "on is not true as text",
+      "op": "eq",
+      "actual": "on",
+      "target": "true",
+      "expected": false
+    },
+    {
+      "name": "unreported never equals",
+      "op": "eq",
+      "actual": null,
+      "target": "on",
+      "expected": false
+    },
+    {
+      "name": "unreported never differs",
+      "op": "ne",
+      "actual": null,
+      "target": "on",
+      "expected": false
+    },
+    {
+      "name": "no target never equals",
+      "op": "eq",
+      "actual": "on",
+      "target": null,
+      "expected": false
+    },
+    {
+      "name": "boolean true equals on",
+      "op": "eq",
+      "actual": true,
+      "target": "on",
+      "expected": true
+    },
+    {
+      "name": "boolean true equals yes",
+      "op": "eq",
+      "actual": true,
+      "target": "Yes",
+      "expected": true
+    },
+    {
+      "name": "boolean true equals 1 as text",
+      "op": "eq",
+      "actual": "1",
+      "target": true,
+      "expected": true
+    },
+    {
+      "name": "boolean false equals off",
+      "op": "eq",
+      "actual": false,
+      "target": "OFF",
+      "expected": true
+    },
+    {
+      "name": "boolean true differs from off",
+      "op": "ne",
+      "actual": true,
+      "target": "off",
+      "expected": true
+    },
+    {
+      "name": "boolean true equals true",
+      "op": "eq",
+      "actual": true,
+      "target": true,
+      "expected": true
+    },
+    {
+      "name": "boolean false differs from true",
+      "op": "ne",
+      "actual": false,
+      "target": true,
+      "expected": true
+    },
+    {
+      "name": "boolean true equals number 1",
+      "op": "eq",
+      "actual": true,
+      "target": 1,
+      "expected": true
+    },
+    {
+      "name": "boolean true is not 2",
+      "op": "eq",
+      "actual": true,
+      "target": 2,
+      "expected": false
+    },
+    {
+      "name": "boolean beside other text",
+      "op": "eq",
+      "actual": true,
+      "target": "maybe",
+      "expected": false
+    },
+    {
+      "name": "number equals number",
+      "op": "eq",
+      "actual": 5,
+      "target": 5,
+      "expected": true
+    },
+    {
+      "name": "number differs",
+      "op": "ne",
+      "actual": 5,
+      "target": 6,
+      "expected": true
+    },
+    {
+      "name": "number written as text",
+      "op": "eq",
+      "actual": "5",
+      "target": 5,
+      "expected": true
+    },
+    {
+      "name": "decimal text equals whole number",
+      "op": "eq",
+      "actual": "5.0",
+      "target": 5,
+      "expected": true
+    },
+    {
+      "name": "text with spaces is a number",
+      "op": "eq",
+      "actual": " 5 ",
+      "target": 5,
+      "expected": true
+    },
+    {
+      "name": "underscores are a number",
+      "op": "eq",
+      "actual": "1_000",
+      "target": 1000,
+      "expected": true
+    },
+    {
+      "name": "hex text is not a number",
+      "op": "eq",
+      "actual": "0x10",
+      "target": 16,
+      "expected": false
+    },
+    {
+      "name": "empty text is not zero",
+      "op": "eq",
+      "actual": "",
+      "target": 0,
+      "expected": false
+    },
+    {
+      "name": "empty text differs from zero",
+      "op": "ne",
+      "actual": "",
+      "target": 0,
+      "expected": true
+    },
+    {
+      "name": "exponent text",
+      "op": "eq",
+      "actual": "1e3",
+      "target": 1000,
+      "expected": true
+    },
+    {
+      "name": "word beside a number",
+      "op": "eq",
+      "actual": "abc",
+      "target": 5,
+      "expected": false
+    },
+    {
+      "name": "two numbers as text compare as text",
+      "op": "eq",
+      "actual": "5.0",
+      "target": "5",
+      "expected": false
+    },
+    {
+      "name": "greater as numbers",
+      "op": "gt",
+      "actual": 10,
+      "target": 9,
+      "expected": true
+    },
+    {
+      "name": "greater from text",
+      "op": "gt",
+      "actual": "10",
+      "target": 9,
+      "expected": true
+    },
+    {
+      "name": "both text, read as numbers",
+      "op": "gt",
+      "actual": "10",
+      "target": "9",
+      "expected": true
+    },
+    {
+      "name": "not greater",
+      "op": "gt",
+      "actual": 9,
+      "target": 10,
+      "expected": false
+    },
+    {
+      "name": "less",
+      "op": "lt",
+      "actual": 3,
+      "target": 4,
+      "expected": true
+    },
+    {
+      "name": "not less",
+      "op": "lt",
+      "actual": "5",
+      "target": 4,
+      "expected": false
+    },
+    {
+      "name": "greater or equal at equal",
+      "op": "gte",
+      "actual": 5,
+      "target": 5,
+      "expected": true
+    },
+    {
+      "name": "greater or equal below",
+      "op": "gte",
+      "actual": 4,
+      "target": 5,
+      "expected": false
+    },
+    {
+      "name": "less or equal at equal",
+      "op": "lte",
+      "actual": 5.0,
+      "target": "5",
+      "expected": true
+    },
+    {
+      "name": "less or equal above",
+      "op": "lte",
+      "actual": 6,
+      "target": 5,
+      "expected": false
+    },
+    {
+      "name": "text against a number never compares",
+      "op": "gt",
+      "actual": "abc",
+      "target": 5,
+      "expected": false
+    },
+    {
+      "name": "number against text never compares",
+      "op": "lt",
+      "actual": 5,
+      "target": "abc",
+      "expected": false
+    },
+    {
+      "name": "two words compare as text",
+      "op": "gt",
+      "actual": "b",
+      "target": "a",
+      "expected": true
+    },
+    {
+      "name": "two words, the other way",
+      "op": "lt",
+      "actual": "b",
+      "target": "a",
+      "expected": false
+    },
+    {
+      "name": "a number and a word as text",
+      "op": "gt",
+      "actual": "10",
+      "target": "abc",
+      "expected": false
+    },
+    {
+      "name": "unreported is never greater",
+      "op": "gt",
+      "actual": null,
+      "target": 1,
+      "expected": false
+    },
+    {
+      "name": "no target is never less",
+      "op": "lt",
+      "actual": 1,
+      "target": null,
+      "expected": false
+    },
+    {
+      "name": "boolean as a number",
+      "op": "lt",
+      "actual": true,
+      "target": 2,
+      "expected": true
+    },
+    {
+      "name": "boolean against a word",
+      "op": "gt",
+      "actual": true,
+      "target": "abc",
+      "expected": false
+    },
+    {
+      "name": "infinity text",
+      "op": "gt",
+      "actual": "inf",
+      "target": 1e+300,
+      "expected": true
+    },
+    {
+      "name": "not a number never compares",
+      "op": "gt",
+      "actual": "nan",
+      "target": 1,
+      "expected": false
+    },
+    {
+      "name": "zero is falsy",
+      "op": "truthy",
+      "actual": 0,
+      "target": null,
+      "expected": false
+    },
+    {
+      "name": "zero as text is truthy",
+      "op": "truthy",
+      "actual": "0",
+      "target": null,
+      "expected": true
+    },
+    {
+      "name": "off as text is truthy",
+      "op": "truthy",
+      "actual": "off",
+      "target": null,
+      "expected": true
+    },
+    {
+      "name": "empty text is falsy",
+      "op": "truthy",
+      "actual": "",
+      "target": null,
+      "expected": false
+    },
+    {
+      "name": "false is falsy",
+      "op": "falsy",
+      "actual": false,
+      "target": null,
+      "expected": true
+    },
+    {
+      "name": "unreported is falsy",
+      "op": "falsy",
+      "actual": null,
+      "target": null,
+      "expected": true
+    },
+    {
+      "name": "a number is not falsy",
+      "op": "falsy",
+      "actual": 3,
+      "target": null,
+      "expected": false
+    },
+    {
+      "name": "true is truthy",
+      "op": "truthy",
+      "actual": true,
+      "target": null,
+      "expected": true
+    },
+    {
+      "name": "alias equals",
+      "op": "equals",
+      "actual": "ON",
+      "target": "on",
+      "expected": true
+    },
+    {
+      "name": "alias not_equals",
+      "op": "not_equals",
+      "actual": "ON",
+      "target": "on",
+      "expected": false
+    },
+    {
+      "name": "alias ==",
+      "op": "==",
+      "actual": "ON",
+      "target": "on",
+      "expected": true
+    },
+    {
+      "name": "alias !=",
+      "op": "!=",
+      "actual": "ON",
+      "target": "on",
+      "expected": false
+    },
+    {
+      "name": "alias >",
+      "op": ">",
+      "actual": "10",
+      "target": 9,
+      "expected": true
+    },
+    {
+      "name": "alias <",
+      "op": "<",
+      "actual": "10",
+      "target": 9,
+      "expected": false
+    },
+    {
+      "name": "alias >=",
+      "op": ">=",
+      "actual": "10",
+      "target": 9,
+      "expected": true
+    },
+    {
+      "name": "alias <=",
+      "op": "<=",
+      "actual": "10",
+      "target": 9,
+      "expected": false
+    },
+    {
+      "name": "alias equal",
+      "op": "equal",
+      "actual": "ON",
+      "target": "on",
+      "expected": true
+    },
+    {
+      "name": "alias not_equal",
+      "op": "not_equal",
+      "actual": "ON",
+      "target": "on",
+      "expected": false
+    },
+    {
+      "name": "alias greater_than",
+      "op": "greater_than",
+      "actual": "10",
+      "target": 9,
+      "expected": true
+    },
+    {
+      "name": "alias less_than",
+      "op": "less_than",
+      "actual": "10",
+      "target": 9,
+      "expected": false
+    },
+    {
+      "name": "alias greater_or_equal",
+      "op": "greater_or_equal",
+      "actual": "10",
+      "target": 9,
+      "expected": true
+    },
+    {
+      "name": "alias less_or_equal",
+      "op": "less_or_equal",
+      "actual": "10",
+      "target": 9,
+      "expected": false
+    },
+    {
+      "name": "unknown operator",
+      "op": "between",
+      "actual": 1,
+      "target": 2,
+      "expected": "error"
+    }
+  ]
+}

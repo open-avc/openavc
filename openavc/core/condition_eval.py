@@ -3,6 +3,11 @@ Shared condition evaluation for macros and triggers.
 
 Evaluates comparison operators against state values.
 Used by MacroEngine (skip_if, conditional steps) and TriggerEngine (guard conditions).
+
+Mirrored by ``conditionEval.ts`` in the Programmer, for the trigger editor's
+"Evaluated now". Both run ``tests/fixtures/condition_parity_cases.json``
+(``tests/test_condition_parity.py`` and ``conditionEval.test.ts``): a change
+here goes into the mirror and the corpus in the same commit.
 """
 
 from __future__ import annotations

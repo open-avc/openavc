@@ -6,6 +6,7 @@ import { Trash2, ChevronDown, ChevronRight, Plus, HelpCircle } from "lucide-reac
 import type { TriggerConfig, TriggerCondition } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
+import { evalOperator } from "../../api/conditionEval";
 import { VariableKeyPicker } from "../shared/VariableKeyPicker";
 import {
   STATE_OPERATORS,
@@ -800,28 +801,20 @@ function ConditionsEditor({
 
 // --- Condition Preview (8.9) ---
 
-function ConditionPreview({ conditions }: { conditions: TriggerCondition[] }) {
+export function ConditionPreview({ conditions }: { conditions: TriggerCondition[] }) {
   const liveState = useConnectionStore((s) => s.liveState);
   const connected = useConnectionStore((s) => s.connected);
   const currentState = liveState;
 
   if (!connected || conditions.length === 0) return null;
 
+  // The runtime's own rule (conditionEval.ts mirrors condition_eval.py); an
+  // operator it does not know does not pass, as the trigger engine treats it.
   const evaluateCondition = (cond: TriggerCondition): boolean => {
-    const actual = currentState[cond.key];
-    const op = cond.operator ?? "eq";
-    const expected = cond.value;
-
-    switch (op) {
-      case "eq": return actual == expected; // eslint-disable-line eqeqeq
-      case "ne": return actual != expected; // eslint-disable-line eqeqeq
-      case "gt": return actual != null && expected != null && Number(actual) > Number(expected);
-      case "lt": return actual != null && expected != null && Number(actual) < Number(expected);
-      case "gte": return actual != null && expected != null && Number(actual) >= Number(expected);
-      case "lte": return actual != null && expected != null && Number(actual) <= Number(expected);
-      case "truthy": return !!actual;
-      case "falsy": return !actual;
-      default: return false;
+    try {
+      return evalOperator(cond.operator ?? "eq", currentState[cond.key], cond.value);
+    } catch {
+      return false;
     }
   };
 
