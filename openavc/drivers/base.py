@@ -61,7 +61,11 @@ from openavc.core.state_store import StateStore, is_flat_primitive
 from openavc.transport.frame_parsers import FrameParser
 from openavc.transport.http_client import capture_driver_clients
 from openavc.transport.udp import UDPTransport
-from openavc.utils.log_redaction import collect_secret_values, get_secret_registry
+from openavc.utils.log_redaction import (
+    collect_identity_values,
+    collect_secret_values,
+    get_secret_registry,
+)
 from openavc.utils.logger import get_logger
 
 # Re-exported for drivers: raise ConnectionFaultError(msg, code=...) instead of
@@ -987,11 +991,11 @@ class BaseDriver(ABC):
     def _register_config_secrets(self) -> None:
         """Publish this device's config credentials to the redaction registry."""
         try:
+            schema = self.DRIVER_INFO.get("config_schema")
             get_secret_registry().set_config_secrets(
                 self.device_id,
-                collect_secret_values(
-                    self.config, self.DRIVER_INFO.get("config_schema")
-                ),
+                collect_secret_values(self.config, schema),
+                identities=collect_identity_values(self.config, schema),
             )
         except Exception:  # pragma: no cover - never block a driver from loading
             log.debug(

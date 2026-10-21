@@ -38,6 +38,13 @@ Two details that look like fussiness and are not, both learned from bugs:
 
 Values shorter than :data:`MIN_SECRET_LEN` are ignored, so a blank or trivial
 password cannot blank unrelated log text.
+
+**A username is masked in its own device's traffic only.** It names an account
+rather than unlocking one, and it is often a plain word ("admin"), so masking
+it in every line hid that word all over the log. It is still masked where the
+login goes over the wire (that device's TX/RX lines and its traffic view) and
+wherever a config is shown by field (:func:`redact_config`). A field a driver
+declares ``secret: true`` is a secret whatever it is called.
 """
 
 from __future__ import annotations
@@ -75,6 +82,11 @@ REDACTED = "***"
 _WORD_EDGE = re.compile(r"\w")
 
 
+# Credential field names whose values name an account rather than unlock it:
+# masked in the device's own traffic, not in every log line (module docstring).
+IDENTITY_KEYS = frozenset({"username", "user"})
+
+
 def is_secret_key(key: Any) -> bool:
     """True when a config field *name* marks its value as a credential."""
     key_l = str(key).lower()
@@ -101,11 +113,21 @@ def redact_config(config: dict[str, Any]) -> dict[str, Any]:
     return redacted
 
 
+def _declared_secret(config_schema: dict[str, Any] | None) -> set[str]:
+    declared: set[str] = set()
+    if isinstance(config_schema, dict):
+        for field, spec in config_schema.items():
+            if isinstance(spec, dict) and spec.get("secret") is True:
+                declared.add(str(field))
+    return declared
+
+
 def collect_secret_values(
     config: dict[str, Any] | None,
     config_schema: dict[str, Any] | None = None,
 ) -> set[str]:
-    """Every credential *value* in one device's resolved config.
+    """Every credential *value* in one device's resolved config, the
+    usernames (:data:`IDENTITY_KEYS`) aside: :func:`collect_identity_values`.
 
     Two sources, per the redaction decision: fields the driver explicitly
     declares ``secret: true`` in its ``config_schema``, and fields whose name
@@ -116,12 +138,7 @@ def collect_secret_values(
     if not isinstance(config, dict):
         return set()
 
-    declared_secret: set[str] = set()
-    if isinstance(config_schema, dict):
-        for field, spec in config_schema.items():
-            if isinstance(spec, dict) and spec.get("secret") is True:
-                declared_secret.add(str(field))
-
+    declared_secret = _declared_secret(config_schema)
     values: set[str] = set()
     for key, value in config.items():
         if isinstance(value, dict):
@@ -129,7 +146,33 @@ def collect_secret_values(
             continue
         if not isinstance(value, str) or len(value) < MIN_SECRET_LEN:
             continue
-        if str(key) in declared_secret or is_secret_key(key):
+        if str(key) in declared_secret or (
+            is_secret_key(key) and str(key).lower() not in IDENTITY_KEYS
+        ):
+            values.add(value)
+    return values
+
+
+def collect_identity_values(
+    config: dict[str, Any] | None,
+    config_schema: dict[str, Any] | None = None,
+) -> set[str]:
+    """The usernames in one device's resolved config (:data:`IDENTITY_KEYS`,
+    unless the driver declares the field ``secret: true``)."""
+    if not isinstance(config, dict):
+        return set()
+    declared_secret = _declared_secret(config_schema)
+    values: set[str] = set()
+    for key, value in config.items():
+        if isinstance(value, dict):
+            values |= collect_identity_values(value)
+            continue
+        if (
+            isinstance(value, str)
+            and len(value) >= MIN_SECRET_LEN
+            and str(key).lower() in IDENTITY_KEYS
+            and str(key) not in declared_secret
+        ):
             values.add(value)
     return values
 
@@ -279,16 +322,21 @@ class SecretRegistry:
     def __init__(self) -> None:
         self._config: dict[str, set[str]] = {}
         self._runtime: dict[str, set[str]] = {}
+        # Usernames: masked in the device's own traffic, not in every line.
+        self._identity: dict[str, set[str]] = {}
         self._device_patterns: dict[str, re.Pattern[str] | None] = {}
         self._all_pattern: re.Pattern[str] | None = None
         self._all_dirty = True
 
-    def set_config_secrets(self, device_id: str, values: Iterable[str]) -> None:
-        kept = {v for v in values if isinstance(v, str) and len(v) >= MIN_SECRET_LEN}
-        if kept:
-            self._config[device_id] = kept
-        else:
-            self._config.pop(device_id, None)
+    def set_config_secrets(
+        self, device_id: str, values: Iterable[str], identities: Iterable[str] = (),
+    ) -> None:
+        for store, given in ((self._config, values), (self._identity, identities)):
+            kept = {v for v in given if isinstance(v, str) and len(v) >= MIN_SECRET_LEN}
+            if kept:
+                store[device_id] = kept
+            else:
+                store.pop(device_id, None)
         self._invalidate(device_id)
 
     def add_runtime_secret(self, device_id: str, value: str) -> None:
@@ -300,19 +348,29 @@ class SecretRegistry:
     def forget(self, device_id: str) -> None:
         self._config.pop(device_id, None)
         self._runtime.pop(device_id, None)
+        self._identity.pop(device_id, None)
         self._invalidate(device_id)
 
     def clear(self) -> None:
         self._config.clear()
         self._runtime.clear()
+        self._identity.clear()
         self._device_patterns.clear()
         self._all_pattern = None
         self._all_dirty = True
 
     def secrets_for(self, device_id: str) -> set[str]:
-        return self._config.get(device_id, set()) | self._runtime.get(device_id, set())
+        """What to mask in this device's own traffic: its secrets and its
+        username."""
+        return (
+            self._config.get(device_id, set())
+            | self._runtime.get(device_id, set())
+            | self._identity.get(device_id, set())
+        )
 
     def all_secrets(self) -> set[str]:
+        """What to mask in every log line: every device's secrets, not the
+        usernames."""
         values: set[str] = set()
         for group in (self._config, self._runtime):
             for entry in group.values():
@@ -337,6 +395,7 @@ class SecretRegistry:
         return text if pattern is None else pattern.sub(REDACTED, text)
 
     def has_secrets(self) -> bool:
+        """Whether :meth:`redact_any` has anything to mask."""
         return bool(self._config or self._runtime)
 
     def _invalidate(self, device_id: str) -> None:

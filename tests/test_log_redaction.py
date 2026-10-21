@@ -241,6 +241,31 @@ def test_a_driver_registers_its_config_credentials_on_construction(clean_registr
     assert format_wire_data(b"login(admin,hunter2)", "acme_1") == "login(admin,***)"
 
 
+def test_a_username_is_masked_in_its_devices_traffic_and_nowhere_else(clean_registry):
+    """A username names an account and is often a plain word: masked
+    everywhere, "admin" vanished from every line of the log."""
+    _make_driver({"host": "10.0.0.5", "username": "admin", "password": "hunter2"})
+
+    assert format_wire_data(b"USER admin PASS hunter2", "acme_1") == "USER *** PASS ***"
+    record = _record("Signed in as admin on the panel; acme_1 sent hunter2")
+    SecretRedactionFilter().filter(record)
+    assert record.getMessage() == "Signed in as admin on the panel; acme_1 sent ***"
+    assert format_wire_data(b"USER admin", "acme_2") == "USER admin"
+
+
+def test_a_username_field_a_driver_declares_secret_is_masked_everywhere(clean_registry):
+    class _Declared(_AcmeDriver):
+        DRIVER_INFO = {
+            **_AcmeDriver.DRIVER_INFO,
+            "config_schema": {"username": {"type": "string", "secret": True}},
+        }
+
+    _Declared("acme_1", {"host": "10.0.0.5", "username": "ops-team-7"}, StateStore(), EventBus())
+    record = _record("Signed in as ops-team-7")
+    SecretRedactionFilter().filter(record)
+    assert record.getMessage() == "Signed in as ***"
+
+
 def test_redact_in_log_masks_a_token_the_device_issued(clean_registry):
     driver = _make_driver({"host": "10.0.0.5", "password": "hunter2"})
     payload = b'{"result":{"session":"a91f-77c2-de10"}}'
