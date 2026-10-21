@@ -2,7 +2,9 @@
 
 The cloud stores each round's tool calls and tool results as rows of their
 own beside the reply, which already names its tool calls. Reopening a
-conversation drew those rows as assistant bubbles of raw JSON.
+conversation drew those rows as assistant bubbles of raw JSON. And the reply's
+text is stored as one piece, so its calls were drawn after all of it; each call
+now says where in the text it came, and is drawn there.
 
 Boots a real ``openavc.main`` subprocess (the ``openavc_server`` fixture in
 conftest.py) and drives the built Programmer in Chromium. The assistant's
@@ -58,12 +60,17 @@ ANSWERS = {
 }
 
 
-def _answer(route: Route) -> None:
-    path = "/" + route.request.url.split("/", 3)[3].split("?")[0]
-    if path in ANSWERS:
-        route.fulfill(status=200, content_type="application/json", body=json.dumps(ANSWERS[path]))
-    else:
-        route.continue_()
+def _answering(answers: dict):
+    def answer(route: Route) -> None:
+        path = "/" + route.request.url.split("/", 3)[3].split("?")[0]
+        if path in answers:
+            route.fulfill(status=200, content_type="application/json", body=json.dumps(answers[path]))
+        else:
+            route.continue_()
+    return answer
+
+
+_answer = _answering(ANSWERS)
 
 
 def test_a_reopened_conversation_draws_no_tool_rows(openavc_server, page: Page):
@@ -83,3 +90,39 @@ def test_a_reopened_conversation_draws_no_tool_rows(openavc_server, page: Page):
     shot = os.environ.get("OPENAVC_E2E_SCREENSHOT_DIR")
     if shot:
         page.screenshot(path=os.path.join(shot, "ai_reopened_conversation.png"))
+
+
+REPLY = "I'll trace both references.\n\nOne more.\n\nBoth are used by the On button."
+PLACED = {
+    **SUMMARY,
+    "messages": [
+        _row("m1", "user", "Add the matrix"),
+        _row("m4", "assistant", REPLY, [
+            {"id": "tu_1", "name": "get_device_info", "input": {}, "text_offset": 27},
+            {"id": "tu_2", "name": "check_references", "input": {}, "text_offset": 38},
+        ]),
+    ],
+}
+
+
+def test_a_reopened_reply_draws_each_tool_call_where_it_came(openavc_server, page: Page):
+    handle = openavc_server
+    page.set_default_timeout(SELECT_TIMEOUT)
+    page.route("**/api/ai/**", _answering({**ANSWERS, "/api/ai/conversations/conv-1": PLACED}))
+
+    page.goto(f"{handle.base_url}/programmer/", wait_until="domcontentloaded")
+    page.locator('button[aria-label="AI Assistant"]').click()
+    page.get_by_text("Add the matrix", exact=True).first.click()
+    expect(page.get_by_text("Both are used by the On button.")).to_be_visible(timeout=EXPECT_TIMEOUT)
+
+    pieces = [
+        "I'll trace both references.", "get_device_info", "One more.",
+        "check_references", "Both are used by the On button.",
+    ]
+    handles = [page.get_by_text(p, exact=True).first.element_handle() for p in pieces]
+    in_order = page.evaluate(
+        """(els) => els.every((el, i) => i === 0
+            || Boolean(els[i - 1].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING))""",
+        handles,
+    )
+    assert in_order

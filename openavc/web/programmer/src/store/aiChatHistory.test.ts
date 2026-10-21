@@ -32,7 +32,7 @@ describe("messagesFromConversation", () => {
     expect(messages.some((m) => m.content.includes("tool_use_id"))).toBe(false);
   });
 
-  it("puts the reply's text first, then each tool call it made", () => {
+  it("puts a reply stored without call positions as text first, then each tool call", () => {
     const [, reply] = messagesFromConversation(STORED);
     expect(reply.contentBlocks).toEqual([
       { type: "text", text: "Added the matrix." },
@@ -44,5 +44,32 @@ describe("messagesFromConversation", () => {
     const [question] = messagesFromConversation(STORED);
     expect(question.contentBlocks).toBeUndefined();
     expect(question.content).toBe("Add the matrix");
+  });
+
+  it("draws each call where it came in the reply, as it streamed", () => {
+    const text = "I'll trace both references.\n\nOne more.\n\nBoth are used by the On button.";
+    const first = { id: "tu_1", name: "check_references", input: { id: "a" }, text_offset: 27 };
+    const second = { id: "tu_2", name: "check_references", input: { id: "b" }, text_offset: 38 };
+    const [, reply] = messagesFromConversation([
+      row("user", "What uses these?"),
+      row("assistant", text, [second, first]),
+    ]);
+    expect(reply.contentBlocks).toEqual([
+      { type: "text", text: "I'll trace both references." },
+      { type: "tool", toolCall: { id: "tu_1", name: "check_references", input: { id: "a" }, status: "success" } },
+      { type: "text", text: "One more." },
+      { type: "tool", toolCall: { id: "tu_2", name: "check_references", input: { id: "b" }, status: "success" } },
+      { type: "text", text: "Both are used by the On button." },
+    ]);
+    expect(reply.content).toBe(text);
+  });
+
+  it("draws calls made before any text first", () => {
+    const call = { ...CALL, text_offset: 0 };
+    const [, reply] = messagesFromConversation([row("user", "Go"), row("assistant", "Done.", [call])]);
+    expect(reply.contentBlocks).toEqual([
+      { type: "tool", toolCall: { ...CALL, status: "success" } },
+      { type: "text", text: "Done." },
+    ]);
   });
 });
