@@ -23,7 +23,7 @@ Plugins extend OpenAVC with system-wide integrations, control surfaces, sensors,
 3. Find the plugin you want (use search or filter by category)
 4. Click **Install**
 
-The plugin is downloaded and saved to `plugin_repo/`. It appears in the Installed tab as disabled. A plugin that needs a newer OpenAVC is refused with "requires OpenAVC v<version> or later": update OpenAVC, then install it. A refused update leaves the installed version in place.
+The plugin is downloaded and saved to `plugin_repo/`. It appears in the Installed tab as disabled. A plugin that needs a newer OpenAVC shows **Needs OpenAVC v&lt;version&gt;** over a greyed **Install**: update OpenAVC, then install it. A refused update leaves the installed version in place.
 
 Installs come from the official plugin repository and nowhere else. A plugin installs as a directory, and every file is checked against the SHA-256 the repository publishes for it before being written: a file that doesn't match, one the repository doesn't publish, and one it publishes that never arrives all stop the install, leaving nothing behind. A plugin runs inside the server with the capabilities it declares, so read what those are before enabling one — see the [network and security guide](it-network-guide.md) for what the check does and does not prove.
 
