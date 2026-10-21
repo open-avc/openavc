@@ -82,6 +82,8 @@ You can tag a reading from either place it already appears:
 
 They all write to the same list, so it does not matter which you use.
 
+To stop watching a reading, click **Monitored**. If you set anything on it (what it is shown as, what normal looks like, how long it has to stay wrong), you are asked first, since those settings go with it.
+
 ### Setting what normal looks like
 
 Tagging alone is enough. The reading shows up with its value and label, and nothing is claimed about whether it is good or bad.
