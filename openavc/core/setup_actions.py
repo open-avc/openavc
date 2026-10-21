@@ -30,6 +30,7 @@ import json
 from typing import Any
 from uuid import uuid4
 
+from openavc.core.client_origin import client_origin, request_client_id
 from openavc.core.device_config import apply_config_delta
 from openavc.core.device_manager import DeviceNotFoundError
 from openavc.utils.logger import get_logger
@@ -154,12 +155,27 @@ class SetupActionRunner:
 
         run_id = uuid4().hex
         self._active[device_id] = run_id
+        # The run is the asking tab's own and outlives its request: the config
+        # it saves names that tab, as the request itself would, and the IDE
+        # re-syncs on that (syncAfterSetupAction).
         task = asyncio.create_task(
-            self._run(device_id, action, params or {}, run_id)
+            self._run_for(request_client_id(), device_id, action, params or {}, run_id)
         )
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         return {"run_id": run_id, "status": "started", "action_id": action["id"]}
+
+    async def _run_for(
+        self,
+        client_id: str | None,
+        device_id: str,
+        action: dict[str, Any],
+        params: dict[str, Any],
+        run_id: str,
+    ) -> None:
+        """_run, speaking for the tab that started it (core/client_origin.py)."""
+        with client_origin(client_id):
+            await self._run(device_id, action, params, run_id)
 
     async def _run(
         self,

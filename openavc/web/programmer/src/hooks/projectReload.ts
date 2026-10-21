@@ -15,11 +15,17 @@ export interface ProjectStoreSnapshot {
 }
 
 export type ProjectReloadDecision =
-  // Our own save echoing back while its PUT is still in flight, our own edit
-  // through a dedicated endpoint, or a setup wizard this tab started: the
-  // caller re-syncs the store (syncDeviceConfig, syncAfterSetupAction).
+  // Our own save echoing back while its PUT is still in flight (the PUT's
+  // response carries the revision), or our own edit through a dedicated
+  // endpoint or a setup wizard this tab started while edits are unsaved: a
+  // refetch would drop them, so the caller re-syncs what it changed
+  // (syncDeviceConfig, syncAfterSetupAction, syncPendingSettings).
   | "own"
-  // Nothing of ours is unsaved: refetch quietly.
+  // Nothing of ours is unsaved: refetch quietly. Also our own edit through a
+  // dedicated endpoint when nothing is unsaved and the store is behind it,
+  // so a caller that re-syncs nothing (a child's label, a plugin uninstall,
+  // a plugin's own action saving its config) leaves no stale revision for
+  // the next save to be refused on.
   | "refetch"
   // We hold unsaved edits and the server moved past our revision.
   | "warn-other-session"
@@ -34,11 +40,25 @@ export function decideProjectReload(
   clientId: string = CLIENT_ID,
 ): ProjectReloadDecision {
   if (store.saving) return "own";
-  if (msg.origin_client && msg.origin_client === clientId) return "own";
-  if (!store.dirty) return "refetch";
   const serverRevision = msg.revision ?? null;
+  if (msg.origin_client && msg.origin_client === clientId) {
+    const behind = serverRevision != null && serverRevision !== store.revision;
+    return !store.dirty && behind ? "refetch" : "own";
+  }
+  if (!store.dirty) return "refetch";
   if (serverRevision != null && store.revision != null && serverRevision !== store.revision) {
     return "warn-other-session";
   }
   return "warn-external";
+}
+
+// Whether a refetch asked for by project.reloaded still has anything to bring
+// when its debounce fires: not when the store already holds the revision the
+// last notice named, which a caller that re-synced itself (syncDeviceConfig,
+// syncAfterSetupAction, syncPendingSettings) has fetched by then.
+export function reloadStillNeeded(
+  storeRevision: string | null,
+  noticeRevision: string | null | undefined,
+): boolean {
+  return noticeRevision == null || noticeRevision !== storeRevision;
 }

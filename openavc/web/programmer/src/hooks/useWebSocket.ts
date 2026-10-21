@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { decideProjectReload, type ProjectReloadMessage } from "./projectReload";
+import { decideProjectReload, reloadStillNeeded, type ProjectReloadMessage } from "./projectReload";
 import * as ws from "../api/wsClient";
 import { useConnectionStore } from "../store/connectionStore";
 import { useLogStore } from "../store/logStore";
@@ -95,11 +95,15 @@ export function useWebSocket() {
       useLogStore.getState().clearMacroRuns();
     });
 
-    // Debounce project reloads to avoid rapid-fire refetches
+    // Debounce project reloads to avoid rapid-fire refetches. The last
+    // notice's revision decides whether the refetch is still wanted.
     let reloadTimer: ReturnType<typeof setTimeout> | null = null;
-    const debouncedProjectReload = () => {
+    let reloadRevision: string | null | undefined;
+    const debouncedProjectReload = (revision: string | null | undefined) => {
       if (reloadTimer) clearTimeout(reloadTimer);
+      reloadRevision = revision;
       reloadTimer = setTimeout(() => {
+        if (!reloadStillNeeded(useProjectStore.getState().revision, reloadRevision)) return;
         const before = useProjectStore.getState().project;
         useProjectStore.getState().load().then((refetched) => {
           // Same guard as syncOnConnect: the user may have started editing
@@ -172,13 +176,14 @@ export function useWebSocket() {
       // another session, the AI, a fleet push. projectReload.ts decides which.
       if (msg.type === "project.reloaded") {
         const store = useProjectStore.getState();
-        const decision = decideProjectReload(store, msg as unknown as ProjectReloadMessage);
+        const notice = msg as unknown as ProjectReloadMessage;
+        const decision = decideProjectReload(store, notice);
         // Our own change: a save in flight takes its revision from the PUT
-        // response, and a device page save re-syncs the store itself.
-        // Nothing to refetch and nothing to warn about.
+        // response, and with edits unsaved the caller re-syncs what it
+        // changed. Nothing to refetch and nothing to warn about.
         if (decision === "own") return;
         if (decision === "refetch") {
-          debouncedProjectReload();
+          debouncedProjectReload(notice.revision);
         } else if (decision === "warn-other-session") {
           showInfo("Project modified by another session. Save may trigger a conflict. Consider reloading.");
         } else {

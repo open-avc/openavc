@@ -1,14 +1,15 @@
-"""Reads ``X-OpenAVC-Client`` into ``core.client_origin.current_client_id``.
+"""Reads ``X-OpenAVC-Client`` into ``core.client_origin`` for the request.
 
-Pure ASGI rather than BaseHTTPMiddleware so the ContextVar is set in the same
-task the route handler runs in; the value is reset when the request ends.
+Pure ASGI rather than BaseHTTPMiddleware so the id is set in the same task
+the route handler runs in; it is emptied when the request ends, for any task
+the request started too (core/client_origin.py).
 """
 
 from __future__ import annotations
 
 from openavc.core.client_origin import (
     CLIENT_HEADER,
-    current_client_id,
+    client_origin,
     parse_client_id,
 )
 
@@ -30,8 +31,5 @@ class ClientOriginMiddleware:
         client_id = parse_client_id(
             raw.decode("latin-1") if raw is not None else None,
         )
-        token = current_client_id.set(client_id)
-        try:
+        with client_origin(client_id):
             await self.app(scope, receive, send)
-        finally:
-            current_client_id.reset(token)
