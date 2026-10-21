@@ -246,6 +246,9 @@ SCENARIOS = [
     # Preview marks a press the server says cannot land; the canvas never does.
     "preview_marks_a_press_the_server_says_cannot_land",
     "the_design_canvas_takes_no_press_marks_from_the_server",
+    # Only the Programmer's own frames count as embedded; any other framing
+    # page gets an ordinary panel.
+    "only_the_programmers_frames_are_embedded",
 ]
 
 

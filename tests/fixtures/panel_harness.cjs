@@ -4441,6 +4441,37 @@ const tests = {
         assert(!btn.classList.contains('action-offline'), `the canvas is unmarked, got "${btn.className}"`);
         assert(!app._servedActionDevices, 'the canvas keeps nothing from the server');
     },
+
+    // A signage player or a dashboard card that frames /panel gets an ordinary
+    // panel. Only the Programmer's Preview and design canvas, which mark the
+    // URL they open, are embedded (a preview socket, the Builder's definition).
+    only_the_programmers_frames_are_embedded() {
+        const previousUrl = window.location.href;
+        // jsdom keeps `parent` on the window itself: put back exactly that.
+        const ownParent = Object.getOwnPropertyDescriptor(window, 'parent');
+        const opened = (framed, query) => {
+            if (framed) {
+                Object.defineProperty(window, 'parent', { value: { postMessage() {} }, configurable: true });
+            }
+            window.history.replaceState({}, '', '/panel/' + query);
+            try {
+                return mkApp();
+            } finally {
+                window.history.replaceState({}, '', previousUrl);
+                if (framed) {
+                    if (ownParent) Object.defineProperty(window, 'parent', ownParent);
+                    else delete window.parent;
+                }
+            }
+        };
+        assert(!opened(true, '').embedded, 'a page framing /panel gets a panel');
+        assert(!opened(true, '?page=main').embedded, 'a page link alone is a panel');
+        assert(opened(true, '?preview=1&page=main').embedded, 'the Builder Preview is embedded');
+        assert(opened(true, '?preview=1&page=main&edit=1').embedded, 'the design canvas is embedded');
+        assert(opened(true, '?page=main&edit=1').embedded, 'a preview frame is embedded');
+        assert(!opened(false, '?preview=1').embedded, 'a tab is never embedded');
+        assert(window.parent === window, 'the harness window is its own parent again');
+    },
 };
 
 const results = {};

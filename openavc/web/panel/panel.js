@@ -228,10 +228,14 @@ class PanelApp {
         // binding sends, no idle/lock, no transitions. Definition arrives via
         // postMessage from the parent programmer window.
         this.editMode = params.get('edit') === '1';
-        // Embedded — iframe hosted inside another window (the builder). The
-        // parent is authoritative for the project definition; WS is used only
-        // for live device state. Standalone tabs stay on the WS path for both.
-        this.embedded = (window.parent && window.parent !== window);
+        // Embedded — the Programmer's Preview or design canvas, which mark the
+        // URL they open (preview=1, edit=1). The parent is authoritative for the
+        // project definition; WS is used only for live device state. Any other
+        // page that frames the panel (a signage player, a dashboard's card)
+        // gets an ordinary panel, as a standalone tab does: the server's
+        // definitions, the panel check-in, a panel connection.
+        const framed = !!(window.parent && window.parent !== window);
+        this.embedded = framed && (params.get('preview') === '1' || this.editMode);
         // Type scales with the panel via vmin, which resolves against the
         // viewport. That is right on real glass and inside overlays, but wrong
         // when the panel is embedded in a box smaller than the screen it stands
@@ -566,7 +570,7 @@ class PanelApp {
     }
 
     _postToParent(msg) {
-        if (window.parent && window.parent !== window) {
+        if (this.embedded) {
             try { window.parent.postMessage(msg, '*'); } catch (_) { /* ignore */ }
         }
     }

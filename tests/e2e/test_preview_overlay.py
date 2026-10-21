@@ -126,7 +126,9 @@ def _panel_html() -> str:
 
 def _parent_html(edit_mode: bool) -> str:
     """What Canvas.tsx is, reduced to the part that matters: an iframe it posts to."""
-    suffix = "?edit=1" if edit_mode else "?page=system"
+    # The query Canvas.tsx opens: preview=1 is what tells the panel it is the
+    # Builder's (any other page that frames /panel gets an ordinary panel).
+    suffix = "?preview=1&page=system&edit=1" if edit_mode else "?preview=1&page=system"
     return f"""<!DOCTYPE html>
 <html><head><style>html,body{{margin:0}}
   iframe{{width:{REF_W}px;height:{REF_H}px;border:0;display:block}}</style></head>
