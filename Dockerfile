@@ -13,7 +13,7 @@
 # for the linux/arm64 leg of a multi-arch build buys us nothing except
 # intermittent SIGILLs when QEMU mistranslates Node's JIT. Build once on
 # amd64 and COPY the dist/ into both final images.
-FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend
+FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend
 WORKDIR /build
 # The Programmer's production build needs more than Node's default heap (about
 # 2 GB), which aborts it with "JavaScript heap out of memory" on a Docker host

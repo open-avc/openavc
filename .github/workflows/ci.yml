@@ -112,7 +112,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install Programmer UI dependencies
         if: matrix.os == 'ubuntu-latest'
@@ -191,7 +191,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install Programmer UI dependencies
         working-directory: openavc/web/programmer
@@ -261,7 +261,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       # --omit=dev on purpose: the Programmer's build chain (vite, postcss,
       # babel) collects advisories constantly and none of it reaches a browser,
@@ -287,7 +287,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install and build Programmer UI
         working-directory: openavc/web/programmer
@@ -328,7 +328,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       # The wheel bundles the built web assets. A wheel built from a tree that
       # was never `npm run build`-ed installs fine but ships no UI, so build the
