@@ -8,8 +8,9 @@ this file pins the end-to-end ``TierMatcher.match([one soft evidence]) ->
 POSSIBLE`` path.
 
 Uses invented devices and hint values — no real product, no read of the
-community drivers repo. Validation that a *specific* shipped driver participates
-in matching lives next to that driver in openavc-drivers.
+community drivers repo. Whether a *specific* shipped driver is identified is
+checked in openavc-drivers against probe replies captured from real units
+(``tests/fixtures/discovery/``), and on the equipment.
 """
 
 from __future__ import annotations

@@ -20,9 +20,9 @@ function trims on the None branch was silently unable to recover.
 
 This is a corpus-wide *contract* sweep, not device validation: it names no
 product, ships no captured fixture, and asserts nothing about any particular
-protocol. Per-driver protocol correctness is tested next to each driver in
-openavc-drivers. It cannot live there either, because that repo's CI installs
-no `server` package and so cannot import the parser under test.
+protocol. Whether a driver frames its device's replies correctly is proven on
+the equipment. The sweep lives here because what it guards is the platform's
+parser: a change to ``CallableFrameParser`` is what would break it.
 """
 
 from __future__ import annotations

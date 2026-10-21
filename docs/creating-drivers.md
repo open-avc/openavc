@@ -3948,26 +3948,13 @@ Then open the Programmer UI at `http://localhost:8080/programmer`:
 3. Enter the connection details.
 4. Use the **Command Testing** section to send commands and see state updates.
 
-### Writing automated tests
+### Checks that run automatically
 
-The `tests/` folder of the [community driver repository](https://github.com/open-avc/openavc-drivers/tree/main/tests) has examples. The pattern is:
+A driver is proven on the equipment it controls. Run it against a real unit, or against its simulator while you have none, and use a [Device Audit](device-audit.md) to record what the unit actually did with it.
 
-1. Create a simulator fixture that listens on a test port.
-2. Create a driver fixture that connects to the simulator.
-3. Send commands and assert state changes.
+You do not write tests for a driver you contribute to the [community driver repository](https://github.com/open-avc/openavc-drivers). Its CI checks every driver the same way: the driver file against the contract, the catalog entry, and, for a Python driver that ships a simulator, a connect, one command and a disconnect on the real platform. Its [contributing guide](https://github.com/open-avc/openavc-drivers/blob/main/docs/contributing-drivers.md#what-ci-checks) lists every check and how to run them yourself.
 
-```python
-async def test_power_on(my_driver, state):
-    await my_driver.send_command("power_on")
-    await asyncio.sleep(0.2)  # Wait for response
-    assert my_driver.get_state("power") == "on"
-```
-
-Run tests with:
-
-```bash
-pytest tests/test_my_driver.py -v
-```
+The one test that repository keeps for a single driver is protocol math in a Python driver: a checksum, a binary frame or a level encoding, checked against the manufacturer's own worked example.
 
 ## Adding Simulation Support
 
