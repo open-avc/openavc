@@ -62,7 +62,7 @@ from typing import Any
 
 from openavc.core.web_ui_probe import web_ui_url_for_http_config
 from openavc.drivers.avcdriver_semantic import validate_actions as validate_actions
-from openavc.drivers.spec import ACTION_KINDS, AVAILABILITIES
+from openavc.drivers.spec import ACTION_KINDS, AVAILABILITIES, is_file_command
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -127,6 +127,11 @@ def resolve_device_actions(
             action = _resolve_action_entry(entry, commands)
             if action is None or action["id"] in seen:
                 continue
+            # A button has no file to give: a command that takes or hands back
+            # one runs from Send Command (the contract refuses promoting it; a
+            # Python driver is not load-validated, so it is dropped here too).
+            if action["kind"] == "command" and is_file_command(commands.get(action.get("command"))):
+                continue
             resolved.append(action)
             seen.add(action["id"])
 
@@ -156,9 +161,10 @@ def resolve_device_actions(
             if not isinstance(cmd_id, str) or not cmd_id or cmd_id in seen:
                 continue
             cmd = commands.get(cmd_id)
-            if not isinstance(cmd, dict):
+            if not isinstance(cmd, dict) or is_file_command(cmd):
                 # References a command this driver doesn't declare — skip rather
-                # than render a button that would 404 on click.
+                # than render a button that would 404 on click. A file command
+                # is skipped for the reason above.
                 continue
             params = cmd.get("params")
             resolved.append({

@@ -92,6 +92,48 @@ PARAM_TYPES: tuple[str, ...] = (
     "string", "integer", "number", "boolean", "enum", "child_id",
 )
 
+# Param types only a Python driver may declare. A "file" param is a file the
+# person picks on the device page; the driver receives it whole or in chunks
+# (drivers/command_files.py), which needs driver code to put on the wire.
+PYTHON_ONLY_PARAM_TYPES: tuple[str, ...] = ("file",)
+
+# The largest file a "file" param takes, and what a param without its own
+# `max_bytes` is held to. The upload is staged on the server's disk, so the
+# free space is checked too.
+FILE_PARAM_MAX_BYTES = 1024 * 1024 * 1024
+
+# Keys a "file" param cannot carry: each one shapes a typed or picked value,
+# and a file is neither.
+FILE_PARAM_EXCLUDED_KEYS: tuple[str, ...] = (
+    "default", "values", "child_type", "options_state", "options_from",
+    "type_from", "min", "max", "decimals", "unit", "pattern", "trim", "secret",
+    "scale", "offset", "map",
+)
+
+
+def file_param_names(cmd_def: object) -> list[str]:
+    """The params of a command that take a file, in declared order."""
+    params = cmd_def.get("params") if isinstance(cmd_def, dict) else None
+    if not isinstance(params, dict):
+        return []
+    return [
+        name for name, pdef in params.items()
+        if isinstance(pdef, dict) and pdef.get("type") == "file"
+    ]
+
+
+def is_file_command(cmd_def: object) -> bool:
+    """Whether a command takes a file or hands one back.
+
+    Such a command runs only where a person can give or take the file (Send
+    Command on the device page, the Device Audit); every other door refuses
+    it. The one rule the runtime gate, the authoring checks and the pickers
+    all ask.
+    """
+    if not isinstance(cmd_def, dict):
+        return False
+    return bool(file_param_names(cmd_def)) or cmd_def.get("returns_file") is True
+
 # Types a config_schema field may declare. "text" renders a multi-line box,
 # "table" a row editor whose columns carry the scalar types.
 CONFIG_FIELD_TYPES: tuple[str, ...] = (
@@ -1361,6 +1403,9 @@ DEFS = {
             'type': {
                 'type': 'string',
                 'enum': PARAM_TYPES,
+                'python_enum': PARAM_TYPES + PYTHON_ONLY_PARAM_TYPES,
+                'since_values': {'file': '0.37.2'},
+                'doc': 'The kind of value the parameter takes. Python drivers may also declare "file": a file the person picks on the device page, which the driver receives as a CommandFile. A command with a file parameter runs only from Send Command on the device page and from a Device Audit.',
             },
             'required': {
                 'type': 'boolean',
@@ -1491,6 +1536,23 @@ DEFS = {
             'description': {
                 'type': 'string',
                 'doc': 'Accepted alias for help — read either, write help.',
+            },
+            'accept': {
+                'type': 'array',
+                'min_items': 1,
+                'doc': 'For a file param: the file-name endings it takes, e.g. [".bin"] or [".pem", ".crt"]. Case is ignored. The file picker offers only these, and a file with any other ending is refused before it is uploaded. Omit to take any file.',
+                'since': '0.37.2',
+                'items': {
+                    'type': 'string',
+                    'pattern': r'^\.[A-Za-z0-9][A-Za-z0-9._-]*$',
+                },
+            },
+            'max_bytes': {
+                'type': 'integer',
+                'min': 1,
+                'max': FILE_PARAM_MAX_BYTES,
+                'doc': 'For a file param: the largest file it takes, in bytes. A larger one is refused before it is uploaded. Omit for the platform limit (1 GiB).',
+                'since': '0.37.2',
             },
         },
         'extra': False,
@@ -1624,6 +1686,11 @@ DEFS = {
                 'type': ['boolean', 'string'],
                 'doc': "Ask before sending this command by hand. true for a generic question, or the sentence to ask, written like help (e.g. \"Erases every preset and returns the unit to DHCP.\"). A person sending it from the device page, the Driver Builder's Live Test or a device audit is asked first, and a Quick Action button for it asks too unless the action sets its own confirm. Macros, triggers and panel buttons send it without asking. Declare it on a command that erases or resets the device.",
                 'since': '0.36.0',
+            },
+            'returns_file': {
+                'type': 'boolean',
+                'doc': 'Python drivers only. The command hands a file back, such as a configuration backup: the handler returns a DeviceFile, and the device page offers it as a download. Like a command with a file param, it runs only from Send Command on the device page and from a Device Audit.',
+                'since': '0.37.2',
             },
         },
         'extra': False,

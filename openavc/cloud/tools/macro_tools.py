@@ -191,6 +191,18 @@ class MacroToolsMixin:
             project if project is not None else getattr(engine, "project", None),
         )
 
+    def _file_command_check(self, project: Any = None) -> Any:
+        """Whether a step's command can run from a macro at all: one that
+        takes or hands back a file runs only from the device page. Refused
+        like the check above, for the same reason."""
+        from openavc.core.command_params import file_command_check
+
+        engine = self._get_engine()
+        return file_command_check(
+            getattr(engine, "devices", None) if engine else None,
+            project if project is not None else getattr(engine, "project", None),
+        )
+
     async def _get_macro(self, input: dict) -> Any:
         engine = self._get_engine()
         if not engine or not engine.project:
@@ -350,6 +362,7 @@ class MacroToolsMixin:
                 steps, triggers, project,
                 extra_actions=self._plugin_action_types(),
                 missing_params=self._missing_params_check(project),
+                file_command=self._file_command_check(project),
             )
             if err:
                 raise ToolEditError({"error": f"Macro '{macro_id}': {err}"})
@@ -401,6 +414,7 @@ class MacroToolsMixin:
                     project,
                     extra_actions=self._plugin_action_types(),
                     missing_params=self._missing_params_check(project),
+                    file_command=self._file_command_check(project),
                 )
                 if err:
                     raise ToolEditError({"error": f"Macro '{macro_id}': {err}"})

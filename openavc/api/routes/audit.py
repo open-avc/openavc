@@ -55,8 +55,8 @@ import asyncio
 from typing import Any, Literal
 
 from openavc.api.host_policy import ProgrammerRoute
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse, StreamingResponse
 
 from openavc.api._engine import _get_engine
 from openavc.api.models import (
@@ -69,6 +69,7 @@ from openavc.api.models import (
     AuditSettingRequest,
     AuditStartRequest,
     AuditTesterRequest,
+    CommandFileBeginRequest,
 )
 from openavc.audit.commands import NOT_CONNECTED_YET, commands_for
 from openavc.audit.footprint import open_for_session, resolve_address, start_check
@@ -428,6 +429,35 @@ async def front_panel_check(session_id: str, body: AuditFrontPanelRequest) -> di
     return {"session": session.to_dict()}
 
 
+def _audit_owner(session_id: str) -> str:
+    """The staging owner of a Device Audit's uploads and returned files."""
+    return f"audit:{session_id}"
+
+
+@router.post("/sessions/{session_id}/command-files")
+async def begin_upload(
+    session_id: str, body: CommandFileBeginRequest, request: Request,
+) -> dict[str, Any]:
+    """Open an upload for one file param of the audited driver's command.
+    The chunks go to ``PUT /api/command-files/{id}``, as on a device page."""
+    from openavc.api.routes.command_files import file_param_def, staging_refusal, upload_answer
+    from openavc.core.file_staging import StagingError
+
+    session = _session(session_id)
+    run = _listening_run(session)
+    driver = run.listen.sandbox.driver
+    commands = (getattr(driver, "DRIVER_INFO", {}) or {}).get("commands")
+    pdef = file_param_def(commands, body.command, body.param)
+    try:
+        upload = _get_engine().file_staging.begin(
+            owner=_audit_owner(session_id), command=body.command, param=body.param,
+            pdef=pdef, name=body.name, size=body.size,
+        )
+    except StagingError as exc:
+        raise staging_refusal(exc) from None
+    return upload_answer(upload, request)
+
+
 @router.post("/sessions/{session_id}/commands/{name}")
 async def send_command(session_id: str, name: str, body: AuditCommandRequest) -> dict[str, Any]:
     """Send one of the driver's commands and watch what it does; progress
@@ -436,14 +466,89 @@ async def send_command(session_id: str, name: str, body: AuditCommandRequest) ->
     run = _listening_run(session)
     commands = commands_for(session, run)
     try:
+        entry = next((c for c in commands.catalog() if c["name"] == name), None) or {}
         if body.again is not None:
             await commands.send_again(body.again, name)
+        elif body.files or entry.get("takes_file") or entry.get("returns_file"):
+            await _send_with_files(session_id, commands, name, body)
         else:
             await commands.send(name, dict(body.params))
     except AuditError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     session.publish_state()
     return {"session": session.to_dict()}
+
+
+async def _send_with_files(
+    session_id: str, commands: Any, name: str, body: AuditCommandRequest,
+) -> None:
+    """A command that takes or hands back a file: the staged uploads go in
+    as the files the driver reads and are deleted once its call returns; a
+    file it hands back is kept for the wizard's download."""
+    from openavc.api.routes.command_files import staging_refusal
+    from openavc.core.file_staging import StagingError
+
+    staging = _get_engine().file_staging
+    owner = _audit_owner(session_id)
+    taken: dict[str, Any] = {}
+    try:
+        for param, upload_id in body.files.items():
+            taken[param] = staging.take(upload_id, owner=owner, command=name, param=param)
+    except StagingError as exc:
+        for param in taken:
+            staging.untake(body.files[param])
+        raise staging_refusal(exc) from None
+
+    def keep(device_file: Any) -> dict[str, Any]:
+        held = staging.hold(owner, device_file)
+        return {"id": held.id, "name": held.name, "size": held.size}
+
+    await commands.send(
+        name, dict(body.params), files=taken,
+        on_finished=lambda: staging.discard_all(body.files.values()),
+        keep_file=keep,
+    )
+
+
+@router.get("/sessions/{session_id}/commands/{number}/file")
+async def download_returned_file(session_id: str, number: int) -> StreamingResponse:
+    """The file a command handed back during the audit. Streamed, then
+    deleted once it has gone out in full; it is never in the report."""
+    from openavc.api.routes.command_files import content_disposition, file_stream
+
+    session = _session(session_id)
+    staging = _get_engine().file_staging
+    held = None
+    # The newest run first: the wizard shows the current driver's commands,
+    # and each run numbers its own from 1.
+    for run in reversed(session.runs):
+        trial = next(
+            (t for t in (run.commands.trials if run.commands is not None else [])
+             if t.number == number and t.returned_file),
+            None,
+        )
+        if trial is not None:
+            held = staging.held(trial.returned_file.get("id"))
+            if held is not None and held.owner != _audit_owner(session_id):
+                held = None
+            break
+    if held is None:
+        raise HTTPException(
+            status_code=404,
+            detail="That file is no longer kept. Send the command again to get a new copy.",
+        )
+
+    async def done() -> None:
+        staging.release_held(held.id)
+
+    return StreamingResponse(
+        file_stream(held.path, done),
+        media_type=held.content_type or "application/octet-stream",
+        headers={
+            "Content-Disposition": content_disposition(held.name),
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.post("/sessions/{session_id}/watch/extend")

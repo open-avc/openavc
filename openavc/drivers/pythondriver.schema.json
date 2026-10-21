@@ -1153,8 +1153,10 @@
             "number",
             "boolean",
             "enum",
-            "child_id"
-          ]
+            "child_id",
+            "file"
+          ],
+          "description": "The kind of value the parameter takes. Python drivers may also declare \"file\": a file the person picks on the device page, which the driver receives as a CommandFile. A command with a file parameter runs only from Send Command on the device page and from a Device Audit. Value \"file\" requires platform 0.37.2."
         },
         "required": {
           "type": "boolean",
@@ -1302,6 +1304,21 @@
         "description": {
           "type": "string",
           "description": "Accepted alias for help — read either, write help."
+        },
+        "accept": {
+          "type": "array",
+          "minItems": 1,
+          "description": "For a file param: the file-name endings it takes, e.g. [\".bin\"] or [\".pem\", \".crt\"]. Case is ignored. The file picker offers only these, and a file with any other ending is refused before it is uploaded. Omit to take any file. Requires platform 0.37.2.",
+          "items": {
+            "type": "string",
+            "pattern": "^\\.[A-Za-z0-9][A-Za-z0-9._-]*$"
+          }
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1073741824,
+          "description": "For a file param: the largest file it takes, in bytes. A larger one is refused before it is uploaded. Omit for the platform limit (1 GiB). Requires platform 0.37.2."
         }
       },
       "additionalProperties": false
@@ -1449,6 +1466,10 @@
             "string"
           ],
           "description": "Ask before sending this command by hand. true for a generic question, or the sentence to ask, written like help (e.g. \"Erases every preset and returns the unit to DHCP.\"). A person sending it from the device page, the Driver Builder's Live Test or a device audit is asked first, and a Quick Action button for it asks too unless the action sets its own confirm. Macros, triggers and panel buttons send it without asking. Declare it on a command that erases or resets the device. Requires platform 0.36.0."
+        },
+        "returns_file": {
+          "type": "boolean",
+          "description": "Python drivers only. The command hands a file back, such as a configuration backup: the handler returns a DeviceFile, and the device page offers it as a download. Like a command with a file param, it runs only from Send Command on the device page and from a Device Audit. Requires platform 0.37.2."
         }
       },
       "additionalProperties": false,

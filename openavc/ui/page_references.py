@@ -370,6 +370,7 @@ def reference_findings(
     unknown_child_id: Callable[[str], set[str] | None] | None = None,
     missing_params: Callable[[Mapping[str, Any]], list[str] | None] | None = None,
     ui_files: set[str] | None = None,
+    file_command: Callable[[Mapping[str, Any]], str | None] | None = None,
 ) -> list[Finding]:
     """Every binding on this page that names something that is not there.
 
@@ -389,7 +390,9 @@ def reference_findings(
     ``missing_params`` answers the question after it: the command exists and is
     spelled right, and the driver still refuses it because a parameter it
     declares required was never filled in. Same "None is no opinion" contract,
-    and for the same reason. See ``core/command_params``.
+    and for the same reason. ``file_command`` answers the case no press can
+    run: a command that takes or hands back a file, which runs only from the
+    device page. See ``core/command_params``.
     """
     findings: list[Finding] = []
     in_scope = (lambda el_id: True) if touched is None else (lambda el_id: el_id in touched)
@@ -440,7 +443,7 @@ def reference_findings(
                 findings.append(missing_file)
         findings.extend(_element_findings(
             dump, el_id, page_ids, device_ids, macro_ids, device_commands,
-            undeclared_property, unknown_child_id, missing_params,
+            undeclared_property, unknown_child_id, missing_params, file_command,
         ))
     return findings
 
@@ -530,6 +533,7 @@ def _element_findings(
     undeclared_property: Callable[[str], set[str] | None] | None = None,
     unknown_child_id: Callable[[str], set[str] | None] | None = None,
     missing_params: Callable[[Mapping[str, Any]], list[str] | None] | None = None,
+    file_command: Callable[[Mapping[str, Any]], str | None] | None = None,
 ) -> list[Finding]:
     findings: list[Finding] = []
     el_type = str(dump.get("type", "?"))
@@ -621,7 +625,7 @@ def _element_findings(
             findings.extend(_action_findings(
                 action, el_id, el_type, f"do.{slot}[{index}]",
                 page_ids, device_ids, macro_ids, device_commands, options,
-                missing_params,
+                missing_params, file_command,
             ))
     return findings
 
@@ -654,6 +658,7 @@ def _action_findings(
     device_commands: Callable[[str], set[str] | None] | None,
     options: set[str] | None,
     missing_params: Callable[[Mapping[str, Any]], list[str] | None] | None = None,
+    file_command: Callable[[Mapping[str, Any]], str | None] | None = None,
 ) -> list[Finding]:
     findings: list[Finding] = []
     name = action.get("action")
@@ -704,9 +709,18 @@ def _action_findings(
                 # The command is one the driver has, and it can still be
                 # unrunnable: a parameter the driver declares required, never
                 # filled in. Nothing else on the page says so, and the control
-                # draws and takes a press exactly like a working one.
-                unsupplied = missing_params(action) if missing_params else None
-                if unsupplied:
+                # draws and takes a press exactly like a working one. Or no press
+                # can run it at all: it takes or hands back a file.
+                refused = file_command(action) if file_command else None
+                unsupplied = missing_params(action) if missing_params and not refused else None
+                if refused:
+                    findings.append(Finding(
+                        el_id, "unrunnable_command",
+                        f"{el_id} ({el_type}) {where} sends '{command}' to '{device}', "
+                        f"and every press is refused with \"{refused}\"",
+                        key=("unrunnable_command", el_id, where),
+                    ))
+                elif unsupplied:
                     findings.append(_unrunnable_finding(
                         el_id, el_type, where, device, command, unsupplied,
                     ))
@@ -734,7 +748,7 @@ def _action_findings(
             findings.extend(_action_findings(
                 nested, el_id, el_type, f"{where}['{value}']",
                 page_ids, device_ids, macro_ids, device_commands, None,
-                missing_params,
+                missing_params, file_command,
             ))
 
     return findings

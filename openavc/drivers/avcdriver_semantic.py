@@ -34,6 +34,8 @@ from openavc.drivers.spec import (
     DEFAULT_LINE_GAP_S,
     DEFS,
     FIELDS,
+    FILE_PARAM_EXCLUDED_KEYS,
+    FILE_PARAM_MAX_BYTES,
     GENERIC_ID_PREFIXES,
     INSTANCE_SOURCES,
     LENGTH_ENDIANS,
@@ -55,6 +57,7 @@ from openavc.drivers.spec import (
     VISIBLE_WHEN_OPERATORS as _VISIBLE_WHEN_OPERATORS,
     YAML_TRANSPORTS,
     block_has_fixed_keys,
+    is_file_command,
     is_multicast_group,
     parse_version,
     platform_requirements,
@@ -1702,6 +1705,9 @@ def validate_driver_definition(
                         f"a declared state variable"
                     )
         errors.extend(command_confirm_errors(f"Command '{cmd_name}'", cmd_def))
+        errors.extend(
+            file_command_errors(f"Command '{cmd_name}'", cmd_def, python=False)
+        )
 
     # References out of a command's params into child_entity_types. Shared
     # with the Python surface (a Python driver reaches the same function
@@ -3893,6 +3899,10 @@ def validate_actions(driver_def: dict[str, Any]) -> list[str]:
                     errors.append(
                         f"quick_actions[{i}]: '{cid}' is not a declared command"
                     )
+                elif _is_file_command_id(commands, cid):
+                    errors.append(
+                        f"quick_actions[{i}]: '{cid}' {_FILE_ACTION_REASON}"
+                    )
 
     actions = driver_def.get("actions")
     if actions is not None:
@@ -3909,7 +3919,105 @@ def validate_actions(driver_def: dict[str, Any]) -> list[str]:
                         seen,
                     )
                 )
+                if (
+                    isinstance(entry, dict)
+                    and entry.get("kind", "command") == "command"
+                    and isinstance(entry.get("id"), str)
+                ):
+                    target = entry.get("command") or entry["id"]
+                    if isinstance(target, str) and _is_file_command_id(commands, target):
+                        errors.append(
+                            f"actions[{i}]: command '{target}' {_FILE_ACTION_REASON}"
+                        )
 
+    return errors
+
+
+# A promoted button has no file to give and nowhere to put one that comes
+# back: the command runs from Send Command on the device page instead.
+_FILE_ACTION_REASON = (
+    "takes or hands back a file, so it cannot be a Quick Action; it runs "
+    "from Send Command on the device page"
+)
+
+
+def _is_file_command_id(commands: Any, command_id: str) -> bool:
+    return isinstance(commands, dict) and is_file_command(commands.get(command_id))
+
+
+def _judgeable(value: Any) -> bool:
+    """A value read from source as itself, not a placeholder for an
+    expression the Python reader could not evaluate."""
+    return value is None or isinstance(value, (str, int, float, bool, list, tuple, dict))
+
+
+_ACCEPT_RE = re.compile(r"\.[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
+def file_command_errors(
+    where: str, cmd_def: dict[str, Any], *, python: bool,
+) -> list[str]:
+    """The rules for a command that takes a file or hands one back.
+
+    Shared with the Python surface (``python_info``), which is the only one
+    that may declare either: a YAML driver's runtime has no way to put a file
+    on the wire, so a ``.avcdriver`` declaring one is refused here (the
+    platform never runs the published JSON Schema at load, so its enum alone
+    would not stop it). A value the Python reader could not evaluate is not
+    judged.
+    """
+    errors: list[str] = []
+    params = cmd_def.get("params")
+    if isinstance(params, dict):
+        for pname, pdef in params.items():
+            if not isinstance(pdef, dict) or not _judgeable(pdef.get("type")):
+                continue
+            label = f"{where} param '{pname}'"
+            if pdef.get("type") != "file":
+                stray = [key for key in ("accept", "max_bytes") if key in pdef]
+                if stray:
+                    errors.append(
+                        f"{label}: {' and '.join(stray)} "
+                        f"{'applies' if len(stray) == 1 else 'apply'} only to "
+                        f"a file param (type: file)"
+                    )
+                continue
+            if not python:
+                errors.append(f"{label}: type 'file' requires a Python driver")
+                continue
+            excluded = [key for key in FILE_PARAM_EXCLUDED_KEYS if key in pdef]
+            if excluded:
+                errors.append(
+                    f"{label}: a file param takes no {', '.join(excluded)}"
+                )
+            accept = pdef.get("accept")
+            if accept is not None and _judgeable(accept) and not (
+                isinstance(accept, (list, tuple)) and accept and all(
+                    not _judgeable(item)
+                    or (isinstance(item, str) and _ACCEPT_RE.fullmatch(item))
+                    for item in accept
+                )
+            ):
+                errors.append(
+                    f"{label}: accept must list file-name endings, "
+                    f"e.g. [\".bin\"]"
+                )
+            max_bytes = pdef.get("max_bytes")
+            if max_bytes is not None and _judgeable(max_bytes) and (
+                isinstance(max_bytes, bool)
+                or not isinstance(max_bytes, int)
+                or not 1 <= max_bytes <= FILE_PARAM_MAX_BYTES
+            ):
+                errors.append(
+                    f"{label}: max_bytes must be a whole number of bytes from 1 "
+                    f"to {FILE_PARAM_MAX_BYTES} (1 GiB)"
+                )
+    returns_file = cmd_def.get("returns_file")
+    if returns_file is not None and _judgeable(returns_file):
+        if not isinstance(returns_file, bool):
+            errors.append(f"{where}: 'returns_file' must be true or false")
+        elif returns_file and not python:
+            errors.append(f"{where}: 'returns_file' requires a Python driver")
     return errors
 
 

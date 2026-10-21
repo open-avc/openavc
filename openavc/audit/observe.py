@@ -230,8 +230,10 @@ def command_sent_nothing(
     position), so none is dropped for a clock that ticked too coarsely to
     put it after ``started``."""
     end = finished + grace
+    # The "file" channel is the recorder's note naming a file a command took,
+    # written before the driver runs: not a byte on the wire.
     return not any(
-        e.direction == TX and not e.chunk
+        e.direction == TX and not e.chunk and e.channel != "file"
         and (started_inclusive or started <= e.t) and e.t <= end
         for e in entries
     )

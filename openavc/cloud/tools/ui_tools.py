@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
-from openavc.core.command_params import missing_params_check
+from openavc.core.command_params import file_command_check, missing_params_check
 from openavc.core.ui_events import resolve_press
 from openavc.drivers.child_ids import declared_child_ids
 from openavc.ui.matrix_model import matrix_config_problems
@@ -951,6 +951,7 @@ class UIToolsMixin:
             ),
             missing_params=missing_params_check(self._devices, project),
             ui_files=_project_ui_files(self._get_engine()),
+            file_command=file_command_check(self._devices, project),
         ))
         findings.extend(_custom_markup_findings(self._get_engine(), page, touched))
         if findings:
@@ -1812,6 +1813,7 @@ class UIToolsMixin:
         # page asks the same question of it.
         ui_files = _project_ui_files(self._get_engine())
         check_params = missing_params_check(self._devices, project)
+        check_files = file_command_check(self._devices, project)
         by_page: dict[str, list[str]] = {}
         total = 0
 
@@ -1845,6 +1847,7 @@ class UIToolsMixin:
                 ),
                 missing_params=check_params,
                 ui_files=ui_files,
+                file_command=check_files,
             ))
             if findings:
                 by_page[page.id] = [f.message for f in findings]

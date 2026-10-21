@@ -24,6 +24,7 @@ from openavc.drivers.base import (
 from openavc.drivers.command_outcome import CommandOutcomeError
 from openavc.drivers.child_ids import coerce_child_local_id
 from openavc.drivers.python_info import python_driver_info_issues
+from openavc.drivers.spec import is_file_command
 from openavc.drivers.equipment_protocol import MAX_MESSAGE_BYTES, PROTOCOL
 from openavc.system_config import get_data_dir
 from openavc.utils.logger import get_logger
@@ -291,6 +292,14 @@ class EquipmentDriver(BaseDriver):
                     code="invalid_config",
                 )
             issues = python_driver_info_issues(info, overrides_set_device_setting=True)
+            # The equipment protocol carries a command's params as JSON values,
+            # so a model cannot declare a command that takes or hands back a
+            # file (a Python driver's CommandFile / DeviceFile).
+            issues += [
+                f"Command '{name}' takes or hands back a file, which equipment cannot declare"
+                for name, cmd in (info.get("commands") or {}).items()
+                if is_file_command(cmd)
+            ]
             if issues:
                 raise ValueError("Invalid endpoint model: " + "; ".join(issues))
             if {"_sdk_identity", "_sdk_model"} & set(info.get("state_variables", {})):

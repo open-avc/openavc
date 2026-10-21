@@ -483,6 +483,15 @@ CASES: dict[str, Any] = {
     ),
     "command_query_for_empty": _d(commands={"chk": {"send": "S?", "query_for": ""}}),
     "command_confirm_bad_type": _d(commands={"chk": {"send": "S?", "confirm": 5}}),
+    # A file goes on the wire only from a Python driver's own code.
+    "command_file_param_yaml": _d(commands={"up": {
+        "send": "UP", "params": {"image": {"type": "file"}},
+    }}),
+    "command_returns_file_yaml": _d(commands={"dump": {"send": "DUMP", "returns_file": True}}),
+    "command_file_fields_on_text_param": _d(commands={"chk": {
+        "send": "S{name}", "params": {"name": {"type": "string", "accept": [".bin"], "max_bytes": 9}},
+    }}),
+    "command_returns_file_not_bool": _d(commands={"dump": {"send": "DUMP", "returns_file": "yes"}}),
     "command_query_for_undeclared_var": _d(
         commands={"chk": {"send": "S?", "query_for": "ghost"}}
     ),
@@ -765,6 +774,11 @@ CASES: dict[str, Any] = {
     "action_icon_not_string": _d(actions=[{"id": "noop", "icon": 5}]),
     "action_bad_availability": _d(actions=[{"id": "noop", "availability": "sometimes"}]),
     "action_confirm_bad_type": _d(actions=[{"id": "noop", "confirm": 5}]),
+    "action_names_file_command": _d(
+        commands={"noop": {"send": "N"}, "dump": {"send": "DUMP", "returns_file": True}},
+        actions=[{"id": "backup", "command": "dump"}],
+        quick_actions=["dump"],
+    ),
     "action_params_not_mapping": _d(actions=[{"id": "noop", "params": ["level"]}]),
     "action_url_on_command_kind": _d(actions=[{"id": "noop", "url": "http://x"}]),
     "action_link_url_empty": _d(actions=[{"id": "web", "kind": "link", "url": ""}]),

@@ -23,6 +23,11 @@
  "action_missing_id": [
   "actions[0]: missing required 'id' (non-empty string)"
  ],
+ "action_names_file_command": [
+  "Command 'dump': 'returns_file' requires a Python driver",
+  "quick_actions[0]: 'dump' takes or hands back a file, so it cannot be a Quick Action; it runs from Send Command on the device page",
+  "actions[0]: command 'dump' takes or hands back a file, so it cannot be a Quick Action; it runs from Send Command on the device page"
+ ],
  "action_not_mapping": [
   "actions[0]: must be a mapping"
  ],
@@ -246,6 +251,12 @@
  "command_confirm_bad_type": [
   "Command 'chk': 'confirm' must be a boolean or a message string"
  ],
+ "command_file_fields_on_text_param": [
+  "Command 'chk' param 'name': accept and max_bytes apply only to a file param (type: file)"
+ ],
+ "command_file_param_yaml": [
+  "Command 'up' param 'image': type 'file' requires a Python driver"
+ ],
  "command_legacy_string_alias": [
   "Command 'noop': must have 'send' (TCP/serial), 'path'/'method' (HTTP), 'address' (OSC), or 'udp' (a datagram beside the main transport)",
   "commands.noop: unknown key 'string'"
@@ -279,6 +290,12 @@
  ],
  "command_query_for_undeclared_var": [
   "Command 'chk': query_for 'ghost' is not a declared state variable"
+ ],
+ "command_returns_file_not_bool": [
+  "Command 'dump': 'returns_file' must be true or false"
+ ],
+ "command_returns_file_yaml": [
+  "Command 'dump': 'returns_file' requires a Python driver"
  ],
  "command_sets_child_var_neither": [
   "Command 'zl': sets 'ghost' which is not a declared state variable (device-level or of the addressed child type)"

@@ -53,7 +53,16 @@ from openavc.core.device_config import bridge_first, connection_of
 from openavc.core.event_bus import EventBus, detach_emit_chain
 from openavc.core.installed_equipment import driver_label, missing_driver_reason
 from openavc.core.state_store import StateStore
-from openavc.core.device_traffic import get_traffic_recorder
+from openavc.core.device_traffic import RX, TX, get_traffic_recorder
+from openavc.drivers.command_files import (
+    CommandFile,
+    DeviceFile,
+    FileCommandError,
+    returns_file_sentence,
+    takes_file_sentence,
+)
+from openavc.drivers.param_labels import param_label
+from openavc.drivers.spec import file_param_names
 from openavc.utils.log_redaction import get_secret_registry, redact_config
 from openavc.utils.logger import get_logger
 
@@ -823,7 +832,12 @@ class DeviceManager:
         )
 
     async def send_command(
-        self, device_id: str, command: str, params: dict[str, Any] | None = None
+        self,
+        device_id: str,
+        command: str,
+        params: dict[str, Any] | None = None,
+        *,
+        files_allowed: bool = False,
     ) -> Any:
         """Send a command to a device by ID.
 
@@ -832,6 +846,13 @@ class DeviceManager:
         then re-raised. Transport-level loss is reported separately as
         ``device.disconnected.<device_id>`` from the transport callback; the
         two events are complementary — see ``event_bus.py`` for the policy.
+
+        ``files_allowed`` is the caller saying it can give and take files:
+        Send Command's background runs (``core/command_runs.py``) and the
+        Device Audit. A command that takes a file or hands one back
+        (``spec.is_file_command``) is refused everywhere else with
+        :class:`FileCommandError`; this method is the one gate every door
+        passes, so no door can run one by accident.
         """
         driver = self._devices.get(device_id)
         if driver is None:
@@ -841,6 +862,10 @@ class DeviceManager:
         # and "Device 'x' is not connected" would send the author to look at
         # the network instead of at the name they typed.
         self._check_command_declared(driver, device_id, command)
+        # The same for a file command sent from a door with no file: the
+        # sentence that helps is where it runs from, not that the device is
+        # offline.
+        file_command = self._check_file_door(driver, command, params, files_allowed)
         self._require_control_target(device_id)
         # The connected-gate is skipped for commands the driver declares
         # available_offline — a handler that needs no live connection (e.g. a
@@ -866,7 +891,12 @@ class DeviceManager:
         try:
             params = self._coerce_child_id_params(driver, command, params)
             params = self._validate_command_params(driver, command, params)
-            result = await driver.send_command(command, params)
+            if file_command is None:
+                result = await driver.send_command(command, params)
+            else:
+                result = await self._send_file_command(
+                    driver, device_id, command, params, file_command,
+                )
         except Exception as exc:
             await self.events.emit(
                 f"device.error.{device_id}",
@@ -961,6 +991,74 @@ class DeviceManager:
             raise UnknownCommandError(
                 f"Command '{command}' not found on device '{device_id}'"
             )
+
+    @staticmethod
+    def _check_file_door(
+        driver: BaseDriver,
+        command: str,
+        params: dict[str, Any] | None,
+        files_allowed: bool,
+    ) -> dict[str, Any] | None:
+        """Refuse a file command from a door that cannot give or take a file,
+        and a file param given anything but a file.
+
+        Returns the command's definition when it is a file command (the send
+        then holds the traffic recorder for it), None otherwise. Reads the
+        instance DRIVER_INFO, like the other gates.
+        """
+        info = getattr(driver, "DRIVER_INFO", {}) or {}
+        cmd_def = (info.get("commands") or {}).get(command)
+        if not isinstance(cmd_def, dict):
+            return None
+        file_params = file_param_names(cmd_def)
+        returns_file = cmd_def.get("returns_file") is True
+        if not file_params and not returns_file:
+            return None
+        label = str(cmd_def.get("label") or command)
+        if not files_allowed:
+            raise FileCommandError(
+                takes_file_sentence(label) if file_params else returns_file_sentence(label)
+            )
+        supplied = params if isinstance(params, dict) else {}
+        for name in file_params:
+            value = supplied.get(name)
+            if value is not None and not isinstance(value, CommandFile):
+                pdef = (cmd_def.get("params") or {}).get(name) or {}
+                raise FileCommandError(
+                    f"'{label}': {param_label(name, pdef)} takes a file chosen "
+                    "on the device's page."
+                )
+        return cmd_def
+
+    @staticmethod
+    async def _send_file_command(
+        driver: BaseDriver,
+        device_id: str,
+        command: str,
+        params: dict[str, Any] | None,
+        cmd_def: dict[str, Any],
+    ) -> Any:
+        """Run a file command with the traffic recorder holding the file's
+        direction: what the device is sent while a file goes to it, what it
+        answers while a file comes back. One note entry names each file and
+        its size instead (core/device_traffic.py)."""
+        recorder = get_traffic_recorder()
+        label = str(cmd_def.get("label") or command)
+        sent = [
+            value for value in (params or {}).values() if isinstance(value, CommandFile)
+        ]
+        returns_file = cmd_def.get("returns_file") is True
+        for file in sent:
+            recorder.record_note(device_id, TX, file=file.name, size=file.size, command=label)
+        with recorder.hold(device_id, tx=bool(sent), rx=returns_file):
+            result = await driver.send_command(command, params)
+        if returns_file:
+            if not isinstance(result, DeviceFile):
+                raise FileCommandError(f"'{label}' finished without sending back a file.")
+            recorder.record_note(
+                device_id, RX, file=result.name, size=result.size, command=label,
+            )
+        return result
 
     @staticmethod
     def _command_available_offline(driver: BaseDriver, command: str) -> bool:

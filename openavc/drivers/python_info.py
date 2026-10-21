@@ -28,6 +28,7 @@ from openavc.drivers.avcdriver_semantic import (
     command_confirm_errors,
     config_learned_from_errors,
     device_setting_state_key_errors,
+    file_command_errors,
     platform_version_errors,
     routing_block_errors,
     validate_actions,
@@ -326,16 +327,19 @@ def python_driver_info_issues(
 
     # A command's confirm, from the same shared rule the YAML command walk
     # runs. A command map built at runtime, or a confirm read from a
-    # constant, cannot be judged from the source and is not.
+    # constant, cannot be judged from the source and is not. The file rules
+    # too: a Python driver is the one surface that may declare a file param
+    # or returns_file, so it gets the shape checks without the refusal.
     commands = info.get("commands")
     if isinstance(commands, dict):
         for cmd_name, cmd_def in commands.items():
-            if (
-                cmd_name != UNEVALUATED_KEY
-                and isinstance(cmd_def, dict)
-                and cmd_def.get("confirm") is not UNEVALUATED
-            ):
+            if cmd_name == UNEVALUATED_KEY or not isinstance(cmd_def, dict):
+                continue
+            if cmd_def.get("confirm") is not UNEVALUATED:
                 issues.extend(command_confirm_errors(f"Command '{cmd_name}'", cmd_def))
+            issues.extend(
+                file_command_errors(f"Command '{cmd_name}'", cmd_def, python=True)
+            )
 
     # References out of a command's params into child_entity_types, from the
     # same shared function the YAML path calls. Its skip list is dropped here

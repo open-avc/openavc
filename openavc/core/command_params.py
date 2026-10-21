@@ -34,7 +34,9 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any
 
 from openavc.drivers.base import missing_required_params
+from openavc.drivers.command_files import returns_file_sentence, takes_file_sentence
 from openavc.drivers.param_labels import param_label
+from openavc.drivers.spec import file_param_names
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -47,8 +49,9 @@ log = get_logger(__name__)
 COMMAND_ACTIONS = frozenset({"device.command", "group.command"})
 
 
-def _declared_params(devices: Any, device_id: str, command: str) -> Mapping[str, Any] | None:
-    """A command's declared parameter schema, or None for no opinion.
+def _declared_command(devices: Any, device_id: str, command: str) -> Mapping[str, Any] | None:
+    """A command's declaration on a device's live driver, or None for no
+    opinion.
 
     Never raises: nothing advisory may cost a save, a lint request or a UI
     write.
@@ -63,18 +66,24 @@ def _declared_params(devices: Any, device_id: str, command: str) -> Mapping[str,
         if not isinstance(commands, dict):
             return None
         definition = commands.get(command)
-        if not isinstance(definition, dict):
-            # The command is not one this driver has. That is a different
-            # complaint and somebody else already makes it; saying a parameter
-            # is missing from a command that does not exist would bury it.
-            return None
-        params = definition.get("params")
-        return params if isinstance(params, dict) else {}
+        # A command the driver does not have is a different complaint and
+        # somebody else already makes it; saying a parameter is missing from a
+        # command that does not exist would bury it.
+        return definition if isinstance(definition, dict) else None
     except Exception:  # pragma: no cover - defensive; advisory path only
         log.debug(
-            "Could not resolve params for '%s' on '%s'", command, device_id, exc_info=True
+            "Could not resolve '%s' on '%s'", command, device_id, exc_info=True
         )
         return None
+
+
+def _declared_params(devices: Any, device_id: str, command: str) -> Mapping[str, Any] | None:
+    """A command's declared parameter schema, or None for no opinion."""
+    definition = _declared_command(devices, device_id, command)
+    if definition is None:
+        return None
+    params = definition.get("params")
+    return params if isinstance(params, dict) else {}
 
 
 def missing_params(
@@ -129,6 +138,45 @@ def missing_params(
             if missing not in found:
                 found.append(missing)
     return found if answered else None
+
+
+def file_command_reason(
+    action: Mapping[str, Any],
+    *,
+    devices: Any,
+    groups: Mapping[str, Sequence[str]] | None = None,
+) -> str | None:
+    """Why this action's command cannot run from here at all, or None.
+
+    A command that takes a file or hands one back runs only from Send Command
+    on the device page and from a Device Audit, where a person can give or take
+    the file; from a macro step or a panel binding the runtime refuses it, in
+    this same sentence (``DeviceManager._check_file_door``). A group step says
+    so when any member's command is one. None for no opinion, as above.
+    """
+    if not isinstance(action, Mapping):
+        return None
+    name = action.get("action")
+    command = action.get("command")
+    if name not in COMMAND_ACTIONS or not isinstance(command, str) or not command:
+        return None
+    if name == "device.command":
+        candidates: Iterable[Any] = [action.get("device")]
+    else:
+        group_id = action.get("group")
+        if not isinstance(group_id, str) or not groups:
+            return None
+        candidates = groups.get(group_id) or ()
+    for device_id in candidates:
+        definition = _declared_command(devices, str(device_id or ""), command)
+        if definition is None:
+            continue
+        label = str(definition.get("label") or command)
+        if file_param_names(definition):
+            return takes_file_sentence(label)
+        if definition.get("returns_file") is True:
+            return returns_file_sentence(label)
+    return None
 
 
 def param_label_of(
@@ -195,6 +243,15 @@ def missing_params_check(
     """
     groups = device_groups(project) if project is not None else None
     return lambda action: missing_params(action, devices=devices, groups=groups)
+
+
+def file_command_check(
+    devices: Any, project: Any = None
+) -> Callable[[Mapping[str, Any]], str | None]:
+    """:func:`file_command_reason` as one callable, injected the way
+    :func:`missing_params_check` is."""
+    groups = device_groups(project) if project is not None else None
+    return lambda action: file_command_reason(action, devices=devices, groups=groups)
 
 
 def param_label_check(

@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Request
 from openavc.api._engine import _get_engine, _rate_limit_test
 from openavc.api.errors import StructuredApiError, api_error as _api_error
 from openavc.api.error_messages import device_error_label, friendly_error
+from openavc.drivers.command_files import FileCommandError
 from openavc.drivers.command_outcome import CommandOutcomeError
 from openavc.api.models import (
     ActionInvokeRequest,
@@ -512,38 +513,39 @@ def _driver_failure(device_id: str, command: str, exc: Exception) -> HTTPExcepti
     )
 
 
-@router.post("/devices/{device_id}/command")
-async def send_command(device_id: str, body: CommandRequest) -> dict[str, Any]:
-    """Send a command to a device."""
+def command_failure(device_id: str, command: str, exc: Exception) -> HTTPException:
+    """What Send Command answers for a command that did not run, whatever
+    raised. One place, so a file command's background run
+    (``core/command_runs.py``) words its failure exactly as Send Command does.
+    """
     engine = _get_engine()
-    try:
-        result = await engine.devices.send_command(
-            device_id, body.command, body.params
-        )
-        return {"success": True, "result": result}
-    except CommandParamError as e:
+    if isinstance(exc, CommandParamError):
         # A bad parameter value (out of range / wrong type / pattern mismatch) —
         # surface the actionable message, not a misleading "device not found".
-        raise _api_error(400, str(e), e)
-    except UnknownCommandError as e:
+        return _api_error(400, str(exc), exc)
+    if isinstance(exc, UnknownCommandError):
         # Still a 404, but naming the thing that is actually missing: the
         # command. (UnknownCommandError subclasses ValueError, so this branch
         # has to sit above the device-not-found one.)
-        raise _api_error(404, str(e), e)
-    except DeviceNotFoundError as e:
-        raise _api_error(404, f"Device '{device_id}' not found", e)
-    except WakeAddressError as e:
+        return _api_error(404, str(exc), exc)
+    if isinstance(exc, DeviceNotFoundError):
+        return _api_error(404, f"Device '{device_id}' not found", exc)
+    if isinstance(exc, WakeAddressError):
         # A wake with no usable MAC address: the device's setup is not
         # finished, and the sentence names the setting to fill in.
-        name = device_error_label(device_id, engine.state, engine.project, exc=e)
-        raise _api_error(409, friendly_error(e, device=name), e)
-    except AdapterUnavailable as e:
+        name = device_error_label(device_id, engine.state, engine.project, exc=exc)
+        return _api_error(409, friendly_error(exc, device=name), exc)
+    if isinstance(exc, AdapterUnavailable):
         # The adapter chosen in Reach devices through, not the device: a
         # Wake-on-LAN command runs while the device is off.
-        raise _api_error(503, str(e), e)
-    except ConnectionError as e:
-        raise _not_connected(device_id, e)
-    except CommandPartialError as e:
+        return _api_error(503, str(exc), exc)
+    if isinstance(exc, FileCommandError):
+        # A command that takes or hands back a file, sent from somewhere that
+        # has none to give; the sentence says where it runs from.
+        return _api_error(409, str(exc), exc)
+    if isinstance(exc, ConnectionError):
+        return _not_connected(device_id, exc)
+    if isinstance(exc, CommandPartialError):
         # The command DID something and could not confirm the rest, so the
         # generic wording below would be actively wrong -- it reads as "nothing
         # happened" to somebody who just watched the device react, and hides
@@ -555,18 +557,30 @@ async def send_command(device_id: str, body: CommandRequest) -> dict[str, Any]:
         # the device is the upstream). It also sits right beside the 503 above:
         # 503 could not reach the device, 502 reached it and the exchange came
         # apart partway.
-        raise _api_error(502, str(e), e)
-    except CommandOutcomeError as e:
-        raise StructuredApiError(
-            502 if e.outcome == "failed" else 409, str(e),
-            code="command_incomplete", outcome=e.outcome,
-        ) from e
+        return _api_error(502, str(exc), exc)
+    if isinstance(exc, CommandOutcomeError):
+        return StructuredApiError(
+            502 if exc.outcome == "failed" else 409, str(exc),
+            code="command_incomplete", outcome=exc.outcome,
+        )
+    # Where a driver's own failure lands, whatever it raised. A driver
+    # ValueError -- a response its handler could not parse, a helper deep in a
+    # protocol -- used to be caught above and reported as a missing device; it
+    # belongs here with the driver's other faults.
+    return _driver_failure(device_id, command, exc)
+
+
+@router.post("/devices/{device_id}/command")
+async def send_command(device_id: str, body: CommandRequest) -> dict[str, Any]:
+    """Send a command to a device."""
+    engine = _get_engine()
+    try:
+        result = await engine.devices.send_command(
+            device_id, body.command, body.params
+        )
+        return {"success": True, "result": result}
     except Exception as e:
-        # Where a driver's own failure lands, whatever it raised. A driver
-        # ValueError -- a response its handler could not parse, a helper deep
-        # in a protocol -- used to be caught above and reported as a missing
-        # device; it belongs here with the driver's other faults.
-        raise _driver_failure(device_id, body.command, e) from e
+        raise command_failure(device_id, body.command, e) from e
 
 
 @router.post("/devices/{device_id}/send-raw")
@@ -725,6 +739,8 @@ async def invoke_device_action(
         except WakeAddressError as e:
             name = device_error_label(device_id, engine.state, engine.project, exc=e)
             raise _api_error(409, friendly_error(e, device=name), e)
+        except FileCommandError as e:
+            raise _api_error(409, str(e), e)
         except ConnectionError as e:
             raise _not_connected(device_id, e)
         except CommandOutcomeError as e:

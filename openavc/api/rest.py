@@ -15,6 +15,7 @@ from openavc.api.auth import require_programmer_auth
 from openavc.api.routes import audit as _audit_routes
 from openavc.api.routes import auth as _auth_routes
 from openavc.api.routes import cloud as _cloud_routes
+from openavc.api.routes import command_files as _command_files_routes
 from openavc.api.routes import devices as _devices_routes
 from openavc.api.routes import driver_test as _driver_test_routes
 from openavc.api.routes import drivers as _drivers_routes
@@ -62,6 +63,7 @@ router.include_router(_macros_routes.router)
 router.include_router(_events_routes.router)
 router.include_router(_scripts_routes.router)
 router.include_router(_devices_routes.router)
+router.include_router(_command_files_routes.router)
 router.include_router(_drivers_routes.router)
 router.include_router(_driver_test_routes.router)
 router.include_router(_python_drivers_routes.router)

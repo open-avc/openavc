@@ -39,6 +39,10 @@ log = get_logger(__name__)
 #: when nothing can be said about it.
 MissingParams = Callable[[Mapping[str, Any]], "list[str] | None"]
 
+#: The same caller's other answer: given a step, the sentence saying its
+#: command cannot run from a macro at all (it takes or hands back a file), or
+#: None. See ``core/command_params.file_command_reason``.
+FileCommand = Callable[[Mapping[str, Any]], "str | None"]
 
 
 BUILTIN_STEP_ACTIONS = frozenset((
@@ -101,6 +105,7 @@ def _step_findings(
     extra_actions: Collection[str] = (),
     missing_params: MissingParams | None = None,
     param_label: ParamLabel | None = None,
+    file_command: FileCommand | None = None,
 ) -> list[dict[str, Any]]:
     """The findings :func:`validate_macro_step` writes, as records."""
     found: list[dict[str, Any]] = []
@@ -135,6 +140,10 @@ def _step_findings(
                 action=action, missing="param", param=name,
                 param_label=param_label(step, name) if param_label else None,
             ))
+    # And a command no step can run at all: it takes or hands back a file.
+    reason = file_command(step) if file_command is not None else None
+    if reason:
+        found.append(_finding(path, reason, action=action, refused="file"))
 
     if action == "delay":
         seconds = step.get("seconds")
@@ -169,6 +178,7 @@ def _step_findings(
                             extra_actions=extra_actions,
                             missing_params=missing_params,
                             param_label=param_label,
+                            file_command=file_command,
                         ))
 
     if action == "wait_until":
@@ -229,6 +239,7 @@ def validate_macro_step(
     *,
     extra_actions: Collection[str] = (),
     missing_params: MissingParams | None = None,
+    file_command: FileCommand | None = None,
 ) -> list[str]:
     """Validate a single macro step. Returns list of error strings.
 
@@ -241,12 +252,14 @@ def validate_macro_step(
     driver's own required parameters, which nothing here can see. Injected for
     the same reason ``extra_actions`` is: only a caller holding the driver
     registry knows, and a caller that does not must produce no finding rather
-    than guess. See ``core/command_params``.
+    than guess. ``file_command`` likewise: a command that takes or hands back
+    a file cannot run from a macro. See ``core/command_params``.
     """
     return [
         f"{f['path']}: {f['message']}"
         for f in _step_findings(
             step, path, extra_actions=extra_actions, missing_params=missing_params,
+            file_command=file_command,
         )
     ]
 
@@ -340,6 +353,7 @@ def macro_issues(
     extra_actions: Collection[str] = (),
     missing_params: MissingParams | None = None,
     param_label: ParamLabel | None = None,
+    file_command: FileCommand | None = None,
 ) -> list[dict[str, Any]]:
     """Everything wrong with a macro, placed where an editor can draw it.
 
@@ -360,7 +374,9 @@ def macro_issues(
     wherever it is known, and, on a finding that a field is not filled in,
     ``missing`` (``device``, ``condition.key``, ``state_key``...; ``param`` for
     one of the command's parameters, with ``param`` naming it and, when
-    ``param_label`` can say, ``param_label`` its label on the form).
+    ``param_label`` can say, ``param_label`` its label on the form). A step
+    whose command no macro can run (``file_command``) carries
+    ``refused: "file"``; its message is the runtime's own refusal.
 
     Nothing here is a warning and nothing is a refusal: every record means the
     step or trigger as written cannot do what it says. Deliberately NOT
@@ -385,6 +401,7 @@ def macro_issues(
                     extra_actions=extra_actions,
                     missing_params=missing_params,
                     param_label=param_label,
+                    file_command=file_command,
                 )
             else:
                 found = [_finding(f"steps[{i}]", f"expected an object, got {type(step).__name__}")]
@@ -410,6 +427,7 @@ def validate_macro(
     *,
     extra_actions: Collection[str] = (),
     missing_params: MissingParams | None = None,
+    file_command: FileCommand | None = None,
 ) -> str | None:
     """Validate macro steps and triggers. Returns error string or None.
 
@@ -427,6 +445,7 @@ def validate_macro(
             steps, triggers,
             extra_actions=extra_actions,
             missing_params=missing_params,
+            file_command=file_command,
         )
     ]
     warnings: list[str] = []

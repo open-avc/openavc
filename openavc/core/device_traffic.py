@@ -20,6 +20,12 @@ somebody is watching) and a device audit (every byte, for the report).
   frame parser split it) are recorded only while a subscriber asks for them.
   A framing bug, like a checksum byte that equals the delimiter, is invisible
   once the frames are cut.
+- **A file is never recorded.** While a command that takes a file runs on a
+  device, its sends are kept as their size only (``meta.withheld``); while
+  one that hands a file back runs, its receives are. :meth:`hold` is the
+  switch (``DeviceManager.send_command`` turns it), and :meth:`record_note`
+  adds one entry naming the file and its size. The other direction is kept
+  whole, so the device's answers to an upload are still there.
 - **Secrets are redacted when an entry is written out**, from the device's
   registered credentials (``utils/log_redaction.py``) or a set the caller
   holds (an audit keeps its own, since removing a device forgets its secrets).
@@ -37,12 +43,13 @@ lines; this is the in-app record.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import itertools
 import logging
 import time
 from collections import OrderedDict, deque
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Iterator
 
 from openavc.utils.log_redaction import (
     compile_secret_bytes_pattern,
@@ -141,6 +148,8 @@ class DeviceTrafficRecorder:
         self._subs: dict[str, list[TrafficSubscription]] = {}
         # Devices with at least one subscriber that wants raw chunks.
         self._chunk_readers: dict[str, int] = {}
+        # (device, direction) -> how many holds are open on it (see hold()).
+        self._holds: dict[tuple[str, str], int] = {}
 
     # -- recording ----------------------------------------------------------
 
@@ -156,6 +165,20 @@ class DeviceTrafficRecorder:
         """Keep one payload in ``device_id``'s ring and hand it to its readers."""
         if not device_id:
             return None
+        if self.is_held(device_id, direction):
+            meta = {**(meta or {}), "withheld": len(data)}
+            data = b""
+        return self._keep(device_id, direction, data, channel=channel, meta=meta)
+
+    def _keep(
+        self,
+        device_id: str,
+        direction: str,
+        data: bytes,
+        *,
+        channel: str,
+        meta: dict[str, Any] | None,
+    ) -> TrafficEntry:
         entry = TrafficEntry(
             t=time.time(), device_id=device_id, direction=direction,
             channel=channel, data=bytes(data), meta=meta, seq=next(_seq),
@@ -165,13 +188,47 @@ class DeviceTrafficRecorder:
             sub.deliver(entry)
         return entry
 
+    # -- files ----------------------------------------------------------------
+
+    @contextlib.contextmanager
+    def hold(self, device_id: str, *, tx: bool = False, rx: bool = False) -> Iterator[None]:
+        """Keep only the size of what ``device_id`` sends (``tx``) and/or
+        receives (``rx``) until the block ends. Holds nest."""
+        keys = [(device_id, d) for d, on in ((TX, tx), (RX, rx)) if on and device_id]
+        for key in keys:
+            self._holds[key] = self._holds.get(key, 0) + 1
+        try:
+            yield
+        finally:
+            for key in keys:
+                left = self._holds.get(key, 0) - 1
+                if left > 0:
+                    self._holds[key] = left
+                else:
+                    self._holds.pop(key, None)
+
+    def is_held(self, device_id: str, direction: str) -> bool:
+        return bool(self._holds.get((device_id, direction)))
+
+    def record_note(
+        self, device_id: str, direction: str, *, file: str, size: int, command: str,
+    ) -> TrafficEntry | None:
+        """One entry saying a file went to (``tx``) or came from (``rx``) the
+        device: its name and size, never its bytes."""
+        if not device_id:
+            return None
+        return self._keep(
+            device_id, direction, b"", channel="file",
+            meta={"file": file, "size": size, "command": command},
+        )
+
     def wants_chunks(self, device_id: str) -> bool:
         """True while a reader of this device asked for raw receive chunks."""
         return bool(self._chunk_readers.get(device_id))
 
     def record_chunk(self, device_id: str, data: bytes, *, channel: str) -> None:
         """A raw receive chunk, for the readers that asked (never kept)."""
-        if not self.wants_chunks(device_id):
+        if not self.wants_chunks(device_id) or self.is_held(device_id, RX):
             return
         entry = TrafficEntry(
             t=time.time(), device_id=device_id, direction=RX, channel=channel,
@@ -260,6 +317,7 @@ class DeviceTrafficRecorder:
 
     def clear(self) -> None:
         self._rings.clear()
+        self._holds.clear()
         for subs in list(self._subs.values()):
             for sub in list(subs):
                 self.unsubscribe(sub)

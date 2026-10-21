@@ -51,6 +51,18 @@ EXPECTED_STRICT = {
 # here structurally, so this set grows whenever a device/driver/discovery/ISC
 # route is added — which is correct, and the point of the roots.
 EXPECTED_CONTROL = {
+    # A command's file, a chunk at a time, and Send Command's background runs
+    # of the commands that take or hand back one (a device operation, like a
+    # command; the uploader waits out a 429 and resumes at its offset).
+    ("PUT", "/api/command-files/{upload_id}"),
+    ("DELETE", "/api/command-files/{upload_id}"),
+    ("POST", "/api/devices/{device_id}/command-files"),
+    ("POST", "/api/audit/sessions/{session_id}/command-files"),
+    ("POST", "/api/devices/{device_id}/command-runs"),
+    ("GET", "/api/devices/{device_id}/command-runs"),
+    ("GET", "/api/devices/{device_id}/command-runs/{run_id}"),
+    ("POST", "/api/devices/{device_id}/command-runs/{run_id}/cancel"),
+    ("GET", "/api/devices/{device_id}/command-runs/{run_id}/file"),
     ("GET", "/api/devices"),
     ("GET", "/api/devices/missing-drivers"),
     ("GET", "/api/devices/{device_id}"),

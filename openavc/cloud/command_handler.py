@@ -20,6 +20,7 @@ from openavc.cloud.protocol import (
     build_project_data_payload, build_device_commands_data_payload,
     extract_payload,
 )
+from openavc.drivers.spec import is_file_command
 from openavc.utils.logger import get_logger
 from openavc.utils.spawn import CREATE_NO_WINDOW
 
@@ -504,12 +505,15 @@ class CommandHandler:
                 try:
                     info = self._devices.get_device_info(dev["id"])
                     commands = info.get("commands", {})
-                    # Simplify command definitions for the cloud
+                    # Simplify command definitions for the cloud. A command
+                    # that takes or hands back a file is left out: the portal
+                    # has no file to give, and sending it is refused.
                     entry["commands"] = {
                         cmd_name: {
                             "params": cmd_def.get("params", []) if isinstance(cmd_def, dict) else [],
                         }
                         for cmd_name, cmd_def in commands.items()
+                        if not is_file_command(cmd_def)
                     }
                 except Exception:
                     entry["commands"] = {}

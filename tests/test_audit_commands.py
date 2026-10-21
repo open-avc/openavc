@@ -344,7 +344,7 @@ async def test_stopping_the_driver_ends_the_command_being_watched(driver):
 
 
 def test_the_request_declares_every_field():
-    assert set(AuditCommandRequest.model_fields) == {"params", "again"}
+    assert set(AuditCommandRequest.model_fields) == {"params", "again", "files"}
     assert set(AuditAnswerRequest.model_fields) == {"trial", "answer", "note"}
     with pytest.raises(ValidationError):
         AuditAnswerRequest(trial=1, answer="maybe")

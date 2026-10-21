@@ -265,6 +265,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from openavc.drivers.command_files import describe_size
 from openavc.utils.boolean_words import value_text
 
 if TYPE_CHECKING:
@@ -1249,6 +1250,15 @@ def _quote(view: dict[str, str] | None, limit: int = 160) -> str:
 def _traffic_text(entry: dict[str, Any], limit: int = 400) -> str:
     """One traffic entry as a timeline line reads it."""
     meta = entry.get("meta") or {}
+    # A file a command took or handed back is never recorded: one entry names
+    # it, and what moved while it ran is kept as its size only.
+    if entry.get("channel") == "file":
+        size = meta.get("size")
+        sized = f", {describe_size(size)}" if isinstance(size, int) else ""
+        moved = "sent" if entry.get("direction") == "tx" else "received"
+        return f"file {meta.get('file', '')}{sized} {moved} for {meta.get('command', 'a command')}"
+    if isinstance(meta.get("withheld"), int):
+        return f"{describe_size(meta['withheld'])}, not recorded while a file command ran"
     body = _quote(entry, limit) if entry.get("text") else ""
     if entry.get("channel") in ("http", "http_listener"):
         request = f"{meta.get('method', '')} {meta.get('target', '')}".strip()

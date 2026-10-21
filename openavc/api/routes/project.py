@@ -18,7 +18,7 @@ from openavc.api.models import (
     LibraryUpdateRequest,
     PanelUnlockRequest,
 )
-from openavc.core.command_params import missing_params_check
+from openavc.core.command_params import file_command_check, missing_params_check
 from openavc.core.device_config import resolve_device_config
 from openavc.core.engine import ProjectRevisionConflictError
 from openavc.core.project_loader import ProjectConfig
@@ -154,12 +154,21 @@ async def validate_ui_actions(request: Request) -> dict[str, Any]:
     check = missing_params_check(
         getattr(engine, "devices", None), getattr(engine, "project", None),
     )
+    file_check = file_command_check(
+        getattr(engine, "devices", None), getattr(engine, "project", None),
+    )
     issues: dict[str, list[str]] = {}
     for key, action in actions.items():
         if not isinstance(action, dict):
             continue
         # The runtime's own sentence, so the warning here and the refusal on
-        # the panel are word for word the same thing.
+        # the panel are word for word the same thing. A command that takes or
+        # hands back a file cannot run from a panel at all, so that is the
+        # one thing said about it.
+        refused = file_check(action)
+        if refused:
+            issues[str(key)] = [refused]
+            continue
         missing = check(action) or ()
         if missing:
             command = action.get("command")

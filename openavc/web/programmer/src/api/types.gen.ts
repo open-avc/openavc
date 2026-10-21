@@ -132,10 +132,10 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   childListEntry: new Set(["element", "group", "id", "separator", "start", "state", "type"]),
   eachChildQuery: new Set(["each_child", "page_size", "query_for", "send", "when", "when_state"]),
   queryEntry: new Set(["query_for", "send", "when", "when_state"]),
-  paramEntry: new Set(["child_type", "decimals", "default", "description", "help", "label", "map", "max", "min", "offset", "options_from", "options_state", "pattern", "required", "scale", "secret", "trim", "type", "type_from", "unit", "values"]),
+  paramEntry: new Set(["accept", "child_type", "decimals", "default", "description", "help", "label", "map", "max", "max_bytes", "min", "offset", "options_from", "options_state", "pattern", "required", "scale", "secret", "trim", "type", "type_from", "unit", "values"]),
   oscArg: new Set(["type", "value"]),
   udpSendEntry: new Set(["broadcast", "host", "magic_packet", "payload", "port"]),
-  commandEntry: new Set(["address", "args", "available_offline", "body", "confirm", "headers", "help", "label", "method", "params", "path", "query_for", "query_params", "raw", "restarts_device_for", "send", "sets", "udp"]),
+  commandEntry: new Set(["address", "args", "available_offline", "body", "confirm", "headers", "help", "label", "method", "params", "path", "query_for", "query_params", "raw", "restarts_device_for", "returns_file", "send", "sets", "udp"]),
   actionEntry: new Set(["availability", "command", "confirm", "icon", "id", "kind", "label", "params", "url", "visible_when"]),
   visibleWhenCondition: new Set(["key", "operator", "value"]),
   mappingEntry: new Set(["arg", "contains", "group", "json_path", "key", "map", "state", "type", "value"]),
@@ -241,6 +241,12 @@ export interface ParamTypeFrom {
 }
 
 export interface DriverParamDef {
+  /**
+   * The kind of value the parameter takes. Python drivers may also declare
+   * "file": a file the person picks on the device page, which the driver
+   * receives as a CommandFile. A command with a file parameter runs only from
+   * Send Command on the device page and from a Device Audit.
+   */
   type: string;
   /**
    * The command cannot run without this parameter. Enforced by the runtime at
@@ -358,6 +364,19 @@ export interface DriverParamDef {
   map?: Record<string, string | number>;
   /** Accepted alias for help — read either, write help. */
   description?: string;
+  /**
+   * For a file param: the file-name endings it takes, e.g. [".bin"] or
+   * [".pem", ".crt"]. Case is ignored. The file picker offers only these, and
+   * a file with any other ending is refused before it is uploaded. Omit to
+   * take any file. Requires platform 0.37.2.
+   */
+  accept?: string[];
+  /**
+   * For a file param: the largest file it takes, in bytes. A larger one is
+   * refused before it is uploaded. Omit for the platform limit (1 GiB).
+   * Requires platform 0.37.2.
+   */
+  max_bytes?: number;
 }
 
 /**
@@ -495,6 +514,14 @@ export interface DriverCommandDef {
    * command that erases or resets the device. Requires platform 0.36.0.
    */
   confirm?: boolean | string;
+  /**
+   * Python drivers only. The command hands a file back, such as a
+   * configuration backup: the handler returns a DeviceFile, and the device
+   * page offers it as a download. Like a command with a file param, it runs
+   * only from Send Command on the device page and from a Device Audit.
+   * Requires platform 0.37.2.
+   */
+  returns_file?: boolean;
 }
 
 export interface DriverResponseMapping {

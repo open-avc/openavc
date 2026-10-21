@@ -7,7 +7,11 @@ from fastapi import APIRouter, Body, HTTPException
 
 from openavc.api._engine import _get_engine, _rate_limit_test
 from openavc.api.errors import api_error as _api_error
-from openavc.core.command_params import missing_params_check, param_label_check
+from openavc.core.command_params import (
+    file_command_check,
+    missing_params_check,
+    param_label_check,
+)
 from openavc.core.macro_validation import macro_issues
 
 router = APIRouter(route_class=ProgrammerRoute)
@@ -110,6 +114,11 @@ async def validate_macros(body: Any = Body(...)) -> dict[str, Any]:
     param_label = param_label_check(
         getattr(engine, "devices", None), getattr(engine, "project", None),
     )
+    # And a command no macro can run at all: one that takes or hands back a
+    # file is refused at run time, in this same sentence.
+    file_command = file_command_check(
+        getattr(engine, "devices", None), getattr(engine, "project", None),
+    )
 
     if not isinstance(body, dict) or not isinstance(body.get("macros"), list):
         raise _api_error(400, 'Expected {"macros": [{"id": ..., "steps": [...], "triggers": [...]}]}')
@@ -125,6 +134,7 @@ async def validate_macros(body: Any = Body(...)) -> dict[str, Any]:
                 extra_actions=extra_actions,
                 missing_params=missing_params,
                 param_label=param_label,
+                file_command=file_command,
             )
         }
     return {"macros": results}

@@ -104,8 +104,10 @@ from openavc.core.device_traffic import RX, TX, serialize_entry
 from openavc.core.state_store import is_flat_primitive
 from openavc.drivers.base import missing_required_params
 from openavc.drivers.child_ids import coerce_child_local_id
+from openavc.drivers.command_files import CommandFile, DeviceFile
 from openavc.drivers.compiled_protocol import coerce_bool_token, is_bool_token
 from openavc.drivers.param_labels import param_label
+from openavc.drivers.spec import file_param_names
 from openavc.utils.boolean_words import value_text
 from openavc.utils.log_redaction import is_secret_key
 from openavc.utils.logger import get_logger
@@ -157,6 +159,9 @@ NO_QUERIES = "{driver} has no status queries that can run without a value."
 NOT_WATCHING = "No command is being watched."
 WATCH_CAP = "A command is watched for {span} at most."
 NO_SUCH_TRIAL = "There is no command number {number} to send again."
+# A file is used once and deleted, so a command that takes one is sent again
+# from the list, with the file chosen again.
+FILE_NOT_AGAIN = "Choose the file again and send {label} from the list."
 NO_TRIAL_TO_ANSWER = "There is no command number {number} to answer for."
 NOT_SENT_YET = "Wait for {label} to be sent before saying what the device did."
 
@@ -271,6 +276,10 @@ def command_catalog(driver: Any) -> list[dict[str, Any]]:
             "available_offline": bool(cdef.get("available_offline")),
             "restarts_device_for": restarts,
             "needs_input": bool(missing_required_params(params, {})),
+            # A command that takes or hands back a file: sent with the file
+            # chosen in the wizard, never by "Run all status queries".
+            "takes_file": bool(file_param_names(cdef)),
+            "returns_file": cdef.get("returns_file") is True,
             "confirm": _confirm_text(cdef, name) or confirms.get(name, ""),
             # One to try first: on a device page, and nothing to warn about.
             "suggested": (
@@ -438,6 +447,17 @@ class CommandTrial:
     # Set once the driver's call has returned (or failed): what ``send``
     # waits for before answering, so its answer already holds a refusal.
     returned: asyncio.Event = field(default_factory=asyncio.Event, repr=False, compare=False)
+    # A command that takes or hands back a file (its params hold CommandFile
+    # objects, shown as name and size): sent with files allowed, answered as
+    # soon as it starts, never sent again by "Try again".
+    file_command: bool = False
+    # Run once the driver's call has returned: the staged uploads go.
+    on_finished: Any = field(default=None, repr=False, compare=False)
+    # Keeps a file the command handed back, for the wizard's download:
+    # (DeviceFile) -> {"id", "name", "size"}.
+    keep_file: Any = field(default=None, repr=False, compare=False)
+    # The file it handed back: {"id", "name", "size"} (the id is the download's).
+    returned_file: dict[str, Any] | None = None
 
     def window_end(self) -> float:
         return self.finished_at or time.time()
@@ -488,6 +508,11 @@ class CommandTrial:
             "restart": self.restart,
             "drops": list(self.drops),
             "answer": dict(self.answer) if self.answer else None,
+            "file_command": self.file_command,
+            "returned_file": (
+                {"name": self.returned_file["name"], "size": self.returned_file["size"]}
+                if self.returned_file else None
+            ),
             **self.extra,
         }
 
@@ -584,10 +609,29 @@ class CommandPass:
 
     # -- sending ----------------------------------------------------------------
 
-    async def send(self, name: str, params: dict[str, Any] | None = None) -> CommandTrial:
-        """Send one command and watch what it does (in the background)."""
-        self._refuse_if_busy()
-        listen = self._live()
+    async def send(
+        self,
+        name: str,
+        params: dict[str, Any] | None = None,
+        *,
+        files: dict[str, CommandFile] | None = None,
+        on_finished: Any = None,
+        keep_file: Any = None,
+    ) -> CommandTrial:
+        """Send one command and watch what it does (in the background).
+
+        ``files`` fills a command's file params; ``on_finished`` runs once
+        the driver's call has returned (the door's staged uploads go), and
+        ``keep_file`` keeps a file the command hands back for the wizard's
+        download.
+        """
+        try:
+            self._refuse_if_busy()
+            listen = self._live()
+        except AuditError:
+            if on_finished is not None:
+                on_finished()
+            raise
         entry = next((c for c in self.catalog() if c["name"] == name), None)
         if entry is None:
             # Still sent: the manager's own refusal is part of what the
@@ -595,8 +639,18 @@ class CommandPass:
             entry = {"name": name, "label": name}
         listen.end_window_now("A command was sent")
         self.session.enter_step("commands")
-        trial = self._open_trial(entry, dict(params or {}), batch=False)
+        values = dict(params or {})
+        values.update(files or {})
+        trial = self._open_trial(entry, values, batch=False)
+        trial.file_command = bool(entry.get("takes_file") or entry.get("returns_file") or files)
+        trial.on_finished = on_finished
+        trial.keep_file = keep_file
         task = self._task = self.session.track_task(asyncio.create_task(self._send_and_watch(trial)))
+        if trial.file_command:
+            # A file can take minutes to reach a device, longer than a request
+            # may wait (30 s through the cloud tunnel): answered as soon as it
+            # starts, and followed over audit.subscribe like every send.
+            return trial
         # Answer once the driver's call has returned, not as soon as it is
         # queued: a command refused at once is then already recorded, and the
         # caller's copy of the state is not older than what was published.
@@ -614,6 +668,8 @@ class CommandPass:
         earlier = next((t for t in self.trials if t.number == number), None)
         if earlier is None or (name is not None and earlier.command != name):
             raise AuditError(NO_SUCH_TRIAL.format(number=number))
+        if earlier.file_command:
+            raise AuditError(FILE_NOT_AGAIN.format(label=earlier.label))
         return await self.send(earlier.command, dict(earlier.params))
 
     def answer(self, number: int, answer: str, note: str = "") -> CommandTrial:
@@ -662,8 +718,11 @@ class CommandPass:
         self._refuse_if_busy()
         listen = self._live()
         catalog = self.catalog()
-        queries = [c for c in catalog if c["query"] and not c["needs_input"]]
-        skipped = [c["name"] for c in catalog if c["query"] and c["needs_input"]]
+        def runnable(c: dict[str, Any]) -> bool:
+            return not (c["needs_input"] or c.get("takes_file") or c.get("returns_file"))
+
+        queries = [c for c in catalog if c["query"] and runnable(c)]
+        skipped = [c["name"] for c in catalog if c["query"] and not runnable(c)]
         if not queries:
             raise AuditError(NO_QUERIES.format(driver=self._driver_name()))
         listen.end_window_now("The status queries were sent")
@@ -842,8 +901,11 @@ class CommandPass:
             try:
                 result = await sandbox.manager.send_command(
                     sandbox.device_id, trial.command, trial.params or None,
+                    files_allowed=trial.file_command,
                 )
                 trial.result = _shown(result)
+                if isinstance(result, DeviceFile) and trial.keep_file is not None:
+                    trial.returned_file = trial.keep_file(result)
             except asyncio.CancelledError:
                 trial.error = "The audit stopped before the command finished."
                 raise
@@ -851,6 +913,9 @@ class CommandPass:
                 trial.error = error_sentence(exc)
                 trial.error_type = type(exc).__name__
             finally:
+                if trial.on_finished is not None:
+                    trial.on_finished()
+                    trial.on_finished = None
                 trial.returned_at = time.time()
                 trial.marks["returned"] = len(sandbox.observer.traffic)
                 trial.returned_seq = getattr(sandbox.state, "seq", 0)

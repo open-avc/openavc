@@ -176,6 +176,35 @@
   },
   "transport": "tcp"
  },
+ "action_names_file_command": {
+  "actions": [
+   {
+    "command": "dump",
+    "id": "backup"
+   }
+  ],
+  "commands": {
+   "dump": {
+    "returns_file": true,
+    "send": "DUMP"
+   },
+   "noop": {
+    "send": "N"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "quick_actions": [
+   "dump"
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "action_not_mapping": {
   "actions": [
    "noop"
@@ -2789,6 +2818,52 @@
   },
   "transport": "tcp"
  },
+ "command_file_fields_on_text_param": {
+  "commands": {
+   "chk": {
+    "params": {
+     "name": {
+      "accept": [
+       ".bin"
+      ],
+      "max_bytes": 9,
+      "type": "string"
+     }
+    },
+    "send": "S{name}"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_file_param_yaml": {
+  "commands": {
+   "up": {
+    "params": {
+     "image": {
+      "type": "file"
+     }
+    },
+    "send": "UP"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "command_legacy_string_alias": {
   "commands": {
    "noop": {
@@ -2999,6 +3074,40 @@
    "chk": {
     "query_for": "ghost",
     "send": "S?"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_returns_file_not_bool": {
+  "commands": {
+   "dump": {
+    "returns_file": "yes",
+    "send": "DUMP"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "command_returns_file_yaml": {
+  "commands": {
+   "dump": {
+    "returns_file": true,
+    "send": "DUMP"
    }
   },
   "id": "acme_widget",

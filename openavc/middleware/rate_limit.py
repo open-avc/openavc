@@ -150,6 +150,9 @@ _CONTROL_ROOTS = (
     "/api/isc",                 # send, broadcast, command
     "/api/events",              # emit -- fires automation, like a command does
     "/api/audit",               # a device audit: starts, network check, report
+    "/api/command-files",       # a file for a command, a chunk at a time; a
+                                # large one through the tunnel is hundreds of
+                                # chunks, and the uploader waits out a 429
 )
 
 

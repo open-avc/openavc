@@ -150,6 +150,12 @@ class Engine:
         # Setup-action runner (driver-declared provisioning wizards)
         from openavc.core.setup_actions import SetupActionRunner
         self.setup_actions = SetupActionRunner(self)
+        # Commands that take or hand back a file: the files waiting on disk,
+        # and Send Command's background runs of them.
+        from openavc.core.command_runs import CommandRuns
+        from openavc.core.file_staging import STAGING_DIRNAME, FileStaging
+        self.file_staging = FileStaging(get_data_dir() / STAGING_DIRNAME)
+        self.command_runs = CommandRuns(self, self.file_staging)
         # Settings the device fills in (config fields with learned_from).
         self.learned_config = LearnedConfig(self)
 
@@ -505,6 +511,9 @@ class Engine:
         self._panel_sweep_task = asyncio.create_task(self._panel_devices_sweep_loop())
         self._panel_sweep_task.add_done_callback(_log_task_exception)
 
+        # Files staged for a command by an earlier run are gone with it.
+        self.file_staging.start()
+
         self._running = True
 
         # Pre-warm the network-info cache off the event loop so the first
@@ -664,6 +673,10 @@ class Engine:
         # purpose: every subsystem that can fire a macro (triggers, scripts,
         # plugins) is already stopped, so nothing restarts one after this.
         await self.macros.cancel_all()
+
+        # Stop file commands still running, then delete every staged file.
+        await self.command_runs.stop()
+        await self.file_staging.stop()
 
         # Disconnect all devices
         await self.devices.disconnect_all()

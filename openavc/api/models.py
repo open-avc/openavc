@@ -15,6 +15,32 @@ class CommandRequest(BaseModel):
     params: dict[str, Any] = {}
 
 
+class CommandFileBeginRequest(BaseModel):
+    """Body for opening an upload for one file param of one command
+    (``POST /api/devices/{id}/command-files`` and the Device Audit's twin).
+    The command's ``accept`` and ``max_bytes`` are checked here, before any
+    byte is sent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    command: str = Field(min_length=1, max_length=200)
+    param: str = Field(min_length=1, max_length=200)
+    name: str = Field(min_length=1, max_length=1024)
+    size: int = Field(ge=0)
+
+
+class CommandRunRequest(BaseModel):
+    """Body for ``POST /api/devices/{id}/command-runs``: a command that takes
+    or hands back a file, its other params, and the upload that fills each
+    file param."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    command: str = Field(min_length=1, max_length=200)
+    params: dict[str, Any] = Field(default_factory=dict)
+    files: dict[str, str] = Field(default_factory=dict, max_length=16)
+
+
 class RawSendRequest(BaseModel):
     """Body for ``POST /api/devices/{id}/send-raw`` — the device-page
     "Send raw" box. ``data`` is the literal command string; the driver encodes
@@ -464,6 +490,9 @@ class AuditCommandRequest(BaseModel):
 
     params: dict[str, Any] = Field(default_factory=dict, max_length=64)
     again: int | None = Field(default=None, ge=1)
+    # The upload that fills each file param (opened through
+    # ``POST /api/audit/sessions/{id}/command-files``).
+    files: dict[str, str] = Field(default_factory=dict, max_length=16)
 
 
 class AuditAnswerRequest(BaseModel):
