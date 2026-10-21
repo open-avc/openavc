@@ -29,6 +29,7 @@ from openavc.discovery.snmp_scanner import SNMPScanner
 from openavc.discovery.amx_ddp_scanner import AMXDDPScanner
 from openavc.discovery.probe_runner import (
     RateLimiter,
+    ReplyPortUnavailable,
     run_tcp_active_probe,
     run_udp_broadcast_probe,
 )
@@ -2165,6 +2166,7 @@ class DiscoveryEngine:
                         targets=udp_targets,
                         source_ip=control_ip,
                         rate_limiter=rate_limiter,
+                        accept_from=subnets,
                     )
                     if isinstance(result, dict) and result:
                         self._probe_finished[at] = [
@@ -2178,12 +2180,30 @@ class DiscoveryEngine:
                 udp_results = await asyncio.gather(
                     *udp_tasks, return_exceptions=True,
                 )
+                unheard: dict[int, tuple[list[str], str]] = {}
+                names_by_id = {
+                    h.driver_id: h.driver_name or h.driver_id
+                    for h in self.discovery_hints
+                }
                 for spec, result in zip(udp_specs, udp_results):
-                    if isinstance(result, BaseException):
+                    if isinstance(result, ReplyPortUnavailable):
+                        names, _ = unheard.setdefault(result.port, ([], result.reason))
+                        names.append(names_by_id.get(spec.driver_id, spec.driver_id))
+                    elif isinstance(result, BaseException):
                         log.debug(
                             "Custom UDP probe %s failed",
                             spec.probe_id, exc_info=result,
                         )
+                # Like a listener that could not start (the collect phase's
+                # env_error): said, but not a partial scan. Everything else
+                # ran, and the devices these checks would have named still
+                # appear by their other signals.
+                for port, (names, reason) in sorted(unheard.items()):
+                    self.scan_status.warnings.append(
+                        f"Could not listen on UDP port {port} for the "
+                        f"{', '.join(names)} identification check ({reason}). "
+                        "Another program on this computer may be using it."
+                    )
                 await self.merge_probe_results()
 
         if tcp_specs:

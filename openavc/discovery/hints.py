@@ -204,6 +204,10 @@ class CustomProbeSpec:
     cert_subject_source: str = ""
     # A second exchange on the same connection (tcp only). See ProbeFollowUp.
     follow_up: "ProbeFollowUp | None" = None
+    # udp only: the port the answer comes back on, for a device that answers
+    # by broadcast to a fixed port instead of to the port the probe came from.
+    # None = the reply comes back to the sending socket, as before.
+    reply_port: int | None = None
 
     @property
     def probe_id(self) -> str:
@@ -695,6 +699,10 @@ def _parse_probe(
           extract:                          # optional metadata extraction
             model: { regex: "model=(.+)", group: 1 }
 
+    A ``udp_probe`` may also declare ``reply_port``: the port the device's
+    answer arrives on when it is not the port the probe was sent from (a
+    device that answers by broadcast to a fixed port).
+
     Banner-read TCP probes may omit ``send_*`` and ``expect*`` entirely —
     the device must still speak first (at least one byte is required; a
     silent open port never matches). UDP probes must declare both (no
@@ -788,12 +796,25 @@ def _parse_probe(
     follow_up = _parse_follow_up(driver_id, where, kind, block.get("then"),
                                  default_timeout_ms=timeout_ms)
 
+    reply_port = None
+    if block.get("reply_port") is not None:
+        if kind != "udp":
+            # A TCP answer comes back on the connection the probe opened.
+            raise DiscoveryHintError(
+                f"{driver_id}: discovery.{where}.reply_port is only valid on a "
+                "udp_probe (a tcp_probe's answer comes back on its own connection)"
+            )
+        reply_port = _ensure_int(
+            driver_id, f"{where}.reply_port", block.get("reply_port"),
+            minimum=1, maximum=65535,
+        )
+
     # Reject keys the parser doesn't understand, so typos surface.
     known = {
         "port", "send_hex", "send_ascii",
         "expect", "expect_regex", "expect_hex",
         "cross_vendor", "timeout_ms", "tls", "cert_subject",
-        "extract", "extract_manufacturer", "then",
+        "extract", "extract_manufacturer", "then", "reply_port",
     }
     unknown = set(block.keys()) - known
     if unknown:
@@ -814,6 +835,7 @@ def _parse_probe(
         tls=tls,
         cert_subject=cert_subject,
         cert_subject_source=cert_subject_source,
+        reply_port=reply_port,
     )
 
 

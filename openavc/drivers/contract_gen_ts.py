@@ -155,6 +155,16 @@ def _mechanical_ts(node: dict[str, Any]) -> str:
 
 _D = dict  # keep the table compact
 
+
+def _either_probe() -> dict[str, Any]:
+    """tcpProbe's node with udpProbe's own fields appended: the Builder edits
+    both probes through one type, so a UDP-only field has to be on it too."""
+    tcp, udp = spec.DEFS["tcpProbe"], spec.DEFS["udpProbe"]
+    fields = dict(tcp["fields"])
+    for name, node in udp["fields"].items():
+        fields.setdefault(name, node)
+    return {**tcp, "fields": fields}
+
 INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = (
     (
         "DriverOscArg",
@@ -303,14 +313,14 @@ INTERFACES: tuple[tuple[str, Callable[[], dict], dict[str, dict], dict], ...] = 
     ),
     (
         "DriverDiscoveryProbe",
-        lambda: spec.DEFS["tcpProbe"],
+        lambda: _either_probe(),
         {
             "extract": _D(type="Record<string, DriverDiscoveryExtractRule>"),
         },
         _D(doc=(
-            "A tcp_probe / udp_probe declaration. tls and cert_subject "
-            "apply to TCP probes only; UDP probes must declare a send "
-            "payload and exactly one matcher."
+            "A tcp_probe / udp_probe declaration. tls, cert_subject and then "
+            "apply to TCP probes only, reply_port to UDP probes only; UDP "
+            "probes must declare a send payload and exactly one matcher."
         )),
     ),
     (

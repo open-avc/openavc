@@ -1016,6 +1016,7 @@ class NetworkCheck:
         async def udp(spec) -> list[ProbeObservation]:
             observed = await observe_udp_probe(
                 spec, targets=[fp.ip], source_ip=self._source_ip, rate_limiter=limiter,
+                accept_from=[f"{fp.ip}/32"],
             )
             return [o for o in observed if o.target in ("", fp.ip)]
 

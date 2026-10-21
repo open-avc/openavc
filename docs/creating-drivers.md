@@ -1936,6 +1936,8 @@ discovery:
     extract_manufacturer: "Acme"
     timeout_ms: 2000                    # optional, default 2000 for UDP
                                         # (tcp_probe defaults to 3000), max 10000
+    reply_port: 6455                    # optional: the port the answer comes
+                                        # back on, when it is not the sender's
 
   python:
     file: ./pjlink_class1_discovery.py
@@ -1959,7 +1961,7 @@ discovery:
 | `ssdp` | Fingerprint | UPnP device-type URN announced in SSDP `ST` / `NT` headers. Bare string or list; list entries can be `{device_type, model, manufacturer, friendly_name}` — the optional fields match the device's UPnP description exactly (case-insensitive), so several drivers can share a family-wide URN. |
 | `amx_ddp` | Fingerprint | AMX Device Discovery Protocol beacon match. Provide `make` (required) and optional `model_pattern` glob. |
 | `tcp_probe` | Fingerprint | Connect to `port`, optionally send `send_ascii` / `send_hex`, match exactly one of `expect` (a substring) / `expect_regex` / `expect_hex` (the reply's first bytes). Optional `tls` (TLS-wrap the connection, no cert verification, for an HTTPS-only device), `cert_subject` (regex matched against the device's own TLS certificate subject — requires `tls: true`, and a probe carrying only `cert_subject` identifies the device by its certificate with nothing sent), `cross_vendor`, `extract_manufacturer`, `extract` rules, `timeout_ms` (≤ 10000), `then` (a second exchange on the same connection — see "Identifying a device by what it does NOT answer" below). |
-| `udp_probe` | Fingerprint | Broadcast on `port`, match the response. Same sub-fields as `tcp_probe`, except `timeout_ms` defaults to 2000 (vs 3000 for `tcp_probe`). |
+| `udp_probe` | Fingerprint | Broadcast on `port`, match the response. Same sub-fields as `tcp_probe` except `tls`, `cert_subject` and `then`, which need a connection; `timeout_ms` defaults to 2000 (vs 3000 for `tcp_probe`). Optional `reply_port`, for a device that answers on a fixed port (see "A device that answers on a fixed port" below). |
 | `python` | Fingerprint | Sibling `<driver_id>_discovery.py` with `async def probe(ctx) -> None`. Use when the wire format needs Python (multi-step handshakes, binary parsers, broadcast-then-per-host TCP follow-ups). Sub-fields: `file` (path relative to the driver) and optional `cross_vendor`. May also be written as a bare string — `python: ./my_driver_discovery.py` — when there is nothing to say but the path. **Works the same from a Python driver's `DRIVER_INFO`**, with the path relative to the `.py` file; see the note below. |
 | `oui` | Hint | MAC OUI prefixes (e.g. `["00:05:a6"]`). Drives the *possible* state and the "Unknown device, vendor: …" display. The IEEE registry says who holds a prefix: a maker whose only block is a medium (MA-M, 28-bit) or small (MA-S, 36-bit) one writes its 7 or 9 hex digits (`18:66:96:1`), since the three octets around it are split among many companies. A MAC falls in the longest prefix any driver declares. Check the holder before declaring a prefix read off a device: a network module's maker holds some device MACs, and its prefix appears on other brands' products. |
 | `hostname` | Hint | Regex patterns matched against the device's reverse-DNS, NetBIOS or mDNS host name (case-insensitive; an mDNS name without `.local`). |
@@ -2014,6 +2016,37 @@ a short `timeout_ms` rather than inheriting the probe's. And silence on the
 second step never rescues a failed first step: the device still has to identify
 itself positively before the absence means anything.
 
+**A device that answers on a fixed port.** Most devices reply to a UDP query
+by sending the answer back to the port the query came from, which is where the
+scan listens. Some answer by broadcasting to a fixed port of their own instead,
+whoever asked. Name that port in `reply_port`:
+
+```yaml
+discovery:
+  udp_probe:
+    port: 40001                  # where the query goes
+    send_hex: "AC 01"
+    expect_hex: "AC 02"
+    reply_port: 40002            # where every unit broadcasts its answer
+    extract:
+      # the model: the text after a type byte 09 and its length byte
+      model: { regex: '\x09[\s\S]([\x20-\x7e]+)' }
+```
+
+The scan starts listening on `reply_port` before it sends the query. It listens
+on every network the computer is on, because a broadcast reaches only a socket
+open to all of them, and keeps only the answers from the networks it is
+scanning. Two drivers may name the same reply port; each sees every answer and
+keeps the ones its own `expect` matches. When another program on the computer
+holds the port without sharing it, the probe is not sent and the scan says so
+in its warnings; the rest of the scan runs as usual. `extract` rules read a
+binary answer as text, one character per byte, so a field is captured by the
+bytes around it, as above.
+
+`reply_port` is new in OpenAVC 0.37.1. The catalog marks a driver that declares
+it, and OpenAVC before 0.37.1 skips that driver's whole `discovery:` block: the
+driver installs and runs, and its devices are added by their address there.
+
 #### Validation rules
 
 Enforced at driver-load time and mirrored at catalog-build time by `openavc-drivers/scripts/build_index.py`:
@@ -2025,7 +2058,8 @@ Enforced at driver-load time and mirrored at catalog-build time by `openavc-driv
 5. **`extract_manufacturer:` is sugar for the manufacturer-alias enrichment path.** The probe runner lifts the value into the evidence response so the matcher can pick a vendor-specific peer when this driver carries `cross_vendor: true`. The value is the driver's, not the device's: a Discovery card's **Why this match?** list and a device audit say which driver named that manufacturer when its probe matched. Every driver that declares the same `manufacturer_alias` still counts it.
 6. **`manufacturer_alias` is case-insensitive and de-duplicated** at parse time. Multiple drivers may declare the same alias.
 7. **Fingerprint collisions raise.** Two drivers cannot claim the same fingerprint (same kind, same source ID, same TXT filter) without explicit cross-vendor framing. The signal index raises at build time.
-8. **Template drivers exempt.** Drivers whose ID starts with `generic_` skip discovery validation entirely — they are project starting points, not discoverable devices.
+8. **`reply_port` is `udp_probe` only.** A TCP probe's answer comes back on its own connection.
+9. **Template drivers exempt.** Drivers whose ID starts with `generic_` skip discovery validation entirely — they are project starting points, not discoverable devices.
 
 #### A `discovery:` block in a Python driver
 

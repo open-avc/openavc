@@ -12,7 +12,10 @@ Network safety
 Every socket binds to the configured ``source_ip`` (control adapter)
 so on multi-homed hosts the probe leaves through the right NIC and
 replies route back the same way. This is non-negotiable: the runner
-refuses to send if it can't bind.
+refuses to send if it can't bind. The one exception is a UDP probe's
+``reply_port`` listener, which must bind the wildcard address to hear a
+broadcast at all (``_ReplyPortListener``) and so keeps only replies from
+the networks scanned.
 
 A shared ``RateLimiter`` caps custom probes at 10 sends/sec globally
 so a single scan can't flood the network — the UDP broadcast runner
@@ -37,6 +40,7 @@ greeting the check already read, without connecting again.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import re
 import socket
@@ -58,6 +62,7 @@ from openavc.discovery.hints import (
     ResponseMatch,
     describe_response_match,
 )
+from openavc.discovery.multicast import set_shared_port_reuse
 from openavc.discovery.result import Evidence
 from openavc.discovery.tier_matcher import (
     evidence_active_probe,
@@ -162,6 +167,10 @@ class ProbeObservation:
     # Judged on a greeting already read from the port, with no connection of
     # its own (``observe_tcp_probe_on_greeting``).
     from_greeting: bool = False
+    # A UDP probe with a ``reply_port`` that could not listen there (another
+    # program holds the port), so it was never sent. ``error`` says the same
+    # in a sentence; this is the reason alone, for the scan's warning.
+    reply_port_error: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -304,6 +313,141 @@ def _driver_supplied(rules: tuple[ExtractRule, ...]) -> list[str] | None:
 # ---------------------------------------------------------------------------
 
 
+class ReplyPortUnavailable(Exception):
+    """A UDP probe's ``reply_port`` could not be listened on, so it never ran.
+
+    Raised by ``run_udp_broadcast_probe`` (the scan's runner) so the scan can
+    say which port and why; ``observe_udp_probe`` reports the same as an
+    observation instead.
+    """
+
+    def __init__(self, port: int, reason: str) -> None:
+        super().__init__(f"could not listen on UDP port {port}: {reason}")
+        self.port = port
+        self.reason = reason
+
+
+# How many datagrams a reply-port subscriber may have waiting before more are
+# dropped. Far above any real answer burst; it bounds a flood, the way
+# _MAX_PROBE_RESPONDERS bounds the responders kept.
+_REPLY_QUEUE_LIMIT = 4096
+
+
+class _ReplyPortListener:
+    """One socket on a fixed reply port, shared by every probe that names it.
+
+    Some devices answer a discovery broadcast by broadcasting to a fixed port
+    rather than to the port the probe came from, so the answer has to be
+    heard on that port. The socket binds the WILDCARD address, not the
+    control adapter's: Linux delivers no broadcast to a socket bound to a
+    unicast address (the reason the mDNS, SSDP and DDP listeners bind
+    ``("", port)`` too). A wildcard socket hears every network this computer
+    is on, so each probe keeps only the replies from the networks it scanned
+    (``accept_from``).
+
+    Two probes naming one port share this socket and each gets every
+    datagram: a second bind of the same port under SO_REUSEADDR splits or
+    duplicates traffic differently on each OS. Opening it is synchronous, so
+    two probes starting together cannot both open one.
+    """
+
+    def __init__(self, port: int, sock: socket.socket) -> None:
+        self.port = port
+        self.sock = sock
+        self.subscribers: set[asyncio.Queue] = set()
+        self.reader: asyncio.Task | None = None
+
+    def _recv(self) -> tuple[bytes, Any]:
+        self.sock.settimeout(0.5)
+        return self.sock.recvfrom(_MAX_RESPONSE_BYTES)
+
+    async def read(self) -> None:
+        loop = asyncio.get_running_loop()
+        while True:
+            try:
+                data, addr = await loop.run_in_executor(None, self._recv)
+            except (socket.timeout, TimeoutError):
+                continue
+            except OSError:
+                return
+            for queue in list(self.subscribers):
+                try:
+                    queue.put_nowait((bytes(data), addr[0]))
+                except asyncio.QueueFull:
+                    pass
+
+    def close(self) -> None:
+        if self.reader is not None:
+            self.reader.cancel()
+        # shutdown wakes the executor thread parked in recvfrom; close alone
+        # does not (see AMXDDPScanner._close_socket).
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+
+
+_reply_listeners: dict[int, _ReplyPortListener] = {}
+
+
+def _join_reply_port(port: int) -> asyncio.Queue:
+    """Subscribe to ``port``'s shared listener, opening it if it is not open.
+
+    Raises ``OSError`` when the port cannot be bound (another program holds
+    it without sharing).
+    """
+    listener = _reply_listeners.get(port)
+    if listener is None:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        try:
+            set_shared_port_reuse(sock)
+            sock.bind(("", port))
+        except OSError:
+            sock.close()
+            raise
+        listener = _ReplyPortListener(port, sock)
+        _reply_listeners[port] = listener
+        listener.reader = asyncio.get_running_loop().create_task(listener.read())
+    queue: asyncio.Queue = asyncio.Queue(maxsize=_REPLY_QUEUE_LIMIT)
+    listener.subscribers.add(queue)
+    return queue
+
+
+def _leave_reply_port(port: int, queue: asyncio.Queue) -> None:
+    """Unsubscribe; the last one out closes the port's socket."""
+    listener = _reply_listeners.get(port)
+    if listener is None:
+        return
+    listener.subscribers.discard(queue)
+    if not listener.subscribers:
+        del _reply_listeners[port]
+        listener.close()
+
+
+def _networks(cidrs: Sequence[str] | None) -> list[ipaddress.IPv4Network] | None:
+    if cidrs is None:
+        return None
+    out: list[ipaddress.IPv4Network] = []
+    for cidr in cidrs:
+        try:
+            out.append(ipaddress.IPv4Network(cidr, strict=False))
+        except ValueError:
+            continue
+    return out
+
+
+def _within(ip: str, networks: list[ipaddress.IPv4Network]) -> bool:
+    try:
+        addr = ipaddress.IPv4Address(ip)
+    except ValueError:
+        return False
+    return any(addr in net for net in networks)
+
+
 def _make_udp_socket(source_ip: str, *, broadcast: bool) -> socket.socket | None:
     """Create a UDP socket bound to ``(source_ip, 0)``.
 
@@ -333,6 +477,7 @@ async def run_udp_broadcast_probe(
     targets: Sequence[str],
     source_ip: str,
     rate_limiter: RateLimiter,
+    accept_from: Sequence[str] | None = None,
 ) -> dict[str, Evidence]:
     """Send ``spec.send`` to each target, collect matching replies.
 
@@ -343,11 +488,16 @@ async def run_udp_broadcast_probe(
 
     The runner binds to ``source_ip`` and acquires from
     ``rate_limiter`` before each send. ``observe_udp_probe`` is the same
-    run with every reply kept.
+    run with every reply kept. Raises ``ReplyPortUnavailable`` when the
+    probe's ``reply_port`` could not be listened on, so it never ran.
     """
     observations = await observe_udp_probe(
         spec, targets=targets, source_ip=source_ip, rate_limiter=rate_limiter,
+        accept_from=accept_from,
     )
+    for obs in observations:
+        if obs.reply_port_error and spec.reply_port is not None:
+            raise ReplyPortUnavailable(spec.reply_port, obs.reply_port_error)
     return {
         obs.target: obs.evidence
         for obs in observations
@@ -361,6 +511,7 @@ async def observe_udp_probe(
     targets: Sequence[str],
     source_ip: str,
     rate_limiter: RateLimiter,
+    accept_from: Sequence[str] | None = None,
 ) -> list[ProbeObservation]:
     """``run_udp_broadcast_probe``, returning every reply as an observation.
 
@@ -369,6 +520,11 @@ async def observe_udp_probe(
     carries the ``Evidence`` a scan keeps (one record per device per probe,
     as a scan has always kept). A probe nothing answered comes back as one
     observation with ``error`` ``"no reply"`` (or why it could not be sent).
+
+    With a ``reply_port`` the answer is read from that port's shared
+    listener (``_ReplyPortListener``), opened before anything is sent, and
+    the probe is not sent at all when the port cannot be listened on.
+    ``accept_from`` (CIDRs) drops a reply from any other address unseen.
     """
     if spec.kind != "udp":
         raise ValueError(f"run_udp_broadcast_probe got non-udp spec: {spec.kind!r}")
@@ -377,6 +533,7 @@ async def observe_udp_probe(
 
     sent_to = tuple(targets)
     observations: list[ProbeObservation] = []
+    networks = _networks(accept_from)
 
     def _nothing(error: str, miss: str) -> list[ProbeObservation]:
         return [ProbeObservation(
@@ -385,8 +542,29 @@ async def observe_udp_probe(
             error=error, miss=miss,
         )]
 
+    replies: asyncio.Queue | None = None
+    if spec.reply_port is not None:
+        # Listening first: a device on the same switch can answer in well
+        # under a millisecond.
+        try:
+            replies = _join_reply_port(spec.reply_port)
+        except OSError as exc:
+            reason = str(exc) or type(exc).__name__
+            log.warning(
+                "probe_runner: %s could not listen on UDP port %d: %s",
+                spec.probe_id, spec.reply_port, reason,
+            )
+            [nothing] = _nothing(
+                f"could not listen on UDP port {spec.reply_port} for the answer: {reason}",
+                MISS_NOT_SENT,
+            )
+            nothing.reply_port_error = reason
+            return [nothing]
+
     sock = _make_udp_socket(source_ip, broadcast=True)
     if sock is None:
+        if replies is not None and spec.reply_port is not None:
+            _leave_reply_port(spec.reply_port, replies)
         return _nothing(
             f"could not bind a socket to {source_ip or 'any address'}", MISS_NOT_SENT,
         )
@@ -422,22 +600,41 @@ async def observe_udp_probe(
         sent_mono = loop.time()
 
         end = loop.time() + timeout_seconds
-        while loop.time() < end:
-            remaining = end - loop.time()
-            if remaining <= 0:
-                break
-            try:
-                sock.settimeout(min(remaining, 0.5))
-                data, addr = await loop.run_in_executor(
-                    None, lambda: sock.recvfrom(_MAX_RESPONSE_BYTES),
-                )
-            except (socket.timeout, TimeoutError):
-                continue
-            except OSError as exc:
-                log.debug("probe_runner: %s recv error: %s", spec.probe_id, exc)
-                break
 
-            sender_ip = addr[0]
+        async def _next_reply() -> tuple[bytes, str] | None:
+            """The next datagram inside the window, or None once it closes."""
+            while True:
+                remaining = end - loop.time()
+                if remaining <= 0:
+                    return None
+                if replies is not None:
+                    try:
+                        return await asyncio.wait_for(replies.get(), remaining)
+                    except (TimeoutError, asyncio.TimeoutError):
+                        return None
+                try:
+                    sock.settimeout(min(remaining, 0.5))
+                    data, addr = await loop.run_in_executor(
+                        None, lambda: sock.recvfrom(_MAX_RESPONSE_BYTES),
+                    )
+                except (socket.timeout, TimeoutError):
+                    continue
+                except OSError as exc:
+                    log.debug("probe_runner: %s recv error: %s", spec.probe_id, exc)
+                    return None
+                return bytes(data), addr[0]
+
+        while True:
+            got = await _next_reply()
+            if got is None:
+                break
+            data, sender_ip = got
+            if networks is not None and not _within(sender_ip, networks):
+                log.debug(
+                    "probe_runner: %s ignored a reply from %s, outside the "
+                    "networks scanned", spec.probe_id, sender_ip,
+                )
+                continue
             arrived_ms = round((loop.time() - sent_mono) * 1000.0, 1)
             obs: ProbeObservation | None = None
             if len(observations) < _MAX_PROBE_RESPONDERS:
@@ -513,6 +710,8 @@ async def observe_udp_probe(
             sock.close()
         except OSError:
             pass
+        if replies is not None and spec.reply_port is not None:
+            _leave_reply_port(spec.reply_port, replies)
 
     if not observations:
         if send_errors and len(send_errors) == len(targets):

@@ -429,6 +429,8 @@ def _declared_probe(spec: CustomProbeSpec) -> str:
             else describe_response_match(step.response_match)
         )
         parts.append(f"then send {_quote(step.send)}, expect {expect}")
+    if spec.reply_port is not None:
+        parts.append(f"answered on UDP port {spec.reply_port}")
     return ", ".join(parts)
 
 
@@ -446,6 +448,8 @@ def _describe_exchange(spec: CustomProbeSpec, obs: ProbeObservation) -> str:
     if obs.miss == MISS_CONNECT:
         return f"Could not connect to {where}: {obs.error}."
     if obs.miss == MISS_NO_REPLY:
+        if spec.reply_port is not None:
+            return f"{sent}; nothing answered on UDP port {spec.reply_port}."
         if spec.kind == "udp" or obs.sent:
             return f"{sent}; the device did not reply."
         return f"{sent}; the device sent nothing."

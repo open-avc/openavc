@@ -680,6 +680,34 @@ function ProbeBlock({
             " TCP probes that send bytes also need a matcher."}
         </div>
 
+        {kind === "udp" && (
+          <>
+            <div style={ROW}>
+              <span style={FIELD_W}>Reply port</span>
+              <input
+                type="number"
+                min={1}
+                max={65535}
+                placeholder="the sender's"
+                value={probe.reply_port ?? ""}
+                onChange={(e) =>
+                  onChange({
+                    ...probe,
+                    reply_port: parseInt(e.target.value) || undefined,
+                  })
+                }
+                style={{ width: 120 }}
+              />
+            </div>
+            <div style={{ ...HELP, marginTop: 0 }}>
+              Leave this blank unless the device answers by broadcasting to a
+              fixed port instead of replying to the port the probe came from.
+              The scan then listens on that port and keeps only answers from
+              the networks it scanned.
+            </div>
+          </>
+        )}
+
         {kind === "tcp" && (
           <>
             <div style={ROW}>

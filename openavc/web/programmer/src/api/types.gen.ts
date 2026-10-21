@@ -858,8 +858,9 @@ export interface DriverDiscoveryAmxDdpFingerprint {
 }
 
 /**
- * A tcp_probe / udp_probe declaration. tls and cert_subject apply to TCP
- * probes only; UDP probes must declare a send payload and exactly one matcher.
+ * A tcp_probe / udp_probe declaration. tls, cert_subject and then apply to TCP
+ * probes only, reply_port to UDP probes only; UDP probes must declare a send
+ * payload and exactly one matcher.
  */
 export interface DriverDiscoveryProbe {
   port: number;
@@ -898,6 +899,14 @@ export interface DriverDiscoveryProbe {
    * short. Platform >= 0.32.0.
    */
   then?: { send_ascii?: string; send_hex?: string; expect_silence?: boolean; expect?: string; expect_regex?: string; expect_hex?: string; timeout_ms?: number };
+  /**
+   * The port the answer comes back on, for a device that answers by broadcast
+   * to a fixed port rather than to the port the probe was sent from. The scan
+   * listens there before sending, on every network this computer is on, and
+   * keeps only answers from the networks it scanned. Omit it when the device
+   * answers the sender, as most do. Platform >= 0.37.1.
+   */
+  reply_port?: number;
 }
 
 export interface DriverDiscoveryPython {

@@ -2977,6 +2977,23 @@ DEFS = {
                 'type': 'string',
                 'min_len': 1,
             },
+            'reply_port': {
+                'type': 'integer',
+                'min': 1,
+                'max': 65535,
+                # No `since`, for the reason given at tcpProbe's `then`: the
+                # catalog's `requires:` gates it, so an older platform skips
+                # this driver's discovery block instead of refusing the driver.
+                'doc': (
+                    'The port the answer comes back on, for a device that '
+                    'answers by broadcast to a fixed port rather than to the '
+                    'port the probe was sent from. The scan listens there '
+                    'before sending, on every network this computer is on, '
+                    'and keeps only answers from the networks it scanned. '
+                    'Omit it when the device answers the sender, as most do. '
+                    'Platform >= 0.37.1.'
+                ),
+            },
         },
         'required': ('port',),
         'extra': False,
