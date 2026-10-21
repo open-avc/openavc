@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from openavc.discovery import scan_budget as budgeting
 from openavc.discovery.engine import DiscoveryEngine
 from openavc.discovery.scan_budget import ScanBudget, resolve_policy
+from openavc.discovery.tier_matcher import SignalTier, evidence_active_probe
 
 
 def _mock_passive_scanners():
@@ -245,6 +246,86 @@ class TestOverrunIsContained:
         # on_found already recorded them, so the identification phases run on
         # what the sweep reached rather than the phase being lost whole.
         assert set(pipeline.port_scan_hosts) == {"10.77.0.5", "10.77.0.6"}
+
+
+class TestProbesThatMatchedSurviveACut:
+    """A probe phase that runs out of time keeps every probe that already
+    matched. The merge used to run only once every probe had returned, so one
+    probe still waiting at the deadline threw away all the others, and a busy
+    subnet came back with nothing identified by a probe."""
+
+    _ACME = {
+        "id": "acme_ctl", "name": "Acme Controller", "manufacturer": "Acme",
+        "category": "audio", "transport": "tcp",
+        "discovery": {"tcp_probe": {
+            "port": 4321, "send_ascii": "id\r\n", "expect": "Acme", "timeout_ms": 500,
+        }},
+    }
+
+    def _engine(self) -> DiscoveryEngine:
+        engine = _engine()
+        engine.load_driver_hints_from_registry([dict(self._ACME)])
+        for ip in ("10.77.0.5", "10.77.0.6"):
+            device = engine._get_or_create(ip)
+            device.alive = True
+            device.open_ports = [4321]
+        return engine
+
+    async def _scan_with_a_probe_that_never_answers(self, engine: DiscoveryEngine) -> None:
+        async def fake_probe(spec, *, target, source_ip, stagger_ms=0.0, rate_limiter=None):
+            if target == "10.77.0.6":
+                await asyncio.sleep(30)  # still waiting when the phase ends
+            return evidence_active_probe(
+                spec.probe_id, response={"banner": "Acme"}, port=spec.port,
+            )
+
+        async def fake_pipeline(subnets):
+            await engine._run_budgeted(
+                budgeting.PHASE_PROBE, 0.2,
+                engine._run_custom_probes(subnets, ""),
+                "Driver probes ran out of their share of the scan time.",
+            )
+
+        engine.scan_status.started_at = 0.0
+        with patch("openavc.discovery.engine.run_tcp_active_probe", fake_probe), \
+             patch.object(engine, "_scan_pipeline", side_effect=fake_pipeline):
+            await engine._run_scan(["10.77.0.0/24"], timeout=60.0)
+
+    async def test_the_probe_that_matched_still_identifies_its_device(self):
+        engine = self._engine()
+        await self._scan_with_a_probe_that_never_answers(engine)
+
+        match = engine.results["10.77.0.5"].identification
+        assert match is not None
+        assert (match.state, match.driver_id) == ("identified", "acme_ctl")
+        # The one cut short has only what it had before the probes ran.
+        assert engine.results["10.77.0.6"].identification.state != "identified"
+        assert engine.scan_status.status == "partial"
+
+    async def test_its_evidence_is_merged_once(self):
+        engine = self._engine()
+        await self._scan_with_a_probe_that_never_answers(engine)
+
+        probes = [
+            ev for ev in engine.results["10.77.0.5"].evidence_log
+            if ev.tier == SignalTier.ACTIVE_PROBE
+        ]
+        assert len(probes) == 1
+        assert await engine.merge_probe_results() == 0
+
+    async def test_a_phase_that_finishes_merges_before_returning(self):
+        engine = self._engine()
+
+        async def fake_probe(spec, *, target, source_ip, stagger_ms=0.0, rate_limiter=None):
+            return evidence_active_probe(spec.probe_id, response={}, port=spec.port)
+
+        with patch("openavc.discovery.engine.run_tcp_active_probe", fake_probe):
+            await engine._run_custom_probes(["10.77.0.0/24"], "")
+
+        # Nothing left for the recovery pass: the normal path merged it all.
+        for ip in ("10.77.0.5", "10.77.0.6"):
+            assert any(ev.tier == SignalTier.ACTIVE_PROBE for ev in engine.results[ip].evidence_log)
+        assert await engine.merge_probe_results() == 0
 
 
 class TestNarrowedScansAreNotComplete:

@@ -53,6 +53,7 @@ from openavc.discovery.tier_matcher import (
 from openavc.discovery.result import (
     DeviceState,
     DiscoveredDevice,
+    Evidence,
     device_info_from_evidence,
     merge_device_info,
 )
@@ -457,6 +458,11 @@ class DiscoveryEngine:
         # merge_passive_results), plus the (source, ip) pairs already merged.
         self._passive_scanners: tuple[Any, Any, Any] | None = None
         self._passive_merged: set[tuple[str, str]] = set()
+        # Driver probes that have matched in the current scan, keyed by the
+        # position each was started in, so their evidence survives a probe
+        # phase cut short (see merge_probe_results), plus the positions merged.
+        self._probe_finished: dict[int, list[tuple[str, Evidence, str]]] = {}
+        self._probe_merged: set[int] = set()
         # Per-phase budget for the current scan, and whether any phase
         # covered less than the user asked for (a narrowed scan reports
         # ``partial``, never ``complete``). Replaced on every start_scan.
@@ -894,6 +900,8 @@ class DiscoveryEngine:
             self._passive_cap_warned = False
             self._passive_scanners = None
             self._passive_merged.clear()
+            self._probe_finished.clear()
+            self._probe_merged.clear()
             self._budget = ScanBudget(policy, total_seconds)
             self._arp_provisional = set()
             self._port_scanned = set()
@@ -979,6 +987,19 @@ class DiscoveryEngine:
                             )
                     except Exception:
                         log.exception("Passive result recovery failed")
+                # The same for driver probes, and not only after the outer
+                # deadline: the probe phase runs under its own, which ends it
+                # without truncating the scan. Idempotent, so a probe phase
+                # that finished (and merged) leaves nothing to do here.
+                try:
+                    recovered = await self.merge_probe_results()
+                    if recovered:
+                        log.info(
+                            "Kept %d driver probe result(s) from a probe phase "
+                            "that ran out of time", recovered,
+                        )
+                except Exception:
+                    log.exception("Probe result recovery failed")
                 try:
                     await self._finalize_scan()
                 except Exception:
@@ -1326,6 +1347,11 @@ class DiscoveryEngine:
                 self._budget, tcp_jobs, udp_sends, companions,
             )
             self._apply_plan(budgeting.PHASE_PROBE, probe_plan.warnings)
+            log.info(
+                "Driver probes: %d TCP, %d UDP send(s), %d companion(s); %.1fs allowed",
+                tcp_jobs, udp_sends, companions, probe_plan.budget,
+            )
+            probes_began = time.monotonic()
             await self._run_budgeted(
                 budgeting.PHASE_PROBE, probe_plan.budget,
                 self._run_custom_probes(
@@ -1333,6 +1359,10 @@ class DiscoveryEngine:
                 ),
                 "Driver probes ran out of their share of the scan time. Some "
                 "devices may show as possible rather than identified.",
+            )
+            log.info(
+                "Driver probes: %d matched, %.1fs taken",
+                len(self._probe_finished), time.monotonic() - probes_began,
             )
 
             # Phase 8 (the matcher) deliberately does NOT run here — it runs
@@ -1952,6 +1982,45 @@ class DiscoveryEngine:
 
         return merged
 
+    async def merge_probe_results(self) -> int:
+        """Merge every driver probe that has matched into ``self.results``.
+
+        A probe's evidence is held from the moment it matches, not from when
+        its phase ends. The probe phase runs under its own deadline, and when
+        the last few probes outran it the phase used to drop every probe that
+        had already answered too, because the merge ran only once all of them
+        returned: on a busy subnet nothing was identified from a probe at all.
+        Called when each kind of probe has run, and again by ``_run_scan``
+        before matching, which is what keeps the answered ones after a cut.
+
+        Merged in the order the probes were started, not the order they
+        answered, so the fields a probe fills in on a device come out the same
+        whichever answered first. Idempotent per probe.
+
+        Returns the number of probes merged by this call.
+        """
+        merged = 0
+        for at in sorted(self._probe_finished):
+            if at in self._probe_merged:
+                continue
+            self._probe_merged.add(at)
+            for ip, ev, source in self._probe_finished[at]:
+                device = self._get_or_create(ip)
+                device.alive = True
+                device.evidence_log.append(ev)
+                # Lift extracted hostname/model/firmware/etc. onto the device
+                # record so the card and the export report show them. Passive
+                # listeners do this; probes need to too. fill_only: a probe runs
+                # after passive collection, so it enriches empty fields but
+                # never clobbers an authoritative passive/SNMP identity by
+                # being longer.
+                info = device_info_from_evidence(ev)
+                if info:
+                    merge_device_info(device, info, source, fill_only=True)
+                await self._emit_device_update(device, source)
+            merged += 1
+        return merged
+
     def _claim_passive_merge(self, source: str, ip: str) -> bool:
         """True the first time this (source, ip) is merged in the current scan."""
         key = (source, ip)
@@ -2058,19 +2127,31 @@ class DiscoveryEngine:
             return
 
         rate_limiter = RateLimiter(rate_per_sec=10.0)
+        # Each probe keeps its evidence in _probe_finished, under the position
+        # it was started in, as soon as it answers; merge_probe_results moves
+        # it onto the devices. A phase cut short therefore loses only the
+        # probes still waiting, never the ones that already answered.
+        position = 0
 
         if udp_specs:
             udp_targets = _udp_probe_targets_for(subnets)
             if udp_targets:
-                udp_tasks = [
-                    run_udp_broadcast_probe(
+                async def _run_one_udp(at, spec):
+                    result = await run_udp_broadcast_probe(
                         spec,
                         targets=udp_targets,
                         source_ip=control_ip,
                         rate_limiter=rate_limiter,
                     )
-                    for spec in udp_specs
-                ]
+                    if isinstance(result, dict) and result:
+                        self._probe_finished[at] = [
+                            (ip, ev, "broadcast_probe") for ip, ev in result.items()
+                        ]
+
+                udp_tasks = []
+                for spec in udp_specs:
+                    udp_tasks.append(_run_one_udp(position, spec))
+                    position += 1
                 udp_results = await asyncio.gather(
                     *udp_tasks, return_exceptions=True,
                 )
@@ -2080,28 +2161,10 @@ class DiscoveryEngine:
                             "Custom UDP probe %s failed",
                             spec.probe_id, exc_info=result,
                         )
-                        continue
-                    if not isinstance(result, dict):
-                        continue
-                    for ip, ev in result.items():
-                        device = self._get_or_create(ip)
-                        device.alive = True
-                        device.evidence_log.append(ev)
-                        # Lift extracted hostname/model/firmware/etc. onto the
-                        # device record so the card and the export report show
-                        # them. Passive listeners do this; probes need to too.
-                        # fill_only: a probe runs after passive collection, so
-                        # it enriches empty fields but never clobbers an
-                        # authoritative passive/SNMP identity by being longer.
-                        info = device_info_from_evidence(ev)
-                        if info:
-                            merge_device_info(
-                                device, info, "broadcast_probe", fill_only=True,
-                            )
-                        await self._emit_device_update(device, "broadcast_probe")
+                await self.merge_probe_results()
 
         if tcp_specs:
-            async def _run_one_tcp(spec, target, idx):
+            async def _run_one_tcp(at, spec, target, idx):
                 ev = await run_tcp_active_probe(
                     spec,
                     target=target,
@@ -2109,7 +2172,8 @@ class DiscoveryEngine:
                     stagger_ms=idx * 20.0,
                     rate_limiter=rate_limiter,
                 )
-                return target, spec, ev
+                if ev is not None:
+                    self._probe_finished[at] = [(target, ev, "protocol_probe")]
 
             tcp_jobs: list = []
             for spec in tcp_specs:
@@ -2118,7 +2182,8 @@ class DiscoveryEngine:
                     if spec.port in (dev.open_ports or []) and _ip_in_subnets(ip, subnets)
                 ]
                 for idx, ip in enumerate(hosts):
-                    tcp_jobs.append(_run_one_tcp(spec, ip, idx))
+                    tcp_jobs.append(_run_one_tcp(position, spec, ip, idx))
+                    position += 1
             if max_tcp_jobs is not None and len(tcp_jobs) > max_tcp_jobs:
                 for extra in tcp_jobs[max_tcp_jobs:]:
                     extra.close()  # never awaited — don't leave it pending
@@ -2132,19 +2197,7 @@ class DiscoveryEngine:
                         log.debug(
                             "Custom TCP probe failed", exc_info=r,
                         )
-                        continue
-                    target, spec, ev = r
-                    if ev is None:
-                        continue
-                    device = self._get_or_create(target)
-                    device.alive = True
-                    device.evidence_log.append(ev)
-                    info = device_info_from_evidence(ev)
-                    if info:
-                        merge_device_info(
-                            device, info, "protocol_probe", fill_only=True,
-                        )
-                    await self._emit_device_update(device, "protocol_probe")
+                await self.merge_probe_results()
 
         if self._discovery_companions:
             async def _emit_for_host(host: str, ev) -> None:
