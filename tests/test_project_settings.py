@@ -71,8 +71,8 @@ def test_no_unsafe_setting_has_been_added():
 def test_the_dangerous_sections_never_became_project_settings(forbidden):
     """Named individually so the reason each one is out survives.
 
-    network: a pushed bind_address strands every panel at once, and nothing on
-    them can undo it. auth: credentials. cloud: `system_key` IS the device's
+    network: a pushed Accept connections from strands every panel at once, and
+    nothing on them can undo it. auth: credentials. cloud: `system_key` IS the device's
     identity, so one project would give a hundred panels the same one. tls:
     certificates are per-device. updates: `channel` is a real fleet lever and
     belongs in cloud fleet operations, not hidden in a room file where a

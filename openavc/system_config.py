@@ -231,10 +231,10 @@ DEFAULTS: dict[str, Any] = {
         # matched MAC first, then name, at every start. Never an address: an
         # address changes with DHCP, the adapter does not.
         "accept_connections_adapter": {},
-        # Written for a rollback only, never read: what accept_connections_from
-        # meant to releases that knew one listen address ("0.0.0.0",
-        # "127.0.0.1", or the adapter's address when it was last chosen or
-        # started). openavc/listen.py keeps it current.
+        # Written for a rollback only, never read: accept_connections_from as
+        # a release that knew one listen address reads it, "127.0.0.1" for
+        # this computer only and "0.0.0.0" for any other choice (never an
+        # adapter's address). openavc/listen.py keeps it current.
         "bind_address": "127.0.0.1",
         # Settings > Network > Reach devices through: {} for every connected
         # adapter, or one adapter by identity ({"name": ..., "mac": ...}),

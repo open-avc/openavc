@@ -767,8 +767,8 @@ class ProjectSettings(_ForwardCompatModel):
     wrong" -- recoverable by anyone standing in front of it. Anything whose
     worst case is "the box cannot be reached" or "the wrong people can reach
     it" stays in system.json and never travels: `network` (a pushed
-    bind_address strands every panel at once, with nothing on them able to
-    undo it), `auth` (credentials), `cloud.system_key` (that key IS the
+    Accept connections from strands every panel at once, with nothing on them
+    able to undo it), `auth` (credentials), `cloud.system_key` (that key IS the
     device's identity -- copied to a hundred panels they would all share one),
     and `tls` (certificates are per-device). `updates.channel` is deliberately
     excluded too: it is a real fleet lever and belongs in cloud fleet

@@ -24,10 +24,12 @@ router = APIRouter(route_class=ProgrammerRoute)
 async def get_network_adapters() -> dict[str, Any]:
     """This computer's network adapters, two ways.
 
-    ``adapters``: one entry per IPv4 address (the control interface picker
-    stores an address). ``interfaces``: one entry per adapter, every address
-    it holds, and the adapters that hold none (unplugged, waiting for DHCP),
-    for Accept connections from, which stores the adapter itself.
+    ``adapters``: one entry per IPv4 address with its subnet, for what reads
+    addresses (Discovery's scan subnets, the address a certificate names).
+    ``interfaces``: one entry per adapter, every address it holds, and the
+    adapters that hold none (unplugged, waiting for DHCP), for Accept
+    connections from and Reach devices through, which store the adapter
+    itself.
     """
     import asyncio
 
