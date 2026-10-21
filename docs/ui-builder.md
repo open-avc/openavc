@@ -740,8 +740,8 @@ Add a **Set Variable or Control** step to a macro, pick the control from the
 |----------|-------|--------|
 | **Label** | text | The words on the control, or its caption on a slider, dropdown or meter, replacing the ones it was given. An image, a clock or a control with no caption has none to replace |
 | **Visible** | Yes / No | Show or hide the control |
-| **Background colour** | a colour, e.g. `#e67e22` | Fills the control |
-| **Text colour** | a colour, e.g. `#ffffff` | Colours its words |
+| **Background color** | a color, e.g. `#e67e22` | Fills the control |
+| **Text color** | a color, e.g. `#ffffff` | Colors its words |
 | **Opacity** | 0 to 1 | Below 1 fades it |
 
 The same five are available in a button's own **Set Variable or Control** action,

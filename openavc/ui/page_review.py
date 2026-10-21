@@ -1730,7 +1730,7 @@ def binding_findings(element: Mapping[str, Any]) -> list[Finding]:
                 el_id,
                 "binding_not_rendered",
                 f"{el_id} ({el_type}): show.look.states sets a label for "
-                f"{', '.join(labelled)}, but a {el_type} takes only colour from show.look, "
+                f"{', '.join(labelled)}, but a {el_type} takes only color from show.look, "
                 f"so that text never appears. Use the element's own label, or a label "
                 f"element bound to the same key.",
                 key=("binding_not_rendered", el_id, "look.states.label"),
@@ -1742,7 +1742,7 @@ def binding_findings(element: Mapping[str, Any]) -> list[Finding]:
     if "look" in honored and el_type not in STATE_ICON_TYPES and isinstance(look, Mapping):
         iconed = _look_icon_states(look)
         if iconed:
-            took = "colour and text" if el_type in STATE_LABEL_TYPES else "colour"
+            took = "color and text" if el_type in STATE_LABEL_TYPES else "color"
             remedy = (
                 "Set the element's own icon -- it draws that one, it just cannot "
                 "change it per state."

@@ -4752,7 +4752,7 @@ export function bindingFindings(el: UIElement): ReviewFinding[] {
         kind: "binding_not_rendered",
         message:
           `${el.id} (${el.type}): show.look.states sets a label for ` +
-          `${labelled.join(", ")}, but a ${el.type} takes only colour from show.look, ` +
+          `${labelled.join(", ")}, but a ${el.type} takes only color from show.look, ` +
           `so that text never appears. Use the element's own label, or a label ` +
           `element bound to the same key.`,
         key: `binding_not_rendered|${el.id}|look.states.label`,
@@ -4767,7 +4767,7 @@ export function bindingFindings(el: UIElement): ReviewFinding[] {
       look && typeof look === "object" && !Array.isArray(look)) {
     const iconed = lookIconStates(look);
     if (iconed.length) {
-      const took = STATE_LABEL_TYPES.includes(el.type) ? "colour and text" : "colour";
+      const took = STATE_LABEL_TYPES.includes(el.type) ? "color and text" : "color";
       const remedy = (own(HONORED_PROPERTIES, el.type) ?? []).includes("icon")
         ? "Set the element's own icon -- it draws that one, it just cannot " +
           "change it per state."

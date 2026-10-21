@@ -34,15 +34,15 @@ export const UI_OVERRIDE_PROPERTIES: readonly UiOverrideProperty[] = [
   },
   {
     name: "bg_color",
-    label: "Background colour",
+    label: "Background color",
     type: "string",
-    hint: "A CSS colour, e.g. #e67e22.",
+    hint: "A CSS color, e.g. #e67e22.",
   },
   {
     name: "text_color",
-    label: "Text colour",
+    label: "Text color",
     type: "string",
-    hint: "A CSS colour, e.g. #ffffff.",
+    hint: "A CSS color, e.g. #ffffff.",
   },
   {
     name: "opacity",

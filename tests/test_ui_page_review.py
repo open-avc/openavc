@@ -559,7 +559,7 @@ def test_a_status_led_takes_colour_from_look_but_not_text():
     findings, _ = review_page(page)
     ignored = _of_kind(findings, "binding_not_rendered")
     assert len(ignored) == 1
-    assert "only colour" in ignored[0].message
+    assert "only color" in ignored[0].message
     assert "FAULT" not in ignored[0].message.split("sets a label for")[0]
 
 

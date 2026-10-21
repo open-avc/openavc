@@ -555,7 +555,7 @@ function StateSetEditor({
       <HelpText>
         Set a shared value the whole system can see: UI elements update, scripts can
         react, other macros can read it. Pick a control under UI to change its label,
-        colour, opacity, or whether it shows at all, with no script needed.
+        color, opacity, or whether it shows at all, with no script needed.
       </HelpText>
 
       <div style={rowStyle}>

@@ -75,7 +75,7 @@ export const STEP_TYPES: StepTypeInfo[] = [
   {
     action: "state.set",
     label: "Set Variable or Control",
-    description: "Set a project variable, or change a control's label, colour or visibility",
+    description: "Set a project variable, or change a control's label, color or visibility",
     color: "#10b981",
     summary: (step) =>
       step.value === null && (step.key ?? "").startsWith("ui.")
