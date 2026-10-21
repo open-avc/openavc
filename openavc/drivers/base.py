@@ -929,6 +929,13 @@ class BaseDriver(ABC):
         # reconnect loop sets `_hold_next_connect` from it; `_held` is a
         # connection that is up but not yet announced.
         self._dropped_for_silence = False
+        # The sentence the silence drop gave ("The device stopped answering:
+        # 3 polls in a row ..."), kept until the device answers. A reconnect
+        # that gets no answer either reads only as a generic no_response (an
+        # HTTP device's connect check fails "is not responding"), whose advice
+        # to check the driver, transport and port is wrong for a device that
+        # was working; the device manager shows this sentence instead.
+        self._silence_verdict: ConnectionFault | None = None
         self._hold_next_connect = False
         self._held = False
         self._answer_waiter: asyncio.Future[bool] | None = None
@@ -1422,6 +1429,7 @@ class BaseDriver(ABC):
                 )
             else:
                 self._dropped_for_silence = False
+                self._silence_verdict = None
                 self.set_state("connected", True)
                 await self.events.emit(f"device.connected.{self.device_id}")
                 log.info(f"[{self.device_id}] Connected via {transport_type}")
@@ -1852,6 +1860,7 @@ class BaseDriver(ABC):
         # fresh attempt, announced as soon as it is up.
         self._held = False
         self._dropped_for_silence = False
+        self._silence_verdict = None
         self._unread_replies_hold = False
         self._settle_answer(False)
         self.set_state("connected", False)
@@ -2600,6 +2609,7 @@ class BaseDriver(ABC):
                         self._force_disconnect(
                             NO_RESPONSE, self._probe_fault_message()
                         )
+                        self._silence_verdict = self._last_fault
                         return
                 else:
                     self._health_failures = 0
@@ -2846,6 +2856,7 @@ class BaseDriver(ABC):
             return
         self._held = False
         self._dropped_for_silence = False
+        self._silence_verdict = None
         self.set_state("connected", True)
         log.info(f"[{self.device_id}] The device answered; connected")
         self._settle_answer(True)
@@ -3857,6 +3868,7 @@ class BaseDriver(ABC):
                                 f"disconnected"
                             )
                         self._last_fault = self._silence_fault(silent_polls)
+                        self._silence_verdict = self._last_fault
                         self._dropped_for_silence = True
                         self._handle_transport_disconnect()
                         return
@@ -3974,6 +3986,8 @@ class BaseDriver(ABC):
                             f"in a row failed.",
                         )
                     self._last_fault = fault
+                    if fault.code == NO_RESPONSE:
+                        self._silence_verdict = fault
                     self._handle_transport_disconnect()
                     return
 

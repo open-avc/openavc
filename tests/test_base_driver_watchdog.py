@@ -230,6 +230,11 @@ async def test_watchdog_uses_no_response_for_a_generic_drop() -> None:
     assert drv.last_fault.code == NO_RESPONSE
     assert drv.last_fault.message.startswith("The device stopped answering: ")
     assert drv.last_fault.message.endswith(" polls in a row failed.")
+    # Kept until the device answers: the next connect clears last_fault, and
+    # a reconnect that gets no answer either shows this sentence again.
+    assert drv._silence_verdict is drv.last_fault
+    await drv.disconnect()
+    assert drv._silence_verdict is None
 
 
 @pytest.mark.asyncio

@@ -1918,6 +1918,7 @@ class DeviceManager:
         forcing a disconnect (liveness watchdogs), then the classifier.
         ``fault``, when given, is the reason and nothing is classified.
         """
+        given = fault is not None
         last_error = ""
         host, port, transport = "", None, ""
         if driver is not None:
@@ -1961,6 +1962,12 @@ class DeviceManager:
                 last_error=last_error, exc=exc,
                 host=host, port=port, transport=transport,
             )
+        # A device dropped because it stopped answering, whose reconnect gets
+        # no answer either, keeps the sentence the drop gave. The attempt's own
+        # failure reads as a generic no_response ("check the driver, transport
+        # and port"), which is wrong advice for a device that was working.
+        if not given and fault.code == NO_RESPONSE and driver is not None:
+            fault = getattr(driver, "_silence_verdict", None) or fault
         # A device at a 169.254 address, unreachable while the adapter chosen
         # in Reach devices through holds no 169.254 address of its own: say
         # that, not "check the IP address" (the address is right).
@@ -2777,11 +2784,17 @@ class DeviceManager:
         self.state.set(f"device.{device_id}.reconnect_attempt", None, source="device_manager")
         # Suppress auto-reconnect during intentional disconnect
         self._intentional_disconnect.add(device_id)
+        # Reconnect is "try again" with nothing changed: a device dropped for
+        # its silence still stopped answering if this attempt gets no answer
+        # either, so its sentence outlives the disconnect, which forgets it.
+        silence = getattr(driver, "_silence_verdict", None)
         try:
             try:
                 await driver.disconnect()
             except Exception:
                 pass
+            if silence is not None:
+                driver._silence_verdict = silence
             try:
                 self._refresh_usb_serial_port(device_id, driver)
                 await self._connect_driver(device_id, driver)
