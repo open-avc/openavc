@@ -116,6 +116,12 @@ Which buttons appear is up to the driver. A button may also be hidden until it's
 
 One button shows up on its own: if the device has its own web page (it answers on a standard web port), an **Open Web UI** button appears and opens that page in a new browser tab. No driver setup is needed for most equipment.
 
+## Commands That Take a File
+
+Some drivers have commands that send a file to the device or bring one back: a firmware update, a security certificate, a configuration backup. In **Send Command**, such a command has a **Choose file** button for each file it takes. The button offers only the kinds of file the command accepts, and the page says so before sending if a file is too large or the wrong kind. Press **Send** and the page shows the file uploading to OpenAVC, then the device taking it, with a **Stop** button. The command keeps running if you close the page; open the device again to see how it ended. A command that brings a file back ends with a **Download** button.
+
+These commands run only from Send Command and from a [device audit](device-audit.md), so macros, triggers, panel buttons and Quick Actions do not offer them. OpenAVC keeps no copy: the file you send is deleted when the command ends, and a file brought back is deleted once you download it, or 10 minutes after the command finished. The Device Log shows the file's name and size, never its contents.
+
 ## Device State
 
 Every device exposes state variables at `device.<id>.<property>`. Examples:

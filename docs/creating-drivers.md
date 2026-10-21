@@ -1140,7 +1140,7 @@ set_input:
 > **Command framing.** When a text protocol wraps every command in a fixed header and terminator, declare them once at the driver level with `command_prefix` and `command_suffix` and author bare `send` strings. For example, `command_prefix: "!1"` and `command_suffix: "\r"` turn a command whose `send` is `PWR01` into `!1PWR01\r` on the wire. Both are opt-in and byte-stream only (TCP/serial/UDP); an OSC or HTTP command is never framed, and a single command can opt out with `raw: true`. To poll a framed command, list its **name** in `polling.queries` (it runs as that command, so the frame is applied and the response is matched) rather than re-typing the framed string.
 - `params`: Parameter definitions. Each key matches a `{placeholder}` in the send string. Give each a `label`, its name on every form that sends the command (with none, forms show the key made readable and validation warns), and optionally `help` describing what values are expected.
 
-Parameter types are `string`, `integer`, `number`, `boolean`, `enum`, and `child_id`. A `child_id` parameter targets one of the driver's declared `child_entity_types` — set `child_type` to the type name. The command picker offers a dropdown of that device's registered children, and the integer local ID is substituted into the `{placeholder}`:
+Parameter types are `string`, `integer`, `number`, `boolean`, `enum`, and `child_id`. A Python driver may also declare `file`, for a command that takes a file ([A command that takes a file, or hands one back](#a-command-that-takes-a-file-or-hands-one-back)). A `child_id` parameter targets one of the driver's declared `child_entity_types` — set `child_type` to the type name. The command picker offers a dropdown of that device's registered children, and the integer local ID is substituted into the `{placeholder}`:
 
 ```yaml
 route_decoder:
@@ -3383,6 +3383,43 @@ try:
 except ImportError:  # OpenAVC before 0.37.1
     CommandRefusedError = RuntimeError
 ```
+
+### A command that takes a file, or hands one back
+
+A Python driver's command can take a file the person picks, such as a firmware image or a certificate, and can hand a file back, such as a configuration backup. Declare a parameter of type `file`, and `returns_file: true` on a command that hands one back:
+
+```python
+DRIVER_INFO = {
+    ...
+    "commands": {
+        "update_firmware": {
+            "label": "Update Firmware From a File",
+            "params": {
+                "image": {"type": "file", "label": "Firmware", "required": True,
+                          "accept": [".bin"], "max_bytes": 16_000_000},
+            },
+            "restarts_device_for": 120,
+        },
+        "back_up": {"label": "Back Up Configuration", "returns_file": True},
+    },
+}
+```
+
+`accept` lists the file-name endings the picker offers (case is ignored), and `max_bytes` is the largest file the parameter takes (leave it off for the platform's limit, 1 GiB). A file that does not fit is refused before it is uploaded. A file parameter takes none of the keys that shape a typed value (`default`, `values`, `min`, `max`, `pattern` and the rest).
+
+Your `send_command` receives a `CommandFile` for the parameter: `.name`, `.size`, `await file.read()` for the whole file, or `async for chunk in file.chunks(65536)` for a large one, which is read off the server's disk a piece at a time. The device page's progress bar is how much of the file your driver has read, so read it in pieces as you send them. Return a `DeviceFile` to hand a file back:
+
+```python
+from openavc.drivers.command_files import DeviceFile
+
+async def _back_up(self, params):
+    data = await self._read_configuration()
+    return DeviceFile("unit-config.json", data, "application/json")
+```
+
+These commands run only from Send Command on the device page and from a device audit, where a person can choose the file or save the one handed back. A macro, a trigger, a panel button, a script, a plugin, the cloud and the AI assistant are refused with "'Update Firmware From a File' takes a file, so it runs from Send Command on the device's page.", and none of them offers the command; it cannot be a Quick Action either. On the device page the command runs in the background, so a long one keeps going if the page is closed: the page shows the upload, then the driver taking the file, with a Stop button. Nothing is kept. The file is deleted when the command ends, and a file handed back once it has been downloaded. While the command runs, the device's traffic in the file's direction is recorded and logged as sizes, never bytes, so the Device Log and a device audit report show the file's name and size only. Declare `restarts_device_for` as on any command that restarts the device.
+
+`file`, `accept`, `max_bytes` and `returns_file` are new in OpenAVC 0.37.2, and a server older than that does not install a driver that declares them.
 
 ### The `poll()` contract
 

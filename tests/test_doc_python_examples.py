@@ -86,6 +86,8 @@ EXAMPLE_HELPERS = {
     "_login": "The example driver's authentication step, called from "
               "_post_connect.",
     "_parse_status": "The controller example's roster parser.",
+    "_read_configuration": "The file example driver's own read of the unit's "
+                           "configuration, handed back as a DeviceFile.",
     "_refresh_state": "The example driver's post-command state refresh.",
     "_request": "The liveness example driver's own send-and-await-the-reply "
                 "helper, which raises the driver's own error on an error reply.",

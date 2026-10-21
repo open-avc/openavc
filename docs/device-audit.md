@@ -72,6 +72,8 @@ the one before.
    earlier reading to compare. **Run all status
    queries** sends every query that needs no value. Under **Device settings**, **Write and put
    back** writes a new value, checks that the device reports it, then writes the old value back.
+   A command that takes a file has a **Choose file** button; send it again by choosing the file
+   again. A file a command brings back has a **Download** button on the command's row.
 7. **Power and cable.** The **power cycle** and **cable pull** tests show whether OpenAVC
    notices when the device goes away and how the driver reconnects when it comes back. The step
    says when to turn the device off or unplug it, and when to put it back. Each takes a few
@@ -116,6 +118,8 @@ OpenAVC keeps the ten newest reports, listed under **Recent reports** on the fir
   from the network check and from the driver, the same way. It applies as soon as you tick it,
   including to the report saved if you cancel.
 - The report never includes OpenAVC's own settings.
+- A file sent with a command, or brought back by one, is never in the report. The report and
+  its traffic name the file and its size only.
 - The audit listens for network announcements, but keeps only the ones from the device being
   audited.
 

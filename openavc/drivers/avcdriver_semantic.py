@@ -3945,10 +3945,15 @@ def _is_file_command_id(commands: Any, command_id: str) -> bool:
     return isinstance(commands, dict) and is_file_command(commands.get(command_id))
 
 
+# The kinds of value the Python reader hands back as themselves; anything else
+# is its placeholder for an expression it could not evaluate.
+_PLAIN_VALUE_TYPES = frozenset({str, int, float, bool, list, tuple, dict})
+
+
 def _judgeable(value: Any) -> bool:
     """A value read from source as itself, not a placeholder for an
     expression the Python reader could not evaluate."""
-    return value is None or isinstance(value, (str, int, float, bool, list, tuple, dict))
+    return value is None or type(value) in _PLAIN_VALUE_TYPES
 
 
 _ACCEPT_RE = re.compile(r"\.[A-Za-z0-9][A-Za-z0-9._-]*")
