@@ -105,3 +105,61 @@ async def test_equipment_certificate_verification_is_default_and_local_is_always
     finally:
         await driver.disconnect()
         await runner.cleanup()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status, kind, sentence", [
+    (401, "ConnectionFaultError", "The product refused the username and password."),
+    (500, "ValueError", "The product refused the request (HTTP 500)."),
+    (200, "ValueError", "The reply from this address is not the product's. "
+                        "Check that the host and port are the product's."),
+])
+async def test_a_reply_that_is_not_json_is_worded_not_parsed_aloud(status, kind, sentence):
+    """A web server or proxy at the product's address answers with a page, not
+    the product's JSON. The card says what happened, never the parser's text."""
+    async def respond(request):
+        return web.Response(status=status, text="<html><body>Bad Gateway</body></html>",
+                            content_type="text/html")
+
+    app = web.Application()
+    app.router.add_get("/v1/snapshot", respond)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    try:
+        driver = object.__new__(EquipmentDriver)
+        driver._sdk_url = f"http://127.0.0.1:{site._server.sockets[0].getsockname()[1]}"
+        async with ClientSession() as client:
+            driver._sdk_http = client
+            with pytest.raises(Exception) as caught:
+                await driver._request("/v1/snapshot")
+    finally:
+        await runner.cleanup()
+    assert type(caught.value).__name__ == kind
+    assert str(caught.value) == sentence
+    if status == 401:
+        assert caught.value.fault_code == "auth_failed"
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_the_product_words_itself_is_kept():
+    async def respond(request):
+        return web.json_response({"message": "Acme: remote control is locked at the front panel."},
+                                 status=423)
+
+    app = web.Application()
+    app.router.add_get("/v1/snapshot", respond)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    try:
+        driver = object.__new__(EquipmentDriver)
+        driver._sdk_url = f"http://127.0.0.1:{site._server.sockets[0].getsockname()[1]}"
+        async with ClientSession() as client:
+            driver._sdk_http = client
+            with pytest.raises(ValueError, match="remote control is locked at the front panel"):
+                await driver._request("/v1/snapshot")
+    finally:
+        await runner.cleanup()

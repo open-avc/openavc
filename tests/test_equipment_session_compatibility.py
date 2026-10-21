@@ -58,6 +58,9 @@ async def equipment_peer(tmp_path, monkeypatch):
     async def command(request):
         body = await request.json()
         peer["commands"].append(body)
+        if peer.get("restart_after_command"):
+            # Finishes the command, then restarts before anything else is read.
+            peer["session"] = "second"
         return web.json_response({"id": body["id"], "outcome": "completed"})
 
     app = web.Application()
@@ -146,3 +149,23 @@ async def test_session_change_during_initial_description_refuses_connection(equi
         await driver.connect()
     assert not driver._connected
     assert peer["commands"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_command_that_completed_stays_completed_when_the_product_restarts_after_it(
+        equipment_peer):
+    """The product finished the command, then restarted before the refresh that
+    follows it. The command still answers completed; the restart reconnects."""
+    driver, peer = equipment_peer
+    await driver.connect()
+    peer["restart_after_command"] = True
+    result = await driver.send_command("increment")
+    assert result["outcome"] == "completed"
+    assert len(peer["commands"]) == 1
+    peer["restart_after_command"] = False
+    # The poll meets the new session and stops trusting the old capabilities.
+    async with asyncio.timeout(2):
+        while driver._connected:
+            await asyncio.sleep(.01)
+    await driver.connect()
+    assert peer["descriptions"] == [("first", PROTOCOL), ("second", PROTOCOL)]

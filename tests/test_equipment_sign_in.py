@@ -3,7 +3,8 @@
 Its address, username and password are required settings, so Add Device,
 Edit Device, a device edit and the AI's device tools ask for any left blank,
 the way they ask for any driver's required field. A device saved without one
-says on its card which ones to enter, not the ones it already has.
+says on its card which ones are not set, not the ones it already has; the
+card's banner says where to set them, as it does for any refused login.
 """
 from __future__ import annotations
 
@@ -38,13 +39,13 @@ def test_a_discovered_product_is_asked_only_for_its_sign_in():
     "config, sentence",
     [
         ({"host": "10.0.0.9"},
-         "Enter this product's username and password in its connection settings."),
+         "This product's username and password are not set."),
         ({"host": "10.0.0.9", "username": "engineer"},
-         "Enter this product's password in its connection settings."),
+         "This product's password is not set."),
         ({"username": "engineer", "password": "secret"},
-         "Enter this product's host in its connection settings."),
+         "This product's host is not set."),
         ({},
-         "Enter this product's host, username and password in its connection settings."),
+         "This product's host, username and password are not set."),
     ],
 )
 async def test_the_card_names_only_what_is_missing(config, sentence):

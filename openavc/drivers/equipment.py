@@ -26,6 +26,9 @@ from openavc.drivers.child_ids import coerce_child_local_id
 from openavc.drivers.python_info import python_driver_info_issues
 from openavc.drivers.equipment_protocol import MAX_MESSAGE_BYTES, PROTOCOL
 from openavc.system_config import get_data_dir
+from openavc.utils.logger import get_logger
+
+log = get_logger(__name__)
 
 # How long a command waits, unless the device says otherwise, for the
 # equipment to confirm it finished. The equipment answers within a fraction of
@@ -34,6 +37,8 @@ from openavc.system_config import get_data_dir
 COMPLETION_WAIT_DEFAULT = 5
 COMPLETION_WAIT_MAX = 600
 _RESULT_POLL_S = 0.1
+# A reply body that is not JSON, told apart from a JSON ``null``.
+_UNREADABLE = object()
 
 
 class RequestJournal:
@@ -232,10 +237,13 @@ class EquipmentDriver(BaseDriver):
                                                   ("password", "password"))
                            if not self.config.get(key)]
                 if missing:
+                    # What is missing, not where to enter it: the device
+                    # page's banner gives that step under a refused login.
                     words = missing[0] if len(missing) == 1 else (
                         ", ".join(missing[:-1]) + " and " + missing[-1])
+                    verb = "is" if len(missing) == 1 else "are"
                     raise ConnectionFaultError(
-                        f"Enter this product's {words} in its connection settings.",
+                        f"This product's {words} {verb} not set.",
                         code="auth_failed",
                     )
                 self.config["url"] = str(URL.build(scheme="https", host=host, port=int(self.config.get("port", 9443))))
@@ -318,11 +326,19 @@ class EquipmentDriver(BaseDriver):
                 if len(data) + len(chunk) > MAX_MESSAGE_BYTES:
                     raise ValueError("Equipment response exceeds the 1 MiB protocol limit.")
                 data.extend(chunk)
-            value = json.loads(data)
+            try:
+                value = json.loads(data)
+            except ValueError:
+                # Not the product's own reply: an error page from a web
+                # server or proxy at this address. Its parser text means
+                # nothing on a device card.
+                value = _UNREADABLE
+            body = value if isinstance(value, dict) else {}
+            message = body.get("message") if isinstance(body.get("message"), str) else ""
             if response.status == 401:
-                raise ConnectionFaultError(value.get("message", "Check the product credentials in its connection settings."), code="auth_failed")
+                raise ConnectionFaultError(message or "The product refused the username and password.", code="auth_failed")
             if response.status == 403:
-                raise ConnectionFaultError(value.get("message", "Device access is disabled in product settings."), code="connection_refused")
+                raise ConnectionFaultError(message or "Device access is disabled in product settings.", code="connection_refused")
             if response.status == 404 and path.startswith("/v1/commands/"):
                 return None
             if (response.status == 409 and path == "/v1/command"
@@ -331,7 +347,12 @@ class EquipmentDriver(BaseDriver):
                     and value.get("outcome") in {"failed", "rejected"}):
                 return value
             if response.status >= 400:
-                raise ValueError(value.get("message", "Endpoint request was refused."))
+                raise ValueError(message or f"The product refused the request (HTTP {response.status}).")
+            if value is _UNREADABLE:
+                raise ValueError(
+                    "The reply from this address is not the product's. "
+                    "Check that the host and port are the product's."
+                )
             return value
 
     async def _refresh(self):
@@ -442,7 +463,16 @@ class EquipmentDriver(BaseDriver):
             raise CommandOutcomeError(result["outcome"])
         if result["outcome"] != "completed":
             raise RuntimeError("The product returned an unsupported command outcome.")
-        await self._refresh()
+        # The command is done; this refresh only shows its effect sooner. If
+        # the equipment restarted or the link dropped in between, the poll
+        # meets the same thing and reconnects, and the outcome still stands.
+        try:
+            await self._refresh()
+        except Exception as exc:
+            log.info(
+                f"[{self.device_id}] '{command}' completed; the update after it "
+                f"waits for the next poll: {exc}"
+            )
         return result
 
     def _completion_wait(self):
