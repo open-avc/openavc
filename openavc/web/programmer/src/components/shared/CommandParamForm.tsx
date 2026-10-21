@@ -27,10 +27,15 @@ export function CommandParamForm({
   deviceId,
   pickers,
   layout = "stacked",
+  files,
+  onFileChange,
 }: {
   params: CommandParamDefs;
   values: Record<string, string>;
   onChange: (name: string, value: string) => void;
+  /** A file param's chosen file, by param (a command that takes a file). */
+  files?: Record<string, File | null>;
+  onFileChange?: (name: string, file: File | null) => void;
   /** A project device: its live children and status values feed the pickers. */
   deviceId?: string;
   /** Anywhere else the pickers read from. */
@@ -55,6 +60,9 @@ export function CommandParamForm({
         params={params}
         placeholder={layout === "grid" ? undefined : shown}
         style={layout === "inline" ? { flex: 1 } : { width: "100%" }}
+        name={name}
+        file={files?.[name] ?? null}
+        onFile={onFileChange ? (f) => onFileChange(name, f) : undefined}
       />
     );
     if (layout === "inline") {

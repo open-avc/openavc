@@ -62,6 +62,9 @@ export function coerceCommandParams(
       out[name] = val;
       continue;
     }
+    // A file goes up on its own (api/commandFileClient.ts); the form holds
+    // only its name.
+    if (def.type === "file") continue;
     if (def.type === "integer") {
       const n = parseInt(val, 10);
       if (!Number.isNaN(n)) out[name] = n;

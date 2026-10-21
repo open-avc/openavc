@@ -541,8 +541,10 @@ def command_failure(device_id: str, command: str, exc: Exception) -> HTTPExcepti
         return _api_error(503, str(exc), exc)
     if isinstance(exc, FileCommandError):
         # A command that takes or hands back a file, sent from somewhere that
-        # has none to give; the sentence says where it runs from.
-        return _api_error(409, str(exc), exc)
+        # has none to give; the sentence says where it runs from. A refusal of
+        # the caller, not a fault, so a warning rather than an error.
+        log.warning(f"[{device_id}] {exc}")
+        return HTTPException(status_code=409, detail=str(exc))
     if isinstance(exc, ConnectionError):
         return _not_connected(device_id, exc)
     if isinstance(exc, CommandPartialError):
@@ -740,7 +742,8 @@ async def invoke_device_action(
             name = device_error_label(device_id, engine.state, engine.project, exc=e)
             raise _api_error(409, friendly_error(e, device=name), e)
         except FileCommandError as e:
-            raise _api_error(409, str(e), e)
+            log.warning(f"[{device_id}] {e}")
+            raise HTTPException(status_code=409, detail=str(e)) from None
         except ConnectionError as e:
             raise _not_connected(device_id, e)
         except CommandOutcomeError as e:

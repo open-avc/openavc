@@ -24,7 +24,7 @@ from openavc.core.connection_fault import (
 )
 from openavc.core.device_traffic import RX, TX, record_chunk, record_traffic
 from openavc.transport.frame_parsers import DelimiterFrameParser, FrameParser
-from openavc.transport.wire_log import format_wire_data
+from openavc.transport.wire_log import format_wire_data, wire_held
 from openavc.transport.write_drain import close_or_abandon, drain_or_stalled
 from openavc.utils.logger import get_logger
 from openavc.transport.pacing import sleep_at_least
@@ -397,7 +397,8 @@ class SerialTransport:
             raise ConnectionError("Not connected")
 
         if self._simulate:
-            log.debug(f"[{self._name}] TX: {self._format_data(data)}")
+            if not wire_held(self._name, TX):
+                log.debug(f"[{self._name}] TX: {self._format_data(data, TX)}")
             record_traffic(self._traffic_name, TX, data, channel="serial")
             if self._inter_command_delay > 0:
                 await sleep_at_least(self._inter_command_delay)
@@ -406,7 +407,8 @@ class SerialTransport:
         try:
             self._writer.write(data)
             await drain_or_stalled(self._writer, self._name)
-            log.debug(f"[{self._name}] TX: {self._format_data(data)}")
+            if not wire_held(self._name, TX):
+                log.debug(f"[{self._name}] TX: {self._format_data(data, TX)}")
             record_traffic(self._traffic_name, TX, data, channel="serial")
             if self._inter_command_delay > 0:
                 await sleep_at_least(self._inter_command_delay)
@@ -521,13 +523,14 @@ class SerialTransport:
             for msg in self._frame_parser.feed(data):
                 self._deliver_message(msg)
 
-    def _format_data(self, data: bytes) -> str:
+    def _format_data(self, data: bytes, direction: str | None = None) -> str:
         """Format a payload for a TX/RX line, masking this device's secrets."""
-        return format_wire_data(data, self._name)
+        return format_wire_data(data, self._name, direction)
 
     def _deliver_message(self, data: bytes) -> None:
         """Deliver a complete message to callback and/or response queue."""
-        log.debug(f"[{self._name}] RX: {self._format_data(data)}")
+        if not wire_held(self._name, RX):
+            log.debug(f"[{self._name}] RX: {self._format_data(data, RX)}")
         record_traffic(self._traffic_name, RX, data, channel="serial")
 
         if self._waiting_for_response:

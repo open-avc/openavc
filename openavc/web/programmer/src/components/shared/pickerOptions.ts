@@ -9,6 +9,7 @@
  * which screen you are on.
  */
 import type { SelectOption, SelectGroup } from "./SearchableSelect";
+import { isFileCommand } from "./commandFiles";
 
 /** One entry in a driver's declared command map, as `GET /api/devices/{id}`
  *  returns it. Everything is optional: a command may declare nothing but its
@@ -31,19 +32,27 @@ function text(value: unknown): string | undefined {
  * is why `SearchableSelect` drops a hint that repeats its label. `help` is
  * searchable without being drawn: "what is the command for muting" should find
  * `set_audio_mute` even when nothing in its name says mute.
+ *
+ * A command that takes or hands back a file runs only from Send Command on the
+ * device page and from a device audit, so it is left out unless the picker is
+ * one of those (`fileCommands`): a macro step, a panel binding or a plugin's
+ * command has no file to give.
  */
 export function commandOptions(
   commands: Record<string, unknown> | undefined | null,
+  opts: { fileCommands?: boolean } = {},
 ): SelectOption[] {
-  return Object.entries(commands ?? {}).map(([id, raw]) => {
-    const def = (raw ?? {}) as CommandDef;
-    return {
-      value: id,
-      label: text(def.label) ?? id,
-      hint: id,
-      keywords: text(def.help),
-    };
-  });
+  return Object.entries(commands ?? {})
+    .filter(([, raw]) => opts.fileCommands || !isFileCommand(raw))
+    .map(([id, raw]) => {
+      const def = (raw ?? {}) as CommandDef;
+      return {
+        value: id,
+        label: text(def.label) ?? id,
+        hint: id,
+        keywords: text(def.help),
+      };
+    });
 }
 
 /** A project's devices. `driver` rides along as searchable right-aligned text,

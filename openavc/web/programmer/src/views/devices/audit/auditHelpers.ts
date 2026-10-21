@@ -2,6 +2,7 @@
  * Device audit wizard: the logic and the words, kept out of the components so
  * they can be tested without a browser.
  */
+import { describeSize } from "../../../components/shared/commandFiles";
 import type {
   AuditActivity,
   AuditActivityKey,
@@ -346,7 +347,9 @@ export function commandMatches(command: AuditCommandInfo, search: string): boole
 
 /** How many status queries "Run all status queries" would send. */
 export function batchableQueries(catalog: AuditCommandInfo[]): number {
-  return catalog.filter((c) => c.query && !c.needs_input).length;
+  return catalog.filter(
+    (c) => c.query && !c.needs_input && !c.takes_file && !c.returns_file,
+  ).length;
 }
 
 function plural(n: number, one: string, many: string): string {
@@ -629,6 +632,28 @@ export function displayBytes(text: string, hex: string): string {
     return `"${text.replace(/\r/g, "\\r").replace(/\n/g, "\\n").replace(/\t/g, "\\t")}"`;
   }
   return (hex.match(/.{1,2}/g) ?? []).join(" ");
+}
+
+/** One traffic entry as a row reads it. A file a command took or handed
+ *  back is never recorded: one entry names it, and what moved in its
+ *  direction while it ran is kept as a size. */
+export function trafficEntryText(entry: {
+  channel: string;
+  direction: string;
+  text: string;
+  hex: string;
+  meta?: Record<string, unknown>;
+}): string {
+  const meta = entry.meta ?? {};
+  if (entry.channel === "file") {
+    const size = typeof meta.size === "number" ? `, ${describeSize(meta.size)}` : "";
+    const moved = entry.direction === "tx" ? "sent" : "received";
+    return `file ${String(meta.file ?? "")}${size} ${moved} for ${String(meta.command ?? "a command")}`;
+  }
+  if (typeof meta.withheld === "number") {
+    return `${describeSize(meta.withheld)}, not recorded while a file command ran`;
+  }
+  return displayBytes(entry.text, entry.hex);
 }
 
 /** What each preview stage is called on screen. */

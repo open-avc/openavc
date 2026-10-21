@@ -6,7 +6,7 @@ import { useAuditStore } from "../../../../store/auditStore";
 import {
   childCountText,
   currentRun,
-  displayBytes,
+  trafficEntryText,
   secondsLeft,
   statusValue,
 } from "../auditHelpers";
@@ -408,7 +408,7 @@ function TrafficPanel({ entries, listen }: { entries: audit.AuditTrafficEntry[];
                 {e.meta && typeof e.meta.method === "string"
                   ? `${e.meta.method} ${String(e.meta.target ?? "")}${e.meta.status ? ` ${String(e.meta.status)}` : ""} `
                   : ""}
-                {displayBytes(e.text, e.hex)}
+                {trafficEntryText(e)}
               </span>
             </div>
           ))

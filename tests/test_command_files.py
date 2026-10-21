@@ -644,3 +644,18 @@ async def test_an_audit_sends_a_file_and_its_report_names_it_by_size(wired, tmp_
     finally:
         _DRIVER_REGISTRY.pop("acme_files", None)
         await wired.manager.shutdown()
+
+
+def test_the_log_never_carries_a_held_file():
+    from openavc.transport.wire_log import format_wire_data, wire_held
+
+    recorder = get_traffic_recorder()
+    assert format_wire_data(b"CHUNK 00ff", "dev1", TX) == "CHUNK 00ff"
+    with recorder.hold("dev1", tx=True):
+        # The transports skip the line; one formatted anyway gives the size.
+        assert wire_held("dev1", TX) and not wire_held("dev1", RX)
+        assert format_wire_data(b"CHUNK 00ff", "dev1", TX) == (
+            "(10 bytes, not recorded while a file command ran)"
+        )
+        assert format_wire_data(b"OK", "dev1", RX) == "OK"
+    assert not wire_held("dev1", TX)

@@ -20,7 +20,7 @@ import ssl as ssl_module
 from openavc.core.connection_fault import ConnectionFault, typed_fault_from_exc
 from openavc.core.device_traffic import RX, TX, record_chunk, record_traffic
 from openavc.transport.frame_parsers import DelimiterFrameParser, FrameParser
-from openavc.transport.wire_log import format_wire_data
+from openavc.transport.wire_log import format_wire_data, wire_held
 from openavc.transport.write_drain import close_or_abandon, drain_or_stalled
 from openavc.utils.logger import get_logger
 from openavc.transport.pacing import sleep_at_least
@@ -325,7 +325,8 @@ class TCPTransport:
             self._writer.write(data)
             await drain_or_stalled(self._writer, self._name)
             self.send_count += 1
-            log.debug(f"[{self._name}] TX: {self._format_data(data)}")
+            if not wire_held(self._name, TX):
+                log.debug(f"[{self._name}] TX: {self._format_data(data, TX)}")
             record_traffic(self._traffic_name, TX, data, channel=self._traffic_channel)
             if self._inter_command_delay > 0:
                 await sleep_at_least(self._inter_command_delay)
@@ -428,13 +429,14 @@ class TCPTransport:
             if self._connected:
                 await self._handle_disconnect()
 
-    def _format_data(self, data: bytes) -> str:
+    def _format_data(self, data: bytes, direction: str | None = None) -> str:
         """Format a payload for a TX/RX line, masking this device's secrets."""
-        return format_wire_data(data, self._name)
+        return format_wire_data(data, self._name, direction)
 
     def _deliver_message(self, data: bytes) -> None:
         """Deliver a complete message to the callback and/or response queue."""
-        log.debug(f"[{self._name}] RX: {self._format_data(data)}")
+        if not wire_held(self._name, RX):
+            log.debug(f"[{self._name}] RX: {self._format_data(data, RX)}")
         record_traffic(self._traffic_name, RX, data, channel=self._traffic_channel)
 
         # If someone is waiting for a response, put it in the queue

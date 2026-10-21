@@ -318,6 +318,9 @@ export interface AuditCommandInfo {
   /** One to try first: the driver puts it on a device page, and it neither
    *  asks for a confirmation nor restarts the device. */
   suggested: boolean;
+  /** It takes a file (a file param) or hands one back. */
+  takes_file?: boolean;
+  returns_file?: boolean;
 }
 
 /** A declared effect (``sets``) checked against what the device reports. */
@@ -349,6 +352,10 @@ export interface AuditCommandTrial {
   finished_at: number | null;
   status: AuditTrialStatus;
   result: unknown;
+  /** It took or handed back a file: never sent again by "Try again". */
+  file_command?: boolean;
+  /** The file it handed back, while the wizard can still download it. */
+  returned_file?: { name: string; size: number } | null;
   /** Why it was not accepted, in words ("" when it was). */
   error: string;
   error_type: string;
@@ -843,10 +850,11 @@ export function sendAuditCommand(
   name: string,
   params: Record<string, unknown>,
   again: number | null = null,
+  files: Record<string, string> = {},
 ): Promise<{ session: AuditSessionState }> {
   return request(
     `/audit/sessions/${encodeURIComponent(sessionId)}/commands/${encodeURIComponent(name)}`,
-    { method: "POST", body: JSON.stringify(again ? { again } : { params }) },
+    { method: "POST", body: JSON.stringify(again ? { again } : { params, files }) },
   );
 }
 

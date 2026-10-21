@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   Circle,
+  Download,
   ListFilter,
   HelpCircle,
   Loader2,
@@ -13,6 +14,11 @@ import {
   XCircle,
 } from "lucide-react";
 import * as audit from "../../../../api/auditClient";
+import {
+  auditUploadOpener,
+  downloadAuditCommandFile,
+  uploadCommandFiles,
+} from "../../../../api/commandFileClient";
 import { parseApiError } from "../../../../api/errors";
 import { useAuditStore } from "../../../../store/auditStore";
 import { CommandParamForm } from "../../../../components/shared/CommandParamForm";
@@ -21,6 +27,7 @@ import {
   commandParamsBlocked,
   seedCommandParams,
 } from "../../../../components/shared/commandParams";
+import { describeSize, fileParamsBlocked } from "../../../../components/shared/commandFiles";
 import type { ParamPickers } from "../../../../components/shared/ParamInput";
 import {
   ANSWER_CHOICES,
@@ -31,7 +38,6 @@ import {
   commandProgress,
   commandStatus,
   currentRun,
-  displayBytes,
   firstReportedText,
   MOVED_IN_SENTENCE,
   movedParts,
@@ -42,6 +48,7 @@ import {
   paramsText,
   sendWarning,
   splitChanged,
+  trafficEntryText,
   trafficRows,
   trialOutcome,
   type CommandStatusKey,
@@ -67,6 +74,10 @@ export function CommandsStep() {
   // The command whose row is open, and its parameter values.
   const [open, setOpen] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
+  // The files chosen for the open command, when it takes one, and how far
+  // its upload has got.
+  const [files, setFiles] = useState<Record<string, File | null>>({});
+  const [uploading, setUploading] = useState("");
   const [busy, setBusy] = useState<"" | "send" | "queries" | "watch">("");
   // An error, and the command (or "queries") it belongs to.
   const [error, setError] = useState<{ where: string; text: string } | null>(null);
@@ -138,6 +149,25 @@ export function CommandsStep() {
     setOpen(name);
     const def = catalog.find((c) => c.name === name);
     setValues(seedCommandParams(def?.params ?? {}));
+    setFiles({});
+  };
+
+  /** A command that takes or hands back a file: its files go up first. */
+  const sendWithFiles = async (c: audit.AuditCommandInfo, params: Record<string, unknown>) => {
+    const chosen: Record<string, File> = {};
+    for (const [k, f] of Object.entries(files)) if (f) chosen[k] = f;
+    let uploads: Record<string, string> = {};
+    try {
+      uploads = await uploadCommandFiles(
+        auditUploadOpener(sessionId, c.name),
+        chosen,
+        (sent, total, file) =>
+          setUploading(`Uploading ${file.name} to OpenAVC: ${total > 0 ? Math.floor((sent / total) * 100) : 0}%`),
+      );
+    } finally {
+      setUploading("");
+    }
+    return audit.sendAuditCommand(sessionId, c.name, params, null, uploads);
   };
 
   const locked = !connected || busy !== "" || working || pending !== null;
@@ -145,7 +175,8 @@ export function CommandsStep() {
   const row = (c: audit.AuditCommandInfo) => {
     const mine = trials.filter((t) => t.command === c.name);
     const params = c.params ?? {};
-    const blocked = commandParamsBlocked(params, values);
+    const blocked = commandParamsBlocked(params, values) || fileParamsBlocked(params, files);
+    const takesFile = Boolean(c.takes_file || c.returns_file);
     return (
       <CommandRow
         key={c.name}
@@ -160,6 +191,8 @@ export function CommandsStep() {
             values={values}
             onChange={(name, v) => setValues((prev) => ({ ...prev, [name]: v }))}
             pickers={pickers}
+            files={files}
+            onFileChange={(name, f) => setFiles((prev) => ({ ...prev, [name]: f }))}
           />
         )}
         {nowReading(c, values, run.listen?.status_table) && (
@@ -170,7 +203,9 @@ export function CommandsStep() {
             type="button"
             onClick={() =>
               sendOrWarn(c, c.name, c.label, () =>
-                audit.sendAuditCommand(sessionId, c.name, coerceCommandParams(params, values)),
+                takesFile
+                  ? sendWithFiles(c, coerceCommandParams(params, values))
+                  : audit.sendAuditCommand(sessionId, c.name, coerceCommandParams(params, values)),
               )
             }
             disabled={blocked || locked}
@@ -179,6 +214,7 @@ export function CommandsStep() {
             {busy === "send" ? <Loader2 size={14} style={spinStyle} /> : <Send size={14} />}
             Send
           </button>
+          {uploading && open === c.name && <div style={hintStyle}>{uploading}</div>}
         </div>
         {pending?.command === c.name && (
           <Warning pending={pending} onSend={() => void act("send", c.name, pending.call)} onCancel={() => setPending(null)} />
@@ -197,11 +233,15 @@ export function CommandsStep() {
                 paramDefs={c.params}
                 help={c.help}
                 disabled={locked}
-                onAgain={() =>
-                  sendOrWarn(c, c.name, t.label, () =>
-                    audit.sendAuditCommand(sessionId, t.command, {}, t.number),
-                  )
+                onAgain={
+                  t.file_command
+                    ? undefined
+                    : () =>
+                        sendOrWarn(c, c.name, t.label, () =>
+                          audit.sendAuditCommand(sessionId, t.command, {}, t.number),
+                        )
                 }
+                sessionId={sessionId}
                 onWaitLonger={() => void act("watch", c.name, () => audit.waitLonger(sessionId))}
                 onStop={() => void act("watch", c.name, () => audit.stopWatching(sessionId))}
                 onAnswer={(answer, note) =>
@@ -559,6 +599,7 @@ function TrialRow({
   onWaitLonger,
   onStop,
   onAnswer,
+  sessionId,
 }: {
   trial: audit.AuditCommandTrial;
   /** The command's parameters, so each value is named as its field is. */
@@ -566,12 +607,17 @@ function TrialRow({
   /** What the command should do, in the driver's words, for the question. */
   help: string;
   disabled: boolean;
-  onAgain: () => void;
+  /** Absent for a command that took a file: it is sent again from the list,
+   *  with the file chosen again. */
+  onAgain?: () => void;
+  /** The audit, for the download of a file the command handed back. */
+  sessionId: string;
   onWaitLonger: () => void;
   onStop: () => void;
   onAnswer: (answer: audit.AuditCommandAnswer, note: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
   const [note, setNote] = useState(() => trial.answer?.note ?? "");
   const [now, setNow] = useState(() => Date.now() / 1000);
   const watching = trial.status === "watching";
@@ -633,7 +679,7 @@ function TrialRow({
             </button>
           </>
         )}
-        {!running && (
+        {!running && onAgain && (
           <button
             type="button"
             onClick={onAgain}
@@ -641,6 +687,22 @@ function TrialRow({
             style={{ ...buttonStyle("muted", disabled), padding: "2px var(--space-sm)" }}
           >
             <RotateCcw size={12} /> Try again
+          </button>
+        )}
+        {trial.returned_file && (
+          <button
+            type="button"
+            onClick={() => {
+              setDownloadError("");
+              const file = trial.returned_file;
+              if (!file) return;
+              downloadAuditCommandFile(sessionId, trial.number, file.name).catch((e) =>
+                setDownloadError(parseApiError(e)),
+              );
+            }}
+            style={{ ...buttonStyle("muted"), padding: "2px var(--space-sm)" }}
+          >
+            <Download size={12} /> Download {trial.returned_file.name} ({describeSize(trial.returned_file.size)})
           </button>
         )}
         {trial.traffic.entries.length > 0 && (
@@ -654,6 +716,11 @@ function TrialRow({
           </button>
         )}
       </div>
+      {downloadError && (
+        <div style={{ marginTop: "var(--space-xs)" }}>
+          <ErrorLine text={downloadError} />
+        </div>
+      )}
       {!running && !trial.batch && !trial.error && (
         <div style={{ marginTop: "var(--space-sm)" }}>
           <div style={{ fontWeight: 600 }}>Did it happen?</div>
@@ -725,7 +792,7 @@ function TrialRow({
                 >
                   {e.direction === "tx" ? "→" : "←"}
                 </span>
-                <span style={{ overflowWrap: "anywhere" }}>{displayBytes(e.text, e.hex)}</span>
+                <span style={{ overflowWrap: "anywhere" }}>{trafficEntryText(e)}</span>
               </div>
             );
           })}

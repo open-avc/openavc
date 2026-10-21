@@ -22,6 +22,7 @@ import { paramLabel } from "./paramLabel";
 import { validateParam } from "./paramValidation";
 import { VariableKeyPicker } from "./VariableKeyPicker";
 import { BooleanOptions } from "./BooleanOptions";
+import { FileParamInput } from "./FileParamInput";
 
 /** The widget for a single command/action parameter — the part that varies by
  *  the param's declared type. One shared control so every authoring surface
@@ -43,6 +44,8 @@ import { BooleanOptions } from "./BooleanOptions";
  *                        (a device-relative state key)
  *   - integer/number/float -> number input (honors min/max)
  *   - password/secret -> masked input (never pre-filled)
+ *   - file            -> a file picker (needs `onFile`; the device page and a
+ *                        device audit are the only surfaces that send one)
  *   - everything else -> text input
  *  With `allowDynamic`, a "$" toggle swaps the static control for a state-key
  *  picker ($var/$state, plus $trigger when `showTriggerContext`) — for surfaces
@@ -88,6 +91,12 @@ export interface ParamInputProps {
   style?: CSSProperties;
   /** Where the live pickers read, in place of the project device `deviceId`. */
   pickers?: ParamPickers;
+  /** A file param's chosen file, and where a new choice goes. `value` holds
+   *  its name, so the required checks read it like any other field. */
+  file?: File | null;
+  onFile?: (file: File | null) => void;
+  /** The param's key, for a file param's own check (its label names it). */
+  name?: string;
 }
 
 /** A param value is a dynamic state reference (and should render the picker). */
@@ -122,6 +131,9 @@ export function ParamInput({
   placeholder,
   style,
   pickers,
+  file,
+  onFile,
+  name,
 }: ParamInputProps) {
   const type = def.type || "string";
   // Something to read live children and status values from.
@@ -213,6 +225,19 @@ export function ParamInput({
   // case; otherwise it seeds the $var. namespace.
   const dynamicSeed =
     eventContext && eventContext.length > 0 ? `$${eventContext[0].key}` : "$var.";
+
+  if (type === "file") {
+    return (
+      <FileParamInput
+        name={name ?? ""}
+        def={def}
+        file={file ?? null}
+        onFile={onFile}
+        onName={onChange}
+        style={style}
+      />
+    );
+  }
 
   const toggle = canToggle ? (
     <button

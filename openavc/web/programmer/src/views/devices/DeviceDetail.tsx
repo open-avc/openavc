@@ -14,6 +14,8 @@ import { getAuditDeviceTarget } from "../../api/auditClient";
 import { useAuditStore } from "../../store/auditStore";
 import type { BridgePort, DeviceConfig, DeviceInfo, DeviceSettingValue, DriverParamDef } from "../../api/types";
 import { CommandParamForm } from "../../components/shared/CommandParamForm";
+import { fileParamNames, fileParamsBlocked, isFileCommand } from "../../components/shared/commandFiles";
+import { CommandFileRunStatus, useCommandFileRun } from "./CommandFileRun";
 import {
   commandConfirmMessage,
   commandResultText,
@@ -77,6 +79,9 @@ export function DeviceDetail({
   >(null);
   const [selectedCommand, setSelectedCommand] = useState("");
   const [commandParams, setCommandParams] = useState<Record<string, string>>({});
+  // The files chosen for a command that takes one, by param.
+  const [commandFiles, setCommandFiles] = useState<Record<string, File | null>>({});
+  const fileRun = useCommandFileRun(deviceId);
   const [sending, setSending] = useState(false);
   // What the driver asks before the chosen command is sent, while asking.
   const [confirmSend, setConfirmSend] = useState<string | null>(null);
@@ -330,21 +335,33 @@ export function DeviceDetail({
     if (!selectedCommand) return;
     setSending(true);
     setCommandResult(null);
+    const def = commands[selectedCommand] as { label?: string } | undefined;
+    const label = def?.label || selectedCommand;
     try {
+      const fileParams = new Set(fileParamNames(def));
       const params: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(commandParams)) {
-        if (v === "") continue;
+        if (v === "" || fileParams.has(k)) continue;
         params[k] = v;
       }
+      if (isFileCommand(def)) {
+        // Uploaded first, then run in the background; CommandFileRunStatus
+        // follows it.
+        const files: Record<string, File> = {};
+        for (const [k, f] of Object.entries(commandFiles)) {
+          if (f && fileParams.has(k)) files[k] = f;
+        }
+        await fileRun.start(selectedCommand, label, params, files);
+        return;
+      }
       const result = await api.sendCommand(deviceId, selectedCommand, params);
-      const def = commands[selectedCommand] as { label?: string } | undefined;
-      setCommandResult({ ok: true, ...commandResultText(def?.label || selectedCommand, result) });
+      setCommandResult({ ok: true, ...commandResultText(label, result) });
     } catch (e) {
       setCommandResult({ ok: false, text: parseApiError(e) });
     } finally {
       setSending(false);
     }
-  }, [deviceId, selectedCommand, commandParams, commands]);
+  }, [deviceId, selectedCommand, commandParams, commandFiles, commands, fileRun]);
 
   // Get param fields for selected command
   const commandDef = commands[selectedCommand] as Record<string, unknown> | undefined;
@@ -354,7 +371,10 @@ export function DeviceDetail({
   // Block Send on an invalid literal param (out of range / pattern mismatch)
   // or a required one left blank — the per-field inline error says which.
   // Authoring aid; the runtime gates both too.
-  const sendBlocked = commandParamsBlocked(commandParamDefs, commandParams);
+  const sendBlocked =
+    commandParamsBlocked(commandParamDefs, commandParams) ||
+    fileParamsBlocked(commandParamDefs, commandFiles) ||
+    fileRun.busy;
   const commandLabel = (commandDef?.label as string | undefined) || selectedCommand;
   // A command that erases or resets the device asks first.
   const requestSend = () => {
@@ -1112,7 +1132,9 @@ export function DeviceDetail({
                     const pdefs = (commands[cmd] as Record<string, unknown>)
                       ?.params as CommandParamDefs | undefined;
                     setCommandParams(seedCommandParams(pdefs ?? {}, { firstOption: true }));
+                    setCommandFiles({});
                     setCommandResult(null);
+                    if (!fileRun.busy) fileRun.clear();
                   }}
                 />
                 <button
@@ -1152,9 +1174,19 @@ export function DeviceDetail({
                     values={commandParams}
                     onChange={(name, val) => setCommandParams((p) => ({ ...p, [name]: val }))}
                     deviceId={deviceId}
+                    files={commandFiles}
+                    onFileChange={(name, file) => setCommandFiles((f) => ({ ...f, [name]: file }))}
                   />
                 </div>
               )}
+
+              {/* A command that takes or hands back a file, while it runs and after */}
+              <CommandFileRunStatus
+                view={fileRun.view}
+                deviceId={deviceId}
+                deviceName={deviceName}
+                onStop={() => void fileRun.stop()}
+              />
 
               {/* Result */}
               {commandResult !== null && (
@@ -1242,7 +1274,8 @@ function CommandPicker({
   value: string;
   onChange: (cmd: string) => void;
 }) {
-  const options = useMemo(() => commandOptions(commands), [commands]);
+  // The one picker that offers a command taking or handing back a file.
+  const options = useMemo(() => commandOptions(commands, { fileCommands: true }), [commands]);
   return (
     <SearchableSelect
       value={value}

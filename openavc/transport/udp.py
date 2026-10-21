@@ -21,7 +21,7 @@ import socket
 from typing import Callable
 
 from openavc.core.device_traffic import RX, TX, record_traffic
-from openavc.transport.wire_log import format_wire_data
+from openavc.transport.wire_log import format_wire_data, wire_held
 from openavc.utils.logger import get_logger
 from openavc.transport.pacing import sleep_at_least
 from .types import Callback
@@ -268,10 +268,11 @@ class UDPTransport:
                 log.error(f"[{self._name}] UDP send failed to {host}:{port}: {e}")
                 raise
             self.send_count += 1
-            log.debug(
-                f"[{self._name}] TX: {_format_data(data, self._name)} "
-                f"-> {host}:{port}"
-            )
+            if not wire_held(self._name, TX):
+                log.debug(
+                    f"[{self._name}] TX: {_format_data(data, self._name, TX)} "
+                    f"-> {host}:{port}"
+                )
             record_traffic(
                 self._traffic_name, TX, data, channel=self._traffic_channel,
                 meta={"peer": f"{host}:{port}"},
@@ -448,10 +449,11 @@ class UDPTransport:
                 )
                 raise
             self.send_count += 1
-            log.info(
-                f"[{self._name}] TX: {_format_data(data, self._name)} -> "
-                f"{self.host}:{self.port}"
-            )
+            if not wire_held(self._name, TX):
+                log.info(
+                    f"[{self._name}] TX: {_format_data(data, self._name, TX)} -> "
+                    f"{self.host}:{self.port}"
+                )
             record_traffic(
                 self._traffic_name, TX, data, channel=self._traffic_channel,
                 meta={"peer": f"{self.host}:{self.port}"},
@@ -545,10 +547,11 @@ class UDPTransport:
 
         self.last_data_received = time.monotonic()
         self.receive_count += 1
-        log.debug(
-            f"[{self._name}] RX: {_format_data(data, self._name)} "
-            f"<- {addr[0]}:{addr[1]}"
-        )
+        if not wire_held(self._name, RX):
+            log.debug(
+                f"[{self._name}] RX: {_format_data(data, self._name, RX)} "
+                f"<- {addr[0]}:{addr[1]}"
+            )
         record_traffic(
             self._traffic_name, RX, data, channel=self._traffic_channel,
             meta={"peer": f"{addr[0]}:{addr[1]}"},
@@ -576,9 +579,11 @@ class UDPTransport:
                 )
 
 
-def _format_data(data: bytes, device_id: str | None = None) -> str:
+def _format_data(
+    data: bytes, device_id: str | None = None, direction: str | None = None,
+) -> str:
     """Format a payload for a TX/RX line, masking that device's secrets."""
-    return format_wire_data(data, device_id)
+    return format_wire_data(data, device_id, direction)
 
 
 class _UDPProtocol(asyncio.DatagramProtocol):
