@@ -204,6 +204,12 @@ def _merge_inline_protocol(driver_def: dict, config: dict | None) -> tuple[dict,
 #: substitutes with the value being written, with or without a format spec.
 _VALUE_PLACEHOLDER = re.compile(r"\{value(?::[^{}]*)?\}")
 
+#: A template handler's placeholders: a capture group (`{1}`) or another state
+#: value (`{state.key}`). Either brings the device's own number into a
+#: `set_state` value; a value with neither is the author's, as written.
+_HANDLER_PLACEHOLDER = re.compile(r"\{(?:\d+|state\.[^{}]+)\}")
+_HANDLER_STATE_REF = re.compile(r"\{state\.([^{}]+)\}")
+
 #: A setting's declared type, read as the command-parameter type whose capture
 #: matches the same wire form. `enum` and `float` have no param equivalent: an
 #: enum's members are wire tokens of any shape, so it captures like a string,
@@ -1493,7 +1499,10 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         """Execute an explicit command_handler from the simulator: section."""
         # Apply state changes
         for key, val in handler.set_state.items():
-            resolved = self._resolve_template(str(val), m)
+            template = str(val)
+            resolved: Any = self._resolve_template(template, m)
+            if _HANDLER_PLACEHOLDER.search(template):
+                resolved = self._from_wire(key, resolved)
             self.set_state(key, self._coerce_value(key, resolved))
 
         # Generate response
@@ -3240,7 +3249,10 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             return str(value)
 
     def _resolve_template(self, template: str, match: re.Match | None = None) -> str:
-        """Resolve {1}, {2}, {state.key} placeholders in a template."""
+        """Resolve {1}, {2}, {state.key} placeholders in a template.
+
+        A state value goes in as the device's own number (``_to_wire``), as
+        every other reply the simulator sends does."""
         result = template
 
         # Replace capture group references {1}, {2}
@@ -3252,8 +3264,11 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                     pass
 
         # Replace state references {state.key}
-        for key, value in self._state.items():
-            result = result.replace(f"{{state.{key}}}", str(value))
+        for key in set(_HANDLER_STATE_REF.findall(result)):
+            if key in self._state:
+                result = result.replace(
+                    f"{{state.{key}}}", str(self._to_wire(key, self._state[key]))
+                )
 
         return result
 

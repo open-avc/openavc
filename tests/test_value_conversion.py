@@ -426,6 +426,29 @@ async def test_a_push_is_not_sent_in_a_form_whose_rule_reads_another_value():
     assert driver.state.get("device.dev1.channel.2.level") == ""
 
 
+def test_a_template_handler_stores_and_answers_in_the_device_numbers():
+    # A captured value is the device's number, so it is stored in real units,
+    # and {state.key} answers in the device's number again. A literal in
+    # set_state is the author's value, as written.
+    definition = copy.deepcopy(RECEIVER)
+    definition["simulator"] = {
+        "initial_state": {"level": -7.76, "gain": 6},
+        "command_handlers": [
+            {"receive": r"LVL (-?\d+)", "set_state": {"level": "{1}"},
+             "respond": "LVL={state.level}\r"},
+            {"receive": r"LVL\?", "respond": "LVL={state.level}\r"},
+            {"receive": "GAIN RESET", "set_state": {"gain": "0"},
+             "respond": "GAIN={state.gain}\r"},
+        ],
+    }
+    sim = _sim(definition)
+    assert sim.handle_command(b"LVL?") == b"LVL=-776\r"
+    assert sim.handle_command(b"LVL -1200") == b"LVL=-1200\r"
+    assert sim._state.get("level") == -12.0
+    assert sim.handle_command(b"GAIN RESET") == b"GAIN=18\r"
+    assert sim._state.get("gain") == 0
+
+
 def test_a_script_handler_reports_state_in_the_device_numbers():
     # A "report everything" request answered by a handler: reply(key) is the
     # text a query of that key gets, converted and padded, so the handler
