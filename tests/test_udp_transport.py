@@ -273,6 +273,13 @@ async def test_a_stream_the_os_refuses_logs_its_first_error_and_says_when_it_goe
             back = _said(caplog)
             assert [r.levelname for r in back] == ["INFO"], [r.message for r in back]
             assert f"to 127.0.0.1:{port} go out again, after 20 errors" in back[0].message
+            # Windows' event loop queues a datagram behind one still going
+            # out, so they are waited for before the next outage starts.
+            for _ in range(100):
+                if len(receiver.packets) == 3:
+                    break
+                await asyncio.sleep(0.01)
+            assert len(receiver.packets) == 3, "the datagrams sent between the outages arrived"
 
             caplog.clear()
             monkeypatch.setattr(t._transport, "sendto", refused)
@@ -281,8 +288,6 @@ async def test_a_stream_the_os_refuses_logs_its_first_error_and_says_when_it_goe
             assert [r.levelname for r in _said(caplog)] == ["WARNING"], "a second outage is said again"
     finally:
         await t.close()
-    await asyncio.sleep(0.05)
-    assert len(receiver.packets) == 3, "the datagrams sent between the outages arrived"
 
 
 async def test_an_error_reported_after_each_send_stays_one_run(udp_receiver, caplog):
