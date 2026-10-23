@@ -1,6 +1,7 @@
 """Tests for UDP transport."""
 
 import asyncio
+import logging
 import socket
 
 import pytest
@@ -229,6 +230,82 @@ async def test_send_and_wait_wakes_on_socket_loss(udp_receiver):
         await waiter
     assert loop.time() - start < 2.0
     await transport.close()
+
+
+# --- Socket errors are logged once a run, not once a datagram ---
+
+
+def _said(caplog) -> list:
+    """Everything the transport logged at INFO or above (TX lines are DEBUG)."""
+    return [
+        r for r in caplog.records
+        if r.name == "openavc.transport.udp" and r.levelno >= logging.INFO
+    ]
+
+
+async def test_a_stream_the_os_refuses_logs_its_first_error_and_says_when_it_goes_out_again(
+    udp_receiver, monkeypatch, caplog,
+):
+    receiver, port = udp_receiver
+    t = UDPTransport(host="127.0.0.1", port=port, name="sacn")
+    await t.open()
+    sendto = t._transport.sendto
+
+    def refused(data, addr):
+        # What asyncio does with a datagram the OS refuses: no raise, the
+        # error handed to the protocol during the call.
+        t._protocol.error_received(OSError(65, "No route to host"))
+
+    try:
+        with caplog.at_level("DEBUG", logger="openavc.transport.udp"):
+            monkeypatch.setattr(t._transport, "sendto", refused)
+            for _ in range(20):
+                await t.send(b"DMX")
+            gone = _said(caplog)
+            assert len(gone) == 1, [r.message for r in gone]
+            assert gone[0].levelname == "WARNING" and "No route to host" in gone[0].message
+            assert t.last_error == "[Errno 65] No route to host", "every error still recorded"
+
+            caplog.clear()
+            monkeypatch.setattr(t._transport, "sendto", sendto)
+            for _ in range(3):
+                await t.send(b"DMX")
+            back = _said(caplog)
+            assert [r.levelname for r in back] == ["INFO"], [r.message for r in back]
+            assert f"to 127.0.0.1:{port} go out again, after 20 errors" in back[0].message
+
+            caplog.clear()
+            monkeypatch.setattr(t._transport, "sendto", refused)
+            await t.send(b"DMX")
+            await t.send(b"DMX")
+            assert [r.levelname for r in _said(caplog)] == ["WARNING"], "a second outage is said again"
+    finally:
+        await t.close()
+    await asyncio.sleep(0.05)
+    assert len(receiver.packets) == 3, "the datagrams sent between the outages arrived"
+
+
+async def test_an_error_reported_after_each_send_stays_one_run(udp_receiver, caplog):
+    # Some sockets hear of a closed port after the datagram went out, not
+    # during the send: each send looks clean, then an error arrives.
+    _, port = udp_receiver
+    t = UDPTransport(host="127.0.0.1", port=port, name="t")
+    await t.open()
+    try:
+        with caplog.at_level("DEBUG", logger="openavc.transport.udp"):
+            for _ in range(10):
+                await t.send(b"POLL")
+                t._protocol.error_received(ConnectionResetError(10054, "Connection reset"))
+            assert [r.levelname for r in _said(caplog)] == ["WARNING"], "one line, not one a datagram"
+
+            caplog.clear()
+            await t.send(b"POLL")
+            assert _said(caplog) == [], "one clean send is not proof: the error may follow it"
+            await t.send(b"POLL")
+            back = _said(caplog)
+            assert [r.levelname for r in back] == ["INFO"] and "after 10 errors" in back[0].message
+    finally:
+        await t.close()
 
 
 # --- Source filtering (spoofed datagrams rejected) ---

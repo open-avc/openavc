@@ -144,6 +144,14 @@ class UDPTransport:
         # UDP is connectionless, so this is best-effort — an ICMP
         # port-unreachable surfaces via the protocol's error_received.
         self._last_error = ""
+        # Socket errors so far, and how many of them since sends last went
+        # out: the first of a run is logged and the rest only counted
+        # (_record_error), until _note_sent says the run is over.
+        self._errors_seen = 0
+        self._error_run = 0
+        # _errors_seen as the last datagram that went out left it; None when
+        # the last one was refused.
+        self._errors_at_last_send: int | None = None
 
         # For send_and_wait: queue to capture the next response. May also
         # carry _DISCONNECT_SENTINEL to wake a parked waiter on close/loss.
@@ -356,7 +364,15 @@ class UDPTransport:
             raise ConnectionError(
                 f"Multicast to {host}:{port} through {sources[0]} failed"
             )
+        # A datagram the OS refuses (no route, the bound address gone) does
+        # not raise here: asyncio hands the error to error_received during
+        # the call, so the count is what says whether this one went out.
+        errors = self._errors_seen
         self._transport.sendto(data, (host, port))
+        if self._errors_seen == errors:
+            self._note_sent(host, port)
+        else:
+            self._errors_at_last_send = None
 
     def _send_per_adapter(
         self, data: bytes, host: str, port: int, sources: list[str], label: str,
@@ -510,8 +526,33 @@ class UDPTransport:
         return self._last_error
 
     def _record_error(self, exc: Exception) -> None:
-        """Record a socket error (e.g. ICMP port-unreachable) for classification."""
+        """Record a socket error (e.g. ICMP port-unreachable) for
+        classification, and log the first of a run. A stream to a network
+        that has gone gets one for every datagram, many a second, so the rest
+        are counted and said once sends go out again (_note_sent)."""
         self._last_error = str(exc) or type(exc).__name__
+        self._errors_seen += 1
+        self._error_run += 1
+        if self._error_run == 1:
+            log.warning(
+                f"[{self._name}] UDP error: {exc}. Repeats are not logged "
+                f"until datagrams go out again."
+            )
+
+    def _note_sent(self, host: str, port: int) -> None:
+        """A datagram went out with no error. A run of errors ends at the
+        second such send in a row with none reported in between, not the
+        first: an error the OS reports after the send (a Windows socket hears
+        of a closed port that way) would otherwise end a run and start the
+        next one on every datagram."""
+        if self._error_run and self._errors_at_last_send == self._errors_seen:
+            count = self._error_run
+            self._error_run = 0
+            log.info(
+                f"[{self._name}] UDP datagrams to {host}:{port} go out again, "
+                f"after {count} error{'s' if count != 1 else ''}"
+            )
+        self._errors_at_last_send = self._errors_seen
 
     def _wake_response_waiter(self) -> None:
         """Wake a parked send_and_wait so it fails fast on close/socket loss
@@ -606,9 +647,11 @@ class _UDPProtocol(asyncio.DatagramProtocol):
             self._on_data(data, addr)
 
     def error_received(self, exc: Exception) -> None:
-        log.warning(f"[{self._name}] UDP error: {exc}")
+        # The transport decides what reaches the log (_record_error).
         if self._on_error is not None:
             self._on_error(exc)
+        else:
+            log.warning(f"[{self._name}] UDP error: {exc}")
 
     def connection_lost(self, exc: Exception | None) -> None:
         if exc:
