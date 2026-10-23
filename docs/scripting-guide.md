@@ -128,8 +128,23 @@ Notes:
   use `async def` for anything that talks to equipment or waits.
 - If two enabled scripts define the same function name, a control that names it
   refuses rather than guessing, and says so on the panel. Rename one.
-- Anything the function raises reaches the panel as a message and the
-  Programmer as a script error, so a failed press is not silent.
+- When the function raises, the panel that was pressed shows "This control
+  couldn't finish. Contact support." and the exception, with the line that
+  raised it, goes to the Scripts view and the log. A device command the
+  function sent that failed reads the way a button wired straight to that
+  command would ("Lobby Display couldn't run Power On. Contact support."), so
+  a failed press is never silent.
+- To tell the room something yourself, raise `PanelMessage` with the
+  sentence. The panel shows it as written, and the Scripts view does not count
+  it as a failure:
+
+  ```python
+  from openavc import PanelMessage, state
+
+  def start_film():
+      if state.get("var.lamp_hours", 0) > 2000:
+          raise PanelMessage("Projector lamp needs replacing")
+  ```
 
 ### @on_state_change(pattern)
 
@@ -559,7 +574,7 @@ async def stop_polling(event):
 ## Tips
 
 - **Use `async def` for any handler that talks to a device or waits**, with `await` on the command or delay. A plain `def` handler runs inline and must stay quick.
-- **Script errors**: if a handler throws an unhandled exception, the error is logged, a `script.error` event is broadcast to all WebSocket clients with `script_id`, `handler`, `event`, `error`, and `traceback` fields, and the script's row in the Scripts list says how many times it has failed since it last loaded. Open the script and the editor marks the line that raised. The system continues running: one broken handler does not take down the server, and the mark stays until you reload the script, so a failure overnight is still there in the morning.
+- **Script errors**: if a handler throws an unhandled exception, the error is logged, a `script.error` event is sent to the Programmer's WebSocket connections (never a panel's) with `script_id`, `handler`, `event`, `error`, and `traceback` fields, and the script's row in the Scripts list says how many times it has failed since it last loaded. Open the script and the editor marks the line that raised. The system continues running: one broken handler does not take down the server, and the mark stays until you reload the script, so a failure overnight is still there in the morning.
 - **Error handling**: wrap device commands in `try`/`except` if the device might be offline.
 - **Hot reload**: click **Save & Reload Script** in the Code view to reload a script without restarting the server.
 - **No sandbox**: scripts run in the server process with full Python access. This is intentional. The programmer IS the system administrator (same trust model as Crestron SIMPL# or Q-SYS Lua).

@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from openavc.api._engine import _get_engine, _rate_limit_test
 from openavc.api.errors import StructuredApiError, api_error as _api_error
-from openavc.api.error_messages import describe_command_failure
+from openavc.api.error_messages import describe_command_failure, describe_setting_failure
 from openavc.drivers.command_files import FileCommandError
 from openavc.drivers.command_outcome import CommandOutcomeError
 from openavc.api.models import (
@@ -23,7 +23,7 @@ from openavc.api.models import (
     PendingSettingsRequest,
     RawSendRequest,
 )
-from openavc.core.device_manager import DeviceNotFoundError, NoSimulatorError
+from openavc.core.device_manager import DeviceNotFoundError
 from openavc.reach_devices import AdapterUnavailable
 from openavc.core.project_loader import ChildEntityConfig, DeviceConfig
 from openavc.core.project_migration import CONNECTION_FIELDS
@@ -475,13 +475,42 @@ async def retry_orphaned_device(device_id: str) -> dict[str, Any]:
             "detail": "Driver is still not installed"}
 
 
-def _not_connected(device_id: str, exc: ConnectionError) -> Exception:
-    """503 for a command or a setting the device manager would not send. A
-    device a running simulation has no simulator for is refused in its card's
-    own words, which say what to do."""
-    if isinstance(exc, NoSimulatorError):
-        return _api_error(503, str(exc), exc)
-    return _api_error(503, f"Device '{device_id}' is not connected", exc)
+def setting_failure(device_id: str, key: str, exc: Exception) -> HTTPException:
+    """What Change Setting answers for a write that failed, whatever raised.
+    The sentence is the one the cloud AI's setting tool answers with
+    (``describe_setting_failure``, which also logs what it keeps out of the
+    answer); the status is this door's, Send Command's where the two share an
+    exception."""
+    engine = _get_engine()
+    detail = describe_setting_failure(
+        exc, device_id, key, state=engine.state, project=engine.project,
+        driver=engine.devices.get_driver(device_id),
+    )
+    if isinstance(exc, UnknownDeviceSettingError):
+        # The setting key is a path segment here, so a key the driver does not
+        # declare is a 404, but about the setting, which is what is missing.
+        # (It subclasses DeviceSettingValueError, so this branch sits above.)
+        return _api_error(404, detail, exc)
+    if isinstance(exc, DeviceSettingValueError):
+        # A bad value (out of range / wrong type / not a declared option).
+        return _api_error(400, detail, exc)
+    if isinstance(exc, DeviceNotFoundError):
+        return _api_error(404, detail, exc)
+    if isinstance(exc, ConnectionError):
+        # Not connected, or a running simulation has no simulator for it.
+        return _api_error(503, detail, exc)
+    if isinstance(exc, NotImplementedError):
+        return _api_error(501, detail, exc)
+    if isinstance(exc, CommandOutcomeError):
+        return StructuredApiError(
+            502 if exc.outcome == "failed" else 409, detail,
+            code="command_incomplete", outcome=exc.outcome,
+        )
+    if isinstance(exc, CommandPartialError):
+        return _api_error(502, detail, exc)
+    if isinstance(exc, CommandRefusedError) and str(exc).strip():
+        return HTTPException(status_code=409, detail=detail)
+    return HTTPException(status_code=500, detail=detail)
 
 
 def command_failure(device_id: str, command: str, exc: Exception) -> HTTPException:
@@ -762,29 +791,9 @@ async def set_device_setting(
     engine = _get_engine()
     try:
         await engine.devices.set_device_setting(device_id, setting_key, body.value)
-        return {"success": True, "device_id": device_id, "key": setting_key, "value": body.value}
-    except UnknownDeviceSettingError as e:
-        # The setting key is a path segment here, so a key the driver does not
-        # declare is a 404 — but about the setting, which is what is missing.
-        # (It subclasses DeviceSettingValueError, so this branch sits above.)
-        raise _api_error(404, str(e), e)
-    except DeviceSettingValueError as e:
-        # A bad value (out of range / wrong type / not a declared option) —
-        # surface the actionable message, not a misleading "not found".
-        raise _api_error(400, str(e), e)
-    except DeviceNotFoundError as e:
-        raise _api_error(404, f"Device '{device_id}' not found", e)
-    except ConnectionError as e:
-        raise _not_connected(device_id, e)
-    except NotImplementedError as e:
-        raise _api_error(501, f"Device '{device_id}' does not support writable settings", e)
-    except CommandOutcomeError as e:
-        raise StructuredApiError(
-            502 if e.outcome == "failed" else 409, str(e),
-            code="command_incomplete", outcome=e.outcome,
-        ) from e
     except Exception as e:
-        raise _api_error(500, f"Failed to set '{setting_key}' on device '{device_id}'", e)
+        raise setting_failure(device_id, setting_key, e) from e
+    return {"success": True, "device_id": device_id, "key": setting_key, "value": body.value}
 
 
 @router.post("/devices/{device_id}/settings/pending")

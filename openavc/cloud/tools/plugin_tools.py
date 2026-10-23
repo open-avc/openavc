@@ -217,7 +217,8 @@ class PluginToolsMixin:
                 result["ai_guide"] = ai_guide
 
         result["schema"] = schema
-        result["required_fields"] = [f["name"] for f in setup_fields]
+        # Keyed by the setting's name.
+        result["required_fields"] = list(setup_fields)
         return result
 
     async def _update_plugin_config(self, input: dict) -> Any:

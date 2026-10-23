@@ -858,3 +858,30 @@ class TestToolExceptionFriendlyError:
         assert "Could not connect" in payload["error"]
         assert "Errno" not in payload["error"]
         assert "111" not in payload["error"]
+
+
+class TestGetPluginConfig:
+    @pytest.mark.asyncio
+    async def test_names_the_settings_a_plugin_needs_before_it_starts(self, handler):
+        """The setup fields come back keyed by name, so the tool reads the
+        keys: a plugin with a required setting and no default is the case
+        that needs the answer most."""
+        from openavc.core.plugin_loader import _PLUGIN_CLASS_REGISTRY, _REGISTRY_LOCK
+        from openavc.core.project_loader import PluginConfig
+
+        class _AcmeBridge:
+            CONFIG_SCHEMA = {
+                "host": {"type": "string", "required": True, "label": "Broker Address"},
+                "port": {"type": "integer", "required": True, "default": 1883},
+            }
+
+        engine = MagicMock()
+        engine.project.plugins = {"acme_bridge": PluginConfig(config={"port": 1883})}
+        handler._get_engine = lambda: engine
+        with _REGISTRY_LOCK:
+            _PLUGIN_CLASS_REGISTRY["acme_bridge"] = _AcmeBridge
+
+        result = await handler._get_plugin_config({"plugin_id": "acme_bridge"})
+
+        assert result["required_fields"] == ["host"]
+        assert result["config"] == {"port": 1883}

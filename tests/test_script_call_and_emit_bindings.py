@@ -326,9 +326,14 @@ async def test_arguments_that_do_not_fit_are_caught_before_anything_runs(tmp_pat
     assert "It takes source; this control passed sauce" in dispatched[0]["error"]
 
 
+_COULD_NOT_FINISH = "This control couldn't finish. Contact support."
+
+
 @pytest.mark.asyncio
 async def test_a_function_that_raises_reports_to_the_glass_and_the_script_surface(tmp_path):
-    """Both audiences at once: the room gets a sentence, the IDE gets the trace."""
+    """Both audiences at once: the room gets a sentence, the IDE gets the
+    exception's own text and the trace. The text was written for whoever
+    wrote the script, so it is not the room's."""
     _write_script(tmp_path, "room.py", """\
         def boom():
             raise RuntimeError("no projector")
@@ -342,11 +347,96 @@ async def test_a_function_that_raises_reports_to_the_glass_and_the_script_surfac
 
     dispatched = await engine.handle_ui_event("press", "btn")
 
-    assert "'boom' failed: no projector" in dispatched[0]["error"]
+    assert dispatched[0]["error"] == _COULD_NOT_FINISH
     assert len(errors) == 1
     assert errors[0]["script_id"] == "room"
     assert errors[0]["handler"] == "boom"
+    assert errors[0]["error"] == "no projector"
     assert "RuntimeError" in errors[0]["traceback"]
+    # The Scripts view's record of it.
+    assert engine.scripts.get_runtime_errors()["room"]["count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_mistake_in_the_script_stays_off_the_glass(tmp_path):
+    _write_script(tmp_path, "room.py", """\
+        def boom():
+            return undefined_name
+    """)
+    engine = _engine(tmp_path, [{
+        "id": "btn", "type": "button",
+        "bindings": {"do": {"press": [{"action": "script.call", "function": "boom"}]}},
+    }], _ROOM)
+
+    dispatched = await engine.handle_ui_event("press", "btn")
+
+    assert dispatched[0]["error"] == _COULD_NOT_FINISH
+
+
+@pytest.mark.asyncio
+async def test_a_panel_message_puts_the_authors_own_sentence_on_the_glass(tmp_path):
+    """The one way a script chooses what the room reads. A refusal the author
+    wrote on purpose, so it is not a script error: nothing for the Scripts
+    view to mark."""
+    _write_script(tmp_path, "room.py", """\
+        from openavc import PanelMessage
+
+        def start_film():
+            raise PanelMessage("Projector lamp needs replacing")
+    """)
+    engine = _engine(tmp_path, [{
+        "id": "btn", "type": "button",
+        "bindings": {"do": {"press": [{"action": "script.call", "function": "start_film"}]}},
+    }], _ROOM)
+    errors: list[dict] = []
+    engine.events.on("script.error", lambda _e, payload: errors.append(payload))
+
+    dispatched = await engine.handle_ui_event("press", "btn")
+
+    assert dispatched[0]["called"] is False
+    assert dispatched[0]["error"] == "Projector lamp needs replacing"
+    assert errors == []
+    assert engine.scripts.get_runtime_errors() == {}
+
+
+@pytest.mark.asyncio
+async def test_a_panel_message_with_nothing_in_it_reads_as_the_fixed_sentence(tmp_path):
+    _write_script(tmp_path, "room.py", """\
+        from openavc import PanelMessage
+
+        def start_film():
+            raise PanelMessage("   ")
+    """)
+    engine = _engine(tmp_path, [{
+        "id": "btn", "type": "button",
+        "bindings": {"do": {"press": [{"action": "script.call", "function": "start_film"}]}},
+    }], _ROOM)
+
+    dispatched = await engine.handle_ui_event("press", "btn")
+
+    assert dispatched[0]["error"] == _COULD_NOT_FINISH
+
+
+@pytest.mark.asyncio
+async def test_a_function_that_runs_too_long_reads_as_the_fixed_sentence(tmp_path, monkeypatch):
+    _write_script(tmp_path, "room.py", """\
+        import asyncio
+
+        async def slow():
+            await asyncio.sleep(5)
+    """)
+    engine = _engine(tmp_path, [{
+        "id": "btn", "type": "button",
+        "bindings": {"do": {"press": [{"action": "script.call", "function": "slow"}]}},
+    }], _ROOM)
+    monkeypatch.setattr(engine.scripts, "HANDLER_TIMEOUT", 0.05)
+    errors: list[dict] = []
+    engine.events.on("script.error", lambda _e, payload: errors.append(payload))
+
+    dispatched = await engine.handle_ui_event("press", "btn")
+
+    assert dispatched[0]["error"] == _COULD_NOT_FINISH
+    assert "timed out" in errors[0]["error"]
 
 
 @pytest.mark.asyncio
@@ -397,10 +487,10 @@ async def test_a_dead_device_reads_the_same_whether_a_button_or_a_script_reached
 
 
 @pytest.mark.asyncio
-async def test_a_failure_with_no_device_in_it_still_names_the_function(tmp_path):
+async def test_a_failure_with_no_device_in_it_reads_the_fixed_sentence(tmp_path):
     """The other half of the rule. Nothing here is about a device, so nothing
-    can be said about one -- and the author's own name for the thing that broke
-    is the most useful thing left."""
+    can be said about one, and the exception's text is the author's: it goes
+    to the Scripts view, and the room is told the control did not finish."""
     _write_script(tmp_path, "room.py", """\
         def apply_preset(number):
             raise ValueError(f"no preset {number}")
@@ -415,7 +505,8 @@ async def test_a_failure_with_no_device_in_it_still_names_the_function(tmp_path)
 
     dispatched = await engine.handle_ui_event("press", "btn")
 
-    assert dispatched[0]["error"] == "'apply_preset' failed: no preset 3"
+    assert dispatched[0]["error"] == _COULD_NOT_FINISH
+    assert engine.scripts.get_runtime_errors()["room"]["error"] == "no preset 3"
 
 
 @pytest.mark.asyncio

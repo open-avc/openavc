@@ -13,7 +13,6 @@ from openavc.core.required_config import (
     required_sentence,
 )
 from openavc.core.state_store import is_flat_primitive
-from openavc.drivers.base import DeviceSettingValueError
 from openavc.utils.paths import is_safe_script_filename, safe_path_within
 from openavc.drivers.registry import is_driver_registered, list_registered_drivers, register_driver
 
@@ -429,19 +428,19 @@ class DeviceToolsMixin:
 
         try:
             await engine.devices.set_device_setting(device_id, setting_key, value)
-            return {"success": True, "device_id": device_id, "key": setting_key, "value": value}
-        except DeviceNotFoundError:
-            return {"error": f"Device '{device_id}' not found"}
-        except DeviceSettingValueError as e:
-            # Covers UnknownDeviceSettingError, which subclasses it. Both are
-            # written for a person to read and name what was wrong -- the
-            # generator's next attempt depends on being told which it was, and
-            # "device or setting not found" told it neither.
-            return {"error": str(e)}
-        except ConnectionError:
-            return {"error": f"Device '{device_id}' is not connected"}
-        except NotImplementedError:
-            return {"error": f"Device '{device_id}' does not support writable settings"}
+        except Exception as e:
+            # Worded as the device page words it: a refused value or an unknown
+            # key names what was wrong, which the generator's next attempt
+            # depends on, and a driver's own text is not for the cloud chat
+            # history.
+            from openavc.api.error_messages import describe_setting_failure
+
+            return {"error": describe_setting_failure(
+                e, device_id, setting_key, state=engine.state,
+                project=getattr(engine, "project", None),
+                driver=engine.devices.get_driver(device_id),
+            )}
+        return {"success": True, "device_id": device_id, "key": setting_key, "value": value}
 
     # ===== DRIVER TOOLS =====
 
@@ -547,8 +546,11 @@ class DeviceToolsMixin:
                 resp = await client.get(f"{base_url}/devices.json")
                 resp.raise_for_status()
                 data = resp.json()
-        except (httpx.HTTPError, OSError) as e:
-            return {"matches": [], "error": str(e)}
+        except (httpx.HTTPError, OSError, ValueError) as e:
+            # The library's text is not for the cloud chat history.
+            from openavc.utils.logger import get_logger
+            get_logger(__name__).warning(f"Community device catalog fetch failed: {e}")
+            return {"matches": [], "error": "Failed to fetch the community device catalog"}
 
         devices = data.get("devices", []) if isinstance(data, dict) else data
         mfr_lower = manufacturer.lower()

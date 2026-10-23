@@ -125,6 +125,30 @@ def not_connected(device_id: str) -> ConnectionError:
     return exc
 
 
+def mark_failed_command(exc: BaseException, device_id: str, command: str) -> None:
+    """Note on ``exc`` which device command raised it.
+
+    For a caller that meets the exception with neither in hand: a control's
+    script call, whose function sent the command, words it with
+    ``describe_command_failure`` as a press on the same command would. Not
+    ``device_id``: that attribute marks the device manager's own refusals,
+    whose text is written for the reader, and a driver's text is not.
+    """
+    try:
+        exc.failed_command = (device_id, command)
+    except (AttributeError, TypeError):
+        # A driver's own exception class that takes no attributes: unmarked,
+        # it is still raised as it was, and reads as the function's failure.
+        pass
+
+
+def failed_command(exc: BaseException | None) -> tuple[str, str] | None:
+    """The ``(device_id, command)`` that raised ``exc``, when
+    :meth:`DeviceManager.send_command` sent it."""
+    sent = getattr(exc, "failed_command", None)
+    return sent if isinstance(sent, tuple) and len(sent) == 2 else None
+
+
 class NoSimulatorError(ConnectionError):
     """A command or a setting refused because a running simulation has no
     simulator for this device. A ConnectionError, so whatever catches a failed
@@ -908,6 +932,7 @@ class DeviceManager:
                     driver, device_id, command, params, file_command,
                 )
         except Exception as exc:
+            mark_failed_command(exc, device_id, command)
             await self.events.emit(
                 f"device.error.{device_id}",
                 {"device_id": device_id, "error": str(exc)},

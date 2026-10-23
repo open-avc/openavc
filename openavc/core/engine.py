@@ -1894,8 +1894,13 @@ class Engine:
                  f"pending settings")
 
     async def _on_script_error(self, event: str, payload: dict[str, Any]) -> None:
-        """Forward script error events to WebSocket clients."""
-        await self.broadcast_ws({"type": "script.error", **payload})
+        """Forward script error events to the Programmer's WebSocket clients.
+
+        Never a panel's: the payload carries the exception's text and its
+        traceback, and a panel draws nothing from it. The room hears about a
+        failed control through the press's own answer.
+        """
+        await self.broadcast_ws({"type": "script.error", **payload}, client_type="programmer")
 
     async def _on_trigger_event(self, event: str, payload: dict[str, Any]) -> None:
         """Forward trigger events to WebSocket clients."""

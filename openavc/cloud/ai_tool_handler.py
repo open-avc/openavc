@@ -10,6 +10,7 @@ Results are sent back as AI_TOOL_RESULT messages.
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
 import time
 from pathlib import Path
@@ -603,6 +604,76 @@ def _tool_result_is_error(result: Any) -> bool:
     return bool(result.get("error"))
 
 
+# --- What a tool that raised answers ---
+
+#: The answer for an exception the platform did not word. Its type and text
+#: are in the local log, which the Programmer's Log view shows.
+TOOL_FAILED = "The tool failed with an error on the server. The Programmer's Log has the details."
+
+# The errnos friendly_error answers with a fixed sentence of its own.
+_WORDED_ERRNOS = frozenset({
+    errno.EHOSTUNREACH, errno.ENETUNREACH, errno.EADDRINUSE, errno.ENOSPC, errno.EROFS,
+})
+
+
+def describe_tool_failure(exc: Exception) -> str:
+    """What the cloud is told when a tool raised instead of answering.
+
+    The answer is kept in the cloud chat history, so an exception's text
+    reaches it only when the platform wrote that text for a reader: a typed
+    refusal, which tells the model what to change in its next call. The
+    project's validation errors are reduced to each field and its message.
+    Anything else (an operating system or library error that may hold a local
+    path or an address, a driver's or a plugin's own text, Python's own
+    message for a mistake) gets :data:`TOOL_FAILED`.
+    """
+    from pydantic import ValidationError
+
+    from openavc.api.error_messages import _WORDED_CONNECTION_ERRORS, friendly_error
+    from openavc.core.device_manager import DeviceNotFoundError
+    from openavc.core.installed_equipment import InstalledEquipmentError
+    from openavc.core.isc import ISCRemoteError
+    from openavc.drivers.base import (
+        CommandParamError,
+        CommandPartialError,
+        CommandRefusedError,
+        DeviceSettingValueError,
+        UnknownCommandError,
+        WakeAddressError,
+    )
+    from openavc.drivers.command_files import FileCommandError
+    from openavc.drivers.command_outcome import CommandOutcomeError
+    from openavc.reach_devices import AdapterUnavailable
+    from openavc.utils.community_integrity import CommunityArtifactError
+
+    if isinstance(exc, ValidationError):
+        problems = [
+            f"{'.'.join(str(part) for part in error.get('loc', ())) or 'value'}: "
+            f"{error.get('msg', '')}"
+            for error in exc.errors(include_url=False, include_input=False)
+        ]
+        return "; ".join(problems) or TOOL_FAILED
+    if isinstance(exc, WakeAddressError):
+        return friendly_error(exc)
+    if isinstance(exc, (
+        DeviceNotFoundError, UnknownCommandError, CommandParamError,
+        DeviceSettingValueError, FileCommandError, CommandOutcomeError,
+        CommandRefusedError, CommandPartialError, AdapterUnavailable,
+        InstalledEquipmentError, CommunityArtifactError, ISCRemoteError,
+    )) and str(exc).strip():
+        return str(exc)
+    if isinstance(exc, ConnectionError):
+        # The device manager's own refusals carry the device's id.
+        if getattr(exc, "device_id", None) is not None:
+            return str(exc)
+        return friendly_error(exc) if isinstance(exc, _WORDED_CONNECTION_ERRORS) else TOOL_FAILED
+    if isinstance(exc, PermissionError) or (
+        isinstance(exc, OSError) and getattr(exc, "errno", None) in _WORDED_ERRNOS
+    ):
+        return friendly_error(exc)
+    return TOOL_FAILED
+
+
 from openavc.cloud.tools.custom_ui_tools import CustomUIToolsMixin
 from openavc.cloud.tools.device_tools import DeviceToolsMixin
 from openavc.cloud.tools.macro_tools import MacroToolsMixin
@@ -843,13 +914,13 @@ class AIToolHandler(
             else:
                 await self._send_result(request_id, True, result=result)
         except Exception as e:
-            log.exception(f"AI tool handler: error executing {tool_name}")
-            # Map to a user-facing message before it leaves the local trust
-            # boundary — raw str(e) can carry local paths / network topology
-            # and is persisted in cloud chat history. Full detail stays in the
-            # local log above.
-            from openavc.api.error_messages import friendly_error
-            await self._send_result(request_id, False, error=friendly_error(e))
+            # The type and text in the message itself, not only the traceback:
+            # the Log view shows a record's message, and the answer below
+            # sends the reader there.
+            log.exception(f"AI tool handler: {tool_name} failed: {type(e).__name__}: {e}")
+            # Worded before it leaves the local trust boundary: the answer is
+            # kept in the cloud chat history.
+            await self._send_result(request_id, False, error=describe_tool_failure(e))
 
     async def _maybe_create_pre_ai_backup(self) -> None:
         """Create one backup before the first project-mutating tool in an AI

@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
+from openavc.core.device_manager import failed_command
 from openavc.core.script_engine import ScriptCallError
 from openavc.core.state_store import coerce_flat_primitive
 from openavc.core.value_resolver import resolve_ref
@@ -592,14 +593,23 @@ class UIEventRuntime:
         is standing at the panel; it is still on the record, in the log, and in
         the ``script.error`` event the IDE shows.
 
+        A command the function sent that the driver failed is marked with its
+        device and command by the device manager (``failed_command``), so it
+        reads as a press on that command does. A refusal the device manager
+        raised before sending carries only the device's id.
+
         Anything else -- a name that does not exist, two scripts defining it,
-        arguments that do not fit, a mistake inside the function -- keeps the
-        sentence ``ScriptCallError`` already carries, because there is no
-        device in it to name and the author is the only one who can fix it.
+        arguments that do not fit, a mistake inside the function, the author's
+        own ``PanelMessage`` -- keeps the sentence ``ScriptCallError`` already
+        carries, because there is no device in it to name.
         """
-        device_id = getattr(exc.__cause__, "device_id", "")
+        cause = exc.__cause__
+        sent = failed_command(cause)
+        if sent is not None:
+            return self._command_error(sent[0], sent[1], cause)
+        device_id = getattr(cause, "device_id", "")
         if device_id:
-            return self._command_error(str(device_id), "", exc.__cause__)
+            return self._command_error(str(device_id), "", cause)
         return str(exc)
 
     @staticmethod

@@ -88,7 +88,7 @@ The script editor marks a `custom.` handler that nothing in the project emits. I
 Everything the nodes do is ordinary API usage, so Node-RED's built-in nodes reach OpenAVC too:
 
 - An **http request** node with an `X-API-Key` header calls any REST endpoint: `POST /api/devices/{id}/command`, `POST /api/macros/{id}/execute`, `PUT /api/state/var.status`, `POST /api/events`.
-- A **websocket** client node on `ws://host:8080/ws?client=panel&events=custom.*` receives the live state stream (`state.snapshot`, then `state.update` batches) and the events named, and can send `command`, `macro.execute`, `macro.cancel`, `state.set` and `event.emit` frames. An `X-API-Key` header on the node is required unless Node-RED runs on the OpenAVC host; with it the node connects as the Programmer.
+- A **websocket** client node on `ws://host:8080/ws?client=panel&events=custom.*` receives the live state stream (`state.snapshot`, then `state.update` batches) and the events named, and can send `command`, `macro.execute`, `macro.cancel`, `state.set` and `event.emit` frames. An `X-API-Key` header on the node is required unless Node-RED runs on the OpenAVC host. With `client=panel` the node receives what a panel receives, so a `device.error.*` event names the device but not the driver's own error text; with `client=programmer` and the key it connects as the Programmer and receives that text too.
 - The **MQTT Bridge** plugin publishes chosen state keys to a broker and accepts commands back, which Node-RED's MQTT nodes speak natively.
 
 The nodes exist because a flow should hold one socket rather than make HTTP calls (the REST API allows a few calls a second; the socket allows hundreds), and because picking a device from a list beats typing its id.

@@ -32,6 +32,7 @@ from typing import Any
 #: and stays reachable at its real home, ``openavc.core.script_api``.
 __all__ = [
     "Event",
+    "PanelMessage",
     "after",
     "cancel_all_timers",
     "cancel_timer",

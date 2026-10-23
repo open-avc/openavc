@@ -121,6 +121,25 @@ def _leashed_async(fn: Callable) -> Callable:
     return wrapper
 
 
+# --- What a control's function says to the room ---
+
+
+class PanelMessage(Exception):
+    """Raise from a function a control calls to put this sentence on the panel.
+
+    The panel that was pressed shows the text as written. Anything else the
+    function raises shows "This control couldn't finish. Contact support."
+    there instead, with the exception's own text in the Scripts view and the
+    log::
+
+        from openavc import PanelMessage, state
+
+        def start_film():
+            if state.get("var.lamp_hours", 0) > 2000:
+                raise PanelMessage("Projector lamp needs replacing")
+    """
+
+
 # --- Event object for handlers ---
 
 

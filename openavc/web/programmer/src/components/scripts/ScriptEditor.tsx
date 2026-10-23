@@ -80,7 +80,7 @@ export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, l
             "on_event", "on_state_change", "devices", "state",
             "events", "macros", "log", "isc", "plugins",
             "after", "every", "cancel_timer", "delay", "Event",
-            "compare",
+            "compare", "PanelMessage",
           ];
           for (const item of imports) {
             suggestions.push({

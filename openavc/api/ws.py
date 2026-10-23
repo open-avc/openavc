@@ -23,7 +23,7 @@ from openavc.api._engine import set_engine as _shared_set_engine
 from openavc.api.auth import authenticate_websocket, get_ws_auth_subprotocol
 from openavc.api.host_policy import EndpointPolicy, bind_request_authority, endpoint_policy
 from openavc.core.host_policy import HostCategory
-from openavc.api.error_messages import describe_command_failure, friendly_error
+from openavc.api.error_messages import describe_command_failure, device_error_label, friendly_error
 from openavc.api.panel_access import Admission, admit as admit_panel
 from openavc.core.event_bus import check_event_emit, event_visible
 from openavc.core.panel_devices import (
@@ -373,12 +373,38 @@ def _subscribe_events(
         engine.ws.send(ws, {
             "type": "event",
             "event": event,
-            "payload": payload,
+            "payload": _room_copy(engine, event, payload) if panel else payload,
             "timestamp": time.time(),
         })
 
     handler_id = engine.events.on("*", _forward)
     _event_subscriptions[ws_id] = (handler_id, patterns)
+
+
+_DEVICE_ERROR_PREFIX = "device.error."
+
+
+def _room_copy(engine: Any, event: str, payload: Any) -> Any:
+    """What a panel subscriber receives of an event's payload.
+
+    A device error's ``error`` is a driver's exception text or the platform's
+    words for the Programmer, written for neither the room nor a control a
+    panel runs, so the panel's copy names the device instead. A new dict: the
+    bus hands every subscriber the same payload, and a trigger reading
+    ``$trigger.error`` keeps the text.
+    """
+    if not event.startswith(_DEVICE_ERROR_PREFIX):
+        return payload
+    given = payload if isinstance(payload, dict) else {}
+    device_id = str(given.get("device_id") or event[len(_DEVICE_ERROR_PREFIX):])
+    name = device_error_label(device_id, engine.state, getattr(engine, "project", None))
+    copy: dict[str, Any] = {
+        "device_id": device_id,
+        "error": f"{name} reported an error. Contact support.",
+    }
+    if isinstance(given.get("source"), str):
+        copy["source"] = given["source"]
+    return copy
 
 
 def _cleanup_event_subscription(ws_id: int, engine: Any) -> None:

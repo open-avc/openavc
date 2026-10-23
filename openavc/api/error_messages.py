@@ -10,7 +10,7 @@ from __future__ import annotations
 import errno
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 import httpx
 
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from openavc.core.project_loader import ProjectConfig
     from openavc.core.state_store import StateStore
 
-# Logs only device command failures, each under "[<device_id>]", and is
+# Logs only device command and setting failures, each under "[<device_id>]", and is
 # categorised as a device logger (utils/log_buffer.py) so the line is kept
 # with the device's own lines: the sentence below sends the reader there.
 log = get_logger(__name__)
@@ -62,12 +62,12 @@ _WORDED_CONNECTION_ERRORS = (
 )
 
 
-def _command_label(driver: Any, command: str) -> str:
+def _declared_label(driver: Any, section: str, key: str, fallback: str) -> str:
     info = getattr(driver, "DRIVER_INFO", None)
-    commands = info.get("commands") if isinstance(info, dict) else None
-    cmd_def = commands.get(command) if isinstance(commands, dict) else None
-    label = cmd_def.get("label") if isinstance(cmd_def, dict) else None
-    return str(label or command or "the command")
+    entries = info.get(section) if isinstance(info, dict) else None
+    entry = entries.get(key) if isinstance(entries, dict) else None
+    label = entry.get("label") if isinstance(entry, dict) else None
+    return str(label or key or fallback)
 
 
 def describe_command_failure(
@@ -76,18 +76,65 @@ def describe_command_failure(
 ) -> CommandFailure:
     """What every door that sent a device command says when it did not run.
 
-    One rule for Send Command, a device action, a panel press, a macro or group
-    step, the WebSocket ``command`` frame, a peer system, the cloud and the
-    cloud AI. The exceptions the platform raises for a command, and a
-    ``CommandRefusedError`` (the device saying no, in a sentence written for
-    the reader), keep their own sentence. Anything else a driver raises, a
-    ``ValueError`` or ``KeyError`` included, was not written for the reader and
-    may hold what should stay private: its text is logged under the device's id,
-    which puts it in the Device Log on the device's page, and the answer names
-    the device and the command instead.
+    One rule for Send Command, a device action, a panel press, a control's
+    script call, a macro or group step, the WebSocket ``command`` frame, a peer
+    system, the cloud and the cloud AI. The exceptions the platform raises for
+    a command, and a ``CommandRefusedError`` (the device saying no, in a
+    sentence written for the reader), keep their own sentence. Anything else a
+    driver raises, a ``ValueError`` or ``KeyError`` included, was not written
+    for the reader and may hold what should stay private: its text is logged
+    under the device's id, which puts it in the Device Log on the device's
+    page, and the answer names the device and the command instead.
 
     ``driver`` supplies the command's label; ``project`` the device's name.
     """
+    return _describe_device_failure(
+        exc, device_id, state=state, project=project,
+        logged_as=f"Command '{command}'",
+        doing=lambda: f"run {_declared_label(driver, 'commands', command, 'the command')}",
+    )
+
+
+def describe_setting_failure(
+    exc: Exception, device_id: str, key: str, *,
+    state: StateStore, project: ProjectConfig | None = None, driver: Any = None,
+) -> str:
+    """What every door that writes a device setting says when the write failed.
+
+    The command rule above, for Change Setting on the device's page and the
+    cloud AI's setting tool: the platform's refusals of the write (no such
+    setting, a value the setting does not accept, a driver with no writable
+    settings) keep their sentence, and so does everything the command rule
+    keeps, since a driver may write a setting by running a command. Anything
+    else a driver raises is logged under the device's id and the answer names
+    the device and the setting instead. Only the Programmer writes a setting,
+    so there is one reader.
+
+    ``driver`` supplies the setting's label; ``project`` the device's name.
+    """
+    from openavc.drivers.base import DeviceSettingValueError
+
+    if isinstance(exc, DeviceSettingValueError):
+        # UnknownDeviceSettingError too, which subclasses it.
+        return str(exc)
+    if isinstance(exc, NotImplementedError):
+        # A fixed sentence: a Python driver may raise one with its own text.
+        return f"Device '{device_id}' does not support writable settings"
+    return _describe_device_failure(
+        exc, device_id, state=state, project=project,
+        logged_as=f"Setting '{key}'",
+        doing=lambda: f"change {_declared_label(driver, 'device_settings', key, 'the setting')}",
+    ).programmer
+
+
+def _describe_device_failure(
+    exc: Exception, device_id: str, *,
+    state: StateStore, project: ProjectConfig | None, logged_as: str,
+    doing: Callable[[], str],
+) -> CommandFailure:
+    """The rule both functions above answer with. ``doing`` is what failed, as
+    the sentence names it ("run Flash LED"); ``logged_as`` the same for the log
+    line ("Command 'flash_led'")."""
     from openavc.core.device_manager import DeviceNotFoundError, not_connected
     from openavc.drivers.base import (
         CommandParamError,
@@ -131,7 +178,7 @@ def describe_command_failure(
 
     refused = isinstance(exc, CommandRefusedError) and str(exc).strip()
     (log.warning if refused else log.error)(
-        f"[{device_id}] Command '{command}' failed: {type(exc).__name__}: {exc}"
+        f"[{device_id}] {logged_as} failed: {type(exc).__name__}: {exc}"
     )
     if refused:
         return CommandFailure(str(exc), str(exc))
@@ -142,10 +189,10 @@ def describe_command_failure(
         return CommandFailure(
             friendly_error(timeout, device=name, host=host), for_the_room(timeout),
         )
-    label = _command_label(driver, command)
+    what = doing()
     return CommandFailure(
-        f"{name} couldn't run {label}. The Device Log on its page has the details.",
-        f"{name} couldn't run {label}. Contact support.",
+        f"{name} couldn't {what}. The Device Log on its page has the details.",
+        f"{name} couldn't {what}. Contact support.",
     )
 
 

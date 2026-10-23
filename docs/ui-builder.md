@@ -595,6 +595,12 @@ command and asks the room to contact support ("Lobby Display couldn't run Power
 On. Contact support."), and the reason goes to the Device Log on the device's
 page.
 
+A control that calls a script says the same when a device command the script
+sent fails. When the script itself fails, the message is "This control
+couldn't finish. Contact support." and the reason goes to the Scripts view. A
+script can put its own sentence there instead (see `PanelMessage` in the
+[Scripting Guide](scripting-guide.md)).
+
 It only appears when something failed. A control that works is silent, and the
 rest of a press still runs when one action in it fails, so a button that turns
 on a projector and dims the lights still dims the lights.

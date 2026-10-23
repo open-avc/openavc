@@ -106,8 +106,16 @@ class ScriptCallError(Exception):
     the arguments do not fit its signature. An exception raised *inside* a
     function that ran is a different thing and keeps the handler treatment --
     logged, and a ``script.error`` event for the IDE -- with this raised on top
-    so the press does not report success.
+    so the press does not report success. Its text was written for whoever
+    wrote the script, so the glass gets :data:`COULD_NOT_FINISH`, unless the
+    function raised ``PanelMessage``, whose text is the author's sentence for
+    the room. The exception it was raised from is the ``__cause__``.
     """
+
+
+#: What the room is told when a function a control called raised, or ran too
+#: long, and said nothing for the room itself.
+COULD_NOT_FINISH = "This control couldn't finish. Contact support."
 
 
 
@@ -662,7 +670,8 @@ class ScriptEngine:
         BEFORE anything runs, so a mistyped name never half-runs a room. What
         happens once the function is running gets the handler treatment as
         well: logged, and a ``script.error`` event so the IDE's script surface
-        shows it beside every other script failure.
+        shows it beside every other script failure, while the glass reads
+        ``COULD_NOT_FINISH`` (or the sentence a ``PanelMessage`` carries).
 
         Timeout and inline-sync behaviour deliberately match
         ``_wrap_event_handler``: an emit already awaits its handlers, so
@@ -703,6 +712,12 @@ class ScriptEngine:
                 # A plain `def` has already run inline by this point, for the
                 # same reason a sync handler does: the state/devices/events
                 # proxies must run on the loop thread.
+            except script_api.PanelMessage as exc:
+                # The author refusing in the room's words, on purpose: not a
+                # script error, so nothing for the Scripts view to mark.
+                sentence = str(exc).strip()
+                log.info(f"Script '{script_id}' function '{name}' told the panel: {sentence}")
+                raise ScriptCallError(sentence or COULD_NOT_FINISH) from exc
             except asyncio.TimeoutError as exc:
                 msg = (
                     f"Script '{script_id}' function '{name}' timed out after "
@@ -710,14 +725,14 @@ class ScriptEngine:
                 )
                 log.error(msg)
                 await self._emit_script_error(script_id, name, f"script.call.{name}", msg, "")
-                raise ScriptCallError(msg) from exc
+                raise ScriptCallError(COULD_NOT_FINISH) from exc
             except Exception as exc:  # Catch-all: isolates user script errors from engine
                 log.exception(f"Error in script '{script_id}' function '{name}'")
                 await self._emit_script_error(
                     script_id, name, f"script.call.{name}", str(exc),
                     traceback.format_exc(),
                 )
-                raise ScriptCallError(f"'{name}' failed: {exc}") from exc
+                raise ScriptCallError(COULD_NOT_FINISH) from exc
 
     async def _emit_script_error(
         self, script_id: str, handler: str, event: str, error: str, tb: str,

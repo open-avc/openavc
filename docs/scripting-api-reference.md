@@ -13,6 +13,7 @@ from openavc import (
     delay, after, every, cancel_timer, cancel_all_timers,  # Timer functions
     compare,                                          # Condition helper
     Event,                                            # Event class
+    PanelMessage,                                     # A message for the panel
 )
 ```
 
@@ -48,6 +49,23 @@ async def select_source(source, level=50):
 The Builder reads the parameters from the signature. A decorated handler is not
 callable this way. A duplicate name across two enabled scripts refuses rather
 than guessing, and the panel says so.
+
+When the function raises, the panel that was pressed shows "This control
+couldn't finish. Contact support." and the exception goes to the Scripts view
+and the log. A device command the function sent that failed reads the way a
+button wired to that command would. To show the room a sentence of your own,
+raise `PanelMessage`:
+
+```python
+from openavc import PanelMessage, state
+
+def start_film():
+    if state.get("var.lamp_hours", 0) > 2000:
+        raise PanelMessage("Projector lamp needs replacing")
+```
+
+The panel shows the text as written. A `PanelMessage` is not a script error:
+the Scripts view does not count it.
 
 ### @on_state_change(pattern)
 
