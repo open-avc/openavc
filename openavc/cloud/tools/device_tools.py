@@ -360,7 +360,19 @@ class DeviceToolsMixin:
         await self._events.emit("ai.device_command", {
             "device_id": device_id, "command": command, "params": params,
         })
-        await self._devices.send_command(device_id, command, params)
+        try:
+            await self._devices.send_command(device_id, command, params)
+        except Exception as e:
+            # Worded as Send Command words it: the answer is kept in the cloud
+            # chat history, and a driver's own text is not for it.
+            from openavc.api.error_messages import describe_command_failure
+
+            engine = self._get_engine()
+            return {"error": describe_command_failure(
+                e, device_id, command, state=self._devices.state,
+                project=getattr(engine, "project", None),
+                driver=self._devices.get_driver(device_id),
+            ).programmer}
         return "OK"
 
     async def _test_device_connection(self, input: dict) -> Any:

@@ -69,7 +69,7 @@ All the nodes on one server share a single connection, and it reconnects on its 
 
 Every node's help, the book icon in the editor, says what goes in on the message and what comes out. The **device**, **command**, **macro** and **key** fields fill their lists from the system, so you pick rather than type. That needs the server node deployed first; the dialog says so if it is not.
 
-A command or macro that fails puts the reason on `payload.error` in the same words OpenAVC's own panel would show, and raises an error a **catch** node can pick up, so a flow can react or just log it. A macro that finished with a failed step (macros carry on past a failed step unless set to stop) answers `success: true` with the failures listed in `payload.step_errors`.
+A command or macro that fails puts the reason on `payload.error` in a sentence written for a person, the words OpenAVC itself shows for that failure, and raises an error a **catch** node can pick up, so a flow can react or just log it. A macro that finished with a failed step (macros carry on past a failed step unless set to stop) answers `success: true` with the failures listed in `payload.step_errors`.
 
 To send a command to every device in a group, run a macro with a **Group Command** step, or send the command once per device.
 

@@ -20,6 +20,7 @@ from openavc.core.value_resolver import resolve_in_text, resolve_ref
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
+    from openavc.api.error_messages import CommandFailure
     from openavc.core.device_manager import DeviceManager
 
 log = get_logger(__name__)
@@ -689,19 +690,20 @@ class MacroEngine:
                 step_detail = self._step_error_detail(step, i, total)
                 failures.append(step_detail)
                 log.error(f"Macro step failed: {step_detail} — {e}")
+                error, message = self._step_failure(step, e)
                 # Emit step-level error event so the frontend can show it
                 if macro_id:
                     await self.events.emit(
                         f"macro.step_error.{macro_id}",
                         self._step_error_payload(
                             macro_id, step, i, total,
-                            error=str(e),
-                            message=self._step_error_message(step, e),
-                            call_chain=_call_chain,
+                            error=error, message=message, call_chain=_call_chain,
                         ),
                     )
                 if stop_on_error:
-                    raise RuntimeError(f"{step_detail}: {e}") from e
+                    # The worded sentence, not the exception: this text is the
+                    # run's macro.error, and a calling macro's step error.
+                    raise RuntimeError(f"{step_detail}: {error}") from e
                 # Continue to next step (don't halt the macro)
             else:
                 # A step that handled its own failure and carried on. Only
@@ -777,8 +779,9 @@ class MacroEngine:
 
         Two renderings of the failure, deliberately: ``error`` is what the
         exception said, which is what a log and the Programmer's run history
-        are for, and ``message`` is the same failure written for somebody
-        standing at a panel. The panel has no way to translate the first into
+        are for (for a device command, Send Command's answer, which keeps a
+        driver's own text out), and ``message`` is the same failure written for
+        somebody standing at a panel. The panel has no way to translate the first into
         the second -- it holds no device names, no host and no exception type
         -- so the sentence is built here, where all three still exist.
 
@@ -805,13 +808,39 @@ class MacroEngine:
             "description": step.get("description") or self._auto_description(step),
         }
 
+    def _step_failure(self, step: dict[str, Any], exc: Exception) -> tuple[str, str]:
+        """A failed step's ``error`` and ``message`` (see ``_step_error_payload``).
+
+        A device command step answers with the rule every command door uses,
+        so a macro failure and a direct press failure read the same way
+        whichever control ran them. Any other step's exception is the
+        platform's or a plugin's own, and keeps its text.
+        """
+        if step.get("action") == "device.command":
+            failure = self._command_failure(
+                str(step.get("device") or ""), str(step.get("command") or ""), exc,
+            )
+            return failure.programmer, failure.panel
+        return str(exc), self._step_error_message(step, exc)
+
+    def _command_failure(self, device_id: str, command: str, exc: Exception) -> CommandFailure:
+        """``describe_command_failure`` with this device's name, host and
+        command label filled in. Deferred import, as below."""
+        from openavc.api.error_messages import describe_command_failure
+
+        project = self._project_provider() if self._project_provider else None
+        return describe_command_failure(
+            exc, device_id, command, state=self.state, project=project,
+            driver=self.devices.get_driver(device_id),
+        )
+
     def _step_error_message(self, step: dict[str, Any], exc: Exception) -> str:
         """Why the step did not do what it says, in words somebody can act on.
 
         The same translation, with the same device context, that a panel press
-        already gets (``ui_events._command_error``) -- a macro failure and a
-        direct press failure are the same failure and must not read two
-        different ways because of which control ran them.
+        already gets -- a macro failure and a direct press failure are the same
+        failure and must not read two different ways because of which control
+        ran them.
         """
         if step.get("action") == "wait_until" and isinstance(exc, TimeoutError):
             # This timer watches a condition, which may be a variable rather
@@ -1016,10 +1045,11 @@ class MacroEngine:
                 device_name = self.state.get(f"device.{did}.name") or did
                 if isinstance(result, Exception):
                     log.error(f"  Group command error on '{device_name}': {result}")
+                    failure = self._command_failure(did, command, result)
                     outcome[did] = {
                         "device_id": did, "name": device_name, "success": False,
-                        "error": str(result),
-                        "message": self._device_error_message(did, result),
+                        "error": failure.programmer,
+                        "message": failure.panel,
                     }
                 else:
                     outcome[did] = {"device_id": did, "name": device_name, "success": True}

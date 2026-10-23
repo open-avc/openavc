@@ -1505,11 +1505,18 @@ class ISCManager:
                 "result": result,
             })
         except Exception as e:
+            # The peer and its panels read this; worded as Send Command words
+            # it here. Deferred import, as for the macro engine.
+            from openavc.api.error_messages import describe_command_failure
+
             await conn.send({
                 "type": "isc.command_result",
                 "id": request_id,
                 "success": False,
-                "error": str(e),
+                "error": describe_command_failure(
+                    e, device_id, command, state=self.state,
+                    driver=self.devices.get_driver(device_id),
+                ).programmer,
             })
         finally:
             self._remote_commands_in_flight -= 1

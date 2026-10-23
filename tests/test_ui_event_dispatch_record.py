@@ -21,6 +21,7 @@ import pytest
 
 from openavc.core.engine import Engine
 from openavc.core.project_loader import load_project
+from openavc.drivers.base import CommandRefusedError
 
 
 def _project(tmp_path: Path, elements: list[dict], macros: list[dict] | None = None) -> Path:
@@ -88,14 +89,14 @@ async def test_a_command_that_raised_is_not_reported_as_sent(tmp_path) -> None:
     }])
 
     async def send(device_id, command, params):
-        raise RuntimeError("device is offline")
+        raise CommandRefusedError("The amplifier is offline")
 
     engine.devices.send_command = send
 
     dispatched = await engine.handle_ui_event("press", "btn_mute")
 
     assert dispatched[0]["sent"] is False
-    assert "offline" in dispatched[0]["error"]
+    assert dispatched[0]["error"] == "The amplifier is offline"
 
 
 @pytest.mark.asyncio

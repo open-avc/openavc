@@ -90,6 +90,9 @@ def _categorize_source(name: str, message: str) -> str:
         name.startswith("openavc.drivers")
         or name.startswith("openavc.core.device_manager")
         or name.startswith("openavc.transport")
+        # A failed device command, worded for the reader; the raw text is
+        # logged there under the device's id, and the answer points here.
+        or name == "openavc.api.error_messages"
     ):
         return "device"
     # Order matters: every platform logger now starts with "openavc" too, so the

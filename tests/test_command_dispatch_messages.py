@@ -343,12 +343,19 @@ async def test_the_route_surfaces_the_drivers_own_sentence(monkeypatch):
     told = ("PoE was cut on Ethernet1/0/7 and the restore could not be "
             "confirmed. That port may still be disabled.")
 
+    from openavc.core.state_store import StateStore
+
     class _Devices:
         async def send_command(self, *_a, **_k):
             raise CommandPartialError(told)
 
+        def get_driver(self, _device_id):
+            return None
+
     class _Engine:
         devices = _Devices()
+        state = StateStore()
+        project = None
 
     monkeypatch.setattr(devices_route, "_get_engine", lambda: _Engine())
 

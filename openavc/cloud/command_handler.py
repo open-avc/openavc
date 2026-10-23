@@ -139,8 +139,16 @@ class CommandHandler:
             await self._devices.send_command(device_id, command, params)
             await self._send_result(request_id, True, result="OK")
         except Exception as e:
-            # Catch-all: device commands can fail with transport, protocol, or driver errors
-            await self._send_result(request_id, False, error=str(e))
+            # Catch-all: device commands can fail with transport, protocol, or
+            # driver errors. Worded as Send Command words it before it leaves
+            # the building.
+            from openavc.api.error_messages import describe_command_failure
+
+            failure = describe_command_failure(
+                e, device_id, command, state=self._devices.state,
+                driver=self._devices.get_driver(device_id),
+            )
+            await self._send_result(request_id, False, error=failure.programmer)
 
     async def _handle_config_push(
         self, payload: dict[str, Any], request_id: str, actor: str

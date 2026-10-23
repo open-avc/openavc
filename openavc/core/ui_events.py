@@ -400,7 +400,7 @@ class UIEventRuntime:
                 log.exception(f"Binding command failed: {device_id}.{command}")
                 record(
                     device=device_id, command=command, params=params,
-                    sent=False, error=self._command_error(device_id, exc),
+                    sent=False, error=self._command_error(device_id, command, exc),
                 )
 
         elif action == "state.set":
@@ -555,7 +555,7 @@ class UIEventRuntime:
                 f"so nothing runs when it fires. Valid actions: {usable}",
             )
 
-    def _command_error(self, device_id: str, exc: Exception) -> str:
+    def _command_error(self, device_id: str, command: str, exc: Exception) -> str:
         """Why the command did not go out, in words somebody can act on.
 
         Translated here because here is the last place the exception exists.
@@ -563,20 +563,22 @@ class UIEventRuntime:
         must not stop the rest of a press -- so what gets written down is all
         anyone downstream will ever have, and ``str(exc)`` is not enough for
         that: a bare ``TimeoutError`` stringifies to the empty string, and a
-        panel would put nothing at all on the glass.
+        panel would put nothing at all on the glass, while a driver's own
+        exception text was never written for the room at all.
 
-        Same translation, with the same device and host context, as the direct
-        ``command`` message on the WebSocket, so the same failure reads the
-        same way whichever door it came through. The import is deferred to keep
-        the module free of API imports at load time, matching how the project
+        The panel's half of the one rule every command door answers with
+        (``describe_command_failure``), so the same failure reads the same way
+        whichever door it came through. The import is deferred to keep the
+        module free of API imports at load time, matching how the project
         loader reaches for its save-error twin.
         """
-        from openavc.api.error_messages import device_error_label, friendly_error
+        from openavc.api.error_messages import describe_command_failure
 
-        state = self._engine.state
-        name = device_error_label(device_id, state, self._engine.project, exc=exc)
-        host = state.get(f"device.{device_id}.host") or ""
-        return friendly_error(exc, device=str(name), host=str(host), at_panel=True)
+        engine = self._engine
+        return describe_command_failure(
+            exc, device_id, command, state=engine.state, project=engine.project,
+            driver=engine.devices.get_driver(device_id),
+        ).panel
 
     def _script_call_error(self, exc: ScriptCallError) -> str:
         """Why the script the control named did not do its job.
@@ -597,7 +599,7 @@ class UIEventRuntime:
         """
         device_id = getattr(exc.__cause__, "device_id", "")
         if device_id:
-            return self._command_error(str(device_id), exc.__cause__)
+            return self._command_error(str(device_id), "", exc.__cause__)
         return str(exc)
 
     @staticmethod

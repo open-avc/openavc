@@ -3373,7 +3373,7 @@ for line in reply.splitlines():
         raise CommandRefusedError(line[len("[ERROR]"):].strip())
 ```
 
-Send Command on the device page and a Quick Action button show that sentence, and so do a panel and a macro. Any other exception your `send_command` raises stays off the Programmer's screens: Send Command says "<device> couldn't run <command>. The Device Log on its page has the details.", and the exception, with its text, goes to that Device Log. A timeout reads "<device> did not respond in time." Write the refusal for the person on the device page, and keep passwords, tokens and file paths out of it.
+Send Command on the device page and a Quick Action button show that sentence, and so do a panel, a macro and every other place a command is sent from. Any other exception your `send_command` raises is shown nowhere: Send Command says "<device> couldn't run <command>. The Device Log on its page has the details.", a panel "<device> couldn't run <command>. Contact support.", and the exception, with its text, goes to that Device Log. A timeout reads "<device> did not respond in time." Write the refusal for the person on the device page, and keep passwords, tokens and file paths out of it.
 
 `CommandRefusedError` is a `RuntimeError`, new in OpenAVC 0.37.1. A driver that also installs on an older server imports it this way, and raises a plain `RuntimeError` there:
 

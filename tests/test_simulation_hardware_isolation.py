@@ -193,7 +193,7 @@ async def test_a_command_is_refused_in_the_cards_words(rig):
     assert friendly_error(refused.value, device="Missing Widget") == card
 
     app = rest_app()  # importing main sets its own engine, so import it first
-    rest.set_engine(SimpleNamespace(devices=manager, state=manager.state))
+    rest.set_engine(SimpleNamespace(devices=manager, state=manager.state, project=None))
     try:
         resp = TestClient(app).post("/api/devices/missing/command", json={"command": "wake"})
     finally:

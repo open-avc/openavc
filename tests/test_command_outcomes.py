@@ -10,6 +10,7 @@ from openavc.api.error_messages import friendly_error
 from openavc.api.errors import StructuredApiError
 from openavc.api.routes import devices
 from openavc.core.state_store import StateStore
+from openavc.drivers.base import CommandPartialError
 from openavc.drivers.command_outcome import CommandOutcomeError
 
 
@@ -26,6 +27,8 @@ from openavc.drivers.command_outcome import CommandOutcomeError
 async def test_known_outcome_survives(door, outcome, status, phrase, monkeypatch):
     failure = CommandOutcomeError(outcome)
     engine = SimpleNamespace(
+        state=StateStore(),
+        project=None,
         devices=SimpleNamespace(
             send_command=AsyncMock(side_effect=failure),
             set_device_setting=AsyncMock(side_effect=failure),
@@ -78,6 +81,39 @@ async def test_unexpected_exception_stays_private(monkeypatch):
     assert caught.value.detail == (
         "local couldn't run increment. The Device Log on its page has the details."
     )
+
+
+@pytest.mark.parametrize("door", ["command", "action"])
+async def test_a_partial_failure_keeps_the_drivers_sentence(door, monkeypatch):
+    failure = CommandPartialError(
+        "Port 3 was turned off and did not come back on. Turn it on from the switch's page."
+    )
+    engine = SimpleNamespace(
+        state=StateStore(),
+        project=None,
+        devices=SimpleNamespace(
+            send_command=AsyncMock(side_effect=failure),
+            get_driver=lambda _: SimpleNamespace(
+                DRIVER_INFO={
+                    "actions": [
+                        {"id": "increment", "kind": "command", "command": "increment"}
+                    ]
+                }
+            ),
+        ),
+    )
+    monkeypatch.setattr(devices, "_get_engine", lambda: engine)
+    with pytest.raises(HTTPException) as caught:
+        if door == "command":
+            await devices.send_command(
+                "local", devices.CommandRequest(command="increment", params={})
+            )
+        else:
+            await devices.invoke_device_action(
+                "local", "increment", devices.ActionInvokeRequest(params={})
+            )
+    assert caught.value.status_code == 502
+    assert caught.value.detail == str(failure)
 
 
 def test_unknown_outcome_cannot_be_used_as_display_text():

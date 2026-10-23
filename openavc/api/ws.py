@@ -23,7 +23,7 @@ from openavc.api._engine import set_engine as _shared_set_engine
 from openavc.api.auth import authenticate_websocket, get_ws_auth_subprotocol
 from openavc.api.host_policy import EndpointPolicy, bind_request_authority, endpoint_policy
 from openavc.core.host_policy import HostCategory
-from openavc.api.error_messages import device_error_label, friendly_error
+from openavc.api.error_messages import describe_command_failure, friendly_error
 from openavc.api.panel_access import Admission, admit as admit_panel
 from openavc.core.event_bus import check_event_emit, event_visible
 from openavc.core.panel_devices import (
@@ -751,11 +751,10 @@ async def _handle_message(
         except Exception as e:
             # Catch-all: driver command handlers can raise arbitrary exceptions
             log.error(f"Command failed: {e}")
-            device_name = device_error_label(device_id, engine.state, engine.project, exc=e)
-            host = engine.state.get(f"device.{device_id}.host") or ""
-            error_msg = friendly_error(
-                e, device=device_name, host=host, at_panel=client_type == "panel"
-            )
+            error_msg = describe_command_failure(
+                e, device_id, command, state=engine.state, project=engine.project,
+                driver=engine.devices.get_driver(device_id),
+            ).for_reader(at_panel=client_type == "panel")
             await _send_ws(ws, {
                 "type": "command.ack",
                 "device_id": device_id,

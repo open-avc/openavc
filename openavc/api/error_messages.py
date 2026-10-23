@@ -9,15 +9,22 @@ from __future__ import annotations
 
 import errno
 import re
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from openavc.drivers.command_outcome import CommandOutcomeError
+from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from openavc.core.project_loader import ProjectConfig
     from openavc.core.state_store import StateStore
+
+# Logs only device command failures, each under "[<device_id>]", and is
+# categorised as a device logger (utils/log_buffer.py) so the line is kept
+# with the device's own lines: the sentence below sends the reader there.
+log = get_logger(__name__)
 
 
 def device_error_label(
@@ -32,6 +39,114 @@ def device_error_label(
             return str(device.name)
     fallback = "The requested equipment" if isinstance(exc, DeviceNotFoundError) else device_id
     return str(state.get(f"device.{device_id}.name") or fallback)
+
+
+@dataclass(frozen=True)
+class CommandFailure:
+    """A device command that did not run, worded for each reader.
+
+    ``programmer`` is what Send Command answers. ``panel`` is the same failure
+    for somebody standing at a panel, who can open no setting and no log.
+    """
+
+    programmer: str
+    panel: str
+
+    def for_reader(self, *, at_panel: bool) -> str:
+        return self.panel if at_panel else self.programmer
+
+
+# The ConnectionError subclasses friendly_error answers with a fixed sentence.
+_WORDED_CONNECTION_ERRORS = (
+    ConnectionRefusedError, ConnectionResetError, BrokenPipeError, ConnectionAbortedError,
+)
+
+
+def _command_label(driver: Any, command: str) -> str:
+    info = getattr(driver, "DRIVER_INFO", None)
+    commands = info.get("commands") if isinstance(info, dict) else None
+    cmd_def = commands.get(command) if isinstance(commands, dict) else None
+    label = cmd_def.get("label") if isinstance(cmd_def, dict) else None
+    return str(label or command or "the command")
+
+
+def describe_command_failure(
+    exc: Exception, device_id: str, command: str, *,
+    state: StateStore, project: ProjectConfig | None = None, driver: Any = None,
+) -> CommandFailure:
+    """What every door that sent a device command says when it did not run.
+
+    One rule for Send Command, a device action, a panel press, a macro or group
+    step, the WebSocket ``command`` frame, a peer system, the cloud and the
+    cloud AI. The exceptions the platform raises for a command, and a
+    ``CommandRefusedError`` (the device saying no, in a sentence written for
+    the reader), keep their own sentence. Anything else a driver raises, a
+    ``ValueError`` or ``KeyError`` included, was not written for the reader and
+    may hold what should stay private: its text is logged under the device's id,
+    which puts it in the Device Log on the device's page, and the answer names
+    the device and the command instead.
+
+    ``driver`` supplies the command's label; ``project`` the device's name.
+    """
+    from openavc.core.device_manager import DeviceNotFoundError, not_connected
+    from openavc.drivers.base import (
+        CommandParamError,
+        CommandPartialError,
+        CommandRefusedError,
+        UnknownCommandError,
+        WakeAddressError,
+    )
+    from openavc.drivers.command_files import FileCommandError
+    from openavc.reach_devices import AdapterUnavailable
+
+    name = device_error_label(device_id, state, project, exc=exc)
+    host = str(state.get(f"device.{device_id}.host") or "")
+
+    def for_the_room(worded: Exception) -> str:
+        return friendly_error(worded, device=name, host=host, at_panel=True)
+
+    if isinstance(exc, (
+        CommandParamError, UnknownCommandError, AdapterUnavailable,
+        CommandPartialError, CommandOutcomeError,
+    )):
+        return CommandFailure(str(exc), for_the_room(exc))
+    if isinstance(exc, FileCommandError):
+        # A refusal of the caller, not a fault, so a warning.
+        log.warning(f"[{device_id}] {exc}")
+        return CommandFailure(str(exc), for_the_room(exc))
+    if isinstance(exc, DeviceNotFoundError):
+        return CommandFailure(f"Device '{device_id}' not found", for_the_room(exc))
+    if isinstance(exc, WakeAddressError):
+        return CommandFailure(friendly_error(exc, device=name), for_the_room(exc))
+    if isinstance(exc, ConnectionError):
+        # The device manager's own refusals (not connected, restarting, no
+        # simulator) carry the device's id and keep their sentence. One a
+        # driver or transport raised reads as not connected: its text is not
+        # the reader's.
+        own = getattr(exc, "device_id", None) is not None
+        programmer = str(exc) if own else f"Device '{device_id}' is not connected"
+        if own or isinstance(exc, _WORDED_CONNECTION_ERRORS):
+            return CommandFailure(programmer, for_the_room(exc))
+        return CommandFailure(programmer, for_the_room(not_connected(device_id)))
+
+    refused = isinstance(exc, CommandRefusedError) and str(exc).strip()
+    (log.warning if refused else log.error)(
+        f"[{device_id}] Command '{command}' failed: {type(exc).__name__}: {exc}"
+    )
+    if refused:
+        return CommandFailure(str(exc), str(exc))
+    if isinstance(exc, (TimeoutError, httpx.TimeoutException)):
+        # Every timeout reads the same; friendly_error knows only some of
+        # httpx's by type.
+        timeout = TimeoutError()
+        return CommandFailure(
+            friendly_error(timeout, device=name, host=host), for_the_room(timeout),
+        )
+    label = _command_label(driver, command)
+    return CommandFailure(
+        f"{name} couldn't run {label}. The Device Log on its page has the details.",
+        f"{name} couldn't run {label}. Contact support.",
+    )
 
 
 def friendly_error(

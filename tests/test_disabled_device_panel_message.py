@@ -55,13 +55,18 @@ async def test_macro_failure_keeps_technical_detail_out_of_panel_message(engine)
 
 
 @pytest.mark.asyncio
-async def test_direct_command_ack_uses_the_same_label(engine, monkeypatch):
+@pytest.mark.parametrize("client_type,expected", [
+    ("panel", "Ceiling Camera is unavailable. Contact support."),
+    # A Programmer-side client gets Send Command's answer.
+    ("programmer", "Device 'acme_camera' not found"),
+])
+async def test_direct_command_ack_uses_the_same_label(engine, monkeypatch, client_type, expected):
     monkeypatch.setattr(ws, "get_engine_optional", lambda: engine)
     sent = AsyncMock()
     monkeypatch.setattr(ws, "_send_ws", sent)
     await ws._handle_message(None, {"type": "command", "device_id": "acme_camera",
-                                   "command": "power_off"}, client_type="programmer")
-    assert sent.await_args.args[1]["error"] == "Ceiling Camera is unavailable. Contact support."
+                                   "command": "power_off"}, client_type=client_type)
+    assert sent.await_args.args[1]["error"] == expected
 
 
 def test_missing_device_has_a_useful_fallback_and_other_value_errors_stay_specific():

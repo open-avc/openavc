@@ -589,7 +589,11 @@ message shows at a time however many times somebody presses, and a tap clears
 it early.
 
 If a device does not respond in time, the message names it and asks you to check
-its power, network connection and configured port before retrying.
+its power, network connection and configured port before retrying. If its
+driver fails for a reason of its own, the message names the device and the
+command and asks the room to contact support ("Lobby Display couldn't run Power
+On. Contact support."), and the reason goes to the Device Log on the device's
+page.
 
 It only appears when something failed. A control that works is silent, and the
 rest of a press still runs when one action in it fails, so a button that turns

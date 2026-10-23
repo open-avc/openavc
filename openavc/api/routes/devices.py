@@ -3,13 +3,12 @@
 import re
 from typing import Any
 
-import httpx
 from openavc.api.host_policy import ProgrammerRoute
 from fastapi import APIRouter, HTTPException, Request
 
 from openavc.api._engine import _get_engine, _rate_limit_test
 from openavc.api.errors import StructuredApiError, api_error as _api_error
-from openavc.api.error_messages import device_error_label, friendly_error
+from openavc.api.error_messages import describe_command_failure
 from openavc.drivers.command_files import FileCommandError
 from openavc.drivers.command_outcome import CommandOutcomeError
 from openavc.api.models import (
@@ -485,68 +484,44 @@ def _not_connected(device_id: str, exc: ConnectionError) -> Exception:
     return _api_error(503, f"Device '{device_id}' is not connected", exc)
 
 
-def _driver_failure(device_id: str, command: str, exc: Exception) -> HTTPException:
-    """What Send Command and a device action answer for whatever a driver
-    raised running a command. A ``CommandRefusedError`` is the device saying
-    no, in a sentence written for the reader: 409 with it. A timeout gets the
-    sentence a panel gets, naming the device. Any other exception's text was
-    not written for the reader and may hold what should stay private, so it
-    gets a 500 naming the device and the command. Every one is logged under
-    the device's id, which puts it in the Device Log on the device's page."""
-    engine = _get_engine()
-    refused = isinstance(exc, CommandRefusedError) and str(exc).strip()
-    (log.warning if refused else log.error)(
-        f"[{device_id}] Command '{command}' failed: {type(exc).__name__}: {exc}"
-    )
-    if refused:
-        return HTTPException(status_code=409, detail=str(exc))
-    name = device_error_label(device_id, engine.state, engine.project, exc=exc)
-    if isinstance(exc, (TimeoutError, httpx.TimeoutException)):
-        host = engine.state.get(f"device.{device_id}.host") or ""
-        return HTTPException(status_code=500, detail=friendly_error(exc, device=name, host=host))
-    driver = engine.devices.get_driver(device_id)
-    cmd_def = ((getattr(driver, "DRIVER_INFO", {}) or {}).get("commands") or {}).get(command)
-    label = (cmd_def.get("label") if isinstance(cmd_def, dict) else None) or command
-    return HTTPException(
-        status_code=500,
-        detail=f"{name} couldn't run {label}. The Device Log on its page has the details.",
-    )
-
-
 def command_failure(device_id: str, command: str, exc: Exception) -> HTTPException:
-    """What Send Command answers for a command that did not run, whatever
-    raised. One place, so a file command's background run
-    (``core/command_runs.py``) words its failure exactly as Send Command does.
+    """What Send Command and a device action answer for a command that did not
+    run, whatever raised. The sentence is the one every door that sends a
+    command answers with (``describe_command_failure``, which also logs what
+    it keeps out of the answer); the status is this door's. One place, so a
+    file command's background run (``core/command_runs.py``) words its failure
+    exactly as Send Command does.
     """
     engine = _get_engine()
+    detail = describe_command_failure(
+        exc, device_id, command, state=engine.state, project=engine.project,
+        driver=engine.devices.get_driver(device_id),
+    ).programmer
     if isinstance(exc, CommandParamError):
         # A bad parameter value (out of range / wrong type / pattern mismatch) —
         # surface the actionable message, not a misleading "device not found".
-        return _api_error(400, str(exc), exc)
+        return _api_error(400, detail, exc)
     if isinstance(exc, UnknownCommandError):
         # Still a 404, but naming the thing that is actually missing: the
         # command. (UnknownCommandError subclasses ValueError, so this branch
         # has to sit above the device-not-found one.)
-        return _api_error(404, str(exc), exc)
+        return _api_error(404, detail, exc)
     if isinstance(exc, DeviceNotFoundError):
-        return _api_error(404, f"Device '{device_id}' not found", exc)
+        return _api_error(404, detail, exc)
     if isinstance(exc, WakeAddressError):
         # A wake with no usable MAC address: the device's setup is not
         # finished, and the sentence names the setting to fill in.
-        name = device_error_label(device_id, engine.state, engine.project, exc=exc)
-        return _api_error(409, friendly_error(exc, device=name), exc)
+        return _api_error(409, detail, exc)
     if isinstance(exc, AdapterUnavailable):
         # The adapter chosen in Reach devices through, not the device: a
         # Wake-on-LAN command runs while the device is off.
-        return _api_error(503, str(exc), exc)
+        return _api_error(503, detail, exc)
     if isinstance(exc, FileCommandError):
         # A command that takes or hands back a file, sent from somewhere that
-        # has none to give; the sentence says where it runs from. A refusal of
-        # the caller, not a fault, so a warning rather than an error.
-        log.warning(f"[{device_id}] {exc}")
-        return HTTPException(status_code=409, detail=str(exc))
+        # has none to give; the sentence says where it runs from.
+        return HTTPException(status_code=409, detail=detail)
     if isinstance(exc, ConnectionError):
-        return _not_connected(device_id, exc)
+        return _api_error(503, detail, exc)
     if isinstance(exc, CommandPartialError):
         # The command DID something and could not confirm the rest, so the
         # generic wording below would be actively wrong -- it reads as "nothing
@@ -559,17 +534,21 @@ def command_failure(device_id: str, command: str, exc: Exception) -> HTTPExcepti
         # the device is the upstream). It also sits right beside the 503 above:
         # 503 could not reach the device, 502 reached it and the exchange came
         # apart partway.
-        return _api_error(502, str(exc), exc)
+        return _api_error(502, detail, exc)
     if isinstance(exc, CommandOutcomeError):
         return StructuredApiError(
-            502 if exc.outcome == "failed" else 409, str(exc),
+            502 if exc.outcome == "failed" else 409, detail,
             code="command_incomplete", outcome=exc.outcome,
         )
+    if isinstance(exc, CommandRefusedError) and str(exc).strip():
+        # The device saying no, in a sentence written for the reader.
+        return HTTPException(status_code=409, detail=detail)
     # Where a driver's own failure lands, whatever it raised. A driver
     # ValueError -- a response its handler could not parse, a helper deep in a
     # protocol -- used to be caught above and reported as a missing device; it
-    # belongs here with the driver's other faults.
-    return _driver_failure(device_id, command, exc)
+    # belongs here with the driver's other faults. A timeout too: the sentence
+    # names the device, and the 500 says it is ours.
+    return HTTPException(status_code=500, detail=detail)
 
 
 @router.post("/devices/{device_id}/command")
@@ -720,11 +699,6 @@ async def invoke_device_action(
                 device_id, action["command"], body.params
             )
             return {"success": True, "result": result, "action_id": action_id}
-        except CommandParamError as e:
-            # A bad parameter value (out of range / wrong type / pattern
-            # mismatch) — surface the actionable message, not a misleading
-            # "device not found" (CommandParamError subclasses ValueError).
-            raise _api_error(400, str(e), e)
         except UnknownCommandError as e:
             # The action resolved, but the command it names does not exist.
             # Name both: the author is looking at a button, and the broken
@@ -736,23 +710,9 @@ async def invoke_device_action(
                 f"not declare",
                 e,
             )
-        except DeviceNotFoundError as e:
-            raise _api_error(404, f"Device '{device_id}' not found", e)
-        except WakeAddressError as e:
-            name = device_error_label(device_id, engine.state, engine.project, exc=e)
-            raise _api_error(409, friendly_error(e, device=name), e)
-        except FileCommandError as e:
-            log.warning(f"[{device_id}] {e}")
-            raise HTTPException(status_code=409, detail=str(e)) from None
-        except ConnectionError as e:
-            raise _not_connected(device_id, e)
-        except CommandOutcomeError as e:
-            raise StructuredApiError(
-                502 if e.outcome == "failed" else 409, str(e),
-                code="command_incomplete", outcome=e.outcome,
-            ) from e
         except Exception as e:
-            raise _driver_failure(device_id, action["command"], e) from e
+            # Everything else is answered as Send Command answers it.
+            raise command_failure(device_id, action["command"], e) from e
 
     if action["kind"] == "link":
         # A link action opens the URL client-side; there's nothing to invoke.

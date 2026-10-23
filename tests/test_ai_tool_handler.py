@@ -228,7 +228,9 @@ async def test_unknown_tool(handler, mock_agent):
 
 @pytest.mark.asyncio
 async def test_device_command_error(handler, mock_agent, mock_devices):
-    mock_devices.send_command.side_effect = ValueError("Device not found")
+    from openavc.core.device_manager import DeviceNotFoundError
+
+    mock_devices.send_command.side_effect = DeviceNotFoundError("Device 'unknown' not found")
 
     msg = _make_tool_call_msg("send_device_command", {
         "device_id": "unknown",
@@ -238,7 +240,7 @@ async def test_device_command_error(handler, mock_agent, mock_devices):
 
     payload = mock_agent.send_message.call_args[0][1]
     assert payload["success"] is False
-    assert "Device not found" in payload["error"]
+    assert payload["error"] == "Device 'unknown' not found"
 
 
 @pytest.mark.asyncio
