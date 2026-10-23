@@ -2524,7 +2524,16 @@ class DeviceManager:
         Called as a reconnect loop starts, which is the one place that sees
         both halves of the pattern: how long ago we last got this device
         online, and the fact that it has fallen over again.
+
+        A drop inside a commanded-restart window is the restart we asked for,
+        however soon after connecting it comes, so it is not counted or logged
+        as a flap (``_reconnect_delay`` skips the escalation for the same
+        reason). The count is left as it stood: the drop says nothing either
+        way about whether the device stays up, and a count it added would
+        outlive the window and double the wait for a device still booting.
         """
+        if self.restart_seconds_left(device_id) is not None:
+            return
         last = self._last_connect_at.get(device_id)
         if last is not None and (time.monotonic() - last) < _FLAP_WINDOW_SECONDS:
             self._flap_counts[device_id] = self._flap_counts.get(device_id, 0) + 1

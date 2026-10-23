@@ -208,6 +208,27 @@ def test_removing_the_device_drops_the_window():
     assert dm.restart_seconds_left("widget") is None
 
 
+# --- flapping --------------------------------------------------------------
+
+
+def test_a_restart_soon_after_connecting_is_not_a_flap(caplog):
+    # A drop inside the flap window normally counts as a flap and doubles the
+    # retry interval. The restart we asked for is not one: no warning in the
+    # device log, and no doubled wait if the device is still away when the
+    # window runs out.
+    dm, driver, _ = _manager()
+    dm._last_connect_at["widget"] = time.monotonic() - 5
+    asyncio.run(dm.send_command("widget", "reboot", {}))
+
+    with caplog.at_level("WARNING", logger="openavc.core.device_manager"):
+        dm._note_flap("widget")
+    assert "widget" not in dm._flap_counts
+    assert "backing off" not in caplog.text
+
+    dm._restart_windows["widget"] = time.monotonic() - 0.01  # window runs out
+    assert 4.0 <= dm._reconnect_delay("widget", attempt=5) <= 6.0
+
+
 # --- what a press gets told ------------------------------------------------
 
 
