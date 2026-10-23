@@ -452,10 +452,14 @@ export function createDefaultElement(
     case "custom":
       // The file is chosen in the properties panel, from what is actually in
       // the project's ui/ folder — a new one starts empty and says so on the
-      // canvas rather than pointing at a path nobody has written yet.
-      return { ...base, label: "Custom Control", custom_file: "", custom_config: {} };
+      // canvas rather than pointing at a path nobody has written yet. No
+      // label: a custom control never draws one, and the page review would
+      // warn about it the moment the control was added.
+      return { ...base, custom_file: "", custom_config: {} };
     default:
-      // Plugin element: type is "plugin:<plugin_id>:<plugin_type>"
+      // Plugin element: type is "plugin:<plugin_id>:<plugin_type>". No label,
+      // for the same reason as a custom control: a plugin element draws its
+      // own content and never a label.
       if (type.startsWith("plugin:")) {
         const parts = type.split(":");
         const pluginId = parts[1];
@@ -463,7 +467,6 @@ export function createDefaultElement(
         return {
           ...base,
           type: "plugin",
-          label: pluginType,
           plugin_type: pluginType,
           plugin_id: pluginId,
           plugin_config: {},
