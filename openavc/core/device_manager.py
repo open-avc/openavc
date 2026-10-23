@@ -397,6 +397,11 @@ class DeviceManager:
         # its own address. Asked before probing for a web page; None in a bare
         # manager.
         self.redirected_to_simulator: Callable[[str], bool] | None = None
+        # Set by the engine to SimulationManager.real_connection_of: given a
+        # device id, the connection settings the simulation redirect replaced,
+        # or None when it is not redirected. Open Web UI links are built from
+        # them; None in a bare manager.
+        self.real_connection: Callable[[str], dict[str, Any] | None] | None = None
         # Set by the engine to its bring-up scheduler. reload_driver re-adds a
         # driver's devices registered-but-not-dialed and asks for a round, so
         # the engine puts the simulation redirect in place BEFORE the first
@@ -1272,11 +1277,29 @@ class DeviceManager:
             # host at its top level, so it can't substitute anything.
             "actions": resolve_device_actions(
                 driver.DRIVER_INFO,
-                driver.config,
+                self._link_config(device_id, driver),
                 detected_web_ui_url=self._detected_web_ui_urls.get(device_id),
             ),
             "driver_info": driver.DRIVER_INFO,
         }
+
+    def _link_config(self, device_id: str, driver: BaseDriver) -> dict[str, Any]:
+        """The config a link action's URL is built from: the driver's own,
+        with its real address put back while a simulation holds the device.
+        Redirected, its host is this computer's loopback address and its port
+        the simulator's, so a link built from them opens the simulator, or
+        OpenAVC itself on 8080, instead of the equipment's page."""
+        config = driver.config or {}
+        real = self.real_connection(device_id) if self.real_connection is not None else None
+        if not real:
+            return config
+        merged = dict(config)
+        for key, value in real.items():
+            if value is None:
+                merged.pop(key, None)
+            else:
+                merged[key] = value
+        return merged
 
     def list_devices(self) -> list[dict[str, Any]]:
         items = self._list_devices()

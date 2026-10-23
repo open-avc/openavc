@@ -356,6 +356,15 @@ class SimulationManager:
             if key in driver.config
         }
 
+    def real_connection_of(self, device_id: str) -> dict[str, Any] | None:
+        """The connection settings the redirect replaced (the device's own
+        address, as its live config had them), or None when it is not
+        redirected. A None value is a key that was absent. An Open Web UI
+        link is built from these, so it opens the equipment's page rather
+        than the simulator on this computer."""
+        original = self._original_configs.get(device_id)
+        return dict(original) if original is not None else None
+
     async def start(self, device_ids: list[str] | None = None) -> dict:
         """Start simulation for the specified devices (or all devices).
 

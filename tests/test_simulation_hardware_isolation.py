@@ -298,6 +298,47 @@ async def test_no_web_page_probe_while_simulation_holds_a_device(rig, monkeypatc
     }
 
 
+class WebControlled(Hardware):
+    DRIVER_INFO = {**Hardware.DRIVER_INFO, "transport": "http"}
+
+
+class ForcedWebPage(Hardware):
+    DRIVER_INFO = {**Hardware.DRIVER_INFO, "web_ui": True}
+
+
+class TemplatedWebPage(Hardware):
+    DRIVER_INFO = {**Hardware.DRIVER_INFO, "web_ui": "http://{host}:8080/admin"}
+
+
+class OwnLink(Hardware):
+    DRIVER_INFO = {
+        **Hardware.DRIVER_INFO,
+        "actions": [{"id": "setup_page", "kind": "link", "url": "http://{host}:{port}/setup"}],
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("driver", [WebControlled, ForcedWebPage, TemplatedWebPage, OwnLink])
+async def test_a_web_page_link_keeps_the_real_address_while_simulated(rig, driver):
+    # Redirected, the device's host is 127.0.0.1: a link built from it opens
+    # the simulator, or OpenAVC itself on 8080.
+    manager, simulator = rig
+    manager.real_connection = simulator.real_connection_of  # as the engine wires it
+    manager._devices["ordinary"] = driver(manager.state, "ordinary")
+
+    def links():
+        info = manager.get_device_info("ordinary")
+        return [a["url"] for a in info["actions"] if a["kind"] == "link"]
+
+    real = links()
+    assert real and all("192.0.2.1" in url for url in real)
+    await simulator._redirect_connections()
+    assert manager._devices["ordinary"].config["host"] == "127.0.0.1"
+    assert links() == real
+    await simulator._restore_connections()
+    assert links() == real
+
+
 def test_the_engine_tells_its_devices_which_are_simulated(tmp_path):
     from openavc.core.engine import Engine
 
@@ -305,3 +346,4 @@ def test_the_engine_tells_its_devices_which_are_simulated(tmp_path):
     path.write_text('{"openavc_version": "0.14.0", "project": {"id": "t", "name": "T"}}')
     engine = Engine(str(path))
     assert engine.devices.redirected_to_simulator == engine.simulation.is_redirected
+    assert engine.devices.real_connection == engine.simulation.real_connection_of

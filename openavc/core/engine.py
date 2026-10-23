@@ -163,6 +163,7 @@ class Engine:
         from openavc.core.simulation import SimulationManager
         self.simulation = SimulationManager(self)
         self.devices.redirected_to_simulator = self.simulation.is_redirected
+        self.devices.real_connection = self.simulation.real_connection_of
 
         # Wire StateStore -> EventBus
         self.state.set_event_bus(self.events)
