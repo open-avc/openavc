@@ -1,4 +1,5 @@
 """Unsupported simulated devices must not fall back to their hardware paths."""
+import asyncio
 import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -262,3 +263,45 @@ async def test_a_simulator_that_never_answers_still_gets_sequential_ports(rig, s
     simulator, calls = await start_run(["ordinary"], 503)
     assert len(calls) == _PORT_QUERY_ATTEMPTS
     assert simulator._sim_ports["ordinary"] == manager._devices["ordinary"].config["port"] != 9000
+
+
+@pytest.mark.asyncio
+async def test_no_web_page_probe_while_simulation_holds_a_device(rig, monkeypatch):
+    # Connected to the simulator a device's host is 127.0.0.1, where the probe
+    # finds whatever this computer serves: OpenAVC itself on 8080.
+    manager, simulator = rig
+    manager.redirected_to_simulator = simulator.is_redirected  # as the engine wires it
+    probed = []
+
+    async def probe(host):
+        probed.append(host)
+        return f"http://{host}:8080"
+
+    monkeypatch.setattr("openavc.core.web_ui_probe.probe_web_ui", probe)
+
+    async def settled():
+        await asyncio.gather(*list(manager._web_ui_probe_tasks.values()))
+
+    await simulator._redirect_connections()
+    for ident in manager._devices:
+        manager._schedule_web_ui_probe(ident)  # what each connect asks
+    await settled()
+    assert probed == ["192.0.2.1"], "only the device simulation leaves alone"
+    assert manager._detected_web_ui_urls == {"outside": "http://192.0.2.1:8080"}
+
+    # Handed back, each is probed at its own address, connected or not.
+    await simulator._restore_connections()
+    await settled()
+    assert probed == ["192.0.2.1"] * 3
+    assert manager._detected_web_ui_urls == {
+        ident: "http://192.0.2.1:8080" for ident in ("missing", "ordinary", "outside")
+    }
+
+
+def test_the_engine_tells_its_devices_which_are_simulated(tmp_path):
+    from openavc.core.engine import Engine
+
+    path = tmp_path / "project.avc"
+    path.write_text('{"openavc_version": "0.14.0", "project": {"id": "t", "name": "T"}}')
+    engine = Engine(str(path))
+    assert engine.devices.redirected_to_simulator == engine.simulation.is_redirected

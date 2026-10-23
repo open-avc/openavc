@@ -392,6 +392,11 @@ class DeviceManager:
         # A callable rather than an import, so the device manager goes on
         # knowing nothing about simulation; None whenever it isn't running.
         self.unsimulated_driver: Callable[[str], str | None] | None = None
+        # Set by the engine to SimulationManager.is_redirected: given a device
+        # id, True while that device connects to the simulator rather than to
+        # its own address. Asked before probing for a web page; None in a bare
+        # manager.
+        self.redirected_to_simulator: Callable[[str], bool] | None = None
         # Set by the engine to its bring-up scheduler. reload_driver re-adds a
         # driver's devices registered-but-not-dialed and asks for a round, so
         # the engine puts the simulation redirect in place BEFORE the first
@@ -2299,11 +2304,23 @@ class DeviceManager:
         HTTP-transport device (its URL comes straight from config in the action
         resolver — no probe needed). The detected URL is stashed on
         ``_detected_web_ui_urls`` and surfaced by ``get_device_info``.
+
+        Skipped too while a running simulation holds the device. Connected to
+        the simulator, its host is this computer's loopback address, where
+        the probe finds whatever this computer serves (OpenAVC itself on
+        8080), and a simulated device has no web page of its own; with no
+        simulator for its driver, it is kept off its own address altogether.
+        A URL found at the device's own address before simulation started is
+        kept.
         """
         driver = self._devices.get(device_id)
         if driver is None or driver.DRIVER_INFO.get("web_ui") is not None:
             return
         if device_id in self._detected_web_ui_urls or device_id in self._web_ui_probe_tasks:
+            return
+        if self._simulation_gap(device_id) is not None or (
+            self.redirected_to_simulator is not None and self.redirected_to_simulator(device_id)
+        ):
             return
         config = getattr(driver, "config", None) or {}
         host = config.get("host")
@@ -2926,6 +2943,11 @@ class DeviceManager:
                     self._pause_reconnect_for_auth(device_id)
                 else:
                     self._start_reconnect(device_id)
+            # Probed whether or not the control protocol connected, as at
+            # bring-up. Stopping simulation hands a device back through here,
+            # and one added while simulating has not been probed at its own
+            # address yet.
+            self._schedule_web_ui_probe(device_id)
         finally:
             self._intentional_disconnect.discard(device_id)
 
