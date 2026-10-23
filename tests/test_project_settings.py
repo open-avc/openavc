@@ -123,7 +123,7 @@ def test_migration_stamps_the_version_and_writes_nothing():
 
 def test_an_old_project_migrates_all_the_way_up():
     data, _ = migrate_project({"openavc_version": "0.1.0", "project": {"id": "p1", "name": "t"}})
-    assert data["openavc_version"] == CURRENT_VERSION == "0.14.0"
+    assert data["openavc_version"] == CURRENT_VERSION == "0.15.0"
 
 
 def test_a_project_that_already_chose_keeps_its_choice():

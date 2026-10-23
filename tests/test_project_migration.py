@@ -18,9 +18,12 @@ from openavc.core.project_migration import (
     migrate_0_11_to_0_12,
     migrate_0_12_to_0_13,
     migrate_0_13_to_0_14,
+    migrate_0_14_to_0_15,
     migrate_project,
 )
+from openavc.core.project_loader import ProjectConfig
 from openavc.ui.matrix_model import resolve_axis
+from openavc.ui.page_review import review_master_element, review_page
 
 
 # ---------------------------------------------------------------------------
@@ -393,7 +396,8 @@ class TestFullMigrationChain:
         data = migrate_0_10_to_0_11(data)
         data = migrate_0_11_to_0_12(data)
         data = migrate_0_12_to_0_13(data)
-        data = migrate_0_13_to_0_14(data)  # Now at CURRENT_VERSION
+        data = migrate_0_13_to_0_14(data)
+        data = migrate_0_14_to_0_15(data)  # Now at CURRENT_VERSION
         result, migrated = migrate_project(copy.deepcopy(data))
 
         assert migrated is False
@@ -627,6 +631,82 @@ class TestMigrate010To011:
         }
         result = migrate_0_10_to_0_11(copy.deepcopy(data))
         assert [m["key"] for m in result["monitors"]] == ["var.ok"]
+
+
+# ---------------------------------------------------------------------------
+# 0.14.0 -> 0.15.0 — a label on a control that draws none is dropped
+# ---------------------------------------------------------------------------
+
+def make_v014_project_with_stray_labels() -> dict:
+    """What the UI Builder used to leave behind: a custom control and a plugin
+    control carrying the default label it gave them, a clock carrying one typed
+    into the field it once offered, and a text label carrying one from a
+    hand-edited file. None of the four draws a label."""
+    def plugin(el_id: str) -> dict:
+        return {"id": el_id, "type": "plugin", "label": "status_tile",
+                "plugin_id": "acme_tiles", "plugin_type": "status_tile", "plugin_config": {}}
+
+    return {
+        "openavc_version": "0.14.0",
+        "project": {"id": "p", "name": "P"},
+        "ui": {
+            "pages": [{"id": "main", "name": "Main", "elements": [
+                {"id": "room_map", "type": "custom", "label": "Custom Control",
+                 "custom_file": "room_map/index.html", "custom_config": {}},
+                plugin("tiles"),
+                {"id": "wall_clock", "type": "clock", "label": "Lobby clock"},
+                {"id": "title", "type": "label", "label": "Title", "text": "Welcome"},
+                {"id": "power", "type": "button", "label": "Power"},
+            ]}],
+            "master_elements": [plugin("bar_tiles")],
+        },
+    }
+
+
+def _not_rendered(data: dict) -> set[str]:
+    """The controls the page review says carry a property they do not draw."""
+    ui = ProjectConfig.model_validate(data).ui
+    findings, _ = review_page(ui.pages[0], masters=ui.master_elements)
+    for master in ui.master_elements:
+        findings += review_master_element(master)
+    return {f.element_id for f in findings if f.kind == "property_not_rendered"}
+
+
+class TestMigrate014To015:
+    def test_a_label_on_a_control_that_draws_none_is_dropped(self):
+        result, migrated = migrate_project(make_v014_project_with_stray_labels())
+
+        assert migrated is True
+        assert result["openavc_version"] == CURRENT_VERSION == "0.15.0"
+        page = {el["id"]: el for el in result["ui"]["pages"][0]["elements"]}
+        for el_id in ("room_map", "tiles", "wall_clock", "title"):
+            assert "label" not in page[el_id], el_id
+        assert "label" not in result["ui"]["master_elements"][0]
+        # Nothing else moves, the label of a control that draws one included.
+        assert page["power"]["label"] == "Power"
+        assert page["title"]["text"] == "Welcome"
+        assert page["room_map"]["custom_file"] == "room_map/index.html"
+        assert page["tiles"]["plugin_type"] == "status_tile"
+
+    def test_the_page_review_has_nothing_left_to_say_about_them(self):
+        # Before: one warning per control, and no field in the Builder that
+        # could clear it.
+        assert _not_rendered(make_v014_project_with_stray_labels()) == {
+            "room_map", "tiles", "wall_clock", "title", "bar_tiles",
+        }
+        result, _ = migrate_project(make_v014_project_with_stray_labels())
+        assert _not_rendered(result) == set()
+
+    def test_a_malformed_ui_does_not_stop_the_migration(self):
+        data = {
+            "openavc_version": "0.14.0",
+            "project": {"id": "p", "name": "P"},
+            "ui": {"pages": ["not a page", {"id": "x", "elements": ["not an element"]}],
+                   "master_elements": None},
+        }
+        result = migrate_0_14_to_0_15(copy.deepcopy(data))
+        assert result["openavc_version"] == "0.15.0"
+        assert result["ui"]["pages"][1]["elements"] == ["not an element"]
 
 
 # ---------------------------------------------------------------------------

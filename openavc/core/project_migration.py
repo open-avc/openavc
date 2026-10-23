@@ -21,7 +21,7 @@ from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-CURRENT_VERSION = "0.14.0"
+CURRENT_VERSION = "0.15.0"
 
 # --- 0.8.0 layout-engine constants -------------------------------------------
 # The reference screen the old grid was implicitly designed against. Converting
@@ -978,6 +978,48 @@ def migrate_0_13_to_0_14(data: dict) -> dict:
     return data
 
 
+# The element types whose panel renderer never draws `label`, as they stood at
+# 0.15.0. Written out rather than read from the page review's table: a
+# migration says what it did to the projects of its day, and has to keep doing
+# exactly that after the table moves on.
+_UNDRAWN_LABEL_TYPES_0_15 = frozenset({"clock", "custom", "label", "plugin"})
+
+
+def migrate_0_14_to_0_15(data: dict) -> dict:
+    """
+    Migrate from 0.14.0 to 0.15.0 -- a label on a control that draws none is
+    dropped.
+
+    The UI Builder used to give every new custom control the label "Custom
+    Control" and every plugin control its plugin type as a label, and offered a
+    Label field on a clock. None of them draws a label, and neither does a text
+    label (it draws `text`), so the page review warns about every one of those
+    labels -- and the Builder, which now offers the field only where it is
+    drawn, has no way left to clear it. Every page and master element of those
+    four types loses its `label`, whoever wrote it, and nothing else moves.
+
+    Nothing on a panel changes: no renderer read the field. What a person can
+    see go is the caption the Outline list showed beside such a control's id,
+    which was the label. An older platform opening a 0.15.0 project logs the
+    version mismatch and loads it, drawing the same thing it always did.
+    """
+    ui = data.get("ui")
+    if isinstance(ui, dict):
+        elements = [
+            el
+            for page in ui.get("pages", []) or []
+            if isinstance(page, dict)
+            for el in page.get("elements", []) or []
+        ]
+        elements += list(ui.get("master_elements", []) or [])
+        for el in elements:
+            if isinstance(el, dict) and el.get("type") in _UNDRAWN_LABEL_TYPES_0_15:
+                el.pop("label", None)
+
+    data["openavc_version"] = "0.15.0"
+    return data
+
+
 # Ordered list of migrations: (source_version, target_version, transform_fn)
 MIGRATIONS = [
     ("0.1.0", "0.2.0", migrate_0_1_to_0_2),
@@ -993,6 +1035,7 @@ MIGRATIONS = [
     ("0.11.0", "0.12.0", migrate_0_11_to_0_12),
     ("0.12.0", "0.13.0", migrate_0_12_to_0_13),
     ("0.13.0", "0.14.0", migrate_0_13_to_0_14),
+    ("0.14.0", "0.15.0", migrate_0_14_to_0_15),
 ]
 
 
