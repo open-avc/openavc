@@ -626,16 +626,18 @@ async def _run_timer_callback(
     assume the loop thread, so thread offload would break them). Keep timer
     callbacks short or make them async.
     """
-    from openavc.core.script_engine import ScriptEngine
+    from openavc.core.script_engine import (
+        HandlerTimedOut, ScriptEngine, run_within_handler_limit,
+    )
 
     handler_name = getattr(callback, "__name__", "anonymous")
     try:
         result = callback(*args)
         if asyncio.iscoroutine(result):
-            await asyncio.wait_for(result, timeout=ScriptEngine.HANDLER_TIMEOUT)
+            await run_within_handler_limit(result, ScriptEngine.HANDLER_TIMEOUT)
     except asyncio.CancelledError:
         raise
-    except asyncio.TimeoutError:
+    except HandlerTimedOut:
         msg = (
             f"{kind}() callback '{handler_name}' timed out after "
             f"{ScriptEngine.HANDLER_TIMEOUT}s (timer {timer_id})"

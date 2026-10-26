@@ -53,6 +53,28 @@ _EVENT_ARITY_PROBE = object()
 _state_handler_depth: ContextVar[int] = ContextVar("openavc_state_handler_depth", default=0)
 
 
+class HandlerTimedOut(Exception):
+    """A script's async body ran past ``ScriptEngine.HANDLER_TIMEOUT``.
+
+    Its own type because the limit is not the only ``TimeoutError`` a handler
+    meets: a device command it sent that got no answer, or one it raised
+    itself, is the handler's own failure and is recorded with its text and
+    traceback like any other. Only the engine's limit reads "timed out after".
+    """
+
+
+async def run_within_handler_limit(awaitable: Any, limit: float) -> None:
+    """Await a script's coroutine under the handler limit, raising
+    :class:`HandlerTimedOut` only when that limit is what stopped it."""
+    try:
+        async with asyncio.timeout(limit) as scope:
+            await awaitable
+    except TimeoutError:
+        if scope.expired():
+            raise HandlerTimedOut() from None
+        raise
+
+
 def describe_parameters(fn: Callable) -> dict[str, Any]:
     """What a script function takes, in the shape the Builder draws.
 
@@ -708,7 +730,7 @@ class ScriptEngine:
             try:
                 result = fn(**params)
                 if asyncio.iscoroutine(result):
-                    await asyncio.wait_for(result, timeout=self.HANDLER_TIMEOUT)
+                    await run_within_handler_limit(result, self.HANDLER_TIMEOUT)
                 # A plain `def` has already run inline by this point, for the
                 # same reason a sync handler does: the state/devices/events
                 # proxies must run on the loop thread.
@@ -718,7 +740,7 @@ class ScriptEngine:
                 sentence = str(exc).strip()
                 log.info(f"Script '{script_id}' function '{name}' told the panel: {sentence}")
                 raise ScriptCallError(sentence or COULD_NOT_FINISH) from exc
-            except asyncio.TimeoutError as exc:
+            except HandlerTimedOut as exc:
                 msg = (
                     f"Script '{script_id}' function '{name}' timed out after "
                     f"{self.HANDLER_TIMEOUT}s"
@@ -823,7 +845,7 @@ class ScriptEngine:
                     from openavc.core.script_api import Event
                     result = handler(Event(event, payload))
                     if asyncio.iscoroutine(result):
-                        await asyncio.wait_for(result, timeout=self.HANDLER_TIMEOUT)
+                        await run_within_handler_limit(result, self.HANDLER_TIMEOUT)
                     # A synchronous handler has, by this point, already run to
                     # completion inline on the event loop. It is NOT offloaded
                     # to a worker thread: the state/devices/events proxies it
@@ -832,7 +854,7 @@ class ScriptEngine:
                     # would silently break that propagation. The cost is that a
                     # blocking sync handler stalls the loop — keep sync handlers
                     # quick and use an async handler with `await` for slow work.
-                except asyncio.TimeoutError:
+                except HandlerTimedOut:
                     handler_name = getattr(handler, "__name__", "anonymous")
                     msg = (
                         f"Script '{script_id}' handler '{handler_name}' timed out "
@@ -935,10 +957,10 @@ class ScriptEngine:
         handler_name = getattr(handler, "__name__", "anonymous")
         try:
             with script_api.current_script_context(script_id):
-                await asyncio.wait_for(coro, timeout=self.HANDLER_TIMEOUT)
+                await run_within_handler_limit(coro, self.HANDLER_TIMEOUT)
         except asyncio.CancelledError:
             raise
-        except asyncio.TimeoutError:
+        except HandlerTimedOut:
             msg = (
                 f"Script '{script_id}' state handler '{handler_name}' timed out "
                 f"after {self.HANDLER_TIMEOUT}s for '{key}'"

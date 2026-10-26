@@ -791,6 +791,23 @@ async def test_after_async_callback_timeout_emits_script_error(monkeypatch):
     assert "timed out" in errors[0]["error"]
 
 
+async def test_after_callback_timeout_error_is_its_own_failure(monkeypatch):
+    """A TimeoutError the timer body raised is not the handler limit."""
+    recorder = _EmitRecorder()
+    monkeypatch.setattr(script_api, "events", recorder)
+
+    async def ask():
+        raise TimeoutError("the device did not answer")
+
+    script_api.after(0.01, ask)
+    await asyncio.sleep(0.15)
+
+    errors = [p for n, p in recorder.emitted if n == "script.error"]
+    assert len(errors) == 1
+    assert errors[0]["error"] == "the device did not answer"
+    assert "TimeoutError" in errors[0]["traceback"]
+
+
 async def test_every_sync_callback_error_emits_and_keeps_ticking(monkeypatch):
     """A sync callback that raises surfaces script.error each tick and never
     kills the interval loop."""
@@ -1216,6 +1233,48 @@ async def test_a_handler_that_times_out_is_recorded(engine, subsystems, script_d
     assert entry["count"] == 1
     assert "timed out" in entry["error"]
     assert entry["traceback"] == ""
+
+
+async def test_a_timeout_the_script_met_is_its_own_failure_not_the_limit(
+    engine, subsystems, script_dir
+):
+    """Only the engine's limit reads "timed out after". A TimeoutError the
+    script met itself (a device command that got no answer) is recorded with
+    its own text and traceback, by every way a script is run."""
+    from openavc.core.script_engine import ScriptCallError
+
+    state, events, _ = subsystems
+    _write_script(script_dir, "waits.py", """\
+        from openavc import on_event, on_state_change
+
+        def _no_answer():
+            raise TimeoutError("the device did not answer")
+
+        async def quick():
+            _no_answer()
+
+        @on_event("custom.ask")
+        async def on_ask(event):
+            _no_answer()
+
+        @on_state_change("var.ask")
+        async def on_var(key, old_value, new_value):
+            _no_answer()
+    """)
+    engine.load_scripts([{"id": "waits", "file": "waits.py", "enabled": True}])
+    seen: list[dict] = []
+    events.on("script.error", lambda _e, p: seen.append(p))
+
+    with pytest.raises(ScriptCallError):
+        await engine.call_function("quick")
+    await events.emit("custom.ask", {})
+    state.set("var.ask", "go")
+    await asyncio.sleep(0.1)
+
+    assert sorted(p["handler"] for p in seen) == ["on_ask", "on_var", "quick"]
+    for payload in seen:
+        assert payload["error"] == "the device did not answer"
+        assert "TimeoutError" in payload["traceback"]
 
 
 async def test_a_working_script_is_reported_against_for_nothing(
