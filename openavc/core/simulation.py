@@ -8,6 +8,21 @@ fake protocol servers. This module handles:
   - Swapping device connection addresses to localhost:sim_port
   - Restoring original connections when simulation stops
   - Preventing duplicate simulator processes
+  - Bringing simulation back when the server starts again
+
+**Simulation that is on stays on across a restart, until somebody stops it.**
+A run that starts writes ``simulation.json`` in the data directory (per box,
+not per project: a project switch keeps simulating), and only Stop Simulation
+removes it. A shutdown leaves it, and so does the simulator exiting on its
+own: a service stop signals the simulator and this process at the same moment,
+so that exit says nothing about whether anybody turned simulation off. At the
+next start ``Engine.start`` registers the devices undialed and the bring-up
+round calls :meth:`SimulationManager.resume` before the first connect, so no
+device reaches its real address on the way back. A comeback that fails, and a
+simulator that stops mid-run, leave the devices on their real addresses and
+say so in ``system.simulation_error``; the record stays, so the next start
+tries again. While simulation runs the IDE, the panel and the cloud portal all
+mark it (``system.simulation_active``).
 """
 
 from __future__ import annotations
@@ -142,6 +157,65 @@ _UI_PORT_SEARCH_SPAN = 200
 # device got before the start falls back to guessing them in sequence.
 _PORT_QUERY_ATTEMPTS = 10
 _PORT_QUERY_RETRY_S = 0.3
+
+# The record of a simulation that is on, in the data directory: present from a
+# start until Stop Simulation (see the module docstring).
+RECORD_NAME = "simulation.json"
+
+# Why simulation is not running although nobody stopped it, as a sentence the
+# IDE shows. Empty when there is nothing to say.
+ERROR_KEY = "system.simulation_error"
+
+
+def _record_path() -> Path:
+    from openavc.system_config import get_data_dir
+
+    return get_data_dir() / RECORD_NAME
+
+
+def _read_record() -> tuple[bool, list[str] | None]:
+    """(simulation is on, the devices it was started for or None for all).
+
+    A record that will not parse still means simulation was on, and every
+    device is the selection that keeps the most equipment off the wire.
+    """
+    try:
+        raw = _record_path().read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return False, None
+    except OSError as e:
+        log.warning("Could not read %s: %s", RECORD_NAME, e)
+        return False, None
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        log.warning("%s is unreadable; simulating every device", RECORD_NAME)
+        return True, None
+    device_ids = data.get("device_ids") if isinstance(data, dict) else None
+    if not (isinstance(device_ids, list) and all(isinstance(d, str) for d in device_ids)):
+        device_ids = None
+    return True, device_ids
+
+
+def _write_record(device_ids: list[str] | None) -> None:
+    """Record that simulation is on. Never fails the start that called it."""
+    path = _record_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".simulation-", suffix=".tmp")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"device_ids": device_ids}, f)
+        os.replace(tmp, path)
+    except OSError as e:
+        log.warning("Could not write %s; simulation will not resume after a restart: %s",
+                    RECORD_NAME, e)
+
+
+def _remove_record() -> None:
+    try:
+        _record_path().unlink(missing_ok=True)
+    except OSError as e:
+        log.warning("Could not remove %s: %s", RECORD_NAME, e)
 
 _PERMISSION_DENIED_MARKERS = (
     "forbidden by its access permissions",
@@ -313,10 +387,57 @@ class SimulationManager:
         # OS pipe buffers don't fill up and block uvicorn writes inside the
         # simulator (which would deadlock and kill the simulator).
         self._drain_tasks: list[asyncio.Task] = []
+        # What the running simulation was started for: None for every device.
+        # sync() simulates every device the project has, so it becomes None
+        # there, and the record follows.
+        self._selection: list[str] | None = None
+        # Set by load_resume() at startup when the record says simulation was
+        # on; resume() consumes it in the first bring-up round.
+        self._resume_pending = False
+        self._resume_ids: list[str] | None = None
 
     @property
     def active(self) -> bool:
         return self._active
+
+    @property
+    def resume_pending(self) -> bool:
+        return self._resume_pending
+
+    def load_resume(self) -> bool:
+        """Read the record at startup. True when simulation was on, in which
+        case the caller registers its devices undialed and runs a bring-up
+        round, whose first step is :meth:`resume`."""
+        on, device_ids = _read_record()
+        self._resume_pending = on
+        self._resume_ids = device_ids
+        return on
+
+    async def resume(self) -> None:
+        """Bring back the simulation that was on when the server stopped.
+
+        Runs inside the bring-up round, before the devices are dialed, so it
+        must not wait for that round the way :meth:`start` does. The simulator
+        starts even for a project with no devices: that is what was running,
+        and sync() adds the devices a later save brings. A failure leaves every
+        device on its real address and says so; the record stays, so the next
+        start tries again.
+        """
+        if not self._resume_pending:
+            return
+        self._resume_pending = False
+        try:
+            await self._launch(self._resume_ids, allow_empty=True)
+            log.info("Simulation resumed after the restart")
+        except Exception as e:
+            log.warning("Simulation did not resume after the restart: %s", e)
+            self._set_error(
+                "Simulation did not resume after the restart, so the devices "
+                f"are connecting to the real equipment. {e}"
+            )
+
+    def _set_error(self, text: str) -> None:
+        self.engine.state.set(ERROR_KEY, text, source="simulation")
 
     @property
     def simulator_ui_url(self) -> str | None:
@@ -380,24 +501,41 @@ class SimulationManager:
         # bring-up finish before redirecting anything: the two would otherwise
         # be opening and closing the same transports at the same time.
         await self.engine.wait_for_device_bringup()
+        return await self._launch(device_ids)
 
+    async def _launch(
+        self, device_ids: list[str] | None, *, allow_empty: bool = False
+    ) -> dict:
+        """Start the simulator and point the devices at it; record that
+        simulation is on. Shared by :meth:`start` and :meth:`resume`."""
         # Clean up any zombie process from a previous failed start
         await self._cleanup_process()
 
         self._starting = True
         try:
-            return await self._do_start(device_ids)
+            result = await self._do_start(device_ids, allow_empty=allow_empty)
         except Exception:
             # If start fails, clean up
             self._starting = False
+            if self._active:
+                # It failed after the redirect (the simulator exited while the
+                # devices were being moved to it): put them back on their own
+                # addresses rather than leave them dialing a dead simulator.
+                await self._restore_connections()
             await self._cleanup_process()
             self._active = False
             self._sim_ports.clear()
             self._sim_payloads.clear()
             self._sim_tls.clear()
+            self._sim_ui_url = None
+            set_running_ui_port(None)
             raise
         finally:
             self._starting = False
+        self._selection = device_ids
+        _write_record(device_ids)
+        self._set_error("")
+        return result
 
     def _device_sim_payload(self, device_id: str, cfg: dict) -> dict:
         """Build the launch/sync payload for one device.
@@ -423,7 +561,9 @@ class SimulationManager:
             "child_entities": cfg.get("child_entities") or {},
         }
 
-    async def _do_start(self, device_ids: list[str] | None) -> dict:
+    async def _do_start(
+        self, device_ids: list[str] | None, *, allow_empty: bool = False
+    ) -> dict:
         dm = self.engine.devices
         project = self.engine.project
         if not project:
@@ -442,7 +582,7 @@ class SimulationManager:
         if device_ids is None:
             device_ids = list(dm._device_configs.keys())
 
-        if not device_ids:
+        if not device_ids and not allow_empty:
             raise RuntimeError("No devices in project to simulate")
 
         # Build simulator config
@@ -456,7 +596,7 @@ class SimulationManager:
             devices_config.append(payload)
             self._sim_payloads[device_id] = payload
 
-        if not devices_config:
+        if not devices_config and not allow_empty:
             raise RuntimeError("No devices to simulate")
 
         # Build driver paths. The simulator scans these in order with
@@ -789,7 +929,14 @@ class SimulationManager:
         return config.get("driver") or ""
 
     async def stop(self) -> None:
-        """Stop simulation and restore original device connections."""
+        """Stop simulation and restore original device connections.
+
+        Also the way to turn simulation off when it is not running: the record
+        goes, so it does not come back at the next start, and so does the
+        sentence saying it could not run."""
+        _remove_record()
+        self._selection = None
+        self._set_error("")
         if not self._active:
             # Even if the in-memory flag is False, keep state keys honest in
             # case a previous run left them set (e.g. crash during _do_start
@@ -841,6 +988,32 @@ class SimulationManager:
         self.engine.state.set("system.simulation_active", False, source="simulation")
         self.engine.state.set("system.simulation_ui_url", None, source="simulation")
 
+    async def shutdown(self) -> None:
+        """End the simulator as the server shuts down, after the devices are
+        disconnected. Nothing is handed back to the real equipment (that would
+        dial it on every restart of a box left simulating), and the record
+        stays, so simulation comes back with the server."""
+        if self._monitor_task and not self._monitor_task.done():
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+        self._monitor_task = None
+        await self._cleanup_process()
+        self.engine.devices.unsimulated_driver = None
+        self._sim_ports.clear()
+        self._sim_payloads.clear()
+        self._sim_tls.clear()
+        self._original_configs.clear()
+        self._handing_back.clear()
+        self._sim_ui_url = None
+        set_running_ui_port(None)
+        if self._active:
+            self._active = False
+            self.engine.state.set("system.simulation_active", False, source="simulation")
+            self.engine.state.set("system.simulation_ui_url", None, source="simulation")
+
     async def _monitor_process(self) -> None:
         """Watch the simulator subprocess. If it exits, clean up."""
         try:
@@ -864,6 +1037,13 @@ class SimulationManager:
                     self._active = False
                     self.engine.state.set("system.simulation_active", False, source="simulation")
                     self.engine.state.set("system.simulation_ui_url", None, source="simulation")
+                    # Nobody pressed Stop, so the record stays and the next
+                    # start brings simulation back. Until then, say why the
+                    # devices are on the real equipment.
+                    self._set_error(
+                        "The simulator stopped, so the devices are connecting "
+                        "to the real equipment."
+                    )
                     event = "simulation.stopped" if exit_code == 0 else "simulation.crashed"
                     await self.engine.events.emit(event, {
                         "exit_code": exit_code,
@@ -1026,10 +1206,14 @@ class SimulationManager:
         await self._reconnect_all(redirected, "to simulator")
 
     async def _reconnect_all(self, device_ids: list[str], what: str) -> None:
-        """Reconnect every named device concurrently, logging failures."""
+        """Reconnect every named device concurrently, logging failures.
+
+        A device registered but not yet dialed is left out: the bring-up round
+        that follows dials it once, on whatever address it now has."""
+        dm = self.engine.devices
+        device_ids = [did for did in device_ids if not dm.is_connect_deferred(did)]
         if not device_ids:
             return
-        dm = self.engine.devices
         results = await asyncio.gather(
             *(dm.reconnect_device(did) for did in device_ids),
             return_exceptions=True,
@@ -1123,6 +1307,12 @@ class SimulationManager:
         """
         if not self._active or not self._process or self._process.returncode is not None:
             return
+
+        # From here every device the project has is simulated, whatever the
+        # start was given, so a restart brings back all of them too.
+        if self._selection is not None:
+            self._selection = None
+            _write_record(None)
 
         dm = self.engine.devices
         current_device_ids = set(dm._device_configs.keys())

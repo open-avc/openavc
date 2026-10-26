@@ -147,6 +147,28 @@ button.panel-element {
     50% { opacity: 0.4; }
 }
 
+/* "Simulated": the devices are connected to simulators, not the real
+   equipment. Small, in a corner, and a tap goes through to the control under
+   it. Drawn by panel.js only while system.simulation_active is true. */
+#simulation-tag {
+    display: none;
+    position: fixed;
+    left: 0.5714rem;
+    bottom: 0.5714rem;
+    font-size: 0.7857rem;
+    font-weight: 600;
+    padding: 2px 0.5714rem;
+    border-radius: 0.2857rem;
+    background: var(--panel-warning, #ff9800);
+    color: var(--panel-bg, #1a1a2e);
+    opacity: 0.85;
+    z-index: 1000;
+    pointer-events: none;
+}
+#simulation-tag.visible {
+    display: block;
+}
+
 /* Reconnection info */
 #reconnect-info {
     position: fixed;

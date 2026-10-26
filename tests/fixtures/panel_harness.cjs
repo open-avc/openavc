@@ -4504,6 +4504,54 @@ const tests = {
         assert(!opened(false, '?preview=1').embedded, 'a tab is never embedded');
         assert(window.parent === window, 'the harness window is its own parent again');
     },
+
+    // Simulation stays on through a restart until somebody stops it, so the
+    // panel marks it in a corner while the devices are on simulators.
+    simulation_tag_shows_while_the_devices_are_simulated() {
+        const shown = () => {
+            const tag = document.getElementById('simulation-tag');
+            return !!tag && tag.classList.contains('visible')
+                && window.getComputedStyle(tag).display !== 'none';
+        };
+        const old = document.getElementById('simulation-tag');
+        if (old) old.remove();
+        const app = mkApp();
+        app.handleMessage({ type: 'state.snapshot', state: {} });
+        assert(!shown(), 'no tag while nothing is simulated');
+        app.handleMessage({ type: 'state.update', changes: { 'system.simulation_active': true } });
+        assert(shown(), 'the tag appears when simulation starts');
+        const tag = document.getElementById('simulation-tag');
+        assert(tag.textContent === 'Simulated', `tag reads "${tag.textContent}"`);
+        assert(window.getComputedStyle(tag).pointerEvents === 'none',
+            'a tap goes through the tag to the control under it');
+        app.handleMessage({ type: 'state.update', changes: { 'system.simulation_active': false } });
+        assert(!shown(), 'the tag goes when simulation stops');
+        app.handleMessage({ type: 'state.snapshot', state: { 'system.simulation_active': true } });
+        assert(shown(), 'a reconnect snapshot of a simulating system draws it');
+        app.handleMessage({ type: 'state.delete', keys: ['system.simulation_active'] });
+        assert(!shown(), 'a deleted key is not simulating');
+        document.getElementById('simulation-tag').remove();
+    },
+
+    simulation_tag_is_never_drawn_in_the_ide_preview() {
+        const old = document.getElementById('simulation-tag');
+        if (old) old.remove();
+        const previousUrl = window.location.href;
+        const ownParent = Object.getOwnPropertyDescriptor(window, 'parent');
+        Object.defineProperty(window, 'parent', { value: { postMessage() {} }, configurable: true });
+        window.history.replaceState({}, '', '/panel/?preview=1&page=main');
+        let app;
+        try {
+            app = mkApp();
+        } finally {
+            window.history.replaceState({}, '', previousUrl);
+            if (ownParent) Object.defineProperty(window, 'parent', ownParent);
+            else delete window.parent;
+        }
+        assert(app.embedded, 'the harness built an embedded preview');
+        app.handleMessage({ type: 'state.snapshot', state: { 'system.simulation_active': true } });
+        assert(!document.getElementById('simulation-tag'), 'the IDE says it in its own bar');
+    },
 };
 
 const results = {};

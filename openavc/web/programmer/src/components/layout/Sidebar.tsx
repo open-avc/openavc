@@ -364,6 +364,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
               <li>IP addresses and ports from your project are assumed correct</li>
               <li>The Simulator UI opens in a new browser tab</li>
               <li>Stop simulation to reconnect to real devices</li>
+              <li>Simulation stays on after a restart until you stop it</li>
             </ul>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
               <input type="checkbox" id="sim-dismiss" style={{ accentColor: "var(--accent)" }} />

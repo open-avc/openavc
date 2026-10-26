@@ -849,6 +849,7 @@ class PanelApp {
                 this.snapshotReceived = true;
                 this._hideLoadingState();
                 this.evaluateAllBindings();
+                this._updateSimulationTag();
                 // Seed audio dedupe id from current state so we don't replay
                 // the most recent sound when (re)connecting.
                 this._seedAudioDedupeFromSnapshot();
@@ -857,6 +858,9 @@ class PanelApp {
             case 'state.update':
                 Object.assign(this.state, msg.changes || {});
                 this._scheduleBindingEvaluation(Object.keys(msg.changes || {}));
+                if ('system.simulation_active' in (msg.changes || {})) {
+                    this._updateSimulationTag();
+                }
                 // Notify plugin iframes of state changes
                 for (const [k, v] of Object.entries(msg.changes || {})) {
                     this._notifyPluginIframes(k, v);
@@ -872,6 +876,9 @@ class PanelApp {
                         delete this.state[key];
                     }
                     this._scheduleBindingEvaluation(msg.keys);
+                    if (msg.keys.includes('system.simulation_active')) {
+                        this._updateSimulationTag();
+                    }
                     // Plugin iframes get a null value notification — preserves
                     // their existing contract (they saw value=null before the
                     // server emitted explicit state.delete messages).
@@ -1150,6 +1157,29 @@ class PanelApp {
         // last-touched fallback -- which is what claimed the macro in the first
         // place.
         this._revertRefusedInteraction(null);
+    }
+
+    /**
+     * The "Simulated" tag in a corner while the devices are connected to
+     * simulators instead of the real equipment. Simulation stays on through a
+     * restart until somebody stops it, so a panel in a space left simulating
+     * says so to whoever is standing at it. Never in the IDE's own previews:
+     * the IDE says it across the top of every view.
+     */
+    _updateSimulationTag() {
+        if (this.embedded) return;
+        let tag = document.getElementById('simulation-tag');
+        if (this.state['system.simulation_active'] !== true) {
+            if (tag) tag.classList.remove('visible');
+            return;
+        }
+        if (!tag) {
+            tag = document.createElement('div');
+            tag.id = 'simulation-tag';
+            tag.textContent = 'Simulated';
+            document.body.appendChild(tag);
+        }
+        tag.classList.add('visible');
     }
 
     /**

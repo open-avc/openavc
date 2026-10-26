@@ -38,6 +38,9 @@ class _FakeDeviceManager:
     async def reconnect_device(self, device_id):
         self.reconnected.append(device_id)
 
+    def is_connect_deferred(self, device_id):
+        return False
+
 
 class _FakeEngine:
     def __init__(self, dm):

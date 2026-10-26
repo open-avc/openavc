@@ -61,6 +61,9 @@ class _Devices:
             "output": driver.get_child_state("output", 1),
         }
 
+    def is_connect_deferred(self, device_id: str) -> bool:
+        return False
+
 
 def _simulated(state: StateStore, device_id: str) -> _AcmeMatrix:
     """A matrix as the simulator left it: connected, every reading taken."""

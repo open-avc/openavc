@@ -411,16 +411,26 @@ class Engine:
         resolved = {
             d.id: self.resolved_device_config(d) for d in self.project.devices
         }
+        # A simulation that was on when the server stopped comes back
+        # (core/simulation.py). Its devices register undialed, and the
+        # bring-up round below starts the simulator and redirects them before
+        # the first connect, so none of them reaches the real equipment.
+        resume_simulation = self.simulation.load_resume()
         # Bridges first, then their dependents (see bridge_first).
         for batch in bridge_first(list(resolved), resolved):
             batch_results = await asyncio.gather(
-                *(self.devices.add_device(resolved[did]) for did in batch),
+                *(self.devices.add_device(
+                    resolved[did], defer_connect=resume_simulation,
+                ) for did in batch),
                 return_exceptions=True,
             )
             for did, result in zip(batch, batch_results):
                 if isinstance(result, Exception):
                     startup_errors.append(f"Device '{did}': {result}")
                     log.error(f"Failed to add device '{did}': {result}")
+        if resume_simulation:
+            self._schedule_device_bringup()
+            await self.wait_for_device_bringup()
 
         # Plugin System — scan and start plugins
         try:
@@ -665,10 +675,6 @@ class Engine:
                 pass
             self._panel_sweep_task = None
 
-        # Stop simulation if active
-        if self.simulation.active:
-            await self.simulation.stop()
-
         # Cancel in-flight macros (with the engine's grace drain) before the
         # devices they command are torn down — a macro racing disconnect_all
         # would error its remaining steps into a half-stopped engine. Late on
@@ -682,6 +688,11 @@ class Engine:
 
         # Disconnect all devices
         await self.devices.disconnect_all()
+
+        # Then end the simulator, without handing the devices back to the real
+        # equipment and without forgetting that simulation is on: it comes
+        # back when the server starts again.
+        await self.simulation.shutdown()
 
         # Drain any in-flight state.changed EventBus emissions so they aren't
         # silently dropped mid-shutdown.
@@ -1160,8 +1171,11 @@ class Engine:
                     # The simulator redirect first, so a device registered by
                     # this save dials 127.0.0.1 on its FIRST attempt rather
                     # than failing against its real address and being fixed up
-                    # afterwards.
-                    if self.simulation.active:
+                    # afterwards. At startup the first round brings back the
+                    # simulation that was on when the server stopped instead.
+                    if self.simulation.resume_pending:
+                        await self.simulation.resume()
+                    elif self.simulation.active:
                         await self.simulation.sync()
                     await self.devices.bring_up()
                 except asyncio.CancelledError:

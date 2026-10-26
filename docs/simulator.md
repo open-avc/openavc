@@ -17,6 +17,16 @@ If you close the Simulator UI tab, click **Open Simulator UI**, just above the s
 
 Click the **stop button** (same location) to stop simulation and restore real device connections. The values the simulator reported are cleared, so a device's page and your panels show them blank until the real equipment reports its own.
 
+### While Simulation Is On
+
+Simulation stays on until you stop it, including through a restart of the server, an update or a power cut: when the server starts again, the devices go straight back to their simulators without reaching the real equipment. So a system left simulating cannot be missed, it is marked in three places:
+
+- A bar across the top of every Programmer view, with a **Stop Simulation** button.
+- A small **Simulated** tag in the bottom-left corner of every touch panel.
+- **Simulating** beside the system's name on its page in OpenAVC Cloud.
+
+If simulation cannot come back after a restart (the simulator's port is taken by another program, for example), the devices connect to the real equipment and the bar says why. Click **Start Simulation** to try again, or **Turn Off Simulation** so the next restart does not simulate either. The same bar appears if the simulator stops by itself while it is running.
+
 ### Standalone
 
 You can also run the simulator directly from the command line:

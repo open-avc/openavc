@@ -8,6 +8,7 @@ import { MissingDriversWatcher } from "./components/shared/MissingDriversWatcher
 import { PanelRequestBanner } from "./components/shared/PanelRequestBanner";
 import { PanelAccessNotice } from "./components/shared/PanelAccessNotice";
 import { ListenNotice } from "./components/shared/ListenNotice";
+import { SimulationBar } from "./components/shared/SimulationBar";
 import { DeviceAuditHost } from "./views/devices/audit/DeviceAuditHost";
 import { Login } from "./components/Login";
 import { Setup } from "./components/Setup";
@@ -255,6 +256,8 @@ function AuthedApp() {
     <div style={{ display: "flex", height: "100vh" }}>
       <Sidebar activeView={activeView} onViewChange={handleViewChange} />
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        {/* Simulated devices, or simulation left on but not running, on every view */}
+        <SimulationBar />
         {/* Conflict banner (14.4) */}
         {conflictDetected && (
           <div style={{

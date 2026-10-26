@@ -250,6 +250,9 @@ SCENARIOS = [
     # Only the Programmer's own frames count as embedded; any other framing
     # page gets an ordinary panel.
     "only_the_programmers_frames_are_embedded",
+    # Simulation is marked on the panel while it runs, never in the IDE preview.
+    "simulation_tag_shows_while_the_devices_are_simulated",
+    "simulation_tag_is_never_drawn_in_the_ide_preview",
 ]
 
 
