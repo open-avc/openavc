@@ -71,6 +71,9 @@ from openavc.simulator.tcp_simulator import TCPSimulator
 
 logger = logging.getLogger(__name__)
 
+# How many numbers start(0) tries before a side receiver's refusal stands.
+_SIDE_PORT_ATTEMPTS = 5
+
 
 # Names exposed to inline `handler:` scripts (both TCP and OSC). This is the
 # documented contract (writing-simulators.md "Script Handlers"): the same set
@@ -904,20 +907,44 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         """
         if self._push_multicast:
             self._open_multicast_sender()
-        if self._is_http:
-            await self.start_http_server(port)
-        elif self._is_udp or self._is_osc:
+        if self._is_udp or self._is_osc:
             await self.start_datagram_server(port)
-        else:
-            await super().start(port)
-        if self._side_receiver:
-            # The stream server's port, read back after start(0) resolved it:
-            # side-sends go to the number the driver connects to, and binding
-            # the argument again would put them on a second ephemeral port.
-            await self.start_datagram_server(self.port)
+            return
+        # A number the stream server chose itself (start(0)) can be one the OS
+        # keeps for itself on UDP only (Windows: WinError 10013), so it is given
+        # back and chosen again. A number the caller named is never traded.
+        attempts = _SIDE_PORT_ATTEMPTS if port == 0 and self._side_receiver else 1
+        for attempt in range(attempts):
+            await self._start_stream_server(port)
+            if not self._side_receiver:
+                return
+            try:
+                # The stream server's port, read back after start(0) resolved
+                # it: side-sends go to the number the driver connects to, and
+                # binding the argument again would put them on a second
+                # ephemeral port.
+                await self.start_datagram_server(self.port)
+            except OSError:
+                if attempt == attempts - 1:
+                    raise
+                await self._stop_stream_server()
+                continue
             logger.info(
                 "%s also receives UDP side-sends on port %d", self.name, self.port
             )
+            return
+
+    async def _start_stream_server(self, port: int) -> None:
+        if self._is_http:
+            await self.start_http_server(port)
+        else:
+            await super().start(port)
+
+    async def _stop_stream_server(self) -> None:
+        if self._is_http:
+            await self.stop_http_server()
+        else:
+            await super().stop()
 
     async def stop(self) -> None:
         """Stop whichever server start() ran."""

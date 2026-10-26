@@ -333,6 +333,43 @@ def test_a_tcp_device_with_udp_commands_receives_datagrams_on_its_port():
     assert all(d == "in" for d, _ in directions), "a side-send is never answered"
 
 
+def test_start_0_tries_another_number_when_its_udp_side_is_refused():
+    """Windows keeps some port numbers for itself on UDP only (WinError 10013),
+    so the free TCP number ``start(0)`` lands on can be one the side receiver
+    may not bind. ``start(0)`` promises one number both servers answer on, so
+    it gives that number back and lets the stream server choose again."""
+    async def scenario():
+        sim = YAMLAutoSimulator("d1", {}, driver_def=_definition())
+        real = sim.start_datagram_server
+        asked: list[int] = []
+
+        async def refuse_first(port):
+            asked.append(port)
+            if len(asked) == 1:
+                raise PermissionError(10013, "forbidden by its access permissions")
+            await real(port)
+
+        sim.start_datagram_server = refuse_first
+        await sim.start(0)
+        port = sim.port
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                sock.sendto(MAGIC, ("127.0.0.1", port))
+            finally:
+                sock.close()
+            woke = await _until(lambda: sim.get_state("power") is True)
+            reader, writer = await asyncio.open_connection("127.0.0.1", port)
+            writer.close()
+            return asked, port, woke
+        finally:
+            await sim.stop()
+
+    asked, port, woke = asyncio.run(scenario())
+    assert len(asked) == 2 and asked[1] == port, asked
+    assert woke, "the datagram reached the side receiver on the reported number"
+
+
 def test_a_device_without_udp_commands_gets_no_side_receiver():
     definition = _definition()
     definition["commands"] = {"beep": {"label": "Beep", "send": "BEEP\r"}}
