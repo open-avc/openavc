@@ -7,8 +7,9 @@ import { ApiError, parseApiError } from "../../api/errors";
 import { useConnectionStore } from "../../store/connectionStore";
 import { CHILD_RESERVED_PROPS } from "../../api/types";
 import { CHILD_STALE_TITLE, LastHeard, staleValueStyle } from "./staleReading";
-import { childNameFrom, childReadingDeclarations } from "../../api/childStateVars";
+import { childNameFrom } from "../../api/childStateVars";
 import { useSettled } from "../../components/shared/useSettled";
+import { useChildReadingDeclarations } from "../../components/shared/useChildReadingDeclarations";
 import {
   MonitorCell,
   MonitorControl,
@@ -191,10 +192,10 @@ export function ChildEntities({
   }, [deviceId, reload]);
 
   // What each child reading declares — its type, unit and range, under a name
-  // that says which child it belongs to. Resolved once per payload, from the
-  // same helper the State tab's Monitor form reads, so the two authoring doors
-  // cannot offer different forms for the same key.
-  const declarations = useMemo(() => childReadingDeclarations(data), [data]);
+  // that says which child it belongs to, as the Label column names it. From
+  // the same hook the State tab's Monitor form reads, so the two authoring
+  // doors cannot offer different forms or names for the same key.
+  const declarations = useChildReadingDeclarations(data, deviceId, liveState);
 
   if (loadError) {
     return (

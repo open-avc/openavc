@@ -4,6 +4,7 @@ import {
   childReadingDeclarations,
   childSchemaFor,
   childVarDefForSuffix,
+  liveChildNames,
 } from "./childStateVars";
 import type { ChildEntitiesListResponse } from "./types";
 
@@ -173,5 +174,45 @@ describe("childReadingDeclarations", () => {
 
   it("is empty rather than absent when there is no payload", () => {
     expect(childReadingDeclarations(null).size).toBe(0);
+  });
+
+  it("names each child from the names it is given", () => {
+    const names = new Map([["channel.02", "CH2"]]);
+    const decls = childReadingDeclarations(payload(), names);
+    expect(decls.get("channel.02.fader")?.label).toBe("CH2 · Output Level (dB)");
+    expect(decls.get("channel.01.fader")?.label).toBe("House Left · Output Level (dB)");
+  });
+});
+
+describe("liveChildNames", () => {
+  // The device reports its channel names a moment after the list is fetched,
+  // so the fetch says "Channel 2" while live state already says "CH2".
+  function named(): ChildEntitiesListResponse {
+    const resp = payload();
+    resp.child_entity_types.channel.label_field = "name";
+    return resp;
+  }
+
+  it("reads the name the device reports from live state", () => {
+    const names = liveChildNames(named(), { "device.amp.channel.02.name": "CH2" }, "amp");
+    expect(names.get("channel.02")).toBe("CH2");
+  });
+
+  it("keeps a name somebody typed here over the device's", () => {
+    const resp = named();
+    resp.children.channel[1].label = "Lectern";
+    const names = liveChildNames(resp, { "device.amp.channel.02.name": "CH2" }, "amp");
+    expect(names.get("channel.02")).toBe("Lectern");
+  });
+
+  it("falls back to the fetched name, then the type and id", () => {
+    const names = liveChildNames(named(), {}, "amp");
+    expect(names.get("channel.01")).toBe("House Left");
+    expect(names.get("channel.02")).toBe("Channel 2");
+  });
+
+  it("reads only this device's state", () => {
+    const names = liveChildNames(named(), { "device.other.channel.02.name": "CH2" }, "amp");
+    expect(names.get("channel.02")).toBe("Channel 2");
   });
 });

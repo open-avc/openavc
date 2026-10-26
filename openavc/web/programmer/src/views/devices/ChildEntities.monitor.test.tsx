@@ -204,6 +204,37 @@ describe("tagging a per-channel reading", () => {
   });
 });
 
+describe("a channel the device named after the list was fetched", () => {
+  it("is tagged under the device's name, as the Label column shows it", async () => {
+    mocks.listChildEntities.mockResolvedValue({
+      ...PAYLOAD,
+      child_entity_types: {
+        channel: { ...PAYLOAD.child_entity_types.channel, label_field: "name" },
+      },
+      children: { channel: [{ ...PAYLOAD.children.channel[0], display_name: "" }] },
+    });
+    liveState["device.amp.channel.01.name"] = "CH1";
+    try {
+      const onMonitorsChange = vi.fn();
+      render(panel({ onMonitorsChange }));
+      await expandFirstChannel();
+
+      const row = screen.getByTestId("child-row-01");
+      await userEvent.click(
+        within(row).getAllByTitle(
+          "Watch this reading on the Dashboard and in the cloud",
+        )[0],
+      );
+
+      const [created] = onMonitorsChange.mock.calls[0] as [MonitorConfig[], string];
+      expect(created[0].key).toMatch(/^device\.amp\.channel\.01\./);
+      expect(created[0].label).toMatch(/^CH1 · /);
+    } finally {
+      delete liveState["device.amp.channel.01.name"];
+    }
+  });
+});
+
 describe("tagging one found by the filter", () => {
   it("offers the control on the rows the search turned up", async () => {
     const onMonitorsChange = vi.fn();

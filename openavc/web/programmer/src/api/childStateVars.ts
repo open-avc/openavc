@@ -97,20 +97,57 @@ export function childNameFrom(
   return String(seeded).trim();
 }
 
+/** What each child is called now, keyed `<type>.<padded id>`: `childNameFrom`
+ *  over the live values of the type's `label_field` and the reserved `label`
+ *  (the fetched state where live state has none), else `childDisplayName`.
+ *
+ *  A device usually reports its names a moment after the list is fetched, so
+ *  a name taken from the fetch alone is the slot's ("Input 1") rather than the
+ *  device's ("CH1"). Two lookups per child: cheap enough to run on every
+ *  live-state tick, which building the declarations below is not. */
+export function liveChildNames(
+  resp: ChildEntitiesListResponse | null,
+  liveState: Record<string, unknown>,
+  deviceId: string,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  if (!resp) return out;
+  for (const [ctype, tdef] of Object.entries(resp.child_entity_types ?? {})) {
+    const field = tdef?.label_field?.trim();
+    for (const entry of resp.children?.[ctype] ?? []) {
+      const prefix = `device.${deviceId}.${ctype}.${entry.local_id_padded}.`;
+      const read = (key: string) => {
+        const live = liveState[prefix + key];
+        return live !== undefined ? live : entry.state?.[key];
+      };
+      const state: Record<string, unknown> = { label: read("label") };
+      if (field) state[field] = read(field);
+      out.set(
+        `${ctype}.${entry.local_id_padded}`,
+        childNameFrom(entry.label, state, tdef) || childDisplayName(ctype, tdef, entry),
+      );
+    }
+  }
+  return out;
+}
+
 /** Every child reading this device has, as the declaration it is authored
- *  against, keyed by its suffix under `device.<id>.`.
+ *  against, keyed by its suffix under `device.<id>.`. `names` (from
+ *  `liveChildNames`) names each child; without it, the fetched name.
  *
  *  Built once per payload rather than resolved per key: a loaded controller
  *  carries tens of thousands of these and the callers look them up on every
  *  live-state tick. */
 export function childReadingDeclarations(
   resp: ChildEntitiesListResponse | null,
+  names?: Map<string, string>,
 ): Map<string, ChildEntityStateVarDef> {
   const out = new Map<string, ChildEntityStateVarDef>();
   if (!resp) return out;
   for (const [ctype, tdef] of Object.entries(resp.child_entity_types ?? {})) {
     for (const entry of resp.children?.[ctype] ?? []) {
-      const child = childDisplayName(ctype, tdef, entry);
+      const child = names?.get(`${ctype}.${entry.local_id_padded}`)
+        || childDisplayName(ctype, tdef, entry);
       for (const [prop, def] of Object.entries(childSchemaFor(resp, ctype, entry))) {
         out.set(`${ctype}.${entry.local_id_padded}.${prop}`, {
           ...def,

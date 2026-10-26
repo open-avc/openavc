@@ -9,9 +9,11 @@ import {
   getDevice,
   listChildEntities,
 } from "../../api/restClient";
-import type { DriverInfo, MonitorConfig, ScriptReference } from "../../api/types";
-import { childReadingDeclarations } from "../../api/childStateVars";
+import type {
+  ChildEntitiesListResponse, DriverInfo, MonitorConfig, ScriptReference,
+} from "../../api/types";
 import { useSettled } from "../../components/shared/useSettled";
+import { useChildReadingDeclarations } from "../../components/shared/useChildReadingDeclarations";
 import { MonitorControl } from "../../components/shared/MonitorControl";
 import { HelpBanner, UsageRow, buildStateUsageMap, typeBadgeStyle, sectionTitle } from "./variablesShared";
 import { valueText } from "../../components/shared/booleanWords";
@@ -35,8 +37,8 @@ type DeviceDeclarations = {
   deviceId: string;
   /** Device-level readings, by property name. */
   stateVars: Record<string, StateVarMeta>;
-  /** Child readings, by suffix under `device.<id>.`. */
-  childReadings: Map<string, StateVarMeta>;
+  /** The device's children, which its child readings are declared on. */
+  children: ChildEntitiesListResponse | null;
 };
 
 export function DeviceStatesSubTab() {
@@ -123,12 +125,20 @@ export function DeviceStatesSubTab() {
           stateVars: ((info.driver_info as
             { state_variables?: Record<string, StateVarMeta> } | undefined)
             ?.state_variables ?? {}),
-          childReadings: childReadingDeclarations(kids),
+          children: kids,
         });
       })
       .catch(() => { if (!cancelled) setDeclarations(null); });
     return () => { cancelled = true; };
   }, [selectedDeviceId, settledKeyCount, selectedConnected]);
+
+  // Child readings, by suffix under `device.<id>.`, each named the way the
+  // device's Child Entities panel names that child, from live state.
+  const childReadings = useChildReadingDeclarations(
+    declarations?.deviceId === selectedDeviceId ? declarations.children : null,
+    selectedDeviceId ?? "",
+    liveState,
+  );
 
   // All device state keys (driver-declared + any live ones), as a stable newline
   // signature so the usage map only rebuilds when the SET of keys changes, not on
@@ -205,14 +215,14 @@ export function DeviceStatesSubTab() {
           prop,
           key: k,
           value: v,
-          meta: declared?.childReadings.get(prop) ?? null,
+          meta: childReadings.get(prop) ?? null,
         });
       }
     }
 
     entries.sort((a, b) => a.prop.localeCompare(b.prop));
     return entries;
-  }, [selectedDeviceId, devices, driverRegistry, liveState, declarations]);
+  }, [selectedDeviceId, devices, driverRegistry, liveState, declarations, childReadings]);
 
   const selectedDevice = devices.find((d) => d.id === selectedDeviceId);
   const selectedPropUsages = selectedProp ? usageMap.get(selectedProp) ?? [] : [];
