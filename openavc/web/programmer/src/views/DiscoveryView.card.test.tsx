@@ -124,4 +124,31 @@ describe("a scanned device's card", () => {
     expect(screen.queryByText("Protocols")).toBeNull();
     expect(screen.queryByText("None identified")).toBeNull();
   });
+
+  it("is headed by the name Add to Project gives the device", async () => {
+    // Maker and model, as the server names the device it adds, not the name
+    // of the driver it was identified as.
+    mocks.results = { ...mocks.results, devices: [{ ...SCANNED, model: "WP-3000" }] };
+    render(<DiscoveryPanel />);
+    expect(await screen.findByText("Acme WP-3000")).toBeTruthy();
+  });
+});
+
+describe("a filtered list while a scan runs", () => {
+  it("says the scan is still identifying devices", async () => {
+    mocks.results = {
+      devices: [{ ...SCANNED, manufacturer: null, model: null, identification: null }],
+      status: "running",
+      port_labels: {},
+      port_drivers: {},
+      warnings: [],
+    };
+    render(<DiscoveryPanel />);
+    fireEvent.click(await screen.findByLabelText("AV only"));
+    expect(
+      await screen.findByText(
+        "No devices match the current filters yet. The scan is still identifying devices.",
+      ),
+    ).toBeTruthy();
+  });
 });

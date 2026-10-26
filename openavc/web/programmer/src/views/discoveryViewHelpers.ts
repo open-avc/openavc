@@ -44,6 +44,25 @@ export function openPortLabel(
   return labels[port] ?? "unknown";
 }
 
+// A scanned device's card is headed by the name Add to Project gives it in
+// the project (`_discovered_device_name` in api/discovery.py), so the two read
+// the same: its maker and model as the scan read them, else the driver it was
+// identified as, else the name it gave itself.
+export function scannedDeviceName(
+  device: { manufacturer: string | null; model: string | null; device_name: string | null },
+  identifiedDriverName: string | undefined,
+): string {
+  if (device.model) {
+    const maker = device.manufacturer ?? "";
+    return maker && !device.model.toLowerCase().includes(maker.toLowerCase())
+      ? `${maker} ${device.model}`
+      : device.model;
+  }
+  if (identifiedDriverName?.trim()) return identifiedDriverName.trim();
+  return device.device_name
+    || (device.manufacturer ? `${device.manufacturer} Device` : "Unknown Device");
+}
+
 // The id of the project device that connects to a scanned address (its IP,
 // or the hostname the scan read), or null. A device's address is in the
 // project's connections table; an older project may still hold it in the

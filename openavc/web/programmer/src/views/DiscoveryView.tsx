@@ -40,6 +40,7 @@ import {
   mergePortLabels,
   openPortLabel,
   projectDeviceAtAddress,
+  scannedDeviceName,
   snmpCommunityField,
 } from "./discoveryViewHelpers";
 import { describeEvidence, EvidenceList } from "./discoveryEvidence";
@@ -947,6 +948,13 @@ export function DiscoveryPanel() {
               No devices match the current filters.
             </div>
           )}
+          {/* Mid-scan, "AV only" hides every unknown host until the later
+              passes identify something, so an empty list says why. */}
+          {deviceList.length === 0 && status === "running" && totalDeviceCount > 0 && (
+            <div style={{ textAlign: "center", padding: "var(--space-lg)", color: "var(--text-muted)" }}>
+              No devices match the current filters yet. The scan is still identifying devices.
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1003,18 +1011,12 @@ function DeviceCard({
   const state: DeviceState = ident?.state ?? "unknown";
   const tone = stateTone(state);
 
-  const displayName = (() => {
-    if (state === "identified" && ident?.driver_id) {
-      const entry = driverNameLookup.get(ident.driver_id);
-      if (entry) return entry.name;
-    }
-    return device.model
-      ? (device.manufacturer && !device.model.toLowerCase().includes(device.manufacturer.toLowerCase())
-          ? `${device.manufacturer} ${device.model}`
-          : device.model)
-      : device.device_name ??
-        (device.manufacturer ? `${device.manufacturer} Device` : "Unknown Device");
-  })();
+  const displayName = scannedDeviceName(
+    device,
+    state === "identified" && ident?.driver_id
+      ? driverNameLookup.get(ident.driver_id)?.name
+      : undefined,
+  );
 
   // A banner is raw bytes off the wire, and the protocol chatter around it
   // was never text (see the banner helpers). Keep the ports whose greeting
