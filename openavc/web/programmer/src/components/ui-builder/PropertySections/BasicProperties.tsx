@@ -668,7 +668,7 @@ export function BasicProperties({
             <input type="number" value={element.step ?? ""} onChange={(e) => onChange({ step: numOrUndefined(e.target.value) })} placeholder="1" min={0.01} step={0.1} style={{ flex: 1 }} />
           </FieldRow>
           <FieldRow label="Unit">
-            <input value={element.unit || ""} onChange={(e) => onChange({ unit: e.target.value })} placeholder="%" style={{ flex: 1 }} />
+            <input value={element.unit || ""} onChange={(e) => onChange({ unit: e.target.value })} placeholder="e.g. dB, %" style={{ flex: 1 }} />
           </FieldRow>
           <MatchDriverRangeRow element={element} onElementPatch={onChange} />
           <FieldRow label="Orientation">

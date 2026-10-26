@@ -21,7 +21,7 @@ from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-CURRENT_VERSION = "0.15.0"
+CURRENT_VERSION = "0.16.0"
 
 # --- 0.8.0 layout-engine constants -------------------------------------------
 # The reference screen the old grid was implicitly designed against. Converting
@@ -1020,6 +1020,38 @@ def migrate_0_14_to_0_15(data: dict) -> dict:
     return data
 
 
+def migrate_0_15_to_0_16(data: dict) -> dict:
+    """
+    Migrate from 0.15.0 to 0.16.0 -- a fader with no unit is given the `%` it
+    has always drawn.
+
+    The panel used to draw `%` beside a fader's value whenever the fader named
+    no unit, so a fader bound to a dB gain the driver gave no unit read
+    "-41.0 %". It now draws no unit, as the slider and the gauge always have.
+    Every fader the UI Builder made stores its unit, but one written by the AI
+    or by hand may have none, and those have shown `%` all along. Each page and
+    master fader whose `unit` is absent or null is given `%`, so it reads the
+    same after the upgrade. An empty string is somebody clearing the Unit field
+    and is left alone: that fader now shows no unit, which is what clearing it
+    asked for.
+    """
+    ui = data.get("ui")
+    if isinstance(ui, dict):
+        elements = [
+            el
+            for page in ui.get("pages", []) or []
+            if isinstance(page, dict)
+            for el in page.get("elements", []) or []
+        ]
+        elements += list(ui.get("master_elements", []) or [])
+        for el in elements:
+            if isinstance(el, dict) and el.get("type") == "fader" and el.get("unit") is None:
+                el["unit"] = "%"
+
+    data["openavc_version"] = "0.16.0"
+    return data
+
+
 # Ordered list of migrations: (source_version, target_version, transform_fn)
 MIGRATIONS = [
     ("0.1.0", "0.2.0", migrate_0_1_to_0_2),
@@ -1036,6 +1068,7 @@ MIGRATIONS = [
     ("0.12.0", "0.13.0", migrate_0_12_to_0_13),
     ("0.13.0", "0.14.0", migrate_0_13_to_0_14),
     ("0.14.0", "0.15.0", migrate_0_14_to_0_15),
+    ("0.15.0", "0.16.0", migrate_0_15_to_0_16),
 ]
 
 

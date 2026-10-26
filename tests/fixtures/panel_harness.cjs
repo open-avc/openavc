@@ -2198,6 +2198,38 @@ const tests = {
             'reconnect: and the mark goes');
     },
 
+    // A fader that names no unit prints none. It used to print "%", so a dB
+    // gain whose driver declared no unit read "-41.0 %"; the slider and the
+    // gauge never did. A fader that names one still prints it.
+    fader_with_no_unit_prints_no_unit() {
+        const app = mkApp();
+        const proj = project({
+            elements: [
+                { id: 'absent', type: 'fader', min: -100, max: 20,
+                  bindings: { show: { value: { key: 'device.dsp.gain' } } } },
+                { id: 'cleared', type: 'fader', min: -100, max: 20, unit: '',
+                  bindings: { show: { value: { key: 'device.dsp.gain' } } } },
+                { id: 'percent', type: 'fader', min: 0, max: 100, unit: '%',
+                  bindings: { show: { value: { key: 'var.volume' } } } },
+            ],
+            placements: {
+                absent: { x: 5, y: 5, w: 20, h: 60 },
+                cleared: { x: 30, y: 5, w: 20, h: 60 },
+                percent: { x: 55, y: 5, w: 20, h: 60 },
+            },
+        });
+        app.state = { 'device.dsp.connected': true, 'device.dsp.gain': -41, 'var.volume': 50 };
+        renderProject(app, proj);
+        const readout = (id) => app.root.querySelector(`[data-element-id="${id}"] .fader-value`).textContent;
+        assert(readout('absent') === '-41.0', `no unit field: no unit, got ${readout('absent')}`);
+        assert(readout('cleared') === '-41.0', `cleared unit: no unit, got ${readout('cleared')}`);
+        assert(readout('percent') === '50.0 %', `a named unit still prints, got ${readout('percent')}`);
+
+        app.state['device.dsp.connected'] = false;
+        app.evaluateAllBindings(['device.dsp.connected']);
+        assert(readout('absent') === '--', `offline with no unit: just the dashes, got ${readout('absent')}`);
+    },
+
     // The flip itself has to reach the binding. Its own key does not move when
     // a device goes away, so the incremental filter would skip it entirely --
     // the value is unchanged and what it is worth is not.

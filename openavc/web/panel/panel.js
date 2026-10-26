@@ -4770,7 +4770,7 @@ class PanelApp {
         let max = element.max != null ? parseFloat(element.max) : 100;
         if (min >= max) { const tmp = min; min = max; max = tmp; }
         const step = element.step ?? 1;
-        const unit = element.unit || '%';
+        const unit = element.unit || '';
         const outputMin = element.output_min;
         const outputMax = element.output_max;
         const hasOutputRange = outputMin != null && outputMax != null;

@@ -19,6 +19,7 @@ from openavc.core.project_migration import (
     migrate_0_12_to_0_13,
     migrate_0_13_to_0_14,
     migrate_0_14_to_0_15,
+    migrate_0_15_to_0_16,
     migrate_project,
 )
 from openavc.core.project_loader import ProjectConfig
@@ -397,7 +398,8 @@ class TestFullMigrationChain:
         data = migrate_0_11_to_0_12(data)
         data = migrate_0_12_to_0_13(data)
         data = migrate_0_13_to_0_14(data)
-        data = migrate_0_14_to_0_15(data)  # Now at CURRENT_VERSION
+        data = migrate_0_14_to_0_15(data)
+        data = migrate_0_15_to_0_16(data)  # Now at CURRENT_VERSION
         result, migrated = migrate_project(copy.deepcopy(data))
 
         assert migrated is False
@@ -677,7 +679,7 @@ class TestMigrate014To015:
         result, migrated = migrate_project(make_v014_project_with_stray_labels())
 
         assert migrated is True
-        assert result["openavc_version"] == CURRENT_VERSION == "0.15.0"
+        assert result["openavc_version"] == CURRENT_VERSION
         page = {el["id"]: el for el in result["ui"]["pages"][0]["elements"]}
         for el_id in ("room_map", "tiles", "wall_clock", "title"):
             assert "label" not in page[el_id], el_id
@@ -706,6 +708,58 @@ class TestMigrate014To015:
         }
         result = migrate_0_14_to_0_15(copy.deepcopy(data))
         assert result["openavc_version"] == "0.15.0"
+        assert result["ui"]["pages"][1]["elements"] == ["not an element"]
+
+
+# ---------------------------------------------------------------------------
+# 0.15.0 -> 0.16.0 — a fader with no unit keeps the % it has always drawn
+# ---------------------------------------------------------------------------
+
+def make_v015_project_with_faders() -> dict:
+    """A fader the AI wrote with no unit, one a save wrote back with a null
+    unit, one whose Unit field somebody cleared, one in dB, a slider with no
+    unit, and a master fader with no unit."""
+    return {
+        "openavc_version": "0.15.0",
+        "project": {"id": "p", "name": "P"},
+        "ui": {
+            "pages": [{"id": "main", "name": "Main", "elements": [
+                {"id": "volume", "type": "fader", "min": 0, "max": 100},
+                {"id": "saved", "type": "fader", "unit": None},
+                {"id": "cleared", "type": "fader", "unit": ""},
+                {"id": "gain", "type": "fader", "unit": "dB", "min": -100, "max": 20},
+                {"id": "level", "type": "slider"},
+            ]}],
+            "master_elements": [{"id": "bar_volume", "type": "fader"}],
+        },
+    }
+
+
+class TestMigrate015To016:
+    def test_a_fader_with_no_unit_is_given_the_percent_it_drew(self):
+        result, migrated = migrate_project(make_v015_project_with_faders())
+
+        assert migrated is True
+        assert result["openavc_version"] == CURRENT_VERSION == "0.16.0"
+        page = {el["id"]: el for el in result["ui"]["pages"][0]["elements"]}
+        assert page["volume"]["unit"] == "%"
+        assert page["saved"]["unit"] == "%"
+        assert result["ui"]["master_elements"][0]["unit"] == "%"
+        # Cleared on purpose, or a real unit: left as written.
+        assert page["cleared"]["unit"] == ""
+        assert page["gain"]["unit"] == "dB"
+        # A slider never drew a unit it was not given, so it is not touched.
+        assert "unit" not in page["level"]
+
+    def test_a_malformed_ui_does_not_stop_the_migration(self):
+        data = {
+            "openavc_version": "0.15.0",
+            "project": {"id": "p", "name": "P"},
+            "ui": {"pages": ["not a page", {"id": "x", "elements": ["not an element"]}],
+                   "master_elements": None},
+        }
+        result = migrate_0_15_to_0_16(copy.deepcopy(data))
+        assert result["openavc_version"] == "0.16.0"
         assert result["ui"]["pages"][1]["elements"] == ["not an element"]
 
 
