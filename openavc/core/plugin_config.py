@@ -4,9 +4,25 @@ The REST endpoint (openavc/api/plugins.py) and the cloud AI tool
 (openavc/cloud/tools/plugin_tools.py) both persist plugin config; they must
 accept and reject exactly the same shapes, so the validator lives here and
 both import it.
+
+Past the schema's types, a plugin may judge a proposed config itself through
+an optional ``validate_config(config)`` class method: the parts it would skip
+or misread, one sentence each (a control-surface plugin's key layouts, which no
+schema describes). The rules stay in the plugin, the only thing that reads
+them. Both doors refuse a save that adds one of those problems and save one
+that only carries problems the stored config already had, so a project that
+arrived with one can still be edited.
 """
 
+import copy
+import inspect
+import re
+from collections import Counter
 from typing import Any
+
+from openavc.utils.logger import get_logger
+
+log = get_logger(__name__)
 
 SCHEMA_TYPE_VALIDATORS: dict[str, type | tuple[type, ...]] = {
     "string": (str,),
@@ -122,3 +138,64 @@ def missing_required_for_plugin(plugin_id: str, config: dict) -> list[str]:
     if schema is None:
         return []
     return missing_required_fields(config, schema)
+
+
+def plugin_config_problems(plugin_id: str, config: dict) -> list[str]:
+    """The installed plugin's own sentences about what ``config`` gets wrong.
+
+    Asks the plugin class's optional ``validate_config``. A plugin that is not
+    installed or has no hook has no opinion, and so does a hook that raises or
+    answers with anything but a list of sentences: a broken hook never blocks
+    a save. The hook is handed a copy, so it cannot change what is stored.
+    """
+    from openavc.core.plugin_loader import _PLUGIN_CLASS_REGISTRY
+
+    plugin_class = _PLUGIN_CLASS_REGISTRY.get(plugin_id)
+    hook = getattr(plugin_class, "validate_config", None) if plugin_class else None
+    if not callable(hook):
+        return []
+    if inspect.iscoroutinefunction(hook):
+        log.warning("Plugin '%s': validate_config must not be async; not asked", plugin_id)
+        return []
+    try:
+        answer = hook(copy.deepcopy(config))
+    except Exception:
+        log.exception("Plugin '%s': validate_config failed; config not checked", plugin_id)
+        return []
+    if not isinstance(answer, (list, tuple)):
+        log.warning("Plugin '%s': validate_config did not return a list; ignored", plugin_id)
+        return []
+    return [s for s in answer if isinstance(s, str) and s.strip()]
+
+
+def config_problems_added(
+    plugin_id: str, new_config: dict, stored_config: dict | None,
+) -> tuple[list[str], list[str]]:
+    """Split the plugin's problems with ``new_config`` in two: the ones this
+    save adds (refused) and the ones the stored config already had (saved,
+    and reported). A config editor that re-sends a whole stored config must
+    not be refused for a problem it did not write and cannot draw.
+
+    Sentences are compared with their list positions blanked, and counted:
+    deleting an entry ahead of a stored problem renumbers it ("buttons[1]"
+    becomes "buttons[0]") without making it new, while a second copy of a
+    stored problem still is one.
+    """
+    problems = plugin_config_problems(plugin_id, new_config)
+    if not problems:
+        return [], []
+    before = Counter(_unplaced(p) for p in plugin_config_problems(plugin_id, stored_config or {}))
+    added: list[str] = []
+    kept: list[str] = []
+    for problem in problems:
+        key = _unplaced(problem)
+        if before[key] > 0:
+            before[key] -= 1
+            kept.append(problem)
+        else:
+            added.append(problem)
+    return added, kept
+
+
+def _unplaced(sentence: str) -> str:
+    return re.sub(r"\[\d+\]", "[]", sentence)

@@ -26,6 +26,7 @@ from openavc.api.host_policy import EndpointPolicy, ProgrammerRoute, RenderRoute
 from openavc.core.host_policy import HostCategory
 from openavc.api.static_files import serve_static_file
 from openavc.core.plugin_config import (
+    config_problems_added,
     missing_required_for_plugin,
     validate_config_for_plugin,
 )
@@ -311,6 +312,13 @@ async def update_plugin_config(plugin_id: str, request: Request) -> dict[str, An
     err = validate_config_for_plugin(plugin_id, new_config)
     if err:
         raise HTTPException(status_code=400, detail=err)
+    # The plugin's own judgement: refuse what this save adds, keep and
+    # report what the stored config already carried.
+    added, kept = config_problems_added(
+        plugin_id, new_config, engine.project.plugins[plugin_id].config,
+    )
+    if added:
+        raise HTTPException(status_code=400, detail=" ".join(added))
     missing = missing_required_for_plugin(plugin_id, new_config)
 
     # Hot-apply when the plugin supports it, else restart — before the seam
@@ -326,6 +334,8 @@ async def update_plugin_config(plugin_id: str, request: Request) -> dict[str, An
     await engine.apply_project_edit(mutate)
 
     result: dict[str, Any] = {"status": "updated", "plugin_id": plugin_id, "applied": outcome}
+    if kept:
+        result["config_problems"] = kept
     if missing:
         # Structured list so the IDE can tell "setup still in progress"
         # (form already marks required fields) from a real restart failure.

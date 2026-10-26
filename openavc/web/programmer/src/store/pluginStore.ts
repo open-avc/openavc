@@ -13,6 +13,9 @@ import { parseApiError } from "../api/errors";
 import { useProjectStore } from "./projectStore";
 import { showError } from "./toastStore";
 
+/** The config problems last shown per plugin, so a repeat stays quiet. */
+const shownConfigProblems = new Map<string, string>();
+
 // Enabling/disabling a plugin or saving its config mutates the project
 // server-side (the plugins table), outside the project store's own save path.
 // Re-sync the project store so its in-memory project + ETag match the server;
@@ -136,6 +139,14 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
         // the form's required markers already say what's left, so no toast.
         showError(result.warning);
       }
+      // Problems the stored config already had ride along on every save of
+      // an editor that re-sends the whole config: say them once, not after
+      // each autosave.
+      const problems = (result.config_problems ?? []).join(" ");
+      if (problems && shownConfigProblems.get(pluginId) !== problems) {
+        showError(`Saved, but plugin "${pluginId}" still skips part of its settings: ${problems}`);
+      }
+      shownConfigProblems.set(pluginId, problems);
       await get().load();
       await syncProjectStore();
     } catch (e) {

@@ -2347,6 +2347,59 @@ async def test_update_plugin_config_rejects_non_dict_config(handler, mock_agent,
 
 
 @pytest.mark.asyncio
+async def test_update_plugin_config_refuses_what_the_plugin_would_skip(
+    handler, mock_agent, mock_engine, monkeypatch
+):
+    """The plugin names the part it would skip; the AI gets that sentence to
+    correct its next call from, and nothing is stored. A problem the stored
+    config already had is saved and named instead."""
+    import openavc.core.plugin_loader as pl
+    from openavc.core.project_loader import PluginConfig
+
+    class _AcmeSurface:
+        PLUGIN_INFO = {"id": "some_plugin"}
+
+        @classmethod
+        def validate_config(cls, config):
+            return [
+                f"dials[{i}] has no index, so it is on no dial."
+                for i, d in enumerate(config.get("dials", [])) if "index" not in d
+            ]
+
+    monkeypatch.setitem(pl._PLUGIN_CLASS_REGISTRY, "some_plugin", _AcmeSurface)
+    mock_engine.project.plugins = {
+        "some_plugin": PluginConfig(enabled=True, config={"dials": [{"label": "Old"}]})
+    }
+    mock_engine.plugin_loader = _plugin_loader_mock()
+
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        msg = _make_tool_call_msg("update_plugin_config", {
+            "plugin_id": "some_plugin",
+            "config": {"dials": [{"label": "Old"}, {"label": "New"}]},
+        })
+        await handler.handle(msg)
+        await _drain()
+
+    payload = _get_result_payload(mock_agent)
+    assert "dials[1] has no index" in payload["result"]["error"]
+    assert "dials[0]" not in payload["result"]["error"]
+    mock_engine.plugin_loader.restart_or_apply.assert_not_awaited()
+
+    mock_engine.plugin_loader.restart_or_apply = AsyncMock(return_value="hot_applied")
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        msg = _make_tool_call_msg("update_plugin_config", {
+            "plugin_id": "some_plugin",
+            "config": {"dials": [{"label": "Old"}, {"index": 1, "label": "New"}]},
+        })
+        await handler.handle(msg)
+        await _drain()
+
+    payload = _get_result_payload(mock_agent)
+    assert payload["result"]["config_problems"] == ["dials[0] has no index, so it is on no dial."]
+    assert mock_engine.project.plugins["some_plugin"].config["dials"][1] == {"index": 1, "label": "New"}
+
+
+@pytest.mark.asyncio
 async def test_update_plugin_config_allows_explicit_empty_object(
     handler, mock_agent, mock_engine
 ):

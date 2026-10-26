@@ -31,6 +31,8 @@ export async function updatePluginConfig(
   applied?: string;
   warning?: string;
   missing_required?: string[];
+  /** The plugin's own sentences about parts of the stored config it skips. */
+  config_problems?: string[];
 }> {
   return request(`/plugins/${pluginId}/config`, {
     method: "PUT",

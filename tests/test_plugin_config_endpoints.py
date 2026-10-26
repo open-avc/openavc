@@ -380,3 +380,159 @@ def test_frontend_remove_plugin_config_wiring():
     assert (
         "request(`/plugins/${pluginId}/config`, { method: \"DELETE\" })" in client
     )
+
+
+# ── A plugin's own validate_config hook ──
+
+
+_STRAY = "dials[0]: index \"0\" is not a dial number, so it is on no dial."
+_LOST = "buttons[0] has no index, so it is on no key."
+
+
+class _AcmeSurfacePlugin:
+    """Names each entry it would skip, the way a surface plugin does."""
+
+    PLUGIN_INFO = {"id": "acme_widget", "name": "Acme Surface"}
+
+    @classmethod
+    def validate_config(cls, config):
+        problems = []
+        if any(isinstance(d, dict) and isinstance(d.get("index"), str) for d in config.get("dials", [])):
+            problems.append(_STRAY)
+        if any(isinstance(b, dict) and "index" not in b for b in config.get("buttons", [])):
+            problems.append(_LOST)
+        return problems
+
+
+@pytest.mark.asyncio
+async def test_update_config_refuses_a_problem_the_save_adds(monkeypatch):
+    engine = _engine(monkeypatch)
+    monkeypatch.setitem(pl._PLUGIN_CLASS_REGISTRY, "acme_widget", _AcmeSurfacePlugin)
+
+    with pytest.raises(HTTPException) as exc:
+        await update_plugin_config("acme_widget", _FakeRequest({"buttons": [{"page": 0}]}))
+    assert exc.value.status_code == 400
+    assert exc.value.detail == _LOST
+    assert engine.project.plugins["acme_widget"].config == {"host": "10.0.0.9"}
+
+
+@pytest.mark.asyncio
+async def test_update_config_saves_a_problem_already_stored_and_names_it(monkeypatch):
+    """An editor re-sends the whole stored config on every save. A problem it
+    did not write and cannot draw must not stop it saving the part it did."""
+    engine = _engine(monkeypatch)
+    monkeypatch.setitem(pl._PLUGIN_CLASS_REGISTRY, "acme_widget", _AcmeSurfacePlugin)
+    engine.project.plugins["acme_widget"].config = {"dials": [{"index": "0"}]}
+
+    result = await update_plugin_config(
+        "acme_widget", _FakeRequest({"dials": [{"index": "0"}], "buttons": [{"index": 1}]}),
+    )
+    assert result["status"] == "updated"
+    assert result["config_problems"] == [_STRAY]
+    assert engine.project.plugins["acme_widget"].config["buttons"] == [{"index": 1}]
+
+    # And a new problem on top of the old one is still refused, by itself.
+    with pytest.raises(HTTPException) as exc:
+        await update_plugin_config(
+            "acme_widget", _FakeRequest({"dials": [{"index": "0"}], "buttons": [{}]}),
+        )
+    assert exc.value.detail == _LOST
+
+
+class _AcmeNumberedPlugin:
+    """Names a skipped entry by its position, as a real list-based plugin does."""
+
+    PLUGIN_INFO = {"id": "acme_widget", "name": "Acme Surface"}
+
+    @classmethod
+    def validate_config(cls, config):
+        return [
+            f"buttons[{i}]: index \"{b['index']}\" is not a key number, so it is on no key."
+            for i, b in enumerate(config.get("buttons", []))
+            if isinstance(b.get("index"), str)
+        ]
+
+
+@pytest.mark.asyncio
+async def test_a_stored_problem_that_moves_up_the_list_is_not_new(monkeypatch):
+    """Deleting the good entry ahead of a stored bad one renumbers the bad
+    one. That must not read as a new problem, or the editor that deleted
+    something is refused for an entry it never touched."""
+    engine = _engine(monkeypatch)
+    monkeypatch.setitem(pl._PLUGIN_CLASS_REGISTRY, "acme_widget", _AcmeNumberedPlugin)
+    engine.project.plugins["acme_widget"].config = {"buttons": [{"index": 0}, {"index": "1"}]}
+
+    result = await update_plugin_config("acme_widget", _FakeRequest({"buttons": [{"index": "1"}]}))
+    assert result["status"] == "updated"
+    assert result["config_problems"] == [
+        'buttons[0]: index "1" is not a key number, so it is on no key.'
+    ]
+
+    # A second copy of the same problem is still one the save adds.
+    with pytest.raises(HTTPException) as exc:
+        await update_plugin_config(
+            "acme_widget", _FakeRequest({"buttons": [{"index": "1"}, {"index": "1"}]}),
+        )
+    assert exc.value.detail == 'buttons[1]: index "1" is not a key number, so it is on no key.'
+
+
+@pytest.mark.asyncio
+async def test_a_hook_that_fails_never_blocks_a_save(monkeypatch):
+    class _Broken:
+        PLUGIN_INFO = {"id": "acme_widget"}
+
+        def validate_config(self, config):  # an instance method: called on the class, it raises
+            return ["never seen"]
+
+    class _Async:
+        PLUGIN_INFO = {"id": "acme_widget"}
+
+        @classmethod
+        async def validate_config(cls, config):
+            return ["never seen"]
+
+    class _Odd:
+        PLUGIN_INFO = {"id": "acme_widget"}
+
+        @staticmethod
+        def validate_config(config):
+            return "a sentence, not a list"
+
+    for plugin in (_Broken, _Async, _Odd):
+        engine = _engine(monkeypatch)
+        monkeypatch.setitem(pl._PLUGIN_CLASS_REGISTRY, "acme_widget", plugin)
+        result = await update_plugin_config("acme_widget", _FakeRequest({"host": "x"}))
+        assert result["status"] == "updated", plugin.__name__
+        assert "config_problems" not in result
+        assert engine.project.plugins["acme_widget"].config == {"host": "x"}
+
+
+def test_the_hook_is_handed_a_copy():
+    from openavc.core.plugin_config import plugin_config_problems
+
+    class _Meddler:
+        PLUGIN_INFO = {"id": "acme_widget"}
+
+        @staticmethod
+        def validate_config(config):
+            config["buttons"].clear()
+            return []
+
+    pl._PLUGIN_CLASS_REGISTRY["acme_widget"] = _Meddler
+    try:
+        config = {"buttons": [{"index": 0}]}
+        assert plugin_config_problems("acme_widget", config) == []
+        assert config == {"buttons": [{"index": 0}]}
+    finally:
+        pl._PLUGIN_CLASS_REGISTRY.pop("acme_widget", None)
+
+
+def test_cloud_path_asks_the_plugin_the_same_way():
+    """The AI's update_plugin_config refuses and reports exactly as the REST
+    door does (parity pin; its behaviour is in test_ai_tool_handler_surgical)."""
+    import inspect
+
+    from openavc.cloud.tools import plugin_tools
+
+    src = inspect.getsource(plugin_tools)
+    assert "config_problems_added" in src

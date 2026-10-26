@@ -251,6 +251,7 @@ class PluginToolsMixin:
         # only warn, mirroring the REST path — the config may legitimately
         # be built up across several calls.
         from openavc.core.plugin_config import (
+            config_problems_added,
             missing_required_for_plugin,
             validate_config_for_plugin,
         )
@@ -258,6 +259,13 @@ class PluginToolsMixin:
         err = validate_config_for_plugin(plugin_id, new_config)
         if err:
             return {"error": f"Plugin '{plugin_id}': {err}"}
+        # The plugin's own judgement, as on the REST path: refuse what this
+        # call adds, keep and report what the stored config already carried.
+        added, kept = config_problems_added(
+            plugin_id, new_config, engine.project.plugins[plugin_id].config,
+        )
+        if added:
+            return {"error": f"Plugin '{plugin_id}': {' '.join(added)}"}
         missing = missing_required_for_plugin(plugin_id, new_config)
 
         # Hot-apply when the plugin supports it, else restart — before the
@@ -275,6 +283,8 @@ class PluginToolsMixin:
             return err
 
         result = {"status": "updated", "plugin_id": plugin_id, "applied": outcome}
+        if kept:
+            result["config_problems"] = kept
         if missing:
             result["missing_required"] = sorted(missing)
             result["warning"] = (
