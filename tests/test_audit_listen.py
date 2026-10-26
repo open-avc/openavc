@@ -296,11 +296,37 @@ async def test_the_routes(wired, driver):  # noqa: F811
         await wired.manager.shutdown()
 
 
-async def test_a_value_the_driver_writes_before_the_device_answers_is_not_reported(driver):
+class _StuckClock:
+    """``time`` with a ``time()`` that never moves: Windows' clock, which ticks
+    every 15.6 ms, gives a write and the reply right after it one timestamp."""
+
+    def __init__(self) -> None:
+        import time
+
+        self._time = time
+        self._now = time.time()
+
+    def time(self) -> float:
+        return self._now
+
+    def __getattr__(self, name):
+        return getattr(self._time, name)
+
+
+@pytest.mark.parametrize("clock", ["ticking", "coarse"])
+async def test_a_value_the_driver_writes_before_the_device_answers_is_not_reported(
+    driver, clock, monkeypatch,
+):
     """A value from the driver's own config, written before the device said
     anything, is the driver's: "set by the driver", never "reported", and
-    the timeline, the listen step and the summary count it the same way."""
+    the timeline, the listen step and the summary count it the same way.
+    The order decides, not the timestamps, which a coarse clock makes equal."""
     from openavc.audit.report import build_report, suggested_confidence
+
+    if clock == "coarse":
+        stuck = _StuckClock()
+        monkeypatch.setattr("openavc.audit.sandbox.time", stuck)
+        monkeypatch.setattr("openavc.core.device_traffic.time", stuck)
 
     info = {**DRIVER, "id": "acme_zones", "state_variables": {
         **DRIVER["state_variables"], "zones": {"type": "integer", "label": "Zones"},

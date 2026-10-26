@@ -225,6 +225,10 @@ class ListenPass:
         self.connected_at: float | None = None
         self.first_tx_at: float | None = None
         self.first_rx_at: float | None = None
+        # The sandbox's write number when the first reply arrived: a write
+        # numbered after it came after the reply, where two timestamps from a
+        # clock that ticks every 15.6 ms can be equal.
+        self.first_rx_seq: int | None = None
         self.ends_at: float | None = None
         self.finished_at: float | None = None
         self.poll_interval = 0.0
@@ -443,6 +447,9 @@ class ListenPass:
                 )
             elif entry.direction == RX and self.first_rx_at is None:
                 self.first_rx_at = entry.t
+                # Recorded inline, before the driver is handed the reply, so
+                # every write the reply causes is numbered after this.
+                self.first_rx_seq = self.sandbox.state.seq
                 self._timeline(
                     "listen.first_rx",
                     f"The device answered, {self._since(entry.t)} after starting.",
@@ -609,7 +616,7 @@ class ListenPass:
         return {"callbacks": urls, "heard": heard, "text": text}
 
     def from_device(self, prop: str) -> bool:
-        """The device reported ``prop``: it has a value written at or after the
+        """The device reported ``prop``: its latest value was written after the
         device's first reply. A value the driver wrote before any reply (its
         own bookkeeping, a value from its config) is the driver's, not the
         device's. With no traffic captured at all (a driver that keeps its
@@ -618,10 +625,10 @@ class ListenPass:
             return False
         if not self.sandbox.observer.frames():
             return True
-        if self.first_rx_at is None:
+        if self.first_rx_seq is None:
             return False
-        written = self.sandbox.state.written.get(f"device.{self.sandbox.device_id}.{prop}")
-        return written is not None and written >= self.first_rx_at
+        written = self.sandbox.state.written_seq.get(f"device.{self.sandbox.device_id}.{prop}")
+        return written is not None and written > self.first_rx_seq
 
     def _reported_count(self) -> tuple[int, int]:
         """(reported by the device, set by the driver) among the declared values."""
