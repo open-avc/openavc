@@ -2945,10 +2945,17 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         if old == value:
             return
 
+        # A `notifications:` template is the device's own wording for this
+        # change. When one covers the new value and can reach the driver, it
+        # replaces the formatted push below instead of following it, so one
+        # change is one frame, as on the device.
+        template = self._notification_template(key, value)
+        overridden = template is not None and self._sends_notifications()
+
         # Push state changes to connected drivers — only when push_state is
         # enabled (matching real device behavior) and the change came from a
         # non-protocol source (simulator UI, API, error injection).
-        if not self._push_state:
+        if not self._push_state or overridden:
             pass
         elif (
             self._is_osc
@@ -2981,18 +2988,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
 
         # Explicit `notifications:` templates (simulator: section), delivered
         # on whatever channel this device pushes on.
-        if not self._notification_map or key not in self._notification_map:
-            return
-
-        value_map = self._notification_map[key]
-        # Normalize the value for lookup
-        if isinstance(value, bool):
-            lookup = str(value).lower()
-        else:
-            lookup = str(value)
-
-        template = value_map.get(lookup) or value_map.get("*")
-        if not template:
+        if template is None:
             return
 
         self._deliver_notification(
@@ -3005,6 +3001,16 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 },
             )
         )
+
+    def _notification_template(self, key: str, value: Any) -> str | None:
+        """The `notifications:` template for ``key`` taking ``value``: the
+        one written for that value, else the key's ``*`` template, else
+        None."""
+        value_map = self._notification_map.get(key) if self._notification_map else None
+        if not value_map:
+            return None
+        lookup = str(value).lower() if isinstance(value, bool) else str(value)
+        return value_map.get(lookup) or value_map.get("*") or None
 
     def _sends_notifications(self) -> bool:
         """Whether a ``notifications:`` template can reach the driver: the map

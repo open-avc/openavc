@@ -144,6 +144,32 @@ async def test_tcp_simulator_notify_reaches_every_connected_client():
         await sim.stop()
 
 
+@pytest.mark.asyncio
+async def test_a_template_replaces_the_formatted_push_for_its_change():
+    """With ``push_state`` on, a change a ``notifications:`` template covers
+    goes out once, in the template's words, not as the formatted push and
+    then the notice. A change no template covers still gets the push."""
+    definition = _definition("tcp")
+    definition["simulator"] = {**definition["simulator"], "push_state": True}
+    sim = YAMLAutoSimulator("dev1", config={}, driver_def=definition)
+    await sim.start(0)
+    try:
+        reader, writer = await asyncio.open_connection("127.0.0.1", sim.port)
+        try:
+            await asyncio.sleep(0.05)  # registered before the change
+            sim.set_state("mute", True)
+            sim.set_state("level", 70)
+            frames = [
+                await asyncio.wait_for(reader.readuntil(b"\r"), timeout=3.0)
+                for _ in range(2)
+            ]
+            assert frames == [b"NOTIFY MUTE 1\r", b"LEVEL 70\r"]
+        finally:
+            writer.close()
+    finally:
+        await sim.stop()
+
+
 # ── What the Simulator UI card says ──
 #
 # The card reads `push_state` from the device's info: "Pushes state changes"
