@@ -23,22 +23,32 @@ export type CommandParamDefs = Record<string, Partial<DriverParamDef>>;
  * value in the form nobody picked. An unchosen required parameter is supposed
  * to stop the send.
  *
- * `firstOption` is the device page's form: an enum starts on its first
- * option, a flag on false, anything else empty.
+ * `fillChoices` is the device page's form, which fills in the choices: an
+ * enum starts on its declared default, else on its first option, and a flag
+ * on its default, else off. A required enum with no default still starts
+ * empty, so a choice the driver left to the person is never made for them.
+ * Anything else starts empty.
  */
 export function seedCommandParams(
   params: CommandParamDefs,
-  opts: { firstOption?: boolean } = {},
+  opts: { fillChoices?: boolean } = {},
 ): Record<string, string> {
   const seeded: Record<string, string> = {};
   for (const [name, def] of Object.entries(params)) {
-    if (opts.firstOption) {
+    const declared = def.default !== undefined && def.default !== null ? String(def.default) : "";
+    if (opts.fillChoices) {
       const options = Array.isArray(def.values) ? normalizeOptionList(def.values) : [];
-      if (def.type === "enum" && options.length > 0) seeded[name] = options[0].value;
-      else if (def.type === "boolean") seeded[name] = "false";
-      else seeded[name] = "";
+      if (def.type === "enum") {
+        if (options.some((o) => o.value === declared)) seeded[name] = declared;
+        else if (def.required || options.length === 0) seeded[name] = "";
+        else seeded[name] = options[0].value;
+      } else if (def.type === "boolean") {
+        seeded[name] = declared === "true" ? "true" : "false";
+      } else {
+        seeded[name] = "";
+      }
     } else {
-      seeded[name] = def.default !== undefined && def.default !== null ? String(def.default) : "";
+      seeded[name] = declared;
     }
   }
   return seeded;

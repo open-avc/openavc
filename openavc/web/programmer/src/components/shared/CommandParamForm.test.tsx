@@ -27,9 +27,21 @@ describe("what a command form starts with, sends, and refuses", () => {
     });
   });
 
-  it("starts the device page's way when asked: first option, flags off", () => {
-    expect(seedCommandParams(PARAMS, { firstOption: true })).toEqual({
-      zone: "", preset: "", level: "", mute: "false", input: "hdmi1",
+  it("starts the device page's way when asked: choices filled, flags off", () => {
+    expect(seedCommandParams(PARAMS, { fillChoices: true })).toEqual({
+      zone: "", preset: "", level: "", mute: "false", input: "",
+    });
+  });
+
+  it("fills a choice from the driver's default before the first option", () => {
+    const params = {
+      color: { type: "enum", values: ["black", "white"], default: "white" },
+      speed: { type: "enum", values: [{ value: 1, label: "Slow" }, { value: 2, label: "Fast" }] },
+      stale: { type: "enum", values: ["a", "b"], default: "gone", required: true },
+      zoom: { type: "boolean", default: true },
+    } as const;
+    expect(seedCommandParams(params, { fillChoices: true })).toEqual({
+      color: "white", speed: "1", stale: "", zoom: "true",
     });
   });
 

@@ -1127,11 +1127,12 @@ export function DeviceDetail({
                   value={selectedCommand}
                   onChange={(cmd) => {
                     setSelectedCommand(cmd);
-                    // Seed so enum params show a real selection (not a blank
-                    // box) and booleans default to No.
+                    // Seed so enum params show the driver's default (or the
+                    // first choice) instead of a blank box, and flags their
+                    // default or No.
                     const pdefs = (commands[cmd] as Record<string, unknown>)
                       ?.params as CommandParamDefs | undefined;
-                    setCommandParams(seedCommandParams(pdefs ?? {}, { firstOption: true }));
+                    setCommandParams(seedCommandParams(pdefs ?? {}, { fillChoices: true }));
                     setCommandFiles({});
                     setCommandResult(null);
                     if (!fileRun.busy) fileRun.clear();
