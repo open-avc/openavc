@@ -338,6 +338,22 @@ async def test_upload_rejects_non_active_project(client):
     assert "stray.png" not in active
 
 
+async def test_a_write_by_the_active_projects_own_id_is_told_to_use_default(client):
+    """The caller named the active project, by the id GET /api/project gives.
+
+    The refusal stays (writes take only ``default``), but it says what to send
+    instead of claiming the project is not the active one.
+    """
+    resp = client.post(
+        "/api/projects/asset_test/assets",
+        files={"file": ("stray.png", io.BytesIO(_make_png()), "image/png")},
+    )
+    assert resp.status_code == 404
+    detail = resp.json()["detail"]
+    assert "/api/projects/default/assets" in detail
+    assert "only be modified on the active project" not in detail
+
+
 async def test_delete_rejects_non_active_project(client):
     """A delete addressed to a non-active project 404s and leaves the active asset intact."""
     client.post(

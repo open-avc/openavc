@@ -392,6 +392,19 @@ def test_writes_only_touch_the_active_project(client):
     assert resp.status_code == 404
 
 
+def test_a_write_by_the_active_projects_own_id_is_told_to_use_default(client):
+    """The caller named the active project (``test``, as GET /api/project gives).
+
+    The refusal stays, but it says what to send instead of claiming the
+    project is not the active one.
+    """
+    resp = client.put("/api/projects/test/ui/index.html", json={"content": "x"})
+    assert resp.status_code == 404
+    detail = resp.json()["detail"]
+    assert "/api/projects/default/ui" in detail
+    assert "only be modified on the active project" not in detail
+
+
 def test_upload_a_dropped_file_into_a_folder(client, project_dir):
     resp = client.post(
         "/api/projects/default/ui",

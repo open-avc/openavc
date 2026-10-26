@@ -81,12 +81,17 @@ def _require_active_project(project_id: str) -> None:
     """Writes only ever touch the active project, like assets.
 
     A mis-addressed write must fail loudly rather than land on the project the
-    caller did not name.
+    caller did not name. The active project's own id is refused like any other
+    (a read by it resolves to the library, as for assets), so the refusal says
+    what to send.
     """
     if project_id not in ("", "default"):
         raise HTTPException(
             status_code=404,
-            detail="Custom UI files can only be modified on the active project.",
+            detail=(
+                "Custom UI files can be changed only in the active project, and "
+                "its id here is always 'default'. Use /api/projects/default/ui."
+            ),
         )
 
 

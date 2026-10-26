@@ -127,11 +127,19 @@ def _require_active_project(project_id: str) -> None:
     mutate (there's no editing UI for a library project's assets). Reject it
     explicitly with a 404 rather than silently writing to the active project:
     a mis-addressed write must fail loudly, not land on the wrong project.
+
+    The active project's own id is refused too: a read by an id other than
+    ``default`` resolves to the library, so accepting it here would send a
+    write and a read of the same URL to two different folders. The refusal
+    says what to send, because that caller did name the active project.
     """
     if project_id not in ("", "default"):
         raise HTTPException(
             status_code=404,
-            detail="Assets can only be modified on the active project.",
+            detail=(
+                "Assets can be changed only in the active project, and its id "
+                "here is always 'default'. Use /api/projects/default/assets."
+            ),
         )
 
 
