@@ -167,6 +167,48 @@ async def test_a_measured_response_is_still_buffered(tunnel_handler):
     assert base64.b64decode(sent[0]["body"]) == b"<html>hi</html>"
 
 
+def _over_the_cap():
+    from openavc.cloud.tunnel import MAX_BUFFERED_RESPONSE
+
+    return _response(
+        [b"PK\x03\x04", b"rest of the archive"],
+        headers={
+            "content-type": "application/zip",
+            "content-length": str(MAX_BUFFERED_RESPONSE + 1),
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_measured_response_over_the_buffered_cap_streams(tunnel_handler):
+    """A project export or a large image declares its length, and the buffered
+    path could only refuse it past the cap. In pieces it holds one chunk."""
+    conn = _conn(tunnel_handler, stream_responses=True)
+    tunnel_handler._http_client = tunnel_stream_client(_over_the_cap())
+
+    await _proxy(tunnel_handler, conn, path="/api/project/export")
+
+    sent = _sent(conn)
+    assert [m["type"] for m in sent] == [
+        "http_response_start", "http_body", "http_body", "http_body_end",
+    ]
+    assert sent[0]["status"] == 200
+    assert "content-length" not in {k.lower() for k in sent[0]["headers"]}
+
+
+@pytest.mark.asyncio
+async def test_a_cloud_that_never_offered_is_still_refused_over_the_cap(tunnel_handler):
+    """It has no handler for the pieces, so one message is all it can take."""
+    conn = _conn(tunnel_handler, stream_responses=False)
+    tunnel_handler._http_client = tunnel_stream_client(_over_the_cap())
+
+    await _proxy(tunnel_handler, conn, path="/api/project/export")
+
+    sent = _sent(conn)
+    assert [m["type"] for m in sent] == ["http_response"]
+    assert sent[0]["status"] == 502
+
+
 @pytest.mark.asyncio
 async def test_an_empty_body_status_is_not_streamed(tunnel_handler):
     """204 and 304 carry no body and no length. Streaming them would spend

@@ -54,6 +54,12 @@ FORWARDED_HEADERS = frozenset({
     "x-forwarded-port", "x-forwarded-server", "forwarded", "x-real-ip",
 })
 
+# The largest response sent to the cloud as one message. The buffered path holds
+# the whole body in memory, and one message of it must fit the cloud's socket
+# after base64. Anything larger goes up in pieces when the cloud can take them,
+# and is refused only for a cloud that cannot.
+MAX_BUFFERED_RESPONSE = 10 * 1024 * 1024
+
 
 @dataclass
 class TunnelConnection:
@@ -449,7 +455,6 @@ class TunnelHandler:
             if conn.session_secret:
                 req_headers[CLOUD_SESSION_HEADER] = conn.session_secret
 
-            max_response_size = 10 * 1024 * 1024  # 10MB
             async with client.stream(
                 method=method,
                 url=url,
@@ -464,11 +469,11 @@ class TunnelHandler:
                     # rather than after: the request is streamed, so finding
                     # out how big it is no longer means holding all of it.
                     content_length = response.headers.get("content-length")
-                    if content_length and int(content_length) > max_response_size:
+                    if content_length and int(content_length) > MAX_BUFFERED_RESPONSE:
                         raise ValueError(f"Response too large: {content_length} bytes")
 
                     await response.aread()
-                    if len(response.content) > max_response_size:
+                    if len(response.content) > MAX_BUFFERED_RESPONSE:
                         raise ValueError(f"Response too large: {len(response.content)} bytes")
 
                     resp_msg = {
@@ -531,10 +536,12 @@ class TunnelHandler:
     def _should_stream(conn: TunnelConnection, method: str, response: Any) -> bool:
         """Whether to send this response in pieces instead of buffering it.
 
-        Two shapes qualify, and both are cases where measuring the body first
-        is the wrong move: an event stream, which is deliberately open-ended,
-        and anything the local server sent without a declared length, which it
-        is by definition still producing.
+        Three shapes qualify. Two are cases where measuring the body first is
+        the wrong move: an event stream, which is deliberately open-ended, and
+        anything the local server sent without a declared length, which it is
+        by definition still producing. The third is a body that declares more
+        than MAX_BUFFERED_RESPONSE: a project export or a large image, which
+        the buffered path could only refuse.
         """
         if not conn.stream_responses:
             return False
@@ -543,7 +550,13 @@ class TunnelHandler:
         content_type = response.headers.get("content-type", "").lower()
         if content_type.startswith("text/event-stream"):
             return True
-        return "content-length" not in response.headers
+        declared = response.headers.get("content-length")
+        if declared is None:
+            return True
+        try:
+            return int(declared) > MAX_BUFFERED_RESPONSE
+        except ValueError:
+            return False
 
     @staticmethod
     def _rewrite_location(conn: TunnelConnection, resp_headers: dict) -> dict:
