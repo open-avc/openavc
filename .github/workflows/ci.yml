@@ -263,18 +263,28 @@ jobs:
         with:
           node-version: "22"
 
-      # --omit=dev on purpose: the Programmer's build chain (vite, postcss,
-      # babel) collects advisories constantly and none of it reaches a browser,
-      # while a flaw in what the bundle actually ships -- monaco, its dompurify,
-      # js-yaml -- runs on the integrator's machine. Gating on the dev tree
-      # would make this job red most weeks and it would stop being read.
+      # The npm that ships with Node 22 asks the registry's bulk advisory
+      # endpoint and, when that request fails, falls back to the old quick
+      # audit endpoint, which npm has retired. A passing hiccup on npm's side
+      # then failed this job with "400 Bad Request ... This endpoint is being
+      # retired", which reads like a dependency problem and is not one. npm 11
+      # has no fallback: a failed request says what failed, and
+      # npm_audit.sh tries it again. Pinned, because the audit broke once
+      # without anything in this repo moving.
+      - name: Install npm for the audit
+        run: npm install -g npm@11.21.0
+
+      # --omit=dev on purpose (npm_audit.sh): the Programmer's build chain
+      # (vite, postcss, babel) collects advisories constantly and none of it
+      # reaches a browser, while a flaw in what the bundle actually ships --
+      # monaco, its dompurify, js-yaml -- runs on the integrator's machine.
+      # Gating on the dev tree would make this job red most weeks and it would
+      # stop being read.
       - name: Audit what the Programmer bundle ships
-        working-directory: openavc/web/programmer
-        run: npm audit --omit=dev
+        run: .github/scripts/npm_audit.sh openavc/web/programmer
 
       - name: Audit what the Simulator bundle ships
-        working-directory: openavc/web/simulator
-        run: npm audit --omit=dev
+        run: .github/scripts/npm_audit.sh openavc/web/simulator
 
   build-frontend:
     name: Build frontends
