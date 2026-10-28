@@ -1214,14 +1214,28 @@ export function DashboardView() {
                 {devices.map(dev => {
                   const isEnabled = dev.enabled !== false;
                   const isConnected = liveState[`device.${dev.id}.connected`] === true;
+                  // Each tile opens its own device, not just the Devices screen.
+                  const openDevice = () => useNavigationStore.getState().navigateTo("devices", { type: "device", id: dev.id });
                   return (
                     <div
                       key={dev.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={openDevice}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          openDevice();
+                        }
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-surface)")}
                       style={{
                         ...cardStyle,
                         padding: "var(--space-sm) var(--space-md)",
                         opacity: isEnabled ? 1 : 0.5,
                         borderColor: !isEnabled ? "var(--border-color)" : isConnected ? "rgba(76,175,80,0.3)" : "rgba(239,68,68,0.3)",
+                        cursor: "pointer",
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>

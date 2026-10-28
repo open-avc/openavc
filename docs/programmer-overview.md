@@ -52,7 +52,7 @@ Before diving into the IDE features, it helps to understand three core concepts:
 The Dashboard is the landing page of the Programmer IDE, giving you a system status overview at a glance.
 
 - **Summary cards**: connected device count, active triggers, enabled scripts, and cloud connection status
-- **Device grid**: shows all configured devices with color-coded connection indicators (green = connected, red = disconnected, gray = disabled)
+- **Device grid**: shows all configured devices with color-coded connection indicators (green = connected, red = disconnected, gray = disabled). Click a device to open it in the Devices view
 - **Active triggers**: lists triggers that are currently enabled so you can see what automation is running
 - **Cloud status**: shows whether the system is paired to OpenAVC Cloud and the connection state
 - **Uptime**: how long the server has been running since last restart
