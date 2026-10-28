@@ -321,8 +321,7 @@ function PanelAccessCard({ systemStatus, tlsStatus, roomName }: { systemStatus: 
               remote session.
             </div>
             <div>
-              To open the panel, go to Remote Access in the cloud portal, close this session, then
-              choose Remote Panel.
+              To open the panel, choose Remote Panel under Remote Access in the cloud portal.
             </div>
           </div>
         ) : access.localOnly ? (
