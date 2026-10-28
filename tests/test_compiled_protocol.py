@@ -336,11 +336,12 @@ def test_compile_driver_builds_all_three_tables():
     compiled = compile_driver(definition, {"unit": "A"}, device_id="acme_1")
 
     assert len(compiled.responses) == 2
-    pattern, mappings, child_mappings, throttle, _gate = compiled.responses[0]
+    pattern, mappings, child_mappings, throttle, _gate, follow_ups = compiled.responses[0]
     assert pattern.pattern == "PWR(0|1) A"  # config substituted at compile time
     assert mappings == [{"group": 1, "state": "power", "type": "boolean"}]
     assert child_mappings == []
     assert throttle == {"window": 2.0, "last": {}}
+    assert follow_ups is None  # no then_query declared
     assert compiled.after_json_responses == []  # none declared the flag
     zone_routing = compiled.responses[1][2]
     assert zone_routing == [

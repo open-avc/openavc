@@ -233,6 +233,16 @@ SECTION_CASES: list[tuple[str, dict[str, Any], str]] = [
         "on_connect[0]",
     ),
     (
+        "responses[i] (then_query on a json rule)",
+        _d(responses=[{"json": True, "set": {"power": "p"}, "then_query": ["Q\r"]}]),
+        "responses[0]",
+    ),
+    (
+        "responses[i].then_query[j]",
+        _d(responses=[{"match": "CHG", "then_query": ["Q1\r", "Q{child_id}\r"]}]),
+        "responses[0].then_query[1]",
+    ),
+    (
         "unknown key (top level)",
         _d(state_varibles={}),
         "",

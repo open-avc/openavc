@@ -1129,6 +1129,10 @@ class CompiledProtocol:
     simulator and the validator can share it, and a condition needs the state
     store, so the runtime is what asks.
 
+    A ``responses`` entry carries one more slot, last: its ``then_query:``
+    list as authored (or None), the queries the runtime sends once the rule
+    has applied. Sending needs the transport, so it is the runtime's too.
+
     Compiled per driver INSTANCE, not per driver class: the tables embed the
     instance's config substitutions, and their mapping lists are mutable
     per-instance copies — sharing them across instances would let one
@@ -1142,6 +1146,7 @@ class CompiledProtocol:
             list[dict[str, Any]],
             dict[str, Any] | None,
             dict[str, Any] | None,
+            list[Any] | None,
         ]
     ] = field(default_factory=list)
     after_json_responses: list[
@@ -1151,6 +1156,7 @@ class CompiledProtocol:
             list[dict[str, Any]],
             dict[str, Any] | None,
             dict[str, Any] | None,
+            list[Any] | None,
         ]
     ] = field(default_factory=list)
     osc_responses: list[
@@ -1185,6 +1191,56 @@ def rule_condition(resp: dict[str, Any]) -> dict[str, Any] | None:
     a malformed driver is reported."""
     raw = resp.get("only_when")
     return raw if isinstance(raw, dict) and raw else None
+
+
+def rule_follow_ups(resp: dict[str, Any]) -> list[Any] | None:
+    """A regex rule's optional ``then_query:`` list, carried through as
+    authored: the runtime expands and sends it the way it does a poll entry.
+    Anything that is not a non-empty list is dropped, as with ``only_when``."""
+    raw = resp.get("then_query")
+    return list(raw) if isinstance(raw, list) and raw else None
+
+
+_CHILD_ID_TOKEN = re.compile(r"\{child_id(?::[^{}]*)?\}")
+
+
+def follow_up_queries(definition: dict[str, Any]) -> list[Any]:
+    """Every regex rule's ``then_query`` entries, in the shapes a poll entry
+    takes: the queries a driver sends besides its poll and its start-up, for
+    the simulator to answer and its checks to cover.
+
+    An entry sent once whose ``{child_id}`` names the child the rule writes
+    comes back as ``{each_child: <that child type>, ...}``: which child a
+    report will name is not known ahead, so the simulator answers for every
+    child of the type. An entry whose rule names no single child type is
+    left as written (the validator refuses it)."""
+    entries: list[Any] = []
+    for resp in definition.get("responses") or []:
+        if not isinstance(resp, dict) or resp.get("json") or "address" in resp:
+            continue
+        follow = rule_follow_ups(resp)
+        if not follow:
+            continue
+        routes = resp.get("child_set")
+        types = sorted({
+            str(e.get("type")) for e in routes if isinstance(e, dict)
+        }) if isinstance(routes, list) else []
+        for entry in follow:
+            if isinstance(entry, dict) and "each_child" in entry:
+                entries.append(entry)
+                continue
+            send = entry.get("send") if isinstance(entry, dict) else entry
+            if (
+                len(types) == 1
+                and isinstance(send, str)
+                and _CHILD_ID_TOKEN.search(send)
+            ):
+                routed = dict(entry) if isinstance(entry, dict) else {"send": send}
+                routed["each_child"] = types[0]
+                entries.append(routed)
+                continue
+            entries.append(entry)
+    return entries
 
 
 def build_throttle(resp: dict[str, Any]) -> dict[str, Any] | None:
@@ -1810,6 +1866,7 @@ def compile_driver(
                 child_mappings,
                 build_throttle(resp),
                 rule_condition(resp),
+                rule_follow_ups(resp),
             )
             compiled.responses.append(entry)
             # Same tuple, second table: `after_json` does not change how the

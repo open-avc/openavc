@@ -38,7 +38,11 @@ from openavc.drivers.base import (
 )
 from openavc.drivers.child_ids import coerce_child_local_id, page_starts
 from openavc.drivers.param_labels import param_label
-from openavc.drivers.spec import DEFAULT_LINE_GAP_S, LINE_GAP_TRANSPORTS
+from openavc.drivers.spec import (
+    DEFAULT_LINE_GAP_S,
+    FOLLOW_UP_SETTLE_S,
+    LINE_GAP_TRANSPORTS,
+)
 from openavc.drivers.inline_protocol import (
     derive_command_params,
     derive_state_vars_from_responses,
@@ -148,6 +152,10 @@ def _build_commands_meta(commands_def: dict[str, Any]) -> dict[str, Any]:
 # placeholder and a literal JSON brace is neither.
 _WIRE_PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)(?::[^{}]*)?\}")
 
+# A {child_id} / {child_id:spec} token: in a response rule's follow-up query,
+# the child the rule wrote (_follow_up_lines).
+_CHILD_ID_TOKEN = re.compile(r"\{child_id(?::[^{}]*)?\}")
+
 # DEFAULT_LINE_GAP_S (imported above from spec.py, where the reason for its
 # value lives) is the spacing _pace_line keeps between this driver's own lines
 # over LINE_GAP_TRANSPORTS when no ``inter_command_delay`` is set.
@@ -233,6 +241,11 @@ class ConfigurableDriver(BaseDriver):
         # Whether the last poll was held back by polling.when_state, so the
         # log says once when the poll pauses and once when it resumes.
         self._poll_held = False
+        # Response rules' then_query rounds (_follow_up): the tasks sending
+        # them, and per (rule, routed child) when a round may go again
+        # (infinity while one is going out).
+        self._follow_up_tasks: set[asyncio.Task[None]] = set()
+        self._follow_up_until: dict[tuple[int, str], float] = {}
 
         # Telnet/serial login handshake state. Active only during
         # _perform_auth_handshake() — outside that window on_data_received
@@ -504,6 +517,7 @@ class ConfigurableDriver(BaseDriver):
 
     async def _close_session(self) -> None:
         self._drop_all_held()
+        self._drop_follow_ups()
         await super()._close_session()
 
     @staticmethod
@@ -817,13 +831,17 @@ class ConfigurableDriver(BaseDriver):
         at most the one line being written, never behind the rest of a poll.
         The spacing runs from the previous line whichever of the two sent it,
         so the last start-up line and the first poll line are spaced as well.
+        A response rule's follow-up queries (_send_follow_ups) can go out
+        while a poll is under way; each sender waits again after its sleep
+        until the slot is its own, so the two never share one.
         """
         gap = self._line_gap()
         if gap <= 0:
             return
         wait = self._next_line_at - pacing_clock()
-        if wait > 0:
+        while wait > 0:
             await sleep_at_least(wait)
+            wait = self._next_line_at - pacing_clock()
         self._next_line_at = pacing_clock() + gap
 
     async def _run_on_connect(self) -> None:
@@ -1124,12 +1142,14 @@ class ConfigurableDriver(BaseDriver):
         return held
 
     async def _line_gate_shut(
-        self, gates: dict[str, Any] | None, entry: Any,
+        self, gates: dict[str, Any] | None, entry: Any, *, quiet: bool = False,
     ) -> str | None:
         """Judge the ``when_state`` gates again just before a line goes out:
         ``"poll"`` when the whole poll's gate has shut (``gates`` is the
         polling block; None for start-up), ``"entry"`` when this entry's has,
-        else None.
+        else None. ``quiet`` judges the poll's gate without the poll's
+        paused / resumed log, for a line that is not part of the poll (a
+        response rule's follow-up query).
 
         A gated line first waits for the transport to finish any write under
         way (a command somebody sent, and its ``inter_command_delay``), so a
@@ -1145,7 +1165,10 @@ class ConfigurableDriver(BaseDriver):
         wait_idle = getattr(self.transport, "wait_idle", None)
         if wait_idle is not None:
             await wait_idle()
-        if gates is not None and self._poll_gate_shut(gates):
+        if gates is not None and (
+            not self._state_gate_open(poll_gate) if quiet
+            else self._poll_gate_shut(gates)
+        ):
             return "poll"
         if isinstance(entry, dict) and not self._state_gate_open(
             entry.get("when_state")
@@ -1223,6 +1246,116 @@ class ConfigurableDriver(BaseDriver):
             f"[{self.device_id}] Unrecognized query entry {query!r}; skipping"
         )
         return []
+
+    def _follow_up(
+        self,
+        rule: object,
+        entries: list[Any],
+        scope: str,
+        children: list[tuple[str, Any, dict[str, Any]]],
+    ) -> None:
+        """Send a response rule's ``then_query`` now that it has applied.
+
+        A device that announces a change without saying what changed ("a tie
+        was made at the front panel") is read again at once instead of at the
+        next poll. The round runs as its own task: its lines are paced and may
+        wait on a gate, and a reply read meanwhile has to reach the matcher.
+
+        One round at a time per rule and routed child (``scope``, the
+        throttle's): a match that arrives while one is going out, or within
+        FOLLOW_UP_SETTLE_S of its last line, applies its writes and sends
+        nothing. The replies to the round arrive inside that window, so a
+        rule they match reads once and stops; a second notice inside it is
+        read by the next poll.
+        """
+        key = (id(rule), scope)
+        if self._follow_up_until.get(key, 0.0) > time.monotonic():
+            log.debug(
+                f"[{self.device_id}] then_query not sent: this rule's queries "
+                f"went out less than {FOLLOW_UP_SETTLE_S:g} s ago"
+            )
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        child_ids: list[Any] = []
+        for _ctype, local_id, _updates in children:
+            if local_id not in child_ids:
+                child_ids.append(local_id)
+        self._follow_up_until[key] = float("inf")
+        task = loop.create_task(self._send_follow_ups(key, entries, child_ids))
+        self._follow_up_tasks.add(task)
+        task.add_done_callback(self._follow_up_tasks.discard)
+
+    def _follow_up_lines(self, entry: Any, child_ids: list[Any]) -> list[str]:
+        """One ``then_query`` entry as the lines it sends: expanded as a poll
+        entry is (``each_child``, ``when``, ``when_state``, ``page_size``),
+        then, outside ``each_child``, ``{child_id}`` filled with each child the
+        rule wrote. With none written (an id the roster does not hold), such
+        a line is not sent."""
+        lines = self._expand_query(entry)
+        if isinstance(entry, dict) and "each_child" in entry:
+            return lines
+        out: list[str] = []
+        for line in lines:
+            if _CHILD_ID_TOKEN.search(line):
+                out.extend(
+                    self._safe_substitute(line, {"child_id": local_id})
+                    for local_id in child_ids
+                )
+            else:
+                out.append(line)
+        return out
+
+    async def _send_follow_ups(
+        self, key: tuple[int, str], entries: list[Any], child_ids: list[Any],
+    ) -> None:
+        """Send one round of follow-up queries the way a poll sends its
+        lines, then hold the rule for FOLLOW_UP_SETTLE_S (_follow_up).
+
+        Nothing goes out while ``polling.when_state`` holds the poll: a
+        notice from a unit in standby must not wake it. A failed line ends
+        the round; the poll that follows reads what it missed and is the one
+        that judges the connection."""
+        polling = self._definition.get("polling") or {}
+        cancelled = False
+        try:
+            for entry in entries:
+                for line in self._follow_up_lines(entry, child_ids):
+                    if not self.transport or not self.transport.connected:
+                        return
+                    await self._pace_line()
+                    gate = await self._line_gate_shut(polling, entry, quiet=True)
+                    if gate == "poll":
+                        return
+                    if gate:
+                        continue
+                    await self._dispatch_query(line)
+        except asyncio.CancelledError:
+            cancelled = True
+            raise
+        except Exception as exc:
+            log.warning(
+                f"[{self.device_id}] then_query failed; the next poll reads "
+                f"the values: {exc}"
+            )
+        finally:
+            if cancelled:
+                # Dropped with its connection (_drop_follow_ups): no hold is
+                # left for the next one.
+                self._follow_up_until.pop(key, None)
+            else:
+                self._follow_up_until[key] = time.monotonic() + FOLLOW_UP_SETTLE_S
+
+    def _drop_follow_ups(self) -> None:
+        """Cancel every follow-up round under way: the connection it would
+        send on is going away. A round still waiting is forgotten with it, so
+        the first notice on the next connection is read at once."""
+        for task in list(self._follow_up_tasks):
+            task.cancel()
+        self._follow_up_tasks.clear()
+        self._follow_up_until.clear()
 
     def _coerce_child_local_id(self, child_type: str, raw: Any) -> int | str | None:
         """Coerce a routed child id (regex capture or literal) to the type's
@@ -2374,9 +2507,8 @@ class ConfigurableDriver(BaseDriver):
         else:
             read_by_json = False
 
-        for (
-            pattern, mappings, child_mappings, tstate, condition,
-        ) in eligible:
+        for rule in eligible:
+            pattern, mappings, child_mappings, tstate, condition, follow_ups = rule
             match = pattern.search(text)
             if match:
                 # Before anything is written, and before the throttle: a rule
@@ -2457,6 +2589,11 @@ class ConfigurableDriver(BaseDriver):
                 log.debug(
                     f"[{self.device_id}] Response matched: {pattern.pattern}"
                 )
+                if follow_ups:
+                    self._follow_up(
+                        rule, follow_ups,
+                        self._throttle_scope(child_mappings, match), children,
+                    )
                 return  # Stop at first match
 
         log.debug(f"[{self.device_id}] Unmatched response: {text!r}")

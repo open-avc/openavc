@@ -1509,6 +1509,26 @@ responses:
 
 The flag changes eligibility and nothing else: the rule still has to match, still honours `only_when:` and `throttle:`, and first-match-wins still applies among the rules that are eligible. Rules without the flag keep stopping at a json rule, so adding one doesn't open the frame to the rest of the table. It only means something on a `match:` rule in a driver that has `json: true` rules; anywhere else the driver is rejected rather than quietly ignoring it. Needs platform 0.34.0.
 
+**Reading values again when a report says they changed.** Some devices announce a change without saying what it changed to: a matrix sends one word when somebody makes a tie at its front panel, and a receiver reports that a microphone is back without its settings. `then_query:` sends queries as soon as the rule applies, so the values are read at once instead of at the next poll:
+
+```yaml
+responses:
+  # "CHG": a tie was made at the front panel. Read every output's tie.
+  - match: '^CHG$'
+    set: {}
+    then_query:
+      - { each_child: output, send: "IN? {child_id}\r", query_for: input }
+
+  # "AVAIL 2 YES": output 2 is back in service. Read its name again.
+  - match: '^AVAIL (\d) YES$'
+    child_set:
+      - { type: output, id: "$1", state: { available: "true" } }
+    then_query:
+      - { send: "NAME? {child_id}\r", query_for: name }
+```
+
+Each entry takes the forms a `polling.queries` entry takes: a query string or command name, `{ send, when, when_state, query_for }`, or `{ each_child, send }` for one query per child. In an entry sent once, `{child_id}` is the id of the child the rule's `child_set` writes, and `query_for` names one of that child type's variables; a rule that writes no child, or children of more than one type, is rejected. The queries are spaced like poll lines, and none are sent while `polling.when_state` holds the poll. A match that arrives while the rule's queries are going out, or within 2 seconds of the last one, sends nothing more (counted per child), so a device that answers the query with a line the same rule matches is asked once; the next poll reads anything that changes inside that window. A query that reads back a value the rule has just written is rejected. Works on `match:` rules only. The simulator answers these queries the way it answers poll queries, so give each a `query_for`. Needs platform 0.38.0.
+
 Response patterns (and the `auth` prompt regexes) are validated when the driver loads: an invalid regex, or one with nested/overlapping quantifiers that can cause catastrophic backtracking against hostile device input (for example `(.+)+`, `(a|a)+`, `(foo|foobar)*`), is rejected and the driver won't load. Anchor and bound your patterns instead.
 
 **Config values in patterns**: You can use config value placeholders like `{level_control}` in response patterns. They are resolved when the driver connects. This is useful for protocols like QSC Q-SYS where responses include user-configured control names.

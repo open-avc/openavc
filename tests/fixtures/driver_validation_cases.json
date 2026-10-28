@@ -9252,6 +9252,415 @@
   ],
   "transport": "tcp"
  },
+ "then_query_child_id_two_child_types": {
+  "child_entity_types": {
+   "bus": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   },
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_set": [
+     {
+      "id": "$1",
+      "state": {
+       "level": "0"
+      },
+      "type": "zone"
+     },
+     {
+      "id": "$2",
+      "state": {
+       "level": "0"
+      },
+      "type": "bus"
+     }
+    ],
+    "match": "LINK (\\d) (\\d)",
+    "then_query": [
+     "Z{child_id}?\r"
+    ]
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "then_query_child_id_without_child_set": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "match": "CHG",
+    "then_query": [
+     "Z{child_id}?\r"
+    ]
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "then_query_child_query_for_not_child_variable": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_set": [
+     {
+      "id": "$1",
+      "state": {
+       "level": "1"
+      },
+      "type": "zone"
+     }
+    ],
+    "match": "ZONE(\\d) ON",
+    "then_query": [
+     {
+      "query_for": "power",
+      "send": "P{child_id}?\r"
+     }
+    ]
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "then_query_each_child_undeclared_type": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "match": "CHG",
+    "then_query": [
+     {
+      "each_child": "relay",
+      "send": "R{child_id}?\r"
+     }
+    ]
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "then_query_empty": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "match": "CHG",
+    "then_query": []
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "then_query_not_list": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "match": "CHG",
+    "then_query": "PWR?\r"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "then_query_on_json_rule": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "json": true,
+    "set": {
+     "power": "p"
+    },
+    "then_query": [
+     "PWR?\r"
+    ]
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "then_query_on_osc_rule": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "address": "/power",
+    "then_query": [
+     "/power"
+    ]
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "osc"
+ },
+ "then_query_placeholder_names_nothing": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "match": "CHG",
+    "then_query": [
+     "PWR {unit}?\r"
+    ]
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "then_query_reads_what_rule_wrote": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "match": "PWR=(\\w+)",
+    "set": {
+     "power": "$1"
+    },
+    "then_query": [
+     {
+      "query_for": "power",
+      "send": "PWR?\r"
+     }
+    ]
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "then_query_reads_what_rule_wrote_for_child": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_set": [
+     {
+      "id": "$1",
+      "state": {
+       "level": "$2"
+      },
+      "type": "zone"
+     }
+    ],
+    "match": "ZONE(\\d) LVL (\\d+)",
+    "then_query": [
+     {
+      "query_for": "level",
+      "send": "L{child_id}?\r"
+     }
+    ]
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "then_query_when_undeclared_field": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "match": "CHG",
+    "then_query": [
+     {
+      "send": "PWR?\r",
+      "when": "meters_on"
+     }
+    ]
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "unknown_param_key": {
   "commands": {
    "set_volume": {

@@ -969,6 +969,42 @@
  "state_variables_not_mapping": [
   "state_variables: must be a mapping"
  ],
+ "then_query_child_id_two_child_types": [
+  "responses[0].then_query[0]: {child_id} names the child this rule writes, and the rule writes children of more than one type (bus, zone). Send the query to every child of one type with each_child"
+ ],
+ "then_query_child_id_without_child_set": [
+  "responses[0].then_query[0]: {child_id} names the child this rule writes, and the rule has no child_set. Route the report to its child with child_set, or send the query to every child with each_child"
+ ],
+ "then_query_child_query_for_not_child_variable": [
+  "responses[0].then_query[0]: query_for 'power' is not a state variable of child type 'zone', the child {child_id} names here"
+ ],
+ "then_query_each_child_undeclared_type": [
+  "responses[0].then_query[0]: each_child type 'relay' is not a declared child_entity_type"
+ ],
+ "then_query_empty": [
+  "Response 0: then_query must list at least one query"
+ ],
+ "then_query_not_list": [
+  "Response 0: then_query must list at least one query"
+ ],
+ "then_query_on_json_rule": [
+  "Response 0: then_query works on text rules (match:) only"
+ ],
+ "then_query_on_osc_rule": [
+  "Response 0: then_query works on text rules (match:) only"
+ ],
+ "then_query_placeholder_names_nothing": [
+  "responses[0].then_query[0]: '{unit}' resolves to nothing. It names no config field (only config values substitute here), so it would be sent to the device as written"
+ ],
+ "then_query_reads_what_rule_wrote": [
+  "responses[0].then_query[0]: reads 'power', which this rule has just written. then_query reads what the report did not say"
+ ],
+ "then_query_reads_what_rule_wrote_for_child": [
+  "responses[0].then_query[0]: reads 'level', which this rule has just written for that child. then_query reads what the report did not say"
+ ],
+ "then_query_when_undeclared_field": [
+  "responses[0].then_query[0]: 'when' field 'meters_on' is not a declared config field (config_schema / default_config / config_derived)"
+ ],
  "unknown_param_key": [
   "commands.set_volume.params.level: unknown key 'mn' (did you mean 'min'?)"
  ],

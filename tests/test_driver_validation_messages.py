@@ -928,6 +928,54 @@ CASES: dict[str, Any] = {
     "on_connect_bad_mapping_osc_variant": _d(
         transport="osc", on_connect=[{"foo": 1}]
     ),
+    # --- then_query (a response rule's follow-up queries) ---
+    "then_query_on_json_rule": _resp(json=True, set={"power": "p"}, then_query=["PWR?\r"]),
+    "then_query_on_osc_rule": _d(
+        transport="osc", responses=[{"address": "/power", "then_query": ["/power"]}]
+    ),
+    "then_query_empty": _resp(match="CHG", then_query=[]),
+    "then_query_not_list": _resp(match="CHG", then_query="PWR?\r"),
+    "then_query_child_id_without_child_set": _resp(match="CHG", then_query=["Z{child_id}?\r"]),
+    "then_query_child_id_two_child_types": _d(
+        child_entity_types={**_CHILD_TYPES, "bus": _CHILD_TYPES["zone"]},
+        responses=[{
+            "match": r"LINK (\d) (\d)",
+            "child_set": [
+                {"type": "zone", "id": "$1", "state": {"level": "0"}},
+                {"type": "bus", "id": "$2", "state": {"level": "0"}},
+            ],
+            "then_query": ["Z{child_id}?\r"],
+        }],
+    ),
+    "then_query_reads_what_rule_wrote": _resp(
+        match=r"PWR=(\w+)", set={"power": "$1"},
+        then_query=[{"send": "PWR?\r", "query_for": "power"}],
+    ),
+    "then_query_reads_what_rule_wrote_for_child": _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        responses=[{
+            "match": r"ZONE(\d) LVL (\d+)",
+            "child_set": [{"type": "zone", "id": "$1", "state": {"level": "$2"}}],
+            "then_query": [{"send": "L{child_id}?\r", "query_for": "level"}],
+        }],
+    ),
+    "then_query_child_query_for_not_child_variable": _d(
+        child_entity_types=dict(_CHILD_TYPES),
+        responses=[{
+            "match": r"ZONE(\d) ON",
+            "child_set": [{"type": "zone", "id": "$1", "state": {"level": "1"}}],
+            "then_query": [{"send": "P{child_id}?\r", "query_for": "power"}],
+        }],
+    ),
+    "then_query_each_child_undeclared_type": _resp(
+        match="CHG", then_query=[{"each_child": "relay", "send": "R{child_id}?\r"}]
+    ),
+    "then_query_when_undeclared_field": _resp(
+        match="CHG", then_query=[{"send": "PWR?\r", "when": "meters_on"}]
+    ),
+    "then_query_placeholder_names_nothing": _resp(
+        match="CHG", then_query=["PWR {unit}?\r"]
+    ),
     # --- {name} placeholders ---
     "command_placeholder_names_nothing": _d(
         commands={

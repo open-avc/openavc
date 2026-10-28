@@ -96,10 +96,11 @@ export function canUseSetShorthand(
 
 /** Build a response def, preserving the original form (set: shorthand or
  *  mappings:) of the loaded response when the new mappings still fit.
- *  `child_set`, `throttle`, `after_json`, and the json-rule keys (`json`,
- *  `require`) ride along untouched — rebuilding from a pattern/mapping edit
- *  must never drop the child routing, the rate limit, the rule's place in
- *  the json/regex order, or its body-parsing mode. */
+ *  `child_set`, `throttle`, `after_json`, `then_query`, and the json-rule
+ *  keys (`json`, `require`) ride along untouched — rebuilding from a
+ *  pattern/mapping edit must never drop the child routing, the rate limit,
+ *  the rule's place in the json/regex order, its queries, or its
+ *  body-parsing mode. */
 export function buildResponse(
   pattern: string,
   mappings: DriverResponseMapping[],
@@ -119,6 +120,9 @@ export function buildResponse(
     ...(original.only_when !== undefined ? { only_when: original.only_when } : {}),
     ...(original.child_list !== undefined
       ? { child_list: original.child_list }
+      : {}),
+    ...(original.then_query !== undefined
+      ? { then_query: original.then_query }
       : {}),
   };
   // OSC responses use mappings + address; child_set rides along (the id is
@@ -609,4 +613,28 @@ export function withChildList(
   if (list) next.child_list = list;
   else delete next.child_list;
   return next;
+}
+
+/** A rule with its then_query replaced, or removed when the list is empty
+ *  (the validator refuses an empty one). */
+export function withThenQuery(
+  resp: DriverResponseDef,
+  queries: NonNullable<DriverResponseDef["then_query"]>,
+): DriverResponseDef {
+  const next: DriverResponseDef = { ...resp };
+  if (queries.length) next.then_query = queries;
+  else delete next.then_query;
+  return next;
+}
+
+/** The child type `{child_id}` names in a then_query sent once: the one type
+ *  this rule's child_set writes. Undefined when it writes none, or children
+ *  of more than one type. */
+export function routedChildType(resp: DriverResponseDef): string | undefined {
+  const types = new Set(
+    (resp.child_set ?? [])
+      .map((entry) => entry?.type)
+      .filter((t): t is string => typeof t === "string" && t !== ""),
+  );
+  return types.size === 1 ? [...types][0] : undefined;
 }

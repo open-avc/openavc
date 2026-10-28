@@ -7,8 +7,9 @@ import type {
 } from "../../api/types";
 
 /**
- * Shape helpers for the entries in `polling.queries` and `on_connect`, shared
- * by PollingConfig and LifecycleEditor so the two can't drift.
+ * Shape helpers for the entries in `polling.queries`, `on_connect` and a
+ * response rule's `then_query`, shared by QueryListEditor and LifecycleEditor
+ * so they can't drift.
  *
  * An entry is one of:
  *   "PWR?\r"                                        plain wire string
@@ -294,6 +295,13 @@ export function parseGateValues(
       .filter((n) => Number.isFinite(n) && (type !== "integer" || Number.isInteger(n)));
   }
   return parts;
+}
+
+/** Whether a query's send names a child with `{child_id}` (or
+ *  `{child_id:02d}`). In a response rule's then_query sent once, that is the
+ *  child the rule writes. */
+export function namesRoutedChild(send: string): boolean {
+  return /\{child_id(?::[^{}]*)?\}/.test(send);
 }
 
 /** The `<child type>.<variable>` pairs a query sent once can report: the

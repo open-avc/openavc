@@ -364,6 +364,9 @@ def _json_contains_errors(where: str, spec: dict[str, Any]) -> list[str]:
 # the real placeholder and never on the brace that opens the object.
 _SUBSTITUTION_TOKEN = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)(?::[^{}]*)?\}")
 
+# A {child_id} / {child_id:spec} token in a query template.
+_CHILD_ID_TOKEN = re.compile(r"\{child_id(?::[^{}]*)?\}")
+
 # What each position is allowed to interpolate, phrased for the message.
 _CMD_SOURCES = "no parameter of this command and no config field"
 _CFG_SOURCES = "no config field (only config values substitute here)"
@@ -433,7 +436,8 @@ def validate_substitutions(driver_def: dict[str, Any]) -> list[str]:
 
     Covers the three places a placeholder reaches the device or the matcher:
     a command's send/path/body/address/headers, a response's ``match``
-    pattern, and the polling / on_connect query lists.
+    pattern, and the query lists (polling, on_connect and each response
+    rule's then_query).
 
     Mirrored into the community catalog's validator by the vendored copy of
     this module (``openavc-drivers/scripts/_vendor/``).
@@ -516,11 +520,18 @@ def validate_substitutions(driver_def: dict[str, Any]) -> list[str]:
                 )
 
     polling = driver_def.get("polling")
-    for where, entries in (
+    query_lists: list[tuple[str, Any]] = [
         ("polling.queries",
          polling.get("queries") if isinstance(polling, dict) else None),
         ("on_connect", driver_def.get("on_connect")),
-    ):
+    ]
+    if isinstance(responses, list):
+        query_lists += [
+            (f"responses[{i}].then_query", response.get("then_query"))
+            for i, response in enumerate(responses)
+            if isinstance(response, dict)
+        ]
+    for where, entries in query_lists:
         if not isinstance(entries, list):
             continue
         for i, entry in enumerate(entries):
@@ -2672,7 +2683,14 @@ def validate_driver_definition(
                 if places_a_page:
                     list_paged.add((spec.get("type"), prop))
 
-    def _validate_each_child(name: str, entries: Any, allow_osc_dict: bool) -> None:
+    def _validate_each_child(
+        name: str, entries: Any, allow_osc_dict: bool,
+        follow_up: bool = False, child_of: str | None = None,
+    ) -> None:
+        # `follow_up`: a response rule's then_query, where {child_id} in an
+        # entry sent once is the child the rule writes, of type `child_of`
+        # (None when the rule names no single child type; the then_query
+        # checks below report that, so such an entry's query_for is left).
         errors.ctx = name
         if not isinstance(entries, list):
             return
@@ -2680,6 +2698,12 @@ def validate_driver_definition(
             errors.ctx = f"{name}[{i}]"
             if not isinstance(q, dict):
                 continue
+            routed = (
+                follow_up
+                and "each_child" not in q
+                and isinstance(q.get("send"), str)
+                and _CHILD_ID_TOKEN.search(q["send"]) is not None
+            )
             # `when: <config_field>` gates the entry on a truthy config value.
             # A field name that doesn't exist would silently disable the entry
             # forever, so a typo is an error rather than a quiet no-op.
@@ -2717,6 +2741,18 @@ def validate_driver_definition(
                     errors.append(
                         f"{name}[{i}]: 'query_for' must name a state variable"
                     )
+                elif routed:
+                    _co_def = child_types_map.get(child_of) if child_of else None
+                    _co_vars = (
+                        _co_def.get("state_variables")
+                        if isinstance(_co_def, dict) else None
+                    )
+                    if child_of and not (isinstance(_co_vars, dict) and qf in _co_vars):
+                        errors.append(
+                            f"{name}[{i}]: query_for '{qf}' is not a state "
+                            f"variable of child type {child_of!r}, the child "
+                            f"{{child_id}} names here"
+                        )
                 elif "each_child" in q:
                     _ec = q.get("each_child")
                     _ec_def = (
@@ -2878,6 +2914,79 @@ def validate_driver_definition(
     _validate_each_child(
         "on_connect", driver_def.get("on_connect"), allow_osc_dict=True
     )
+
+    # A response rule's `then_query:` takes the entries a poll takes, plus
+    # {child_id} in an entry sent once, naming the child the rule writes.
+    # Without one child type to name, that token would be sent as written.
+    for i, resp in enumerate(responses):
+        if not isinstance(resp, dict) or "then_query" not in resp:
+            continue
+        errors.ctx = f"responses[{i}]"
+        follow = resp.get("then_query")
+        if resp.get("json") or "address" in resp:
+            errors.append(
+                f"Response {i}: then_query works on text rules (match:) only"
+            )
+            continue
+        if not isinstance(follow, list) or not follow:
+            errors.append(
+                f"Response {i}: then_query must list at least one query"
+            )
+            continue
+        _routes = [
+            e for e in (resp.get("child_set") or [])
+            if isinstance(e, dict)
+        ] if isinstance(resp.get("child_set"), list) else []
+        _routed_types = sorted({str(e.get("type")) for e in _routes})
+        _child_of = _routed_types[0] if len(_routed_types) == 1 else None
+        # What the rule itself writes: reading one of those again for the
+        # same device or child asks the device what it has just said.
+        _written = set((resp.get("set") or {}) if isinstance(resp.get("set"), dict) else ())
+        _written |= {
+            m.get("state") for m in (resp.get("mappings") or [])
+            if isinstance(m, dict)
+        }
+        _written_child = {
+            prop for e in _routes if isinstance(e.get("state"), dict)
+            for prop in e["state"]
+        }
+        for j, entry in enumerate(follow):
+            where = f"responses[{i}].then_query[{j}]"
+            errors.ctx = f"responses[{i}].then_query[{j}]"
+            if isinstance(entry, dict) and "each_child" in entry:
+                continue
+            send = entry.get("send") if isinstance(entry, dict) else entry
+            qf = entry.get("query_for") if isinstance(entry, dict) else None
+            if isinstance(send, str) and _CHILD_ID_TOKEN.search(send):
+                if not _routed_types:
+                    errors.append(
+                        f"{where}: {{child_id}} names the child this rule "
+                        f"writes, and the rule has no child_set. Route the "
+                        f"report to its child with child_set, or send the "
+                        f"query to every child with each_child"
+                    )
+                elif _child_of is None:
+                    errors.append(
+                        f"{where}: {{child_id}} names the child this rule "
+                        f"writes, and the rule writes children of more than "
+                        f"one type ({', '.join(_routed_types)}). Send the "
+                        f"query to every child of one type with each_child"
+                    )
+                elif isinstance(qf, str) and qf in _written_child:
+                    errors.append(
+                        f"{where}: reads '{qf}', which this rule has just "
+                        f"written for that child. then_query reads what the "
+                        f"report did not say"
+                    )
+            elif isinstance(qf, str) and qf in _written:
+                errors.append(
+                    f"{where}: reads '{qf}', which this rule has just "
+                    f"written. then_query reads what the report did not say"
+                )
+        _validate_each_child(
+            f"responses[{i}].then_query", follow, allow_osc_dict=False,
+            follow_up=True, child_of=_child_of,
+        )
 
     # Validate the optional `routing:` block (where this driver's routing
     # lives, so a Matrix can be set up from the device). Every rule here is a

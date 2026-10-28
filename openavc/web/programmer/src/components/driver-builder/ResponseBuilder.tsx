@@ -40,10 +40,14 @@ import {
   refOrNumberFromText,
   renameValueMapKey,
   requireToList,
+  routedChildType,
   withChildList,
+  withThenQuery,
   type JsonRuleRow,
 } from "./responseBuilderHelpers";
 import { parseApiError } from "../../api/errors";
+import { QueryListEditor } from "./QueryListEditor";
+import type { QueryEntry } from "./queryEntryHelpers";
 
 /** Coercion types offered on a JSON field row (what coerce_json_value
  *  distinguishes). A loaded rule may carry another spelling ("number",
@@ -111,8 +115,9 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
 
   /** Convert a rule between text (regex) and JSON body, confirming before
    *  authored content is dropped. Throttle survives the switch; after_json
-   *  does not survive to JSON, and neither does child_set — both kinds route
-   *  to children, but a capture ref means nothing in a JSON body. */
+   *  and then_query do not survive to JSON, and neither does child_set —
+   *  both kinds route to children, but a capture ref means nothing in a
+   *  JSON body. */
   const switchKind = (index: number, kind: string) => {
     const resp = responses[index];
     const wasJson = resp.address === undefined && !!resp.json;
@@ -135,6 +140,9 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
       }
       if (resp.after_json) {
         dropped.push("its after-JSON ordering (a JSON rule reads the body itself)");
+      }
+      if ((resp.then_query?.length ?? 0) > 0) {
+        dropped.push("its Then Query list (text rules only)");
       }
       if (
         dropped.length > 0 &&
@@ -749,6 +757,13 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
                 onChange={(list) => updateResponse(i, withChildList(resp, list))}
               />
             )}
+          {!isJson && draft.transport !== "osc" && (
+            <ThenQueryEditor
+              draft={draft}
+              resp={resp}
+              onChange={(queries) => updateResponse(i, withThenQuery(resp, queries))}
+            />
+          )}
         </div>
         );
       })}
@@ -1586,6 +1601,72 @@ function WireIdMapRows({
       >
         + Add
       </button>
+    </div>
+  );
+}
+
+/**
+ * A response rule's `then_query:` list: queries sent as soon as the rule
+ * matches. The rows are the Poll Queries rows; on a rule that writes children
+ * of one type, `{child_id}` in a query sent once is the child it wrote.
+ */
+function ThenQueryEditor({
+  draft,
+  resp,
+  onChange,
+}: {
+  draft: DriverDefinition;
+  resp: DriverResponseDef;
+  onChange: (queries: NonNullable<DriverResponseDef["then_query"]>) => void;
+}) {
+  const queries = (resp.then_query ?? []) as QueryEntry[];
+  const routed = routedChildType(resp);
+  const routedLabel = routed
+    ? draft.child_entity_types?.[routed]?.label || routed
+    : undefined;
+  return (
+    <div style={{ marginTop: "var(--space-sm)" }}>
+      {queries.length > 0 && (
+        <>
+          <label
+            style={{
+              display: "block",
+              fontSize: "var(--font-size-sm)",
+              color: "var(--text-secondary)",
+              marginBottom: "var(--space-xs)",
+            }}
+          >
+            Then Query
+          </label>
+          <div
+            style={{
+              fontSize: "11px",
+              color: "var(--text-muted)",
+              marginBottom: "var(--space-sm)",
+            }}
+          >
+            Sent as soon as this rule matches, for a device that reports that
+            something changed without saying what it changed to. The values are
+            read at once instead of at the next poll.
+            {routedLabel && (
+              <>
+                {" "}In a query sent once, <code>{"{child_id}"}</code> is the{" "}
+                {routedLabel} this rule writes.
+              </>
+            )}
+          </div>
+        </>
+      )}
+      <QueryListEditor
+        draft={draft}
+        queries={queries}
+        onChange={(next) =>
+          onChange(next as NonNullable<DriverResponseDef["then_query"]>)
+        }
+        routedChildType={routed}
+        addLabel="Add Then Query"
+        addStyle="link"
+      />
     </div>
   );
 }

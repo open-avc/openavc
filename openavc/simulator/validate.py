@@ -22,8 +22,9 @@ Checks performed:
     3. Response parsing — the answer to a query the driver polls matches one
                           of the driver's response patterns (a reply to a
                           write is an acknowledgement: counted, not warned)
-    4. Poll coverage    — every polling query has a matching handler
-                          (each_child queries are checked with a sample child id)
+    4. Poll coverage    — every polling query, and every response rule's
+                          then_query, has a matching handler (each_child
+                          queries are checked with a sample child id)
     4b. Reply framing   — every reply a real simulator built from this
                           definition sends back ends with the delimiter the
                           driver splits the stream on (byte-stream transports).
@@ -71,6 +72,7 @@ from openavc.simulator.capacity import capacity_problems
 from openavc.drivers.compiled_protocol import (
     decode_delimiter,
     derive_config,
+    follow_up_queries,
     is_passthrough_send,
     safe_substitute,
     send_regex,
@@ -180,6 +182,11 @@ def validate_yaml_driver(path: Path) -> ValidationResult:
 
         # ── Check 4: Poll query coverage ──
         _check_poll_coverage(result, queries, sim_handlers, driver_def)
+        # The response rules' follow-up queries go on the wire the same way.
+        _check_poll_coverage(
+            result, follow_up_queries(driver_def), sim_handlers, driver_def,
+            label="then_query entry",
+        )
 
         # ── Check 4b: every reply ends where the driver splits the stream ──
         _check_reply_framing(result, commands, queries, driver_def)
@@ -699,10 +706,11 @@ def _query_answering_handlers(sim_handlers: list, driver_def: dict) -> set[int]:
 
     ``polling.queries`` is the set of strings a driver puts on the wire for
     no reason other than to learn what comes back, which is what makes an
-    unreadable answer a defect. An ``on_connect`` entry counts only when it
-    declares ``query_for`` — the rest of that block is a bring-up sequence
-    mixing reads with arming writes, and a write's acknowledgement is not
-    something a response rule should match.
+    unreadable answer a defect; a response rule's ``then_query`` is too. An
+    ``on_connect`` entry counts only when it declares ``query_for`` — the
+    rest of that block is a bring-up sequence mixing reads with arming
+    writes, and a write's acknowledgement is not something a response rule
+    should match.
     """
     handler_patterns = _compile_handler_patterns(sim_handlers)
     config = _effective_config(driver_def)
@@ -712,6 +720,7 @@ def _query_answering_handlers(sim_handlers: list, driver_def: dict) -> set[int]:
 
     answering: set[int] = set()
     entries = list(polling.get("queries") or [])
+    entries += follow_up_queries(driver_def)
     entries += [
         entry
         for entry in (driver_def.get("on_connect") or [])
@@ -771,8 +780,10 @@ def _check_poll_coverage(
     queries: list,
     sim_handlers: list,
     driver_def: dict,
+    label: str = "polling query",
 ) -> None:
-    """Check every polling query has a matching simulator handler."""
+    """Check every polling query (or the queries ``label`` names) has a
+    matching simulator handler."""
     handler_patterns = _compile_handler_patterns(sim_handlers)
     config = _effective_config(driver_def)
     commands = driver_def.get("commands", {})
@@ -830,7 +841,7 @@ def _check_poll_coverage(
             if not auto_covered:
                 result.error(
                     "poll_coverage",
-                    f"No simulator handler matches polling query: {sample!r}"
+                    f"No simulator handler matches {label}: {sample!r}"
                 )
 
 

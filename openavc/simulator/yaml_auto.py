@@ -43,6 +43,7 @@ from openavc.drivers.compiled_protocol import (
     emit_template,
     emit_template_multi,
     fill_template,
+    follow_up_queries,
     is_passthrough_send,
     infer_state_var,
     reading_from_wire,
@@ -2088,7 +2089,8 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             )
 
     def _build_query_handlers(self) -> None:
-        """Build query handlers from polling.queries (+ declared on_connect).
+        """Build query handlers from polling.queries and the response rules'
+        then_query (+ declared on_connect).
 
         A mapping entry's declared ``query_for`` names the state variable
         the reply reports and wins outright. Otherwise the query text is
@@ -2097,7 +2099,8 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         its name (the shared inference fallback).
         """
         polling = self._driver_def.get("polling", {})
-        queries = polling.get("queries", [])
+        queries = list(polling.get("queries", []))
+        queries += follow_up_queries(self._driver_def)
         state_vars = set(self._driver_def.get("state_variables", {}).keys())
 
         # Also check commands for query-like commands without params
@@ -2562,13 +2565,15 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 )
 
     def _list_entries(self) -> list[Any]:
-        """The poll queries and start-up entries, in that order."""
+        """The poll queries, the start-up entries and the response rules'
+        follow-up queries, in that order."""
         entries: list[Any] = []
         polling = self._driver_def.get("polling")
         if isinstance(polling, dict) and isinstance(polling.get("queries"), list):
             entries += polling["queries"]
         if isinstance(self._driver_def.get("on_connect"), list):
             entries += self._driver_def["on_connect"]
+        entries += follow_up_queries(self._driver_def)
         return entries
 
     def _build_list_query_handlers(self) -> None:

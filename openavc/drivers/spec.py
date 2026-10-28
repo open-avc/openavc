@@ -199,6 +199,17 @@ LINE_GAP_TRANSPORTS: tuple[str, ...] = ("tcp", "serial")
 # interval.
 DEFAULT_LINE_GAP_S = 0.05
 
+# Seconds after a response rule's `then_query` lines have gone out during
+# which another match of that rule (for the same child) sends nothing more
+# (ConfigurableDriver._follow_up). The replies to those lines arrive inside
+# this window, so a rule that its own queries' replies match reads once and
+# stops instead of asking again for ever. A text protocol does not say which
+# frame answers which line, so the bound is a time: wide enough for a device
+# answering over a slow serial link, short enough that a second notice a few
+# seconds later is read at once. A notice that does fall inside it is read by
+# the next poll, as every notice was before then_query.
+FOLLOW_UP_SETTLE_S = 2.0
+
 # Transports that put the device on a TCP port of its own, which is what makes
 # a `discovery.port_open` hint able to fire at all: the scan behind that hint is
 # a TCP connect sweep (discovery/port_scanner.py). A driver whose transports
@@ -1935,6 +1946,25 @@ DEFS = {
                 'type': 'boolean',
                 'doc': "Regex rules only, and only on a driver that has json: true rules. Keep this rule eligible after a json rule has read the same body. Normally the first json rule to resolve a key consumes the frame and no regex rule sees it, which is right while the json rules read everything the body carries; set this on the one rule that reads something they do not — an error field arriving alongside the values, say. Eligibility is all it changes: the rule still matches, gates and throttles exactly as it would have, and rules that do not declare it still stop at a json rule. Default false.",
                 'since': '0.34.0',
+            },
+            'then_query': {
+                'type': 'array',
+                'min_items': 1,
+                'doc': "Regex rules only. Queries sent as soon as this rule has applied, for a device that announces a change without saying what changed (\"a tie was made at the front panel\"): the driver reads the values again at once instead of at the next poll. Entries take the forms polling.queries takes: a query string or command name, {send, when, when_state, query_for}, or {each_child, send} for one query per registered child. In an entry that is not each_child, {child_id} is the id of the child this rule's child_set writes, and query_for names one of that child type's variables. The queries are paced like poll lines, and none go out while polling.when_state holds the poll. A match that arrives while this rule's queries are going out, or within 2 seconds of the last one, sends nothing more (counted per child the rule writes), so a reply that matches this rule again is not asked twice; the next poll reads anything that changes inside that time. A frame a throttle holds sends nothing.",
+                'since': '0.38.0',
+                'items': {
+                    'one_of': (
+                        {
+                            'type': 'string',
+                        },
+                        {
+                            'ref': 'eachChildQuery',
+                        },
+                        {
+                            'ref': 'queryEntry',
+                        },
+                    ),
+                },
             },
         },
         'extra': False,

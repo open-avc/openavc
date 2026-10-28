@@ -139,7 +139,7 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   actionEntry: new Set(["availability", "command", "confirm", "icon", "id", "kind", "label", "params", "url", "visible_when"]),
   visibleWhenCondition: new Set(["key", "operator", "value"]),
   mappingEntry: new Set(["arg", "contains", "group", "json_path", "key", "map", "state", "type", "value"]),
-  responseEntry: new Set(["address", "after_json", "child_list", "child_set", "json", "mappings", "match", "only_when", "require", "set", "throttle"]),
+  responseEntry: new Set(["address", "after_json", "child_list", "child_set", "json", "mappings", "match", "only_when", "require", "set", "then_query", "throttle"]),
   pushSession: new Set(["close_event", "event", "header", "key", "pattern"]),
   pushRegisterEntry: new Set(["command", "each_child", "when"]),
   authBlock: new Set(["failure_pattern", "line_ending", "password_field", "password_prompt", "skip_if_empty", "success_pattern", "timeout_seconds", "type", "username_field", "username_prompt"]),
@@ -726,6 +726,24 @@ export interface DriverResponseDef {
    * Requires platform 0.34.0.
    */
   after_json?: boolean;
+  /**
+   * Regex rules only. Queries sent as soon as this rule has applied, for a
+   * device that announces a change without saying what changed ("a tie was
+   * made at the front panel"): the driver reads the values again at once
+   * instead of at the next poll. Entries take the forms polling.queries takes:
+   * a query string or command name, {send, when, when_state, query_for}, or
+   * {each_child, send} for one query per registered child. In an entry that is
+   * not each_child, {child_id} is the id of the child this rule's child_set
+   * writes, and query_for names one of that child type's variables. The
+   * queries are paced like poll lines, and none go out while
+   * polling.when_state holds the poll. A match that arrives while this rule's
+   * queries are going out, or within 2 seconds of the last one, sends nothing
+   * more (counted per child the rule writes), so a reply that matches this
+   * rule again is not asked twice; the next poll reads anything that changes
+   * inside that time. A frame a throttle holds sends nothing. Requires
+   * platform 0.38.0.
+   */
+  then_query?: (string | DriverEachChildQuery | DriverQueryEntry)[];
 }
 
 /**
