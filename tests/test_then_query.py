@@ -135,10 +135,10 @@ async def matrix():
                     reply = ""
                     if line.startswith("IN? "):
                         out = int(line[4:])
-                        reply = f"OUT{out} IN{dev['ties'][out]}"
+                        reply = f"OUT{out} IN{dev['ties'].get(out, 1)}"
                     elif line.startswith("NAME? "):
                         out = int(line[6:])
-                        reply = f"NAME {out} {dev['names'][out]}"
+                        reply = f"NAME {out} {dev['names'].get(out, 'Spare')}"
                     elif line == "VOL?":
                         reply = f"VOL {dev['volume']}"
                     if reply:
@@ -255,7 +255,9 @@ async def test_a_held_poll_holds_the_follow_ups(matrix) -> None:
 @pytest.mark.asyncio
 async def test_a_disconnect_cancels_a_round_under_way(matrix) -> None:
     port, dev = matrix
-    drv = _build(_acme(), port)
+    definition = _acme()
+    definition["child_entity_types"]["output"]["instances"] = {"count": 8}
+    drv = _build(definition, port)
     await drv.connect()
     assert await _until(lambda: dev["writers"], 3.0)
     await dev["push"]("CHG")
@@ -265,7 +267,7 @@ async def test_a_disconnect_cancels_a_round_under_way(matrix) -> None:
     await asyncio.sleep(0.3)
     # The cancelled round leaves no hold for the next connection.
     assert drv._follow_up_until == {}
-    assert len(dev["lines"]) < 3
+    assert len(dev["lines"]) < 8
 
 
 @pytest.mark.asyncio
