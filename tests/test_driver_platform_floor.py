@@ -224,6 +224,8 @@ def _annotated_nodes(node, seen=frozenset()):
         return
     if node.get("since"):
         yield node["since"]
+    if node.get("enhancement_since"):
+        yield node["enhancement_since"]
     yield from (node.get("since_values") or {}).values()
     if "ref" in node and node["ref"] not in seen:
         yield from _annotated_nodes(spec.DEFS[node["ref"]], seen | {node["ref"]})
@@ -254,6 +256,61 @@ def test_a_floor_reaches_the_published_documentation():
     assert doc.endswith("Requires platform 0.24.0.")
     kind = spec.node_doc(spec.DEFS["actionEntry"]["fields"]["kind"])
     assert 'Value "link" requires platform 0.24.0.' in kind
+
+
+# --- enhancement fields ------------------------------------------------------
+#
+# A field that only makes a driver better (an older platform ignores it and the
+# driver still runs correctly) names the release that acts on it without
+# raising the driver's floor, so adopting it keeps the driver installable on
+# the releases before.
+
+_THEN_QUERY = spec.DEFS["responseEntry"]["fields"]["then_query"]
+
+
+def _walk_nodes(node, seen=frozenset()):
+    if not isinstance(node, dict):
+        return
+    yield node
+    if "ref" in node and node["ref"] not in seen:
+        yield from _walk_nodes(spec.DEFS[node["ref"]], seen | {node["ref"]})
+    for sub in (node.get("fields") or {}).values():
+        yield from _walk_nodes(sub, seen)
+    for key in ("items", "extra", "prop_names"):
+        yield from _walk_nodes(node.get(key), seen)
+    for combinator in ("one_of", "any_of", "all_of"):
+        for branch in node.get(combinator, ()):
+            yield from _walk_nodes(branch, seen)
+
+
+def test_an_enhancement_field_does_not_raise_the_floor():
+    definition = _d(
+        responses=[{"match": "^CHG$", "set": {}, "then_query": ["PWR?\r"]}],
+        polling={"queries": ["PWR?\r"]},
+    )
+    assert platform_requirements(definition) == []
+    assert required_platform_version(definition) is None
+    # Declaring the release before it is not an error.
+    definition["min_platform_version"] = "0.37.2"
+    assert platform_version_errors(definition, require_declaration=True) == []
+
+
+def test_an_enhancement_reaches_the_published_documentation():
+    assert "enhancement_since" in _THEN_QUERY and "since" not in _THEN_QUERY
+    assert spec.node_doc(_THEN_QUERY).endswith(
+        "Takes effect on platform 0.38.0; an older platform ignores it and "
+        "still runs the driver, so it does not raise min_platform_version."
+    )
+
+
+def test_no_field_is_both_a_floor_and_an_enhancement():
+    both = [
+        node.get("doc", "")[:60]
+        for field in spec.FIELDS.values()
+        for node in _walk_nodes(field)
+        if node.get("since") and node.get("enhancement_since")
+    ]
+    assert not both, f"a field carries both since and enhancement_since: {both}"
 
 
 # --- the shipped corpus ------------------------------------------------------

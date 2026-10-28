@@ -740,8 +740,10 @@ export interface DriverResponseDef {
    * queries are going out, or within 2 seconds of the last one, sends nothing
    * more (counted per child the rule writes), so a reply that matches this
    * rule again is not asked twice; the next poll reads anything that changes
-   * inside that time. A frame a throttle holds sends nothing. Requires
-   * platform 0.38.0.
+   * inside that time. A frame a throttle holds sends nothing. Keep the poll
+   * that reads these values: it is what reads them on a platform that ignores
+   * then_query. Takes effect on platform 0.38.0; an older platform ignores it
+   * and still runs the driver, so it does not raise min_platform_version.
    */
   then_query?: (string | DriverEachChildQuery | DriverQueryEntry)[];
 }

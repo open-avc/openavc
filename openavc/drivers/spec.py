@@ -424,6 +424,15 @@ def is_multicast_group(value: str) -> bool:
 #               difference is not visible in the field's own value. Rendered
 #               into the published description like `since`, and applied on
 #               top of it by platform_requirements().
+#   enhancement_since  the platform version that first ACTS on this field,
+#               for a field that only makes a driver better: on an older
+#               platform the field is ignored (the loader logs a key it does
+#               not know) and the driver still runs correctly, just slower or
+#               plainer. It does NOT raise min_platform_version, so a driver
+#               that adopts it stays installable on the releases before.
+#               Rendered into the published description. Prefer it to `since`
+#               whenever that holds; `since` is for a field the driver is
+#               wrong without (a conversion, a gate, framing).
 #   req         top-level requiredness tier: "platform" (loader rejects
 #               without it) or "catalog" (community publishing requires it)
 #   fields      child fields of an object (ordered dict of nodes)
@@ -1950,8 +1959,8 @@ DEFS = {
             'then_query': {
                 'type': 'array',
                 'min_items': 1,
-                'doc': "Regex rules only. Queries sent as soon as this rule has applied, for a device that announces a change without saying what changed (\"a tie was made at the front panel\"): the driver reads the values again at once instead of at the next poll. Entries take the forms polling.queries takes: a query string or command name, {send, when, when_state, query_for}, or {each_child, send} for one query per registered child. In an entry that is not each_child, {child_id} is the id of the child this rule's child_set writes, and query_for names one of that child type's variables. The queries are paced like poll lines, and none go out while polling.when_state holds the poll. A match that arrives while this rule's queries are going out, or within 2 seconds of the last one, sends nothing more (counted per child the rule writes), so a reply that matches this rule again is not asked twice; the next poll reads anything that changes inside that time. A frame a throttle holds sends nothing.",
-                'since': '0.38.0',
+                'doc': "Regex rules only. Queries sent as soon as this rule has applied, for a device that announces a change without saying what changed (\"a tie was made at the front panel\"): the driver reads the values again at once instead of at the next poll. Entries take the forms polling.queries takes: a query string or command name, {send, when, when_state, query_for}, or {each_child, send} for one query per registered child. In an entry that is not each_child, {child_id} is the id of the child this rule's child_set writes, and query_for names one of that child type's variables. The queries are paced like poll lines, and none go out while polling.when_state holds the poll. A match that arrives while this rule's queries are going out, or within 2 seconds of the last one, sends nothing more (counted per child the rule writes), so a reply that matches this rule again is not asked twice; the next poll reads anything that changes inside that time. A frame a throttle holds sends nothing. Keep the poll that reads these values: it is what reads them on a platform that ignores then_query.",
+                'enhancement_since': '0.38.0',
                 'items': {
                     'one_of': (
                         {
@@ -3180,7 +3189,8 @@ def node_doc(node: dict, values: object = None) -> str | None:
     The floor is written once as ``since`` and rendered from there into
     every published surface (both JSON Schemas, the Builder's types), so
     the sentence an author reads and the version the catalog enforces are
-    the same annotation and cannot drift apart.
+    the same annotation and cannot drift apart. ``enhancement_since`` is
+    rendered the same way and enforces nothing.
 
     ``values`` is the enum the caller is publishing. A field whose Python
     and YAML enums differ would otherwise carry a floor for a value the
@@ -3199,6 +3209,12 @@ def node_doc(node: dict, values: object = None) -> str | None:
     for gate in node.get("since_with") or ():
         named = ", ".join(f'"{k}"' for k in gate["keys"])
         parts.append(f"Alongside {named}, requires platform {gate['version']}.")
+    if node.get("enhancement_since"):
+        parts.append(
+            f"Takes effect on platform {node['enhancement_since']}; an older "
+            f"platform ignores it and still runs the driver, so it does not "
+            f"raise min_platform_version."
+        )
     return " ".join(parts) or None
 
 
