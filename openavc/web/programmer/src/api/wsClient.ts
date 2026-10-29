@@ -1,5 +1,4 @@
 import {
-  REMOTE_SESSION_ENDED_EVENT,
   getAuthSubprotocols,
   hasRemoteSessionEnded,
   hasSession,
@@ -80,17 +79,9 @@ function probeSession(): void {
   });
 }
 
-// A Remote Access session that ended does not come back on a retry: stop
-// knocking, and leave the socket closed behind the screen that says so.
-window.addEventListener(REMOTE_SESSION_ENDED_EVENT, () => {
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-  }
-  socket?.close();
-});
-
 export function connect(): void {
+  // A Remote Access session that ended does not come back on a retry: the
+  // reconnect scheduled before the probe answered stops here.
   if (hasRemoteSessionEnded()) return;
   if (socket && socket.readyState <= WebSocket.OPEN) return;
 
