@@ -340,6 +340,7 @@ class PanelApp {
         this._accessOverlay = null;      // the waiting-for-approval screen while it is up
         this._accessWake = null;         // ends the current wait between check-ins early
         this._accessPromise = null;      // the check-in loop in flight, if any
+        this._remoteSessionEnded = false; // the Remote Access session this page came through is gone
         this._meetingStartTimes = {};    // element_id -> meeting start Date (survives re-render)
         this.themeElementDefaults = {};
         // The variables the applied theme is actually drawing from, which is
@@ -689,6 +690,9 @@ class PanelApp {
     // --- WebSocket ---
 
     connect() {
+        // A Remote Access session that ended does not come back on a retry:
+        // the reconnect scheduled before the probe answered stops here.
+        if (this._remoteSessionEnded) return;
         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
         // Derive WS path relative to page location so tunneled access works.
         const pathParts = location.pathname.split('/panel');
@@ -714,6 +718,7 @@ class PanelApp {
         };
 
         this.ws.onclose = (event) => {
+            if (this._remoteSessionEnded) return;
             if (event.code === 4013 || event.code === 4014) {
                 this.setConnectionStatus(false);
                 for (const timer of Object.values(this.holdTimers)) clearInterval(timer);
@@ -747,6 +752,9 @@ class PanelApp {
                 this._waitForPanelAccess({ afterRefusal: true }).then(() => this.connect());
                 return;
             }
+            // Through Remote Access the drop may be the session itself ending,
+            // which no reconnect can bring back. Ask once; the answer decides.
+            if (this._inRemoteSession()) this._probeRemoteSession();
             this.reconnectAttempts++;
             const retryEl = document.getElementById('reconnect-info');
             if (retryEl) {
@@ -7837,6 +7845,64 @@ class PanelApp {
             const loading = document.getElementById('loading-state');
             if (loading) loading.style.display = 'flex';
         }
+    }
+
+    // --- Remote Access ---
+
+    /** True when this page was opened through the cloud's Remote Access
+     *  (`/tunnel/<id>/panel/`). */
+    _inRemoteSession() {
+        return this._panelBasePath().startsWith('/tunnel/');
+    }
+
+    /**
+     * True when `res` is the cloud refusing a request for a Remote Access
+     * session that is gone, rather than the system answering it. The same
+     * rule as isEndedRemoteSession in the Programmer
+     * (openavc/web/programmer/src/api/auth.ts). The system's API answers every
+     * error as JSON; the cloud's tunnel refusals are bare text: a 404 for a
+     * session that was closed or timed out, a 401 for an access token that is
+     * missing or expired, and a 403 saying remote access ended when the
+     * account lost it. Its other 403 (a request outside the session's scope)
+     * and its 502 (the system is not connected) leave the session standing.
+     */
+    async _isEndedRemoteSession(res) {
+        if (!this._inRemoteSession()) return false;
+        if (res.status !== 401 && res.status !== 403 && res.status !== 404) return false;
+        if ((res.headers.get('content-type') || '').includes('json')) return false;
+        if (res.status !== 403) return true;
+        return (await res.text()).startsWith('Remote access ended');
+    }
+
+    /**
+     * After the socket drops under Remote Access, ask the server once whether
+     * the session is still there. The panel's own check-in is the question:
+     * it is open, so the system answers it without a credential, and a
+     * tunneled request creates no device record.
+     */
+    async _probeRemoteSession() {
+        try {
+            const res = await fetch(`${this._panelBasePath()}/api/panel/access`, { cache: 'no-store' });
+            if (await this._isEndedRemoteSession(res)) this._showRemoteSessionEnded();
+        } catch (_) {
+            // Unreachable, or an answer that could not be read: not an answer
+            // about the session. The reconnect goes on.
+        }
+    }
+
+    /** The session this page came through is gone: say so in place of the
+     *  panel, and stop reconnecting. Nothing on the page can bring it back. */
+    _showRemoteSessionEnded() {
+        if (this._remoteSessionEnded) return;
+        this._remoteSessionEnded = true;
+        for (const t of Object.values(this.holdTimers)) clearInterval(t);
+        this.holdTimers = {};
+        this._showWaitingScreen({ status: 'unavailable' });
+        const overlay = this._accessOverlay;
+        overlay.dataset.status = 'ended';
+        overlay.querySelector('.panel-access-title').textContent = 'Remote session ended';
+        overlay.querySelector('.panel-access-message').textContent =
+            'This remote session has ended. Open it again from the portal.';
     }
 
     /**

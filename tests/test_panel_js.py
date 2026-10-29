@@ -212,6 +212,12 @@ SCENARIOS = [
     "access_a_4010_close_asks_again_instead_of_reconnecting",
     "access_the_admin_password_approves_from_the_panel",
     "access_the_designer_and_the_preview_skip_the_check_in",
+    # A panel opened through Remote Access says when that session has ended,
+    # and stops reconnecting.
+    "remote_session_the_clouds_refusals_end_it",
+    "remote_session_other_answers_leave_it_standing",
+    "remote_session_a_drop_asks_once_and_stops_reconnecting",
+    "remote_session_a_drop_that_is_not_the_end_reconnects",
     # A page nobody has built yet says so, without sending anyone to the IDE.
     "q160_an_empty_page_says_so",
     "q160_a_page_with_a_control_says_nothing",

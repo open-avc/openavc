@@ -244,6 +244,89 @@ function accessRig(answers) {
 const PENDING_ANSWER = {
     access: 'approved', status: 'pending', code: '482-915', space: 'Executive Boardroom',
 };
+
+// --- Remote Access helpers --------------------------------------------------
+
+// What the cloud answers, as bare text, for a session that is gone.
+const REMOTE_ACCESS_ENDED = 'Remote access ended. Open a new session from the portal.';
+
+/** An answer shaped like fetch's. `json` marks it as the system's own: its
+ *  API answers every error as JSON, and the cloud's refusals are bare text. */
+function reply(status, body, json) {
+    return {
+        ok: status < 300,
+        status,
+        headers: new window.Headers(json ? { 'content-type': 'application/json' } : {}),
+        text: async () => body,
+        json: async () => JSON.parse(body),
+    };
+}
+
+/** Run `fn` on a page at `path`, then put the address back. The panel reads
+ *  its path when it asks, not when it starts, so it stays set throughout. */
+async function atPath(path, fn) {
+    const previous = window.location.href;
+    window.history.replaceState({}, '', path);
+    try {
+        return await fn();
+    } finally {
+        window.history.replaceState({}, '', previous);
+    }
+}
+
+/**
+ * A server that gives every request `answer` (an Error is a network failure)
+ * and counts the sockets opened. `fetched` is every URL asked, in order.
+ */
+function remoteRig(answer) {
+    const rig = { answer, fetched: [], sockets: 0 };
+    const savedFetch = window.fetch;
+    const savedWS = window.WebSocket;
+    window.fetch = async (url) => {
+        rig.fetched.push(String(url));
+        if (rig.answer instanceof Error) throw rig.answer;
+        return rig.answer;
+    };
+    class CountingWS extends FakeWS {
+        constructor() {
+            super();
+            rig.sockets++;
+        }
+    }
+    CountingWS.OPEN = 1;
+    window.WebSocket = CountingWS;
+    rig.restore = () => {
+        window.fetch = savedFetch;
+        window.WebSocket = savedWS;
+    };
+    rig.settle = async (rounds = 8) => {
+        for (let i = 0; i < rounds; i++) await new Promise((r) => setTimeout(r, 0));
+    };
+    return rig;
+}
+
+/** Drop `app`'s socket with `code`, and return the reconnect delays the close
+ *  scheduled (none run). */
+function dropSocket(app, code) {
+    const scheduled = [];
+    const realSetTimeout = window.setTimeout;
+    window.setTimeout = (fn, ms) => { scheduled.push(ms); return 0; };
+    try {
+        app.ws.onclose({ code });
+    } finally {
+        window.setTimeout = realSetTimeout;
+    }
+    return scheduled;
+}
+
+/** A dropped socket leaves the shared document offline; the scenarios after
+ *  this one expect it as the document started. */
+function resetAfterDrop(app) {
+    app._hideWaitingScreen();
+    clearAccessOverlay();
+    document.getElementById('offline-overlay').classList.remove('visible');
+    if (app.root) app.root.style.pointerEvents = '';
+}
 const APPROVED_ANSWER = { access: 'approved', status: 'approved', name: 'Room 101 wall' };
 
 const tests = {
@@ -3850,6 +3933,132 @@ const tests = {
             if (!document.getElementById('connection-status')) document.body.appendChild(statusEl);
             offline.style.display = '';
             clearAccessOverlay();
+            rig.restore();
+        }
+    },
+
+    // --- Remote Access: a session that ended says so ------------------------
+
+    // The cloud's answers for a session that is gone: a 404 once it was closed
+    // or timed out, a 401 for an access token that expired, and a 403 saying
+    // remote access ended. The Programmer reads the same three the same way.
+    async remote_session_the_clouds_refusals_end_it() {
+        const app = mkApp();
+        await atPath('/tunnel/t1/panel/', async () => {
+            for (const status of [404, 401, 403]) {
+                assert(await app._isEndedRemoteSession(reply(status, REMOTE_ACCESS_ENDED)),
+                    `the cloud's bare-text ${status} ends the session`);
+            }
+        });
+    },
+
+    // Everything else leaves the session standing: the system's own errors,
+    // the cloud's 403 for a request outside the session's scope, its 502
+    // while the system is not connected, and any answer at all on a panel
+    // opened on the system's own address.
+    async remote_session_other_answers_leave_it_standing() {
+        const app = mkApp();
+        await atPath('/tunnel/t1/panel/', async () => {
+            for (const [status, body, json] of [
+                [401, '{"detail":"Authentication required"}', true],
+                [404, '{"detail":"Not Found"}', true],
+                [403, 'This remote session is for the touch panel and cannot change '
+                    + "the system's configuration.", false],
+                [502, 'Agent not connected to tunnel', false],
+                [200, '{"access":"open"}', true],
+            ]) {
+                assert(!(await app._isEndedRemoteSession(reply(status, body, json))),
+                    `${status} "${body}" leaves the session standing`);
+            }
+        });
+        await atPath('/panel/', async () => {
+            assert(!(await app._isEndedRemoteSession(reply(404, REMOTE_ACCESS_ENDED))),
+                "a panel on the system's own address has no remote session to end");
+        });
+    },
+
+    // A dropped socket under Remote Access asks the panel's check-in once.
+    // The cloud's refusal puts the sentence in place of the panel and stops
+    // reconnecting: the reconnect already scheduled opens no socket, and a
+    // late close schedules nothing and asks nothing.
+    async remote_session_a_drop_asks_once_and_stops_reconnecting() {
+        clearAccessOverlay();
+        const rig = remoteRig(reply(404, REMOTE_ACCESS_ENDED));
+        const app = mkApp();
+        try {
+            await atPath('/tunnel/t1/panel/', async () => {
+                app.connect();
+                assert(rig.sockets === 1, 'the panel opened its socket');
+                dropSocket(app, 1006);
+                assert(JSON.stringify(rig.fetched) === '["/tunnel/t1/api/panel/access"]',
+                    `one question, to the panel's check-in, got ${JSON.stringify(rig.fetched)}`);
+                await rig.settle();
+
+                const overlay = document.getElementById('panel-access-overlay');
+                assert(overlay && overlay.dataset.status === 'ended', 'the ended screen is up');
+                assert(overlay.querySelector('.panel-access-title').textContent === 'Remote session ended',
+                    'the title');
+                const text = overlay.querySelector('.panel-access-message').textContent;
+                assert(text === 'This remote session has ended. Open it again from the portal.',
+                    `the Programmer's sentence, got "${text}"`);
+                assert(overlay.querySelector('.panel-access-claim-link').hidden
+                    && overlay.querySelector('.panel-access-claim').hidden,
+                'no admin password: it cannot bring the session back');
+                assert(!document.getElementById('offline-overlay').classList.contains('visible'),
+                    'the offline overlay is not shown over it');
+
+                app.connect();
+                assert(rig.sockets === 1, 'the reconnect scheduled before the answer opens nothing');
+                const scheduled = dropSocket(app, 1006);
+                assert(scheduled.length === 0,
+                    `a late close schedules nothing, got ${JSON.stringify(scheduled)}`);
+                assert(rig.fetched.length === 1, 'and asks nothing more');
+            });
+        } finally {
+            resetAfterDrop(app);
+            rig.restore();
+        }
+    },
+
+    // A drop that is not the session ending reconnects as it always did: the
+    // cloud's 502 while the system is away, a probe that cannot reach
+    // anything, and a panel on the system's own address, which never asks.
+    async remote_session_a_drop_that_is_not_the_end_reconnects() {
+        clearAccessOverlay();
+        const rig = remoteRig(reply(502, 'Agent not connected to tunnel'));
+        const apps = [];
+        try {
+            await atPath('/tunnel/t1/panel/', async () => {
+                for (const answer of [rig.answer, new Error('network down')]) {
+                    rig.answer = answer;
+                    rig.fetched.length = 0;
+                    const app = mkApp();
+                    apps.push(app);
+                    app.connect();
+                    const scheduled = dropSocket(app, 1006);
+                    await rig.settle();
+                    assert(rig.fetched.length === 1, `one question after the drop (${answer.status || answer})`);
+                    assert(scheduled.includes(1000), `the reconnect is scheduled (${answer.status || answer})`);
+                    assert(!document.getElementById('panel-access-overlay'),
+                        `no ended screen (${answer.status || answer})`);
+                    const before = rig.sockets;
+                    app.connect();
+                    assert(rig.sockets === before + 1, `the reconnect opens a socket (${answer.status || answer})`);
+                }
+            });
+            await atPath('/panel/', async () => {
+                rig.answer = reply(404, REMOTE_ACCESS_ENDED);
+                rig.fetched.length = 0;
+                const app = mkApp();
+                apps.push(app);
+                app.connect();
+                const scheduled = dropSocket(app, 1006);
+                await rig.settle();
+                assert(rig.fetched.length === 0, "a panel on the system's own address asks nothing");
+                assert(scheduled.includes(1000), 'and reconnects');
+            });
+        } finally {
+            for (const app of apps) resetAfterDrop(app);
             rig.restore();
         }
     },
