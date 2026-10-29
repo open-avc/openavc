@@ -450,6 +450,79 @@ def claim_instance(password: str, username: str = "") -> None:
         log.warning("OS password sync after claim failed", exc_info=True)
 
 
+#: A file by one of these names in the data folder, present when the server
+#: starts, clears the Programmer's username, password and API key, so the next
+#: visit shows the first-run setup screen again. It is how someone who forgot
+#: the password gets back in. Writing it takes the same rights as editing
+#: system.json by hand: the Windows data folder is Administrators-only, and on
+#: Linux, the Pi and the Mac it belongs to the service account or root. The
+#: tray and the menu bar app write it for you; on the Pi, update-helper.sh
+#: moves it here from the SD card's boot partition. The ``.txt`` name is
+#: accepted because that is what Notepad saves.
+RESET_REQUEST_NAMES = ("reset-programmer-password", "reset-programmer-password.txt")
+
+_RESET_KEYS = (
+    ("programmer_username", "OPENAVC_PROGRAMMER_USERNAME"),
+    ("programmer_password", "OPENAVC_PROGRAMMER_PASSWORD"),
+    ("api_key", "OPENAVC_API_KEY"),
+)
+
+
+def apply_reset_request() -> bool:
+    """Clear the Programmer login when a reset file is in the data folder.
+
+    Called by ``Engine.start`` before anything can sign in. Returns True when
+    a reset was applied. The API key goes too: with a key and no password the
+    instance stays claimed and the sign-in screen has nothing that works.
+    A value the environment supplies is left alone (it would come back at the
+    next start anyway) and the log says which. The file is removed only once
+    the cleared config is saved, so a failed save is retried at the next start.
+    """
+    cfg = get_system_config()
+    requests = [cfg.data_dir / name for name in RESET_REQUEST_NAMES]
+    found = [p for p in requests if p.is_file()]
+    if not found:
+        return False
+    held = []
+    for key, env_var in _RESET_KEYS:
+        if cfg.env_override("auth", key):
+            held.append(env_var)
+            continue
+        cfg.set("auth", key, "")
+    try:
+        cfg.save(raise_errors=True)
+    except Exception:  # noqa: BLE001 -- retried at the next start
+        log.exception(
+            "Could not save the Programmer login reset. It will be tried again "
+            "at the next start."
+        )
+        return False
+    for path in found:
+        try:
+            path.unlink()
+        except OSError:
+            log.warning("Could not remove %s; delete it by hand", path, exc_info=True)
+    # On the Pi the password is also the OS login: lock that account again
+    # until a new password is chosen (claim_instance syncs it then).
+    try:
+        from openavc import host_control
+        host_control.sync_os_password("")
+    except Exception:  # noqa: BLE001 -- the reset itself already happened
+        log.warning("OS password sync after the login reset failed", exc_info=True)
+    log.warning(
+        "The Programmer username, password and API key were reset (%s was in "
+        "the data folder). The Programmer will ask for new ones.",
+        found[0].name,
+    )
+    if held:
+        log.warning(
+            "%s still set in this server's environment, so that part of the "
+            "login is unchanged. Change it where the environment is set.",
+            ", ".join(held),
+        )
+    return True
+
+
 def programmer_auth_satisfied(
     request: Request,
     credentials: HTTPBasicCredentials | None,

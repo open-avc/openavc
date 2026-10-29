@@ -11,6 +11,7 @@ Menu:
   Open Programmer IDE
   Open Panel UI
   Check for Updates
+  Reset Programmer Password...
   Service > Start / Stop / Restart
   Stop Server and Quit
   Quit Menu Bar App   (added by rumps)
@@ -51,6 +52,11 @@ DATA_DIR = Path("/Library/Application Support/OpenAVC")
 # readable by everyone, and system.json readable by root only.
 SERVER_ADDRESS_FILE = DATA_DIR / "status" / "server.json"
 DAEMON_PLIST = "/Library/LaunchDaemons/com.openavc.server.plist"
+# A file by this name in the data folder makes the server clear the Programmer
+# login at its next start (RESET_REQUEST_NAMES in openavc/api/auth.py). The
+# folder is root's, so the menu item writes it through the same administrator
+# prompt the Service items use, then restarts the daemon.
+RESET_REQUEST_FILE = DATA_DIR / "reset-programmer-password"
 # Uninstaller shipped inside the app bundle. The menu item runs it elevated so
 # users don't have to find a Terminal command to remove the background service.
 UNINSTALL_SCRIPT = "/Applications/OpenAVC.app/Contents/Resources/macos-uninstall.sh"
@@ -160,6 +166,16 @@ def _service_command(action: str) -> None:
         pass
 
 
+def _reset_command() -> str:
+    """The shell line Reset Programmer Password runs as root: write the request
+    file, then restart the daemon (or start it, when it is not loaded)."""
+    return (
+        f"touch '{RESET_REQUEST_FILE}' && "
+        f"(launchctl kickstart -k system/{SERVICE_LABEL} || "
+        f"launchctl bootstrap system {DAEMON_PLIST})"
+    )
+
+
 class OpenAVCMenuBar(rumps.App):
     def __init__(self):
         # "Quit Menu Bar App", not "Quit": this quits a status icon and leaves
@@ -177,6 +193,7 @@ class OpenAVCMenuBar(rumps.App):
             rumps.MenuItem("Open Programmer IDE", callback=self._open_programmer),
             rumps.MenuItem("Open Panel UI", callback=self._open_panel),
             rumps.MenuItem("Check for Updates", callback=self._check_updates),
+            rumps.MenuItem("Reset Programmer Password...", callback=self._reset_programmer_password),
             None,
             ("Service", [
                 rumps.MenuItem("Start", callback=lambda _: _service_command("start")),
@@ -270,6 +287,45 @@ class OpenAVCMenuBar(rumps.App):
                 "can try again from Service > Stop."
             ),
         )
+
+    def _reset_programmer_password(self, _) -> None:
+        ok = rumps.alert(
+            title="Reset Programmer Password?",
+            message=(
+                "This clears the Programmer username, password and API key, and "
+                "restarts OpenAVC. The next time you open the Programmer it asks "
+                "you to choose a new username and password.\n\n"
+                "Your project, devices, panels and cloud connection are not "
+                "changed. Anything that uses the API key will need a new one."
+            ),
+            ok="Reset",
+            cancel="Cancel",
+        )
+        if not ok:
+            return
+        script = f'do shell script "{_reset_command()}" with administrator privileges'
+        try:
+            done = subprocess.run(
+                ["osascript", "-e", script], capture_output=True, timeout=60,
+            ).returncode == 0
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            done = False
+        if done:
+            rumps.alert(
+                title="OpenAVC is restarting",
+                message=(
+                    "In a moment, open the Programmer and choose a new username "
+                    "and password."
+                ),
+            )
+        else:
+            rumps.alert(
+                title="The password was not reset",
+                message=(
+                    "This needs your Mac's administrator password. Try again and "
+                    "enter it when asked."
+                ),
+            )
 
     def _uninstall(self, _) -> None:
         """Fully remove OpenAVC: stop the server LaunchDaemon and this menu-bar

@@ -659,6 +659,34 @@ sync_privileged_helper() {
     chmod 755 "$dst" 2>/dev/null || true
 }
 
+# A forgotten Programmer password on a Pi: a file named openavc-reset-password
+# (or openavc-reset-password.txt, what Notepad saves) on the SD card's boot
+# partition, the one any computer can open, becomes the data-folder request the
+# server applies when it starts (RESET_REQUEST_NAMES in openavc/api/auth.py).
+# Here rather than in the server because removing it from the boot partition
+# takes root. The boot file is removed only once the request is written, so a
+# failed write leaves it for the next start. Absent everywhere but a Pi that
+# was asked, so on every other box this is a handful of failed file tests.
+# OPENAVC_BOOT_DIRS exists for the tests; systemd passes no environment here.
+take_boot_reset_request() {
+    local dir name found=()
+    for dir in ${OPENAVC_BOOT_DIRS:-/boot/firmware /boot}; do
+        for name in openavc-reset-password openavc-reset-password.txt; do
+            [ -f "$dir/$name" ] && found+=("$dir/$name")
+        done
+    done
+    [ "${#found[@]}" -gt 0 ] || return 0
+    if [ -d "$DATA_DIR" ] && touch "$DATA_DIR/reset-programmer-password" 2>/dev/null; then
+        rm -f "${found[@]}" 2>/dev/null || true
+        echo "$LOG_TAG: ${found[0]} found; the Programmer login will be reset"
+    else
+        echo "$LOG_TAG: ${found[0]} found, but $DATA_DIR could not take the reset request"
+    fi
+    return 0
+}
+
+take_boot_reset_request || true
+
 # Main — process instructions if present, sync the unit, then always exit 0.
 # handle_update may exec the freshly-installed helper; in that case sync_unit
 # and sync_privileged_helper run from the re-exec'd process instead

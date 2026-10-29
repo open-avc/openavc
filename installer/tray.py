@@ -11,6 +11,7 @@ Right-click menu:
   Open Programmer IDE
   Open Panel UI
   Check for Updates
+  Reset Programmer Password...
   Start/Stop/Restart Service
   Exit
 
@@ -53,6 +54,12 @@ DATA_DIR = Path(os.environ.get('PROGRAMDATA', 'C:\\ProgramData')) / 'OpenAVC'
 STATUS_DIR = DATA_DIR / 'status'
 STARTUP_ERROR_FILE = STATUS_DIR / 'startup-error.json'
 SERVER_ADDRESS_FILE = STATUS_DIR / 'server.json'
+# A file by this name in the data folder makes the server clear the Programmer
+# login at its next start (RESET_REQUEST_NAMES in openavc/api/auth.py). The
+# folder is administrators-only, so the tray relaunches itself elevated with
+# RESET_ARG to write it and restart the service.
+RESET_REQUEST_FILE = DATA_DIR / 'reset-programmer-password'
+RESET_ARG = '--reset-programmer-password'
 
 
 def _get_server_config() -> dict:
@@ -193,6 +200,60 @@ def _service_command(command: str) -> bool:
         return False
 
 
+def _reset_programmer_password_elevated() -> int:
+    """The elevated half of Reset Programmer Password: write the request
+    file, restart the service so the server applies it. Returns an exit code."""
+    try:
+        RESET_REQUEST_FILE.write_text('')
+    except OSError:
+        return 1
+    try:
+        result = subprocess.run(
+            [NSSM_PATH, 'restart', SERVICE_NAME],
+            capture_output=True,
+            timeout=60,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return 1
+    return 0 if result.returncode == 0 else 1
+
+
+def _launch_elevated_reset() -> bool:
+    """Relaunch this program elevated with RESET_ARG. False when it could not
+    start, most often because the Windows prompt was declined."""
+    if getattr(sys, 'frozen', False):
+        exe, params = sys.executable, RESET_ARG
+    else:
+        exe, params = sys.executable, f'"{Path(__file__).resolve()}" {RESET_ARG}'
+    try:
+        import ctypes
+        ret = ctypes.windll.shell32.ShellExecuteW(None, 'runas', exe, params, None, 0)
+    except Exception:
+        return False
+    # ShellExecuteW returns > 32 on success
+    return ret > 32
+
+
+def _ask_yes_no(title: str, message: str) -> bool:
+    """A Yes/No Windows message box. True for Yes."""
+    try:
+        import ctypes
+        # MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2 | MB_TOPMOST; IDYES == 6
+        return ctypes.windll.user32.MessageBoxW(0, message, title, 0x4 | 0x20 | 0x100 | 0x40000) == 6
+    except Exception:
+        return False
+
+
+def _show_info_dialog(title: str, message: str) -> None:
+    try:
+        import ctypes
+        # MB_OK | MB_ICONINFORMATION | MB_TOPMOST
+        ctypes.windll.user32.MessageBoxW(0, message, title, 0x40 | 0x40000)
+    except Exception:
+        pass
+
+
 def _show_error_dialog(title: str, message: str) -> None:
     """Show a Windows message box on a background thread (non-blocking)."""
     try:
@@ -324,6 +385,36 @@ class OpenAVCTray:
     def _restart_service(self, systray):
         self._run_service_command('restart')
 
+    def _reset_programmer_password(self, systray):
+        # Off the menu thread: the message boxes wait for a click.
+        threading.Thread(target=self._reset_programmer_password_flow, daemon=True).start()
+
+    def _reset_programmer_password_flow(self) -> None:
+        title = 'OpenAVC - Reset Programmer Password'
+        if not _ask_yes_no(
+            title,
+            'This clears the Programmer username, password and API key, and '
+            'restarts OpenAVC. The next time you open the Programmer it asks you '
+            'to choose a new username and password.\n\n'
+            'Your project, devices, panels and cloud connection are not changed. '
+            'Anything that uses the API key will need a new one.\n\n'
+            'Reset now?',
+        ):
+            return
+        if not _launch_elevated_reset():
+            _show_error_dialog(
+                title,
+                'The password was not reset.\n\n'
+                'This needs administrator approval. Try again and accept the '
+                'Windows prompt.',
+            )
+            return
+        _show_info_dialog(
+            title,
+            'OpenAVC is restarting. In a moment, open the Programmer and choose '
+            'a new username and password.',
+        )
+
     def _on_quit(self, systray):
         self._running = False
 
@@ -361,6 +452,7 @@ class OpenAVCTray:
             ('Open Programmer IDE', None, self._open_programmer),
             ('Open Panel UI', None, self._open_panel),
             ('Check for Updates', None, self._check_updates),
+            ('Reset Programmer Password...', None, self._reset_programmer_password),
             ('Service', None, (
                 ('Start Service', None, self._start_service),
                 ('Stop Service', None, self._stop_service),
@@ -399,6 +491,8 @@ class OpenAVCTray:
 
 
 def main():
+    if RESET_ARG in sys.argv[1:]:
+        sys.exit(_reset_programmer_password_elevated())
     app = OpenAVCTray()
     app.run()
 

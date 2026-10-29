@@ -169,7 +169,7 @@ export function AIChatView() {
           ) : paired ? (
             <p style={{ color: "var(--text-secondary)", maxWidth: 400 }}>
               This system is paired but not connected to OpenAVC Cloud right
-              now. Cloud Settings shows what the connection is doing.
+              now. Cloud Connection shows what the connection is doing.
             </p>
           ) : (
             <>
@@ -238,7 +238,7 @@ export function AIChatView() {
                 cursor: "pointer",
               }}
             >
-              Open Cloud Settings
+              Open Cloud Connection
             </button>
           </div>
           {!refused && unavailableReason && unavailableReason !== "Checking..." && (

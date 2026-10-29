@@ -488,7 +488,7 @@ That is deliberately limited to settings whose worst case is a panel that looks 
 The Pi appliance image ships with the operating-system login locked down:
 
 - There is **no default OS password**. The `openavc` Linux account is locked in the image, so there is no `openavc/openavc` shared login to exploit. The kiosk display still auto-starts (auto-login does not use a password).
-- The admin password you set on the first-run **Create admin password** screen becomes the OS console/SSH login for the `openavc` user as well — one credential for both. Changing it in **Settings > Access > Programmer login** re-syncs the OS login.
+- The admin password you set on the first-run **Create admin password** screen becomes the OS console/SSH login for the `openavc` user as well — one credential for both. Changing it in **Settings > Access > Programmer login** re-syncs the OS login. A forgotten one is reset from the SD card ([Forgot the Programmer Password](getting-started.md#forgot-the-programmer-password)).
 - **SSH is off by default.** Enable it with the **Enable SSH** toggle in **Settings > Access** when you need remote console access; log in as `openavc` with the admin password. Turn it off from the same toggle.
 
 This applies only to the Pi appliance image. A generic Linux `install.sh` host runs OpenAVC as an unprivileged service account and does not manage the OS login or `sshd` — set those up yourself as usual.
@@ -508,7 +508,7 @@ A system updated from a version before Panel access existed keeps its panels con
 | `auth.programmer_password` | `OPENAVC_PROGRAMMER_PASSWORD` | **Set this when the server is network-accessible** and you want to prevent other people on the network from opening the Programmer IDE and modifying your project. The browser will prompt for a password. This is for humans logging in via a browser. Optionally set `auth.programmer_username` (`OPENAVC_PROGRAMMER_USERNAME`) to require a specific username; when it is unset, any username is accepted with the correct password. First-run setup and **Settings > Access > Programmer login** take a password of at least 8 characters. Stored as a salted scrypt hash, so it cannot be read back out of `system.json`; a plain password written into that file by hand still works and is converted to a hash on the next start. |
 | `auth.api_key` | `OPENAVC_API_KEY` | **Set this if you have third-party integrations** (control scripts, middleware, or external software) that connect to the OpenAVC REST API or WebSocket. Provide the key to those systems via the `X-API-Key` header. Not needed unless you are building custom integrations. Set a programmer password alongside it — a key on its own cannot open the Programmer in a browser. **Settings > Access** generates one on request; copy it before saving, because it is stored as a salted hash and cannot be read back. A key written into `system.json` by hand still works and is converted on the next start. |
 
-If the admin password is lost, set `auth.programmer_password` to `""` in `system.json` and restart. The instance returns to unclaimed and offers the "create admin password" screen again; nothing else is affected.
+If the admin password is lost, [Forgot the Programmer Password](getting-started.md#forgot-the-programmer-password) has the reset for each kind of install. The instance returns to unclaimed and offers the "create admin password" screen again.
 
 If the API key is lost, generate a new one in **Settings > Access** and update whatever integrations use it. It cannot be read back out of `system.json` either.
 

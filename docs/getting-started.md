@@ -252,6 +252,59 @@ Navigate to http://localhost:8080/panel in another tab. This is what end users s
 4. The **Dashboard** will show the panel URL with your machine's IP address (e.g., `http://192.168.1.100:8080/panel`) that you can open on any device on the same network
 5. Open it on the tablet. The panel shows **Waiting for approval** with a six-digit code; approve it from the notice that appears in the Programmer, or from the Dashboard's **Panels** list, and the panel loads. Approve each device once; it stays approved.
 
+## Connect to OpenAVC Cloud
+
+OpenAVC runs on your own hardware and does everything on this page without the cloud. OpenAVC Cloud connects to it for remote monitoring, remote access and the AI Assistant. To connect a system:
+
+1. Sign in at [cloud.openavc.com](https://cloud.openavc.com), or create a free account there.
+2. Go to **Systems** and click **Generate Token** under **Add System**. An integrator account with no organization yet types the organization's name first: the client or site this system is for.
+3. In the Programmer, click the cloud icon in the left menu, paste the token and click **Pair**.
+
+The token expires after 24 hours. The system shows up on the cloud's **Systems** page once it connects.
+
+Your cloud account and the Programmer's login are separate. The cloud account signs in at cloud.openavc.com; the Programmer's sign-in screen takes the username and password set up on this system.
+
+## Forgot the Programmer Password
+
+Resetting clears the Programmer's username, password and API key, and the next time you open the Programmer it asks you to choose new ones. Your project, devices, panels and cloud connection are not changed. Anything that signs in with the API key needs a new one.
+
+**Windows:** right-click the OpenAVC icon by the clock (it may be behind the **^** arrow) and choose **Reset Programmer Password**, then accept the Windows prompt. Without the tray icon, run these in a Command Prompt opened as administrator:
+
+```bat
+type nul > "C:\ProgramData\OpenAVC\reset-programmer-password"
+net stop OpenAVC && net start OpenAVC
+```
+
+**Mac:** click the OpenAVC icon in the menu bar and choose **Reset Programmer Password**, then enter your Mac's password when asked. Or, in Terminal:
+
+```bash
+sudo touch "/Library/Application Support/OpenAVC/reset-programmer-password"
+sudo launchctl kickstart -k system/com.openavc.server
+```
+
+**Raspberry Pi:** the Programmer password is also the Pi's own login, so the reset goes through the SD card.
+
+1. Shut down the Pi and take out the SD card.
+2. Put the card in any computer and open the drive named **bootfs**.
+3. Create an empty file there named `openavc-reset-password`. On Windows, a new text document named `openavc-reset-password.txt` works too.
+4. Eject the card, put it back in the Pi and power it on.
+
+**Linux:**
+
+```bash
+sudo touch /var/lib/openavc/reset-programmer-password
+sudo systemctl restart openavc
+```
+
+**Docker:**
+
+```bash
+docker compose exec openavc touch /data/reset-programmer-password
+docker compose restart openavc
+```
+
+A password set with `OPENAVC_PROGRAMMER_PASSWORD` is not stored on the system, so a reset leaves it alone. Change the variable where it is set instead.
+
 ## Environment Variables
 
 These environment variables override the corresponding `system.json` settings, and the matching field in Settings shows locked. Useful for Docker, systemd, and scripted deployments.

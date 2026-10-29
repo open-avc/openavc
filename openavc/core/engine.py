@@ -290,6 +290,15 @@ class Engine:
 
         sys_config.ensure_file()
 
+        # A forgotten Programmer password: a reset file in the data folder
+        # clears the login, so this start comes up on the setup screen.
+        # openavc/api/auth.py apply_reset_request.
+        try:
+            from openavc.api.auth import apply_reset_request
+            apply_reset_request()
+        except Exception:  # never block startup on the reset
+            log.exception("Could not apply the Programmer login reset")
+
         # Convert an admin password or API key stored as typed (an install
         # predating the hashing, or a hand-provisioned system.json) into a
         # digest. Before the plugin and script engines below on purpose: those

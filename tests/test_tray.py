@@ -266,3 +266,58 @@ def test_a_port_changed_in_settings_reaches_the_tray_with_the_restart(status_dir
 
     assert asked == [8090]
     assert tray._base_url == "http://localhost:8090"
+
+
+# --- Reset Programmer Password ------------------------------------------------
+
+
+def test_the_reset_file_is_one_the_server_reads():
+    from openavc.api.auth import RESET_REQUEST_NAMES
+
+    assert tray_mod.RESET_REQUEST_FILE.name in RESET_REQUEST_NAMES
+    assert tray_mod.RESET_REQUEST_FILE.parent == tray_mod.DATA_DIR
+
+
+def test_the_elevated_half_writes_the_file_and_restarts_the_service(tmp_path, monkeypatch):
+    flag = tmp_path / "reset-programmer-password"
+    monkeypatch.setattr(tray_mod, "RESET_REQUEST_FILE", flag)
+    ran = []
+
+    class Done:
+        returncode = 0
+
+    monkeypatch.setattr(tray_mod.subprocess, "run", lambda cmd, **kw: ran.append(cmd) or Done())
+
+    assert tray_mod._reset_programmer_password_elevated() == 0
+    assert flag.exists()
+    assert ran == [[tray_mod.NSSM_PATH, "restart", tray_mod.SERVICE_NAME]]
+
+
+def test_the_elevated_half_runs_without_starting_a_second_tray(monkeypatch):
+    monkeypatch.setattr(tray_mod.sys, "argv", ["openavc-tray.exe", tray_mod.RESET_ARG])
+    monkeypatch.setattr(tray_mod, "_reset_programmer_password_elevated", lambda: 0)
+    monkeypatch.setattr(tray_mod, "OpenAVCTray", lambda: pytest.fail("started the tray"))
+
+    with pytest.raises(SystemExit) as done:
+        tray_mod.main()
+    assert done.value.code == 0
+
+
+def test_saying_no_resets_nothing(monkeypatch):
+    tray = OpenAVCTray()
+    monkeypatch.setattr(tray_mod, "_ask_yes_no", lambda *a: False)
+    monkeypatch.setattr(tray_mod, "_launch_elevated_reset", lambda: pytest.fail("launched"))
+    tray._reset_programmer_password_flow()
+
+
+def test_a_declined_windows_prompt_says_the_password_was_not_reset(monkeypatch):
+    tray = OpenAVCTray()
+    shown = []
+    monkeypatch.setattr(tray_mod, "_ask_yes_no", lambda *a: True)
+    monkeypatch.setattr(tray_mod, "_launch_elevated_reset", lambda: False)
+    monkeypatch.setattr(tray_mod, "_show_error_dialog", lambda title, msg: shown.append(msg))
+    monkeypatch.setattr(tray_mod, "_show_info_dialog", lambda *a: pytest.fail("said it worked"))
+
+    tray._reset_programmer_password_flow()
+
+    assert shown and "not reset" in shown[0]

@@ -13,6 +13,10 @@ interface LoginProps {
   unsavedWork?: boolean;
 }
 
+/** Where the per-install reset steps are written up. */
+export const RESET_GUIDE_URL =
+  "https://docs.openavc.com/getting-started/#forgot-the-programmer-password";
+
 export function Login({ onSuccess, expired, nowRequired, unsavedWork }: LoginProps) {
   // Empty, not "admin". The username is whatever the person who claimed this
   // controller chose, and the client has no way to learn it -- a prefill is
@@ -24,6 +28,7 @@ export function Login({ onSuccess, expired, nowRequired, unsavedWork }: LoginPro
   const [pass, setPass] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showReset, setShowReset] = useState(false);
   const userRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -42,10 +47,15 @@ export function Login({ onSuccess, expired, nowRequired, unsavedWork }: LoginPro
         return;
       }
       if (res.status === 401) {
+        // An email address in the Username box is almost always an OpenAVC
+        // Cloud account typed into the wrong sign-in, so that is the one case
+        // that names the cloud.
         setError(
-          user.trim()
-            ? "Wrong username or password."
-            : "Wrong username or password. If this controller was claimed with a username, enter it too.",
+          user.includes("@")
+            ? "Wrong username or password. This is the Programmer's own login. Your OpenAVC Cloud account doesn't work here."
+            : user.trim()
+              ? "Wrong username or password."
+              : "Wrong username or password. If a username was set up, enter it too.",
         );
       } else if (res.status === 429) {
         setError("Too many attempts. Wait a minute and try again.");
@@ -147,8 +157,49 @@ export function Login({ onSuccess, expired, nowRequired, unsavedWork }: LoginPro
         </button>
 
         <p style={{ fontSize: 12, opacity: 0.55, margin: 0, textAlign: "center" }}>
-          Your password is exchanged for a session key kept in this tab only.
+          Use the username and password set up for this system.
         </p>
+        <button
+          type="button"
+          onClick={() => setShowReset((v) => !v)}
+          aria-expanded={showReset}
+          style={{
+            background: "none",
+            border: "none",
+            padding: 0,
+            color: "#8AB493",
+            fontSize: 12,
+            cursor: "pointer",
+            alignSelf: "center",
+          }}
+        >
+          Forgot your password?
+        </button>
+        {showReset && (
+          <div style={{ fontSize: 12, lineHeight: 1.5, opacity: 0.85 }}>
+            <p style={{ margin: "0 0 6px" }}>On the computer running OpenAVC:</p>
+            <p style={{ margin: "0 0 4px" }}>
+              <strong>Windows:</strong> right-click the OpenAVC icon by the clock
+              and choose Reset Programmer Password.
+            </p>
+            <p style={{ margin: "0 0 4px" }}>
+              <strong>Mac:</strong> click the OpenAVC icon in the menu bar and
+              choose Reset Programmer Password.
+            </p>
+            <p style={{ margin: 0 }}>
+              <strong>Raspberry Pi, Linux or Docker:</strong>{" "}
+              <a
+                href={RESET_GUIDE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "#8AB493" }}
+              >
+                follow the steps in the guide
+              </a>
+              .
+            </p>
+          </div>
+        )}
       </form>
     </div>
   );
