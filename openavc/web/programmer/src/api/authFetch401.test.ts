@@ -109,6 +109,17 @@ describe("a 401 from anywhere else under /api", () => {
     expect(hasSession()).toBe(false);
   });
 
+  it("is reported on the system's own address whatever its body", async () => {
+    // Only a tab opened through Remote Access reads a bare-text refusal as
+    // its remote session ending; here it is the system's, and asks for a
+    // password as before.
+    reply = new Response("Unauthorized", { status: 401 });
+
+    const fired = await expiriesDuring(() => fetch("/api/project"));
+
+    expect(fired).toBe(1);
+  });
+
   it("is reported for a path that merely starts the same way", async () => {
     // Guards the endsWith match: this is not the mint endpoint.
     reply = new Response("{}", { status: 401 });

@@ -1,4 +1,11 @@
-import { getAuthSubprotocols, hasSession, requestSignIn } from "./auth";
+import {
+  REMOTE_SESSION_ENDED_EVENT,
+  getAuthSubprotocols,
+  hasRemoteSessionEnded,
+  hasSession,
+  inRemoteSession,
+  requestSignIn,
+} from "./auth";
 import { BASE } from "./base";
 
 type MessageHandler = (msg: Record<string, unknown>) => void;
@@ -60,15 +67,31 @@ function requestLogin(code: number): void {
  * the handshake forever behind a red status dot, and the user learns the
  * session died from whatever they do next, usually the autosave carrying their
  * work.
+ *
+ * Through Remote Access there may be no session token at all (the cloud
+ * vouches for the tab), so the probe also runs there: a session that ended
+ * comes back as the cloud's refusal, which the same interceptor turns into
+ * the "remote session has ended" screen.
  */
 function probeSession(): void {
-  if (!hasSession()) return;
+  if (!hasSession() && !inRemoteSession()) return;
   fetch(`${BASE}/system/version`).catch(() => {
     /* server unreachable — not an answer about the session */
   });
 }
 
+// A Remote Access session that ended does not come back on a retry: stop
+// knocking, and leave the socket closed behind the screen that says so.
+window.addEventListener(REMOTE_SESSION_ENDED_EVENT, () => {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  socket?.close();
+});
+
 export function connect(): void {
+  if (hasRemoteSessionEnded()) return;
   if (socket && socket.readyState <= WebSocket.OPEN) return;
 
   // Pass the session token as a Sec-WebSocket-Protocol subprotocol so the
@@ -151,6 +174,7 @@ export function connect(): void {
     if (everConnected) {
       probeSession();
     }
+    if (hasRemoteSessionEnded()) return;
     console.log(`[WS] Disconnected (code ${ev.code}), reconnecting in ${reconnectDelay / 1000}s...`);
     reconnectTimer = setTimeout(connect, reconnectDelay);
     reconnectDelay = Math.min(reconnectDelay * 1.5, MAX_RECONNECT_DELAY);

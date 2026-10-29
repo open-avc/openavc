@@ -12,6 +12,7 @@ import { SimulationBar } from "./components/shared/SimulationBar";
 import { DeviceAuditHost } from "./views/devices/audit/DeviceAuditHost";
 import { Login } from "./components/Login";
 import { Setup } from "./components/Setup";
+import { RemoteSessionEnded } from "./components/RemoteSessionEnded";
 import { DashboardView } from "./views/DashboardView";
 import { useProjectStore } from "./store/projectStore";
 import { useDriverBuilderStore } from "./store/driverBuilderStore";
@@ -20,6 +21,7 @@ import { useWebSocket } from "./hooks/useWebSocket";
 import { showInfo } from "./store/toastStore";
 import {
   AUTH_REQUIRED_EVENT,
+  REMOTE_SESSION_ENDED_EVENT,
   type AuthRequiredDetail,
   hasSession,
   probeAuth,
@@ -41,7 +43,7 @@ const PluginExtensionView = lazy(() => import("./views/PluginExtensionView").the
 const UpdatesView = lazy(() => import("./views/UpdatesView").then((m) => ({ default: m.UpdatesView })));
 const SystemSettingsView = lazy(() => import("./views/SystemSettingsView").then((m) => ({ default: m.SystemSettingsView })));
 
-type AuthState = "checking" | "setup" | "needed" | "ready";
+type AuthState = "checking" | "setup" | "needed" | "ready" | "remote_ended";
 
 function App() {
   const [authState, setAuthState] = useState<AuthState>(() =>
@@ -92,6 +94,22 @@ function App() {
     return () => window.removeEventListener(AUTH_REQUIRED_EVENT, handler);
   }, []);
 
+  // The Remote Access session this tab came through is gone. Nothing in the
+  // tab can reach the system any more, and its password would not help.
+  useEffect(() => {
+    const handler = () => {
+      setUnsavedWork(
+        useProjectStore.getState().dirty || useDriverBuilderStore.getState().dirty,
+      );
+      setAuthState("remote_ended");
+    };
+    window.addEventListener(REMOTE_SESSION_ENDED_EVENT, handler);
+    return () => window.removeEventListener(REMOTE_SESSION_ENDED_EVENT, handler);
+  }, []);
+
+  if (authState === "remote_ended") {
+    return <RemoteSessionEnded unsavedWork={unsavedWork} />;
+  }
   if (authState === "checking") {
     return <div style={{ height: "100vh" }} />;
   }

@@ -152,6 +152,53 @@ export function requestSignIn(): void {
 }
 
 /**
+ * Fires once when the Remote Access session this tab was opened through has
+ * ended, telling the App to say so instead of offering a sign-in that cannot
+ * help: the password is the system's, and the refusal came from the cloud.
+ */
+export const REMOTE_SESSION_ENDED_EVENT = "openavc:remote-session-ended";
+
+/** True when this tab was opened through the cloud's Remote Access
+ * (`/tunnel/<id>/programmer/`). */
+export function inRemoteSession(): boolean {
+  return getTunnelPrefix().startsWith("/tunnel/");
+}
+
+let remoteSessionEnded = false;
+
+/** Whether this tab has learned that its Remote Access session ended. */
+export function hasRemoteSessionEnded(): boolean {
+  return remoteSessionEnded;
+}
+
+/**
+ * True when `res` is the cloud refusing a request for a Remote Access session
+ * that is gone, rather than the system answering it. The system's API answers
+ * every error as JSON; the cloud's tunnel refusals are bare text: a 404 for a
+ * session that was closed or timed out, a 401 for an access token that is
+ * missing or expired, and a 403 saying remote access ended when the account
+ * lost it. Its other 403 (a request outside the session's scope) and its 502
+ * (the system is not connected) leave the session standing.
+ */
+export async function isEndedRemoteSession(res: Response): Promise<boolean> {
+  if (!inRemoteSession()) return false;
+  if (res.status !== 401 && res.status !== 403 && res.status !== 404) return false;
+  if ((res.headers.get("content-type") || "").includes("json")) return false;
+  if (res.status !== 403) return true;
+  try {
+    return (await res.clone().text()).startsWith("Remote access ended");
+  } catch {
+    return false;
+  }
+}
+
+function endRemoteSession(): void {
+  if (remoteSessionEnded) return;
+  remoteSessionEnded = true;
+  window.dispatchEvent(new CustomEvent(REMOTE_SESSION_ENDED_EVENT));
+}
+
+/**
  * True when `url` is the session-mint endpoint — the one door whose 401 means
  * "that password is wrong", not "the credential you were holding is dead".
  *
@@ -242,6 +289,14 @@ export function installFetchAuth(): void {
     }
 
     const res = await original(input, finalInit);
+
+    // Checked before the 401 below: a Remote Access session that ended is
+    // refused by the cloud, and the sign-in screen would ask for a password
+    // that cannot bring it back.
+    if (attach && await isEndedRemoteSession(res)) {
+      endRemoteSession();
+      return res;
+    }
 
     // A refused attempt to GET a credential must not destroy the one we hold,
     // and must not be reported as an expiry — see isCredentialMintUrl.
