@@ -31,6 +31,9 @@ from pathlib import Path
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
+# Windows-only flag; 0 elsewhere, so the module imports (and is tested) anywhere.
+CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 # Determine paths
 if getattr(sys, 'frozen', False):
     # Running as PyInstaller bundle
@@ -191,7 +194,7 @@ def _service_command(command: str) -> bool:
             [NSSM_PATH, command, SERVICE_NAME],
             capture_output=True,
             timeout=30,
-            creationflags=subprocess.CREATE_NO_WINDOW,
+            creationflags=CREATE_NO_WINDOW,
         )
         if result.returncode == 0:
             return True
@@ -247,7 +250,7 @@ def _reset_programmer_password_elevated() -> int:
             [NSSM_PATH, 'restart', SERVICE_NAME],
             capture_output=True,
             timeout=60,
-            creationflags=subprocess.CREATE_NO_WINDOW,
+            creationflags=CREATE_NO_WINDOW,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return 1
