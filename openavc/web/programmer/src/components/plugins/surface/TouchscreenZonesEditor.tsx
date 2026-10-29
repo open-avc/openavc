@@ -356,6 +356,7 @@ export function TouchscreenZonesEditor({
                           drag_adjust: key ? { ...(zone.drag_adjust ?? {}), key } : undefined,
                         })
                       }
+                      showDeviceState={false}
                       placeholder="Pick a variable to adjust by swiping..."
                     />
                     {zone.drag_adjust?.key && (

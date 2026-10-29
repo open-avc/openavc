@@ -212,6 +212,7 @@ export function DialAssignmentPanel({
         <VariableKeyPicker
           value={adjust.key ?? ""}
           onChange={(key) => updateAdjust({ key })}
+          showDeviceState={false}
           placeholder="Pick a variable to adjust..."
         />
         {adjust.key && (
@@ -234,6 +235,7 @@ export function DialAssignmentPanel({
         <VariableKeyPicker
           value={pressedAdjust.key ?? ""}
           onChange={(key) => updatePressedAdjust({ key })}
+          showDeviceState={false}
           placeholder="Pick a variable for fine adjust..."
         />
         {pressedAdjust.key && (

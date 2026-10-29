@@ -114,6 +114,7 @@ export interface ActionListEditorProps {
   eventTokens?: { key: string; label: string }[];
   allowedActions?: string[];
   navigateOptions?: { value: string; label: string }[];
+  variablesOnly?: boolean;
 }
 
 export function ActionListEditor({
@@ -130,6 +131,7 @@ export function ActionListEditor({
   eventTokens,
   allowedActions,
   navigateOptions,
+  variablesOnly,
 }: ActionListEditorProps) {
   const update = (index: number, updated: Record<string, unknown>) => {
     const next = [...actions];
@@ -195,6 +197,7 @@ export function ActionListEditor({
             eventTokens={eventTokens}
             allowedActions={allowedActions}
             navigateOptions={navigateOptions}
+            variablesOnly={variablesOnly}
           />
         </div>
       ))}

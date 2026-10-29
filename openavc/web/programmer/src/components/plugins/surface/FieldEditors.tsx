@@ -60,6 +60,7 @@ export function ActionListEditor({
             onChange={(v) => onChange(actions.map((a, j) => (j === i ? v : a)))}
             allowedActions={allowedActions}
             navigateOptions={navigateOptions}
+            variablesOnly
           />
         </div>
       ))}

@@ -34,6 +34,10 @@ interface ActionPickerProps {
   // scoped per slot by the parent. Threaded into each command param's "$"
   // picker as its "This control" group.
   eventTokens?: { key: string; label: string }[];
+  // A control surface writes a user variable (or its own plugin state) and
+  // never a panel control's override, so it offers variables only and words
+  // the action for them.
+  variablesOnly?: boolean;
 }
 
 // The page move is spelled differently by subsystem, and both spellings are
@@ -43,19 +47,19 @@ interface ActionPickerProps {
 // index rather than a panel page, and its plugin is what interprets it.
 // navigateOptions is what tells the two apart here: a surface always supplies
 // its own target list, a panel never does.
-const ACTION_TYPES = (navigateAction: string) => [
+const ACTION_TYPES = (navigateAction: string, variablesOnly?: boolean) => [
   { value: "macro", label: "Run Macro" },
   { value: "device.command", label: "Device Command" },
-  { value: "state.set", label: "Set Variable or Control" },
+  { value: "state.set", label: variablesOnly ? "Set Variable" : "Set Variable or Control" },
   { value: navigateAction, label: "Navigate Page" },
   { value: "script.call", label: "Script Function" },
   { value: "event.emit", label: "Emit Event" },
 ];
 
-export function ActionPicker({ value, project, onChange, forChangeBinding, allowedActions, navigateOptions, eventTokens }: ActionPickerProps) {
+export function ActionPicker({ value, project, onChange, forChangeBinding, allowedActions, navigateOptions, eventTokens, variablesOnly }: ActionPickerProps) {
   const actionType = String(value?.action || "");
   const navigateAction = navigateOptions ? "navigate" : "ui.navigate";
-  const allTypes = ACTION_TYPES(navigateAction);
+  const allTypes = ACTION_TYPES(navigateAction, variablesOnly);
   const actionTypes = allowedActions
     ? allTypes.filter((t) => allowedActions.includes(t.value))
     : allTypes;
@@ -107,6 +111,7 @@ export function ActionPicker({ value, project, onChange, forChangeBinding, allow
           onChange={onChange}
           forChangeBinding={forChangeBinding}
           eventTokens={eventTokens}
+          variablesOnly={variablesOnly}
         />
       )}
       {actionType === navigateAction && (
@@ -332,11 +337,13 @@ function StateSetConfig({
   onChange,
   forChangeBinding,
   eventTokens,
+  variablesOnly,
 }: {
   value: Record<string, unknown> | null;
   onChange: (v: Record<string, unknown>) => void;
   forChangeBinding?: boolean;
   eventTokens?: { key: string; label: string }[];
+  variablesOnly?: boolean;
 }) {
   const useElementValue = value?.value_from === "element";
   // A change binding stores the touched value through "Use element's selected
@@ -362,8 +369,8 @@ function StateSetConfig({
             })
           }
           showDeviceState={false}
-          showUiOverrides
-          placeholder="Select a variable or control..."
+          showUiOverrides={!variablesOnly}
+          placeholder={variablesOnly ? "Select a variable..." : "Select a variable or control..."}
           style={{ width: "100%" }}
         />
       </div>

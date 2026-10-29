@@ -260,6 +260,7 @@ export function ControlAssignmentPanel({
           showFeedback={visualDeck}
           allowedActions={allowedActions}
           navigateOptions={navigateOptions}
+          variablesOnly
           surfaceOrder
         />
       ) : (

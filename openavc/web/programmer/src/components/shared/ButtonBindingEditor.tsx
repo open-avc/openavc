@@ -51,6 +51,8 @@ interface ButtonBindingEditorProps {
   allowedActions?: string[];
   // Navigate targets for control surfaces (deck pages, not panel pages).
   navigateOptions?: { value: string; label: string }[];
+  // A control surface sets variables only, never a panel control's override.
+  variablesOnly?: boolean;
   // Surface inspectors lead with what the key DOES: action slots first,
   // then label, then the press-style (mode) block, then feedback.
   surfaceOrder?: boolean;
@@ -68,6 +70,7 @@ export function ButtonBindingEditor({
   showFeedback = true,
   allowedActions,
   navigateOptions,
+  variablesOnly,
   surfaceOrder = false,
 }: ButtonBindingEditorProps) {
   const [expandedSlot, setExpandedSlot] = useState<string | null>(null);
@@ -481,6 +484,7 @@ export function ButtonBindingEditor({
                       onChange={(v) => setActionValue(section.id, v)}
                       allowedActions={allowedActions}
                       navigateOptions={navigateOptions}
+                      variablesOnly={variablesOnly}
                     />
                     <div style={{ display: "flex", gap: "var(--space-sm)", alignSelf: "flex-start" }}>
                       <ActionTestButton action={getActionValue(section.id)} size="md" />
@@ -526,6 +530,7 @@ export function ButtonBindingEditor({
         canAdd={!!getActionValue("press")}
         allowedActions={allowedActions}
         navigateOptions={navigateOptions}
+        variablesOnly={variablesOnly}
       />
     </div>
   ) : null;
