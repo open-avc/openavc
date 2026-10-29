@@ -263,7 +263,26 @@ def test_bindable_and_taken_are_different_questions():
         assert _port_is_bindable(port) is False
 
 
-def test_a_held_port_is_stepped_over_rather_than_fatal():
+@pytest.fixture
+def probe_answers(monkeypatch) -> dict[int, bool]:
+    """What the real bind probe said about each port when the walk asked it.
+
+    Probing the chosen port a second time, after the choice, races the rest of
+    the machine: the port just above an ephemeral one is the next one Windows
+    hands out, so another test's socket can take it between the choice and the
+    second look. The answer the choice was made on is the one to check.
+    """
+    answers: dict[int, bool] = {}
+
+    def recording(port: int, host: str = "127.0.0.1") -> bool:
+        answers[port] = _port_is_bindable(port, host)
+        return answers[port]
+
+    monkeypatch.setattr("openavc.core.simulation._port_is_bindable", recording)
+    return answers
+
+
+def test_a_held_port_is_stepped_over_rather_than_fatal(probe_answers):
     """The behaviour change: an unavailable port moves the simulator, it does
     not stop it.
 
@@ -276,10 +295,10 @@ def test_a_held_port_is_stepped_over_rather_than_fatal():
         chosen = _choose_ui_port(held)
     assert chosen != held
     assert chosen > held
-    assert _port_is_bindable(chosen)
+    assert probe_answers[chosen] is True
 
 
-def test_a_whole_contiguous_block_is_stepped_over():
+def test_a_whole_contiguous_block_is_stepped_over(probe_answers):
     """A reserved range is hundreds of ports wide, not one.
 
     The Windows exclusion that prompted all this was 19469-19568 -- a hundred
@@ -308,7 +327,7 @@ def test_a_whole_contiguous_block_is_stepped_over():
         chosen = _choose_ui_port(base)
         assert chosen not in held, "the walk stopped inside the held block"
         assert chosen >= base + len(holders)
-        assert _port_is_bindable(chosen)
+        assert probe_answers[chosen] is True
     finally:
         for h in holders:
             h.close()
