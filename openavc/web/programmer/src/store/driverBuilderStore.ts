@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import yaml from "js-yaml";
 import type { DriverDefinition, DriverInfo, CommunityDriver, InstalledDriver } from "../api/types";
 import * as api from "../api/restClient";
 import { apiErrorList, parseApiError } from "../api/errors";
@@ -10,7 +9,8 @@ import {
   makeLatestWins,
   importBlockers,
   cloneDraft,
-  DRIVER_YAML_DUMP_OPTIONS,
+  driverFileDefinition,
+  serializeDriverDefinition,
 } from "./driverBuilderStore.helpers";
 import {
   addMissingConnectionFields,
@@ -105,7 +105,7 @@ interface DriverBuilderState {
   updateDraft: (partial: Partial<DriverDefinition>) => void;
   save: () => Promise<void>;
   deleteDriver: (id: string) => Promise<void>;
-  importDriver: (definition: DriverDefinition) => Promise<void>;
+  importDriver: (definition: DriverDefinition, updateExisting?: boolean) => Promise<void>;
   exportDriver: (id: string) => void;
   duplicateDriver: (id: string) => Promise<void>;
 
@@ -129,7 +129,7 @@ function draftForEditing(definition: DriverDefinition): {
   draft: DriverDefinition;
   added: string[];
 } {
-  const draft = cloneDraft(definition);
+  const draft = cloneDraft(driverFileDefinition(definition));
   if ((definition as { source?: string }).source === "builtin") return { draft, added: [] };
   const { schema, added } = addMissingConnectionFields(
     draft.config_schema as Record<string, unknown> | undefined,
@@ -288,16 +288,29 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
       }
     },
 
-    importDriver: async (definition) => {
+    importDriver: async (imported, updateExisting = false) => {
+      if (get().saving) return;
       if (!confirmDiscardDraft(get().dirty)) return;
-      // Validate before POSTing. A driver with blocking problems loads into the
+      const definition = driverFileDefinition(imported);
+      const target = get().definitions.find((item) => item.id === definition.id);
+      if (updateExisting && (!target || target.source === "builtin")) {
+        const error = target
+          ? "Built-in drivers are read-only. Import a copy instead."
+          : "This driver is no longer installed. Import it as a new driver.";
+        set({ error });
+        showError(error);
+        return;
+      }
+      const originalId = updateExisting ? definition.id : null;
+      set({ saving: true, error: null, saveRefusal: null });
+      // Validate before writing. A driver with blocking problems loads into the
       // editor as a dirty draft so the user fixes it against the same inline
       // IssueList the form editor shows, instead of getting a terse backend 422.
-      const blockers = await importBlockers(definition, get().definitions);
+      const blockers = await importBlockers(definition, get().definitions, originalId);
       if (blockers.length > 0) {
         const { draft, added } = draftForEditing(definition);
         set({
-          selectedId: null,
+          selectedId: originalId,
           draft,
           addedConnectionFields: added,
           dirty: true,
@@ -306,14 +319,19 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
         });
         return;
       }
-      set({ saving: true, error: null });
       try {
-        await api.createDriverDefinition(definition);
+        if (updateExisting) {
+          await api.updateDriverDefinition(definition.id, definition);
+        } else {
+          await api.createDriverDefinition(definition);
+        }
         set({ saving: false });
         await get().loadDefinitions();
         applySelection(definition.id);
       } catch (e) {
-        set({ saving: false, error: parseApiError(e) });
+        const error = parseApiError(e);
+        set({ saving: false, error });
+        showError(error);
       }
     },
 
@@ -332,7 +350,7 @@ export const useDriverBuilderStore = create<DriverBuilderState>((set, get) => {
         if (!ok) return;
       }
       // Export as YAML to match community driver format
-      const content = yaml.dump(def, DRIVER_YAML_DUMP_OPTIONS);
+      const content = serializeDriverDefinition(def);
       const blob = new Blob([content], { type: "application/x-avcdriver" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

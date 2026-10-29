@@ -282,6 +282,17 @@ Click **Import from File** in the left panel. You have two options:
 
 The driver is validated, saved to `driver_repo/`, and immediately available for use.
 
+If the file has the same ID as an installed driver, choose **Update Driver** to
+replace that definition. The dialog lists the devices in the current project
+that will reconnect. Their IDs and connection settings stay the same. This is
+also how to apply edits made to an exported YAML file.
+
+Choose **Import a Copy** to keep both definitions under separate IDs, or
+**Cancel** to leave the installed driver unchanged. Built-in drivers can only
+be imported as copies. If validation fails, the imported definition opens as a
+draft to correct; the saved driver and its devices keep running until a valid
+update is saved.
+
 #### What about Python drivers?
 
 Python drivers (`.py` files) can also be imported through the UI or installed from the community repository. They are saved to `driver_repo/` and loaded automatically at startup.

@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useDriverBuilderStore } from "../store/driverBuilderStore";
-import { parseDriverDefinition } from "../store/driverBuilderStore.helpers";
+import { importedDriverCopy, parseDriverDefinition } from "../store/driverBuilderStore.helpers";
+import type { DriverDefinition } from "../api/types";
+import { useProjectStore } from "../store/projectStore";
 import { DriverList } from "../components/driver-builder/DriverList";
 import { DriverEditor } from "../components/driver-builder/DriverEditor";
 import { CommunityBrowser } from "../components/driver-builder/CommunityBrowser";
@@ -46,6 +48,8 @@ export function DriverPanel() {
 
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [pendingImport, setPendingImport] = useState<DriverDefinition | null>(null);
+  const devices = useProjectStore((state) => state.project?.devices);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -64,8 +68,31 @@ export function DriverPanel() {
   };
 
   const handleImportClick = () => {
+    useDriverBuilderStore.setState({ error: null });
     setShowImportDialog(true);
   };
+
+  const handleDefinition = useCallback(async (definition: DriverDefinition) => {
+    const existing = useDriverBuilderStore.getState().definitions.find((item) => item.id === definition.id);
+    if (existing) {
+      setPendingImport(definition);
+    } else {
+      await importDriver(definition);
+    }
+    setShowImportDialog(false);
+  }, [importDriver]);
+
+  const finishImport = async (asCopy: boolean) => {
+    if (!pendingImport) return;
+    const definition = asCopy
+      ? importedDriverCopy(pendingImport, useDriverBuilderStore.getState().definitions)
+      : pendingImport;
+    setPendingImport(null);
+    await importDriver(definition, !asCopy);
+  };
+  const importTarget = pendingImport && definitions.find((item) => item.id === pendingImport.id);
+  const importReadOnly = importTarget?.source === "builtin";
+  const affectedDevices = (devices ?? []).filter((device) => device.driver === pendingImport?.id);
 
   const handleImportFile = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -74,8 +101,7 @@ export function DriverPanel() {
       try {
         const text = await file.text();
         const definition = parseDriverDefinition(text);
-        await importDriver(definition);
-        setShowImportDialog(false);
+        await handleDefinition(definition);
       } catch (err) {
         useDriverBuilderStore.setState({
           error: `Failed to import: ${parseApiError(err)}`,
@@ -84,7 +110,7 @@ export function DriverPanel() {
       // Reset the input so the same file can be re-selected
       if (fileInputRef.current) fileInputRef.current.value = "";
     },
-    [importDriver]
+    [handleDefinition]
   );
 
   const handleExport = (id: string) => {
@@ -241,8 +267,7 @@ export function DriverPanel() {
           onPaste={async (text) => {
             try {
               const definition = parseDriverDefinition(text);
-              await importDriver(definition);
-              setShowImportDialog(false);
+              await handleDefinition(definition);
             } catch (err) {
               useDriverBuilderStore.setState({
                 error: `Failed to import: ${parseApiError(err)}`,
@@ -251,6 +276,31 @@ export function DriverPanel() {
           }}
           onClose={() => setShowImportDialog(false)}
           error={error}
+        />
+      )}
+
+      {pendingImport && (
+        <ConfirmDialog
+          title={importReadOnly ? "Import a Driver Copy" : "Update Existing Driver"}
+          message={
+            <>
+              <p>
+                {importReadOnly
+                  ? `“${importTarget?.name}” is a built-in driver. Import this file as a separate editable copy?`
+                  : `Replace the saved definition of “${importTarget?.name ?? pendingImport.name}” (${pendingImport.id}) with this file?`}
+              </p>
+              {!importReadOnly && <p style={{ marginTop: "var(--space-md)" }}>
+                {affectedDevices.length > 0
+                  ? `The ${affectedDevices.length === 1 ? "device" : "devices"} using it in this project will reconnect: ${affectedDevices.map((device) => device.name || device.id).join(", ")}. Their IDs and connection settings stay the same.`
+                  : "No devices in this project use this driver."}
+              </p>}
+            </>
+          }
+          confirmLabel={importReadOnly ? "Import a Copy" : "Update Driver"}
+          extraActionLabel={importReadOnly ? undefined : "Import a Copy"}
+          onExtraAction={importReadOnly ? undefined : () => { void finishImport(true); }}
+          onConfirm={() => { void finishImport(importReadOnly); }}
+          onCancel={() => setPendingImport(null)}
         />
       )}
 

@@ -55,6 +55,32 @@ export const DRIVER_YAML_DUMP_OPTIONS: yaml.DumpOptions = {
   quotingType: '"',
 };
 
+/** Listing metadata is not part of a driver file. Match the server's
+ * _strip_listing_decorations without dropping any actual contract fields. */
+export function driverFileDefinition(definition: DriverDefinition): DriverDefinition {
+  return Object.fromEntries(
+    Object.entries(definition).filter(([key]) => key !== "source" && !key.startsWith("_")),
+  ) as unknown as DriverDefinition;
+}
+
+export function serializeDriverDefinition(definition: DriverDefinition): string {
+  return yaml.dump(driverFileDefinition(definition), DRIVER_YAML_DUMP_OPTIONS);
+}
+
+/** A separate import keeps every existing driver and device binding intact. */
+export function importedDriverCopy(definition: DriverDefinition, siblings: DriverDefinition[]): DriverDefinition {
+  const ids = new Set(siblings.map((item) => item.id));
+  let suffix = "_copy";
+  let counter = 1;
+  while (ids.has(`${definition.id}${suffix}`)) suffix = `_copy${++counter}`;
+  return {
+    ...driverFileDefinition(structuredClone(definition)),
+    id: `${definition.id}${suffix}`,
+    name: `${definition.name} (Copy${counter > 1 ? ` ${counter}` : ""})`,
+    verified: false,
+  };
+}
+
 /**
  * Collections `DriverDefinition` declares as always-present and the editors
  * therefore index without a guard (`draft.default_config[key]`,
@@ -174,12 +200,13 @@ export function makeLatestWins(): LatestWins {
 export async function importBlockers(
   definition: DriverDefinition,
   siblings: DriverDefinition[],
+  originalId: string | null = null,
 ): Promise<string[]> {
   const messages: string[] = [];
   if (!definition.transport) {
     messages.push("Transport is required (tcp, serial, udp, http, or osc).");
   }
-  for (const issue of validateDriverSafely(definition, siblings, null)) {
+  for (const issue of validateDriverSafely(definition, siblings, originalId)) {
     if (issue.severity === "error") messages.push(issue.message);
   }
   try {
