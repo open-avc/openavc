@@ -479,6 +479,7 @@ class MDNSResult:
 MAX_MDNS_SOURCES = 512
 MAX_PENDING_ENTRIES = 1024
 MAX_HOSTNAME_ENTRIES = 1024
+MAX_ADDRESSES_PER_HOSTNAME = 8
 MAX_UNKNOWN_SERVICE_TYPES = 256
 
 
@@ -538,8 +539,10 @@ class MDNSScanner:
         # (no socket / no joinable interface). Surfaced as a scan warning
         # so "zero devices" is distinguishable from "listener never ran".
         self.env_error: str | None = None
-        # Hostname -> IP resolution (from A records)
-        self._hostname_to_ip: dict[str, str] = {}
+        # Hostname -> every address its A records listed, most recent last.
+        # A device can list a link-local address beside its real one, so the
+        # last record heard is not the address to use (see _address_for).
+        self._hostname_to_ips: dict[str, list[str]] = {}
         # Instance -> partial data (before we have IP)
         self._pending: dict[str, dict[str, Any]] = {}
         # Service types observed via _services._dns-sd._udp.local.
@@ -602,7 +605,7 @@ class MDNSScanner:
             Dict of IP -> MDNSResult for discovered devices.
         """
         self._results.clear()
-        self._hostname_to_ip.clear()
+        self._hostname_to_ips.clear()
         self._pending.clear()
         self._enumerated_types.clear()
         self._query_queue.clear()
@@ -743,14 +746,12 @@ class MDNSScanner:
 
         # First pass: collect A records for hostname resolution. New
         # hostnames are dropped past the cap; known ones keep updating.
+        named: set[str] = set()
         for rec in records:
-            if rec.rtype == DNS_TYPE_A and rec.ip:
-                hostname_key = rec.name.lower()
-                if (
-                    hostname_key in self._hostname_to_ip
-                    or len(self._hostname_to_ip) < MAX_HOSTNAME_ENTRIES
-                ):
-                    self._hostname_to_ip[hostname_key] = rec.ip
+            if rec.rtype == DNS_TYPE_A and rec.ip and self._remember_address(rec.name, rec.ip):
+                named.add(_host_key(rec.name))
+        for host in named:
+            self._rehome_link_local(host)
 
         # Second pass: process service records
         touched: set[str] = set()  # Keys modified by this packet
@@ -806,14 +807,6 @@ class MDNSScanner:
                 entry["hostname"] = rec.target
                 entry["port"] = rec.port
 
-                # Try to resolve hostname to IP
-                hostname_lower = rec.target.lower().rstrip(".")
-                if hostname_lower in self._hostname_to_ip:
-                    entry["ip"] = self._hostname_to_ip[hostname_lower]
-                # Also check with trailing dot
-                if rec.target.lower() in self._hostname_to_ip:
-                    entry["ip"] = self._hostname_to_ip[rec.target.lower()]
-
             elif rec.rtype == DNS_TYPE_TXT and rec.txt:
                 key = rec.name.lower()
                 entry = self._pending_entry(key)
@@ -822,22 +815,82 @@ class MDNSScanner:
                 touched.add(key)
                 entry.setdefault("txt_records", {}).update(rec.txt)
 
-            elif rec.rtype == DNS_TYPE_A and rec.ip:
-                # A records already processed above, but also check
-                # if any pending entries reference this hostname
-                hostname_lower = rec.name.lower().rstrip(".")
-                for key, pending in self._pending.items():
-                    target = pending.get("hostname", "")
-                    if isinstance(target, str):
-                        target_lower = target.lower().rstrip(".")
-                        if target_lower == hostname_lower:
-                            pending["ip"] = rec.ip
-
-        # Resolve pending entries into results where we have IPs.
-        # Entries from this packet that can't resolve via hostname
-        # fall back to the sender's IP (in mDNS, devices respond
+        # Resolve pending entries into results where we have IPs: a
+        # hostname resolves through its A records, this packet's or an
+        # earlier one's. Entries from this packet that can't resolve via
+        # hostname fall back to the sender's IP (in mDNS, devices respond
         # about themselves from their own address).
         self._resolve_pending(sender_ip, touched)
+
+    def _remember_address(self, hostname: str, ip: str) -> bool:
+        """Record that ``hostname``'s A record listed ``ip``.
+
+        Returns False when a cap dropped it: a new hostname past
+        MAX_HOSTNAME_ENTRIES, or a new address past
+        MAX_ADDRESSES_PER_HOSTNAME. An address heard again moves to the end,
+        so the list stays most recent last.
+        """
+        key = _host_key(hostname)
+        listed = self._hostname_to_ips.get(key)
+        if listed is None:
+            if len(self._hostname_to_ips) >= MAX_HOSTNAME_ENTRIES:
+                return False
+            listed = self._hostname_to_ips[key] = []
+        if ip in listed:
+            listed.remove(ip)
+        elif len(listed) >= MAX_ADDRESSES_PER_HOSTNAME:
+            return False
+        listed.append(ip)
+        return True
+
+    def _address_for(self, hostname: str, sender_ip: str | None = None) -> str | None:
+        """The address ``hostname``'s records belong at, or None if no A record named it.
+
+        A device can list more than one address for its name, and a camera on
+        DHCP commonly lists a 169.254 link-local address beside its real one.
+        The result belongs where the device can be reached: a routable
+        address it listed (the one it sent from, if it listed several, else
+        the most recent), then the address it sent from when that is
+        routable, and a link-local address only when there is nothing else (a
+        device on 169.254 and nowhere else). ``sender_ip`` is passed only for
+        records that came in the sender's own packet.
+        """
+        listed = self._hostname_to_ips.get(_host_key(hostname))
+        if not listed:
+            return None
+        routable = [ip for ip in listed if not _is_link_local(ip)]
+        if routable:
+            return sender_ip if sender_ip in routable else routable[-1]
+        if sender_ip and not _is_link_local(sender_ip):
+            return sender_ip
+        return listed[-1]
+
+    def _rehome_link_local(self, host_key: str) -> None:
+        """Move a result filed at ``host_key``'s link-local address to its routable one.
+
+        A packet that listed only the link-local address files the device's
+        services there; once its name also lists a routable address, that
+        result moves (merged into any result already at the routable
+        address), so the device is one result at an address the scan can
+        reach.
+        """
+        target = self._address_for(host_key)
+        if target is None or _is_link_local(target):
+            return
+        display = _display_hostname(host_key)
+        for ip in self._hostname_to_ips.get(host_key, []):
+            if not _is_link_local(ip):
+                continue
+            stranded = self._results.get(ip)
+            if stranded is None or (stranded.hostname or "").lower() != display:
+                continue
+            del self._results[ip]
+            kept = self._results.get(target)
+            if kept is None:
+                stranded.ip = target
+                self._results[target] = stranded
+            else:
+                _fold_result(kept, stranded)
 
     def _pending_entry(self, key: str) -> dict[str, Any] | None:
         """Get or create the pending entry for ``key``, subject to the cap.
@@ -870,21 +923,16 @@ class MDNSScanner:
         resolved_keys: list[str] = []
 
         for key, pending in self._pending.items():
-            ip = pending.get("ip")
-            if not ip:
-                # If we have a hostname, try resolving it
-                hostname = pending.get("hostname", "")
-                if isinstance(hostname, str):
-                    hostname_lower = hostname.lower().rstrip(".")
-                    ip = self._hostname_to_ip.get(hostname_lower)
-                if not ip and touched and key in touched:
-                    # In mDNS, devices respond about themselves from their
-                    # own IP. Use the sender's address for entries that
-                    # were part of this packet but couldn't be resolved.
-                    ip = sender_ip
-                if not ip:
-                    continue
-
+            in_packet = bool(touched) and key in touched
+            ip = None
+            hostname = pending.get("hostname", "")
+            if isinstance(hostname, str) and hostname:
+                ip = self._address_for(hostname, sender_ip if in_packet else None)
+            if not ip and in_packet:
+                # In mDNS, devices respond about themselves from their
+                # own IP. Use the sender's address for entries that
+                # were part of this packet but couldn't be resolved.
+                ip = sender_ip
             if not ip:
                 continue
 
@@ -1099,6 +1147,31 @@ def _display_hostname(name: str) -> str:
     if clean.endswith(".local"):
         clean = clean[:-6]
     return clean
+
+
+def _host_key(name: str) -> str:
+    """The key a host name's A records are kept under: lowercase, no trailing dot."""
+    return name.lower().rstrip(".")
+
+
+def _is_link_local(ip: str) -> bool:
+    """Is ``ip`` an IPv4 link-local (169.254/16) address?"""
+    return ip.startswith("169.254.")
+
+
+def _fold_result(kept: MDNSResult, stranded: MDNSResult) -> None:
+    """Merge ``stranded`` into ``kept``, the same device's result at another address.
+
+    What ``kept`` already says stands; ``stranded`` fills what it lacks and
+    adds the services it does not have.
+    """
+    for name, svc in stranded.services.items():
+        kept.services.setdefault(name, svc)
+    for k, v in stranded.txt_records.items():
+        kept.txt_records.setdefault(k, v)
+    for attr in ("hostname", "port", "service_type", "instance_name", "address_name"):
+        if not getattr(kept, attr) and getattr(stranded, attr):
+            setattr(kept, attr, getattr(stranded, attr))
 
 
 def _extract_instance_name(full_name: str, service_type: str) -> str | None:

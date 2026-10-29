@@ -610,8 +610,7 @@ class TestMDNSScanner:
         data = header + answer
 
         scanner._process_response(data, "192.168.1.50")
-        assert "mydevice.local" in scanner._hostname_to_ip
-        assert scanner._hostname_to_ip["mydevice.local"] == "192.168.1.50"
+        assert scanner._hostname_to_ips["mydevice.local"] == ["192.168.1.50"]
 
     def test_process_response_full_service(self):
         """Process a realistic mDNS response with PTR + SRV + A + TXT."""
@@ -760,12 +759,12 @@ class TestMDNSFloodGuards:
             scanner._process_response(
                 self._a_packet(f"host-{n}.local.", self._source_ip(n)), sender,
             )
-        assert len(scanner._hostname_to_ip) == MAX_HOSTNAME_ENTRIES
+        assert len(scanner._hostname_to_ips) == MAX_HOSTNAME_ENTRIES
         # A known hostname still updates past the cap.
         scanner._process_response(
             self._a_packet("host-0.local.", "192.168.9.9"), sender,
         )
-        assert scanner._hostname_to_ip["host-0.local"] == "192.168.9.9"
+        assert scanner._address_for("host-0.local.") == "192.168.9.9"
 
     def test_unknown_service_types_capped(self):
         scanner = MDNSScanner()
