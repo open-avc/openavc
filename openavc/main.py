@@ -449,8 +449,10 @@ engine.plugin_loader.set_router_hooks(
     lambda plugin_id: unmount_plugin_guest_router(app, plugin_id),
 )
 
-# Wire discovery engine
+# Wire discovery engine. A scan leaves alone every port a connected project
+# device's driver holds.
 discovery_api.set_discovery_engine(discovery_engine)
+discovery_engine.held_connections = engine.devices.live_connections
 
 # Wire the device audit (it pauses project devices and asks discovery).
 from openavc.api.routes import audit as audit_routes

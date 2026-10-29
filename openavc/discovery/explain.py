@@ -38,6 +38,8 @@ from openavc.discovery.probe_runner import (
     MISS_CERT_SUBJECT,
     MISS_CONNECT,
     MISS_FOLLOW_UP,
+    MISS_IN_USE,
+    MISS_LOGIN_PROMPT,
     MISS_NO_REPLY,
     MISS_NOT_SENT,
     MISS_REPLY,
@@ -385,9 +387,11 @@ def _check_passive(
 
 # A later reason means the exchange got further, so it says more.
 _MISS_ORDER = (
-    MISS_NOT_SENT, MISS_CONNECT, MISS_NO_REPLY, MISS_REPLY,
-    MISS_CERT_SUBJECT, MISS_FOLLOW_UP,
+    MISS_IN_USE, MISS_LOGIN_PROMPT, MISS_NOT_SENT, MISS_CONNECT, MISS_NO_REPLY,
+    MISS_REPLY, MISS_CERT_SUBJECT, MISS_FOLLOW_UP,
 )
+# The check was left unsent on purpose: what it would have seen is unknown.
+_HELD_BACK = (MISS_IN_USE, MISS_LOGIN_PROMPT)
 
 
 def _quote(data: bytes) -> str:
@@ -443,6 +447,13 @@ def _describe_exchange(spec: CustomProbeSpec, obs: ProbeObservation) -> str:
         if obs.cert_subject and spec.cert_subject is not None and not obs.reply:
             return f"{sent}; the certificate subject was {obs.cert_subject!r}."
         return f"{sent}; the device replied {_quote(obs.reply)}."
+    if obs.miss == MISS_LOGIN_PROMPT:
+        return (
+            f"Not sent: {where} asked for a login, and this probe does not "
+            "look for that prompt."
+        )
+    if obs.miss == MISS_IN_USE:
+        return f"Not sent: {where} is {obs.error}."
     if obs.miss == MISS_NOT_SENT:
         return f"The probe could not be sent: {obs.error}."
     if obs.miss == MISS_CONNECT:
@@ -509,6 +520,11 @@ def _check_probe(
         return _check(
             rule, declared=declared, status=MATCHED, observed=shown,
             detail=f"The scan matched this probe on {rule.source_id}.",
+        )
+    if exchanges and all(o.miss in _HELD_BACK for o in exchanges):
+        return _check(
+            rule, declared=declared, status=NOT_OBSERVED, observed=[],
+            detail=_describe_exchange(spec, exchanges[0]), probes=exchanges,
         )
     if exchanges:
         replies = [_quote(o.reply) for o in exchanges if o.reply]

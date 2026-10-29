@@ -411,6 +411,26 @@ def get_default_route_ip() -> str | None:
     return addr
 
 
+async def resolve_address(address: str) -> str:
+    """The IPv4 address ``address`` names, or "" when it names none."""
+    address = address.strip()
+    try:
+        return str(ipaddress.IPv4Address(address))
+    except ValueError:
+        pass
+    loop = asyncio.get_running_loop()
+    try:
+        infos = await asyncio.wait_for(
+            loop.getaddrinfo(address, None, family=socket.AF_INET, type=socket.SOCK_STREAM),
+            timeout=5.0,
+        )
+    except (OSError, asyncio.TimeoutError):
+        return ""
+    for info in infos:
+        return str(info[4][0])
+    return ""
+
+
 def get_ranked_interface_ips() -> list[str]:
     """Every reachable IPv4 address of this host, best guess first.
 

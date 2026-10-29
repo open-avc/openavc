@@ -251,12 +251,14 @@ During a discovery scan, OpenAVC will:
 5. **SSDP M-SEARCH** on multicast group 239.255.255.250:1900
 6. **AMX DDP listen** on multicast group 239.255.250.250:9131 (passive — receive only)
 7. **NetBIOS name query** on UDP 137 to live hosts (Standard / Thorough scan only)
-8. **Driver-declared TCP probes** on open AV ports. Each installed driver may declare its own probe; common probes for AV equipment include identification queries against switchers, DSPs, displays, mixers, and cameras (Extron, Biamp Tesira, QSC Q-SYS, Samsung MDC, Yamaha RCP, Sony VISCA, etc.). The exact wire format and port depend on which drivers are installed; the Programmer IDE's Driver Builder shows them per driver.
+8. **Driver-declared TCP probes** on open AV ports. Each installed driver may declare its own probe; common probes for AV equipment include identification queries against switchers, DSPs, displays, mixers, and cameras (Extron, Biamp Tesira, QSC Q-SYS, Samsung MDC, Yamaha RCP, Sony VISCA, etc.). The exact wire format and port depend on which drivers are installed; the Programmer IDE's Driver Builder shows them per driver. A port gets one probe at a time, after one connection that sends nothing and reads what the port says. A port that answers with a login prompt is sent only the probes that look for that prompt, never another manufacturer's query.
 9. **Driver-declared UDP probes** if any installed driver declares one. These are sent to each scanned subnet's directed-broadcast address, or straight to the device when a single address is scanned. Examples include PJLink Class 2 SRCH (UDP 4352) when the `pjlink_class1` driver is installed and Crestron CIP discovery (UDP 41794) when the `utility/crestron_cip` driver is installed, along with other vendor-specific broadcasts shipped by individual drivers.
 
 All discovery traffic is confined to the local subnet(s) of the host's connected network interfaces (an interface with no link is skipped), or of the one adapter chosen under **Reach devices through** in Settings > Network. It does not scan remote subnets, public IP ranges, or addresses outside the host's directly-connected networks. Virtual and VPN adapters are left out, except a Windows virtual machine's own network adapter (on Hyper-V or Azure) and a Hyper-V External switch, which are scanned.
 
-Driver-declared UDP probes are rate-limited to 10 per second across the whole scan; TCP probes are spread with a short per-probe stagger instead. With an adapter chosen under Reach devices through, everything a scan sends (ping, the port scan, SNMP, NetBIOS and the probes) leaves through it. Each probe is sent once per scan, with no retries.
+Driver-declared probes, UDP sends and TCP connections alike, are rate-limited to 10 per second across the whole scan. With an adapter chosen under Reach devices through, everything a scan sends (ping, the port scan, SNMP, NetBIOS and the probes) leaves through it. Each probe is sent once per scan, with no retries.
+
+**Devices already in the project are left alone.** A scan reads where each connected device in the project is connected when it starts, and neither the port scan nor any probe opens those ports.
 
 The three multicast groups above are joined per interface. With an adapter chosen under Reach devices through, they are joined and queried on that adapter only. With **Every connected adapter**, the default, they are joined on every non-loopback IPv4 interface the host has, so a machine with a foot on two segments (an AV VLAN and the campus LAN, say) queries both. Choosing the AV adapter is what confines them.
 
@@ -313,7 +315,7 @@ Its network check sends, to the one device:
 3. On each open port, a connection that sends nothing and listens for a few seconds; on web ports, and on a port the device names in an SSDP or mDNS announcement, `GET /` and a TLS handshake for the certificate.
 4. SNMP v2c reads (UDP 161), community `public` and any the integrator enters. The Extended option reads every value the device offers, up to a limit.
 5. mDNS and SSDP queries on their multicast groups, and listening for mDNS, SSDP and AMX DDP announcements until the audit ends. Only the audited device's announcements are kept.
-6. The driver-declared TCP and UDP identification probes of the community catalog, sent to the device's address only. Each sends its driver's own query, so one port (Telnet 23, say) can receive several, some typed at a login prompt.
+6. The driver-declared TCP and UDP identification probes of the community catalog, sent to the device's address only. Each sends its driver's own query, one at a time on a port. A port that answers with a login prompt is sent only the probes that look for that prompt.
 7. The identification checks of installed drivers that come with their own discovery code. One of those can send its own multicast query (a camera driver's WS-Discovery), which reaches every device of that kind on the segment.
 
 The driver test that follows connects to the device the way a configured device does, including a TCP connection to ports 443, 80 and 8080 to find its web page. During its power and cable tests, the device is pinged once a second.

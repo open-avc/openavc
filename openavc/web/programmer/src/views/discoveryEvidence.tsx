@@ -1,4 +1,4 @@
-import type { DiscoveryEvidence } from "../api/discoveryClient";
+import type { DiscoveryEvidence, PortProbeRecord } from "../api/discoveryClient";
 import { cleanBannerText, readsAsText } from "./discoveryViewHelpers";
 
 // --- Evidence list ("Why?" reveal) ---
@@ -239,4 +239,54 @@ export function EvidenceList({
       })}
     </div>
   );
+}
+
+// --- What each port received ---
+
+function probeCount(n: number): string {
+  return n === 1 ? "1 probe" : `${n} probes`;
+}
+
+/** One line per port for a discovered device's ``port_probes``: whether the
+ *  port was in use by a project device or asked for a login, and how many TCP
+ *  probes read its greeting, were sent, or were not sent. ``title`` names the
+ *  drivers behind each count. */
+export function portProbeLines(
+  record: Record<string, PortProbeRecord> | undefined,
+  driverName?: (id: string) => string | undefined,
+): { port: string; text: string; title: string }[] {
+  if (!record) return [];
+  const name = (id: string) => driverName?.(id) ?? id;
+  return Object.entries(record)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([port, entry]) => {
+      const probes = entry.probes ?? [];
+      const by = (how: string) => probes.filter((p) => p.how === how);
+      const read = by("greeting");
+      const sent = [...by("connected"), ...by("companion")];
+      const held = by("login_prompt");
+      const parts: string[] = [];
+      if (read.length) parts.push(`${probeCount(read.length)} read its greeting`);
+      if (sent.length) parts.push(`${probeCount(sent.length)} connected`);
+      if (held.length) parts.push(`${probeCount(held.length)} not sent`);
+      let text: string;
+      if (entry.in_use_by) {
+        text = `Port ${port}: in use by ${entry.in_use_by}, so the scan did not connect to it.`;
+      } else if (entry.greeting === "login_prompt") {
+        text = `Port ${port}: asked for a login.${parts.length ? ` ${capitalize(parts.join(", "))}.` : ""}`;
+      } else {
+        text = `Port ${port}: ${parts.join(", ") || "no probes"}.`;
+      }
+      const names = (list: typeof probes) => list.map((p) => name(p.driver_id)).join(", ");
+      const title = [
+        read.length ? `Read its greeting: ${names(read)}` : "",
+        sent.length ? `Connected: ${names(sent)}` : "",
+        held.length ? `Not sent: ${names(held)}` : "",
+      ].filter(Boolean).join("\n");
+      return { port, text, title };
+    });
+}
+
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }

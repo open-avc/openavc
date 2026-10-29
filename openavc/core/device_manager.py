@@ -49,7 +49,7 @@ from openavc.drivers.child_ids import (
     coerce_child_local_id,
 )
 from openavc.drivers.registry import get_driver_class, is_driver_registered
-from openavc.core.device_config import bridge_first, connection_of
+from openavc.core.device_config import DeviceConnection, bridge_first, connection_of
 from openavc.core.event_bus import EventBus, detach_emit_chain
 from openavc.core.installed_equipment import driver_label, missing_driver_reason
 from openavc.core.state_store import StateStore
@@ -1325,6 +1325,29 @@ class DeviceManager:
             else:
                 merged[key] = value
         return merged
+
+    def live_connections(self) -> list[DeviceConnection]:
+        """Where each device whose driver is connected right now connects.
+
+        Read from the record this manager was handed (``connection_of``), as
+        :meth:`get_device_info` is, so a running simulation, which points the
+        live driver at 127.0.0.1, still names the device's own address. A
+        serial device, one that sends through a bridge with no connection of
+        its own, and one with no network address are left out. A Discovery
+        scan connects to none of these (``discovery/port_guard.py``).
+        """
+        out: list[DeviceConnection] = []
+        for device_id, driver in self._devices.items():
+            record = self._device_configs.get(device_id)
+            if record is None or not driver.get_state("connected"):
+                continue
+            conn = connection_of(record)
+            if conn.transport in ("serial", "bridge") or not conn.host:
+                continue
+            if not isinstance(conn.port, int):
+                continue
+            out.append(conn)
+        return out
 
     def list_devices(self) -> list[dict[str, Any]]:
         items = self._list_devices()

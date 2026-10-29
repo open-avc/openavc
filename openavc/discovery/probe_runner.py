@@ -35,6 +35,17 @@ nearly matched is how a driver's fingerprint gets corrected). The ``run_*``
 runners the scan calls are thin wrappers that return only the evidence.
 ``observe_tcp_probe_on_greeting`` judges a probe that only listens on a
 greeting the check already read, without connecting again.
+
+One port at a time
+------------------
+A scan runs a port's TCP checks through ``observe_port_probes``: it holds the
+port (``PortGuard.hold``) and reads what the port says when connected to,
+judges every check that only listens on that greeting, and then runs the
+checks that send, one after another. When the greeting asks for a login
+(``port_guard.is_login_prompt``), a check that sends runs only if what it
+looks for is that prompt (``expects_greeting``); the rest are recorded as not
+sent. A port a connected project device holds gets nothing at all.
+``port_probe_seconds`` is the longest that routine can take, for the budget.
 """
 
 from __future__ import annotations
@@ -47,7 +58,7 @@ import socket
 import ssl
 import time
 from dataclasses import dataclass, field
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 from openavc.discovery.certificates import (
     certificate_match_text,
@@ -63,6 +74,16 @@ from openavc.discovery.hints import (
     describe_response_match,
 )
 from openavc.discovery.multicast import set_shared_port_reuse
+from openavc.discovery.port_guard import (
+    HOW_CONNECTED,
+    HOW_GREETING,
+    HOW_IN_USE,
+    HOW_LOGIN_PROMPT,
+    PortCheck,
+    PortGuard,
+    is_login_prompt,
+)
+from openavc.discovery.port_scanner import PortGreeting, read_greeting
 from openavc.discovery.result import Evidence
 from openavc.discovery.tier_matcher import (
     evidence_active_probe,
@@ -126,6 +147,8 @@ MISS_NO_REPLY = "no_reply"          # sent (or connected), and nothing came back
 MISS_REPLY = "reply"                # a reply came back and the matcher rejected it
 MISS_CERT_SUBJECT = "cert_subject"  # the certificate subject did not match
 MISS_FOLLOW_UP = "follow_up"        # the first exchange matched and the ``then:`` step did not
+MISS_LOGIN_PROMPT = "login_prompt"  # not sent: the port asked for a login (``observe_port_probes``)
+MISS_IN_USE = "in_use"              # not sent: a connected project device holds the port
 
 
 @dataclass
@@ -794,6 +817,7 @@ async def run_tcp_active_probe(
     source_ip: str,
     stagger_ms: float = 0.0,
     rate_limiter: RateLimiter | None = None,
+    guard: PortGuard | None = None,
 ) -> Evidence | None:
     """Connect to ``target:spec.port``, send, read, match, extract.
 
@@ -812,13 +836,21 @@ async def run_tcp_active_probe(
     matching hosts across many drivers can't burst past it).
 
     ``observe_tcp_active_probe`` is the same run with the whole exchange
-    kept, matched or not.
+    kept, matched or not; ``guard`` is as it describes.
     """
     observation = await observe_tcp_active_probe(
         spec, target=target, source_ip=source_ip,
-        stagger_ms=stagger_ms, rate_limiter=rate_limiter,
+        stagger_ms=stagger_ms, rate_limiter=rate_limiter, guard=guard,
     )
     return observation.evidence
+
+
+def _not_sent(spec: CustomProbeSpec, target: str, miss: str, error: str) -> ProbeObservation:
+    """A TCP check that opened no connection, and why."""
+    return ProbeObservation(
+        probe_id=spec.probe_id, kind="tcp", port=spec.port, target=target,
+        tls=bool(spec.tls), error=error, miss=miss, elapsed_ms=0.0,
+    )
 
 
 async def observe_tcp_active_probe(
@@ -828,6 +860,7 @@ async def observe_tcp_active_probe(
     source_ip: str,
     stagger_ms: float = 0.0,
     rate_limiter: RateLimiter | None = None,
+    guard: PortGuard | None = None,
 ) -> ProbeObservation:
     """``run_tcp_active_probe``, returning the exchange as an observation.
 
@@ -836,13 +869,36 @@ async def observe_tcp_active_probe(
     verdict, the connect and first-reply times, and why the exchange failed
     when it did. ``evidence`` is set exactly when ``run_tcp_active_probe``
     would return it.
+
+    With a ``guard``, the connection holds its port from connect to close, so
+    no other check here opens it meanwhile, and a port a connected project
+    device holds is not opened at all (``MISS_IN_USE``).
     """
     if spec.kind != "tcp":
         raise ValueError(f"run_tcp_active_probe got non-tcp spec: {spec.kind!r}")
 
+    if guard is not None:
+        holder = guard.held_by(target, spec.port)
+        if holder is not None:
+            guard.note_in_use(target, spec.port)
+            return _not_sent(spec, target, MISS_IN_USE, f"in use by {holder}")
+
     if stagger_ms > 0:
         await asyncio.sleep(stagger_ms / 1000.0)
 
+    if guard is None:
+        return await _exchange(spec, target, source_ip, rate_limiter)
+    async with guard.hold(target, spec.port):
+        return await _exchange(spec, target, source_ip, rate_limiter)
+
+
+async def _exchange(
+    spec: CustomProbeSpec,
+    target: str,
+    source_ip: str,
+    rate_limiter: RateLimiter | None,
+) -> ProbeObservation:
+    """One TCP check's connection: connect, send, read, judge, close."""
     # Global send-rate cap: acquire a slot before the SYN so a scan with many
     # TCP-probe drivers and many matching hosts stays under the shared limit.
     if rate_limiter is not None:
@@ -982,6 +1038,23 @@ async def observe_tcp_active_probe(
     return _judge(spec, obs, payload, cert_subject_str, follow_up_ok, target)
 
 
+def expects_greeting(spec: CustomProbeSpec, greeting: bytes) -> bool:
+    """Whether a check was written for what this port says when connected to.
+
+    True when the check declares a reply matcher and that matcher already
+    finds the greeting: a driver whose check looks for a device's login
+    prompt expects to meet one. A check with no matcher (connect-only, or
+    identified by its certificate alone) expects nothing in particular.
+    """
+    match = spec.response_match
+    declared = (
+        match.starts_with is not None
+        or match.contains is not None
+        or match.regex is not None
+    )
+    return declared and bool(greeting) and _matches(greeting, match)
+
+
 def answered_by_greeting(spec: CustomProbeSpec) -> bool:
     """Whether a greeting already read from the port can stand in for this probe.
 
@@ -1104,3 +1177,144 @@ def _judge(
         supplied_by=spec.driver_id,
     )
     return obs
+
+
+# ---------------------------------------------------------------------------
+# All of one port's checks, one at a time
+# ---------------------------------------------------------------------------
+
+
+# The shortest a port is listened to before its checks run, when no check on
+# it only listens (those set the window with their own timeout). A telnet
+# login prompt arrives in milliseconds; this is the same allowance a probe's
+# read gives a device that has gone quiet.
+GREETING_MIN_SECONDS = _PROBE_READ_QUIET_SECONDS
+# Connect allowance for that read; the port answered the port scan moments ago.
+GREETING_CONNECT_SECONDS = 2.0
+
+
+def _greeting_window(specs: Sequence[CustomProbeSpec]) -> float:
+    """How long a port is listened to: the longest a check that only listens
+    would have waited for its first byte, and never less than the minimum."""
+    listeners = [s.timeout_ms / 1000.0 for s in specs if answered_by_greeting(s)]
+    return max([GREETING_MIN_SECONDS, *listeners])
+
+
+async def _read_port_greeting(
+    host: str,
+    port: int,
+    wait: float,
+    source_ip: str,
+    guard: PortGuard,
+    rate_limiter: RateLimiter | None,
+) -> PortGreeting:
+    async with guard.hold(host, port):
+        if rate_limiter is not None:
+            await rate_limiter.acquire()
+        return await read_greeting(
+            host, port, wait=wait, source_ip=source_ip,
+            connect_timeout=GREETING_CONNECT_SECONDS, quiet=_PROBE_READ_QUIET_SECONDS,
+        )
+
+
+async def observe_port_probes(
+    host: str,
+    port: int,
+    specs: Sequence[CustomProbeSpec],
+    *,
+    source_ip: str,
+    guard: PortGuard,
+    rate_limiter: RateLimiter | None = None,
+    greeting: PortGreeting | None = None,
+    on_observation: Callable[[int, ProbeObservation], None] | None = None,
+) -> list[ProbeObservation]:
+    """Run every TCP check on ``host:port``, one at a time. One observation
+    per spec, in ``specs`` order; ``on_observation(index, obs)`` hears each as
+    it finishes, so a caller cut short keeps the ones that answered.
+
+    1. A port a connected project device holds gets nothing (``MISS_IN_USE``).
+    2. The port is listened to once (``greeting``, when the caller already
+       read it, stands in for that read). A port that said nothing is
+       listened to once more when a check on it only listens: a device that
+       serves one session at a time does not always greet the next one.
+    3. Every check that only listens is judged on that greeting, with no
+       connection of its own (``answered_by_greeting``).
+    4. When the greeting asks for a login, a check that sends runs only if
+       it expects that prompt (``expects_greeting``); the rest are not sent
+       (``MISS_LOGIN_PROMPT``).
+    5. The checks left run one after another, each holding the port.
+
+    Every check is noted in ``guard``'s record, with how it reached the port.
+    """
+    out: list[ProbeObservation | None] = [None] * len(specs)
+
+    def finished(index: int, obs: ProbeObservation, how: str) -> None:
+        out[index] = obs
+        spec = specs[index]
+        guard.note(host, port, PortCheck(spec.probe_id, spec.driver_id, how, obs.matched))
+        if on_observation is not None:
+            on_observation(index, obs)
+
+    holder = guard.held_by(host, port)
+    if holder is not None:
+        guard.note_in_use(host, port)
+        for i, spec in enumerate(specs):
+            finished(i, _not_sent(spec, host, MISS_IN_USE, f"in use by {holder}"), HOW_IN_USE)
+        return [obs for obs in out if obs is not None]
+
+    window = _greeting_window(specs)
+    if greeting is None:
+        greeting = await _read_port_greeting(host, port, window, source_ip, guard, rate_limiter)
+    if not greeting.data and any(answered_by_greeting(s) for s in specs):
+        greeting = await _read_port_greeting(host, port, window, source_ip, guard, rate_limiter)
+    said = greeting.data
+    guard.note_greeting(host, port, said)
+    login = is_login_prompt(said)
+
+    for i, spec in enumerate(specs):
+        if answered_by_greeting(spec):
+            finished(i, observe_tcp_probe_on_greeting(
+                spec, target=host, greeting=said, first_byte_ms=greeting.first_byte_ms,
+            ), HOW_GREETING)
+
+    for i, spec in enumerate(specs):
+        if out[i] is not None:
+            continue
+        if login and not expects_greeting(spec, said):
+            finished(i, _not_sent(
+                spec, host, MISS_LOGIN_PROMPT, "the port asked for a login",
+            ), HOW_LOGIN_PROMPT)
+            continue
+        try:
+            obs = await observe_tcp_active_probe(
+                spec, target=host, source_ip=source_ip,
+                rate_limiter=rate_limiter, guard=guard,
+            )
+        except Exception as exc:  # one check's fault never costs the port's others
+            log.debug("probe_runner: %s on %s:%d failed", spec.probe_id, host, port, exc_info=True)
+            obs = _not_sent(spec, host, MISS_CONNECT, str(exc) or type(exc).__name__)
+        finished(i, obs, HOW_CONNECTED)
+
+    return [obs for obs in out if obs is not None]
+
+
+def port_probe_seconds(specs: Sequence[CustomProbeSpec]) -> float:
+    """How long ``observe_port_probes`` takes on one port, read from the
+    checks it will run there: the greeting read (twice when a check only
+    listens), then each check that opens a connection of its own, one after
+    another, at its reply allowance and its ``then:`` step.
+
+    One connect allowance for the whole port, not one per connection: the
+    port answered the port scan moments before, so its connects are quick,
+    and charging each check a connect timeout over-counts a port with many
+    checks several times over (measured: a 76 s grant for 13 s of work on a
+    home network), which a tight scan would pay for by dropping probes.
+    """
+    reads = 2 if any(answered_by_greeting(s) for s in specs) else 1
+    seconds = GREETING_CONNECT_SECONDS + reads * _greeting_window(specs)
+    for spec in specs:
+        if answered_by_greeting(spec):
+            continue
+        then_ms = spec.follow_up.timeout_ms if spec.follow_up is not None else 0
+        seconds += (spec.timeout_ms + then_ms) / 1000.0
+    return seconds

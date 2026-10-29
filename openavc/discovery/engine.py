@@ -8,10 +8,17 @@ import logging
 import socket as _socket
 import time
 from pathlib import Path
-from typing import Any, Callable, Awaitable
+from typing import Any, Callable, Awaitable, Iterable
 
 from openavc.discovery import icmp
-from openavc.discovery.network_scanner import get_local_subnets, ping_sweep, harvest_arp_table, netbios_sweep
+from openavc.discovery.network_scanner import (
+    get_local_subnets,
+    harvest_arp_table,
+    netbios_sweep,
+    ping_sweep,
+    resolve_address,
+)
+from openavc.discovery.port_guard import PortGuard
 from openavc.discovery.port_scanner import scan_host_ports, grab_banners, BASELINE_PORTS
 from openavc.discovery.oui_database import OUIDatabase
 from openavc.discovery.hints import (
@@ -30,7 +37,8 @@ from openavc.discovery.amx_ddp_scanner import AMXDDPScanner
 from openavc.discovery.probe_runner import (
     RateLimiter,
     ReplyPortUnavailable,
-    run_tcp_active_probe,
+    observe_port_probes,
+    port_probe_seconds,
     run_udp_broadcast_probe,
 )
 from openavc.discovery.companion import (
@@ -497,6 +505,15 @@ class DiscoveryEngine:
         # audit sets it: the two never run together (both open the multicast
         # listeners and both send probes).
         self.scan_blocker: Callable[[], str | None] | None = None
+        # Asked when a scan starts: where each connected project device's
+        # driver is connected now, as objects with ``host``, ``port`` and
+        # ``name`` (``DeviceManager.live_connections``). The scan connects to
+        # none of those ports (see port_guard). Unset: nothing is held.
+        self.held_connections: Callable[[], Iterable[Any]] | None = None
+        # This scan's port guard: the ports it leaves alone, one connection
+        # per port at a time, and what each port received. Replaced on every
+        # start_scan, and filled with the held ports when the scan starts.
+        self._guard: PortGuard = PortGuard()
         # Discovery settings (persisted in project)
         self.config: dict[str, Any] = {
             "snmp_enabled": True,
@@ -896,6 +913,7 @@ class DiscoveryEngine:
                 device.evidence_log.clear()
                 device.open_ports.clear()
                 device.banners.clear()
+                device.port_probes.clear()
 
             self._passive_sources_created = 0
             self._passive_cap_warned = False
@@ -907,6 +925,7 @@ class DiscoveryEngine:
             self._arp_provisional = set()
             self._port_scanned = set()
             self._narrowed = False
+            self._guard = PortGuard()
 
             self._scan_task = asyncio.create_task(
                 self._run_scan(targets, total_seconds)
@@ -1034,7 +1053,45 @@ class DiscoveryEngine:
         # un-installed drivers contribute deterministic rules — that's
         # how discovery proposes what to install.
         await self.refresh_signal_index_with_catalog()
+        self._guard = PortGuard(await self._held_ports())
         return await self._scan_pipeline_inner(subnets)
+
+    async def _held_ports(self) -> dict[tuple[str, int], str]:
+        """``(address, port)`` -> device name, for every connected project
+        device, read once as the scan starts.
+
+        A device set up by host name is looked up here, since a scan knows
+        devices by address. One whose name does not resolve cannot be
+        recognized, and the scan's warnings say so.
+        """
+        if self.held_connections is None:
+            return {}
+        try:
+            connections = list(self.held_connections())
+        except Exception:
+            log.exception("Could not read the project's connected devices")
+            return {}
+        wanted = [
+            c for c in connections
+            if getattr(c, "host", "") and isinstance(getattr(c, "port", None), int)
+        ]
+        addresses = await asyncio.gather(*(resolve_address(c.host) for c in wanted))
+        held: dict[tuple[str, int], str] = {}
+        for conn, address in zip(wanted, addresses):
+            if address:
+                held[(address, conn.port)] = conn.name
+                continue
+            log.warning("Could not look up %s (%s) to keep the scan off its port", conn.host, conn.name)
+            self.scan_status.warnings.append(
+                f"Could not look up {conn.host}, the address of {conn.name}, so this "
+                f"scan may have connected to it on port {conn.port}."
+            )
+        if held:
+            log.info(
+                "Scan leaves alone %d port(s) connected project devices hold: %s",
+                len(held), ", ".join(f"{h}:{p}" for h, p in sorted(held)),
+            )
+        return held
 
     async def _scan_pipeline_inner(self, subnets: list[str]) -> None:
         """The core scan phases.
@@ -1584,6 +1641,7 @@ class DiscoveryEngine:
                 device = self._get_or_create(ip)
                 open_ports = await scan_host_ports(
                     ip, ports, timeout=1.0, source_ip=self._scan_source_ip,
+                    guard=self._guard,
                 )
                 self._port_scanned.add(ip)
                 if open_ports:
@@ -1672,10 +1730,11 @@ class DiscoveryEngine:
         the execution can't disagree about what the phase is about to do.
 
         The two waits come from the probes that will run: the longest UDP
-        listen window, and the longest one TCP probe can take (its connect and
-        its reply each get the probe's ``timeout_ms``, then a ``then:`` step
-        its own). Writing the few bytes a probe sends never waits on a fresh
-        connection, so the drains are left out.
+        listen window, and the longest one port's TCP checks can take
+        (``probe_runner.port_probe_seconds``): a port's checks run one after
+        another, so a port many drivers probe is the slowest. Writing the few
+        bytes a probe sends never waits on a fresh connection, so the drains
+        are left out.
         """
         udp_targets = len(_udp_probe_targets_for(subnets))
         udp_specs = [h.udp_probe for h in self.discovery_hints if h.udp_probe is not None]
@@ -1684,20 +1743,16 @@ class DiscoveryEngine:
         if udp_sends:
             udp_listen = max(spec.timeout_ms for spec in udp_specs) / 1000.0
         tcp_jobs = 0
-        tcp_wait = 0.0
+        by_port: dict[tuple[str, int], list] = {}
         for hint in self.discovery_hints:
             spec = hint.tcp_probe
             if spec is None:
                 continue
-            jobs = sum(
-                1 for ip, dev in self.results.items()
-                if spec.port in (dev.open_ports or []) and _ip_in_subnets(ip, subnets)
-            )
-            if not jobs:
-                continue
-            tcp_jobs += jobs
-            then_ms = spec.follow_up.timeout_ms if spec.follow_up is not None else 0
-            tcp_wait = max(tcp_wait, (2 * spec.timeout_ms + then_ms) / 1000.0)
+            for ip, dev in self.results.items():
+                if spec.port in (dev.open_ports or []) and _ip_in_subnets(ip, subnets):
+                    tcp_jobs += 1
+                    by_port.setdefault((ip, spec.port), []).append(spec)
+        tcp_wait = max((port_probe_seconds(specs) for specs in by_port.values()), default=0.0)
         return (
             tcp_jobs, udp_sends, len(self._discovery_companions),
             udp_listen, tcp_wait,
@@ -1768,6 +1823,7 @@ class DiscoveryEngine:
 
             device.identification = self.tier_matcher.match(device.evidence_log)
             self._fill_category_from_match(device)
+            device.port_probes = self._guard.record(device.ip)
             await self._emit_device_update(device, "driver_match")
             if finalize_total > 0:
                 await self._update_intra_progress((i + 1) / finalize_total)
@@ -2119,13 +2175,16 @@ class DiscoveryEngine:
           or /32, which have none), sharing a single 10/sec
           ``RateLimiter``.
         - **TCP probes** run against every host whose port-scan results
-          include the spec's port, with a 20 ms stagger so the SYN burst
-          is spread and sharing the same 10/sec ``RateLimiter`` as the
-          UDP probes so the global send cap bounds the connect rate too.
+          include the spec's port, one port at a time
+          (``probe_runner.observe_port_probes``: the greeting read first,
+          a login prompt sent only the checks that expect it, then each
+          check in turn), the ports staggered 20 ms apart and sharing the
+          same 10/sec ``RateLimiter`` as the UDP probes so the global send
+          cap bounds the connect rate too.
         - **Python companions** are invoked with a ``ProbeContext``
           carrying the engine's port-scan map so the companion can
           consume already-discovered hosts instead of re-iterating
-          subnets.
+          subnets, and the scan's port guard behind ``ctx.hold_port``.
 
         Resulting Evidence is appended to each device's ``evidence_log``
         for the matcher to consume in phase 8.
@@ -2207,33 +2266,44 @@ class DiscoveryEngine:
                 await self.merge_probe_results()
 
         if tcp_specs:
-            async def _run_one_tcp(at, spec, target, idx):
-                ev = await run_tcp_active_probe(
-                    spec,
-                    target=target,
-                    source_ip=control_ip,
-                    stagger_ms=idx * 20.0,
-                    rate_limiter=rate_limiter,
-                )
-                if ev is not None:
-                    self._probe_finished[at] = [(target, ev, "protocol_probe")]
-
-            tcp_jobs: list = []
+            # Every (spec, host) pair, in the order _count_probe_jobs counts
+            # them, each with the position its evidence is kept under; the
+            # budget's cap cuts this list, then the survivors run by port.
+            jobs: list[tuple[int, Any, str]] = []
             for spec in tcp_specs:
-                hosts = [
-                    ip for ip, dev in self.results.items()
-                    if spec.port in (dev.open_ports or []) and _ip_in_subnets(ip, subnets)
-                ]
-                for idx, ip in enumerate(hosts):
-                    tcp_jobs.append(_run_one_tcp(position, spec, ip, idx))
-                    position += 1
-            if max_tcp_jobs is not None and len(tcp_jobs) > max_tcp_jobs:
-                for extra in tcp_jobs[max_tcp_jobs:]:
-                    extra.close()  # never awaited — don't leave it pending
-                tcp_jobs = tcp_jobs[:max_tcp_jobs]
-            if tcp_jobs:
+                for ip, dev in self.results.items():
+                    if spec.port in (dev.open_ports or []) and _ip_in_subnets(ip, subnets):
+                        jobs.append((position, spec, ip))
+                        position += 1
+            if max_tcp_jobs is not None:
+                jobs = jobs[:max_tcp_jobs]
+            by_port: dict[tuple[str, int], list[tuple[int, Any]]] = {}
+            for at, spec, ip in jobs:
+                by_port.setdefault((ip, spec.port), []).append((at, spec))
+
+            async def _probe_port(idx, host, port, entries):
+                if idx:
+                    await asyncio.sleep(idx * 0.020)  # spread the first connects
+
+                def _answered(i: int, obs) -> None:
+                    if obs.evidence is not None:
+                        self._probe_finished[entries[i][0]] = [
+                            (host, obs.evidence, "protocol_probe"),
+                        ]
+
+                await observe_port_probes(
+                    host, port, [spec for _, spec in entries],
+                    source_ip=control_ip, guard=self._guard,
+                    rate_limiter=rate_limiter, on_observation=_answered,
+                )
+
+            if by_port:
                 tcp_results = await asyncio.gather(
-                    *tcp_jobs, return_exceptions=True,
+                    *(
+                        _probe_port(idx, host, port, entries)
+                        for idx, ((host, port), entries) in enumerate(by_port.items())
+                    ),
+                    return_exceptions=True,
                 )
                 for r in tcp_results:
                     if isinstance(r, BaseException):
@@ -2269,10 +2339,15 @@ class DiscoveryEngine:
             # Build the port -> hosts map once and share it across
             # every companion invocation — companions consume the
             # engine's existing port-scan results instead of
-            # re-iterating subnets to rediscover live hosts.
+            # re-iterating subnets to rediscover live hosts. A port a
+            # connected project device holds is left out (an mDNS SRV
+            # record can put one in open_ports without a port scan).
             hosts_by_open_port: dict[int, list[str]] = {}
             for ip, dev in self.results.items():
                 for port in dev.open_ports or ():
+                    if self._guard.held_by(ip, port) is not None:
+                        self._guard.note_in_use(ip, port)
+                        continue
                     hosts_by_open_port.setdefault(port, []).append(ip)
             hosts_by_open_port_frozen: dict[int, tuple[str, ...]] = {
                 port: tuple(ips) for port, ips in hosts_by_open_port.items()
@@ -2290,6 +2365,7 @@ class DiscoveryEngine:
                     log=companion_logger,
                     _emit_for_host=_emit_for_host,
                     hosts_by_open_port=hosts_by_open_port_frozen,
+                    _guard=self._guard,
                 )
                 companion_tasks.append(run_companion(driver_id, probe_fn, ctx))
                 companion_ids.append(driver_id)

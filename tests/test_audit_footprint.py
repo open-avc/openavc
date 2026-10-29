@@ -28,6 +28,7 @@ from openavc.discovery import community_index as ci
 from openavc.discovery import snmp_scanner
 from openavc.discovery.amx_ddp_scanner import AMXDDPScanner
 from openavc.discovery.engine import DiscoveryEngine
+from openavc.discovery.explain import evaluate_driver_signals
 from openavc.discovery.mdns_scanner import (
     DNS_SD_META_QUERY,
     DNS_TYPE_A,
@@ -766,16 +767,84 @@ async def test_a_probe_that_only_listens_is_answered_by_the_greeting_already_rea
     assert recorded["from_greeting"] is True
 
 
-async def test_a_port_that_said_nothing_still_gets_the_probe_s_own_connection(
+async def test_a_port_that_said_nothing_is_listened_to_once_more(
     monkeypatch, bench,
 ):
-    """No greeting to judge it on, so the probe connects and listens itself."""
+    """No greeting to judge it on, so the port is listened to once more and
+    the probe is judged on what it said then."""
     fp, seen, port = await _check_listen_only_probe(monkeypatch, bench, lambda n: n > 1)
     assert fp.greetings[port].data == b""
     [probe] = [o for o in fp.probes if o.probe_id == "custom_acme_widget_tcp"]
-    assert probe.matched and not probe.from_greeting
+    assert probe.matched and probe.from_greeting
+    assert b"ACME-WIDGET" in probe.reply
     assert seen["listening"] == 2
     assert fp.verdict["identification"]["driver_id"] == "acme_widget"
+
+
+async def test_a_query_is_not_typed_into_a_login_prompt(monkeypatch, bench):
+    """The port asks for a login. acme_widget's check only listens, so it is
+    judged on the prompt; acme_gadget's query is never sent, and the report and
+    the explanation both say why."""
+    from openavc.audit.report import render_timeline
+
+    received: list[bytes] = []
+
+    async def handler(reader, writer):
+        writer.write(BANNER)
+        await writer.drain()
+        try:
+            received.append(await asyncio.wait_for(reader.read(1024), timeout=1.0))
+        except (asyncio.TimeoutError, ConnectionError, OSError):
+            received.append(b"")
+        writer.close()
+
+    server, port = await _serve(handler)
+
+    def entry(driver_id, name, probe):
+        return {
+            "id": driver_id, "name": name, "manufacturer": "Acme", "category": "utility",
+            "transport": "tcp", "version": "1.0.0", "discovery": {"tcp_probe": probe},
+        }
+
+    raw = json.dumps({"drivers": [
+        entry("acme_widget", "Acme Widget", {"port": port, "expect_regex": "ACME-WIDGET"}),
+        entry("acme_gadget", "Acme Gadget", {
+            "port": port, "send_ascii": "STATUS?\r\n", "expect_regex": "GADGET",
+        }),
+    ]}).encode()
+
+    async def fetch(_path):
+        return raw, ""
+
+    monkeypatch.setattr(ci, "_fetch_raw_with_retry", fetch)
+    engine = DiscoveryEngine()
+    engine.load_driver_hints_from_registry([])
+    check, _ = _check(
+        engine, bench, port_list=[port], web_ports={},
+        listeners=_heard_listeners(bench, device_heard=False),
+    )
+    try:
+        fp = await check.run()
+    finally:
+        server.close()
+        await server.wait_closed()
+
+    assert not any(b"STATUS?" in r for r in received)
+    [widget] = [o for o in fp.probes if o.probe_id == "custom_acme_widget_tcp"]
+    [gadget] = [o for o in fp.probes if o.probe_id == "custom_acme_gadget_tcp"]
+    assert widget.matched and widget.from_greeting
+    assert gadget.miss == "login_prompt" and gadget.sent == b""
+    [line] = [
+        line for line in render_timeline({"footprint": fp.to_dict()}).splitlines()
+        if "acme_gadget" in line
+    ]
+    assert "not sent, the port asked for a login" in line
+    # Asked about acme_gadget, the explanation says the check never ran.
+    [hint] = [h for h in engine.discovery_hints if h.driver_id == "acme_gadget"]
+    [checked] = [c for c in evaluate_driver_signals(hint, fp.observations())
+                 if c.kind == "probe"]
+    assert checked.status == "not_observed"
+    assert checked.detail.startswith(f"Not sent: TCP port {port} asked for a login")
 
 
 async def test_a_manufacturer_one_drivers_probe_supplies_is_named_as_its_under_another(

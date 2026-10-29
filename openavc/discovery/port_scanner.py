@@ -12,12 +12,16 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Any, Callable, Awaitable
+from typing import TYPE_CHECKING, Any, Callable, Awaitable
+
+if TYPE_CHECKING:
+    from openavc.discovery.port_guard import PortGuard
 
 PORT_OPEN = "open"
 PORT_REFUSED = "refused"    # the host answered with a reset: it is there, the port is closed
 PORT_FILTERED = "filtered"  # no answer inside the timeout: dropped, or nothing there
 PORT_ERROR = "error"        # the connect failed locally (unreachable network, bind failure)
+PORT_IN_USE = "in_use"      # a connected project device holds it (``PortGuard``): never connected to
 
 log = logging.getLogger("discovery.ports")
 
@@ -50,6 +54,7 @@ async def scan_host_ports(
     timeout: float = 1.0,
     stagger_ms: float = 20.0,
     source_ip: str = "",
+    guard: "PortGuard | None" = None,
 ) -> list[int]:
     """Probe TCP ports on a single host. Returns list of open ports.
 
@@ -59,9 +64,13 @@ async def scan_host_ports(
 
     ``source_ip`` binds every connection to that local address (the
     control interface); empty lets the OS pick.
+
+    ``guard`` is the scan's ``PortGuard``: a port a connected project device
+    holds is never connected to, and is not in the list returned.
     """
     states = await scan_host_port_states(
         ip, ports, timeout=timeout, stagger_ms=stagger_ms, source_ip=source_ip,
+        guard=guard,
     )
     return sorted(p for p, state in states.items() if state == PORT_OPEN)
 
@@ -72,19 +81,24 @@ async def scan_host_port_states(
     timeout: float = 1.0,
     stagger_ms: float = 20.0,
     source_ip: str = "",
+    guard: "PortGuard | None" = None,
 ) -> dict[int, str]:
     """``scan_host_ports``, keeping how each port answered.
 
     Returns {port: state}, the state one of ``PORT_OPEN``, ``PORT_REFUSED``
     (a reset: the host is there and the port is closed), ``PORT_FILTERED``
-    (silence until the timeout) or ``PORT_ERROR`` (the connect failed on
-    this side). The same connects as a scan, nothing more.
+    (silence until the timeout), ``PORT_ERROR`` (the connect failed on
+    this side) or ``PORT_IN_USE`` (``guard`` says a connected project device
+    holds it, so nothing was sent). The same connects as a scan, nothing more.
     """
     if not ports:
         return {}
     local_addr = _local_addr(source_ip)
 
     async def _check(port: int, delay: float) -> tuple[int, str]:
+        if guard is not None and guard.held_by(ip, port) is not None:
+            guard.note_in_use(ip, port)
+            return port, PORT_IN_USE
         if delay > 0:
             await asyncio.sleep(delay)
         try:
@@ -226,12 +240,17 @@ async def read_greeting(
     source_ip: str = "",
     max_bytes: int = 8192,
     connect_timeout: float = 2.0,
+    quiet: float | None = None,
 ) -> PortGreeting:
     """Connect, send nothing, and keep everything the port says for ``wait``.
 
     The raw form of ``grab_banner``: every byte, not the first read decoded,
     and the whole window, not the first segment. A single-device check uses
     it on every open port; it sends no bytes, so it changes nothing.
+
+    ``quiet`` ends the read early once the port has said something and then
+    nothing more for that long (a scan's identification stage, which reads
+    many ports); without it the read lasts the whole ``wait``.
     """
     greeting = PortGreeting(port=port)
     try:
@@ -258,6 +277,8 @@ async def read_greeting(
             remaining = deadline - loop.time()
             if remaining <= 0:
                 break
+            if quiet is not None and buf:
+                remaining = min(remaining, quiet)
             try:
                 chunk = await asyncio.wait_for(
                     reader.read(max_bytes - len(buf)), timeout=remaining,

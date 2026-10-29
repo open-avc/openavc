@@ -29,10 +29,12 @@ handshake on web ports only, plus connect-and-listen reads that send no bytes:
 7. **SNMP** v2c: ``public``, then the communities the person gave.
 8. **Driver probes**: every catalog ``tcp_probe`` whose port is open, every
    ``udp_probe`` sent unicast, and the installed Python companions, every
-   exchange kept, matched or not. A ``tcp_probe`` that only listens is judged
-   on what its port said in step 4 and connects again only if the port said
-   nothing: a device that takes one session at a time does not always greet
-   the next one.
+   exchange kept, matched or not. A port's TCP checks run one at a time
+   (``probe_runner.observe_port_probes``). A ``tcp_probe`` that only listens
+   is judged on what its port said in step 4; a port that said nothing is
+   listened to once more, since a device that takes one session at a time
+   does not always greet the next one. A port that asked for a login is sent
+   only the checks that look for that prompt; the rest are kept as not sent.
 
 Then the verdict: the evidence a scan would have built, ``TierMatcher.match``
 on it, and ``explain_matches`` for every driver each signal points at.
@@ -87,6 +89,7 @@ from openavc.discovery.network_scanner import (
     get_network_adapters,
     harvest_arp_table,
     netbios_query,
+    resolve_address as resolve_address,  # the audit's doors import it from here
 )
 from openavc.discovery.port_scanner import (
     PORT_FILTERED,
@@ -96,12 +99,11 @@ from openavc.discovery.port_scanner import (
     read_greeting,
     scan_host_port_states,
 )
+from openavc.discovery.port_guard import PortGuard
 from openavc.discovery.probe_runner import (
     ProbeObservation,
     RateLimiter,
-    answered_by_greeting,
-    observe_tcp_active_probe,
-    observe_tcp_probe_on_greeting,
+    observe_port_probes,
     observe_udp_probe,
 )
 from openavc.discovery.result import (
@@ -411,26 +413,6 @@ def local_route_ip(ip: str) -> str:
         return ""
 
 
-async def resolve_address(address: str) -> str:
-    """The IPv4 address ``address`` names, or "" when it names none."""
-    address = address.strip()
-    try:
-        return str(ipaddress.IPv4Address(address))
-    except ValueError:
-        pass
-    loop = asyncio.get_running_loop()
-    try:
-        infos = await asyncio.wait_for(
-            loop.getaddrinfo(address, None, family=socket.AF_INET, type=socket.SOCK_STREAM),
-            timeout=5.0,
-        )
-    except (OSError, asyncio.TimeoutError):
-        return ""
-    for info in infos:
-        return str(info[4][0])
-    return ""
-
-
 ProgressCallback = Callable[[Activity], None]
 
 
@@ -495,6 +477,10 @@ class NetworkCheck:
         self._listen_seconds = listen_seconds
         self._greeting_seconds = greeting_seconds
         self._pacing_ms = port_pacing_ms
+        # One connection per port for the identification checks and the
+        # companions. Nothing is held: the audit pauses the project's devices
+        # at this address before it sends anything.
+        self._guard = PortGuard()
         self._on_progress = on_progress
         self.activities: dict[str, Activity] = {key: Activity(key) for key in ACTIVITIES}
         self._mdns: MDNSScanner | None = None
@@ -1021,29 +1007,21 @@ class NetworkCheck:
             return [o for o in observed if o.target in ("", fp.ip)]
 
         udp_task = asyncio.gather(*(udp(s) for s in udp_specs), return_exceptions=True)
-        # TCP probes one port at a time: a single-session device must not
-        # see two of them at once. A probe that only listens is judged on the
-        # greeting already read from its port, so a device that does not greet
-        # every connection is not asked again; it connects for itself only
-        # when the port said nothing.
+        # TCP probes one port at a time, and one check at a time on a port: a
+        # single-session device must not see two of them at once. The
+        # greeting read in step 4 stands in for the port's own read.
         by_port: dict[int, list] = {}
         for spec in tcp_specs:
             by_port.setdefault(spec.port, []).append(spec)
         for port in sorted(by_port):
-            greeting = fp.greetings.get(port)
-            for spec in by_port[port]:
-                if greeting is not None and greeting.data and answered_by_greeting(spec):
-                    fp.probes.append(observe_tcp_probe_on_greeting(
-                        spec, target=fp.ip, greeting=greeting.data,
-                        first_byte_ms=greeting.first_byte_ms,
-                    ))
-                    continue
-                try:
-                    fp.probes.append(await observe_tcp_active_probe(
-                        spec, target=fp.ip, source_ip=self._source_ip, rate_limiter=limiter,
-                    ))
-                except Exception:
-                    log.debug("TCP probe %s failed", spec.probe_id, exc_info=True)
+            try:
+                fp.probes.extend(await observe_port_probes(
+                    fp.ip, port, by_port[port], source_ip=self._source_ip,
+                    guard=self._guard, rate_limiter=limiter,
+                    greeting=fp.greetings.get(port),
+                ))
+            except Exception:
+                log.debug("TCP probes on port %d failed", port, exc_info=True)
         for result in await udp_task:
             if isinstance(result, list):
                 fp.probes.extend(result)
@@ -1087,6 +1065,7 @@ class NetworkCheck:
                 log=companion_log,
                 _emit_for_host=emit_for(driver_id),
                 hosts_by_open_port=by_port,
+                _guard=self._guard,
             ))
             for driver_id, probe_fn in companions.items()
         ]

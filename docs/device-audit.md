@@ -140,10 +140,11 @@ the multicast queries, and the driver catalog.
 - mDNS and SSDP queries, and listening for mDNS, SSDP and AMX DDP announcements until the audit
   ends.
 - Each catalog driver's identification check: TCP probes on the device's open ports, and UDP
-  probes sent to the device's address. Each sends that driver's own query, so one port (Telnet
-  23, say) can receive several drivers' queries, some of them typed at a login prompt. A plain
-  TCP check that sends nothing and only reads what the port says is matched against what the port
-  said on the listening connection above, and connects again only if the port said nothing.
+  probes sent to the device's address. Each sends that driver's own query, one at a time on a
+  port. A plain TCP check that sends nothing and only reads what the port says is matched against
+  what the port said on the listening connection above; a port that said nothing is listened to
+  once more. A port that asks for a user name or password gets only the checks that look for
+  that prompt, and the report lists the others as not sent.
 - The identification checks of installed drivers that come with their own discovery code. One
   of those can send its own multicast query, which reaches every device of that kind on the
   network segment (a camera driver's WS-Discovery, for instance).

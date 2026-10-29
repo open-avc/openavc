@@ -286,12 +286,12 @@ class TestScanContactsOnlyItsSubnets:
         engine = self._engine_with_probe()
         probed: list[str] = []
 
-        async def fake_probe(spec, *, target, source_ip, stagger_ms=0.0, rate_limiter=None):
-            probed.append(target)
-            return None
+        async def fake_port_probes(host, port, specs, **kwargs):
+            probed.append(host)
+            return []
 
         assert engine._count_probe_jobs(["10.77.0.5/32"])[0] == 1
-        with patch.object(engine_mod, "run_tcp_active_probe", fake_probe):
+        with patch.object(engine_mod, "observe_port_probes", fake_port_probes):
             await engine._run_custom_probes(["10.77.0.5/32"], "")
         assert probed == ["10.77.0.5"]
         assert "192.168.9.12" in engine.results  # still listed
@@ -529,12 +529,11 @@ class TestTcpProbeRateLimit:
 
         captured = {}
 
-        async def fake_probe(spec, *, target, source_ip,
-                             stagger_ms=0.0, rate_limiter=None):
+        async def fake_port_probes(host, port, specs, *, rate_limiter=None, **kwargs):
             captured["rate_limiter"] = rate_limiter
-            return None
+            return []
 
-        with patch.object(engine_mod, "run_tcp_active_probe", fake_probe):
+        with patch.object(engine_mod, "observe_port_probes", fake_port_probes):
             await engine._run_custom_probes(["10.77.0.0/24"], "10.77.0.1")
 
         # Before the fix this was None (no limiter threaded through the TCP

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeEvidence } from "./discoveryEvidence";
+import { describeEvidence, portProbeLines } from "./discoveryEvidence";
 
 const ev = (data: Record<string, unknown>) => ({ tier: "enrichment", source: "x", data });
 
@@ -80,5 +80,59 @@ describe("the evidence lines", () => {
     }), (id) => names[id]).headline).toBe(
       'Manufacturer "acme" named by the Acme Widget driver when its probe matched',
     );
+  });
+});
+
+describe("what each port received", () => {
+  const names: Record<string, string> = { acme_widget: "Acme Widget", acme_gadget: "Acme Gadget" };
+  const name = (id: string) => names[id];
+
+  it("says a port in use by a project device was left alone", () => {
+    expect(portProbeLines({
+      "1515": {
+        in_use_by: "Lobby Widget",
+        probes: [{ probe_id: "custom_acme_widget_tcp", driver_id: "acme_widget", how: "in_use" }],
+      },
+    }, name)).toEqual([{
+      port: "1515",
+      text: "Port 1515: in use by Lobby Widget, so the scan did not connect to it.",
+      title: "",
+    }]);
+  });
+
+  it("says a port asked for a login and which probes were not sent", () => {
+    const [line] = portProbeLines({
+      "23": {
+        greeting: "login_prompt",
+        probes: [
+          { probe_id: "custom_acme_widget_tcp", driver_id: "acme_widget", how: "greeting", matched: true },
+          { probe_id: "custom_acme_gadget_tcp", driver_id: "acme_gadget", how: "login_prompt", matched: false },
+          { probe_id: "custom_acme_panel_tcp", driver_id: "acme_panel", how: "login_prompt", matched: false },
+        ],
+      },
+    }, name);
+    expect(line.text).toBe("Port 23: asked for a login. 1 probe read its greeting, 2 probes not sent.");
+    expect(line.title).toBe("Read its greeting: Acme Widget\nNot sent: Acme Gadget, acme_panel");
+  });
+
+  it("lists ports in number order and counts the probes that connected", () => {
+    const lines = portProbeLines({
+      "4321": {
+        greeting: "silent",
+        probes: [{ probe_id: "custom_acme_gadget_tcp", driver_id: "acme_gadget", how: "connected" }],
+      },
+      "23": {
+        greeting: "spoke",
+        probes: [{ probe_id: "custom_acme_widget_tcp", driver_id: "acme_widget", how: "greeting" }],
+      },
+    }, name);
+    expect(lines.map((l) => l.text)).toEqual([
+      "Port 23: 1 probe read its greeting.",
+      "Port 4321: 1 probe connected.",
+    ]);
+  });
+
+  it("has nothing to say for a device scanned before the record existed", () => {
+    expect(portProbeLines(undefined)).toEqual([]);
   });
 });

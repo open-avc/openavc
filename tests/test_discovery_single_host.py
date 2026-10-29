@@ -19,6 +19,7 @@ from openavc.discovery.engine import (
     _host_count,
     _udp_probe_targets_for,
 )
+from openavc.discovery.probe_runner import ProbeObservation
 from openavc.discovery.result import Evidence, SignalTier
 from openavc.discovery.scan_budget import ScanBudget, resolve_policy
 
@@ -74,19 +75,28 @@ class TestSingleHostScan:
 
         scanned: list[str] = []
 
-        async def fake_scan(ip, ports, timeout=1.0, source_ip=""):
+        async def fake_scan(ip, ports, timeout=1.0, source_ip="", guard=None):
             scanned.append(ip)
             return [23]
 
         tcp_probed: list[str] = []
 
-        async def fake_tcp(spec, target, **kwargs):
-            tcp_probed.append(target)
-            return Evidence(
-                tier=SignalTier.ACTIVE_PROBE,
-                source="probe:custom_acme_widget_tcp",
-                data={"kind": "active_probe", "source_id": "custom_acme_widget_tcp"},
-            )
+        async def fake_port_probes(host, port, specs, *, on_observation=None, **kwargs):
+            tcp_probed.append(host)
+            out = []
+            for i, spec in enumerate(specs):
+                obs = ProbeObservation(
+                    probe_id=spec.probe_id, kind="tcp", port=port, target=host,
+                    matched=True, evidence=Evidence(
+                        tier=SignalTier.ACTIVE_PROBE,
+                        source="probe:custom_acme_widget_tcp",
+                        data={"kind": "active_probe", "source_id": "custom_acme_widget_tcp"},
+                    ),
+                )
+                if on_observation is not None:
+                    on_observation(i, obs)
+                out.append(obs)
+            return out
 
         udp_targets: list[list[str]] = []
 
@@ -104,7 +114,7 @@ class TestSingleHostScan:
              patch("openavc.discovery.engine.netbios_sweep", new_callable=AsyncMock, return_value={}), \
              patch("openavc.discovery.engine.scan_host_ports", side_effect=fake_scan), \
              patch("openavc.discovery.engine.grab_banners", new_callable=AsyncMock, return_value={}), \
-             patch("openavc.discovery.engine.run_tcp_active_probe", side_effect=fake_tcp), \
+             patch("openavc.discovery.engine.observe_port_probes", side_effect=fake_port_probes), \
              patch("openavc.discovery.engine.run_udp_broadcast_probe", side_effect=fake_udp), \
              patch.object(engine.community_index, "get_drivers", new_callable=AsyncMock, return_value=[]), \
              patch("openavc.discovery.engine.MDNSScanner", _instant("start")), \

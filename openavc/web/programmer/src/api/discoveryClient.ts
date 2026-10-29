@@ -46,6 +46,29 @@ export interface DiscoveredDevice {
   mdns_services: string[];
   ssdp_info: Record<string, unknown> | null;
   snmp_info: Record<string, unknown> | null;
+  /** What each port received from the scan's TCP probes, by port number. */
+  port_probes?: Record<string, PortProbeRecord>;
+}
+
+/** How one TCP probe reached its port: read the port's greeting with no
+ *  connection of its own, connected (and sent its bytes, if it has any), not
+ *  sent because the port asked for a login or is in use by a project device,
+ *  or a driver's discovery companion held the port. */
+export type PortProbeHow = "greeting" | "connected" | "login_prompt" | "in_use" | "companion";
+
+export interface PortProbeCheck {
+  probe_id: string;
+  driver_id: string;
+  how: PortProbeHow;
+  matched?: boolean;
+}
+
+export interface PortProbeRecord {
+  /** The project device connected to this port; the scan never opened it. */
+  in_use_by?: string;
+  /** What the port said when connected to. */
+  greeting?: "login_prompt" | "spoke" | "silent";
+  probes?: PortProbeCheck[];
 }
 
 export interface DiscoveryScanResult {

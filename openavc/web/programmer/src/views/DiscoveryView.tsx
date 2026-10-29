@@ -43,7 +43,7 @@ import {
   scannedDeviceName,
   snmpCommunityField,
 } from "./discoveryViewHelpers";
-import { describeEvidence, EvidenceList } from "./discoveryEvidence";
+import { describeEvidence, EvidenceList, portProbeLines } from "./discoveryEvidence";
 import { DRIVER_CATEGORIES, type CatalogCategoryId } from "../components/driver-builder/driverCategories";
 
 const HIDDEN_KEY = "openavc_discovery_hidden_ips";
@@ -1025,6 +1025,7 @@ function DeviceCard({
   const readableBanners = Object.entries(device.banners)
     .map(([port, raw]) => ({ port, raw, text: bannerDisplayText(raw, 200) }))
     .filter((b) => b.text.length > 0);
+  const probeLines = portProbeLines(device.port_probes, (id) => driverNameLookup.get(id)?.name);
 
   return (
     <div
@@ -1220,6 +1221,17 @@ function DeviceCard({
               {readableBanners.map(({ port, raw, text }) => (
                 <div key={port} title={raw} style={{ fontFamily: "monospace", marginTop: 2, fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
                   Port {port}: {text}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {probeLines.length > 0 && (
+            <div>
+              <strong>Probes:</strong>
+              {probeLines.map(({ port, text, title }) => (
+                <div key={port} title={title} style={{ marginTop: 2, fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+                  {text}
                 </div>
               ))}
             </div>

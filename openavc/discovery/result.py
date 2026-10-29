@@ -238,6 +238,12 @@ class DiscoveredDevice:
     identification: IdentificationMatch | None = None
     evidence_log: list[Evidence] = field(default_factory=list)
 
+    # What each port received from the scan's identification checks, by port
+    # (``port_guard.PortGuard.record``): a port a connected project device
+    # holds, whether the port's greeting asked for a login, and how each
+    # check reached it.
+    port_probes: dict[int, dict[str, Any]] = field(default_factory=dict)
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize for JSON API response."""
         return {
@@ -261,6 +267,7 @@ class DiscoveredDevice:
                 self.identification.to_dict() if self.identification else None
             ),
             "evidence_log": [e.to_dict() for e in self.evidence_log],
+            "port_probes": {str(k): v for k, v in self.port_probes.items()},
         }
 
 

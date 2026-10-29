@@ -1298,11 +1298,12 @@ def render_timeline(report: dict[str, Any]) -> str:
     for probe in report.get("footprint", {}).get("probes", []):
         proto = "TCP" if probe.get("kind") == "tcp" else "UDP"
         outcome = "matched" if probe.get("matched") else (probe.get("miss") or "no match")
-        exchange = (
-            f"the port's greeting {_quote(probe.get('reply'))}, no connection of its own"
-            if probe.get("from_greeting")
-            else f"sent {_quote(probe.get('sent'))}, reply {_quote(probe.get('reply'))}"
-        )
+        if probe.get("miss") == "login_prompt":
+            exchange = "not sent, the port asked for a login"
+        elif probe.get("from_greeting"):
+            exchange = f"the port's greeting {_quote(probe.get('reply'))}, no connection of its own"
+        else:
+            exchange = f"sent {_quote(probe.get('sent'))}, reply {_quote(probe.get('reply'))}"
         text = (
             f"{_probe_owner(probe.get('probe_id'))} {proto} port {probe.get('port')}: "
             f"{exchange}{', ' + probe['error'] if probe.get('error') else ''} ({outcome})"
@@ -2252,10 +2253,13 @@ The network check (footprint)
   probes lists each driver's identification check sent to the device. A
   driver's TCP check runs when its port is open, and every UDP check runs.
   Each holds what was sent and the reply, and matched (the reply is what the
-  driver looks for) or miss (why not). A TCP check that sends nothing is
-  compared with what its port said when the check connected and listened
-  (greetings), and from_greeting is true: it opened no connection of its
-  own. It connects for itself only when the port said nothing.
+  driver looks for) or miss (why not). A port's TCP checks run one at a
+  time. A TCP check that sends nothing is compared with what its port said
+  when the check connected and listened (greetings), and from_greeting is
+  true: it opened no connection of its own. A port that said nothing is
+  listened to once more first. When the port's greeting asks for a login, a
+  check that sends is sent only if what it looks for is that prompt; the
+  others have miss login_prompt and sent nothing.
 
 The verdict
   explanation.signals lists what the check saw that a driver's identification

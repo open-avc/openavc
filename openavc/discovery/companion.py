@@ -31,6 +31,12 @@ Safety
   a scan.
 - ``ctx.emit_*`` calls are marshalled back to the engine's event loop;
   engine state is never touched from the worker thread.
+- ``ctx.hold_port(host, port)`` holds a port for one connection, so no other
+  identification check opens it meanwhile (``port_guard.PortGuard``). The
+  hold is taken on the engine's loop; every hold a companion still has when
+  it ends, times out or is abandoned is released by ``run_companion``.
+- ``ctx.hosts_by_open_port`` never lists a port a connected project device
+  holds; ``hold_port`` refuses one with ``PortInUse``.
 - Companion code is community-trust same as Python drivers — we wrap
   every invocation in a try/except and log on failure.
 """
@@ -38,14 +44,16 @@ Safety
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import importlib.util
 import logging
 import sys
 import threading
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any, AsyncIterator, Awaitable, Callable
 
+from openavc.discovery.port_guard import HOW_COMPANION, PortCheck, PortGuard, PortInUse
 from openavc.discovery.result import Evidence
 from openavc.discovery.tier_matcher import (
     evidence_active_probe,
@@ -109,6 +117,19 @@ class ProbeContext:
     this companion's driver). Pass an explicit ``probe_id`` only
     when emitting evidence that overlaps with a different driver's
     registered probe — rare; you'll usually let the default fire.
+
+    One connection per port
+    -----------------------
+    Open each TCP connection inside ``hold_port``::
+
+        async with ctx.hold_port(ip, 23):
+            reader, writer = await asyncio.open_connection(ip, 23, ...)
+            ...
+            writer.close()
+
+    While it is held, no other identification check or companion opens that
+    port, so a device that serves one session at a time is never asked twice
+    at once.
     """
 
     driver_id: str
@@ -124,6 +145,24 @@ class ProbeContext:
     # port-scan phase (shouldn't happen with the standard phase order)
     # or no host answered on any scanned port.
     hosts_by_open_port: dict[int, tuple[str, ...]] = field(default_factory=dict)
+    # Engine-supplied: the scan's port guard. Private to the companion API;
+    # a companion asks through ``hold_port``.
+    _guard: PortGuard | None = field(default=None, repr=False)
+    # Set by run_companion: ``hold_port`` taken on the engine's loop.
+    _hold: Callable[[str, int], contextlib.AbstractAsyncContextManager[None]] | None = field(
+        default=None, repr=False,
+    )
+
+    def hold_port(self, host: str, port: int) -> contextlib.AbstractAsyncContextManager[None]:
+        """Hold ``host:port`` for one connection: open it inside, close it
+        before leaving. Waits while another check has the port open. Raises
+        ``PortInUse`` (a ``ConnectionRefusedError``) for a port a connected
+        project device holds; ``hosts_by_open_port`` never lists one."""
+        if self._hold is not None:
+            return self._hold(host, port)
+        if self._guard is not None:
+            return self._guard.hold(host, port)
+        return contextlib.nullcontext()
 
     @property
     def companion_broadcast_probe_id(self) -> str:
@@ -330,6 +369,9 @@ async def run_companion(
     engine_loop = asyncio.get_running_loop()
     abandoned = threading.Event()
     engine_emit = ctx._emit_for_host
+    guard = ctx._guard
+    # The ports this run holds right now. Engine loop only.
+    holding: list[tuple[str, int]] = []
 
     async def _bridged_emit(host: str, ev: Evidence) -> None:
         # Runs on the worker loop; engine state must only be touched
@@ -345,7 +387,47 @@ async def run_companion(
             return
         await asyncio.wrap_future(emit_fut)
 
-    worker_ctx = replace(ctx, _emit_for_host=_bridged_emit)
+    async def _take(host: str, port: int) -> None:
+        # Engine loop. The hold is listed the moment it is taken, so one
+        # taken while the companion was being cancelled is still released.
+        assert guard is not None
+        holder = guard.held_by(host, port)
+        if holder is not None:
+            guard.note_in_use(host, port)
+            raise PortInUse(host, port, holder)
+        await guard.acquire(host, port)
+        if abandoned.is_set():
+            guard.release(host, port)
+            raise RuntimeError(f"discovery companion {driver_id} was stopped")
+        holding.append((host, port))
+        guard.note(host, port, PortCheck(
+            ctx.companion_active_probe_id, driver_id, HOW_COMPANION,
+        ))
+
+    def _give_back(host: str, port: int) -> None:
+        # Engine loop. A hold already released by the cleanup below is gone.
+        if (host, port) in holding:
+            holding.remove((host, port))
+            assert guard is not None
+            guard.release(host, port)
+
+    @contextlib.asynccontextmanager
+    async def _bridged_hold(host: str, port: int) -> AsyncIterator[None]:
+        # Runs on the worker loop; the guard lives on the engine's loop.
+        taken = asyncio.run_coroutine_threadsafe(_take(host, port), engine_loop)
+        await asyncio.wrap_future(taken)
+        try:
+            yield
+        finally:
+            try:
+                engine_loop.call_soon_threadsafe(_give_back, host, port)
+            except RuntimeError:
+                pass  # engine loop closed (server shutdown)
+
+    worker_ctx = replace(
+        ctx, _emit_for_host=_bridged_emit,
+        _hold=_bridged_hold if guard is not None else None,
+    )
     finished: asyncio.Future = engine_loop.create_future()
 
     def _notify_finished() -> None:
@@ -391,3 +473,10 @@ async def run_companion(
     except asyncio.CancelledError:
         abandoned.set()
         raise
+    finally:
+        # A port still held when the companion ended, was cut off or was
+        # abandoned would stay closed to every other check for the rest of
+        # the scan. Nothing it asks for after this is granted.
+        abandoned.set()
+        for host, port in list(holding):
+            _give_back(host, port)

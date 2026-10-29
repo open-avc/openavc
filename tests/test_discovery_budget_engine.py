@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from openavc.discovery import scan_budget as budgeting
 from openavc.discovery.engine import DiscoveryEngine
+from openavc.discovery.probe_runner import ProbeObservation
 from openavc.discovery.scan_budget import ScanBudget, resolve_policy
 from openavc.discovery.tier_matcher import SignalTier, evidence_active_probe
 
@@ -76,7 +77,7 @@ class _Pipeline:
             await asyncio.sleep(self.ping_delay)
         return list(self.alive)
 
-    async def _fake_scan_host_ports(self, ip, ports, timeout=1.0, source_ip=""):
+    async def _fake_scan_host_ports(self, ip, ports, timeout=1.0, source_ip="", guard=None):
         self.port_scan_hosts.append(ip)
         self.inflight += 1
         self.max_inflight = max(self.max_inflight, self.inflight)
@@ -113,6 +114,20 @@ class _Pipeline:
              patch("openavc.discovery.engine.AMXDDPScanner", amx_cls), \
              patch("openavc.discovery.engine.SNMPScanner", snmp_cls):
             await engine._scan_pipeline_inner(list(subnets))
+
+
+def _answer_every_check(host, port, specs, on_observation):
+    """What ``observe_port_probes`` reports when every check on the port matched."""
+    out = []
+    for i, spec in enumerate(specs):
+        obs = ProbeObservation(
+            probe_id=spec.probe_id, kind="tcp", port=port, target=host, matched=True,
+            evidence=evidence_active_probe(spec.probe_id, response={"banner": "Acme"}, port=port),
+        )
+        if on_observation is not None:
+            on_observation(i, obs)
+        out.append(obs)
+    return out
 
 
 def _engine(total_seconds: float = 300.0, depth: str = "standard") -> DiscoveryEngine:
@@ -251,8 +266,8 @@ class TestOverrunIsContained:
 class TestTheProbeWaitsAreCounted:
     """The probe phase is planned from the waits of the probes that will run,
     not only from how many there are: the longest UDP listen window, and the
-    longest one TCP probe can take (connect and reply, then its ``then:``
-    step)."""
+    longest one port's TCP checks can take, one after another (the greeting
+    read, then each check's connect and reply, then its ``then:`` step)."""
 
     def _engine(self) -> DiscoveryEngine:
         engine = _engine()
@@ -298,9 +313,36 @@ class TestTheProbeWaitsAreCounted:
         assert (tcp_jobs, udp_sends, companions) == (2, 2, 0)
         # The UDP probe with no timeout_ms takes the 2s default.
         assert udp_listen == 2.0
-        # 500 ms to connect, 500 ms for the reply, 2000 ms for the then: step.
+        # The port's connect allowance (2 s) and greeting read (1.5 s), then
+        # the probe: 500 ms for the reply, 2000 ms for the then: step.
         # acme_slow's 9s is not counted: no host has its port open.
-        assert tcp_wait == 3.0
+        assert tcp_wait == 6.0
+
+    def test_checks_on_one_port_add_up_and_hosts_do_not(self):
+        engine = self._engine()
+        one_port = engine._count_probe_jobs(["10.77.0.0/24"])[4]
+        # A second driver probing the same port: its check runs after the
+        # first on each host, so the slowest port takes both.
+        engine.load_driver_hints_from_registry([
+            {"id": "acme_ctl", "name": "Acme Controller", "manufacturer": "Acme",
+             "category": "audio", "transport": "tcp",
+             "discovery": {"tcp_probe": {
+                 "port": 4321, "send_ascii": "id\r\n", "expect": "Acme",
+                 "timeout_ms": 500,
+                 "then": {"send_ascii": "model\r\n", "expect": "Widget",
+                          "timeout_ms": 2000},
+             }}},
+            {"id": "acme_dsp", "name": "Acme DSP", "manufacturer": "Acme",
+             "category": "audio", "transport": "tcp",
+             "discovery": {"tcp_probe": {
+                 "port": 4321, "send_ascii": "ver\r\n", "expect": "DSP",
+                 "timeout_ms": 1000,
+             }}},
+        ])
+        tcp_jobs, _, _, _, tcp_wait = engine._count_probe_jobs(["10.77.0.0/24"])
+        assert tcp_jobs == 4
+        # Two hosts run side by side; on each, acme_dsp's 1 s follows the rest.
+        assert tcp_wait == one_port + 1.0
 
     def test_no_probes_to_run_means_no_waits(self):
         engine = _engine()
@@ -331,12 +373,10 @@ class TestProbesThatMatchedSurviveACut:
         return engine
 
     async def _scan_with_a_probe_that_never_answers(self, engine: DiscoveryEngine) -> None:
-        async def fake_probe(spec, *, target, source_ip, stagger_ms=0.0, rate_limiter=None):
-            if target == "10.77.0.6":
+        async def fake_port_probes(host, port, specs, *, on_observation=None, **kwargs):
+            if host == "10.77.0.6":
                 await asyncio.sleep(30)  # still waiting when the phase ends
-            return evidence_active_probe(
-                spec.probe_id, response={"banner": "Acme"}, port=spec.port,
-            )
+            return _answer_every_check(host, port, specs, on_observation)
 
         async def fake_pipeline(subnets):
             await engine._run_budgeted(
@@ -346,7 +386,7 @@ class TestProbesThatMatchedSurviveACut:
             )
 
         engine.scan_status.started_at = 0.0
-        with patch("openavc.discovery.engine.run_tcp_active_probe", fake_probe), \
+        with patch("openavc.discovery.engine.observe_port_probes", fake_port_probes), \
              patch.object(engine, "_scan_pipeline", side_effect=fake_pipeline):
             await engine._run_scan(["10.77.0.0/24"], timeout=60.0)
 
@@ -375,10 +415,10 @@ class TestProbesThatMatchedSurviveACut:
     async def test_a_phase_that_finishes_merges_before_returning(self):
         engine = self._engine()
 
-        async def fake_probe(spec, *, target, source_ip, stagger_ms=0.0, rate_limiter=None):
-            return evidence_active_probe(spec.probe_id, response={}, port=spec.port)
+        async def fake_port_probes(host, port, specs, *, on_observation=None, **kwargs):
+            return _answer_every_check(host, port, specs, on_observation)
 
-        with patch("openavc.discovery.engine.run_tcp_active_probe", fake_probe):
+        with patch("openavc.discovery.engine.observe_port_probes", fake_port_probes):
             await engine._run_custom_probes(["10.77.0.0/24"], "")
 
         # Nothing left for the recovery pass: the normal path merged it all.
