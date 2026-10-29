@@ -360,6 +360,9 @@ async def _do_install(plugin_id: str, file_url: str) -> dict[str, Any]:
         register_error = _register_installed_plugin(plugin_id, plugin_dir)
         sidecar = plugin_dir / ".install-error"
         if register_error:
+            # Every way it fails, in the Log, where the AI assistant's answer
+            # for a plugin that did not load sends the reader.
+            log.warning(f"Plugin '{plugin_id}' was installed but did not load: {register_error}")
             try:
                 sidecar.write_text(register_error, encoding="utf-8")
             except OSError:

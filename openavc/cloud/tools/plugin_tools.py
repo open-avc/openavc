@@ -1,8 +1,21 @@
-"""Mixin for AI tool handlers that manage plugin lifecycle and configuration."""
+"""Mixin for AI tool handlers that manage plugin lifecycle and configuration.
+
+Every answer here is kept in the cloud chat history, so a plugin's own error
+text reaches it only when the plugin marked it for the reader by raising
+``PluginRefusal``; anything else is the platform's sentence pointing at the
+Programmer's Log (``PluginLoader.error_for_cloud``). The Programmer's plugin
+card still shows the plugin's text as it stands.
+"""
 
 from typing import Any
 
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
+
+
+def _as_sentence(text: str) -> str:
+    """``text`` ending in a full stop, so a sentence can follow it."""
+    text = text.strip()
+    return text if text.endswith((".", "!", "?")) else f"{text}."
 
 
 class PluginToolsMixin:
@@ -12,7 +25,7 @@ class PluginToolsMixin:
         engine = self._get_engine()
         if not engine:
             return {"error": "Engine not available"}
-        return engine.plugin_loader.list_plugins()
+        return engine.plugin_loader.list_plugins(for_cloud=True)
 
     async def _browse_community_plugins(self, input: dict) -> Any:
         from openavc.core.plugin_installer import get_community_plugins
@@ -44,9 +57,19 @@ class PluginToolsMixin:
 
         try:
             result = await install_plugin(plugin_id, file_url)
-            return result
         except ValueError as e:
             return {"error": str(e)}
+        if result.get("status") == "load_failed":
+            # The error is what loading the plugin's code raised: its own
+            # text, or Python's. The Installed tab shows it; the Log has it.
+            return {
+                **result,
+                "error": (
+                    f"Plugin '{plugin_id}' was installed but couldn't load. "
+                    "The Programmer's Log has the details."
+                ),
+            }
+        return result
 
     async def _uninstall_plugin(self, input: dict) -> Any:
         from openavc.core.plugin_installer import uninstall_plugin
@@ -134,14 +157,17 @@ class PluginToolsMixin:
         await apply_tool_edit(engine, mutate)
 
         if not success:
-            health = await engine.plugin_loader.get_health(plugin_id)
+            reason = engine.plugin_loader.error_for_cloud(plugin_id)
+            if reason:
+                said = f"Plugin '{plugin_id}' failed to start: {_as_sentence(reason)}"
+            else:
+                said = (
+                    f"Plugin '{plugin_id}' couldn't start. "
+                    "The Programmer's Log has the details."
+                )
             return {
                 "status": "error",
-                "error": (
-                    f"Plugin '{plugin_id}' failed to start: "
-                    f"{health.get('message', 'unknown error')}. "
-                    f"The enable was rolled back; its config is preserved."
-                ),
+                "error": f"{said} The enable was rolled back; its config is preserved.",
                 "plugin_id": plugin_id,
                 "config": config,
             }
@@ -292,8 +318,15 @@ class PluginToolsMixin:
                 f"are not set yet. Plugin '{plugin_id}' can't run until they are."
             )
         elif outcome == "start_failed":
-            result["warning"] = (
-                f"Config saved, but plugin '{plugin_id}' failed to restart with "
-                f"it and is stopped. Check the config values and plugin logs."
-            )
+            reason = engine.plugin_loader.error_for_cloud(plugin_id)
+            if reason:
+                result["warning"] = (
+                    f"Config saved, but plugin '{plugin_id}' failed to restart with "
+                    f"it and is stopped: {_as_sentence(reason)}"
+                )
+            else:
+                result["warning"] = (
+                    f"Config saved, but plugin '{plugin_id}' failed to restart with "
+                    f"it and is stopped. Check the config values and plugin logs."
+                )
         return result

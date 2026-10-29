@@ -312,6 +312,30 @@ An `httpx` client given a `transport=` ignores the `verify`, `cert`, `limits`, `
 
 ---
 
+## When a Plugin Can't Start
+
+When `start()` can't go on because of something the integrator can put right (an API key not entered, a device not connected, a library not installed), raise `PluginRefusal` with a sentence that says what to do:
+
+```python
+try:
+    from openavc.core.plugin_api import PluginRefusal
+except ImportError:  # OpenAVC before 0.38.0
+    PluginRefusal = RuntimeError
+
+
+class WeatherPlugin:
+    async def start(self, api):
+        self.api = api
+        if not api.config.get("api_key"):
+            raise PluginRefusal("Enter the weather service API key in this plugin's settings.")
+```
+
+The plugin's card in the Programmer shows the sentence, and the AI assistant answers with it as written, so it can tell the integrator what to change. Anything else `start()` raises still shows on the card, and the AI assistant is told only that the plugin couldn't start and that the Programmer's Log has the details.
+
+`PluginRefusal` is new in OpenAVC 0.38.0. With the import above, the plugin still installs and runs on earlier releases, where the card shows the sentence as before, so it needs no `min_openavc_version`.
+
+---
+
 ## Contributing Plugins
 
 For the full guide on plugin structure, manifest format, testing, and submitting to the community repository, see the [Contributing Plugins](https://github.com/open-avc/openavc-plugins/blob/main/docs/contributing-plugins.md) guide.

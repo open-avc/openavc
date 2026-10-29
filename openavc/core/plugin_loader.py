@@ -18,7 +18,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from openavc.core.plugin_api import PluginAPI
+from openavc.core.plugin_api import PluginAPI, PluginRefusal
 from openavc.core.plugin_registry import PluginRegistry
 from openavc.utils.logger import get_logger
 
@@ -477,6 +477,11 @@ class PluginLoader:
         self._status: dict[str, str] = {}
         # Error messages: plugin_id -> error string
         self._errors: dict[str, str] = {}
+        # The plugins whose stored error is the text of an exception start()
+        # raised that was not a PluginRefusal. The card shows it; nothing that
+        # goes to the cloud does (see error_for_cloud). Kept by _set_error and
+        # _clear_error alongside _errors.
+        self._unmarked_errors: set[str] = set()
         # Callback failure counts: plugin_id -> count
         self._callback_failures: dict[str, int] = {}
         # Plugins with an auto-disable in flight (so repeated failures past the
@@ -855,6 +860,19 @@ class PluginLoader:
             self._locks[plugin_id] = lock
         return lock
 
+    def _set_error(self, plugin_id: str, text: str, *, unmarked: bool = False) -> None:
+        """Store the error the card shows. ``unmarked`` when it is the plugin's
+        own exception text, which the cloud is never told."""
+        self._errors[plugin_id] = text
+        if unmarked:
+            self._unmarked_errors.add(plugin_id)
+        else:
+            self._unmarked_errors.discard(plugin_id)
+
+    def _clear_error(self, plugin_id: str) -> None:
+        self._errors.pop(plugin_id, None)
+        self._unmarked_errors.discard(plugin_id)
+
     def _mark_incompatible(self, plugin_id: str, plugin_class: type) -> None:
         """Record a plugin as platform-incompatible (distinct from 'error')."""
         info = getattr(plugin_class, "PLUGIN_INFO", {})
@@ -864,7 +882,7 @@ class PluginLoader:
             "supported_platforms": info.get("platforms", []),
         }
         self._status[plugin_id] = "incompatible"
-        self._errors.pop(plugin_id, None)
+        self._clear_error(plugin_id)
         self._state.set(f"plugin.{plugin_id}.incompatible", True, source="system")
         log.warning(
             f"Plugin '{plugin_id}' is not compatible with {self._platform_id}"
@@ -923,7 +941,7 @@ class PluginLoader:
         if not valid:
             log.error(f"Plugin '{plugin_id}' manifest invalid: {error}")
             self._status[plugin_id] = "error"
-            self._errors[plugin_id] = f"Invalid manifest: {error}"
+            self._set_error(plugin_id, f"Invalid manifest: {error}")
             return False
 
         info = plugin_class.PLUGIN_INFO
@@ -993,7 +1011,7 @@ class PluginLoader:
             self._registries[plugin_id] = registry
             self._apis[plugin_id] = api
             self._status[plugin_id] = "running"
-            self._errors.pop(plugin_id, None)
+            self._clear_error(plugin_id)
             self._callback_failures.pop(plugin_id, None)
 
             # Clear missing / incompatible / auto-disabled state from a prior run
@@ -1036,9 +1054,17 @@ class PluginLoader:
                 log.error(f"Plugin '{plugin_id}' {msg}")
             else:
                 msg = str(e)
-                log.exception(f"Plugin '{plugin_id}' failed to start")
+                # The type and text in the message itself, not only the
+                # traceback: the Log view shows a record's message, and the
+                # cloud's answer for an unmarked failure sends the reader there.
+                log.exception(
+                    f"Plugin '{plugin_id}' failed to start: {type(e).__name__}: {e}"
+                )
             self._status[plugin_id] = "error"
-            self._errors[plugin_id] = msg
+            self._set_error(
+                plugin_id, msg,
+                unmarked=not isinstance(e, (asyncio.TimeoutError, PluginRefusal)),
+            )
             # Clean up any partial registrations
             self._macros.unregister_plugin_actions(plugin_id)
             self._unregister_script_api(plugin_id)
@@ -1138,7 +1164,7 @@ class PluginLoader:
                 log.exception(f"Failed to unmount guest HTTP router for plugin '{plugin_id}'")
 
         self._status[plugin_id] = "stopped"
-        self._errors.pop(plugin_id, None)
+        self._clear_error(plugin_id)
         self._callback_failures.pop(plugin_id, None)
         self._auto_disabling.discard(plugin_id)
         # A normal stop clears the auto-disabled flag; auto-disable re-sets it
@@ -1315,8 +1341,33 @@ class PluginLoader:
 
     # ──── Info & Status ────
 
-    def list_plugins(self) -> list[dict[str, Any]]:
-        """List all known plugins with status information."""
+    def error_for_cloud(self, plugin_id: str) -> str | None:
+        """The plugin's stored error when it may go to the cloud, else None.
+
+        What the AI assistant answers is kept in the cloud chat history, so it
+        carries a plugin's error only when someone wrote it for a reader: the
+        platform's own sentences (a manifest problem, a start that timed out,
+        an auto-disable) and a :class:`PluginRefusal` the plugin raised. None
+        when there is no error, or when it is the text of anything else
+        start() raised; the card still shows that, and the Log has it.
+        """
+        if plugin_id in self._unmarked_errors:
+            return None
+        return self._errors.get(plugin_id) or None
+
+    def couldnt_start_sentence(self, plugin_id: str) -> str:
+        """What the cloud is told about a start whose error it may not hear."""
+        plugin_class = _PLUGIN_CLASS_REGISTRY.get(plugin_id)
+        info = getattr(plugin_class, "PLUGIN_INFO", None) or {}
+        name = info.get("name") or plugin_id
+        return f"{name} couldn't start. The Programmer's Log has the details."
+
+    def list_plugins(self, *, for_cloud: bool = False) -> list[dict[str, Any]]:
+        """List all known plugins with status information.
+
+        ``for_cloud`` words each error as :meth:`error_for_cloud` allows, for
+        the AI assistant's answers; the Programmer's list shows them as stored.
+        """
         plugins = []
 
         # Registered plugin classes
@@ -1343,7 +1394,13 @@ class PluginLoader:
                 "compatible": self.is_platform_compatible(plugin_class),
             }
             if status == "error":
-                entry["error"] = self._errors.get(plugin_id, "")
+                if for_cloud:
+                    entry["error"] = (
+                        self.error_for_cloud(plugin_id)
+                        or self.couldnt_start_sentence(plugin_id)
+                    )
+                else:
+                    entry["error"] = self._errors.get(plugin_id, "")
             plugins.append(entry)
 
         # Missing plugins (referenced in project but not installed)
@@ -1793,9 +1850,10 @@ class PluginLoader:
                 return
             await self._stop_plugin_locked(plugin_id)
             self._status[plugin_id] = "error"
-            self._errors[plugin_id] = (
+            self._set_error(
+                plugin_id,
                 f"Auto-disabled after {MAX_CALLBACK_FAILURES} consecutive "
-                f"callback failures"
+                f"callback failures",
             )
             self._state.set(
                 f"plugin.{plugin_id}.auto_disabled", True, source="system"

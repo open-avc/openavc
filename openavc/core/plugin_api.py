@@ -41,6 +41,29 @@ class PluginPermissionError(Exception):
     """Raised when a plugin attempts an action it hasn't declared."""
 
 
+class PluginRefusal(RuntimeError):
+    """Raise from ``start()`` with a sentence for the integrator setting up the plugin.
+
+    The plugin's card in the Programmer shows the sentence, and the AI
+    assistant answers with it as written, so word it for the person who has
+    to act: what is missing and where to put it right ("Enter the API key in
+    this plugin's settings."). Anything else ``start()`` raises still shows on
+    the card, but the assistant is told only that the plugin couldn't start
+    and that the Programmer's Log has the details: the assistant's answers are
+    kept in the cloud chat history, and an exception's own text is not
+    written for a reader and may carry a local path or an address.
+
+    A RuntimeError, so code that catches one still catches it, and so the
+    fallback a plugin that also runs on earlier releases imports it with
+    behaves the same there, where the card shows the sentence as before::
+
+        try:
+            from openavc.core.plugin_api import PluginRefusal
+        except ImportError:  # OpenAVC before 0.38.0
+            PluginRefusal = RuntimeError
+    """
+
+
 class PluginAPI:
     """
     Scoped API provided to each plugin instance.

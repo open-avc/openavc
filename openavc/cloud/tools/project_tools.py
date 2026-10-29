@@ -71,7 +71,7 @@ class ProjectToolsMixin:
 
         # Plugin status
         try:
-            plugins = engine.plugin_loader.list_plugins()
+            plugins = engine.plugin_loader.list_plugins(for_cloud=True)
             if isinstance(plugins, list):
                 result["plugins"] = plugins
         except Exception:
