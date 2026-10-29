@@ -60,6 +60,16 @@ SERVER_ADDRESS_FILE = STATUS_DIR / 'server.json'
 # RESET_ARG to write it and restart the service.
 RESET_REQUEST_FILE = DATA_DIR / 'reset-programmer-password'
 RESET_ARG = '--reset-programmer-password'
+# `openavc-tray.exe --open programmer` (or `panel`) opens that page on the port
+# the server last recorded, then exits. The installer's desktop and Start menu
+# shortcuts go through it, because a fixed http://localhost:8080 link breaks
+# as soon as the port is changed in Settings > Network.
+OPEN_ARG = '--open'
+OPEN_PAGES = {'programmer': '/programmer', 'panel': '/panel'}
+# One tray icon per signed-in user: the Start menu has an OpenAVC Tray entry
+# for bringing it back after Quit, and clicking it while the icon is up must
+# not add a second one.
+TRAY_MUTEX = 'Local\\OpenAVCTray'
 
 
 def _get_server_config() -> dict:
@@ -196,6 +206,31 @@ def _service_command(command: str) -> bool:
         )
         # ShellExecuteW returns > 32 on success
         return ret > 32
+    except Exception:
+        return False
+
+
+def _open_page(page: str) -> int:
+    """The --open half: open one page in the browser and return an exit code."""
+    path = OPEN_PAGES.get(page)
+    if path is None:
+        return 2
+    webbrowser.open(f'{_base_url(_get_server_config())}{path}')
+    return 0
+
+
+_tray_mutex = None
+
+
+def _tray_already_running() -> bool:
+    """True when this user's session already shows the tray icon. The mutex
+    handle is kept for the life of the process, which is what holds the claim."""
+    global _tray_mutex
+    try:
+        import ctypes
+        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        _tray_mutex = kernel32.CreateMutexW(None, False, TRAY_MUTEX)
+        return ctypes.get_last_error() == 183  # ERROR_ALREADY_EXISTS
     except Exception:
         return False
 
@@ -491,8 +526,14 @@ class OpenAVCTray:
 
 
 def main():
-    if RESET_ARG in sys.argv[1:]:
+    args = sys.argv[1:]
+    if RESET_ARG in args:
         sys.exit(_reset_programmer_password_elevated())
+    if OPEN_ARG in args:
+        at = args.index(OPEN_ARG)
+        sys.exit(_open_page(args[at + 1] if at + 1 < len(args) else 'programmer'))
+    if _tray_already_running():
+        return
     app = OpenAVCTray()
     app.run()
 

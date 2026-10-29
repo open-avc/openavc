@@ -69,6 +69,12 @@ Type: filesandordirs; Name: "{app}\_internal\server"
 Type: filesandordirs; Name: "{app}\_internal\simulator"
 Type: filesandordirs; Name: "{app}\_internal\web"
 Type: filesandordirs; Name: "{app}\_internal\themes"
+; The Programmer and Panel shortcuts were fixed http://localhost:8080 links
+; (.url files) before they went through the tray (.lnk). Remove the old ones so
+; an upgrade does not leave both. Recreated below when the tray is not installed.
+Type: files; Name: "{autodesktop}\OpenAVC Programmer.url"
+Type: files; Name: "{group}\OpenAVC Programmer.url"
+Type: files; Name: "{group}\OpenAVC Panel.url"
 
 [Files]
 ; Server bundle - always installed unconditionally (server is a fixed/required
@@ -91,11 +97,19 @@ Source: "uninstall-service.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "openavc.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
+; The Programmer and Panel shortcuts go through the tray when it is installed
+; (`--open`), so they follow a port changed in Settings > Network. Without the
+; tray they are plain links to the default port.
 ; Desktop shortcut
-Name: "{autodesktop}\OpenAVC Programmer"; Filename: "http://localhost:8080/programmer"; IconFilename: "{app}\openavc.ico"; Components: shortcuts
+Name: "{autodesktop}\OpenAVC Programmer"; Filename: "{app}\openavc-tray.exe"; Parameters: "--open programmer"; IconFilename: "{app}\openavc.ico"; Components: shortcuts and tray
+Name: "{autodesktop}\OpenAVC Programmer"; Filename: "http://localhost:8080/programmer"; IconFilename: "{app}\openavc.ico"; Components: shortcuts and not tray
 ; Start Menu
-Name: "{group}\OpenAVC Programmer"; Filename: "http://localhost:8080/programmer"; IconFilename: "{app}\openavc.ico"; Components: shortcuts
-Name: "{group}\OpenAVC Panel"; Filename: "http://localhost:8080/panel"; IconFilename: "{app}\openavc.ico"; Components: shortcuts
+Name: "{group}\OpenAVC Programmer"; Filename: "{app}\openavc-tray.exe"; Parameters: "--open programmer"; IconFilename: "{app}\openavc.ico"; Components: shortcuts and tray
+Name: "{group}\OpenAVC Programmer"; Filename: "http://localhost:8080/programmer"; IconFilename: "{app}\openavc.ico"; Components: shortcuts and not tray
+Name: "{group}\OpenAVC Panel"; Filename: "{app}\openavc-tray.exe"; Parameters: "--open panel"; IconFilename: "{app}\openavc.ico"; Components: shortcuts and tray
+Name: "{group}\OpenAVC Panel"; Filename: "http://localhost:8080/panel"; IconFilename: "{app}\openavc.ico"; Components: shortcuts and not tray
+; Brings the tray icon back after it was quit (otherwise it returns only at the next sign-in)
+Name: "{group}\OpenAVC Tray"; Filename: "{app}\openavc-tray.exe"; IconFilename: "{app}\openavc.ico"; Components: shortcuts and tray
 Name: "{group}\Uninstall OpenAVC"; Filename: "{uninstallexe}"; Components: shortcuts
 ; Tray app in Startup folder (use common startup so it works for all users)
 Name: "{commonstartup}\OpenAVC Tray"; Filename: "{app}\openavc-tray.exe"; Components: tray

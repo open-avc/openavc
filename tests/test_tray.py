@@ -321,3 +321,55 @@ def test_a_declined_windows_prompt_says_the_password_was_not_reset(monkeypatch):
     tray._reset_programmer_password_flow()
 
     assert shown and "not reset" in shown[0]
+
+
+# --- Shortcuts open the page on the port the server recorded -----------------
+
+
+@pytest.mark.parametrize("page", ["programmer", "panel"])
+def test_open_uses_the_recorded_port(monkeypatch, page):
+    opened = []
+    monkeypatch.setattr(tray_mod, "_get_server_config", lambda: {"http_port": 9090, "tls_enabled": False})
+    monkeypatch.setattr(tray_mod.webbrowser, "open", lambda url: opened.append(url))
+
+    assert tray_mod._open_page(page) == 0
+    assert opened == [f"http://localhost:9090/{page}"]
+
+
+def test_open_refuses_a_page_it_does_not_know(monkeypatch):
+    monkeypatch.setattr(tray_mod.webbrowser, "open", lambda url: pytest.fail("opened"))
+    assert tray_mod._open_page("settings") == 2
+
+
+def test_open_runs_without_starting_a_tray(monkeypatch):
+    monkeypatch.setattr(tray_mod.sys, "argv", ["openavc-tray.exe", tray_mod.OPEN_ARG, "panel"])
+    opened = []
+    monkeypatch.setattr(tray_mod, "_open_page", lambda page: opened.append(page) or 0)
+    monkeypatch.setattr(tray_mod, "OpenAVCTray", lambda: pytest.fail("started the tray"))
+
+    with pytest.raises(SystemExit) as done:
+        tray_mod.main()
+    assert done.value.code == 0
+    assert opened == ["panel"]
+
+
+def test_a_second_tray_does_not_start(monkeypatch):
+    monkeypatch.setattr(tray_mod.sys, "argv", ["openavc-tray.exe"])
+    monkeypatch.setattr(tray_mod, "_tray_already_running", lambda: True)
+    monkeypatch.setattr(tray_mod, "OpenAVCTray", lambda: pytest.fail("started a second tray"))
+    tray_mod.main()
+
+
+def test_every_tray_shortcut_has_a_plain_link_for_installs_without_the_tray():
+    iss = (TRAY_PATH.parent / "setup.iss").read_text(encoding="utf-8")
+    icons = iss.split("[Icons]", 1)[1].split("\n[", 1)[0]
+    for name, page in (
+        (r"{autodesktop}\OpenAVC Programmer", "programmer"),
+        (r"{group}\OpenAVC Programmer", "programmer"),
+        (r"{group}\OpenAVC Panel", "panel"),
+    ):
+        lines = [line for line in icons.splitlines() if line.startswith(f'Name: "{name}"')]
+        assert any(f'Parameters: "--open {page}"' in line and "Components: shortcuts and tray" in line for line in lines)
+        assert any("http://localhost:8080/" + page in line and "Components: shortcuts and not tray" in line for line in lines)
+        # The .url an earlier install left is removed, or an upgrade shows both.
+        assert f'Type: files; Name: "{name}.url"' in iss
