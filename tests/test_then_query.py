@@ -300,6 +300,21 @@ def test_follow_up_queries_reach_the_simulator_as_poll_entries() -> None:
     assert "VOL?\r" in entries
 
 
+def test_a_follow_up_the_poll_already_sends_is_listed_once() -> None:
+    """A notice that reads again what the poll reads (every tie) adds no
+    second simulator handler for the same reply, and two rules that read the
+    same thing add one between them."""
+    tie_read = {"each_child": "output", "send": "IN? {child_id}\r", "query_for": "input"}
+    definition = _acme(polling={"queries": [tie_read]})
+    definition["responses"].append(
+        {"match": r"^PANEL$", "set": {}, "then_query": [dict(tie_read), "VOL?\r"]}
+    )
+    entries = follow_up_queries(definition)
+    assert tie_read not in entries
+    assert entries.count("VOL?\r") == 1
+    assert {"each_child": "output", "send": "NAME? {child_id}\r", "query_for": "name"} in entries
+
+
 def test_the_simulator_answers_the_follow_up_queries() -> None:
     from openavc.simulator.yaml_auto import YAMLAutoSimulator
 

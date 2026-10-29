@@ -1213,8 +1213,23 @@ def follow_up_queries(definition: dict[str, Any]) -> list[Any]:
     comes back as ``{each_child: <that child type>, ...}``: which child a
     report will name is not known ahead, so the simulator answers for every
     child of the type. An entry whose rule names no single child type is
-    left as written (the validator refuses it)."""
+    left as written (the validator refuses it).
+
+    An entry the poll, the start-up or an earlier rule already sends is left
+    out: a driver that reads again what its poll reads (every tie, on a
+    front panel notice) would otherwise get each reply's handler twice."""
+    polling = definition.get("polling")
+    sent: list[Any] = []
+    if isinstance(polling, dict) and isinstance(polling.get("queries"), list):
+        sent += polling["queries"]
+    if isinstance(definition.get("on_connect"), list):
+        sent += definition["on_connect"]
     entries: list[Any] = []
+
+    def add(entry: Any) -> None:
+        if entry not in entries and entry not in sent:
+            entries.append(entry)
+
     for resp in definition.get("responses") or []:
         if not isinstance(resp, dict) or resp.get("json") or "address" in resp:
             continue
@@ -1227,7 +1242,7 @@ def follow_up_queries(definition: dict[str, Any]) -> list[Any]:
         }) if isinstance(routes, list) else []
         for entry in follow:
             if isinstance(entry, dict) and "each_child" in entry:
-                entries.append(entry)
+                add(entry)
                 continue
             send = entry.get("send") if isinstance(entry, dict) else entry
             if (
@@ -1237,9 +1252,9 @@ def follow_up_queries(definition: dict[str, Any]) -> list[Any]:
             ):
                 routed = dict(entry) if isinstance(entry, dict) else {"send": send}
                 routed["each_child"] = types[0]
-                entries.append(routed)
+                add(routed)
                 continue
-            entries.append(entry)
+            add(entry)
     return entries
 
 
