@@ -299,7 +299,7 @@ On a label, the setting applies to the value that fills the `{value}` placeholde
 Two more settings on the slider and fader control the readout and how commands are sent.
 
 - **Unit** adds a label (dB, %) beside the value; left blank, the value shows as a bare number. Like **Shown decimals** above, it changes the on-screen number only.
-- **Send** chooses whether the control streams commands continuously as you drag (the default) or sends a single command when you let go. Use **On release only** for devices that can't keep up with a burst of commands, such as a serial receiver. In the default live mode, **Rate (ms)** sets the minimum time between commands while dragging.
+- **Send** chooses whether the control streams commands continuously as you drag (the default) or sends a single command when you let go. Use **On release only** for devices that can't keep up with a burst of commands, such as a serial receiver. In the default live mode, **Rate (ms)** sets the minimum time between commands while dragging: 100 on a slider and 50 on a fader when left blank, or 0 to send every movement. The value the control stops on is always the last command sent.
 
 ### Shows: Appearance
 

@@ -2920,19 +2920,9 @@ class PanelApp {
             }
         }
 
-        // Send handler: debounced while dragging live, immediate on release.
-        let changeTimeout = null;
-        const sendValue = (v, immediate) => {
-            if (changeTimeout) { clearTimeout(changeTimeout); changeTimeout = null; }
-            if (immediate) {
-                this.send({ type: 'ui.change', element_id: element.id, value: v });
-                return;
-            }
-            changeTimeout = setTimeout(() => {
-                this.send({ type: 'ui.change', element_id: element.id, value: v });
-            }, sThrottle);
-            this.debounceTimers.push(changeTimeout);
-        };
+        // Streams at the element's rate while dragging live; the release sends
+        // the final value (see _liveSender).
+        const sender = this._liveSender(element.id, sThrottle, !sSendOnRelease);
         input.addEventListener('input', () => {
             // Dead-space mode: clamp travel so the thumb can't enter the region
             // past the device's output limit (mirrors the value clamp above).
@@ -2947,15 +2937,15 @@ class PanelApp {
             input.setAttribute('aria-valuetext', fmtValue(v));
             if (valueDisplay) valueDisplay.textContent = fmtValue(v);
             // Live mode streams while dragging; send-on-release waits for 'change'.
-            if (!sSendOnRelease) sendValue(v, false);
+            if (!sSendOnRelease) sender.live(v);
         });
         // 'change' fires when the value is committed (mouse release, keyboard).
-        // Always send the final value here so send-on-release delivers exactly
-        // one command, and live mode is guaranteed to land on the end value.
+        // The release sends the final value, so send-on-release delivers
+        // exactly one command and a live drag ends on the value it stopped at.
         input.addEventListener('change', () => {
             const v = posToValue(parseFloat(input.value));
             if (valueDisplay) valueDisplay.textContent = fmtValue(v);
-            sendValue(v, true);
+            sender.release(v);
         });
 
         // Track active dragging so inbound state echoes don't fight the operator
@@ -4922,7 +4912,6 @@ class PanelApp {
 
         // Touch/mouse drag interaction
         let dragging = false;
-        let debounceTimer = null;
         let currentDragVal = currentValue;
         // Filled in below when this fader has a value binding; the drag-end
         // handler needs it to put an unreachable device's readout back.
@@ -4961,19 +4950,9 @@ class PanelApp {
         // freshly-drawn fader jumped it to the floor.
         updateFader(currentValue);
 
-        // Debounced during a live drag; `immediate` sends the final value at once
-        // (used on release so send-on-release fires exactly one command).
-        const sendChange = (val, immediate) => {
-            if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
-            if (immediate) {
-                this.send({ type: 'ui.change', element_id: element.id, value: val });
-                return;
-            }
-            debounceTimer = setTimeout(() => {
-                this.send({ type: 'ui.change', element_id: element.id, value: val });
-            }, faderThrottle);
-            this.debounceTimers.push(debounceTimer);
-        };
+        // Streams at the element's rate during a live drag; the release sends
+        // the final value (see _liveSender).
+        const sender = this._liveSender(element.id, faderThrottle, !faderSendOnRelease);
 
         const onStart = (e) => {
             e.preventDefault();
@@ -4982,7 +4961,7 @@ class PanelApp {
             const val = getValueFromEvent(e);
             currentDragVal = val;
             updateFader(val);
-            if (!faderSendOnRelease) sendChange(val);
+            if (!faderSendOnRelease) sender.live(val);
         };
         const onMove = (e) => {
             if (!dragging) return;
@@ -4990,16 +4969,16 @@ class PanelApp {
             const val = getValueFromEvent(e);
             currentDragVal = val;
             updateFader(val);
-            if (!faderSendOnRelease) sendChange(val);
+            if (!faderSendOnRelease) sender.live(val);
         };
         const onEnd = () => {
             const wasDragging = dragging;
             dragging = false;
             handle._dragging = false;
             // Send the final position once when the drag ends. In send-on-release
-            // mode this is the only send; in live mode it just guarantees the
-            // stream lands on the end value.
-            if (wasDragging) sendChange(currentDragVal, true);
+            // mode this is the only send; in live mode it lands the stream on
+            // the end value.
+            if (wasDragging) sender.release(currentDragVal);
             // A drag on an unreachable device leaves the readout showing the
             // number the operator dragged to, which is exactly the confident
             // wrong value this control is not allowed to draw. Put it straight
@@ -5031,31 +5010,20 @@ class PanelApp {
             document.addEventListener('touchend', onEnd);
         });
 
-        // Double-tap to reset to 0
-        let lastTap = 0;
-        handle.addEventListener('mousedown', (e) => {
-            const now = Date.now();
-            if (now - lastTap < 300) {
-                const resetVal = Math.max(min, Math.min(max, 0));
-                updateFader(resetVal);
-                sendChange(resetVal);
-            }
-            lastTap = now;
-        });
-
-        // Keyboard arrow key support for fader
+        // Keyboard arrow key support for fader. The keys go through the same
+        // rate as a drag, so a held key streams and its last step always lands.
         handle.addEventListener('keydown', (e) => {
             let current = parseFloat(handle.getAttribute('aria-valuenow') || String(min));
             if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
                 e.preventDefault();
                 current = Math.min(max, this._snapToStep(current + step, step));
                 updateFader(current);
-                sendChange(current);
+                sender.live(current);
             } else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') {
                 e.preventDefault();
                 current = Math.max(min, this._snapToStep(current - step, step));
                 updateFader(current);
-                sendChange(current);
+                sender.live(current);
             }
         });
 
@@ -5081,6 +5049,54 @@ class PanelApp {
         if (outputRange === 0) return displayMin;
         const frac = (deviceValue - outputMin) / outputRange;
         return displayMin + frac * (displayMax - displayMin);
+    }
+
+    // How a slider or fader puts its value on the wire. While it moves, at
+    // most one ui.change per `rateMs`: the first movement goes out at once,
+    // and a movement inside the interval is held and sent (the newest one
+    // only) when the interval ends, so the stream always lands where the
+    // control stopped. A rate of 0 sends every movement. `release(v)` ends a
+    // gesture: it sends v now and drops anything held, so nothing stale can
+    // follow it. On a control that streams (`streaming`), a release that only
+    // repeats the value the stream just sent is skipped, so a tap or an arrow
+    // key press is one command, not two. Times come from performance.now(),
+    // never Date.now(): a wall clock that steps (a time sync at boot) would
+    // hold the stream for as long as the step.
+    _liveSender(elementId, rateMs, streaming) {
+        const rate = Number(rateMs) > 0 ? Number(rateMs) : 0;
+        let lastSentAt = -Infinity;
+        let timer = null;
+        let held;
+        let streamed;   // what the stream last sent, forgotten at each release
+        const put = (v) => {
+            lastSentAt = performance.now();
+            this.send({ type: 'ui.change', element_id: elementId, value: v });
+        };
+        const cancel = () => {
+            if (timer) { clearTimeout(timer); timer = null; }
+        };
+        return {
+            live: (v) => {
+                const wait = rate - (performance.now() - lastSentAt);
+                if (wait <= 0) {
+                    cancel();
+                    streamed = v;
+                    put(v);
+                    return;
+                }
+                held = v;
+                if (!timer) {
+                    timer = setTimeout(() => { timer = null; streamed = held; put(held); }, wait);
+                    this.debounceTimers.push(timer);
+                }
+            },
+            release: (v) => {
+                const repeat = streaming && !timer && streamed === v;
+                cancel();
+                streamed = undefined;
+                if (!repeat) put(v);
+            },
+        };
     }
 
     // Snap a value to the nearest multiple of `step`, then strip the binary

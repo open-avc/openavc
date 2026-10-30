@@ -1963,7 +1963,7 @@ function ValueBehaviorFields({
             onChange={(e) =>
               onChange({ send_throttle_ms: e.target.value === "" ? undefined : Number(e.target.value) })
             }
-            placeholder="Default"
+            placeholder={element.type === "fader" ? "50" : "100"}
             min={0}
             step={10}
             style={{ flex: 1 }}
@@ -1971,6 +1971,7 @@ function ValueBehaviorFields({
         </FieldRow>
       )}
       <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: -2, marginBottom: 4 }}>
+        {!onRelease && "Rate is the shortest time between commands while dragging; 0 sends every movement. "}
         "On release only" sends one command when you let go. Use it for devices that can't keep up with a stream of commands. Shown decimals affect the readout, not the value sent (a driver formats that).
       </div>
     </>
