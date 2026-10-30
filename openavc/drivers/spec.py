@@ -2636,6 +2636,12 @@ DEFS = {
                 'required': ('rx_buffer', 'process_ms'),
                 'extra': False,
             },
+            'single_client': {
+                'type': 'string',
+                'enum': ('newest', 'oldest', 'reject'),
+                'doc': "For a device that serves one TCP control connection at a time: what it does when another connection arrives. newest: the new connection takes over, and the one already open stops being answered without being closed. oldest: the connection already open keeps the device, and the new one is held open and never answered. reject: the new one is closed at once. The simulated device behaves this way from the start, and the Simulator UI can change it per device. Lets a driver fail in the simulator the way it fails on the device when something else connects to it (a scan, a connection test, a second controller). Leave it out for a device that answers every connection.",
+                'enhancement_since': '0.38.0',
+            },
         },
         'extra': False,
     },

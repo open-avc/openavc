@@ -66,6 +66,16 @@ export function setCapacityNumber(
   return { ...capacity, [key]: n };
 }
 
+/** What a device that serves one TCP control connection at a time does when
+ *  another arrives (simulator.single_client). */
+export type SimSingleClient = "newest" | "oldest" | "reject";
+
+/** The Connections choice as it is written: "" (answer every connection) is
+ *  written by leaving the key out. */
+export function simSingleClient(value: string): SimSingleClient | undefined {
+  return value === "newest" || value === "oldest" || value === "reject" ? value : undefined;
+}
+
 /** Set what the device does when full. discard is the default, so it is
  *  written by leaving the key out. */
 export function setCapacityOverflow(capacity: SimCapacity, value: string): SimCapacity {

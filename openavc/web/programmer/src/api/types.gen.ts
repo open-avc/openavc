@@ -149,7 +149,7 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   configSchemaEntry: new Set(["advanced", "columns", "default", "description", "help", "label", "learned_from", "max", "min", "regex", "required", "row_label", "secret", "type", "values"]),
   deviceSettingEntry: new Set(["default", "help", "label", "map", "max", "min", "regex", "setup", "state_key", "type", "unique", "values", "write"]),
   deviceSettingWrite: new Set(["address", "args", "body", "headers", "method", "path", "send"]),
-  simulatorSection: new Set(["capacity", "command_handlers", "controls", "delays", "error_modes", "initial_state", "notifications", "push_state", "state_machines"]),
+  simulatorSection: new Set(["capacity", "command_handlers", "controls", "delays", "error_modes", "initial_state", "notifications", "push_state", "single_client", "state_machines"]),
   routingBlock: new Set(["command", "destination_child_type", "destination_param", "params", "planes", "source_child_type", "source_param"]),
   routingPlane: new Set(["command", "destination_child_type", "destination_param", "label", "params", "route_property", "source_child_type", "source_param"]),
   discoveryBlock: new Set(["amx_ddp", "hostname", "manufacturer_alias", "mdns", "oui", "port_open", "python", "requires", "snmp_pen", "ssdp", "tcp_probe", "udp_probe"]),
@@ -1078,6 +1078,20 @@ export interface DriverSimulatorDef {
    * simulator's own. Requires platform 0.37.0.
    */
   capacity?: { rx_buffer: number; process_ms: number; on_overflow?: "discard" | "silence" };
+  /**
+   * For a device that serves one TCP control connection at a time: what it
+   * does when another connection arrives. newest: the new connection takes
+   * over, and the one already open stops being answered without being closed.
+   * oldest: the connection already open keeps the device, and the new one is
+   * held open and never answered. reject: the new one is closed at once. The
+   * simulated device behaves this way from the start, and the Simulator UI can
+   * change it per device. Lets a driver fail in the simulator the way it fails
+   * on the device when something else connects to it (a scan, a connection
+   * test, a second controller). Leave it out for a device that answers every
+   * connection. Takes effect on platform 0.38.0; an older platform ignores it
+   * and still runs the driver, so it does not raise min_platform_version.
+   */
+  single_client?: "newest" | "oldest" | "reject";
 }
 
 export interface DriverStateVarDef {

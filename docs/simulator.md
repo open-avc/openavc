@@ -85,6 +85,8 @@ The Simulator UI shows your virtual devices and lets you interact with them from
 
 **Capacity** on each device card, except an HTTP, MQTT or WebSocket device, limits how much the device can take in. Switch on **Limit what this device can take in** and the device holds only **Receive buffer** bytes it has not read yet, takes one message per **Time per message**, and loses what arrives while the buffer is full. The card counts the bytes lost. **When full** sets what the device does then: **Discard what does not fit**, or **Stop answering until it reconnects** (on a UDP, OSC or SNMP device, **Stop answering until this is switched off**). Use it to check that a driver paces what it sends: a poll that floods the device leaves values unfilled, or takes the device offline. The numbers come from the driver when it declares them; otherwise the card shows the simulator's own, which are not any device's. Changes apply at once, to connections already open.
 
+**Connections** on each TCP device card counts the device's open connections and sets what it does when another one arrives. Many displays and projectors serve one control connection at a time. **When another arrives**: **Answer it too** (every connection is answered), **Answer only the new one** (the connection already open gets no more answers and is not closed), **Ignore the new one** (it stays open and gets no answers, not even a greeting) or **Close the new one** (it is closed as soon as it opens). The card counts the connections not answered and the ones closed. A connection that stops getting answers gets none until it reconnects. Use it to check what happens to a device when something else connects to it: with **Answer only the new one**, a second connection takes the device from its driver, which goes offline once it notices the silence and takes the device back when it reconnects. The setting starts from the driver's declaration when it has one. A change applies at once: with two or more connections open, **Answer only the new one** keeps the most recent and the others keep the first.
+
 ## How It Works
 
 The simulator runs real protocol servers -- a simulated PJLink projector runs a TCP server that speaks the actual PJLink protocol. Your driver connects to `localhost` instead of the real device IP and talks the same protocol. From the driver's perspective, it's real hardware.
@@ -126,6 +128,7 @@ requires the same credentials as the rest of the API.
 | `/api/devices/{id}/state` | POST | Change device state |
 | `/api/devices/{id}/errors/{mode}` | POST | Inject or clear an error |
 | `/api/devices/{id}/capacity` | POST | Switch a device's capacity limit and set its numbers: `{"enabled": true, "rx_buffer": 64, "process_ms": 20, "on_overflow": "discard"}`, any subset. Answers 400, with the reason, for a number out of range or a device with no capacity setting (HTTP, MQTT, WebSocket) |
+| `/api/devices/{id}/single-client` | POST | Set what a TCP device does when another connection arrives: `{"mode": "newest"}`, `"oldest"`, `"reject"`, or `null` to answer every connection. Answers 400, with the reason, for an unknown mode or a device that is not TCP |
 | `/api/devices/{id}/log` | GET | Protocol log for a device |
 | `/api/network` | GET/POST | Network condition settings |
 | `/api/network/preset` | POST | Apply a named preset |

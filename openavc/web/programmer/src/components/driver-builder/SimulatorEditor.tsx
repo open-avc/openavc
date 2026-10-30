@@ -12,6 +12,7 @@ import {
   setCapacityNumber,
   setCapacityOverflow,
   setCommandResponseDelay,
+  simSingleClient,
   type SimCapacity,
   type SimErrorMode,
 } from "./simulatorEditorHelpers";
@@ -201,6 +202,34 @@ export function SimulatorEditor({ draft, onUpdate }: SimulatorEditorProps) {
             onChange={(capacity) => update({ capacity })}
             helpStyle={helpStyle}
           />
+        </div>
+      )}
+
+      {/* Connections: only a TCP device has a second connection to turn away */}
+      {draft.transport === "tcp" && (
+        <div style={rowStyle}>
+          <h3 style={{ fontSize: "var(--font-size-base)", marginBottom: "var(--space-sm)" }}>
+            Connections
+          </h3>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--font-size-sm)" }}>
+            When another connection arrives
+            <select
+              value={sim.single_client ?? ""}
+              onChange={(e) => update({ single_client: simSingleClient(e.target.value) })}
+            >
+              <option value="">Answer it too</option>
+              <option value="newest">Answer only the new one</option>
+              <option value="oldest">Ignore the new one</option>
+              <option value="reject">Close the new one</option>
+            </select>
+          </label>
+          <p style={helpStyle}>
+            For a device that serves one control connection at a time. With Answer only
+            the new one, the connection already open gets no more answers and is not
+            closed; with Ignore, the new connection stays open and gets no answers. The
+            simulated device behaves this way from the start, and the Simulator UI can
+            change it per device. Choose what the device was seen to do.
+          </p>
         </div>
       )}
 

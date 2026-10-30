@@ -47,7 +47,7 @@ The editor has six tabs across the top, each grouping a single concern:
 | **Connection** | Transport (TCP/serial/UDP/OSC/HTTP/Bridge, plus "Also Usable Over" for multi-transport drivers), Bridge Ports (`bridge`), Authentication, Push Notifications (`push`), Connection Watchdog (`liveness`), Connect Sequence (`on_connect`), Frame Parser, Configuration Fields (`config_schema` + computed fields) |
 | **Behavior** | State Variables, Child Entity Types (`child_entity_types`, with the instances roster, ID format and per-field cloud priority), Commands, Responses (including per-child routing), Polling, Actions, Device Settings |
 | **Discovery** | Discovery fingerprints (mDNS, SSDP, AMX DDP beacon, TCP/UDP probes, Python file) and hints (OUI, hostname, open port, manufacturer alias, SNMP PEN) |
-| **Simulation** | Simulator definition (initial state, controls, command handlers, error modes, capacity) |
+| **Simulation** | Simulator definition (initial state, controls, command handlers, error modes, capacity, connections) |
 | **Test** | Live tester — runs commands through the real driver runtime against a device |
 
 The Connection and Behavior tabs use collapsible sub-sections. Each section header shows a count or status hint (`5 commands`, `enabled`, `none`) so you can scan a tab without expanding everything. Sections that are populated open by default; empty optional ones (Authentication, Connect Sequence, Frame Parser, Polling, Device Settings, Configuration Fields) collapse on a fresh driver to keep the surface clean.
@@ -225,7 +225,7 @@ Skip the Discovery tab entirely if the device has no network announcement and no
 
 #### 6. Simulation tab (optional)
 
-Adds simulator support so the driver can be exercised without real hardware. Most drivers can rely on auto-generated simulation; the editor here lets you customize initial state, push behavior, command handlers, error modes, the device's **Capacity**, and (for richer simulators) state machines and controls. See [Writing Simulators](https://docs.openavc.com/writing-simulators/) for the full guide.
+Adds simulator support so the driver can be exercised without real hardware. Most drivers can rely on auto-generated simulation; the editor here lets you customize initial state, push behavior, command handlers, error modes, the device's **Capacity**, what it does with a second **Connection** (TCP devices), and (for richer simulators) state machines and controls. See [Writing Simulators](https://docs.openavc.com/writing-simulators/) for the full guide.
 
 #### 7. Test tab: run it against a device
 
@@ -4094,6 +4094,9 @@ simulator:
     rx_buffer: 64       # bytes it holds before it reads them
     process_ms: 20      # milliseconds per message before it takes the next
     on_overflow: discard
+
+  # Optional: the device serves one control connection at a time (TCP devices)
+  single_client: newest
 ```
 
 **Key sections:**
@@ -4109,8 +4112,11 @@ simulator:
 | `state_machines` | Devices that take time to change state (projector warm-up, cooldown) |
 | `error_modes` | Failure scenarios for testing error handling. Every simulator already offers `communication_timeout` ("Device stops responding"); declare the ones particular to the device |
 | `capacity` | How much the device can take in at once, for the Simulator UI's **Capacity** setting (requires OpenAVC 0.37.0) |
+| `single_client` | What a device that serves one TCP control connection at a time does when another arrives: `newest`, `oldest` or `reject` (takes effect on OpenAVC 0.38.0; an older release ignores it) |
 
 **Capacity.** A device reads what it receives into a buffer of fixed size and works through it one message at a time; what arrives while the buffer is full is lost. The simulator models this when **Capacity** is switched on for a device in the Simulator UI, so a driver that sends faster than the device can take in fails in the simulator the way it fails on the device. Declare the device's numbers here: `rx_buffer` (bytes it holds before it reads them; what arrives beyond that is lost) and `process_ms` (milliseconds it spends on each message before it takes the next), both required, and `on_overflow`: `discard` (the default; it carries on with what it kept) or `silence` (it stops answering until the connection closes; over UDP or OSC, until Capacity is switched off). `process_ms` is not `delays.command_response`, which is how long a reply takes; the simulator answers one message at a time, so a message takes the longer of the two. A driver that declares nothing gets the simulator's own numbers. The setting covers TCP, serial, UDP and OSC devices; HTTP devices have none.
+
+**One connection at a time.** Many displays and projectors serve one TCP control connection and no more, and what they do when a second one arrives decides whether anything else that connects (a scan, a connection test, a second controller) takes the device from its controller. `single_client` says which: `newest` (the new connection takes over; the one already open gets no more answers and is not closed, so its controller hears nothing until it reconnects), `oldest` (the connection already open keeps the device; the new one stays open and gets no answers, not even a greeting) or `reject` (the new one is closed as soon as it opens). The simulated device behaves this way from the start, and the Simulator UI's **Connections** setting changes it per device. A connection that stops getting answers gets none until it reconnects. Leave it out for a device that answers every connection, and declare what the device was seen to do, not what its manual implies.
 
 **Control types:** `power`, `slider`, `toggle`, `select`, `matrix`, `indicator`, `meters`, `presets`, `group`.
 

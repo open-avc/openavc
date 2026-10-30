@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CapacityInfo, DeviceInfo, LogEntry } from "./api";
+import type { CapacityInfo, DeviceInfo, LogEntry, SingleClientInfo } from "./api";
 import { BASE, fetchDevices } from "./api";
 import { authSubprotocols } from "./session";
 
@@ -17,7 +17,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let consumerCount = 0;
 
 interface WsMessage {
-  type: "state" | "error" | "protocol" | "capacity";
+  type: "state" | "error" | "protocol" | "capacity" | "single_client";
   timestamp: number;
   device_id?: string;
   [key: string]: unknown;
@@ -105,6 +105,8 @@ const MAX_LOG = 500;
 const CAPACITY_FIELDS = [
   "enabled", "rx_buffer", "process_ms", "on_overflow", "source", "declared", "bytes_lost",
 ] as const;
+
+const SINGLE_CLIENT_FIELDS = ["mode", "declared", "source", "open", "ignored", "refused"] as const;
 
 export function useSimStore() {
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
@@ -214,6 +216,18 @@ export function useSimStore() {
           prev.map((d) => {
             if (d.device_id !== msg.device_id || !d.capacity) return d;
             return { ...d, capacity: { ...d.capacity, ...(fields as Partial<CapacityInfo>) } };
+          })
+        );
+      } else if (msg.type === "single_client" && msg.device_id) {
+        // The whole record, sent whenever the mode or a connection changes.
+        const fields: Record<string, unknown> = {};
+        for (const key of SINGLE_CLIENT_FIELDS) {
+          if (key in msg) fields[key] = msg[key];
+        }
+        setDevices((prev) =>
+          prev.map((d) => {
+            if (d.device_id !== msg.device_id || !d.single_client) return d;
+            return { ...d, single_client: { ...d.single_client, ...(fields as Partial<SingleClientInfo>) } };
           })
         );
       } else if (msg.type === "protocol") {

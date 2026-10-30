@@ -162,11 +162,37 @@ class TCPSimulator(BaseSimulator):
 
     def _client_silenced(self, client_id: str) -> bool:
         """True while this client is answered nothing: the device stops
-        responding, or this connection overflowed with on_overflow: silence."""
+        responding, this connection overflowed with on_overflow: silence, or
+        the device serves one connection at a time and this is not it."""
         if self._silenced:
             return True
         link = self._links.get(client_id)
-        return link is not None and link.silenced
+        return link is not None and (link.silenced or link.displaced)
+
+    # ── One connection at a time (single_client.py) ──
+
+    def _served_links(self) -> list[ReceiveLink]:
+        """The open connections the device answers, oldest first."""
+        return [link for link in self._links.values() if not link.displaced and not link.closed]
+
+    def _displace(self, link: ReceiveLink, reason: str) -> None:
+        link.displaced = True
+        logger.info("%s: client %s is no longer answered: %s", self.name, link.client_id, reason)
+
+    def _judge_open_connections(self) -> None:
+        mode = self.single_client_mode
+        served = self._served_links()
+        if mode is None or len(served) < 2:
+            return
+        keep = served[-1] if mode == "newest" else served[0]
+        for link in served:
+            if link is not keep:
+                self._displace(link, f"client {keep.client_id} has the connection")
+        self._single_client.changed()
+
+    def _connection_counts(self) -> tuple[int, int]:
+        links = list(self._links.values())
+        return len(links), sum(1 for link in links if link.displaced)
 
     def _first_message_len(self, buf: bytearray) -> int | None:
         """How many bytes at the front of ``buf`` are one message, or None
@@ -313,6 +339,21 @@ class TCPSimulator(BaseSimulator):
         writer: asyncio.StreamWriter,
     ) -> None:
         client_id = uuid.uuid4().hex[:8]
+        peer = writer.get_extra_info("peername")
+        mode = self.single_client_mode
+        served = self._served_links()
+        if mode == "reject" and served:
+            logger.info(
+                "%s: closed a connection from %s: client %s has the connection",
+                self.name, peer, served[0].client_id,
+            )
+            self._single_client.note_refused()
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception:
+                pass
+            return
         self._clients[client_id] = writer
         # Everything below reads through the link, so the capacity model (off
         # unless switched on) sees every byte this client sends.
@@ -320,10 +361,20 @@ class TCPSimulator(BaseSimulator):
             reader, self._capacity, self._first_message_len,
             client_id=client_id, on_overflow=self._note_overflow,
         )
+        if mode == "oldest" and served:
+            link.displaced = True
+        elif mode == "newest":
+            for other in served:
+                self._displace(other, f"client {client_id} took the connection")
         self._links[client_id] = link
         reader = link
-        peer = writer.get_extra_info("peername")
         logger.info("%s: client connected from %s (id=%s)", self.name, peer, client_id)
+        if link.displaced:
+            logger.info(
+                "%s: client %s is not answered: client %s has the connection",
+                self.name, client_id, served[0].client_id,
+            )
+        self._single_client.changed()
 
         # Per-client partial-line buffer for line-mode reads. _read_messages
         # treats this as authoritative — any trailing bytes that don't end
@@ -334,18 +385,21 @@ class TCPSimulator(BaseSimulator):
             if not await self._wait_out_silence(reader, client_id):
                 return
 
-            # Send greeting if defined
-            greeting = await self.on_client_connected(client_id)
-            if greeting:
-                writer.write(greeting)
-                await writer.drain()
-                self.log_protocol("out", greeting, client_id)
+            # A connection the device does not serve gets no greeting and no
+            # sign-in: what it sends is read and answered with nothing.
+            if not link.displaced:
+                # Send greeting if defined
+                greeting = await self.on_client_connected(client_id)
+                if greeting and not self._client_silenced(client_id):
+                    writer.write(greeting)
+                    await writer.drain()
+                    self.log_protocol("out", greeting, client_id)
 
-            # Auth gate (no-op by default; YAMLAutoSimulator implements it
-            # for drivers declaring an `auth:` section).
-            if not await self.authenticate_client(reader, writer, client_id):
-                logger.info("%s: client %s failed auth — disconnecting", self.name, client_id)
-                return
+                # Auth gate (no-op by default; YAMLAutoSimulator implements it
+                # for drivers declaring an `auth:` section).
+                if not await self.authenticate_client(reader, writer, client_id):
+                    logger.info("%s: client %s failed auth — disconnecting", self.name, client_id)
+                    return
 
             # Read loop
             while self._running:
@@ -415,6 +469,7 @@ class TCPSimulator(BaseSimulator):
             self._clients.pop(client_id, None)
             self._links.pop(client_id, None)
             link.close()
+            self._single_client.changed()
             try:
                 writer.close()
                 await writer.wait_closed()

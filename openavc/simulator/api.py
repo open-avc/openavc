@@ -11,6 +11,7 @@ Endpoints:
   POST /api/devices/{id}/state  — change device state (from UI)
   POST /api/devices/{id}/errors/{mode}  — inject/clear error
   POST /api/devices/{id}/capacity       — switch the capacity model, set its numbers
+  POST /api/devices/{id}/single-client  — what the device does with a second connection
   GET  /api/devices/{id}/log    — protocol log
   GET  /api/network             — get network conditions
   POST /api/network             — set network conditions
@@ -66,6 +67,12 @@ class CapacityUpdate(BaseModel):
     rx_buffer: int | None = None
     process_ms: float | None = None
     on_overflow: str | None = None
+
+
+class SingleClientUpdate(BaseModel):
+    """newest, oldest or reject: the device serves one connection at a time;
+    null: it answers every connection."""
+    mode: str | None
 
 
 # ── Dependency: manager is set by server.py at startup ──
@@ -251,6 +258,19 @@ async def set_capacity(device_id: str, req: CapacityUpdate):
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"status": "ok", "capacity": capacity}
+
+
+@router.post("/devices/{device_id}/single-client")
+async def set_single_client(device_id: str, req: SingleClientUpdate):
+    mgr = _get_manager()
+    inst = mgr.get_instance(device_id)
+    if not inst:
+        raise HTTPException(404, f"Device '{device_id}' not found")
+    try:
+        single_client = inst.set_single_client(req.mode)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"status": "ok", "single_client": single_client}
 
 
 @router.get("/devices/{device_id}/log")

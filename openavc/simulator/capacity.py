@@ -286,6 +286,10 @@ class ReceiveLink:
         #: device then reads and answers nothing more on it.
         self.silenced = False
         self.silence_announced = False
+        #: True once the device stopped serving this connection because it
+        #: serves one at a time (single_client.py). It then reads and answers
+        #: nothing more on it, and the connection stays open.
+        self.displaced = False
         self.bytes_lost = 0
         self._task = asyncio.ensure_future(self._drain())
 
@@ -331,6 +335,12 @@ class ReceiveLink:
     def close(self) -> None:
         """Stop draining the socket (the connection is closing)."""
         self._task.cancel()
+
+    @property
+    def closed(self) -> bool:
+        """True once the client closed its end or the connection failed, even
+        while bytes it sent are still unread."""
+        return self._eof
 
     # ── The reader side ──
 

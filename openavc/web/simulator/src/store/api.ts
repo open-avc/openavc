@@ -139,6 +139,25 @@ export interface DeviceInfo {
   /** How much the device can take in. Null on a device that has no such
    *  limit (HTTP, MQTT, WebSocket). */
   capacity?: CapacityInfo | null;
+  /** What the device does when another connection arrives. Null on a device
+   *  with no connections to choose between (UDP, HTTP, serial). */
+  single_client?: SingleClientInfo | null;
+}
+
+export type SingleClientMode = "newest" | "oldest" | "reject";
+
+export interface SingleClientInfo {
+  /** Null while the device answers every connection. */
+  mode: SingleClientMode | null;
+  declared: SingleClientMode | null;
+  /** Where the mode came from: the driver's declaration, the simulator's own
+   *  default (every connection answered), or changed here. */
+  source: "driver" | "simulator" | "edited";
+  /** Connections open now, and how many of them get no answers. */
+  open: number;
+  ignored: number;
+  /** Connections closed for arriving while another was open (reject). */
+  refused: number;
 }
 
 export type OnOverflow = "discard" | "silence";
@@ -248,6 +267,28 @@ export async function setCapacity(
     throw new Error(detail);
   }
   return (await res.json()).capacity;
+}
+
+/** Change what a device does when another connection arrives (null: answer
+ *  every connection). Rejects with the simulator's reason. */
+export async function setSingleClient(
+  id: string,
+  mode: SingleClientMode | null,
+): Promise<SingleClientInfo> {
+  const res = await api(`/api/devices/${id}/single-client`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode }),
+  });
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`;
+    try {
+      const body = await res.json();
+      if (typeof body?.detail === "string") detail = body.detail;
+    } catch { /* keep the status line */ }
+    throw new Error(detail);
+  }
+  return (await res.json()).single_client;
 }
 
 export async function fetchLog(id: string, limit = 200): Promise<LogEntry[]> {

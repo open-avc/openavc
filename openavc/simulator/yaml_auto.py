@@ -2846,6 +2846,10 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         if "capacity" in sim:
             self._capacity.declare(sim["capacity"])
 
+        # Whether the device serves one connection at a time (in force at once).
+        if "single_client" in sim:
+            self._single_client.declare(sim["single_client"])
+
         # Add error modes
         for mode, mode_def in sim.get("error_modes", {}).items():
             self._error_modes[mode] = mode_def

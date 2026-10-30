@@ -69,6 +69,7 @@ import yaml
 
 from openavc.drivers.check import check_driver_file, iter_driver_files
 from openavc.simulator.capacity import capacity_problems
+from openavc.simulator.single_client import single_client_problems
 from openavc.drivers.compiled_protocol import (
     decode_delimiter,
     derive_config,
@@ -218,6 +219,10 @@ def validate_yaml_driver(path: Path) -> ValidationResult:
     if "capacity" in sim:
         _check_capacity(result, sim["capacity"], "simulator.capacity")
 
+    # ── Check 13: One connection at a time ──
+    if "single_client" in sim:
+        _check_single_client(result, sim["single_client"], "simulator.single_client", transport)
+
     return result
 
 
@@ -231,6 +236,25 @@ def _check_capacity(result: ValidationResult, value: Any, where: str) -> None:
         return
     for problem in capacity_problems(value):
         result.error("capacity", f"{where}: {problem}")
+
+
+def _check_single_client(
+    result: ValidationResult, value: Any, where: str, transport: Any,
+) -> None:
+    """A declared single_client the simulator would ignore is an error (a
+    mode that does not exist), or a warning (a device that is not TCP)."""
+    from openavc.drivers.python_info import UNEVALUATED
+
+    if value is UNEVALUATED:
+        result.info("single_client", f"{where} is computed, so it could not be checked.")
+        return
+    for problem in single_client_problems(value):
+        result.error("single_client", f"{where}: {problem}")
+    if transport not in (None, "tcp", UNEVALUATED):
+        result.warning(
+            "single_client",
+            f"{where} applies to a TCP device; a {transport} device answers its one connection",
+        )
 
 
 def _known_state_keys(state_vars: dict, sim_initial: dict, sim: dict) -> set[str]:
@@ -1868,6 +1892,11 @@ def validate_python_driver(driver_path: Path) -> ValidationResult:
 
     if "capacity" in sim_info:
         _check_capacity(result, sim_info["capacity"], 'SIMULATOR_INFO["capacity"]')
+    if "single_client" in sim_info:
+        _check_single_client(
+            result, sim_info["single_client"], 'SIMULATOR_INFO["single_client"]',
+            driver_info.get("transport"),
+        )
 
     # Check driver_id match
     if driver_info.get("id") and sim_info.get("driver_id"):

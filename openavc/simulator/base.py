@@ -16,6 +16,7 @@ from typing import Any, Callable
 
 from openavc.simulator.capacity import DeviceCapacity, capacity_problems
 from openavc.simulator.self_signed_tls import wants_tls
+from openavc.simulator.single_client import SingleClient, single_client_problems
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,11 @@ class BaseSimulator(ABC):
         # How much the device can take in (capacity.py); off until switched on.
         self._capacity = DeviceCapacity(
             device_id, info.get("capacity"), notify=self._notify_change,
+        )
+        # Whether the device serves one connection at a time (single_client.py);
+        # a declared mode is in force from the start.
+        self._single_client = SingleClient(
+            device_id, info.get("single_client"), notify=self._notify_single_client,
         )
         # v0.5.0 child entities from the project, keyed
         # {child_type: {padded_local_id: {label, config}}}. Set by the manager
@@ -278,6 +284,68 @@ class BaseSimulator(ABC):
         self._capacity.update(**changes)
         return self._capacity.to_info()
 
+    # ── One connection at a time ──
+
+    @property
+    def single_client_supported(self) -> bool:
+        """True for a device with connections to choose between: a TCP one.
+        A serial device simulated over TCP still has one cable."""
+        return self.capacity_kind == "stream" and self.transport != "serial"
+
+    @property
+    def single_client_mode(self) -> str | None:
+        """newest, oldest or reject while the device serves one connection
+        at a time; None while it answers every connection."""
+        return self._single_client.mode if self.single_client_supported else None
+
+    def set_single_client(self, mode: str | None) -> dict:
+        """Change what the device does with a second connection (None:
+        answer every connection). The connections already open are judged at
+        once. Raises ValueError, saying why, for a device that has no
+        connections to choose between or a mode that does not exist. Returns
+        the setting as the API shows it.
+        """
+        if not self.single_client_supported:
+            raise ValueError(
+                f"{self.name} has no connection setting: only a TCP device has "
+                f"connections to choose between"
+            )
+        if mode is not None:
+            problems = single_client_problems(mode)
+            if problems:
+                raise ValueError("; ".join(problems))
+        self._single_client.set_mode(mode)
+        self._judge_open_connections()
+        return self.single_client_info()
+
+    def single_client_info(self) -> dict | None:
+        """The setting and the connections open now, or None for a device
+        that has no connections to choose between."""
+        if not self.single_client_supported:
+            return None
+        sc = self._single_client
+        open_count, ignored = self._connection_counts()
+        return {
+            "mode": sc.mode,
+            "declared": sc.declared,
+            "source": sc.source,
+            "open": open_count,
+            "ignored": ignored,
+            "refused": sc.refused,
+        }
+
+    def _judge_open_connections(self) -> None:
+        """Apply the mode to the connections already open (TCP servers)."""
+
+    def _connection_counts(self) -> tuple[int, int]:
+        """Connections open now, and how many of them are not answered."""
+        return 0, 0
+
+    def _notify_single_client(self) -> None:
+        info = self.single_client_info()
+        if info is not None:
+            self._notify_change("single_client", {"device_id": self.device_id, **info})
+
     # ── Protocol Log ──
 
     def log_protocol(self, direction: str, data: bytes | str, client_id: str = "") -> None:
@@ -365,6 +433,7 @@ class BaseSimulator(ABC):
         info["capacity"] = (
             {**self._capacity.to_info(), "kind": kind} if kind is not None else None
         )
+        info["single_client"] = self.single_client_info()
         if self._child_entities:
             info["child_entities"] = self._child_entities
         return info
