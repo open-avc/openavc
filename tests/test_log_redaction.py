@@ -35,8 +35,10 @@ from openavc.utils.log_redaction import (
     compile_secret_pattern,
     get_secret_registry,
     is_secret_key,
+    mask_secret_fields,
     redact_config,
     redact_text,
+    secret_config_keys,
 )
 
 
@@ -462,6 +464,30 @@ def test_the_cloud_log_tool_masks_with_the_shared_rule():
 
     assert system_tools._redact_log_message is redact_text
     assert system_tools._looks_secret is is_secret_key
+
+
+def test_the_audit_masks_its_connection_with_the_shared_rule():
+    """The audit's record of a connection's settings asks this module too."""
+    from openavc.audit import passes
+
+    assert passes.secret_config_keys is secret_config_keys
+    assert passes.mask_secret_fields is mask_secret_fields
+
+
+def test_a_configs_secret_fields_come_from_their_name_and_the_driver():
+    config = {
+        "host": "10.0.0.5", "password": "hunter22", "username": "admin",
+        "site_code": "4417", "pin": "", "user_label": "Lobby",
+    }
+    schema = {"site_code": {"type": "string", "secret": True}, "host": {"type": "string"}}
+    keys = secret_config_keys(config, schema)
+    assert keys == {"password", "username", "site_code", "pin"}
+    assert secret_config_keys(config) == {"password", "username", "pin"}
+    # A set secret is masked; an empty one stays empty, so "not set" still shows.
+    assert mask_secret_fields(config, keys) == {
+        "host": "10.0.0.5", "password": "***", "username": "***",
+        "site_code": "***", "pin": "", "user_label": "Lobby",
+    }
 
 
 def test_min_secret_length_is_one_constant():

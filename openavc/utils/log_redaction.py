@@ -45,6 +45,10 @@ it in every line hid that word all over the log. It is still masked where the
 login goes over the wire (that device's TX/RX lines and its traffic view) and
 wherever a config is shown by field (:func:`redact_config`). A field a driver
 declares ``secret: true`` is a secret whatever it is called.
+
+A report that records one device's settings (the device audit's connection)
+asks :func:`secret_config_keys` which of them hold a credential, by name and
+by the driver's own declaration, and shows them with :func:`mask_secret_fields`.
 """
 
 from __future__ import annotations
@@ -120,6 +124,25 @@ def _declared_secret(config_schema: dict[str, Any] | None) -> set[str]:
             if isinstance(spec, dict) and spec.get("secret") is True:
                 declared.add(str(field))
     return declared
+
+
+def secret_config_keys(
+    config: dict[str, Any], config_schema: dict[str, Any] | None = None,
+) -> set[str]:
+    """The keys of ``config`` that hold a credential: declared ``secret:
+    true`` in the driver's ``config_schema``, or named like one
+    (:func:`is_secret_key`, so a username too). Top-level keys only."""
+    declared = _declared_secret(config_schema)
+    return {k for k in config if k in declared or is_secret_key(k)}
+
+
+def mask_secret_fields(config: dict[str, Any], secret_keys: set[str]) -> dict[str, Any]:
+    """A copy of ``config`` with each set value under ``secret_keys`` shown as
+    :data:`REDACTED`; an empty one stays empty, so "not set" still shows."""
+    return {
+        key: (REDACTED if key in secret_keys and value not in (None, "") else value)
+        for key, value in config.items()
+    }
 
 
 def collect_secret_values(

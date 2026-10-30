@@ -15,7 +15,8 @@
 
 ``report.json`` (``report_version`` 1) holds:
 
-- ``report_version``; ``generator``: ``openavc_version``, ``os``,
+- ``report_version``; ``report_kind``, what made the file (``device_audit``);
+  ``generator``: ``openavc_version``, ``os``,
   ``python`` and ``deployment_type`` (how OpenAVC was installed).
 - ``session``: ``id``, ``started_at`` and ``ended_at``, ``status``, the
   ``steps`` run, the project device whose page started the audit (``origin``:
@@ -274,6 +275,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("audit.report")
 
 REPORT_VERSION = 1
+REPORT_KIND = "device_audit"
 REPORTS_KEPT = 10
 REDACTED = "[redacted]"
 SERIAL_REMOVED = "[serial number removed]"
@@ -540,18 +542,26 @@ def catalog_names(session: "AuditSession") -> set[str]:
     return out
 
 
-def public_strings(session: "AuditSession") -> set[str]:
-    """Every string a published driver that ran declares (see the module
-    docstring): never redacted where a whole string is one of them."""
+def driver_public_strings(driver_id: str, identity: dict[str, Any] | None) -> set[str]:
+    """Every string one driver declares, when the copy that ran is the
+    catalog's (every file matches it); nothing for any other copy."""
     from openavc.drivers.registry import get_driver_class
 
     out: set[str] = set()
-    for run in getattr(session, "runs", None) or []:
-        files = (run.choice.identity or {}).get("files") or []
-        if files and all(f.get("matches_catalog") is True for f in files):
-            cls = get_driver_class(run.choice.driver_id)
-            _strings_in(getattr(cls, "DRIVER_INFO", None) or {}, out)
+    files = (identity or {}).get("files") or []
+    if files and all(f.get("matches_catalog") is True for f in files):
+        cls = get_driver_class(driver_id)
+        _strings_in(getattr(cls, "DRIVER_INFO", None) or {}, out)
     out.discard("")
+    return out
+
+
+def public_strings(session: "AuditSession") -> set[str]:
+    """Every string a published driver that ran declares (see the module
+    docstring): never redacted where a whole string is one of them."""
+    out: set[str] = set()
+    for run in getattr(session, "runs", None) or []:
+        out |= driver_public_strings(run.choice.driver_id, run.choice.identity)
     return out
 
 
@@ -598,6 +608,39 @@ def _redact_file(raw: bytes, redactor: "Redactor") -> tuple[bytes, bool]:
     return (cleaned.encode("utf-8"), True) if cleaned != text else (raw, False)
 
 
+def place_files(
+    identity: dict[str, Any] | None,
+    file_contents: dict[str, bytes],
+    redactor: "Redactor",
+    *,
+    run: int = 0,
+    used: dict[str, bytes] | None = None,
+) -> list[PlacedFile]:
+    """Where one driver's files go in a report zip: ``driver/<name>``.
+
+    A file the catalog publishes (it matches the catalog) keeps its bytes;
+    any other is redacted as text. ``used`` is the paths already placed and
+    their bytes, shared across the drivers of one zip: a name already placed
+    with different bytes goes under ``driver/run-<run + 1>/`` instead.
+    """
+    if used is None:
+        used = {}
+    published = {
+        f.get("name") for f in (identity or {}).get("files") or []
+        if f.get("matches_catalog") is True
+    }
+    placed: list[PlacedFile] = []
+    for name, raw in sorted(file_contents.items()):
+        # The catalog's own bytes are public: never changed.
+        data, redacted = (raw, False) if name in published else _redact_file(raw, redactor)
+        path = f"driver/{name}"
+        if path in used and used[path] != data:
+            path = f"driver/run-{run + 1}/{name}"
+        used.setdefault(path, data)
+        placed.append(PlacedFile(run, name, path, data, redacted))
+    return placed
+
+
 def place_driver_files(session: "AuditSession", redactor: "Redactor") -> list[PlacedFile]:
     """Where each driver that ran puts its files in the zip.
 
@@ -611,18 +654,10 @@ def place_driver_files(session: "AuditSession", redactor: "Redactor") -> list[Pl
     for run in getattr(session, "runs", None) or []:
         if not getattr(run, "listens", None):
             continue
-        published = {
-            f.get("name") for f in (getattr(run.choice, "identity", None) or {}).get("files") or []
-            if f.get("matches_catalog") is True
-        }
-        for name, raw in sorted(run.choice.file_contents.items()):
-            # The catalog's own bytes are public: never changed.
-            data, redacted = (raw, False) if name in published else _redact_file(raw, redactor)
-            path = f"driver/{name}"
-            if path in used and used[path] != data:
-                path = f"driver/run-{run.index + 1}/{name}"
-            used.setdefault(path, data)
-            placed.append(PlacedFile(run.index, name, path, data, redacted))
+        placed += place_files(
+            getattr(run.choice, "identity", None), run.choice.file_contents, redactor,
+            run=run.index, used=used,
+        )
     return placed
 
 
@@ -844,6 +879,7 @@ def build_report(session: "AuditSession") -> dict[str, Any]:
     }
     report = {
         "report_version": REPORT_VERSION,
+        "report_kind": REPORT_KIND,
         "generator": generator_info(),
         "complete": complete,
         "session": {
@@ -2309,6 +2345,12 @@ def build_zip(
         "log.txt": redactor.text(log_text) if redactor is not None else log_text,
         "README.txt": FIELD_GUIDE,
     }
+    return write_zip(files, driver_files)
+
+
+def write_zip(files: dict[str, str], driver_files: list[PlacedFile] | None = None) -> bytes:
+    """A report zip: each text file as UTF-8, then each placed driver file
+    once, in that order."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for name, text in files.items():
@@ -2339,15 +2381,23 @@ def report_zip(session: "AuditSession") -> tuple[str, bytes]:
 
 
 class ReportStore:
-    """The newest ``keep`` report files, in one directory."""
+    """The newest ``keep`` report files, in one directory.
 
-    def __init__(self, directory: Path, keep: int = REPORTS_KEPT) -> None:
+    Only a name ``name_pattern`` matches is saved, listed or found (the
+    audit's own, ``openavc-device-audit-*.zip``, unless another is given), so
+    nothing else in the directory is ever served or pruned.
+    """
+
+    def __init__(
+        self, directory: Path, keep: int = REPORTS_KEPT, name_pattern: re.Pattern[str] = _NAME_RE,
+    ) -> None:
         self.directory = Path(directory)
         self.keep = keep
+        self.name_pattern = name_pattern
 
     def save(self, name: str, data: bytes) -> str:
         """Write ``data`` as ``name`` (made unique), prune, return the name used."""
-        if not _NAME_RE.match(name):
+        if not self.name_pattern.match(name):
             raise ValueError(f"Not a report file name: {name}")
         self.directory.mkdir(parents=True, exist_ok=True)
         final = name
@@ -2376,7 +2426,7 @@ class ReportStore:
             return []
         out = []
         for path in self.directory.iterdir():
-            if path.is_file() and _NAME_RE.match(path.name):
+            if path.is_file() and self.name_pattern.match(path.name):
                 stat = path.stat()
                 out.append({"name": path.name, "size": stat.st_size, "modified": stat.st_mtime})
         out.sort(key=lambda r: r["modified"], reverse=True)
@@ -2384,7 +2434,7 @@ class ReportStore:
 
     def path(self, name: str) -> Path | None:
         """The report's path, or None when there is no such report."""
-        if not _NAME_RE.match(name):
+        if not self.name_pattern.match(name):
             return None
         path = self.directory / name
         return path if path.is_file() else None

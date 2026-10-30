@@ -26,6 +26,7 @@ from openavc.audit.driver_choice import (
 )
 from openavc.audit.session import AuditError
 from openavc.drivers.registry import get_driver_class
+from openavc.utils.log_redaction import mask_secret_fields, secret_config_keys
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -257,23 +258,6 @@ def _driver_info(driver_id: str) -> dict[str, Any]:
     return dict(getattr(cls, "DRIVER_INFO", {}) or {})
 
 
-def _masked(config: dict[str, Any], secret_keys: set[str]) -> dict[str, Any]:
-    return {
-        key: ("***" if key in secret_keys and value not in (None, "") else value)
-        for key, value in config.items()
-    }
-
-
-def _secret_keys(config: dict[str, Any], schema: dict[str, Any]) -> set[str]:
-    from openavc.utils.log_redaction import is_secret_key
-
-    declared = {
-        k for k, spec in (schema or {}).items()
-        if isinstance(spec, dict) and spec.get("secret") is True
-    }
-    return {k for k in config if k in declared or is_secret_key(k)}
-
-
 async def _is_target(session: "AuditSession", host: str) -> bool:
     """Whether ``host`` names the audited device (its address as typed, its
     IP, or a name that resolves to that IP)."""
@@ -349,7 +333,7 @@ def saved_settings(session: "AuditSession", project: Any) -> list[dict[str, Any]
         if device.id not in offered or device.driver != run.choice.driver_id:
             continue
         config = resolve_device_config(device, project)["config"]
-        secret_keys = _secret_keys(config, schema)
+        secret_keys = secret_config_keys(config, schema)
         out.append({
             "device_id": device.id,
             "name": offered[device.id],
@@ -412,7 +396,7 @@ async def set_connection(
     sandbox = DriverSandbox(audit_device_id(session.id), run.choice.driver_id, merged)
     resolved = sandbox.prepare()  # raises AuditError with the sentence
     effective = resolved["config"]
-    secret_keys = _secret_keys(effective, info.get("config_schema") or {})
+    secret_keys = secret_config_keys(effective, info.get("config_schema") or {})
 
     run.config = merged
     run.secrets = collect_secret_values(effective, info.get("config_schema")) | {
@@ -424,7 +408,7 @@ async def set_connection(
     )
     preview = await _preview(session, run, effective)
     run.connection = {
-        "config": _masked(effective, secret_keys),
+        "config": mask_secret_fields(effective, secret_keys),
         "transport": sandbox.transport,
         "saved_from": saved_name,
         "preview": preview,

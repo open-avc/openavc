@@ -18,6 +18,7 @@ import pytest
 from openavc.audit.footprint import Footprint, Limit
 from openavc.audit.report import (
     REDACTED,
+    REPORT_KIND,
     REPORT_VERSION,
     SERIAL_REMOVED,
     ReportStore,
@@ -260,6 +261,7 @@ async def test_the_record_has_every_section():
     finally:
         await manager.shutdown()
     assert report["report_version"] == REPORT_VERSION == 1
+    assert report["report_kind"] == REPORT_KIND == "device_audit"
     assert set(report) >= {
         "generator", "session", "target", "device", "catalog", "footprint", "evidence",
         "verdict", "drivers", "timeline", "limits", "complete",
@@ -576,6 +578,18 @@ def test_the_store_keeps_the_newest_and_refuses_odd_names(tmp_path):
         store.save("../x.zip", b"")
     assert store.delete(listed[0]) is True
     assert store.delete(listed[0]) is False
+
+
+def test_a_store_given_its_own_name_pattern_keeps_only_those_files(tmp_path):
+    import re
+
+    store = ReportStore(tmp_path, name_pattern=re.compile(r"^acme-widget-report-[a-z0-9-]+\.zip$"))
+    saved = store.save("acme-widget-report-20260925-1200.zip", b"zip")
+    (tmp_path / "openavc-device-audit-acme-widget-20260925-1200.zip").write_bytes(b"audit")
+    assert [r["name"] for r in store.list()] == [saved]
+    assert store.path("openavc-device-audit-acme-widget-20260925-1200.zip") is None
+    with pytest.raises(ValueError):
+        store.save("openavc-device-audit-acme-widget-20260925-1200.zip", b"")
 
 
 async def test_a_session_saves_its_report_when_it_ends(tmp_path):
