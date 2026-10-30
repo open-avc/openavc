@@ -75,6 +75,16 @@ except ImportError:  # pragma: no cover - httpx is a hard dependency in practice
 # frame parser's buffer ceiling; a login banner + prompts never approach it.
 _AUTH_MAX_BUFFER = DEFAULT_MAX_BUFFER
 
+# A TCP sign-in skipped because the credential it types first is blank still
+# listens for the device's first prompt for up to this long after connect, so
+# a device that wants one fails as auth_failed instead of taking the start-up
+# lines as its password. It stops early once bytes have arrived and the line
+# has been quiet for _BLANK_SIGN_IN_QUIET_S with no prompt among them. Sized
+# from a measured unit that prints its banner up to a second after connect and
+# its prompt as a separate write straight after it.
+_BLANK_SIGN_IN_WINDOW_S = 2.5
+_BLANK_SIGN_IN_QUIET_S = 0.5
+
 # HTTP statuses that mean "the device refused this request's credentials": 401
 # from the device itself, 407 from a proxy in front of it, 403 for the devices
 # that answer a bad login with Forbidden rather than Unauthorized. One of these
@@ -264,6 +274,9 @@ class ConfigurableDriver(BaseDriver):
         # Computed by connect() (auth block present + _auth_should_run);
         # consumed by _post_connect to run the handshake pre-`connected`.
         self._auth_pending: bool = False
+        # Set by connect() instead when the sign-in is skipped for a blank
+        # credential: _post_connect then listens for the device's prompt.
+        self._auth_watch_blank: bool = False
 
         # Declarative liveness watchdog (`liveness:` block): "send X every N,
         # await a reply within T, reconnect after K misses". Backs the
@@ -760,8 +773,10 @@ class ConfigurableDriver(BaseDriver):
         # buffer instead of being run through the normal response matcher.
         # _perform_auth_handshake() turns this back off when it's done.
         auth_def = self._definition.get("auth")
-        self._auth_pending = isinstance(auth_def, dict) and self._auth_should_run(auth_def)
-        if self._auth_pending:
+        plan = self._auth_plan(auth_def) if isinstance(auth_def, dict) else None
+        self._auth_pending = plan == "run"
+        self._auth_watch_blank = plan == "blank"
+        if self._auth_pending or self._auth_watch_blank:
             self._auth_buffer = bytearray()
             self._auth_event = asyncio.Event()
             self._auth_overflow = False
@@ -1581,7 +1596,7 @@ class ConfigurableDriver(BaseDriver):
         device.connected.
         """
         await super()._post_connect()
-        if not self._auth_pending:
+        if not (self._auth_pending or self._auth_watch_blank):
             self._auth_mode = False
             return
         transport = self.transport
@@ -1608,30 +1623,96 @@ class ConfigurableDriver(BaseDriver):
             transport._frame_parser = None  # type: ignore[union-attr]
         self._saved_frame_parser = saved_parser
         try:
-            await self._perform_auth_handshake()
+            if self._auth_pending:
+                await self._perform_auth_handshake()
+            else:
+                await self._refuse_unanswerable_prompt()
         except Exception as e:
             log.error(f"[{self.device_id}] Auth handshake failed: {e}")
             raise
 
-    def _auth_should_run(self, auth_def: dict[str, Any]) -> bool:
-        """Quick gate used by connect() to decide whether to buffer
-        incoming bytes for the handshake. Mirrors the early-exit checks
-        in _perform_auth_handshake so the two stay aligned."""
+    def _auth_plan(self, auth_def: dict[str, Any]) -> str | None:
+        """What connect() does about the `auth:` block: "run" the handshake,
+        "blank" (skipped because the credential it types first is blank, so
+        on TCP only listen for a prompt nobody can answer), or None (no
+        handshake applies). Mirrors the early-exit checks in _perform_auth_handshake
+        so the two stay aligned."""
         if auth_def.get("type", "telnet_login") != "telnet_login":
-            return False
+            return None
         # The handshake assumes a TCP/serial byte stream — it swaps out the
         # frame parser and buffers raw bytes. On udp/http/osc that breaks the
         # transport's normal data path, so never run it there. The loader also
         # rejects auth on these transports; this is the runtime backstop.
         if self._definition.get("transport") not in ("tcp", "serial"):
-            return False
+            return None
         if not auth_def.get("username_prompt") or not auth_def.get("password_prompt"):
-            return False
+            return None
         username_field = auth_def.get("username_field", "username")
         username = str(self.config.get(username_field, "") or "")
         if auth_def.get("skip_if_empty", True) and not username:
-            return False
-        return True
+            # A serial line has no connect for a device to prompt on.
+            return "blank" if self._effective_transport() == "tcp" else None
+        return "run"
+
+    def _auth_should_run(self, auth_def: dict[str, Any]) -> bool:
+        """True when connect() runs the login handshake."""
+        return self._auth_plan(auth_def) == "run"
+
+    async def _refuse_unanswerable_prompt(self) -> None:
+        """Listen for a prompt the blank credential cannot answer.
+
+        The sign-in is skipped because the credential it types first is blank,
+        which is right for a unit with no password set. A unit that has one
+        still prompts, and without this the start-up and poll lines go into
+        that prompt and the device reads as not answering. So for a moment
+        after connect, before anything is sent, the bytes are held raw: the
+        first prompt among them fails the connection as auth_failed, naming
+        the blank setting. Otherwise they go through the normal response
+        matching, as they would have without the wait.
+        """
+        auth_def = self._definition.get("auth") or {}
+        field = auth_def.get("username_field", "username")
+        saved_parser = getattr(self, "_saved_frame_parser", None)
+        replay: list[bytes] = []
+        try:
+            try:
+                prompt = re.compile(auth_def.get("username_prompt", ""))
+            except re.error as e:
+                raise ValueError(f"Invalid auth regex pattern: {e}") from e
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + _BLANK_SIGN_IN_WINDOW_S
+            while True:
+                self._auth_event.clear()
+                text = self._auth_buffer.decode("utf-8", errors="replace")
+                if prompt.search(text):
+                    schema = (self._definition.get("config_schema") or {}).get(field)
+                    label = param_label(field, schema if isinstance(schema, dict) else None)
+                    raise ConnectionFaultError(
+                        f"The device asks for a sign-in, and the {label} setting is blank.",
+                        code="auth_failed",
+                    )
+                if self._auth_overflow:
+                    break
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    break
+                wait = min(remaining, _BLANK_SIGN_IN_QUIET_S) if self._auth_buffer else remaining
+                try:
+                    await asyncio.wait_for(self._auth_event.wait(), timeout=wait)
+                except asyncio.TimeoutError:
+                    if self._auth_buffer:
+                        break  # bytes came, then quiet, and no prompt among them
+            # No prompt: what arrived meanwhile is the device's own traffic.
+            pending = bytes(self._auth_buffer)
+            if pending:
+                replay = saved_parser.feed(pending) if saved_parser is not None else [pending]
+        finally:
+            self._auth_mode = False
+            self._auth_buffer = bytearray()
+            if hasattr(self.transport, "_frame_parser"):
+                self.transport._frame_parser = saved_parser  # type: ignore[union-attr]
+        for frame in replay:
+            await self.on_data_received(frame)
 
     async def _perform_auth_handshake(self) -> None:
         """Run the Telnet-style login handshake declared in `auth:` (if any).

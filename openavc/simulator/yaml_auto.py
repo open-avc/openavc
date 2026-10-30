@@ -75,6 +75,12 @@ logger = logging.getLogger(__name__)
 # How many numbers start(0) tries before a side receiver's refusal stands.
 _SIDE_PORT_ATTEMPTS = 5
 
+#: The error mode a device offers when its driver skips the sign-in for a
+#: blank credential (``skip_if_empty``): switched on, the device prompts for a
+#: sign-in whatever its settings say, the way a unit with a password set does,
+#: so what the driver does with one it cannot answer can be tried.
+SIGN_IN_REQUIRED_MODE = "sign_in_required"
+
 
 # Names exposed to inline `handler:` scripts (both TCP and OSC). This is the
 # documented contract (writing-simulators.md "Script Handlers"): the same set
@@ -392,6 +398,13 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         if sim_section:
             self._merge_simulator_section(sim_section)
 
+        if self._skips_blank_sign_in():
+            self._error_modes.setdefault(SIGN_IN_REQUIRED_MODE, {
+                "behavior": SIGN_IN_REQUIRED_MODE,
+                "description": "Device asks for a sign-in (even with none set)",
+                "builtin": True,
+            })
+
         # v0.5.0 child entities: per-child state lives in the flat state dict
         # under dotted keys "<type>.<id>.<prop>" (the sim-side mirror of the
         # runtime's device.<id>.<type>.<id>.<prop> convention). The roster
@@ -513,9 +526,9 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
 
         The handshake is also skipped when the *driver* would skip it:
         with ``skip_if_empty`` (default true) and a blank/absent username
-        in this device's config, the driver never authenticates — if the
-        simulator prompted anyway it would eat the first two real commands
-        as credentials.
+        in this device's config, the driver signs in to nothing and only
+        listens for a prompt it cannot answer. The ``sign_in_required``
+        error mode prompts anyway, which is that unit with a password set.
         """
         auth_def = self._driver_def.get("auth")
         if not isinstance(auth_def, dict):
@@ -525,7 +538,11 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
 
         username_field = auth_def.get("username_field", "username")
         configured_user = str(self.config.get(username_field, "") or "")
-        if auth_def.get("skip_if_empty", True) and not configured_user:
+        if (
+            auth_def.get("skip_if_empty", True)
+            and not configured_user
+            and not self.has_error_behavior(SIGN_IN_REQUIRED_MODE)
+        ):
             return True
 
         username_prompt = auth_def.get("username_prompt", "")
@@ -2831,6 +2848,19 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 )
 
     # ── Merge explicit simulator: section ──
+
+    def _skips_blank_sign_in(self) -> bool:
+        """True when the driver skips its telnet sign-in for a blank
+        credential, the case the sign_in_required mode plays out."""
+        auth_def = self._driver_def.get("auth")
+        return (
+            isinstance(auth_def, dict)
+            and auth_def.get("type", "telnet_login") == "telnet_login"
+            and self._driver_def.get("transport", "tcp") == "tcp"
+            and bool(auth_def.get("username_prompt"))
+            and bool(auth_def.get("password_prompt"))
+            and bool(auth_def.get("skip_if_empty", True))
+        )
 
     def _merge_simulator_section(self, sim: dict) -> None:
         """Merge explicit simulator: enhancements onto auto-generated behavior."""

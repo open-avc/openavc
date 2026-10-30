@@ -226,8 +226,9 @@ export function AuthEditor({ draft, onUpdate }: AuthEditorProps) {
           <div style={helpStyle}>
             <strong>Skip If Empty:</strong> when the user hasn't entered a
             username, "Yes" connects without authenticating (useful when the
-            same driver handles both authed and unauthed devices). "No" runs
-            the handshake unconditionally.
+            same driver handles both authed and unauthed devices). A device
+            that asks for a sign-in anyway shows as a refused login that names
+            the blank setting. "No" runs the handshake unconditionally.
           </div>
         </div>
       )}
