@@ -49,10 +49,14 @@ export function parseDriverDefinition(text: string): DriverDefinition {
  * Export. A string YAML 1.1 reads as a boolean (ON, off, yes) is quoted,
  * because the platform and the driver catalog read a driver file as YAML 1.1
  * and would otherwise load a device word like ON as true.
+ * Quoted strings also keep protocol newlines explicit. A trailing `|+` scalar
+ * would absorb blank lines added before the next section during a manual edit,
+ * changing login or command bytes even though that field was not edited.
  */
 export const DRIVER_YAML_DUMP_OPTIONS: yaml.DumpOptions = {
   lineWidth: 120,
   quotingType: '"',
+  forceQuotes: true,
 };
 
 /** Listing metadata is not part of a driver file. Match the server's

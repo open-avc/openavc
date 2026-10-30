@@ -144,3 +144,24 @@ it("exports contract fields and nested source values without listing metadata", 
     source_url: "https://example.com/protocol", future_field: "preserve so validation can identify it" });
   expect(definition).toHaveProperty("source", "user");
 });
+
+it("keeps wire line endings unchanged when another section is appended to an export", () => {
+  const definition = { ...original,
+    delimiter: "\n",
+    commands: {
+      read: { send: "STATUS\n" },
+      write: { send: "SET\r\n" },
+      blank: { send: "\n\n" },
+    },
+    auth: { type: "telnet_login", line_ending: "\n" },
+  } as DriverDefinition;
+  const exported = serializeDriverDefinition(definition);
+  expect(exported).toContain('line_ending: "\\n"');
+  expect(exported).toContain('send: "STATUS\\n"');
+  // This ordinary edit used to extend a trailing |+ login delimiter to two LF.
+  const extended = yaml.load(exported + '\n\non_connect:\n  - "STATUS\\n"\n') as DriverDefinition;
+  expect(extended.auth?.line_ending).toBe("\n");
+  expect(extended.delimiter).toBe("\n");
+  expect(extended.commands).toEqual(definition.commands);
+  expect(extended.on_connect).toEqual(["STATUS\n"]);
+});
