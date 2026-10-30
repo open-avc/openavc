@@ -67,7 +67,13 @@ export function DriverStep() {
     let alive = true;
     Promise.all([
       driversApi.fetchCommunityDrivers().catch((e) => {
-        if (alive) setCatalogError(parseApiError(e));
+        if (alive) {
+          setCatalogError(
+            e instanceof driversApi.CatalogUnreachableError
+              ? parseApiError(e)
+              : `The driver catalog could not be loaded (${parseApiError(e)}).`,
+          );
+        }
         return [] as CommunityDriver[];
       }),
       loadInstalled(),
@@ -207,7 +213,7 @@ export function DriverStep() {
       )}
       {catalogError && (
         <ErrorLine
-          text={`The driver catalog could not be loaded (${catalogError}). Only the drivers on this system are listed.`}
+          text={`${catalogError} Only the drivers on this system are listed.`}
         />
       )}
       {loading ? (

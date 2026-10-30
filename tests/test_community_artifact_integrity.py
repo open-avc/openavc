@@ -385,6 +385,28 @@ async def test_refresh_driver_list_fetches_the_catalog_past_the_cache():
 
 
 @pytest.mark.asyncio
+async def test_an_unreachable_library_says_so_and_a_cached_one_is_kept():
+    """No copy of the catalog at all answers 200 with the sentence the
+    Programmer shows; a failed fetch with a cached copy answers that copy."""
+    from openavc.api.routes import drivers
+
+    cache = MagicMock()
+    cache.get_drivers = AsyncMock(return_value=[])
+    with patch.object(drivers.get_community_drivers, "_cache", cache, create=True):
+        empty = await drivers.get_community_drivers()
+    assert empty == {
+        "drivers": [],
+        "error": "Could not reach the community driver library at "
+                 "raw.githubusercontent.com. Check that this system can reach the internet.",
+    }
+
+    cache.get_drivers = AsyncMock(return_value=[{"id": "acme_widget"}])
+    with patch.object(drivers.get_community_drivers, "_cache", cache, create=True):
+        cached = await drivers.get_community_drivers(refresh=True)
+    assert cached == {"drivers": [{"id": "acme_widget"}], "error": None}
+
+
+@pytest.mark.asyncio
 async def test_catalog_hashes_are_not_taken_from_the_request(driver_repo):
     # There is deliberately no way for a caller to supply a hash: it would be
     # checked against bytes the same caller chose, which verifies nothing.

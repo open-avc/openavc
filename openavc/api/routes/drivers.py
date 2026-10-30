@@ -607,17 +607,28 @@ async def _try_download_python_companion(
     return CompanionFetch(companion_filepath)
 
 
+_COMMUNITY_UNREACHABLE = (
+    "Could not reach the community driver library at raw.githubusercontent.com. "
+    "Check that this system can reach the internet."
+)
+
+
 @router.get("/drivers/community")
 async def get_community_drivers(refresh: bool = False) -> dict[str, Any]:
     """Fetch the community driver index from GitHub (cached; ``refresh``
-    fetches it now)."""
+    fetches it now).
+
+    The cache answers its last good list when a fetch fails, so an empty
+    list means no copy was ever fetched: answered 200 with ``error``, the
+    sentence the Programmer shows where the library would be.
+    """
     from openavc.discovery.community_index import CommunityIndexCache
 
     if not hasattr(get_community_drivers, "_cache"):
         get_community_drivers._cache = CommunityIndexCache()
 
     drivers = await get_community_drivers._cache.get_drivers(force=refresh)
-    return {"drivers": drivers, "error": None if drivers else "Failed to fetch community drivers"}
+    return {"drivers": drivers, "error": None if drivers else _COMMUNITY_UNREACHABLE}
 
 
 @router.post("/drivers/install")

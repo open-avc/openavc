@@ -280,12 +280,18 @@ export async function reloadPythonDriver(
 
 // --- Community Drivers ---
 
+/** The server could not reach the community driver library and has no copy:
+ *  the message is its sentence saying so. */
+export class CatalogUnreachableError extends Error {}
+
 /** The community catalog. `refresh` fetches it now instead of answering from
- *  the server's cached copy. */
+ *  the server's cached copy. Throws `CatalogUnreachableError` when the server
+ *  could not reach the library, which it answers as 200 with no drivers. */
 export async function fetchCommunityDrivers(refresh = false): Promise<CommunityDriver[]> {
-  const data = await request<{ drivers: CommunityDriver[] }>(
+  const data = await request<{ drivers: CommunityDriver[]; error?: string | null }>(
     refresh ? "/drivers/community?refresh=1" : "/drivers/community",
   );
+  if (data.error && data.drivers.length === 0) throw new CatalogUnreachableError(data.error);
   return data.drivers;
 }
 

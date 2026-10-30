@@ -1365,10 +1365,14 @@ function ErrorState({
           maxWidth: 400,
         }}
       >
-        Failed to load community drivers.
+        Could not load the community drivers.
         <br />
         <span style={{ fontSize: "12px", color: "#888" }}>
           {error.replace(/^Error:\s*/i, "").slice(0, 200)}
+        </span>
+        <br />
+        <span style={{ fontSize: "12px", color: "#888" }}>
+          A YAML driver (.avcdriver file) can also be added with Import from File on the Create tab.
         </span>
       </div>
       <button

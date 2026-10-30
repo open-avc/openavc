@@ -279,6 +279,8 @@ Installs come from the official driver library and nowhere else, and the downloa
 
 The refresh button beside the search box fetches the library's list from GitHub again, so a driver published or updated in the last few minutes appears at its new version.
 
+The library is fetched from `raw.githubusercontent.com`. When the system cannot reach it, the tab says so, with **Retry**. On a system with no internet access, a YAML driver (`.avcdriver` file) downloaded elsewhere can be added with **Import from File** on the **Create** tab.
+
 ### Updating Drivers
 
 Installed drivers stay at the version you installed until you update them. When the community library has a newer version, **Update** appears in three places:
