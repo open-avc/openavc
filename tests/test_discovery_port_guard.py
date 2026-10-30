@@ -186,8 +186,17 @@ class TestPortsInUse:
 
 
 class _Connection:
-    def __init__(self, host, port, name):
+    """What ``DeviceManager.live_connections`` lists (a ``DeviceConnection``)."""
+
+    def __init__(self, host, port, name, driver="acme_widget", bridge=""):
         self.host, self.port, self.name = host, port, name
+        self.driver, self.bridge = driver, bridge
+
+
+async def _start_guard(engine: DiscoveryEngine) -> None:
+    """What ``_scan_pipeline`` does when a scan starts."""
+    engine._held = await engine._held_ports()
+    engine._guard = PortGuard({key: conn.name for key, conn in engine._held.items()})
 
 
 class TestTheScanLeavesConnectedDevicesAlone:
@@ -209,7 +218,7 @@ class TestTheScanLeavesConnectedDevicesAlone:
                 "discovery": {"tcp_probe": {"port": port, "expect": "ACME-WIDGET",
                                             "timeout_ms": 500}},
             }) for port in (held.port, free.port)]
-            engine._guard = PortGuard(await engine._held_ports())
+            await _start_guard(engine)
 
             await engine._port_scan_hosts([HOST], [held.port, free.port], 1, False)
             device = engine.results[HOST]
@@ -231,7 +240,7 @@ class TestTheScanLeavesConnectedDevicesAlone:
     async def test_a_device_set_up_by_host_name_is_found_by_its_address(self):
         engine = self._engine([_Connection("localhost", 4321, "Lobby Widget")])
         held = await engine._held_ports()
-        assert held == {(HOST, 4321): "Lobby Widget"}
+        assert {key: conn.name for key, conn in held.items()} == {(HOST, 4321): "Lobby Widget"}
 
     async def test_a_host_name_that_does_not_resolve_is_named_in_the_warnings(self):
         engine = self._engine([_Connection("nowhere.invalid", 4321, "Lobby Widget")])
@@ -244,7 +253,7 @@ class TestTheScanLeavesConnectedDevicesAlone:
 
     async def test_a_companion_is_not_offered_a_held_port(self):
         engine = self._engine([_Connection(HOST, 4321, "Lobby Widget")])
-        engine._guard = PortGuard(await engine._held_ports())
+        await _start_guard(engine)
         device = engine._get_or_create(HOST)
         device.alive = True
         device.open_ports = [80, 4321]
@@ -292,6 +301,103 @@ class TestLiveConnections:
         assert [(c.name, c.host, c.port) for c in manager.live_connections()] == [
             ("Lobby Widget", "10.77.0.5", 4321),
         ]
+
+
+class TestADeviceInTheProjectIsStillIdentified:
+    """The probe that would have identified a connected project device never
+    runs on the port its driver holds, so the scan identifies it from that
+    connection instead, but only when no fingerprint did."""
+
+    def _engine(self, connections) -> DiscoveryEngine:
+        engine = DiscoveryEngine()
+        engine.load_driver_hints_from_registry([
+            {"id": "acme_widget", "name": "Acme Widget", "manufacturer": "Acme",
+             "category": "display", "transport": "tcp",
+             "discovery": {"tcp_probe": {"port": 4321, "send_ascii": "ID?\r",
+                                         "expect": "ACME-WIDGET"},
+                           "mdns": "_acmewidget._tcp.local."}},
+            {"id": "acme_gadget", "name": "Acme Gadget", "manufacturer": "Acme",
+             "category": "audio", "transport": "tcp",
+             "discovery": {"mdns": "_acmegadget._tcp.local."}},
+        ])
+        engine.held_connections = lambda: list(connections)
+        return engine
+
+    async def test_its_driver_identifies_it_when_nothing_else_does(self):
+        engine = self._engine([_Connection("10.77.0.5", 4321, "Lobby Widget")])
+        await _start_guard(engine)
+        device = engine._get_or_create("10.77.0.5")
+        device.alive = True
+        await engine._finalize_scan()
+
+        match = device.identification
+        assert (match.state, match.driver_id) == ("identified", "acme_widget")
+        assert match.source == "connected:4321"
+        [record] = [ev for ev in device.evidence_log if ev.data.get("kind") == "connected"]
+        assert record.data == {
+            "kind": "connected", "driver_id": "acme_widget",
+            "device_name": "Lobby Widget", "port": 4321,
+        }
+
+    async def test_a_fingerprint_still_wins(self):
+        from openavc.discovery.tier_matcher import evidence_mdns
+
+        engine = self._engine([_Connection("10.77.0.5", 4321, "Lobby Widget")])
+        await _start_guard(engine)
+        device = engine._get_or_create("10.77.0.5")
+        device.alive = True
+        device.evidence_log.append(evidence_mdns("_acmegadget._tcp.local."))
+        await engine._finalize_scan()
+        assert (device.identification.state, device.identification.driver_id) == (
+            "identified", "acme_gadget",
+        )
+
+    async def test_a_device_reached_through_a_bridge_is_not_named_for_the_bridge(self):
+        engine = self._engine([
+            _Connection("10.77.0.9", 4999, "Lobby Projector", driver="acme_widget", bridge="ir_bridge"),
+        ])
+        await _start_guard(engine)
+        device = engine._get_or_create("10.77.0.9")
+        device.alive = True
+        await engine._finalize_scan()
+        assert device.identification.state != "identified"
+        assert not [ev for ev in device.evidence_log if ev.data.get("kind") == "connected"]
+
+    async def test_a_device_whose_only_open_port_is_held_stays_in_the_results(self):
+        engine = self._engine([_Connection("10.77.0.5", 4321, "Lobby Widget")])
+        await _start_guard(engine)
+        # Named by the ARP table, answers no ping; the port that would have
+        # proved it is there is the one its driver holds.
+        device = engine._get_or_create("10.77.0.5")
+        device.alive = True
+        engine._arp_provisional.add("10.77.0.5")
+        engine._arp_provisional.add("10.77.0.6")
+        engine._get_or_create("10.77.0.6").alive = True
+        await engine._finalize_scan()
+        assert "10.77.0.5" in engine.results
+        assert "10.77.0.6" not in engine.results
+
+
+class TestATlsPortIsNotListenedTo:
+    async def test_no_greeting_read_when_every_probe_speaks_tls(self):
+        async with _Port() as dev:
+            specs = [
+                _spec("acme_widget", dev.port, tls=True, send_ascii="GET / HTTP/1.0\r\n\r\n",
+                      expect="ACME", timeout_ms=300),
+                _spec("acme_gadget", dev.port, tls=True, send_ascii="GET / HTTP/1.0\r\n\r\n",
+                      expect="GADGET", timeout_ms=300),
+            ]
+            guard = PortGuard()
+            await observe_port_probes(HOST, dev.port, specs, source_ip="", guard=guard)
+            await asyncio.sleep(0.1)
+        assert dev.accepted == 2  # the two probes, no greeting read
+        record = guard.record(HOST)[dev.port]
+        assert "greeting" not in record
+        assert [p["how"] for p in record["probes"]] == [HOW_CONNECTED, HOW_CONNECTED]
+
+    def test_its_time_has_no_greeting_read(self):
+        specs = [_spec("acme_widget", 443, tls=True, send_ascii="x", expect="A", timeout_ms=1000)]
+        assert port_probe_seconds(specs) == pytest.approx(2.0 + 1.0)
 
 
 # ---------------------------------------------------------------------------

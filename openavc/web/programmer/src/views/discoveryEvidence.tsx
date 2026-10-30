@@ -10,7 +10,7 @@ import { cleanBannerText, readsAsText } from "./discoveryViewHelpers";
 // dispatched on `data.kind` rather than the
 // internal tier value. The raw `data.kind` strings (`mdns`, `ssdp`,
 // `amx_ddp`, `broadcast`, `probe`, `oui`, `snmp_pen`, `hostname`,
-// `open_port`, `vendor_string`) are stable per the API contract;
+// `open_port`, `vendor_string`, `connected`) are stable per the API contract;
 // the strings below are the natural-English versions of
 // those.
 
@@ -169,6 +169,16 @@ export function describeEvidence(
     case "open_port": {
       const port = data.value;
       return { headline: `Port ${port} is open`, detail: null };
+    }
+    case "connected": {
+      // A device in the project whose driver is connected here; the scan
+      // left that port alone, so this stands in for the probe it skipped.
+      const name = typeof data.device_name === "string" ? (data.device_name as string) : "a device";
+      const port = data.port;
+      return {
+        headline: `In the project as ${name}, connected on port ${port}`,
+        detail: null,
+      };
     }
     default:
       return { headline: ev.source || "(no signal)", detail: null };

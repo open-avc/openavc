@@ -160,6 +160,7 @@ const SOURCE_KIND_FALLBACKS: Record<string, string> = {
   hostname: "Hostname pattern",
   vendor_string: "Manufacturer alias",
   open_port: "Observed open port",
+  connected: "Connected device in the project",
 };
 
 /**

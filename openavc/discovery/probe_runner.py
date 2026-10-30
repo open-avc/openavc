@@ -1236,7 +1236,9 @@ async def observe_port_probes(
     2. The port is listened to once (``greeting``, when the caller already
        read it, stands in for that read). A port that said nothing is
        listened to once more when a check on it only listens: a device that
-       serves one session at a time does not always greet the next one.
+       serves one session at a time does not always greet the next one. A
+       port whose checks all speak TLS is not listened to: a TLS server says
+       nothing before the handshake, so there is no greeting to read.
     3. Every check that only listens is judged on that greeting, with no
        connection of its own (``answered_by_greeting``).
     4. When the greeting asks for a login, a check that sends runs only if
@@ -1263,12 +1265,15 @@ async def observe_port_probes(
         return [obs for obs in out if obs is not None]
 
     window = _greeting_window(specs)
-    if greeting is None:
-        greeting = await _read_port_greeting(host, port, window, source_ip, guard, rate_limiter)
-    if not greeting.data and any(answered_by_greeting(s) for s in specs):
-        greeting = await _read_port_greeting(host, port, window, source_ip, guard, rate_limiter)
+    if _all_tls(specs):
+        greeting = PortGreeting(port=port)
+    else:
+        if greeting is None:
+            greeting = await _read_port_greeting(host, port, window, source_ip, guard, rate_limiter)
+        if not greeting.data and any(answered_by_greeting(s) for s in specs):
+            greeting = await _read_port_greeting(host, port, window, source_ip, guard, rate_limiter)
+        guard.note_greeting(host, port, greeting.data)
     said = greeting.data
-    guard.note_greeting(host, port, said)
     login = is_login_prompt(said)
 
     for i, spec in enumerate(specs):
@@ -1298,11 +1303,16 @@ async def observe_port_probes(
     return [obs for obs in out if obs is not None]
 
 
+def _all_tls(specs: Sequence[CustomProbeSpec]) -> bool:
+    return bool(specs) and all(spec.tls for spec in specs)
+
+
 def port_probe_seconds(specs: Sequence[CustomProbeSpec]) -> float:
     """How long ``observe_port_probes`` takes on one port, read from the
     checks it will run there: the greeting read (twice when a check only
-    listens), then each check that opens a connection of its own, one after
-    another, at its reply allowance and its ``then:`` step.
+    listens, none when every check speaks TLS), then each check that opens a
+    connection of its own, one after another, at its reply allowance and its
+    ``then:`` step.
 
     One connect allowance for the whole port, not one per connection: the
     port answered the port scan moments before, so its connects are quick,
@@ -1310,7 +1320,7 @@ def port_probe_seconds(specs: Sequence[CustomProbeSpec]) -> float:
     checks several times over (measured: a 76 s grant for 13 s of work on a
     home network), which a tight scan would pay for by dropping probes.
     """
-    reads = 2 if any(answered_by_greeting(s) for s in specs) else 1
+    reads = 0 if _all_tls(specs) else 2 if any(answered_by_greeting(s) for s in specs) else 1
     seconds = GREETING_CONNECT_SECONDS + reads * _greeting_window(specs)
     for spec in specs:
         if answered_by_greeting(spec):

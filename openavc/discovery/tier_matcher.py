@@ -79,6 +79,7 @@ KIND_SNMP_PEN = "snmp_pen"             # enrichment
 KIND_HOSTNAME = "hostname"             # enrichment
 KIND_OPEN_PORT = "open_port"           # enrichment — AV-specific port observed open
 KIND_VENDOR_STRING = "vendor_string"   # enrichment — manufacturer string from a probe response
+KIND_CONNECTED = "connected"           # a project device's driver is connected to this device
 
 
 _STRONG_KINDS = {
@@ -703,6 +704,25 @@ class TierMatcher:
         hits = self._strong_hits(evidence_log)
         if hits:
             return self._finalize_strong_match(hits, evidence_log)
+
+        # No fingerprint answered, and a project device's driver is connected
+        # to this device: the scan left that port alone (``port_guard``), so
+        # the probe that would have identified it never ran. The driver the
+        # project connects with is the identification. Only here, after every
+        # fingerprint: a device that still answers one is identified exactly
+        # as it would be outside the project.
+        connected = next(
+            (ev for ev in evidence_log
+             if ev.data.get("kind") == KIND_CONNECTED
+             and isinstance(ev.data.get("driver_id"), str) and ev.data["driver_id"]),
+            None,
+        )
+        if connected is not None:
+            return IdentificationMatch.identified(
+                driver_id=connected.data["driver_id"],
+                source=connected.source,
+                evidence=[connected],
+            )
 
         # enrichment soft signals -> possible state if any narrows the candidate set
         candidates, source = self._gather_soft_candidates(evidence_log)
@@ -1333,6 +1353,28 @@ def evidence_vendor_string(value: str, source_probe_id: str) -> Evidence:
             "value": normalized,
             "raw": value,
             "source_probe_id": source_probe_id,
+        },
+    )
+
+
+def evidence_connected(driver_id: str, device_name: str, port: int) -> Evidence:
+    """A project device whose driver is connected to this device on ``port``.
+
+    The scan does not open a port a connected project device holds
+    (``discovery/port_guard.py``), so the probe that would have identified
+    the device there never runs; this record says which driver the project
+    connects with instead. ``TierMatcher.match`` identifies from it only when
+    no fingerprint did. Any driver counts, a generic one included: it is what
+    the project uses.
+    """
+    return Evidence(
+        tier=SignalTier.ENRICHMENT,
+        source=f"connected:{port}",
+        data={
+            "kind": KIND_CONNECTED,
+            "driver_id": driver_id,
+            "device_name": device_name,
+            "port": port,
         },
     )
 

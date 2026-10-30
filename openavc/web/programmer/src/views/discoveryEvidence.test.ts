@@ -83,6 +83,15 @@ describe("the evidence lines", () => {
   });
 });
 
+describe("a device the project is connected to", () => {
+  it("says which project device is connected, and on which port", () => {
+    expect(describeEvidence({
+      tier: "enrichment", source: "connected:1515",
+      data: { kind: "connected", driver_id: "acme_widget", device_name: "Lobby Widget", port: 1515 },
+    })).toEqual({ headline: "In the project as Lobby Widget, connected on port 1515", detail: null });
+  });
+});
+
 describe("what each port received", () => {
   const names: Record<string, string> = { acme_widget: "Acme Widget", acme_gadget: "Acme Gadget" };
   const name = (id: string) => names[id];

@@ -53,6 +53,7 @@ from openavc.discovery.tier_matcher import (
     DriverProfile,
     SignalIndex,
     TierMatcher,
+    evidence_connected,
     evidence_hostname,
     evidence_open_port,
     evidence_oui,
@@ -514,6 +515,10 @@ class DiscoveryEngine:
         # per port at a time, and what each port received. Replaced on every
         # start_scan, and filled with the held ports when the scan starts.
         self._guard: PortGuard = PortGuard()
+        # The connections behind those held ports, (address, port) ->
+        # held_connections' object: a device the scan left alone is
+        # identified from the driver connected to it (_finalize_scan).
+        self._held: dict[tuple[str, int], Any] = {}
         # Discovery settings (persisted in project)
         self.config: dict[str, Any] = {
             "snmp_enabled": True,
@@ -926,6 +931,7 @@ class DiscoveryEngine:
             self._port_scanned = set()
             self._narrowed = False
             self._guard = PortGuard()
+            self._held = {}
 
             self._scan_task = asyncio.create_task(
                 self._run_scan(targets, total_seconds)
@@ -1053,11 +1059,12 @@ class DiscoveryEngine:
         # un-installed drivers contribute deterministic rules — that's
         # how discovery proposes what to install.
         await self.refresh_signal_index_with_catalog()
-        self._guard = PortGuard(await self._held_ports())
+        self._held = await self._held_ports()
+        self._guard = PortGuard({key: conn.name for key, conn in self._held.items()})
         return await self._scan_pipeline_inner(subnets)
 
-    async def _held_ports(self) -> dict[tuple[str, int], str]:
-        """``(address, port)`` -> device name, for every connected project
+    async def _held_ports(self) -> dict[tuple[str, int], Any]:
+        """``(address, port)`` -> the connection, for every connected project
         device, read once as the scan starts.
 
         A device set up by host name is looked up here, since a scan knows
@@ -1076,10 +1083,10 @@ class DiscoveryEngine:
             if getattr(c, "host", "") and isinstance(getattr(c, "port", None), int)
         ]
         addresses = await asyncio.gather(*(resolve_address(c.host) for c in wanted))
-        held: dict[tuple[str, int], str] = {}
+        held: dict[tuple[str, int], Any] = {}
         for conn, address in zip(wanted, addresses):
             if address:
-                held[(address, conn.port)] = conn.name
+                held[(address, conn.port)] = conn
                 continue
             log.warning("Could not look up %s (%s) to keep the scan off its port", conn.host, conn.name)
             self.scan_status.warnings.append(
@@ -1810,6 +1817,7 @@ class DiscoveryEngine:
         """
         await self._set_phase(8, "finalize", "Matching drivers...")
 
+        connected = self._connected_evidence()
         finalize_total = len(self.results)
         for i, device in enumerate(self.results.values()):
             # Open-port records for ports a driver's port_open: hint names,
@@ -1820,6 +1828,9 @@ class DiscoveryEngine:
                 device.evidence_log, device.open_ports, self.signal_index,
                 banner_texts(device.banners),
             ))
+            # A project device's driver connected to this one: the identification
+            # when no fingerprint answered (the scan left that port alone).
+            device.evidence_log.extend(connected.get(device.ip, []))
 
             device.identification = self.tier_matcher.match(device.evidence_log)
             self._fill_category_from_match(device)
@@ -1841,10 +1852,13 @@ class DiscoveryEngine:
         # sweep, a second ping, a port scan and the passive listeners to show
         # itself; with nothing to show, listing it would be inventing
         # equipment out of a cache entry that nobody can act on.
+        # A device a project driver is connected to answers that driver, even
+        # when the port it answers on was the one the scan left alone.
         unproven = [
             ip for ip in self._arp_provisional
             if ip in self.results
             and not self._answered_for_itself(self.results[ip])
+            and ip not in connected
         ]
         for ip in unproven:
             del self.results[ip]
@@ -2413,6 +2427,24 @@ class DiscoveryEngine:
                         return
 
         await asyncio.gather(*(one(ip) for ip in ips), return_exceptions=True)
+
+    def _connected_evidence(self) -> dict[str, list[Evidence]]:
+        """Address -> one ``connected`` record per project device whose driver
+        held a port there when the scan started.
+
+        A serial device reached through a bridge's pass-through port is left
+        out: the address is the bridge's, and the bridge device's own
+        connection (a port of its own) is the one that names it.
+        """
+        out: dict[str, list[Evidence]] = {}
+        for (address, port), conn in sorted(self._held.items()):
+            driver_id = getattr(conn, "driver", "")
+            if not driver_id or getattr(conn, "bridge", ""):
+                continue
+            out.setdefault(address, []).append(
+                evidence_connected(driver_id, getattr(conn, "name", "") or driver_id, port),
+            )
+        return out
 
     @staticmethod
     def _answered_for_itself(device: DiscoveredDevice) -> bool:
