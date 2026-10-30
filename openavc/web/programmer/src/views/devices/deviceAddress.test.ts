@@ -54,6 +54,16 @@ describe("connectionTestText", () => {
     ).toBe("Connected to 192.168.4.250:4321 through Rack iTach (9 ms)");
   });
 
+  it("shows no time for a device answered from the connection it has", () => {
+    expect(
+      connectionTestText({
+        success: true, error: null, latency_ms: null, connection: at,
+        in_use_by: "Lobby Display",
+        note: "The device is connected now. The test did not open a second connection to it.",
+      }),
+    ).toBe("Connected to 192.168.4.250:4321");
+  });
+
   it("shows a failure as the server's sentence, which names the address once", () => {
     const error = "Can't reach 192.168.4.250:4321. Check the IP address and network.";
     expect(

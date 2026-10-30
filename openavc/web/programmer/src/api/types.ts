@@ -699,6 +699,8 @@ export interface DeviceConnectionTest {
   connection?: DeviceAddress;
   note?: string;
   simulated?: boolean;
+  /** The connected device whose driver holds this address: the test opened no connection. */
+  in_use_by?: string;
 }
 
 export interface DeviceInfo {

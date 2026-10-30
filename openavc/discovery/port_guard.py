@@ -10,7 +10,9 @@ check. Three jobs:
   connection takes the port from the old one, often with no FIN or RST, so the
   driver keeps a socket that never answers again. The device is identified by
   its driver already, so leaving the port alone costs the scan nothing. The
-  map is built when the scan starts (``DiscoveryEngine.held_connections``).
+  map is built when the scan starts (``DiscoveryEngine.held_connections``) by
+  ``held_ports``, which the cloud diagnostics ``port_scan`` and ``tcp_check``
+  and a device page's Test Connection ask too before they open a port.
 - **One connection per port.** ``hold(host, port)`` is a lock per address and
   port, held from connect to close by every connection the identification
   stage opens: the greeting read, each check, and a companion that asks
@@ -30,7 +32,8 @@ an account or raises an alarm after a few of those would do it because
 OpenAVC looked for its driver.
 
 Engine-loop only. A companion runs on its own loop in a worker thread, and its
-holds hop to this loop through ``companion.run_companion``. Pure stdlib.
+holds hop to this loop through ``companion.run_companion``. Pure stdlib, but
+for ``held_ports``, which looks host names up through ``network_scanner``.
 """
 
 from __future__ import annotations
@@ -39,7 +42,7 @@ import asyncio
 import re
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Mapping
+from typing import Any, AsyncIterator, Iterable, Mapping
 
 # How a check reached its port (``PortCheck.how``).
 HOW_GREETING = "greeting"          # judged on what the port said when connected to; no connection of its own
@@ -76,6 +79,34 @@ _LOGIN_PROMPT = re.compile(
     r"(?:\buser\b|user[ _-]?name|\blog[ _-]?in\b|password|passcode|passwd)[^:]{0,12}:$",
     re.IGNORECASE,
 )
+
+
+async def held_ports(
+    connections: Iterable[Any],
+) -> tuple[dict[tuple[str, int], Any], list[Any]]:
+    """The ports connected project devices hold, by address.
+
+    ``connections`` are ``DeviceManager.live_connections()``: objects with
+    ``host``, ``port`` and ``name``. Returns ``(address, port)`` -> the
+    connection, with each host name looked up first since what gets dialed is
+    an address, and the connections whose host name did not resolve, which
+    nothing can recognise by address.
+    """
+    from openavc.discovery.network_scanner import resolve_address
+
+    wanted = [
+        c for c in connections
+        if getattr(c, "host", "") and isinstance(getattr(c, "port", None), int)
+    ]
+    addresses = await asyncio.gather(*(resolve_address(c.host) for c in wanted))
+    held: dict[tuple[str, int], Any] = {}
+    unresolved: list[Any] = []
+    for conn, address in zip(wanted, addresses):
+        if address:
+            held[(address, conn.port)] = conn
+        else:
+            unresolved.append(conn)
+    return held, unresolved
 
 
 def is_login_prompt(greeting: bytes) -> bool:

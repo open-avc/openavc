@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from openavc.cloud.agent import CloudAgent
     from openavc.core.device_manager import DeviceManager
     from openavc.core.event_bus import EventBus
+    from openavc.discovery.port_guard import PortGuard
 
 log = get_logger(__name__)
 
@@ -299,13 +300,17 @@ class CommandHandler:
             if action == "ping":
                 result = await _diagnostic_ping(target, params)
             elif action == "tcp_check":
-                result = await _diagnostic_tcp_check(target, params)
+                result = await _diagnostic_tcp_check(
+                    target, params, guard=await self._held_port_guard(),
+                )
             elif action == "dns_lookup":
                 result = await _diagnostic_dns_lookup(target, params)
             elif action == "traceroute":
                 result = await _diagnostic_traceroute(target, params)
             elif action == "port_scan":
-                result = await _diagnostic_port_scan(target, params)
+                result = await _diagnostic_port_scan(
+                    target, params, guard=await self._held_port_guard(),
+                )
             else:
                 await self._send_diagnostic_result(
                     request_id, False, error=f"Unknown diagnostic action: {action}",
@@ -315,6 +320,23 @@ class CommandHandler:
         except Exception as e:
             log.exception("Diagnostic %s failed", action)
             await self._send_diagnostic_result(request_id, False, error=str(e))
+
+    async def _held_port_guard(self) -> "PortGuard":
+        """The ports connected project devices' drivers hold, which
+        ``tcp_check`` and ``port_scan`` report as in use without connecting
+        (``discovery/port_guard.py``): a device that serves one connection at
+        a time gives its port to the newest one."""
+        from openavc.discovery.port_guard import PortGuard, held_ports
+
+        live = getattr(self._devices, "live_connections", None)
+        if live is None:
+            return PortGuard()
+        try:
+            held, _unresolved = await held_ports(live())
+        except Exception:
+            log.exception("Could not read the project's connected devices")
+            return PortGuard()
+        return PortGuard({key: conn.name for key, conn in held.items()})
 
     async def _send_diagnostic_result(
         self, request_id: str, success: bool,
@@ -640,8 +662,14 @@ async def _diagnostic_ping(target: str, params: dict) -> dict:
     }
 
 
-async def _diagnostic_tcp_check(target: str, params: dict) -> dict:
-    """Probe a TCP port. Target is the host; port comes from params."""
+async def _diagnostic_tcp_check(
+    target: str, params: dict, guard: "PortGuard | None" = None,
+) -> dict:
+    """Probe a TCP port. Target is the host; port comes from params.
+
+    A port ``guard`` says a connected project device holds is reported open
+    and ``in_use_by`` that device, and never connected to.
+    """
     import asyncio
     raw_port = params.get("port")
     if raw_port is None:
@@ -656,6 +684,13 @@ async def _diagnostic_tcp_check(target: str, params: dict) -> dict:
     if not 1 <= port <= 65535:
         return {"open": False, "error": f"invalid port {port} (must be 1-65535)"}
     timeout_s = _clamp(params.get("timeout"), 1, 30, 3)
+
+    if guard is not None:
+        from openavc.discovery.network_scanner import resolve_address
+
+        holder = guard.held_by(await resolve_address(target) or target, port)
+        if holder is not None:
+            return {"open": True, "host": target, "port": port, "in_use_by": holder}
 
     try:
         _, writer = await asyncio.wait_for(
@@ -742,9 +777,19 @@ async def _diagnostic_traceroute(target: str, params: dict) -> dict:
 _DEFAULT_AV_PORTS = [22, 23, 80, 443, 4352, 5000, 8080, 8443, 1515, 1702, 2001, 9090]
 
 
-async def _diagnostic_port_scan(target: str, params: dict) -> dict:
-    """Scan a host's TCP ports. Reuses the discovery PortScanner."""
-    from openavc.discovery.port_scanner import scan_host_ports
+async def _diagnostic_port_scan(
+    target: str, params: dict, guard: "PortGuard | None" = None,
+) -> dict:
+    """Scan a host's TCP ports. Reuses the discovery PortScanner.
+
+    A port ``guard`` says a connected project device holds is listed in
+    ``open`` and named in ``in_use_by`` (port -> device), and never
+    connected to.
+    """
+    from openavc.discovery.network_scanner import resolve_address
+    from openavc.discovery.port_scanner import (
+        PORT_IN_USE, PORT_OPEN, scan_host_port_states,
+    )
 
     raw_ports = params.get("ports") or _DEFAULT_AV_PORTS
     ports: list[int] = []
@@ -758,9 +803,18 @@ async def _diagnostic_port_scan(target: str, params: dict) -> dict:
     if not ports:
         return {"host": target, "open": [], "scanned": 0}
 
-    open_ports = await scan_host_ports(target, ports, timeout=1.5)
-    return {
+    # The guard knows devices by address, so a host name is looked up first.
+    address = await resolve_address(target) or target
+    states = await scan_host_port_states(address, ports, timeout=1.5, guard=guard)
+    result: dict[str, Any] = {
         "host": target,
         "scanned": len(ports),
-        "open": open_ports,
+        "open": sorted(p for p, s in states.items() if s in (PORT_OPEN, PORT_IN_USE)),
     }
+    in_use = {
+        str(p): guard.held_by(address, p)
+        for p, s in states.items() if s == PORT_IN_USE and guard is not None
+    }
+    if in_use:
+        result["in_use_by"] = in_use
+    return result

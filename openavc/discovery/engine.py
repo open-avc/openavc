@@ -16,9 +16,8 @@ from openavc.discovery.network_scanner import (
     harvest_arp_table,
     netbios_sweep,
     ping_sweep,
-    resolve_address,
 )
-from openavc.discovery.port_guard import PortGuard
+from openavc.discovery.port_guard import PortGuard, held_ports
 from openavc.discovery.port_scanner import scan_host_ports, grab_banners, BASELINE_PORTS
 from openavc.discovery.oui_database import OUIDatabase
 from openavc.discovery.hints import (
@@ -1078,16 +1077,8 @@ class DiscoveryEngine:
         except Exception:
             log.exception("Could not read the project's connected devices")
             return {}
-        wanted = [
-            c for c in connections
-            if getattr(c, "host", "") and isinstance(getattr(c, "port", None), int)
-        ]
-        addresses = await asyncio.gather(*(resolve_address(c.host) for c in wanted))
-        held: dict[tuple[str, int], Any] = {}
-        for conn, address in zip(wanted, addresses):
-            if address:
-                held[(address, conn.port)] = conn
-                continue
+        held, unresolved = await held_ports(connections)
+        for conn in unresolved:
             log.warning("Could not look up %s (%s) to keep the scan off its port", conn.host, conn.name)
             self.scan_status.warnings.append(
                 f"Could not look up {conn.host}, the address of {conn.name}, so this "

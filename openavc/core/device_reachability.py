@@ -23,6 +23,17 @@ Success means something accepted a connection at that address. It does not
 mean the device there speaks the driver's protocol: whether it answers is the
 device's ``connected`` and ``offline_reason`` state.
 
+A test that would open a connection never opens one to a port a connected
+project device's driver holds (``DeviceManager.live_connections``, looked up
+by address through ``discovery/port_guard.held_ports``, the list a Discovery
+scan leaves alone). Many displays and projectors serve one control connection
+at a time and give the port to the newest, so a test of a working device would
+take it from its own driver. A device that is connected is answered from that
+connection: success, no latency, ``in_use_by`` naming it and a ``note``. A port
+another project device holds (the bridge an IR device sends through, say) is
+answered the same way, naming that device. UDP and serial tests run as before:
+pointing a UDP socket sends nothing, and the list holds no serial port.
+
 A failure the operating system reports (host down, refused, no route) is
 worded by ``core/connection_fault``, the same sentence the device card shows,
 never the raw OS text. The ``error`` is the whole sentence a person reads:
@@ -37,7 +48,7 @@ from __future__ import annotations
 import asyncio
 import socket
 import time
-from typing import Any
+from typing import Any, Mapping
 
 import httpx
 
@@ -54,7 +65,12 @@ from openavc.core.connection_fault import (
     link_local_fault,
 )
 from openavc.core.device_config import connection_of, resolve_device_config
+from openavc.discovery.network_scanner import resolve_address
+from openavc.discovery.port_guard import held_ports
 from openavc.transport.endpoint import control_bind_address
+from openavc.utils.logger import get_logger
+
+log = get_logger(__name__)
 
 _CONNECT_TIMEOUT_S = 5.0
 _SERIAL_TIMEOUT_S = 2
@@ -82,19 +98,23 @@ async def run_connection_test(device: Any, engine: Any) -> dict[str, Any]:
     While the device is simulated, the simulator is what it is connected to,
     so that is what is tested, and the result says so (``simulated`` and a
     ``note`` naming the equipment's own address).
+
+    A device whose driver is connected now is answered from that connection
+    and nothing is dialed; neither is a port another connected device holds.
     """
     resolved = resolve_device_config(device, engine.project)
+    live = _live_connections(engine)
+    own = next((c for c in live if c.device_id == device.id), None)
     simulation = getattr(engine, "simulation", None)
     redirect = simulation.redirect_of(device.id) if simulation is not None else None
+    if own is not None and _opens_connection(resolved):
+        return _connected_now(own, resolved, redirect)
+    held, _unresolved = await held_ports(live)
     if not redirect:
-        return await check_reachability(resolved, engine.project)
-    equipment = connection_of(resolved)
+        return await check_reachability(resolved, engine.project, held=held)
     simulated = {**resolved, "config": {**(resolved.get("config") or {}), **redirect}}
-    result = await check_reachability(simulated, engine.project)
-    where = (
-        f"{equipment.host}:{equipment.port}" if equipment.host and equipment.port
-        else equipment.host or str(equipment.port or "")
-    )
+    result = await check_reachability(simulated, engine.project, held=held)
+    where = _where(connection_of(resolved))
     result["simulated"] = True
     result["note"] = (
         "This device is simulated, so the test reached the simulator, not the "
@@ -104,11 +124,83 @@ async def run_connection_test(device: Any, engine: Any) -> dict[str, Any]:
     return result
 
 
-async def check_reachability(resolved: dict[str, Any], project: Any) -> dict[str, Any]:
+def _live_connections(engine: Any) -> list[Any]:
+    """Where each connected project device's driver is connected now, or
+    nothing when the engine has no device manager to ask."""
+    devices = getattr(engine, "devices", None)
+    live = getattr(devices, "live_connections", None)
+    if live is None:
+        return []
+    try:
+        return list(live())
+    except Exception:
+        log.exception("Could not read the project's connected devices")
+        return []
+
+
+def _opens_connection(resolved: dict[str, Any]) -> bool:
+    """Whether testing this device opens a connection to its address: tcp,
+    ssh, mqtt, http and OSC over TCP do, UDP, SNMP, OSC over UDP and serial
+    do not, and an IR device's bridge is tested as a device of its own."""
+    conn = connection_of(resolved)
+    if conn.transport in ("serial", "bridge", "udp", "snmp"):
+        return False
+    if conn.transport == "osc":
+        cfg = resolved.get("config") or {}
+        return str(cfg.get("transport_mode", "udp")).lower() == "tcp"
+    return True
+
+
+def _where(conn: Any) -> str:
+    """``host:port``, or whichever of the two is known."""
+    if conn.host and conn.port:
+        return f"{conn.host}:{conn.port}"
+    return conn.host or str(conn.port or "")
+
+
+def _connected_now(
+    own: Any, resolved: dict[str, Any], redirect: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """The answer for a device whose driver is connected now: the address it
+    is connected to, and a note saying no second connection was opened. A
+    simulated device is connected to the simulator, and the note says so."""
+    if not redirect:
+        return {
+            "success": True,
+            "error": None,
+            "latency_ms": None,
+            "connection": connection_of(resolved).address(),
+            "in_use_by": own.name,
+            "note": "The device is connected now. The test did not open a second connection to it.",
+        }
+    simulated = {**resolved, "config": {**(resolved.get("config") or {}), **redirect}}
+    where = _where(connection_of(resolved))
+    equipment = f"the equipment at {where}" if where else "the equipment"
+    return {
+        "success": True,
+        "error": None,
+        "latency_ms": None,
+        "connection": connection_of(simulated).address(),
+        "in_use_by": own.name,
+        "simulated": True,
+        "note": (
+            f"This device is simulated and connected to the simulator now, not to "
+            f"{equipment}. The test did not open a second connection to it."
+        ),
+    }
+
+
+async def check_reachability(
+    resolved: dict[str, Any],
+    project: Any,
+    held: Mapping[tuple[str, int], Any] | None = None,
+) -> dict[str, Any]:
     """Test one device's connection.
 
     ``resolved`` is the device as :func:`resolve_device_config` returns it;
     ``project`` is only read to find the bridge an IR device emits through.
+    ``held`` is ``port_guard.held_ports``' map: a connection to one of those
+    ports is not opened, and the result names the device holding it.
     Returns ``{success, error, latency_ms, connection}``, plus ``note`` when a
     success proves less than a connection would. ``connection`` is the
     address that was tried (``DeviceConnection.address``).
@@ -128,11 +220,15 @@ async def check_reachability(resolved: dict[str, Any], project: Any) -> dict[str
                 address,
             )
         if conn.transport == "bridge":
-            return await _through_bridge(bridge, project, address)
+            return await _through_bridge(bridge, project, address, held)
 
     cfg = resolved.get("config") or {}
     if bridge_port_missing(cfg):
         return _failure(bridge_port_missing_message(), address)
+    if held and conn.host and isinstance(conn.port, int) and _opens_connection(resolved):
+        holder = held.get((await resolve_address(conn.host) or conn.host, conn.port))
+        if holder is not None:
+            return _held_by(holder, address)
     start = time.monotonic()
     try:
         if conn.transport == "serial":
@@ -188,6 +284,21 @@ def _failure(error: str, address: dict[str, Any]) -> dict[str, Any]:
     return {"success": False, "error": error, "latency_ms": None, "connection": address}
 
 
+def _held_by(holder: Any, address: dict[str, Any]) -> dict[str, Any]:
+    """The answer for a port another connected project device holds."""
+    return {
+        "success": True,
+        "error": None,
+        "latency_ms": None,
+        "connection": address,
+        "in_use_by": holder.name,
+        "note": (
+            f"{holder.name} is connected to this address now. The test did not "
+            "open a second connection to it."
+        ),
+    }
+
+
 def _sent_through(error: str, bridge: Any) -> str:
     """``error`` followed by the bridge a device sends through, when it has
     one: the address in the sentence is then the bridge's."""
@@ -198,7 +309,10 @@ def _sent_through(error: str, bridge: Any) -> str:
     return f"{error} This device sends through the bridge '{bridge.name or bridge.id}'."
 
 
-async def _through_bridge(bridge: Any, project: Any, address: dict[str, Any]) -> dict[str, Any]:
+async def _through_bridge(
+    bridge: Any, project: Any, address: dict[str, Any],
+    held: Mapping[tuple[str, int], Any] | None,
+) -> dict[str, Any]:
     """An IR device has no connection of its own: test the bridge it emits
     through, and report the bridge's address marked with its id."""
     resolved = resolve_device_config(bridge, project)
@@ -206,7 +320,7 @@ async def _through_bridge(bridge: Any, project: Any, address: dict[str, Any]) ->
         return _failure(
             f"The bridge '{bridge.id}' is itself set to send through a bridge.", address
         )
-    result = await check_reachability(resolved, project)
+    result = await check_reachability(resolved, project, held=held)
     result["connection"] = {**result["connection"], "bridge": bridge.id}
     if not result["success"]:
         result["error"] = _sent_through(result["error"], bridge)

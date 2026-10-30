@@ -22,14 +22,15 @@ export function formatDeviceAddress(
 }
 
 // The line Test Connection shows. A failure is the server's sentence as it
-// is: it names the address when the address is what failed.
+// is: it names the address when the address is what failed. A device that is
+// connected already is answered from that connection, with no time to show
+// (the note under the line says so).
 export function connectionTestText(
   result: DeviceConnectionTest,
   bridgeName: (bridgeId: string) => string = (id) => id,
 ): string {
   if (!result.success) return result.error || "The connection test failed.";
   const address = formatDeviceAddress(result.connection, bridgeName);
-  return address
-    ? `Connected to ${address} (${result.latency_ms} ms)`
-    : `Connected (${result.latency_ms} ms)`;
+  const time = result.latency_ms == null ? "" : ` (${result.latency_ms} ms)`;
+  return address ? `Connected to ${address}${time}` : `Connected${time}`;
 }

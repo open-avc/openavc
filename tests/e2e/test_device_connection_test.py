@@ -6,6 +6,12 @@ and the result line says where it went: "Connected to 127.0.0.1:<port> (N ms)",
 or the server's sentence for the failure, which names the address once when
 the address is what failed. A listener in this process stands in for the
 device, so the test also sees the connection arrive.
+
+A device that is connected is not dialed: its driver holds the connection, and
+a device that serves one connection at a time would give it to the test. The
+line names the address with no time, and the note says no second connection
+was opened. The e2e controller reports connected as soon as it starts, so the
+tests of the dial itself run it disabled.
 """
 
 from __future__ import annotations
@@ -48,6 +54,19 @@ def listener():
         sock.close()
 
 
+def _not_connected(connection: dict) -> dict:
+    """Project overrides for the seed controller disabled, so it is not
+    connected and the test dials its address."""
+    return {
+        "devices": [{
+            "id": "ctrl1", "driver": "e2e_test_controller", "name": "Test Controller",
+            "config": {"initial_children": 0}, "enabled": False,
+            "pending_settings": {}, "child_entities": {},
+        }],
+        "connections": {"ctrl1": connection},
+    }
+
+
 def _press_test_connection(page: Page, base_url: str) -> None:
     page.goto(f"{base_url}/programmer/", wait_until="domcontentloaded")
     page.locator('button[aria-label="Devices"]').wait_for(
@@ -62,9 +81,7 @@ def _press_test_connection(page: Page, base_url: str) -> None:
 
 def test_a_success_names_the_address_it_reached(server_factory, listener, page: Page):
     port, accepted = listener
-    server = server_factory(project_overrides={
-        "connections": {"ctrl1": {"host": "127.0.0.1", "port": port}},
-    })
+    server = server_factory(project_overrides=_not_connected({"host": "127.0.0.1", "port": port}))
     _press_test_connection(page, server.base_url)
     expect(page.get_by_text(f"Connected to 127.0.0.1:{port} (")).to_be_visible(
         timeout=EXPECT_TIMEOUT,
@@ -72,14 +89,27 @@ def test_a_success_names_the_address_it_reached(server_factory, listener, page: 
     assert accepted, "the test reported a connection the listener never saw"
 
 
+def test_a_connected_device_is_not_dialed(server_factory, listener, page: Page):
+    port, accepted = listener
+    server = server_factory(project_overrides={
+        "connections": {"ctrl1": {"host": "127.0.0.1", "port": port}},
+    })
+    _press_test_connection(page, server.base_url)
+    line = page.get_by_text(f"Connected to 127.0.0.1:{port}").first
+    expect(line).to_be_visible(timeout=EXPECT_TIMEOUT)
+    assert " ms)" not in line.inner_text(), line.inner_text()
+    expect(page.get_by_text(
+        "The device is connected now. The test did not open a second connection to it."
+    )).to_be_visible(timeout=EXPECT_TIMEOUT)
+    assert not accepted, "the test opened a connection to a port the driver holds"
+
+
 def test_a_refused_port_names_the_address_once(server_factory, page: Page):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(("127.0.0.1", 0))
     port = sock.getsockname()[1]
     sock.close()
-    server = server_factory(project_overrides={
-        "connections": {"ctrl1": {"host": "127.0.0.1", "port": port}},
-    })
+    server = server_factory(project_overrides=_not_connected({"host": "127.0.0.1", "port": port}))
     _press_test_connection(page, server.base_url)
     line = page.get_by_text(f"Connection refused on 127.0.0.1:{port}.")
     expect(line).to_be_visible(timeout=EXPECT_TIMEOUT)
