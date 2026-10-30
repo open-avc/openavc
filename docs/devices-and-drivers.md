@@ -198,6 +198,27 @@ An offline device shows the reason on its card and detail view (can't reach it, 
 
 The exception is a **rejected login**: retrying the same credentials can't succeed, and many devices lock out the controller's IP address after a few failed attempts, so after one failed try OpenAVC stops and waits instead of retrying. The same happens when the password is changed on a device that is already connected: the first refused login or status check takes it offline. Fix what the card names: a username or password is changed under **Edit** (saving it triggers a fresh attempt), and a device that pairs instead, such as a TV that shows a prompt, names its own step. **Reconnect** tries once more. Drivers that ship with a vendor's default credentials still get that first try automatically.
 
+## Reporting a Problem
+
+When a device does not work the way it should, **Report a problem** sends the OpenAVC team what OpenAVC recorded about it, so the driver can be fixed. It is on the line under the device's name on its page, at the end of the **Offline** banner when the driver could be the cause, and after a command that failed in the driver.
+
+The report is built from what OpenAVC has already recorded: building it sends nothing to the device and does not pause it. It holds:
+
+- what you write under **What happened?**, and your name and email if you leave them (both optional; this browser remembers them for the next report)
+- the error the page showed, and for a failed command, the command and the values you sent
+- the driver, its file, and whether the file matches the driver library's copy
+- the device's settings with passwords hidden, and its address
+- the device's current values and their recent changes, its recent messages, and OpenAVC's recent log lines about it, since the device last started (saving a settings change starts it again)
+- the OpenAVC version, the operating system and how OpenAVC was installed
+
+Nothing about your other devices or the rest of the project is in it. **What's included** in the dialog lists the actual counts before you send. When the device reported a serial number, **Leave the serial number out of the report** removes it.
+
+**Send to OpenAVC** sends the report over the internet and shows its reference, such as `R-7K3QXM`. Quote it if you write to support@openavc.com about the same problem. No cloud account or pairing is needed, and nothing is sent until you press it. The OpenAVC server sends the report; when it cannot reach the internet, your browser sends the same file instead (not through Remote Access). When neither can, or the report is refused, the dialog says why: download it and email it to support@openavc.com.
+
+**Download** saves the report as a zip file (`openavc-problem-report-<driver>-<date>.zip`). OpenAVC keeps the ten newest.
+
+Once a report is sent, **Run a Device Audit** opens a [Device Audit](device-audit.md) of the same device, which tests it for a few minutes and gives the OpenAVC team much more to go on. The device is paused while it runs. It is not offered for a device running on the simulator.
+
 ## Device Groups
 
 The **Groups** tab in the Devices view lets you create named groups of devices. Groups serve two purposes:
@@ -384,7 +405,7 @@ After enabling the relevant network feature on the device, re-run the scan. If t
 
 ## Device Audit
 
-To test one device and its driver in detail and write a report you can send to the driver's author, use **Audit a Device** on the **Drivers** tab, or **Audit this device** on a device's page. See [Device Audit](device-audit.md).
+To test one device and its driver in detail and write a report you can send to OpenAVC or to the driver's author, use **Audit a Device** on the **Drivers** tab, or **Audit this device** on a device's page. See [Device Audit](device-audit.md).
 
 ## See Also
 

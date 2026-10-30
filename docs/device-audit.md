@@ -79,9 +79,9 @@ the one before.
    says when to turn the device off or unplug it, and when to put it back. Each takes a few
    minutes.
 8. **Report.** A summary of what the audit found and what it could not see. Fill in **About
-   you** if you want to (every field is optional), then **Download report**. **Test another
-   driver** goes back to **Which driver?** and keeps these results. **Finish** ends the audit
-   and reconnects any project device it paused.
+   you** if you want to (every field is optional), then **Send to OpenAVC** or **Download
+   report**. **Test another driver** goes back to **Which driver?** and keeps these results.
+   **Finish** ends the audit and reconnects any project device it paused.
 
 ## The Report
 
@@ -105,11 +105,24 @@ For a driver from the community catalog, the Report step also offers **Open a dr
 report on GitHub**. It opens the driver library's test report form with the results filled in.
 Download the report first and attach the zip to it.
 
+**Send to OpenAVC** sends the report to the OpenAVC team over the internet and shows its
+reference, such as `R-7K3QXM`; quote it if you write to support@openavc.com. No cloud account or
+pairing is needed. The OpenAVC server sends it; when it cannot reach the internet, your browser
+sends the same file instead (not through Remote Access). When neither can, or the report is
+refused, the step says why: download it and email it to support@openavc.com. An audit that ends
+while its page is open offers both buttons for the report it saved. The name and email you leave
+here, or on a [problem report](devices-and-drivers.md#reporting-a-problem), are remembered in
+this browser and filled in next time.
+
+An audit started from a problem report's **Run a Device Audit** names that report in its own, so
+the two are read together.
+
 OpenAVC keeps the ten newest reports, listed under **Recent reports** on the first step.
 
 ## Privacy
 
-- The report stays on your computer until you send it.
+- The report stays on the OpenAVC system until you download it or press **Send to OpenAVC**.
+  Nothing is sent on its own.
 - Every password and credential you type, and any SNMP community other than `public`, is
   replaced with `[redacted]` everywhere in the report (`***` in the traffic). A driver file
   that matches the catalog is included as the catalog publishes it. If a password you typed

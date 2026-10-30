@@ -334,6 +334,9 @@ The following features require outbound internet access if enabled:
 | `github.com`, `raw.githubusercontent.com` | 443 | HTTPS | Download updates, community drivers and plugins, and the driver catalog a discovery scan refreshes | Yes (manual install alternative; a scan falls back to its cached catalog) |
 | `cdn.jsdelivr.net` | 443 | HTTPS | IR code database search (only while searching in the IR Codes editor) | Yes (feature is only used on demand) |
 | `cloud.openavc.com` | 443 | WSS | Cloud management platform (see below) | Yes (disabled by default) |
+| `cloud.openavc.com` | 443 | HTTPS | Problem reports and device audit reports, only when someone presses Send to OpenAVC; the browser of the person pressing it may send it instead | Nothing is sent unless someone presses Send; with the host blocked, Download still works |
+
+**Reports.** Report a problem on a device's page, and the Device Audit's last step, offer **Send to OpenAVC**. One press sends one zip file to `https://cloud.openavc.com/api/v1/reports`, paired or not: the device's settings with passwords hidden, its address, its recent messages and log lines, and its driver file, as the [problem report](devices-and-drivers.md#reporting-a-problem) and [device audit](device-audit.md#privacy) pages describe. The OpenAVC host sends it first, through a proxy only when one is set in the service's environment (`HTTPS_PROXY`). When that fails to connect, the browser of the person who pressed Send posts the same file, using its own proxy settings and certificate store. A paired system signs its request so the cloud can tell which system sent it. Nothing is sent on a schedule, on an error, or without that press.
 
 If your network policy blocks outbound HTTPS, all local functionality is unaffected. Update checks will fail silently, and the cloud agent (if enabled) will retry with exponential backoff up to a 5-minute interval, then remain dormant until connectivity is restored.
 
@@ -591,7 +594,7 @@ If you do not want this available at all, leave it switched off. Nothing turns i
 
 ### Disabling cloud entirely
 
-Cloud is disabled by default. To confirm it is disabled, verify that `cloud.enabled` is `false` in `system.json` (or that the `OPENAVC_CLOUD_ENABLED` environment variable is not set to `true`). When disabled, no cloud-related code runs and no outbound connections to `cloud.openavc.com` are made.
+Cloud is disabled by default. To confirm it is disabled, verify that `cloud.enabled` is `false` in `system.json` (or that the `OPENAVC_CLOUD_ENABLED` environment variable is not set to `true`). When disabled, no cloud-related code runs and no outbound connections to `cloud.openavc.com` are made, apart from a report someone sends with **Send to OpenAVC** (see Internet access).
 
 ---
 
@@ -631,6 +634,7 @@ Add to the minimum rules:
 | Device push notifications (HTTP callback) | Inbound | AV device IPs | OpenAVC host | 8080/tcp (the web port) | Drivers that declare an HTTP-listener push channel register a callback URL on the device; the device posts to `/api/push/` on the existing web port — no new port, accepted only from the device's own address |
 | Update checks | Outbound | OpenAVC host | api.github.com | 443/tcp | HTTPS |
 | Driver catalog refresh (discovery) | Outbound | OpenAVC host | raw.githubusercontent.com | 443/tcp | HTTPS, once per scan; falls back to the cached catalog when blocked |
+| Problem and audit reports | Outbound | OpenAVC host, or the browser of the person sending | cloud.openavc.com | 443/tcp | HTTPS, only when someone presses Send to OpenAVC |
 
 ### With media plugins (Video Panel / Present)
 
@@ -687,7 +691,7 @@ OpenAVC does not use UPnP port mapping, NAT traversal, or any technique that mod
 | Admin authentication | Secure by default | Shipped deployments refuse the Programmer and admin API until an admin password is set. A source checkout is open on localhost for development. |
 | Panel access | Approved panels only on a fresh install; a system updated from a version without the setting stays Anyone on the network until switched | A new tablet or browser waits until an administrator approves it once; the host's own screen and Remote Panel through OpenAVC Cloud need no approval. Can be set either way in Settings > Access. |
 | TLS | Off, opt-in built-in | Enable via Settings > Security. TLS 1.2/1.3 only (1.0/1.1 refused). Auto-generated self-signed cert, supply your own, or a cloud-issued publicly trusted cert for paired systems. Reverse-proxy TLS also supported. |
-| Outbound internet | Not required | Only for optional updates and cloud |
+| Outbound internet | Not required | Only for optional updates, cloud, and reports someone sends |
 | Cloud connectivity | Disabled by default | Opt-in. When paired, it is an administrator-equivalent management plane (see Cloud Platform above). |
 | OpenAVC staff access | None, ever, until granted | Nobody at OpenAVC can reach a paired system by default. Access comes only from a support session your own account creates: one named system, one support request, one to twenty-four hours, visible while live, revocable instantly, and every action recorded against the named staff member in your portal. See Remote access tunnels. |
 | Privileged access | None on Linux and Docker | Linux runs the service as the unprivileged `openavc` account, Docker as an unprivileged user. The Windows service runs as Local System and the macOS service as root; on Windows the installer restricts the data folder to the service and administrators. |
@@ -695,7 +699,7 @@ OpenAVC does not use UPnP port mapping, NAT traversal, or any technique that mod
 | Discovery scans | On-demand only | Never automatic. Started by an integrator (or an authenticated cloud request). A scan performs a ping sweep, a ~55-port TCP scan of responding hosts, SNMP and NetBIOS queries, multicast queries and directed-broadcast probes. See Discovery scan intensity and How a discovery scan looks to network monitoring. |
 | Device audits | On-demand only | Started by an integrator in the Programmer, aimed at one device: a port scan of that host, its web pages, SNMP, the drivers' identification probes, then a driver test against it. See Device audit. |
 | Background multicast/broadcast | mDNS advertising only | mDNS on 5353, on by default, re-announcing every 60 s (disable with `discovery.advertise: false`). ISC UDP broadcast on 19872 is off unless ISC is enabled in the project. |
-| Data exfiltration risk | Low | No data leaves the site unless cloud is explicitly paired. When paired: automatic telemetry plus on-demand config pulls (both itemized above). |
+| Data exfiltration risk | Low | No data leaves the site unless cloud is explicitly paired, or someone presses Send to OpenAVC on one report about one device. When paired: automatic telemetry plus on-demand config pulls (both itemized above). |
 
 ---
 
