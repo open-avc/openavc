@@ -538,6 +538,31 @@ def _is_unsupplied(value: Any, pdef: dict[str, Any]) -> bool:
     return (value if pdef.get("trim", True) is False else value.strip()) == ""
 
 
+def _with_declared_defaults(param_defs: dict[str, Any], params: Any) -> Any:
+    """``params`` with each optional param the call leaves unsupplied given
+    its declared ``default``; ``params`` itself when there is nothing to fill.
+
+    Unsupplied means what it means for a required param (_is_unsupplied):
+    absent, None, or a blank on anything but free text. A required param is
+    never filled: leaving one out is refused, and its default is only where
+    the Programmer's form starts.
+    """
+    filled: dict[str, Any] | None = None
+    supplied = params if isinstance(params, dict) else {}
+    for name, pdef in param_defs.items():
+        if (
+            not isinstance(pdef, dict)
+            or pdef.get("required")
+            or pdef.get("default") is None
+            or not _is_unsupplied(supplied.get(name), pdef)
+        ):
+            continue
+        if filled is None:
+            filled = dict(supplied)
+        filled[name] = pdef["default"]
+    return params if filled is None else filled
+
+
 def normalize_and_validate_command_params(
     command: str,
     param_defs: dict[str, Any],
@@ -581,12 +606,21 @@ def normalize_and_validate_command_params(
     :func:`missing_required_params` above, because the authoring gates have to
     ask the same question before anything is sent.
 
+    An optional param the call leaves unsupplied gets its declared
+    ``default`` here, and is then checked like a supplied value. The
+    Programmer's forms start from the default, so anything built there
+    already carries it; this is what gives the same value to a script, the
+    REST API or the AI assistant leaving the param out, where a YAML send
+    template used to go out with ``{step}`` in it. A caller that passed None
+    gets a dict back when there is a default to fill.
+
     Raises ``CommandParamError`` (a ValueError) with a user-facing message.
     """
     if not isinstance(param_defs, dict):
         return params
     for name in missing_required_params(param_defs, params):
         raise CommandParamError(f"'{command}': '{name}' is required")
+    params = _with_declared_defaults(param_defs, params)
     if not params:
         # Returned unchanged, not normalized to {}: a caller that passed None
         # gets None back, so a driver handler sees the argument it always did.

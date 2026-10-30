@@ -40,8 +40,20 @@ async def test_child_ids_optional_values_and_verbatim_strings():
         "output": " Main-L ", "input": "2", "label": "  Room A  ", "mute": "false", "gain": None,
         "mode": "USB Input",
     })
+    # An optional value left unset gets its declared default, the value the
+    # endpoint would apply itself.
     assert equipment._request.call_args.args[1]["params"] == {
         "output": "Main-L", "input": 2, "label": "  Room A  ", "mute": False, "mode": 3,
+        "gain": -20,
+    }
+
+
+@pytest.mark.asyncio
+async def test_an_unset_optional_value_with_no_default_is_left_out():
+    equipment = driver()
+    await equipment.send_command("route", {"output": "Main-L", "input": 2, "mute": None})
+    assert equipment._request.call_args.args[1]["params"] == {
+        "output": "Main-L", "input": 2, "gain": -20,
     }
 
 
