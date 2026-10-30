@@ -80,6 +80,14 @@ EXPECTED_CONTROL = {
     ("GET", "/api/drivers/installed"),
     ("GET", "/api/drivers/{driver_id}/help"),
 
+    # A problem report about a device, and Send on an audit's report: they
+    # share the device and audit commissioning budget. A saved problem
+    # report's own routes (/api/problem-reports/...) are standard.
+    ("GET", "/api/devices/{device_id}/problem-report"),
+    ("POST", "/api/devices/{device_id}/problem-report"),
+    ("POST", "/api/audit/reports/{name}/send"),
+    ("POST", "/api/audit/sessions/{session_id}/report/send"),
+
     # A device audit: it sends traffic to a device and pauses project devices.
     ("DELETE", "/api/audit/reports/{name}"),
     ("DELETE", "/api/audit/sessions/{session_id}"),

@@ -65,6 +65,16 @@ class CommandRunInProgress(Exception):
         )
 
 
+@dataclass(frozen=True)
+class RunFailure:
+    """A run's failure as the page reads it: the sentence, and the HTTP status
+    and code Send Command answers the same failure with."""
+
+    text: str
+    status: int | None = None
+    code: str | None = None
+
+
 @dataclass(eq=False)
 class CommandRun:
     id: str
@@ -78,6 +88,10 @@ class CommandRun:
     started: float = field(default_factory=time.time)
     ended: float | None = None
     error: str | None = None
+    # The HTTP status and code the same failure answers Send Command with
+    # (``RunFailure``), so the page treats both alike.
+    error_status: int | None = None
+    error_code: str | None = None
     result: Any = None
     held_id: str | None = None
     returned: dict[str, Any] | None = None
@@ -106,6 +120,8 @@ class CommandRun:
             "total": self.total(),
             "result": self.result,
             "error": self.error,
+            "error_status": self.error_status,
+            "error_code": self.error_code,
             "returned": self.returned,
             "client_id": self.client_id,
         }
@@ -137,7 +153,7 @@ class CommandRuns:
         params: dict[str, Any] | None,
         files: dict[str, str] | None,
         *,
-        describe_error: Callable[[Exception], str],
+        describe_error: Callable[[Exception], "str | RunFailure"],
     ) -> CommandRun:
         """Start a file command on a device in the background.
 
@@ -201,7 +217,7 @@ class CommandRuns:
         self,
         run: CommandRun,
         params: dict[str, Any],
-        describe_error: Callable[[Exception], str],
+        describe_error: Callable[[Exception], "str | RunFailure"],
     ) -> None:
         ticker: asyncio.Task | None = None
         try:
@@ -222,7 +238,13 @@ class CommandRuns:
         except Exception as exc:  # the driver's own failure, worded for the page
             run.status = ERROR
             try:
-                run.error = describe_error(exc)
+                described = describe_error(exc)
+                if isinstance(described, RunFailure):
+                    run.error = described.text
+                    run.error_status = described.status
+                    run.error_code = described.code
+                else:
+                    run.error = described
             except Exception:
                 log.exception("Wording a command run's failure failed")
                 run.error = f"'{run.label}' did not finish."

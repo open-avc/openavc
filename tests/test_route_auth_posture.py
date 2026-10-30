@@ -216,6 +216,8 @@ AUDIT_ROUTES = {
     ("GET", "/api/audit/reports"),
     ("GET", "/api/audit/reports/{name}"),
     ("DELETE", "/api/audit/reports/{name}"),
+    ("POST", "/api/audit/sessions/{session_id}/report/send"),
+    ("POST", "/api/audit/reports/{name}/send"),
 }
 
 
@@ -225,3 +227,21 @@ def test_every_device_audit_route_needs_a_programmer_credential():
     assert set(routes) == AUDIT_ROUTES
     open_ones = sorted(route for route, needs_auth in routes.items() if not needs_auth)
     assert not open_ones, f"Device audit routes open without a credential: {open_ones}"
+
+
+# A problem report holds a device's settings, address and traffic, and Send
+# delivers it off the system: a programmer's act, never an open door.
+PROBLEM_REPORT_ROUTES = {
+    ("GET", "/api/devices/{device_id}/problem-report"),
+    ("POST", "/api/devices/{device_id}/problem-report"),
+    ("GET", "/api/problem-reports/{name}"),
+    ("POST", "/api/problem-reports/{name}/send"),
+}
+
+
+def test_every_problem_report_route_needs_a_programmer_credential():
+    routes = {(m, p): needs_auth for m, p, needs_auth in _http_routes()
+              if "problem-report" in p}
+    assert set(routes) == PROBLEM_REPORT_ROUTES
+    open_ones = sorted(route for route, needs_auth in routes.items() if not needs_auth)
+    assert not open_ones, f"Problem report routes open without a credential: {open_ones}"

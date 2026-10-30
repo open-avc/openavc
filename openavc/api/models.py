@@ -420,6 +420,16 @@ class HostnameRequest(BaseModel):
     hostname: str
 
 
+class AuditFollowsReport(BaseModel):
+    """The problem report an audit follows: Run a Device Audit after Send
+    names it, so the audit's report says which report it adds to."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    report_id: str = Field(pattern=r"^[0-9a-fA-F-]{36}$")
+    reference: str = Field(default="", max_length=32)
+
+
 class AuditStartRequest(BaseModel):
     """Body for ``POST /api/audit/sessions``: the device to audit and how.
 
@@ -428,8 +438,11 @@ class AuditStartRequest(BaseModel):
     slower check (ports 1 to 1024 as well, and a full SNMP read);
     ``snmp_communities`` are read communities to try after ``public``.
     ``from_device`` is the project device whose page started the audit; it is
-    recorded only while that device connects to ``address``. Unknown fields
-    are refused, so a field the server does not read cannot vanish.
+    recorded only while that device connects to ``address``.
+    ``follows_report`` is the problem report sent just before, when the audit
+    was started from its Sent screen; it is recorded only with
+    ``from_device``. Unknown fields are refused, so a field the server does
+    not read cannot vanish.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -439,6 +452,7 @@ class AuditStartRequest(BaseModel):
     extended: bool = False
     snmp_communities: list[str] = Field(default_factory=list, max_length=8)
     from_device: str | None = Field(default=None, max_length=200)
+    follows_report: AuditFollowsReport | None = None
 
 
 class AuditDriverRequest(BaseModel):
@@ -536,3 +550,31 @@ class AuditTesterRequest(BaseModel):
     email: str = Field(default="", max_length=200)
     notes: str = Field(default="", max_length=4000)
     leave_out_serial: bool = False
+
+
+class ProblemReportContext(BaseModel):
+    """Where Report a problem was pressed, and what the page showed then
+    (neither a command's failure nor a connection test is kept on the
+    server, so the page sends it)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["driver_line", "offline_banner", "command_failure"] = "driver_line"
+    error: str = Field(default="", max_length=4000)
+    command: str = Field(default="", max_length=200)
+    params: dict[str, Any] = Field(default_factory=dict)
+    status: int | None = None
+    code: str = Field(default="", max_length=100)
+
+
+class ProblemReportRequest(BaseModel):
+    """Body for ``POST /api/devices/{id}/problem-report``: what the person
+    typed (all optional), and where the report was asked for."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    message: str = Field(default="", max_length=10000)
+    name: str = Field(default="", max_length=200)
+    email: str = Field(default="", max_length=320)
+    leave_out_serial: bool = False
+    context: ProblemReportContext | None = None

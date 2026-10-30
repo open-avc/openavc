@@ -38,6 +38,7 @@ ENV_ONLY = {
     "RATE_LIMIT_STRICT_PER_MINUTE",
     "CLOUD_HEARTBEAT_INTERVAL",
     "CLOUD_STATE_BATCH_INTERVAL",
+    "REPORT_URL",
 }
 
 # Section/key spellings that would read as an env-only name but are really
@@ -52,6 +53,7 @@ _ENV_ONLY_HINTS = {
     "RATE_LIMIT_STRICT_PER_MINUTE": ("rate_limit", "strict_per_minute"),
     "CLOUD_HEARTBEAT_INTERVAL": ("cloud", "heartbeat_interval"),
     "CLOUD_STATE_BATCH_INTERVAL": ("cloud", "state_batch_interval"),
+    "REPORT_URL": ("support", "report_url"),
 }
 
 

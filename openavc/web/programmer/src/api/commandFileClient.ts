@@ -46,6 +46,9 @@ export interface CommandRun {
   total: number;
   result: unknown;
   error: string | null;
+  /** The HTTP status and code Send Command answers the same failure with. */
+  error_status?: number | null;
+  error_code?: string | null;
   /** The file the command handed back; `gone` once downloaded or expired. */
   returned: { name: string; size: number; gone?: boolean } | null;
   client_id: string | null;

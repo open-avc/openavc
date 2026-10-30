@@ -457,6 +457,9 @@ discovery_engine.held_connections = engine.devices.live_connections
 # Wire the device audit (it pauses project devices and asks discovery).
 from openavc.api.routes import audit as audit_routes
 audit_routes.configure(audit_manager, discovery_engine)
+# Problem reports check a device's driver files against the same library.
+from openavc.api.routes import problem_reports as problem_report_routes
+problem_report_routes.configure(discovery_engine)
 discovery_api.set_broadcast_fn(engine.broadcast_ws)
 discovery_api.set_app_engine(engine)
 

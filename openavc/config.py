@@ -157,6 +157,12 @@ RATE_LIMIT_MEDIA_PER_MINUTE = _safe_int("OPENAVC_RATE_LIMIT_MEDIA", 3000)
 CLOUD_HEARTBEAT_INTERVAL = _safe_int("OPENAVC_CLOUD_HEARTBEAT_INTERVAL", 30)
 CLOUD_STATE_BATCH_INTERVAL = _safe_int("OPENAVC_CLOUD_STATE_BATCH_INTERVAL", 2)
 
+# Where Send to OpenAVC delivers a problem report or a device audit report
+# (``support/report_upload.py``). Its own setting, never derived from the
+# cloud endpoint: a system paired to another cloud still sends reports to
+# OpenAVC. Empty turns sending off; Download still works.
+REPORT_URL = os.environ.get("OPENAVC_REPORT_URL", "https://cloud.openavc.com/api/v1/reports").strip()
+
 
 def get_config():
     """Get the SystemConfig singleton. Used by modules that need the full config object."""

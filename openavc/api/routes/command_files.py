@@ -22,7 +22,7 @@ from openavc.api.errors import StructuredApiError
 from openavc.api.host_policy import ProgrammerRoute
 from openavc.api.models import CommandFileBeginRequest, CommandRunRequest
 from openavc.api.routes.devices import command_failure
-from openavc.core.command_runs import CommandRunInProgress, device_owner
+from openavc.core.command_runs import CommandRunInProgress, RunFailure, device_owner
 from openavc.core.device_manager import DeviceNotFoundError
 from openavc.core.file_staging import (
     CHUNK_BYTES_DIRECT,
@@ -32,6 +32,12 @@ from openavc.core.file_staging import (
 from openavc.utils.request_origin import is_tunneled_request
 
 router = APIRouter(route_class=ProgrammerRoute)
+
+
+def _run_failure(exc: HTTPException) -> RunFailure:
+    """A background run's failure, worded and classed as Send Command's is."""
+    code = exc.fields.get("code") if isinstance(exc, StructuredApiError) else None
+    return RunFailure(str(exc.detail), exc.status_code, code)
 
 _DOWNLOAD_CHUNK = 256 * 1024
 
@@ -160,7 +166,7 @@ async def start_command_run(device_id: str, body: CommandRunRequest) -> dict[str
     try:
         run = engine.command_runs.start(
             device_id, body.command, body.params, body.files,
-            describe_error=lambda exc: str(command_failure(device_id, body.command, exc).detail),
+            describe_error=lambda exc: _run_failure(command_failure(device_id, body.command, exc)),
         )
     except DeviceNotFoundError:
         raise HTTPException(status_code=404, detail=f"Device '{device_id}' not found") from None

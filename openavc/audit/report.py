@@ -16,13 +16,16 @@
 ``report.json`` (``report_version`` 1) holds:
 
 - ``report_version``; ``report_kind``, what made the file (``device_audit``);
+  ``report_id``, a UUID new with every file built (a resave gets a new one);
   ``generator``: ``openavc_version``, ``os``,
   ``python`` and ``deployment_type`` (how OpenAVC was installed).
 - ``session``: ``id``, ``started_at`` and ``ended_at``, ``status``, the
   ``steps`` run, the project device whose page started the audit (``origin``:
   id, name and driver, or null), ``no_driver`` (the person said no driver
-  exists yet), and the ``tester``'s name, company, email and notes (all
-  optional).
+  exists yet), the ``tester``'s name, company, email and notes (all
+  optional), and ``follows_report``: the problem report (``report_id``,
+  ``reference``) sent just before, when the audit was started from its Sent
+  screen, else null.
 - ``target``: the ``address`` as typed, the ``ip`` it resolved to, the reverse
   DNS ``hostname``, ``same_subnet`` (on one of this computer's subnets, or a
   169.254 device the check reached from a 169.254 address), the
@@ -260,6 +263,7 @@ import logging
 import platform
 import re
 import time
+import uuid
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime
@@ -891,6 +895,8 @@ def build_report(session: "AuditSession") -> dict[str, Any]:
             "origin": dict(session.origin) if getattr(session, "origin", None) else None,
             "no_driver": bool(getattr(session, "no_driver", False)),
             "tester": tester,
+            "follows_report": dict(session.follows_report)
+            if getattr(session, "follows_report", None) else None,
         },
         "target": {
             "address": session.target.address,
@@ -917,6 +923,16 @@ def build_report(session: "AuditSession") -> dict[str, Any]:
         "limits": limits,
     }
     report = redactor.tree(report)
+    # A new id for every file built, put in after redaction so no secret can
+    # cut into it: the service that receives reports keeps one per id, so a
+    # copy re-sent unchanged is never stored twice while a rebuilt one (more
+    # results, the tester's details) is a report of its own.
+    report = {
+        "report_version": REPORT_VERSION,
+        "report_kind": REPORT_KIND,
+        "report_id": str(uuid.uuid4()),
+        **report,
+    }
     # Read off the redacted record, so neither can carry a secret.
     for section in report["drivers"]:
         section["suggested_confidence"] = suggested_confidence(section)

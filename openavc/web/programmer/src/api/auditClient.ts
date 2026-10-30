@@ -669,6 +669,9 @@ export interface AuditStartBody {
   snmp_communities: string[];
   /** The project device whose page started the audit. */
   from_device?: string | null;
+  /** The problem report sent just before (Run a Device Audit on its Sent
+   * screen); recorded only with `from_device`. */
+  follows_report?: { report_id: string; reference: string } | null;
 }
 
 export interface AuditReportFile {

@@ -380,6 +380,25 @@ async def test_a_failed_run_is_worded_like_send_command(tmp_path):
     assert run.status == ERROR and run.error == "worded: Device 'dev1' is not connected"
 
 
+async def test_a_failed_run_keeps_send_commands_status_and_code(tmp_path):
+    """The page decides what to offer after a failure by its HTTP status, so
+    a background run records the one Send Command would have answered."""
+    from openavc.api.routes.command_files import _run_failure
+    from openavc.api.routes.devices import command_failure
+
+    engine = _Engine(tmp_path)
+    rest.set_engine(engine)
+    engine.driver.set_state("connected", False)
+    run = engine.command_runs.start(
+        "dev1", "backup", {}, {},
+        describe_error=lambda exc: _run_failure(command_failure("dev1", "backup", exc)),
+    )
+    await run.task
+    shown = run.to_dict()
+    assert shown["status"] == ERROR and shown["error"]
+    assert shown["error_status"] == 503 and shown["error_code"] is None
+
+
 # --- the HTTP doors --------------------------------------------------------------------
 
 

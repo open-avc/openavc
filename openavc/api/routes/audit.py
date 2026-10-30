@@ -44,6 +44,10 @@ turns a refusal into its sentence.
 - ``GET /audit/sessions/{id}/report`` (the zip, also kept in recent reports;
   ``?format=json`` for the record itself).
 - ``GET /audit/reports``, ``GET`` and ``DELETE /audit/reports/{name}``.
+- ``POST /audit/sessions/{id}/report/send`` (save the report as it stands,
+  then send it to OpenAVC) and ``POST /audit/reports/{name}/send`` (send a
+  saved one); ``support/report_upload.py``. Each answers ``{name, sent,
+  reference, failure, status}``, a failure included: the send was tried.
 
 Live progress is the WebSocket's ``audit.subscribe`` (``api/ws.py``), sent to
 the subscribing client only.
@@ -103,6 +107,7 @@ from openavc.audit.session import (
     AuditSession,
     AuditTarget,
 )
+from openavc.api.routes.problem_reports import send_saved
 from openavc.core.device_config import devices_at_host
 from openavc.utils.logger import get_logger
 
@@ -241,6 +246,8 @@ async def start_session(body: AuditStartRequest) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail=str(exc))
     except AuditError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    if body.follows_report is not None and session.origin:
+        session.follows_report = body.follows_report.model_dump()
     try:
         await open_for_session(session, _discovery)
         open_runs(session)
@@ -743,6 +750,25 @@ async def session_report(
         path, media_type="application/zip", filename=name,
         headers={"Cache-Control": "no-store"},
     )
+
+
+@router.post("/sessions/{session_id}/report/send")
+async def send_session_report(session_id: str) -> dict[str, Any]:
+    """Save the report as it stands and send that file to OpenAVC."""
+    session = _session(session_id)
+    if session.check is None or session.check.status == "idle":
+        raise HTTPException(status_code=409, detail="Run the network check first.")
+    store = _report_store()
+    name = await save_session_report(session, store)
+    if name is None:
+        raise HTTPException(status_code=409, detail="There is nothing to report yet.")
+    return await send_saved(store, name)
+
+
+@router.post("/reports/{name}/send")
+async def send_report(name: str) -> dict[str, Any]:
+    """Send a saved report to OpenAVC (the ended notice's Send)."""
+    return await send_saved(_report_store(), name)
 
 
 @router.get("/reports")

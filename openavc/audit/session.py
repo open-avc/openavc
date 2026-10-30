@@ -249,6 +249,9 @@ class AuditSession:
         # The project device whose page the audit was started from
         # (``audit/origin.py``): ``{"device_id", "name", "driver"}``, or None.
         self.origin: dict[str, str] | None = None
+        # The problem report this audit follows (Run a Device Audit on its
+        # Sent screen): ``{"report_id", "reference"}``, or None.
+        self.follows_report: dict[str, str] | None = None
         self.timeline: list[TimelineEntry] = []
         # Set by the network check (``footprint.open_for_session``) and the
         # report builder.

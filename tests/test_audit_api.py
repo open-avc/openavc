@@ -129,7 +129,7 @@ def wired(monkeypatch, tmp_path):
 
 def test_the_request_models_declare_every_field_and_refuse_others():
     assert set(AuditStartRequest.model_fields) == {
-        "address", "pause", "extended", "snmp_communities", "from_device",
+        "address", "pause", "extended", "snmp_communities", "from_device", "follows_report",
     }
     assert set(AuditTesterRequest.model_fields) == {
         "name", "company", "email", "notes", "leave_out_serial",
@@ -521,3 +521,52 @@ async def test_a_disconnect_drops_the_subscription(wired):
     wired.manager.current().add_timeline("check.ports", "Nobody to hear it.")
     assert engine.ws.sent == []
     await wired.manager.shutdown()
+
+
+async def test_send_saves_the_report_and_sends_that_file(wired, monkeypatch):
+    """Send on the report step saves the report, then sends that file; the
+    ended notice's Send sends the saved file as it is. Each file built has
+    its own report_id, and an audit started from a problem report's Sent
+    screen names that report."""
+    import asyncio
+    import uuid
+
+    from openavc.support import report_upload
+
+    sent = []
+
+    async def fake_upload(path, kind, report_id, **_):
+        sent.append((path.name, kind, report_id))
+        return report_upload.UploadResult(True, reference="R-CCCCCC", status=200)
+
+    monkeypatch.setattr(report_upload, "upload_report", fake_upload)
+    follows = {"report_id": str(uuid.uuid4()), "reference": "R-7K3QXM"}
+    started = await routes.start_session(AuditStartRequest(
+        address="127.0.0.1", from_device="lobby", follows_report=follows,
+    ))
+    session_id = started["session"]["session_id"]
+    session = wired.manager.current()
+    session.check = FakeCheck(session)
+    await routes.run_network_check(session_id)
+    await asyncio.sleep(0.05)
+
+    answer = await routes.send_session_report(session_id)
+    assert (answer["sent"], answer["reference"]) == (True, "R-CCCCCC")
+    name = answer["name"]
+    with zipfile.ZipFile(wired.store.path(name)) as zf:
+        report = json.loads(zf.read("report.json"))
+    uuid.UUID(report["report_id"])
+    assert report["report_kind"] == "device_audit"
+    assert report["session"]["follows_report"] == follows
+    assert sent == [(name, "device_audit", report["report_id"])]
+
+    await routes.send_report(name)
+    assert sent[-1] == (name, "device_audit", report["report_id"])
+
+    await routes.session_report(session_id)  # Download builds the file again
+    with zipfile.ZipFile(wired.store.path(name)) as zf:
+        assert json.loads(zf.read("report.json"))["report_id"] != report["report_id"]
+    with pytest.raises(HTTPException) as exc:
+        await routes.send_report("openavc-device-audit-gone-20260101-0000.zip")
+    assert exc.value.status_code == 404
+    await routes.end_session(session_id)
