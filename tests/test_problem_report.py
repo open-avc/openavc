@@ -279,6 +279,7 @@ def test_create_then_download_then_send_one_file(wired, monkeypatch):
     assert response.headers["cache-control"] == "no-store"
     answer = asyncio.run(routes.send_problem_report(made["name"]))
     assert answer["sent"] is True and answer["reference"] == "R-ABC123"
+    assert answer["report_url"] == report_upload.report_url()
     assert sent == [(made["name"], "problem_report", made["report_id"])]
     with pytest.raises(HTTPException):
         asyncio.run(routes.send_problem_report("openavc-problem-report-gone-20260101-0000.zip"))

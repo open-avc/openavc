@@ -45,6 +45,9 @@ interface AuditStoreState {
   presetAddress: string;
   /** The project device whose page opened the wizard ("" otherwise). */
   presetDevice: string;
+  /** The problem report sent just before, when its Sent screen opened the
+   *  wizard (Run a Device Audit); the audit's report names it. */
+  presetFollows: { report_id: string; reference: string } | null;
   step: AuditStep;
   session: AuditSessionState | null;
   timeline: AuditTimelineEntry[];
@@ -54,7 +57,11 @@ interface AuditStoreState {
    *  it is not applied (see isStaleReply). */
   seq: number;
 
-  openWizard: (opts?: { address?: string; deviceId?: string }) => void;
+  openWizard: (opts?: {
+    address?: string;
+    deviceId?: string;
+    followsReport?: { report_id: string; reference: string };
+  }) => void;
   closeWizard: () => void;
   setStep: (step: AuditStep) => void;
   setSession: (session: AuditSessionState | null) => void;
@@ -65,6 +72,7 @@ export const useAuditStore = create<AuditStoreState>((set) => ({
   open: false,
   presetAddress: "",
   presetDevice: "",
+  presetFollows: null,
   step: "target",
   session: null,
   timeline: [],
@@ -76,6 +84,7 @@ export const useAuditStore = create<AuditStoreState>((set) => ({
       open: true,
       presetAddress: opts?.address ?? "",
       presetDevice: opts?.deviceId ?? "",
+      presetFollows: opts?.followsReport ?? null,
       step: "target",
       timeline: [],
       traffic: [],
@@ -83,7 +92,10 @@ export const useAuditStore = create<AuditStoreState>((set) => ({
     }),
   closeWizard: () => {
     rememberFollowedAudit(null);
-    set({ open: false, session: null, timeline: [], traffic: [], step: "target", seq: 0 });
+    set({
+      open: false, session: null, timeline: [], traffic: [], step: "target", seq: 0,
+      presetFollows: null,
+    });
   },
   setStep: (step) => set({ step }),
   setSession: (session) =>

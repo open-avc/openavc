@@ -552,6 +552,7 @@ async def test_send_saves_the_report_and_sends_that_file(wired, monkeypatch):
 
     answer = await routes.send_session_report(session_id)
     assert (answer["sent"], answer["reference"]) == (True, "R-CCCCCC")
+    assert answer["report_url"] == report_upload.report_url()
     name = answer["name"]
     with zipfile.ZipFile(wired.store.path(name)) as zf:
         report = json.loads(zf.read("report.json"))

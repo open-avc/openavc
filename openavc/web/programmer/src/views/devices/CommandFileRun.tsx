@@ -9,11 +9,14 @@ import {
   uploadCommandFiles,
   type CommandRun,
 } from "../../api/commandFileClient";
-import { parseApiError } from "../../api/errors";
+import { ApiError, parseApiError } from "../../api/errors";
+import type { ProblemReportContext } from "../../api/problemReportClient";
 import { onMessage } from "../../api/wsClient";
 import { describeSize } from "../../components/shared/commandFiles";
 import { commandResultText } from "../../components/shared/commandParams";
 import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
+import { ReportLink } from "./ProblemReportDialog";
+import { reportableCommandFailure } from "./problemReport";
 
 /**
  * Send Command for a command that takes a file or hands one back. The files
@@ -24,7 +27,7 @@ import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
 export type FileRunView =
   | { kind: "idle" }
   | { kind: "uploading"; label: string; fileName: string; sent: number; total: number }
-  | { kind: "failed"; text: string }
+  | { kind: "failed"; text: string; command?: string; status?: number; code?: string }
   | { kind: "run"; run: CommandRun };
 
 export function useCommandFileRun(deviceId: string) {
@@ -98,7 +101,13 @@ export function useCommandFileRun(deviceId: string) {
         if (controller.signal.aborted) {
           setView({ kind: "failed", text: `${label} stopped before the file was uploaded.` });
         } else {
-          setView({ kind: "failed", text: parseApiError(e) });
+          setView({
+            kind: "failed",
+            text: parseApiError(e),
+            command,
+            status: e instanceof ApiError ? e.status : undefined,
+            code: e instanceof ApiError ? structuredCode(e.body) : undefined,
+          });
         }
       } finally {
         abort.current = null;
@@ -129,6 +138,15 @@ export function useCommandFileRun(deviceId: string) {
   const busy =
     view.kind === "uploading" || (view.kind === "run" && view.run.status === "running");
   return { view, start, stop, clear, busy };
+}
+
+function structuredCode(body: string): string {
+  try {
+    const code = JSON.parse(body)?.code;
+    return typeof code === "string" ? code : "";
+  } catch {
+    return "";
+  }
 }
 
 function percent(sent: number, total: number): number {
@@ -166,11 +184,14 @@ export function CommandFileRunStatus({
   deviceId,
   deviceName,
   onStop,
+  onReport,
 }: {
   view: FileRunView;
   deviceId: string;
   deviceName: string;
   onStop: () => void;
+  /** Report a problem, for a failure the driver could have caused. */
+  onReport?: (context: ProblemReportContext) => void;
 }) {
   const [confirmStop, setConfirmStop] = useState(false);
   const [downloadError, setDownloadError] = useState("");
@@ -202,6 +223,19 @@ export function CommandFileRunStatus({
       <div role="status" style={{ ...lineStyle, fontSize: "var(--font-size-sm)", color: "var(--color-error)" }}>
         <AlertTriangle size={14} />
         <span>{view.text}</span>
+        {onReport && reportableCommandFailure(view.status, view.code) && (
+          <ReportLink
+            onClick={() =>
+              onReport({
+                source: "command_failure",
+                error: view.text,
+                command: view.command ?? "",
+                status: view.status,
+                code: view.code ?? "",
+              })
+            }
+          />
+        )}
       </div>
     );
   }
@@ -255,10 +289,24 @@ export function CommandFileRunStatus({
   }
 
   if (run.status === "error" || run.status === "cancelled") {
+    const text = run.status === "cancelled" ? `${run.label} stopped.` : run.error || `${run.label} did not finish.`;
     return (
       <div role="status" style={{ ...lineStyle, fontSize: "var(--font-size-sm)", color: "var(--color-error)" }}>
         <AlertTriangle size={14} />
-        <span>{run.status === "cancelled" ? `${run.label} stopped.` : run.error || `${run.label} did not finish.`}</span>
+        <span>{text}</span>
+        {onReport && run.status === "error" && reportableCommandFailure(run.error_status, run.error_code) && (
+          <ReportLink
+            onClick={() =>
+              onReport({
+                source: "command_failure",
+                error: text,
+                command: run.command,
+                status: run.error_status ?? null,
+                code: run.error_code ?? "",
+              })
+            }
+          />
+        )}
       </div>
     );
   }

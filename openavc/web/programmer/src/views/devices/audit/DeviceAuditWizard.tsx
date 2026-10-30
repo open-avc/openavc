@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Download, Loader2, X } from "lucide-react";
+import { Check, Download, Loader2, Send, X } from "lucide-react";
 import { Modal } from "../../../components/shared/Modal";
 import { rememberFollowedAudit, useAuditStore } from "../../../store/auditStore";
 import * as audit from "../../../api/auditClient";
 import { BASE } from "../../../api/base";
 import { onConnect, onMessage, send } from "../../../api/wsClient";
 import { parseApiError } from "../../../api/errors";
+import { inRemoteSession } from "../../../api/auth";
+import {
+  auditReportFile,
+  postReportFromBrowser,
+  sendSavedAuditReport,
+} from "../../../api/problemReportClient";
+import { useConnectionStore } from "../../../store/connectionStore";
+import { SendResultLine } from "../ProblemReportDialog";
+import { sendReport, type SendOutcome } from "../problemReport";
 import { AUDIT_STEPS, endedReportText, stepFor, type AuditStep } from "./auditHelpers";
 import { TargetStep } from "./steps/TargetStep";
 import { NetworkCheckStep } from "./steps/NetworkCheckStep";
@@ -263,21 +272,46 @@ const ENDED_TEXT: Record<string, string> = {
 /** An audit that ended while the page was open: how it ended, and its report.
  *  It takes the place of the step, whose buttons can no longer do anything. */
 function EndedNotice({ session }: { session: audit.AuditSessionState }) {
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"" | "send" | "download">("");
   const [saved, setSaved] = useState("");
+  const [sent, setSent] = useState<SendOutcome | null>(null);
   const [error, setError] = useState("");
+  const version = useConnectionStore((s) => s.liveState["system.version"]);
   const name = session.report_name;
 
   const download = async () => {
     if (!name) return;
     setError("");
-    setBusy(true);
+    setBusy("download");
     try {
       setSaved(await audit.downloadSavedAuditReport(name));
     } catch (e) {
       setError(parseApiError(e));
     } finally {
-      setBusy(false);
+      setBusy("");
+    }
+  };
+
+  const send = async () => {
+    if (!name) return;
+    setError("");
+    setSent(null);
+    setBusy("send");
+    try {
+      setSent(
+        await sendReport({
+          serverSend: () => sendSavedAuditReport(name),
+          fetchFile: auditReportFile,
+          post: postReportFromBrowser,
+          remote: inRemoteSession(),
+          kind: "device_audit",
+          openavcVersion: typeof version === "string" ? version : "",
+        }),
+      );
+    } catch (e) {
+      setError(parseApiError(e));
+    } finally {
+      setBusy("");
     }
   };
 
@@ -297,8 +331,24 @@ function EndedNotice({ session }: { session: audit.AuditSessionState }) {
       )}
       <div style={{ display: "flex", gap: "var(--space-sm)", marginTop: "var(--space-md)" }}>
         {name && (
-          <button type="button" onClick={() => void download()} disabled={busy} style={buttonStyle("primary", busy)}>
-            {busy ? <Loader2 size={14} style={spinStyle} /> : <Download size={14} />}
+          <button
+            type="button"
+            onClick={() => void send()}
+            disabled={busy !== "" || sent?.kind === "sent"}
+            style={buttonStyle("primary", busy !== "" || sent?.kind === "sent")}
+          >
+            {busy === "send" ? <Loader2 size={14} style={spinStyle} /> : <Send size={14} />}
+            {busy === "send" ? "Sending…" : "Send to OpenAVC"}
+          </button>
+        )}
+        {name && (
+          <button
+            type="button"
+            onClick={() => void download()}
+            disabled={busy !== ""}
+            style={buttonStyle("muted", busy !== "")}
+          >
+            {busy === "download" ? <Loader2 size={14} style={spinStyle} /> : <Download size={14} />}
             Download report
           </button>
         )}
@@ -310,6 +360,11 @@ function EndedNotice({ session }: { session: audit.AuditSessionState }) {
           Start a new audit
         </button>
       </div>
+      {sent && (
+        <div style={{ marginTop: "var(--space-sm)" }}>
+          <SendResultLine outcome={sent} />
+        </div>
+      )}
       {saved && (
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", marginTop: "var(--space-sm)" }}>
           <Check size={14} style={{ color: "var(--color-success)" }} /> Saved {saved}.

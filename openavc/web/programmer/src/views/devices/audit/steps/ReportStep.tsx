@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
-import { Check, Download, Loader2 } from "lucide-react";
+import { Check, Download, Loader2, Send } from "lucide-react";
 import * as audit from "../../../../api/auditClient";
+import { inRemoteSession } from "../../../../api/auth";
 import { parseApiError } from "../../../../api/errors";
+import {
+  auditReportFile,
+  postReportFromBrowser,
+  sendAuditSessionReport,
+} from "../../../../api/problemReportClient";
 import { useAuditStore } from "../../../../store/auditStore";
+import { useConnectionStore } from "../../../../store/connectionStore";
+import { rememberContact, rememberedContact } from "../../contactMemory";
+import { SendResultLine } from "../../ProblemReportDialog";
+import { sendReport, type SendOutcome } from "../../problemReport";
 import { publishedSecretNotices, summaryLines } from "../auditHelpers";
 import { BackButton, ErrorLine } from "../auditParts";
 import {
@@ -21,9 +31,20 @@ export function ReportStep() {
   const sessionId = session?.session_id ?? "";
   const active = session?.status === "active";
   const [report, setReport] = useState<audit.AuditReport | null>(null);
-  const [tester, setTester] = useState<audit.AuditTester>(() => ({ ...(session?.tester ?? {}) }));
+  // A name and email left on an earlier report fill in what this one lacks.
+  const [tester, setTester] = useState<audit.AuditTester>(() => {
+    const known = { ...(session?.tester ?? {}) };
+    const remembered = rememberedContact();
+    return {
+      ...known,
+      name: known.name || remembered.name,
+      email: known.email || remembered.email,
+    };
+  });
+  const version = useConnectionStore((s) => s.liveState["system.version"]);
   const [saved, setSaved] = useState("");
-  const [busy, setBusy] = useState<"" | "download" | "finish" | "another">("");
+  const [sent, setSent] = useState<SendOutcome | null>(null);
+  const [busy, setBusy] = useState<"" | "send" | "download" | "finish" | "another">("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -68,11 +89,36 @@ export function ReportStep() {
     }
   };
 
+  const send = async () => {
+    setError("");
+    setSent(null);
+    setBusy("send");
+    try {
+      await saveTester();
+      rememberContact({ name: tester.name ?? "", email: tester.email ?? "" });
+      setSent(
+        await sendReport({
+          serverSend: () => sendAuditSessionReport(sessionId),
+          fetchFile: auditReportFile,
+          post: postReportFromBrowser,
+          remote: inRemoteSession(),
+          kind: "device_audit",
+          openavcVersion: typeof version === "string" ? version : "",
+        }),
+      );
+    } catch (e) {
+      setError(parseApiError(e));
+    } finally {
+      setBusy("");
+    }
+  };
+
   const download = async () => {
     setError("");
     setBusy("download");
     try {
       await saveTester();
+      rememberContact({ name: tester.name ?? "", email: tester.email ?? "" });
       setSaved(await audit.downloadAuditReport(sessionId));
     } catch (e) {
       setError(parseApiError(e));
@@ -243,9 +289,18 @@ export function ReportStep() {
         <BackButton to={session.no_driver ? "driver" : "outage"} disabled={!active || busy !== ""} />
         <button
           type="button"
+          onClick={() => void send()}
+          disabled={!active || busy !== "" || sent?.kind === "sent"}
+          style={buttonStyle("primary", !active || busy !== "" || sent?.kind === "sent")}
+        >
+          {busy === "send" ? <Loader2 size={14} style={spinStyle} /> : <Send size={14} />}
+          {busy === "send" ? "Sending…" : "Send to OpenAVC"}
+        </button>
+        <button
+          type="button"
           onClick={() => void download()}
           disabled={!active || busy !== ""}
-          style={buttonStyle("primary", !active || busy !== "")}
+          style={buttonStyle("muted", !active || busy !== "")}
         >
           {busy === "download" ? <Loader2 size={14} style={spinStyle} /> : <Download size={14} />}
           Download report
@@ -271,6 +326,11 @@ export function ReportStep() {
           </button>
         )}
       </div>
+      {sent && (
+        <div style={{ marginTop: "var(--space-sm)" }}>
+          <SendResultLine outcome={sent} />
+        </div>
+      )}
       {saved && (
         <div
           role="status"
@@ -286,8 +346,9 @@ export function ReportStep() {
         </div>
       )}
       <p style={{ ...hintStyle, marginTop: "var(--space-md)", fontSize: "var(--font-size-sm)" }}>
-        Send the file to whoever asked you to run this audit, or attach it to a driver test report
-        on GitHub. Finish reconnects any project device the audit paused.
+        Send to OpenAVC sends this report to the OpenAVC team. To give it to someone else, or to
+        attach it to a driver test report on GitHub, download it. Finish reconnects any project
+        device the audit paused.
       </p>
     </div>
   );

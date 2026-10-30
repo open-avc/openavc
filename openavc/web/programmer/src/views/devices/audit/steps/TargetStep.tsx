@@ -19,6 +19,7 @@ import {
 export function TargetStep() {
   const preset = useAuditStore((s) => s.presetAddress);
   const presetDevice = useAuditStore((s) => s.presetDevice);
+  const presetFollows = useAuditStore((s) => s.presetFollows);
   const [address, setAddress] = useState(preset);
   const [extended, setExtended] = useState(false);
   const [communities, setCommunities] = useState("");
@@ -58,6 +59,7 @@ export function TargetStep() {
         extended,
         snmp_communities: parseCommunities(communities),
         from_device: fromDevice || null,
+        follows_report: fromDevice ? presetFollows : null,
       });
       const store = useAuditStore.getState();
       store.setSession(session);
@@ -65,7 +67,7 @@ export function TargetStep() {
       store.setSession(running);
       store.setStep("network");
     },
-    [address, extended, communities, fromDevice],
+    [address, extended, communities, fromDevice, presetFollows],
   );
 
   const onContinue = useCallback(async () => {

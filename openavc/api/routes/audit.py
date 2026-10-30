@@ -46,8 +46,9 @@ turns a refusal into its sentence.
 - ``GET /audit/reports``, ``GET`` and ``DELETE /audit/reports/{name}``.
 - ``POST /audit/sessions/{id}/report/send`` (save the report as it stands,
   then send it to OpenAVC) and ``POST /audit/reports/{name}/send`` (send a
-  saved one); ``support/report_upload.py``. Each answers ``{name, sent,
-  reference, failure, status}``, a failure included: the send was tried.
+  saved one); ``support/report_upload.py``. Each answers ``{name, report_id,
+  sent, reference, failure, status, report_url}``, a failure included: the
+  send was tried.
 
 Live progress is the WebSocket's ``audit.subscribe`` (``api/ws.py``), sent to
 the subscribing client only.

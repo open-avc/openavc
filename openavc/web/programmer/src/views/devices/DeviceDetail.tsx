@@ -50,6 +50,9 @@ import { ApiError, parseApiError } from "../../api/errors";
 import { useConnectionTestResult } from "./useConnectionTestResult";
 import { driverLabel } from "../../components/shared/driverLabel";
 import { DriverUpdateLine } from "./DriverUpdateLine";
+import { ProblemReportDialog, ReportLink } from "./ProblemReportDialog";
+import type { ProblemReportContext } from "../../api/problemReportClient";
+import { reportableCommandFailure } from "./problemReport";
 
 export function DeviceDetail({
   deviceId,
@@ -75,8 +78,19 @@ export function DeviceDetail({
   // edited, duplicated or deleted.
   const [notRunning, setNotRunning] = useState(false);
   const [commandResult, setCommandResult] = useState<
-    { ok: boolean; text: string; detail?: string } | null
+    {
+      ok: boolean;
+      text: string;
+      detail?: string;
+      // A failure's HTTP status and code, and what was sent, for Report a problem.
+      status?: number;
+      code?: string;
+      command?: string;
+      params?: Record<string, unknown>;
+    } | null
   >(null);
+  // Report a problem is open, from where and with what the page showed.
+  const [reportContext, setReportContext] = useState<ProblemReportContext | null>(null);
   const [selectedCommand, setSelectedCommand] = useState("");
   const [commandParams, setCommandParams] = useState<Record<string, string>>({});
   // The files chosen for a command that takes one, by param.
@@ -337,13 +351,13 @@ export function DeviceDetail({
     setCommandResult(null);
     const def = commands[selectedCommand] as { label?: string } | undefined;
     const label = def?.label || selectedCommand;
+    const fileParams = new Set(fileParamNames(def));
+    const params: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(commandParams)) {
+      if (v === "" || fileParams.has(k)) continue;
+      params[k] = v;
+    }
     try {
-      const fileParams = new Set(fileParamNames(def));
-      const params: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(commandParams)) {
-        if (v === "" || fileParams.has(k)) continue;
-        params[k] = v;
-      }
       if (isFileCommand(def)) {
         // Uploaded first, then run in the background; CommandFileRunStatus
         // follows it.
@@ -357,7 +371,14 @@ export function DeviceDetail({
       const result = await api.sendCommand(deviceId, selectedCommand, params);
       setCommandResult({ ok: true, ...commandResultText(label, result) });
     } catch (e) {
-      setCommandResult({ ok: false, text: parseApiError(e) });
+      setCommandResult({
+        ok: false,
+        text: parseApiError(e),
+        status: e instanceof ApiError ? e.status : undefined,
+        code: e instanceof ApiError ? apiErrorCode(e) : undefined,
+        command: selectedCommand,
+        params,
+      });
     } finally {
       setSending(false);
     }
@@ -613,6 +634,23 @@ export function DeviceDetail({
             </code>
             <CopyButton value={deviceId} title="Copy device ID" />
           </span>
+          <span style={{ color: "var(--border-color)" }}>&middot;</span>
+          <button
+            type="button"
+            onClick={() => setReportContext({ source: "driver_line" })}
+            onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
+            onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
+            style={{
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              fontSize: "var(--font-size-sm)",
+              color: "var(--text-muted)",
+            }}
+          >
+            Report a problem
+          </button>
         </div>
         {/* Product hardware's driver is part of OpenAVC, and a device whose
             driver is not installed has the orphan banner below instead. */}
@@ -736,6 +774,11 @@ export function DeviceDetail({
           signInFields={hasSignInFields(
             deviceInfo?.driver_info?.config_schema as Record<string, unknown> | undefined,
           )}
+          onReport={
+            reportableOffline(offlineReason)
+              ? () => setReportContext({ source: "offline_banner", error: `Offline. ${offlineDetail}` })
+              : undefined
+          }
         />
       )}
 
@@ -1187,6 +1230,7 @@ export function DeviceDetail({
                 deviceId={deviceId}
                 deviceName={deviceName}
                 onStop={() => void fileRun.stop()}
+                onReport={setReportContext}
               />
 
               {/* Result */}
@@ -1202,6 +1246,21 @@ export function DeviceDetail({
                   >
                     {commandResult.ok ? <Check size={14} /> : <AlertTriangle size={14} />}
                     <span>{commandResult.text}</span>
+                    {!commandResult.ok &&
+                      reportableCommandFailure(commandResult.status, commandResult.code) && (
+                        <ReportLink
+                          onClick={() =>
+                            setReportContext({
+                              source: "command_failure",
+                              error: commandResult.text,
+                              command: commandResult.command,
+                              params: commandResult.params,
+                              status: commandResult.status,
+                              code: commandResult.code ?? "",
+                            })
+                          }
+                        />
+                      )}
                   </div>
                   {commandResult.detail && (
                     <pre
@@ -1251,8 +1310,27 @@ export function DeviceDetail({
 
       {/* Device Log */}
       <DeviceLog deviceId={deviceId} />
+
+      {reportContext && (
+        <ProblemReportDialog
+          deviceId={deviceId}
+          deviceName={deviceName}
+          context={reportContext}
+          onClose={() => setReportContext(null)}
+        />
+      )}
     </div>
   );
+}
+
+/** The `code` a structured refusal carries beside `detail`, or "". */
+function apiErrorCode(e: ApiError): string {
+  try {
+    const code = JSON.parse(e.body)?.code;
+    return typeof code === "string" ? code : "";
+  } catch {
+    return "";
+  }
 }
 
 // --- Command Picker ---
@@ -1762,6 +1840,25 @@ export function offlineNextStep(
   return "Not retrying. Fix the cause above, then press Reconnect.";
 }
 
+/** Faults no driver change fixes: the address does not answer, a setting or a
+ *  program on this computer, the device's own key or settings, the bridge it
+ *  goes through, or a driver with no simulator while simulation runs. */
+const OFFLINE_NOT_THE_DRIVER = new Set([
+  "unreachable",
+  "tls_cert_untrusted",
+  "host_key_rejected",
+  "client_missing",
+  "invalid_config",
+  "bridge_offline",
+  "no_simulator",
+]);
+
+/** Report a problem on the Offline banner: a fault the driver could have
+ *  caused. An unknown code, or none, might be the driver too. */
+export function reportableOffline(reason: string | undefined): boolean {
+  return !OFFLINE_NOT_THE_DRIVER.has(reason ?? "");
+}
+
 function OfflineBanner({
   installed = false,
   detail,
@@ -1769,6 +1866,7 @@ function OfflineBanner({
   failed,
   hint,
   signInFields = false,
+  onReport,
 }: {
   installed?: boolean;
   detail: string;
@@ -1776,6 +1874,8 @@ function OfflineBanner({
   failed: boolean;
   hint?: string;
   signInFields?: boolean;
+  /** Report a problem, offered when the driver could have caused the fault. */
+  onReport?: () => void;
 }) {
   const accent = "var(--color-warning, #f59e0b)";
   return (
@@ -1818,6 +1918,26 @@ function OfflineBanner({
           {installed && failed && reason !== "no_simulator"
             ? "Automatic reconnect is paused. Check this product's OpenAVC status, then press Reconnect."
             : offlineNextStep(reason, failed, signInFields)}
+          {onReport && (
+            <button
+              type="button"
+              onClick={onReport}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                marginLeft: "var(--space-sm)",
+                padding: "2px 10px",
+                borderRadius: 12,
+                border: `1px solid ${accent}`,
+                background: "transparent",
+                color: accent,
+                fontSize: 11,
+                cursor: "pointer",
+              }}
+            >
+              Report a problem
+            </button>
+          )}
         </div>
       </div>
     </div>

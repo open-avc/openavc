@@ -14,9 +14,10 @@ masked), its address and its recent traffic. The rules live in
 - ``GET /problem-reports/{name}``: the saved zip, for Download and for the
   browser's own send when this server cannot reach the internet.
 - ``POST /problem-reports/{name}/send``: send it once
-  (``support/report_upload.py``); answers ``{sent, reference, failure,
-  status}``. A failure is still a 200: the send was tried, and the page words
-  the outcome.
+  (``support/report_upload.py``); answers ``{name, report_id, sent,
+  reference, failure, status, report_url}``. A failure is still a 200: the
+  send was tried, and the page words the outcome (and, after a network
+  failure, sends the same file from the browser to ``report_url``).
 """
 
 from __future__ import annotations
@@ -87,7 +88,11 @@ async def send_saved(store: ReportStore, name: str) -> dict[str, Any]:
             False, failure=report_upload.REFUSED,
         ).to_dict()}
     result = await report_upload.upload_report(path, kind, report_id)
-    return {"name": name, "report_id": report_id, **result.to_dict()}
+    # The browser sends the same file there when this server could not.
+    return {
+        "name": name, "report_id": report_id, **result.to_dict(),
+        "report_url": report_upload.report_url(),
+    }
 
 
 @router.get("/devices/{device_id}/problem-report")
