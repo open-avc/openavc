@@ -551,3 +551,193 @@ def test_the_gate_raises_the_computed_platform_floor() -> None:
         polling={"queries": [{"send": "PWR?\r", "when_state": {"standby": False}}]},
     )
     assert required_platform_version(held_entry) == "0.37.0"
+
+
+# --- The liveness probe pauses with the poll ---
+#
+# A probe is a message like any other, so a unit that any message wakes
+# cannot be probed in standby. While polling.when_state holds the poll, the
+# probe is held as well: nothing goes out, and nothing is counted. These run
+# with poll_interval 0, so every line after start-up is the probe's.
+
+
+def _probe(interval: float = 1) -> dict[str, Any]:
+    return {
+        "send": "PWR?\r", "expect": "PWR=", "interval": interval,
+        "timeout": 0.2, "max_failures": 2,
+    }
+
+
+def _probed(
+    port: int, config: dict[str, Any] | None = None, **extra: Any,
+) -> Any:
+    """The gated acme driver with a probe the sleepy device wakes at, every
+    _INTERVAL seconds, and no poll running."""
+    drv = _build(
+        _acme(liveness=_probe(), **extra), port, poll_interval=0, **(config or {}),
+    )
+    drv.HEALTH_INTERVAL_S = _INTERVAL
+    return drv
+
+
+@pytest.mark.asyncio
+async def test_a_held_poll_holds_the_liveness_probe(sleepy_server, caplog) -> None:
+    """In standby for ten probe intervals (five times max_failures): no probe
+    sent, nothing woken, still connected, no miss counted. Wake opens the
+    gate, and the probe goes out and is answered again."""
+    caplog.set_level(logging.INFO, logger="openavc.drivers")
+    port, dev = sleepy_server
+    drv = _probed(port)
+    await drv.connect()
+    try:
+        assert await _until(lambda: "PWR?" in dev["lines"], 3.0)
+        await drv.send_command("standby")
+        assert await _until(lambda: drv.get_state("standby") is True, 3.0)
+        await asyncio.sleep(_INTERVAL * 10)
+        assert dev["lines"][dev["lines"].index("STBY 1") + 1:] == []
+        assert dev["standby"] is True and dev["woken"] == 0
+        assert drv._health_failures == 0
+        assert drv.get_state("connected") is True
+        assert drv.last_fault is None
+        assert _driver_log(caplog) == []
+        info = _driver_log(caplog, level=logging.INFO)
+        assert any("Liveness probe paused" in m for m in info)
+
+        await drv.send_command("wake")
+        assert await _until(lambda: drv.get_state("standby") is False, 3.0)
+        mark = dev["lines"].index("STBY 0") + 1
+        assert await _until(lambda: dev["lines"][mark:].count("PWR?") >= 3, 3.0)
+        assert any("Liveness probe resumed" in m for m in _driver_log(caplog, level=logging.INFO))
+        assert drv._health_failures == 0
+        assert drv.get_state("connected") is True
+    finally:
+        await drv.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_standby_sent_just_before_a_probe_is_read_before_it(sleepy_server) -> None:
+    """A probe due while Enter Standby is going out waits for its answer, as
+    a poll line does, so it does not go out a moment later and wake the
+    unit."""
+    port, dev = sleepy_server
+    drv = _probed(port, {"inter_command_delay": 0.1})
+    await drv.connect()
+    try:
+        assert drv.get_state("standby") is None
+        await drv.transport._send_lock.__aenter__()
+        try:
+            held = asyncio.create_task(drv._liveness_held())
+            await asyncio.sleep(0)
+            command = asyncio.create_task(drv.send_command("standby"))
+            await asyncio.sleep(0.02)
+        finally:
+            await drv.transport._send_lock.__aexit__(None, None, None)
+        assert await held is True
+        await command
+        assert dev["standby"] is True
+    finally:
+        await drv.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_a_silent_device_with_the_gate_open_is_still_dropped(quiet_server) -> None:
+    """Out of standby the probe runs as before: a unit that stops answering
+    goes offline as no_response."""
+    port, dev = quiet_server
+    drv = _probed(port)
+    await drv.connect()
+    try:
+        assert await _until(lambda: "PWR?" in dev["lines"], 3.0)
+        assert drv.get_state("standby") is None
+        dev["answer"] = False
+        assert await _until(lambda: drv.get_state("connected") is False, 3.0)
+        assert drv.last_fault is not None
+        assert drv.last_fault.code == "no_response"
+    finally:
+        await drv.disconnect()
+
+
+@pytest.fixture
+async def managed_probed(monkeypatch, quiet_server):
+    """``managed_quiet`` with the probe instead of a poll: start-up reads the
+    standby state, and the probe is the only thing that can announce a held
+    connection."""
+    from openavc.core.device_manager import DeviceManager
+    from openavc.drivers.registry import register_driver, unregister_driver
+
+    monkeypatch.setattr(
+        DeviceManager, "_reconnect_delay", lambda self, device_id, attempt: 0.05
+    )
+    port, dev = quiet_server
+    assert validate_driver_definition(
+        _acme(on_connect=[{"send": "STBY?\r"}], liveness=_probe())
+    ) == []
+    # The contract's shortest interval is a second; the runtime takes less.
+    definition = _acme(on_connect=[{"send": "STBY?\r"}], liveness=_probe(_INTERVAL))
+    register_driver(create_configurable_driver_class(definition))
+    state = StateStore()
+    dm = DeviceManager(state, EventBus())
+    await dm.add_device({
+        "id": "acme1", "driver": definition["id"], "name": "Acme",
+        "config": {
+            "host": "127.0.0.1", "port": port, "poll_interval": 0,
+            "inter_command_delay": 0.05,
+        },
+    })
+    try:
+        yield dm, state, dev
+    finally:
+        await dm.disconnect_all()
+        unregister_driver(definition["id"])
+
+
+@pytest.mark.asyncio
+async def test_a_device_the_probe_dropped_that_comes_back_in_standby_comes_online(
+    managed_probed,
+) -> None:
+    """Dropped by the probe, then switched off and on again in standby: the
+    reconnect reads standby from the device, the probe waits, and the device
+    is online, still in standby, with no probe sent to wake it."""
+    dm, state, dev = managed_probed
+    drv = dm._devices["acme1"]
+    assert await _until(lambda: "PWR?" in dev["lines"], 3.0)
+    dev["answer"] = False
+    assert await _until(
+        lambda: state.get("device.acme1.offline_reason") == "no_response", 3.0,
+    )
+    assert await _until(lambda: drv._held, 3.0)
+    dev["answer"], dev["standby"] = True, True
+    mark = len(dev["lines"])
+    dev["kick"]()
+    assert await _until(
+        lambda: state.get("device.acme1.connected") is True
+        and state.get("device.acme1.offline_reason") is None,
+        3.0,
+    )
+    assert state.get("device.acme1.standby") is True
+    await asyncio.sleep(_INTERVAL * 6)
+    assert state.get("device.acme1.connected") is True
+    assert set(dev["lines"][mark:]) <= {"STBY?"}
+
+
+@pytest.mark.asyncio
+async def test_a_silent_device_last_seen_in_standby_stays_held_by_the_probe(
+    quiet_server,
+) -> None:
+    """The reading that holds the probe back is from before the drop, and
+    the device answers nothing on the new connection: nothing has answered,
+    so it stays offline."""
+    port, dev = quiet_server
+    drv = _probed(port, on_connect=[{"send": "STBY?\r"}])
+    drv.set_state("standby", True)
+    dev["answer"] = False
+    drv._hold_next_connect = True
+    await drv.connect()
+    try:
+        assert drv._held
+        await asyncio.sleep(_INTERVAL * 6)
+        assert drv._held
+        assert drv.get_state("connected") is not True
+        assert "PWR?" not in dev["lines"]
+    finally:
+        await drv.disconnect()

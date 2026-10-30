@@ -2525,6 +2525,20 @@ class BaseDriver(ABC):
         """
         return type(self)._liveness_probe is not BaseDriver._liveness_probe
 
+    async def _liveness_held(self) -> bool:
+        """True when the device's own state holds the liveness probe back now
+        (a unit in standby that any message would wake).
+
+        Asked just before each probe goes out, the first on a held reconnect
+        included; nothing yields between a False and the probe's start. A
+        held probe sends nothing and is neither a miss nor an answer: the
+        count of misses in a row is left as it was. On a held connection it
+        is announced instead once the device has answered anything on it, as
+        the poll loop does for a held poll (_poll_waits_on_device). Default:
+        never.
+        """
+        return False
+
     def _start_health_loop(self) -> None:
         """Start the liveness watchdog (idempotent while one is running)."""
         if self._health_task is None or self._health_task.done():
@@ -2556,12 +2570,17 @@ class BaseDriver(ABC):
         rather than an interval later: every stage of connect() has run by
         the time this loop starts, and the hold exists to ask whether the
         device is back.
+
+        While the device's own state holds the probe back (_liveness_held),
+        nothing goes out and nothing is counted; the log says so once when
+        the probe pauses and once when it resumes.
         """
         detach_emit_chain()  # a device-lifetime loop is a root, not a continuation
         interval = float(self.HEALTH_INTERVAL_S)
         timeout = float(self.HEALTH_TIMEOUT_S)
         max_failures = max(int(self.HEALTH_MAX_FAILURES), 1)
         probe_now = self._held
+        paused = False
         try:
             while self._link_alive():
                 if not probe_now:
@@ -2570,7 +2589,41 @@ class BaseDriver(ABC):
                 if not self._link_alive():
                     return
                 try:
-                    await asyncio.wait_for(self._liveness_probe(), timeout)
+                    held = await self._liveness_held()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    # A driver's own hook failing must not end the watchdog.
+                    log.exception(
+                        f"[{self.device_id}] Could not tell whether the "
+                        f"device's state holds the liveness probe back; "
+                        f"probing"
+                    )
+                    held = False
+                if not self._link_alive():
+                    return
+                if held != paused:
+                    paused = held
+                    log.info(
+                        f"[{self.device_id}] Liveness probe paused: the "
+                        f"device's state holds it back"
+                        if held else f"[{self.device_id}] Liveness probe resumed"
+                    )
+                if held:
+                    counts = self._io_counts()
+                    if self._held and counts is not None and counts[2] > 0:
+                        # Nothing goes out to answer until the device's state
+                        # changes, and the device has answered on this
+                        # connection already.
+                        await self._announce_held()
+                    continue
+                try:
+                    # asyncio.timeout, not wait_for: on Python 3.11 wait_for
+                    # starts the probe as a task, which yields first, and a
+                    # command sent in that gap would go out between the
+                    # decision above and the probe.
+                    async with asyncio.timeout(timeout):
+                        await self._liveness_probe()
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:

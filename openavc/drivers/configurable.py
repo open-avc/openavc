@@ -2388,6 +2388,17 @@ class ConfigurableDriver(BaseDriver):
     def _unread_sample(self) -> str:
         return self._last_unread
 
+    async def _liveness_held(self) -> bool:
+        """``polling.when_state`` holds the poll back, so it holds the
+        probe back too: a unit that any message would wake is left in
+        standby. Judged as a poll line is (_line_gate_shut), after a command
+        sent just before has had its answer read, and without the poll's own
+        paused/resumed log, which is the poll loop's."""
+        polling = self._definition.get("polling")
+        if not isinstance(polling, dict):
+            return False
+        return await self._line_gate_shut(polling, None, quiet=True) == "poll"
+
     async def _liveness_probe(self) -> None:
         """Send the declared probe and wait for a qualifying reply.
 

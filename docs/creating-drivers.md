@@ -1037,7 +1037,7 @@ on_connect:
 
 ##### Holding a query back on the device's state (`when_state:`, platform 0.37.0)
 
-Some devices wake from standby at any command they receive, so polling them would wake them every interval. `when_state:` sends an entry only while the device's own state variables hold the values you give. On `polling` it holds back the whole poll; on an `on_connect` or `polling.queries` entry it holds back that entry, so a reconnect to a unit in standby leaves it there. An `osc` driver also asks every reply address once its `on_connect` steps have gone; the `polling` gate holds those back as well. Since 0.37.1 the `polling` gate also holds back the check an `osc` or `http` driver makes when it connects (the OSC `/info` query, the HTTP HEAD request), so the device reads connected without having answered, as it stays connected while its polls are held. After a server restart nothing has been reported yet, so the first connect still checks.
+Some devices wake from standby at any command they receive, so polling them would wake them every interval. `when_state:` sends an entry only while the device's own state variables hold the values you give. On `polling` it holds back the whole poll; on an `on_connect` or `polling.queries` entry it holds back that entry, so a reconnect to a unit in standby leaves it there. An `osc` driver also asks every reply address once its `on_connect` steps have gone; the `polling` gate holds those back as well. Since 0.37.1 the `polling` gate also holds back the check an `osc` or `http` driver makes when it connects (the OSC `/info` query, the HTTP HEAD request), so the device reads connected without having answered, as it stays connected while its polls are held. After a server restart nothing has been reported yet, so the first connect still checks. Since 0.38.0 it also holds back a `liveness` probe (see the `liveness` section).
 
 ```yaml
 responses:
@@ -1643,6 +1643,7 @@ liveness:
 
 - **Probe with something every unit answers however it is set up**, such as a status or version query the driver already polls (its reply also goes through the normal response rules). Never with something the integrator configured: a zone, a preset, an object address, a table row.
 - **Any reply counts, an error included.** Leave `expect` off unless the device sends so much on its own that any data would hide a dead control channel. When you set it, match the error reply as well as the normal one (`^(STATUS|ERR)`, not `^STATUS`), with the whitespace the protocol allows (`"cmd"\s*:\s*"status"`, not `"cmd":"status"`).
+- **The probe pauses while `polling.when_state` holds the poll** (platform 0.38.0), so a unit that any message wakes from standby can carry one: in standby no probe goes out and none is counted as missed. As with the poll, a unit switched off or unplugged in standby is not noticed until it leaves standby. After a drop for missed probes, a reconnect that finds the unit in standby comes online once it has answered anything on the new connection (on `tcp`, `udp` and `osc`; on `serial` it stays offline until it leaves standby and answers a probe). An older platform sends the probe in every state, so a driver whose poll is gated needs `min_platform_version: "0.38.0"` before it adds a `liveness` block.
 
 Valid on `tcp`, `serial`, `udp`, and `osc`. HTTP drivers don't need it: every HTTP poll awaits its response, so missed polls take the device offline.
 
@@ -3564,6 +3565,7 @@ async def _liveness_probe(self) -> None:
 - **Any reply counts, an error included.** Catch your protocol's error reply (a NAK, an exception response, an error frame) and return.
 - **When every message is addressed to something configured**, as on a bus of displays that each answer only their own ID, ask the address that answered most recently on this connection, then the others, and raise only when none answers.
 - **Never log back in from the probe.** Log in again on the connection you have when the device's refusal arrives. A rejected password is `auth_failed`, which stops the retries.
+- **When the device's own state means the probe must not go out** (a unit in standby that any message would wake), override `async def _liveness_held(self) -> bool` to return `True` while it is in that state (platform 0.38.0). It is asked just before each probe: a held probe is not sent and not counted as missed, and a reconnect held offline comes online once the device has answered anything on the new connection (on the platform's `tcp`, `udp` and `osc` transports). An older platform never asks and sends the probe, so declare `min_platform_version` 0.38.0 in a driver that relies on it.
 
 ### Convenience Methods
 

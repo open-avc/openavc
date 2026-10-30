@@ -166,6 +166,33 @@ async def test_watchdog_success_resets_miss_counter() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_probe_the_device_state_holds_back_is_not_sent_or_counted() -> None:
+    """While the driver says the device's state holds the probe back, the
+    probe is not run and the misses already counted stay as they were; once
+    it lets go, the probe runs and an answer clears them."""
+    drv = _make_driver()
+    drv.hold = True
+
+    async def held() -> bool:
+        return drv.hold
+
+    drv._liveness_held = held  # type: ignore[method-assign]
+    drv._start_health_loop()
+    drv._health_failures = 1
+    try:
+        await asyncio.sleep(0.2)
+        assert drv.probe_count == 0
+        assert drv._health_failures == 1
+        assert drv.get_state("connected") is True
+        drv.hold = False
+        await asyncio.sleep(0.1)
+        assert drv.probe_count >= 1
+        assert drv._health_failures == 0
+    finally:
+        drv._stop_health_loop()
+
+
+@pytest.mark.asyncio
 async def test_watchdog_hung_probe_counts_as_miss() -> None:
     """A probe that never returns is bounded by HEALTH_TIMEOUT_S and counted."""
     drv = _make_driver()
