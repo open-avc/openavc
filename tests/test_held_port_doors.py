@@ -11,7 +11,9 @@ these are the other doors that dial a device:
   connected device holds is answered naming that device;
 - the cloud diagnostics ``tcp_check`` and ``port_scan``
   (``cloud/command_handler.py``): a held port is reported open and in use by
-  the device, without connecting.
+  the device, without connecting;
+- the AI's ``test_driver_command`` (``cloud/tools/device_tools.py``), which
+  sends raw text to an address: a held port is refused, naming the device.
 
 The device is an invented Acme Widget whose driver really connects, through
 a real ``DeviceManager``, to a loopback port that counts the connections it
@@ -373,3 +375,47 @@ class TestCloudDiagnostics:
         assert held.accepted == 0
         assert check["in_use_by"] == "Lobby Widget"
         assert scan["in_use_by"] == {str(held.port): "Lobby Widget"}
+
+
+# ---------------------------------------------------------------------------
+# The AI's raw command
+# ---------------------------------------------------------------------------
+
+
+class TestRawCommand:
+
+    def _tools(self, manager: DeviceManager) -> DeviceToolsMixin:
+        tools = DeviceToolsMixin()
+        tools._get_engine = lambda: _engine(manager)
+        return tools
+
+    async def test_a_held_port_is_refused_naming_the_device(self, manager):
+        async with _Port() as held:
+            await _connect(manager, _device("lobby_widget", "Lobby Widget", held.port))
+
+            result = await self._tools(manager)._test_driver_command({
+                "host": "localhost", "port": held.port, "command_string": "PWR?", "timeout": 1,
+            })
+            await _settle()
+
+        assert held.accepted == 1
+        assert result["success"] is False
+        assert result["in_use_by"] == "Lobby Widget"
+        assert result["error"].startswith(f"Lobby Widget is connected to localhost:{held.port} now")
+        assert "send_device_command" in result["error"]
+        assert manager.state.get("device.lobby_widget.connected") is True
+
+    async def test_a_port_nobody_holds_is_sent_to_as_before(self, manager):
+        async with _Port() as held, _Port() as free:
+            await _connect(manager, _device("lobby_widget", "Lobby Widget", held.port))
+
+            result = await self._tools(manager)._test_driver_command({
+                "host": HOST, "port": free.port, "command_string": "PWR?", "timeout": 1,
+            })
+            await _settle()
+
+        # The loopback port never answers, so the send times out; it was dialed.
+        assert free.accepted == 1
+        assert held.accepted == 1
+        assert result["error"] == "Timeout waiting for response"
+        assert "in_use_by" not in result

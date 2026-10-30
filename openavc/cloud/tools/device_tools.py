@@ -886,6 +886,24 @@ class DeviceToolsMixin:
         except (UnicodeDecodeError, UnicodeEncodeError) as e:
             return {"success": False, "error": f"Invalid delimiter escape sequence {delimiter!r}: {e}", "response": None}
 
+        # A port a connected project device's driver holds is never opened
+        # (discovery/port_guard.py): a device that serves one connection at a
+        # time gives the port to the newest one, and its driver keeps a socket
+        # that never answers again.
+        holder = await self._raw_port_holder(host, port)
+        if holder is not None:
+            return {
+                "success": False,
+                "error": (
+                    f"{holder} is connected to {host}:{port} now, and a second connection "
+                    f"can take the device from its driver. Send it one of its own commands "
+                    f"with send_device_command instead. To send raw text, ask the user to "
+                    f"disable {holder} on its device page first and enable it again after."
+                ),
+                "response": None,
+                "in_use_by": holder,
+            }
+
         try:
             transport = await TCPTransport.create(
                 host=host, port=port,
@@ -906,6 +924,32 @@ class DeviceToolsMixin:
             return {"success": False, "error": str(e), "response": None}
         finally:
             await transport.close()
+
+    async def _raw_port_holder(self, host: str, port: Any) -> str | None:
+        """The connected project device whose driver holds ``host:port``, or
+        None. The same list a Discovery scan and Test Connection leave alone
+        (``port_guard.held_ports`` over ``DeviceManager.live_connections``)."""
+        from openavc.discovery.network_scanner import resolve_address
+        from openavc.discovery.port_guard import held_ports
+
+        try:
+            port = int(port)
+        except (TypeError, ValueError):
+            return None
+        engine = self._get_engine()
+        live = getattr(getattr(engine, "devices", None), "live_connections", None)
+        if live is None:
+            return None
+        try:
+            held, _unresolved = await held_ports(live())
+        except Exception:
+            from openavc.utils.logger import get_logger
+            get_logger(__name__).exception("Could not read the project's connected devices")
+            return None
+        if not held:
+            return None
+        conn = held.get((await resolve_address(host) or host, port))
+        return conn.name if conn is not None else None
 
     # ===== SCRIPT TOOLS =====
 

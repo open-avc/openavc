@@ -11,8 +11,9 @@ check. Three jobs:
   driver keeps a socket that never answers again. The device is identified by
   its driver already, so leaving the port alone costs the scan nothing. The
   map is built when the scan starts (``DiscoveryEngine.held_connections``) by
-  ``held_ports``, which the cloud diagnostics ``port_scan`` and ``tcp_check``
-  and a device page's Test Connection ask too before they open a port.
+  ``held_ports``, which the cloud diagnostics ``port_scan`` and ``tcp_check``,
+  a device page's Test Connection and the AI's ``test_driver_command`` ask too
+  before they open a port.
 - **One connection per port.** ``hold(host, port)`` is a lock per address and
   port, held from connect to close by every connection the identification
   stage opens: the greeting read, each check, and a companion that asks
