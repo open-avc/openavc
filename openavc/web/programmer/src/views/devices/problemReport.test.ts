@@ -245,13 +245,17 @@ describe("the remembered name and email", () => {
   });
 
   it("starts empty when the browser blocks storage", () => {
-    // The setup file may install a plain object in place of a Storage.
-    vi.spyOn(localStorage, "getItem").mockImplementation(() => {
+    // A real Storage keeps its methods on the prototype (assigning one on the
+    // instance stores an item of that name); the setup file may install a
+    // plain object instead.
+    const target = typeof Storage !== "undefined" && localStorage instanceof Storage
+      ? Storage.prototype
+      : localStorage;
+    const blocked = () => {
       throw new Error("blocked");
-    });
-    vi.spyOn(localStorage, "setItem").mockImplementation(() => {
-      throw new Error("blocked");
-    });
+    };
+    vi.spyOn(target, "getItem").mockImplementation(blocked);
+    vi.spyOn(target, "setItem").mockImplementation(blocked);
     expect(() => rememberContact({ name: "Pat", email: "" })).not.toThrow();
     expect(rememberedContact()).toEqual({ name: "", email: "" });
   });
