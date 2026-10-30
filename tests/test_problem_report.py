@@ -283,3 +283,16 @@ def test_create_then_download_then_send_one_file(wired, monkeypatch):
     assert sent == [(made["name"], "problem_report", made["report_id"])]
     with pytest.raises(HTTPException):
         asyncio.run(routes.send_problem_report("openavc-problem-report-gone-20260101-0000.zip"))
+
+
+def test_the_summary_never_calls_an_unchecked_driver_imported():
+    """With the driver library unreachable, a library driver reads as imported;
+    the summary says it was not checked instead."""
+    identity = {"id": "acme_widget", "name": "Acme Widget", "version": "1.0.0",
+                "source": "imported", "catalog": {"listed": False, "checked": False}}
+    report = {"device": {"id": "w", "name": "W", "driver_identity": identity}, "created_at": 0}
+    html = pr.render_summary(report)
+    assert "not checked: the driver library could not be reached" in html
+    assert "imported on this system" not in html
+    identity["catalog"]["checked"] = True
+    assert "imported on this system" in pr.render_summary(report)

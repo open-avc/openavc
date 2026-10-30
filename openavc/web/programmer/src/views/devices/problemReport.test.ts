@@ -217,6 +217,20 @@ describe("the words", () => {
     expect(lines).toContain("Running on the simulator");
     expect(lines[lines.length - 1]).toBe("Nothing about your other devices or the rest of the project");
   });
+
+  it("never calls a driver imported when the driver library could not be read", () => {
+    const preview = {
+      driver: {
+        id: "acme_widget", name: "Acme Widget", version: "1.4.0", source: "imported",
+        modified: false, listed: false, checked: false, files: [], loaded: true,
+      },
+      address: {}, values: 0, changes: 0, messages: 0, window_start: null, log_lines: 0,
+      serial_found: false, simulated: false, openavc_version: "0.38.0", os: "Linux-6.8", deployment_type: "docker",
+    } as unknown as ProblemReportPreview;
+    expect(includedLines(preview)[0]).toBe(
+      "Driver: Acme Widget 1.4.0, not checked: the driver library could not be reached",
+    );
+  });
 });
 
 describe("the remembered name and email", () => {

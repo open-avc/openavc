@@ -489,6 +489,12 @@ def render_summary(report: dict[str, Any]) -> str:
         datetime.fromtimestamp(created).strftime("%Y-%m-%d %H:%M") + f" {utc_offset(created)}"
         if created else ""
     )
+    unchecked = identity.get("source") == "imported" and not (identity.get("catalog") or {}).get("checked")
+    source_words = (
+        # Without the library to compare against, a library driver reads as imported.
+        "not checked: the driver library could not be reached" if unchecked
+        else _SOURCE_WORDS.get(identity.get("source"), identity.get("source"))
+    )
     address = device.get("address") or {}
     where = ":".join(str(p) for p in (address.get("host"), address.get("port")) if p not in (None, ""))
     parts = [
@@ -516,7 +522,7 @@ def render_summary(report: dict[str, Any]) -> str:
     parts += [
         "<h2>Device</h2><table>",
         _row("Driver", f"{_e(identity.get('name') or identity.get('id'))} "
-             f"{_e(identity.get('version'))} ({_e(_SOURCE_WORDS.get(identity.get('source'), identity.get('source')))}"
+             f"{_e(identity.get('version'))} ({_e(source_words)}"
              f"{', edited' if identity.get('modified') else ''})" if identity else "none loaded"),
         _row("Address", _e(f"{address.get('transport', '')} {where}".strip())),
         _row("Connected", _e(device.get("connected"))),

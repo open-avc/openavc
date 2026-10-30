@@ -176,7 +176,12 @@ function driverLine(preview: ProblemReportPreview): string {
   const named = [driver.name || driver.id, driver.version].filter(Boolean).join(" ");
   if (!driver.loaded) return `Driver: ${named}, not loaded`;
   const parts = [named];
-  if (driver.source && SOURCE_WORDS[driver.source]) parts.push(SOURCE_WORDS[driver.source]);
+  if (driver.source === "imported" && driver.checked === false) {
+    // Without the library to compare against, a library driver reads as imported.
+    parts.push("not checked: the driver library could not be reached");
+  } else if (driver.source && SOURCE_WORDS[driver.source]) {
+    parts.push(SOURCE_WORDS[driver.source]);
+  }
   if (driver.source === "catalog" && driver.checked) {
     parts.push(driver.modified ? "edited on this system" : "unchanged");
   }
