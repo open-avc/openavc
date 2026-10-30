@@ -223,6 +223,37 @@ async def test_standby_sent_in_the_middle_of_a_poll_stops_that_poll(
 
 
 @pytest.mark.asyncio
+async def test_standby_pressed_while_a_poll_line_waits_is_read_before_it(
+    sleepy_server,
+) -> None:
+    """The order the test above cannot reach by timing alone: a poll line is
+    already waiting for the transport (a write ahead of it holds the lock)
+    when Enter Standby is sent, so the command queues behind the line's wait.
+    The line must be judged after the command's answer, not the moment the
+    write ahead of it lets go, or it goes out a delay after Enter Standby and
+    wakes the unit."""
+    port, dev = sleepy_server
+    definition = _acme(polling={"queries": [], "when_state": {"standby": False}})
+    drv = _build(definition, port, inter_command_delay=0.1)
+    await drv.connect()
+    try:
+        assert drv.get_state("standby") is None
+        await drv.transport._send_lock.__aenter__()
+        try:
+            gate = asyncio.create_task(drv._line_gate_shut(definition["polling"], None))
+            await asyncio.sleep(0)
+            command = asyncio.create_task(drv.send_command("standby"))
+            await asyncio.sleep(0.02)
+        finally:
+            await drv.transport._send_lock.__aexit__(None, None, None)
+        assert await gate == "poll"
+        await command
+        assert dev["standby"] is True
+    finally:
+        await drv.disconnect()
+
+
+@pytest.mark.asyncio
 async def test_an_unset_variable_lets_the_poll_run(sleepy_server) -> None:
     """Before the device has said whether it is in standby, the poll runs, so
     the first connect reads the state the gate needs."""

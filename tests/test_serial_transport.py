@@ -47,6 +47,31 @@ async def test_sim_connect():
     assert not transport.connected
 
 
+async def test_sim_wait_idle_waits_out_a_write_queued_behind_it():
+    """As on TCP: a write queued after ``wait_idle`` began takes the lock the
+    moment the wait lets go of it, and the wait goes on until that write and
+    its delay are done too (a gated poll line is judged after the answer to
+    a command pressed while it was waiting)."""
+    transport = await SerialTransport.create(
+        "SIM:test", baudrate=9600,
+        on_data=lambda d: None,
+        on_disconnect=lambda: None,
+        inter_command_delay=0.1,
+    )
+    try:
+        first = asyncio.create_task(transport.send(b"a\r"))
+        await asyncio.sleep(0)
+        idle = asyncio.create_task(transport.wait_idle())
+        await asyncio.sleep(0)
+        second = asyncio.create_task(transport.send(b"b\r"))
+        await asyncio.sleep(0)
+        await idle
+        assert first.done() and second.done()
+    finally:
+        await asyncio.gather(first, second, return_exceptions=True)
+        await transport.close()
+
+
 async def test_sim_send():
     """Simulated serial port accepts sends without error."""
     transport = await SerialTransport.create(

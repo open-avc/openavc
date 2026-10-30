@@ -23,7 +23,7 @@ from openavc.transport.frame_parsers import DelimiterFrameParser, FrameParser
 from openavc.transport.wire_log import format_wire_data, wire_held
 from openavc.transport.write_drain import close_or_abandon, drain_or_stalled
 from openavc.utils.logger import get_logger
-from openavc.transport.pacing import sleep_at_least
+from openavc.transport.pacing import SendLock, sleep_at_least
 from .types import Callback
 
 log = get_logger(__name__)
@@ -133,7 +133,7 @@ class TCPTransport:
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
         self._reader_task: asyncio.Task | None = None
-        self._send_lock = asyncio.Lock()
+        self._send_lock = SendLock()
         self._connected = False
         # Last connect/IO error string, for the connection-fault classifier.
         self._last_error = ""
@@ -296,14 +296,13 @@ class TCPTransport:
                 pass
 
     async def wait_idle(self) -> None:
-        """Return once every write already under way or waiting has gone out,
-        the ``inter_command_delay`` after each included (the lock is fair, so
-        taking it once waits for all of them). A caller about to decide
+        """Return once no write is under way or waiting, the
+        ``inter_command_delay`` after each included, a write queued behind
+        this wait as well (``SendLock.wait_idle``). A caller about to decide
         whether to send (a driver's state-gated poll line) waits here first,
         so the answer to a command that just went out has had its chance to
         arrive."""
-        async with self._send_lock:
-            pass
+        await self._send_lock.wait_idle()
 
     async def send(self, data: bytes) -> None:
         """

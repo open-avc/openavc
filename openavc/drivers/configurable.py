@@ -1152,9 +1152,10 @@ class ConfigurableDriver(BaseDriver):
         response rule's follow-up query).
 
         A gated line first waits for the transport to finish any write under
-        way (a command somebody sent, and its ``inter_command_delay``), so a
-        reply to it that shuts the gate is read before the decision; between
-        the decision and the send nothing yields. Without an
+        way or waiting (a command somebody sent, and its
+        ``inter_command_delay``), one sent while this line was already waiting
+        included, so a reply to it that shuts the gate is read before the
+        decision; between the decision and the send nothing yields. Without an
         ``inter_command_delay`` the line follows a command at once, and only
         a reply that has already arrived counts.
         """

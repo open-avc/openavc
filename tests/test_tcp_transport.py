@@ -528,6 +528,35 @@ async def test_wait_idle_waits_out_every_write_queued_ahead(echo_server):
     await transport.close()
 
 
+async def test_wait_idle_waits_out_a_write_queued_behind_it(echo_server):
+    """A write queued after ``wait_idle`` began (a command pressed while a
+    gated poll line was already waiting) takes the lock the moment the wait
+    lets go of it. The wait goes on until that write and its delay are done
+    too, or the poll line is judged before the command's answer can arrive."""
+    import asyncio
+    server, port = echo_server
+
+    transport = await TCPTransport.create(
+        "127.0.0.1", port,
+        on_data=lambda d: None,
+        on_disconnect=lambda: None,
+        delimiter=b"\r",
+        inter_command_delay=0.1,
+    )
+    try:
+        first = asyncio.create_task(transport.send(b"a\r"))
+        await asyncio.sleep(0)
+        idle = asyncio.create_task(transport.wait_idle())
+        await asyncio.sleep(0)
+        second = asyncio.create_task(transport.send(b"b\r"))
+        await asyncio.sleep(0)
+        await idle
+        assert first.done() and second.done()
+    finally:
+        await asyncio.gather(first, second, return_exceptions=True)
+        await transport.close()
+
+
 # --- Concurrent sends are serialized ---
 
 
