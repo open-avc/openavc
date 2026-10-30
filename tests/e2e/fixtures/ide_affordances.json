@@ -123,6 +123,7 @@
     "BUTTON Duplicate device",
     "BUTTON Delete device",
     "BUTTON Copy device ID",
+    "BUTTON Report a problem",
     "INPUT placeholder: Filter children and live state by id, label, name, or any value",
     "BUTTON Encoders0",
     "BUTTON Ask the driver to re-discover children from the device",
