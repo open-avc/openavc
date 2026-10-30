@@ -1190,6 +1190,11 @@ def _check_reply_framing(
     response rule: ``response_parsing`` compares reply text against the
     driver's patterns, and a frame that never completes has no text to compare.
 
+    A reply whose lines end in the delimiter and which trails text after the
+    last one is read, all but that text, and is judged apart
+    (``_report_trailing_text``): a prompt the device prints after each reply
+    is its protocol, anything else is a line read one reply late.
+
     So this check asks the simulator instead of reading it. It feeds the
     driver's own liveness, poll and command strings to a real simulator built
     from this definition and looks at the bytes that come back — which is also
@@ -1256,6 +1261,10 @@ def _check_reply_framing(
             return
         terminator = delimiter.encode()
         unframed: list[str] = []
+        # Replies whose lines end in the delimiter but which carry something
+        # after the last one: (example, the trailing text, whether the reply
+        # also opens with the delimiter).
+        trailing: list[tuple[str, bytes, bool]] = []
         replies = 0
         for probe in probes:
             try:
@@ -1265,13 +1274,23 @@ def _check_reply_framing(
             if not reply:
                 continue
             replies += 1
-            if not reply.endswith(terminator):
-                unframed.append(f"{probe.strip()!r} -> {reply[:40]!r}")
+            if reply.endswith(terminator):
+                continue
+            example = f"{probe.strip()!r} -> {reply[:40]!r}"
+            if terminator in reply:
+                trailing.append(
+                    (example, reply.rsplit(terminator, 1)[1], reply.startswith(terminator))
+                )
+            else:
+                unframed.append(example)
     finally:
         sim_log.setLevel(previous_level)
 
+    if trailing:
+        _report_trailing_text(result, trailing, raw_delimiter, driver_def)
+
     if not unframed:
-        if replies:
+        if replies and not trailing:
             result.info(
                 "reply_framing",
                 f"{replies} simulator repl{'y' if replies == 1 else 'ies'} checked, "
@@ -1291,6 +1310,55 @@ def _check_reply_framing(
         f"A reply written by hand — a respond: template or a respond() call in "
         f"a handler — is sent verbatim, so end it with the delimiter; only the "
         f"handlers the simulator generates are terminated for you."
+    )
+
+
+def _report_trailing_text(
+    result: ValidationResult,
+    trailing: list[tuple[str, bytes, bool]],
+    raw_delimiter: str,
+    driver_def: dict,
+) -> None:
+    """Judge replies that end with text after their last delimiter.
+
+    Every line before that text is read at once; the text itself waits for
+    the next delimiter. A device that prints a prompt after each reply
+    (``volume=55`` CR LF ``>``) does exactly this, and when every reply also
+    opens with the delimiter, the next reply completes the prompt as a line of
+    its own, which a response rule can read (or acknowledge with ``set: {}``).
+    That is the device's protocol, so it is noted, not flagged. Anything else
+    is a reply line that lost its delimiter: it is read one reply late, joined
+    to the start of the next one.
+    """
+    patterns = _compile_response_patterns(driver_def.get("responses") or [], driver_def)
+    shown = "; ".join(example for example, _, _ in trailing[:_FRAMING_EXAMPLES])
+    more = len(trailing) - _FRAMING_EXAMPLES
+    if more > 0:
+        shown += f"; +{more} more"
+    texts = sorted({text.decode("utf-8", errors="replace").strip() for _, text, _ in trailing})
+
+    def read_alone(text: bytes) -> bool:
+        line = text.decode("utf-8", errors="replace").strip()
+        return any(p.search(line) for p in patterns)
+
+    if all(opens and read_alone(text) for _, text, opens in trailing):
+        result.info(
+            "reply_framing",
+            f"{len(trailing)} simulator repl{'y ends' if len(trailing) == 1 else 'ies end'} "
+            f"with {', '.join(repr(t) for t in texts)} after the last {raw_delimiter!r}, "
+            f"as a device that prints a prompt after each reply does; every reply "
+            f"opens with {raw_delimiter!r}, so the next one completes it as a line "
+            f"a response rule reads: {shown}."
+        )
+        return
+    result.warning(
+        "reply_framing",
+        f"{len(trailing)} simulator repl{'y ends' if len(trailing) == 1 else 'ies end'} "
+        f"with text after the last {raw_delimiter!r}, which reaches the driver only "
+        f"when the next reply arrives, joined to its first line: {shown}. End the "
+        f"reply with the delimiter, or, for a prompt the device prints after each "
+        f"reply, open every reply with the delimiter and give the prompt a "
+        f"response rule of its own."
     )
 
 

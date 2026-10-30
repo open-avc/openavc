@@ -15,6 +15,11 @@ f-string resolves to nothing static), so the check builds a real simulator and
 reads the bytes. These pin both directions — it fires on an unterminated reply
 and stays quiet on a terminated one — plus the transports that frame their own
 messages and need no terminator at all.
+
+A reply whose lines are terminated but which trails text after the last
+delimiter is read, all but that text. A device that prints a prompt after each
+reply does that on purpose, and is noted; any other trailing text is a line
+read one reply late, and is a warning.
 """
 
 from __future__ import annotations
@@ -116,3 +121,47 @@ def test_a_handler_that_raises_is_not_a_framing_finding():
     result = _run(_driver('respond(1 / 0)'))
     assert result.passed
     assert not result.errors
+
+
+def _prompting_driver(handler: str, *, prompt_rule: bool = True) -> dict:
+    """A device that answers each line with CR LF, the value, CR LF, and then
+    its ``>`` prompt with no line ending, the prompt-after-reply shape of a
+    serial command line."""
+    driver = _driver(handler)
+    if prompt_rule:
+        driver["responses"] = [{"match": r"^>\s*$", "set": {}}] + driver["responses"]
+    return driver
+
+
+def test_a_prompt_after_each_reply_is_noted_not_flagged():
+    """Every line is terminated and read; only the prompt waits, and the next
+    reply's leading delimiter completes it as a line a rule reads."""
+    result = _run(_prompting_driver('respond("\\r\\nPWR " + str(state["power"]) + "\\r\\n>")'))
+    assert result.passed
+    assert not result.errors and not result.warnings
+    (note,) = [i for i in result.infos if i.check == "reply_framing"]
+    assert "'>'" in note.message and "prompt" in note.message
+
+
+def test_trailing_text_no_rule_reads_is_a_warning():
+    result = _run(
+        _prompting_driver(
+            'respond("\\r\\nPWR " + str(state["power"]) + "\\r\\n>")', prompt_rule=False,
+        )
+    )
+    assert result.passed
+    (issue,) = result.warnings
+    assert issue.check == "reply_framing"
+    assert "joined to its first line" in issue.message
+    assert "PWR 1" in issue.message
+
+
+def test_a_last_line_that_lost_its_delimiter_is_a_warning():
+    """Two lines, the second unterminated, and the reply does not open with
+    the delimiter: the second line is read late, glued to the next reply."""
+    driver = _driver('respond("PWR " + str(state["power"]) + "\\r\\nPWR 0")')
+    result = _run(driver)
+    assert result.passed
+    (issue,) = result.warnings
+    assert issue.check == "reply_framing"
+    assert "joined to its first line" in issue.message
