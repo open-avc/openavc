@@ -295,6 +295,22 @@ class DriverSandbox:
     def connected(self) -> bool:
         return bool(self.state.get(f"device.{self.device_id}.connected"))
 
+    def connection_began_at(self) -> float | None:
+        """When the driver began the connect attempt behind its current
+        connection, on the wall clock the state store's write times use, or
+        None when the driver does not say.
+
+        Read it as the connection is announced: the next attempt overwrites
+        it. A reconnect held offline after the device stopped answering is
+        announced only once the device answers, so its start-up reads (a
+        model, a firmware version) are written before the announcement.
+        """
+        driver = self.driver
+        began = getattr(driver, "_connect_began_at", None) if driver is not None else None
+        if not isinstance(began, (int, float)) or isinstance(began, bool):
+            return None
+        return time.time() - (time.monotonic() - float(began))
+
     def push_callbacks(self) -> list[str]:
         """The URLs the driver asked the device to send its events to (each
         callback it registered with OpenAVC's HTTP listener)."""

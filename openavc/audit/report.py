@@ -201,7 +201,9 @@
     ``reconnected_after_back``; ``dropped_again_after``,
     ``reconnected_again_after``); ``before`` (the status values that had a
     value going in) and ``repopulated`` (``reported_again``,
-    ``not_reported_again``: written after the reconnect, changed or not);
+    ``not_reported_again``: written on the connection the driver reconnected
+    on, from when it began connecting, the driver's start-up reads included,
+    changed or not);
     ``announcements`` (what the device announced during the test:
     ``t``, ``protocol``, ``detail``); ``summary`` says it in a sentence.
 

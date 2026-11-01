@@ -117,6 +117,8 @@ class Unit:
                     writer.write(b"PWR=on\r")
                 elif line == "VOL?":
                     writer.write(b"VOL=30\r")
+                elif line == "MDL?":
+                    writer.write(b"MDL=W3000\r")
                 await writer.drain()
                 if resetting:
                     return
@@ -577,6 +579,57 @@ async def test_a_probe_that_notices_after_the_device_is_back_is_waited_for(drive
         assert record["noticed_at"] > record["reachable_at"]
         assert record["reconnected_at"] is not None
         assert "the driver reconnected" in record["summary"]
+    finally:
+        await run.stop()
+        await unit.close()
+        _DRIVER_REGISTRY.pop("acme_watched", None)
+
+
+async def test_what_a_held_reconnect_reads_before_it_is_announced_counts(driver):
+    """After a drop for missed probes, the reconnect stays offline until the
+    device answers a probe, and the driver's start-up reads on it come first:
+    a model read once at connect, and never polled, was written before the
+    driver was shown connected again, and read as not reported again. It is
+    counted from when the connection that came back was opened."""
+    watched = dict(
+        DRIVER, id="acme_watched", on_connect=["MDL?\\r"],
+        state_variables={**DRIVER["state_variables"], "model": {"type": "string", "label": "Model"}},
+        responses=[*DRIVER["responses"], {"match": r"MDL=(\w+)", "set": {"model": "$1"}}],
+        liveness={"send": "PWR?\\r", "interval": 1, "timeout": 0.3, "max_failures": 1},
+    )
+    _DRIVER_REGISTRY["acme_watched"] = create_configurable_driver_class(watched)
+    unit = Unit()
+    await unit.start()
+    session, run = await _connected(unit, driver_id="acme_watched")
+    sandbox = run.listen.sandbox
+    await _until(lambda: sandbox.device_state().get("model") == "W3000")
+    answering = {"yes": True}
+
+    async def pinger() -> bool:
+        return answering["yes"]
+
+    try:
+        test = start_outage(
+            session, run, POWER_CYCLE, pinger=pinger, back_unnoticed_seconds=0.3, **QUICK,
+        )
+        assert "model" in test.before
+        test.mark("off")
+        unit.reboot_silently()
+        answering["yes"] = False
+        await _until(lambda: test.unreachable_at is not None)
+        answering["yes"] = True
+        test.mark("on")
+        await _until(lambda: test.status == DONE, timeout=30.0)
+        record = test.record()
+        assert record["reason"]["code"] == "no_response"
+        assert record["reconnected_at"] is not None
+        # Read on the new connection, before it was announced.
+        model_written = sandbox.state.written[f"device.{sandbox.device_id}.model"]
+        assert record["noticed_at"] < model_written < record["reconnected_at"]
+        assert record["repopulated"] == {
+            "reported_again": ["model", "power", "volume"], "not_reported_again": [],
+        }
+        assert "3 of 3 status values were reported again" in record["summary"]
     finally:
         await run.stop()
         await unit.close()

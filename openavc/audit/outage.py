@@ -30,7 +30,10 @@ and a connection that drops again meanwhile (a device that accepts one as it
 boots, then resets it) is recorded and waited out, so the test ends only
 once the driver has stayed connected;
 through the sandbox's own state store, which notes a value written again even
-when it did not change. What the device announced meanwhile (an SSDP byebye as
+when it did not change. They are counted from when the connect attempt behind
+the connection that stayed up began, not from its announcement: a reconnect
+held offline after the device stopped answering is announced only once the
+device answers, after the driver's start-up reads on it. What the device announced meanwhile (an SSDP byebye as
 it went, a NOTIFY, an mDNS announcement or an AMX beacon as it booted) comes
 from the session's listeners.
 
@@ -193,6 +196,10 @@ class OutageTest:
         # The connection dropping again after the reconnect, and coming back.
         self.dropped_again_at: float | None = None
         self.reconnected_again_at: float | None = None
+        # When the connect attempt behind each reconnect began: what the
+        # status values are counted from (see ``reported_from``).
+        self._reopened_at: float | None = None
+        self._reopened_again_at: float | None = None
         self.not_noticed_at: float | None = None
         self.ends_at: float | None = None
         # What set ``ends_at``: "settled" (the watch after the reconnect) or
@@ -267,6 +274,24 @@ class OutageTest:
             return self.reconnected_again_at
         return self.reconnected_at
 
+    def reported_from(self) -> float | None:
+        """Where the status values reported again are counted from: when the
+        connection that stayed up was opened, so the driver's start-up reads
+        on it count even when they came before it was announced (a reconnect
+        held offline until the device answered). The announcement when the
+        driver does not say when it began."""
+        if self.dropped_again_at is not None:
+            return self._reopened_again_at or self.reconnected_again_at
+        return self._reopened_at or self.reconnected_at
+
+    def _began_since(self, after: float | None) -> float | None:
+        """When the driver's current connect attempt began, when that was
+        after ``after`` (the drop it reconnected from); else None."""
+        began = self._sandbox.connection_began_at()
+        if began is None or after is None or began < after:
+            return None
+        return began
+
     # -- running ------------------------------------------------------------------
 
     def start(self) -> None:
@@ -302,9 +327,11 @@ class OutageTest:
                 return
             if self.noticed_at is not None and self.reconnected_at is None:
                 self.reconnected_at = time.time()
+                self._reopened_at = self._began_since(self.noticed_at)
                 self._timeline("outage.reconnected", "The driver connected to the device again.")
             elif self.dropped_again_at is not None and self.reconnected_again_at is None:
                 self.reconnected_again_at = time.time()
+                self._reopened_again_at = self._began_since(self.dropped_again_at)
                 self._timeline("outage.reconnected_again", "The driver connected to the device again.")
 
         def on_state(key: str, _old: Any, new: Any, _source: str = "") -> None:
@@ -499,11 +526,12 @@ class OutageTest:
     # -- reading ------------------------------------------------------------------
 
     def _repopulation(self) -> dict[str, Any]:
-        """Which of the values the device had going in it reported again after
-        the driver reconnected (a write counts, changed or not)."""
+        """Which of the values the device had going in it reported again on
+        the connection the driver reconnected on (a write counts, changed or
+        not)."""
         if self._final is not None:
             return self._final
-        since = self.settled_at()
+        since = self.reported_from() if self.settled_at() is not None else None
         if since is None:
             return {"reported_again": [], "not_reported_again": sorted(self.before)}
         written = self._sandbox.written_since(since) if self._sandbox.started else set()
