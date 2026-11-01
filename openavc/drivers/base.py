@@ -2630,8 +2630,9 @@ class BaseDriver(ABC):
         paused = False
         try:
             while self._link_alive():
-                if wait > 0:
-                    await asyncio.sleep(wait)
+                # Even at 0 this yields, so a probe that never awaits cannot
+                # hold the event loop.
+                await asyncio.sleep(wait)
                 wait = interval
                 if not self._link_alive():
                     return
