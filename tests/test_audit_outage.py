@@ -633,9 +633,10 @@ async def test_what_a_held_reconnect_reads_before_it_is_announced_counts(driver,
         record = test.record()
         assert record["reason"]["code"] == "no_response"
         assert record["reconnected_at"] is not None
-        # Read on the new connection, before it was announced.
+        # Read on the new connection, before it was announced (or in the same
+        # clock tick: Windows before Python 3.13 stamps both to 15.6 ms).
         model_written = sandbox.state.written[f"device.{sandbox.device_id}.model"]
-        assert record["noticed_at"] < model_written < record["reconnected_at"]
+        assert record["noticed_at"] < model_written <= record["reconnected_at"]
         assert record["repopulated"] == {
             "reported_again": ["model", "power", "volume"], "not_reported_again": [],
         }
