@@ -928,25 +928,44 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         if self._is_udp or self._is_osc:
             await self.start_datagram_server(port)
             return
-        # A number the stream server chose itself (start(0)) can be one the OS
-        # keeps for itself on UDP only (Windows: WinError 10013), so it is given
-        # back and chosen again. A number the caller named is never traded.
+        # start(0) promises one number both servers answer on. Windows keeps
+        # whole blocks of numbers for itself on one protocol and not the other
+        # (WinError 10013), and it hands out free numbers in order, so when the
+        # stream server's pick sits in a block UDP refuses, so do its next
+        # several picks. Asking the same side again only walks the block. The
+        # side that refused picks the next number instead: a number a protocol
+        # hands out itself is never one it keeps. A number the caller named is
+        # never traded.
         attempts = _SIDE_PORT_ATTEMPTS if port == 0 and self._side_receiver else 1
+        stream_picks = True
         for attempt in range(attempts):
-            await self._start_stream_server(port)
-            if not self._side_receiver:
-                return
-            try:
-                # The stream server's port, read back after start(0) resolved
-                # it: side-sends go to the number the driver connects to, and
-                # binding the argument again would put them on a second
-                # ephemeral port.
-                await self.start_datagram_server(self.port)
-            except OSError:
-                if attempt == attempts - 1:
-                    raise
-                await self._stop_stream_server()
-                continue
+            last = attempt == attempts - 1
+            if stream_picks:
+                await self._start_stream_server(port)
+                if not self._side_receiver:
+                    return
+                try:
+                    # The stream server's port, read back after start(0)
+                    # resolved it: side-sends go to the number the driver
+                    # connects to, and binding the argument again would put
+                    # them on a second ephemeral port.
+                    await self.start_datagram_server(self.port)
+                except OSError:
+                    if last:
+                        raise
+                    await self._stop_stream_server()
+                    stream_picks = False
+                    continue
+            else:
+                await self.start_datagram_server(0)
+                try:
+                    await self._start_stream_server(self.port)
+                except OSError:
+                    if last:
+                        raise
+                    await self.stop_datagram_server()
+                    stream_picks = True
+                    continue
             logger.info(
                 "%s also receives UDP side-sends on port %d", self.name, self.port
             )
