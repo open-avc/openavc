@@ -312,6 +312,21 @@ export interface MissingDriver {
   community_match: CommunityMatch | null;
 }
 
+/** OpenAVC's own SSH public key. Key sign-in uses it when a device's key
+ *  path is blank; the device's account must trust this key. */
+export interface SshPublicKey {
+  /** One OpenSSH authorized_keys line: type, key, comment. */
+  public_key: string;
+  /** "SHA256:..." as ssh-keygen -l and most devices show it. */
+  fingerprint: string;
+  key_type: string;
+  bits: number;
+}
+
+export async function getSshPublicKey(): Promise<SshPublicKey> {
+  return request<SshPublicKey>("/devices/ssh-key");
+}
+
 export async function listMissingDrivers(): Promise<MissingDriver[]> {
   const data = await request<{ missing: MissingDriver[] }>("/devices/missing-drivers");
   return data.missing;

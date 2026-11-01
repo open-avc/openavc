@@ -65,6 +65,8 @@ EXPECTED_CONTROL = {
     ("GET", "/api/devices/{device_id}/command-runs/{run_id}/file"),
     ("GET", "/api/devices"),
     ("GET", "/api/devices/missing-drivers"),
+    # OpenAVC's SSH public key, read by the device page of an SSH device.
+    ("GET", "/api/devices/ssh-key"),
     ("GET", "/api/devices/{device_id}"),
     ("GET", "/api/devices/{device_id}/children"),
     ("GET", "/api/devices/{device_id}/children/{child_type}"),

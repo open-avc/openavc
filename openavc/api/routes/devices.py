@@ -128,6 +128,37 @@ async def list_missing_drivers() -> dict[str, Any]:
     return {"missing": result}
 
 
+@router.get("/devices/ssh-key")
+async def get_ssh_key() -> dict[str, Any]:
+    """OpenAVC's own SSH public key, for a device's account to trust.
+
+    Key sign-in uses it whenever a device's Key Path is blank. The key pair is
+    made on the first request (or the first key sign-in); the private half is
+    never returned.
+    """
+    import asyncio
+
+    from openavc.transport import ssh_identity
+
+    try:
+        key = await asyncio.to_thread(ssh_identity.ensure_platform_key)
+    except Exception as exc:
+        log.warning("Could not prepare OpenAVC's SSH key: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "OpenAVC couldn't create its SSH key. Check that the server can "
+                "write to its data folder, then try again."
+            ),
+        ) from exc
+    return {
+        "public_key": key.public_key,
+        "fingerprint": key.fingerprint,
+        "key_type": key.key_type,
+        "bits": key.bits,
+    }
+
+
 @router.post("/devices/install-missing")
 async def install_missing_drivers(body: InstallMissingDriversRequest) -> dict[str, Any]:
     """Bulk-install community drivers requested by IDs, then activate orphans.

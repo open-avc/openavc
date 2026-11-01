@@ -2685,6 +2685,23 @@ class MySwitcherDriver(BaseDriver):
 - `set_state("input", 3)` writes to `device.<device_id>.input` in the state store.
 - **All sent and received data is automatically logged** in the device log. No logging code needed. See "Device Log" below.
 
+### SSH Drivers (Python)
+
+A device whose control surface is a command line reached over **SSH** (a managed switch, some video bars and headends) uses `"transport": "ssh"` in a Python driver's `DRIVER_INFO`. Like MQTT and SNMP it is Python-only. The platform opens the session with the computer's own OpenSSH client and hands the driver a byte stream: bytes from the device arrive at `on_data_received()`, and `self.transport.send()` writes to the session, the same as a TCP connection. Framing on the device's prompt, paging and any enable step are the driver's job, usually in `_post_connect()`.
+
+The connection reads these keys from the device's config (declare the ones the integrator should see in `CONFIG_SCHEMA`):
+
+| Key | Meaning |
+|---|---|
+| `host`, `port` | The device's address; `port` defaults to 22. |
+| `username` | The account to sign in with. Required. |
+| `ssh_auth_method` | `"key"` (the default) or `"password"`. |
+| `password` | The account's password, for password sign-in. |
+| `key_path` | A private key file on the OpenAVC server. Leave it blank to sign in with OpenAVC's own key, which the device page shows under **OpenAVC SSH key** for the integrator to add to the device's account. |
+| `host_key_policy` | `"accept-new"` (the default: remember a device's host key the first time, refuse a changed one), `"strict"`, or `"off"`. |
+| `extra_ssh_options` | Further OpenSSH `-o` options for this device as `Key=Value`, a list or one per line (commas also separate). |
+| `ssh_legacy_algorithms` | `true` (the default) also offers the older algorithms some AV gear still requires. |
+
 ### MQTT Drivers (Python)
 
 Some devices are controlled over **MQTT** — they run (or connect to) an MQTT broker, and you control them by publishing to command topics and subscribing to status topics. Examples: TVs with an embedded broker, building-management gateways, IoT bridges.

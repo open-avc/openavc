@@ -32,6 +32,19 @@ Inexpensive USB-to-serial adapters show up here automatically. Plug one into the
 
 When you pick a USB adapter that reports a serial number, OpenAVC saves that serial number and reconnects to the adapter even if the operating system assigns a different port name after a reboot or replug. The baud rate, parity, data bits, stop bits and flow control start at the driver's own settings (9600 8N1 with no flow control when the driver has none). Change any that the device's manual gives differently.
 
+## SSH Connections
+
+Some devices, such as managed network switches and some video bars, are controlled over SSH. OpenAVC connects to them with the SSH client of the computer it runs on. Windows, macOS, the Raspberry Pi image, the Docker image and the Linux installer all include one. Appliance hardware installs it by itself once it can reach the internet.
+
+A device's driver signs in with a password or with a key, chosen in **Edit**:
+
+- **Password.** Enter the account's username and password.
+- **Key.** OpenAVC has an SSH key of its own. The page of any device that connects over SSH shows it under **OpenAVC SSH key**, with a **Copy** button and its fingerprint. Add that key to the account OpenAVC signs in with on the device (the device's manual says where: often a "public key" or "authorized keys" setting for the user). Then choose key sign-in and leave the private key path blank. All SSH devices use the same OpenAVC key.
+
+To sign in with a key file of your own instead, enter its path on the OpenAVC server in the private key path setting. The file must be readable by the account the OpenAVC service runs as.
+
+The first time OpenAVC connects to an SSH device it remembers the device's host key. If that key changes later (the device was replaced or reset), OpenAVC refuses the connection and the device page says the host key changed.
+
 ## Testing Commands
 
 After adding a device, click it in the device list to open the detail panel:

@@ -46,6 +46,7 @@ import { InlineProtocolEditor } from "./InlineProtocolEditor";
 import { IrCodesEditor } from "./IrCodesEditor";
 import { ConfigTableEditor } from "./ConfigTableEditor";
 import { BridgeIrPort } from "./BridgeIrPort";
+import { SshKeySection } from "./SshKeySection";
 import { ApiError, parseApiError } from "../../api/errors";
 import { useConnectionTestResult } from "./useConnectionTestResult";
 import { driverLabel } from "../../components/shared/driverLabel";
@@ -835,6 +836,12 @@ export function DeviceDetail({
             </div>
           )}
         </div>
+      )}
+
+      {/* OpenAVC's own SSH key, for a device that connects over SSH: key
+          sign-in uses it whenever the device's key path is blank. */}
+      {deviceInfo?.connection?.transport === "ssh" && (
+        <SshKeySection sectionStyle={sectionStyle} sectionTitleStyle={sectionTitleStyle} />
       )}
 
       {/* Bridge Ports — only for bridge devices (driver advertises ports other

@@ -1786,6 +1786,7 @@ class BaseDriver(ABC):
             if not known_hosts:
                 from openavc.system_config import get_data_dir
                 known_hosts = str(get_data_dir() / "ssh" / "known_hosts")
+            key_path = await self._ssh_key_path(auth_method)
 
             kwargs = dict(
                 host=host,
@@ -1795,7 +1796,7 @@ class BaseDriver(ABC):
                 on_disconnect=self._handle_transport_disconnect,
                 auth_method=auth_method,
                 password=self.config.get("password") or None,
-                key_path=self.config.get("key_path") or None,
+                key_path=key_path,
                 known_hosts_path=known_hosts,
                 host_key_policy=self.config.get("host_key_policy", "accept-new"),
                 connect_timeout=float(self.config.get("connect_timeout", 15.0)),
@@ -2348,6 +2349,32 @@ class BaseDriver(ABC):
         prompt immediately on connect, or seeding a protocol parameter from
         config before the first byte flows. Default: no-op.
         """
+
+    async def _ssh_key_path(self, auth_method: str) -> str | None:
+        """The private key an SSH connection signs in with.
+
+        The device's own Key Path when it has one. Otherwise, for key sign-in,
+        OpenAVC's own key (``transport/ssh_identity.py``), made on first use,
+        so key sign-in works on an install where nobody can place a key file.
+        Password sign-in takes no key. If the key cannot be made (a read-only
+        data folder), the connection goes ahead without one and the device's
+        refusal names the sign-in problem.
+        """
+        configured = str(self.config.get("key_path") or "").strip()
+        if configured:
+            return configured
+        if str(auth_method or "key").lower() == "password":
+            return None
+        from openavc.transport import ssh_identity
+
+        try:
+            key = await asyncio.to_thread(ssh_identity.ensure_platform_key)
+        except Exception as exc:  # any failure falls back to signing in without it
+            log.warning(
+                "[%s] Could not prepare OpenAVC's SSH key: %s", self.device_id, exc,
+            )
+            return None
+        return str(key.path)
 
     def _transport_kwargs(
         self, transport_type: str, kwargs: dict[str, Any]
