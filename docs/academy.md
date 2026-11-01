@@ -8,14 +8,17 @@
 
 **Associate** is for programmers who build and hand over spaces. Across four modules (Devices, Logic, The panel, and Finish and hand over) you build a presentation and meeting space from a blank project, with checkpoints along the way, then design one feature yourself from a written specification. Two assessments follow: a practical, where a reviewer opens your exported project in a clean OpenAVC instance and operates it, and a scenario quiz. Pass both and you are an **OpenAVC Certified Programmer, Associate**, with a certificate you can share. Associate is approved by AVIXA for 6 Renewal Units (RUs) toward CTS, CTS-D and CTS-I.
 
+**Drivers** is a practical add-on covering Driver Builder, YAML and introductory Python driver authoring. Build commands, read reported state, separate channels and diagnose protocol failures against your own online practice amplifier and display. The labs progress from guided edits to adding a capability from a device manual. Complete the practical checkpoints and a short retryable knowledge check to earn a certificate of completion.
+
 [How certification works](https://academy.openavc.com/mod/page/view.php?id=87) has the pass marks, attempt limits and what the certificate shows.
 
 ## Which one first
 
 - New to OpenAVC: start with Foundations, then continue to Associate.
 - Already built [your first space](tutorial-first-space.md) from this site: go straight to Associate. Foundations is short, and it fills in what the tutorial skips, so it is worth a look when you have an hour.
+- Comfortable adding devices in the Programmer and ready to author drivers: take Drivers.
 
-Scripting, driver authoring and Cloud are not yet covered by a course. On this site, the [Scripting Guide](scripting-guide.md) and the [classroom tutorial](tutorial-classroom.md) cover scripts, and [Creating Drivers](creating-drivers.md) covers drivers.
+General project scripting and Cloud do not yet have courses. The [Scripting Guide](scripting-guide.md) and [classroom tutorial](tutorial-classroom.md) cover scripts; [Creating Drivers](creating-drivers.md) is the driver-authoring reference.
 
 ## What you need
 
