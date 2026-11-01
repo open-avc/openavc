@@ -62,7 +62,9 @@ the one before.
    The optional front-panel check asks you to change something on the device itself and say
    whether OpenAVC showed it, or that nothing on the device could be changed to try it.
 6. **Commands.** Open a command, press **Send**, then watch or listen to the device and say
-   whether it happened. The suggested commands come first. Send only the commands that are safe
+   whether it happened. The suggested commands come first, and the step lists the ones not tried
+   yet. **Continue** first names any suggested command not tried and any command sent with no
+   answer to **Did it happen?**; **Continue anyway** moves on. Send only the commands that are safe
    to run on this unit: every command but a status query changes the device, and one that
    erases or resets it needs a confirmation before it is sent. Each command is watched for 10 seconds after it
    returns, and one whose driver lists what it sets until the driver's next poll could report

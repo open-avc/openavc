@@ -31,11 +31,13 @@ import { describeSize, fileParamsBlocked } from "../../../../components/shared/c
 import type { ParamPickers } from "../../../../components/shared/ParamInput";
 import {
   ANSWER_CHOICES,
+  asksWhetherItHappened,
   batchableQueries,
   changedText,
   commandMatches,
   commandOrder,
   commandProgress,
+  commandsLeaveNotes,
   commandStatus,
   currentRun,
   firstReportedText,
@@ -48,6 +50,7 @@ import {
   paramsText,
   sendWarning,
   splitChanged,
+  suggestedProgress,
   trafficEntryText,
   trafficRows,
   trialOutcome,
@@ -85,6 +88,9 @@ export function CommandsStep() {
   const [pending, setPending] = useState<{ command: string; text: string; label: string; call: Call } | null>(null);
   const [search, setSearch] = useState("");
   const [onlyNotTried, setOnlyNotTried] = useState(false);
+  // Continue was pressed with suggested commands not tried or questions not
+  // answered: the step says which before it is left.
+  const [leaving, setLeaving] = useState(false);
 
   const catalog = useMemo(() => run?.commands?.catalog ?? [], [run?.commands?.catalog]);
   const pickerState = run?.commands?.picker_state;
@@ -112,6 +118,8 @@ export function CommandsStep() {
     commands?.current != null || commands?.batch?.status === "running" || settingBusy;
   const queryCount = batchableQueries(catalog);
   const keyCount = catalog.filter((c) => c.suggested).length;
+  const suggestedLine = suggestedProgress(catalog, trials);
+  const leaveNotes = commandsLeaveNotes(catalog, trials);
   // The open command stays in the list when it is sent, filter or not.
   const shown = ordered.filter(
     (c) =>
@@ -150,6 +158,27 @@ export function CommandsStep() {
     const def = catalog.find((c) => c.name === name);
     setValues(seedCommandParams(def?.params ?? {}));
     setFiles({});
+  };
+
+  const leave = () => {
+    if (leaveNotes.length > 0 && !leaving) setLeaving(true);
+    else useAuditStore.getState().setStep("outage");
+  };
+
+  /** Back from the check before leaving: open the first command with a send
+   *  still to answer, else the first suggested one not tried, and show it. */
+  const backToCommands = () => {
+    setLeaving(false);
+    const target =
+      ordered.find((c) => trials.some((t) => t.command === c.name && asksWhetherItHappened(t) && !t.answer)) ??
+      ordered.find((c) => c.suggested && notTried(c, trials));
+    if (!target) return;
+    setSearch("");
+    setOnlyNotTried(false);
+    if (open !== target.name) toggle(target.name);
+    window.requestAnimationFrame(() =>
+      document.getElementById(commandRowId(target.name))?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
   };
 
   /** A command that takes or hands back a file: its files go up first. */
@@ -291,8 +320,9 @@ export function CommandsStep() {
       )}
 
       {catalog.length > 0 && (
-        <div role="status" style={{ fontSize: "var(--font-size-sm)", fontWeight: 600, marginBottom: "var(--space-md)" }}>
-          {commandProgress(catalog, trials)}
+        <div role="status" style={{ fontSize: "var(--font-size-sm)", marginBottom: "var(--space-md)" }}>
+          <div style={{ fontWeight: 600 }}>{commandProgress(catalog, trials)}</div>
+          {suggestedLine && <div>{suggestedLine}</div>}
         </div>
       )}
 
@@ -404,17 +434,44 @@ export function CommandsStep() {
         <WhatChanged changed={commands?.changed ?? []} />
       )}
 
-      <div style={{ marginTop: "var(--space-lg)", display: "flex", gap: "var(--space-sm)" }}>
-        <BackButton to="listen" disabled={working} />
-        <button
-          type="button"
-          onClick={() => useAuditStore.getState().setStep("outage")}
-          disabled={working}
-          style={buttonStyle("primary", working)}
+      {leaving && leaveNotes.length > 0 ? (
+        <div
+          role="alert"
+          aria-label="Before you continue"
+          style={{
+            ...panelStyle,
+            marginTop: "var(--space-lg)",
+            background: "var(--color-warning-bg)",
+            border: "1px solid var(--color-warning)",
+            fontSize: "var(--font-size-sm)",
+          }}
         >
-          Continue
-        </button>
-      </div>
+          <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+            <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2, color: "var(--color-warning)" }} />
+            <div>
+              <div style={{ fontWeight: 600 }}>Before you continue</div>
+              {leaveNotes.map((note) => (
+                <div key={note} style={{ overflowWrap: "anywhere" }}>{note}</div>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: "var(--space-sm)", marginTop: "var(--space-sm)" }}>
+            <button type="button" onClick={backToCommands} style={buttonStyle("primary")}>
+              Back to the commands
+            </button>
+            <button type="button" onClick={leave} disabled={working} style={buttonStyle("muted", working)}>
+              Continue anyway
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ marginTop: "var(--space-lg)", display: "flex", gap: "var(--space-sm)" }}>
+          <BackButton to="listen" disabled={working} />
+          <button type="button" onClick={leave} disabled={working} style={buttonStyle("primary", working)}>
+            Continue
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -458,6 +515,11 @@ function WhatChanged({ changed }: { changed: audit.AuditChangedValue[] }) {
   );
 }
 
+/** The element id of a command's row, to scroll it into view. */
+function commandRowId(name: string): string {
+  return `audit-command-${name}`;
+}
+
 const STATUS_ICON: Record<CommandStatusKey, ReactNode> = {
   not_tried: <Circle size={14} style={{ color: "var(--text-secondary)" }} />,
   watching: <Loader2 size={14} style={spinStyle} />,
@@ -486,12 +548,23 @@ function CommandRow({
   children: ReactNode;
 }) {
   const status = commandStatus(trials);
+  // A suggested command not tried yet stands out in the list.
+  const todo = command.suggested && trials.length === 0;
   const tags = [
     command.query ? "Status query" : "",
     command.restarts_device_for > 0 ? "Restarts the device" : "",
   ].filter(Boolean);
   return (
-    <li style={{ ...panelStyle, marginBottom: "var(--space-sm)", fontSize: "var(--font-size-sm)", padding: 0 }}>
+    <li
+      id={commandRowId(command.name)}
+      style={{
+        ...panelStyle,
+        marginBottom: "var(--space-sm)",
+        fontSize: "var(--font-size-sm)",
+        padding: 0,
+        ...(todo ? { borderLeft: "3px solid var(--accent)" } : {}),
+      }}
+    >
       <button
         type="button"
         onClick={onToggle}
@@ -541,7 +614,14 @@ function CommandRow({
             </span>
           )}
         </span>
-        <span style={{ flexShrink: 0, fontSize: "var(--font-size-xs)", color: "var(--text-secondary)" }}>
+        <span
+          style={{
+            flexShrink: 0,
+            fontSize: "var(--font-size-xs)",
+            color: todo ? "var(--accent)" : "var(--text-secondary)",
+            fontWeight: todo ? 600 : undefined,
+          }}
+        >
           {status.text}
         </span>
       </button>
@@ -721,7 +801,7 @@ function TrialRow({
           <ErrorLine text={downloadError} />
         </div>
       )}
-      {!running && !trial.batch && !trial.error && (
+      {asksWhetherItHappened(trial) && (
         <div style={{ marginTop: "var(--space-sm)" }}>
           <div style={{ fontWeight: 600 }}>Did it happen?</div>
           {help && <div style={{ ...hintStyle, marginTop: 0 }}>What it should do: {help}</div>}

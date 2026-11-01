@@ -15,6 +15,7 @@ import {
   commandMatches,
   commandOrder,
   commandProgress,
+  commandsLeaveNotes,
   commandStatus,
   driverLines,
   firstReportedText,
@@ -28,6 +29,7 @@ import {
   sendWarning,
   splitChanged,
   stepFor,
+  suggestedProgress,
   trafficRows,
   trialOutcome,
 } from "./auditHelpers";
@@ -127,20 +129,70 @@ describe("where each command stands", () => {
     expect(commandProgress([], tries)).toBe("");
   });
 
-  it("counts the key commands tried apart", () => {
+  it("says which suggested commands have not been tried", () => {
     const catalog = [
-      command("power_on", { suggested: true }),
-      command("mute", { suggested: true }),
+      command("power_on", { label: "Power On", suggested: true }),
+      command("mute", { label: "Mute", suggested: true }),
       command("query_power"),
     ];
-    expect(commandProgress(catalog, [])).toBe("3 commands, none tried yet · Suggested: 0 of 2 tried");
+    expect(suggestedProgress(catalog, [])).toBe(
+      "Tried 0 of 2 suggested commands. Not tried yet: Power On, Mute.",
+    );
     const tries = [
       trial({ command: "query_power" }),
       trial({ number: 2, command: "power_on", answer: { answer: "yes", note: "", at: 2 } }),
     ];
-    expect(commandProgress(catalog, tries)).toBe(
-      "2 of 3 commands tried, 1 answered · Suggested: 1 of 2 tried",
+    expect(suggestedProgress(catalog, tries)).toBe("Tried 1 of 2 suggested commands. Not tried yet: Mute.");
+    expect(suggestedProgress(catalog, [...tries, trial({ number: 3, command: "mute" })])).toBe(
+      "Tried 2 of 2 suggested commands.",
     );
+    expect(suggestedProgress([command("query_power")], [])).toBe("");
+    // The count of all commands no longer repeats the suggested ones.
+    expect(commandProgress(catalog, tries)).toBe("2 of 3 commands tried, 1 answered");
+  });
+});
+
+describe("before the commands step is left", () => {
+  const catalog = [
+    command("route", { label: "Route", suggested: true }),
+    command("recall", { label: "Recall Preset", suggested: true }),
+    command("set_volume", { label: "Set Volume", suggested: true }),
+    command("query_power", { label: "Query Power", query: true }),
+  ];
+  const answered = { answer: "yes" as const, note: "", at: 1 };
+
+  it("names the suggested commands not tried and the sends with no answer", () => {
+    // Ten routes sent one after another, one of them answered.
+    const routes = Array.from({ length: 10 }, (_, i) =>
+      trial({ number: i + 1, command: "route", label: "Route", answer: i === 3 ? answered : null }),
+    );
+    expect(commandsLeaveNotes(catalog, routes)).toEqual([
+      "2 suggested commands have not been tried: Recall Preset, Set Volume.",
+      '"Did it happen?" has no answer for 9 of the 10 commands sent (Route).',
+    ]);
+  });
+
+  it("counts only the sends that ask the question", () => {
+    const tries = [
+      trial({ number: 1, command: "route", label: "Route" }),
+      trial({ number: 2, command: "recall", label: "Recall Preset", error: "Preset must be at most 8." }),
+      trial({ number: 3, command: "query_power", label: "Query Power", batch: true }),
+      trial({ number: 4, command: "set_volume", label: "Set Volume", status: "watching" }),
+    ];
+    expect(commandsLeaveNotes(catalog, tries)).toEqual([
+      '"Did it happen?" has no answer for the command sent (Route).',
+    ]);
+    expect(commandsLeaveNotes(catalog, [tries[0], { ...tries[0], number: 5 }])[1]).toBe(
+      '"Did it happen?" has no answer for any of the 2 commands sent (Route).',
+    );
+  });
+
+  it("says nothing when every suggested command was tried and every send answered", () => {
+    const tries = catalog.map((c, i) =>
+      trial({ number: i + 1, command: c.name, label: c.label, answer: answered }),
+    );
+    expect(commandsLeaveNotes(catalog, tries)).toEqual([]);
+    expect(commandsLeaveNotes([command("query_power")], [])).toEqual([]);
   });
 });
 

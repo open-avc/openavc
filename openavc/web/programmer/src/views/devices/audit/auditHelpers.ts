@@ -381,9 +381,8 @@ export function commandStatus(trials: AuditCommandTrial[]): { key: CommandStatus
 }
 
 /** How far through the commands the person is: "3 of 58 commands tried,
- *  2 answered · Suggested: 2 of 4 tried". A command counts as answered when
- *  its last try has an answer; the suggested part is there when the driver
- *  has suggested ones. */
+ *  2 answered". A command counts as answered when its last try has an
+ *  answer. The suggested ones have a line of their own (suggestedProgress). */
 export function commandProgress(catalog: AuditCommandInfo[], trials: AuditCommandTrial[]): string {
   const n = catalog.length;
   if (n === 0) return "";
@@ -391,14 +390,60 @@ export function commandProgress(catalog: AuditCommandInfo[], trials: AuditComman
   const last = new Map<string, AuditCommandTrial>();
   for (const t of trials) if (names.has(t.command)) last.set(t.command, t);
   const answered = [...last.values()].filter((t) => t.answer).length;
-  const all =
-    last.size === 0
-      ? `${plural(n, "command", "commands")}, none tried yet`
-      : `${last.size} of ${plural(n, "command", "commands")} tried, ${answered} answered`;
-  const suggested = catalog.filter((c) => c.suggested);
-  if (suggested.length === 0) return all;
-  const tried = suggested.filter((c) => last.has(c.name)).length;
-  return `${all} · Suggested: ${tried} of ${suggested.length} tried`;
+  return last.size === 0
+    ? `${plural(n, "command", "commands")}, none tried yet`
+    : `${last.size} of ${plural(n, "command", "commands")} tried, ${answered} answered`;
+}
+
+/** The suggested commands not sent yet, in the driver's order. */
+export function untriedSuggested(catalog: AuditCommandInfo[], trials: AuditCommandTrial[]): AuditCommandInfo[] {
+  return catalog.filter((c) => c.suggested && notTried(c, trials));
+}
+
+/** Where the person is with the suggested commands: "Tried 1 of 5 suggested
+ *  commands. Not tried yet: Recall Preset, Set Volume.", or "" when the
+ *  driver suggests none. */
+export function suggestedProgress(catalog: AuditCommandInfo[], trials: AuditCommandTrial[]): string {
+  const n = catalog.filter((c) => c.suggested).length;
+  if (n === 0) return "";
+  const untried = untriedSuggested(catalog, trials);
+  const tried = `Tried ${n - untried.length} of ${plural(n, "suggested command", "suggested commands")}.`;
+  return untried.length === 0
+    ? tried
+    : `${tried} Not tried yet: ${untried.map((c) => c.label).join(", ")}.`;
+}
+
+/** A send the step asks "Did it happen?" about: one that finished, was
+ *  accepted, and was not sent with the status queries. */
+export function asksWhetherItHappened(trial: AuditCommandTrial): boolean {
+  return trial.status === "done" && !trial.batch && !trial.error;
+}
+
+/** What the commands step says before the person leaves it: the suggested
+ *  commands not tried, and the commands sent that "Did it happen?" has no
+ *  answer for. Empty when there is nothing to say. */
+export function commandsLeaveNotes(catalog: AuditCommandInfo[], trials: AuditCommandTrial[]): string[] {
+  const notes: string[] = [];
+  const untried = untriedSuggested(catalog, trials);
+  if (untried.length > 0) {
+    notes.push(
+      `${untried.length === 1 ? "1 suggested command has" : `${untried.length} suggested commands have`} ` +
+        `not been tried: ${untried.map((c) => c.label).join(", ")}.`,
+    );
+  }
+  const asked = trials.filter(asksWhetherItHappened);
+  const open = asked.filter((t) => !t.answer);
+  if (open.length > 0) {
+    const labels = [...new Set(open.map((t) => t.label))].join(", ");
+    const which =
+      open.length === asked.length
+        ? asked.length === 1
+          ? "the command sent"
+          : `any of the ${asked.length} commands sent`
+        : `${open.length} of the ${asked.length} commands sent`;
+    notes.push(`"Did it happen?" has no answer for ${which} (${labels}).`);
+  }
+  return notes;
 }
 
 /** The device setting to try first: a name-like one (a string) if the

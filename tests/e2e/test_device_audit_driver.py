@@ -251,13 +251,14 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     expect(dialog.get_by_role("heading", name="Commands", exact=True)).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )
-    # The list says where each command stands, the driver's suggested ones marked;
-    # opening one shows what it takes.
-    expect(dialog.get_by_text(
-        "1 command, none tried yet · Suggested: 0 of 1 tried", exact=True,
-    )).to_be_visible(
+    # The list says where each command stands, and which of the driver's
+    # suggested ones are still to try; opening one shows what it takes.
+    expect(dialog.get_by_text("1 command, none tried yet", exact=True)).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )
+    expect(dialog.get_by_text(
+        "Tried 0 of 1 suggested command. Not tried yet: Set Input.", exact=True,
+    )).to_be_visible()
     # The device settings sit below the commands; the top of the step goes there.
     expect(dialog.get_by_role(
         "button", name=re.compile(r"^Go to the device settings \(\d+\), below the commands$"),
@@ -273,6 +274,16 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     )).to_be_visible(timeout=EXPECT_TIMEOUT)
     # Under the form, what the value it sets reads now: the one to put back.
     expect(dialog.get_by_text("Now: Input hdmi2", exact=True)).to_be_visible(timeout=EXPECT_TIMEOUT)
+    # Continue with the question unanswered: the step says so first, and
+    # going back leaves the person on the command.
+    dialog.get_by_role("button", name="Continue", exact=True).click()
+    before = dialog.get_by_role("alert", name="Before you continue")
+    expect(before.get_by_text(
+        '"Did it happen?" has no answer for the command sent (Set Input).', exact=True,
+    )).to_be_visible(timeout=EXPECT_TIMEOUT)
+    expect(before.get_by_role("button", name="Continue anyway")).to_be_visible()
+    before.get_by_role("button", name="Back to the commands").click()
+    expect(before).to_have_count(0)
     answers = dialog.get_by_role("group", name="Did Set Input happen?")
     answers.get_by_role("button", name="Yes").click()
     expect(answers.get_by_role("button", name="Yes")).to_have_attribute(
@@ -281,9 +292,8 @@ def test_an_audit_from_a_device_page_tests_its_driver_and_reports_it(
     expect(dialog.get_by_role("button", name="Set Input (suggested): Worked")).to_be_visible(
         timeout=EXPECT_TIMEOUT,
     )
-    expect(dialog.get_by_text(
-        "1 of 1 command tried, 1 answered · Suggested: 1 of 1 tried", exact=True,
-    )).to_be_visible()
+    expect(dialog.get_by_text("1 of 1 command tried, 1 answered", exact=True)).to_be_visible()
+    expect(dialog.get_by_text("Tried 1 of 1 suggested command.", exact=True)).to_be_visible()
 
     # A device setting: written, read back, put back.
     dialog.get_by_placeholder("New value").fill("Boardroom")
