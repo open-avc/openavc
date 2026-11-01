@@ -209,22 +209,56 @@ def _restrict(path: Path) -> None:
             path,
         )
         return
-    grants = []
-    for who in ("S-1-5-18", "S-1-5-32-544", sid):
-        if f"*{who}:F" not in grants:
-            grants.append(f"*{who}:F")
-    cmd = [_system32("icacls.exe"), str(path), "/inheritance:r", "/grant:r", *grants]
+    if not _set_exact_dacl(path, ("SY", "BA", sid)):
+        log.warning("Could not restrict access to %s", path)
+
+
+def _set_exact_dacl(path: Path, trustees: tuple[str, ...]) -> bool:
+    """Replace the file's access list with full control for ``trustees`` only,
+    and stop it inheriting from the folder.
+
+    Windows' OpenSSH refuses a private key any other account can reach. An
+    icacls /inheritance:r /grant:r pass left an OWNER RIGHTS entry that it
+    refused (CI's Windows runner); setting the whole list at once through the
+    security API leaves nothing behind to refuse.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    sddl = "D:P" + "".join(f"(A;;FA;;;{who})" for who in dict.fromkeys(trustees))
+    descriptor = ctypes.c_void_p()
+    if not advapi32.ConvertStringSecurityDescriptorToSecurityDescriptorW(
+        ctypes.c_wchar_p(sddl), 1, ctypes.byref(descriptor), None,
+    ):
+        log.debug("SDDL %s refused: error %s", sddl, ctypes.get_last_error())
+        return False
     try:
-        result = subprocess.run(
-            cmd, capture_output=True, timeout=15, creationflags=CREATE_NO_WINDOW,
+        present = wintypes.BOOL()
+        defaulted = wintypes.BOOL()
+        dacl = ctypes.c_void_p()
+        if not advapi32.GetSecurityDescriptorDacl(
+            descriptor, ctypes.byref(present), ctypes.byref(dacl), ctypes.byref(defaulted),
+        ):
+            return False
+        se_file_object = 1
+        dacl_security_information = 0x00000004
+        protected_dacl_security_information = 0x80000000
+        advapi32.SetNamedSecurityInfoW.argtypes = [
+            wintypes.LPWSTR, ctypes.c_int, wintypes.DWORD,
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+        ]
+        result = advapi32.SetNamedSecurityInfoW(
+            str(path), se_file_object,
+            dacl_security_information | protected_dacl_security_information,
+            None, None, dacl, None,
         )
-    except (OSError, subprocess.SubprocessError) as exc:
-        log.warning("Could not restrict access to %s: %s", path, exc)
-        return
-    if result.returncode != 0:
-        log.warning(
-            "Could not restrict access to %s (icacls exit %s)", path, result.returncode,
-        )
+        if result != 0:
+            log.debug("SetNamedSecurityInfoW on %s: error %s", path, result)
+        return result == 0
+    finally:
+        kernel32.LocalFree(descriptor)
 
 
 def _current_user_sid() -> str | None:

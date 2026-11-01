@@ -116,6 +116,14 @@ def _ssh_keygen() -> str | None:
 
 
 @pytest.mark.skipif(_ssh_keygen() is None, reason="no ssh-keygen")
+def _acl_listing(path: Path) -> str:
+    """The file's access list, for a failure message on Windows."""
+    if sys.platform != "win32":
+        return ""
+    out = subprocess.run(["icacls", str(path)], capture_output=True, text=True, timeout=30)
+    return "\n" + out.stdout
+
+
 def test_the_openssh_client_accepts_the_key(key_dir: Path):
     """ssh-keygen loads a private key with the same checks ssh applies, file
     permissions included (Windows' client refuses a key other accounts can
@@ -126,7 +134,7 @@ def test_the_openssh_client_accepts_the_key(key_dir: Path):
         [keygen, "-y", "-f", str(key.path)],
         capture_output=True, text=True, timeout=30,
     )
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 0, result.stderr + _acl_listing(key.path)
     derived = result.stdout.split()
     shown = key.public_key.split()
     assert derived[:2] == shown[:2]
