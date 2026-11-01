@@ -568,3 +568,189 @@ async def test_contains_routes_to_children_by_literal_id(flagger):
     assert one["af_peak"] is False
     assert two["no_link"] is False
     assert two["af_peak"] is True
+
+
+# ── a reply that repeats a name keeps the values under every copy ──────────
+
+# Invented device that bundles several addresses into one notification by
+# repeating the name above them, each copy holding another part.
+BUNDLE_DEFINITION = {
+    "id": "acme_bundler",
+    "name": "Acme Bundler",
+    "manufacturer": "Acme",
+    "category": "utility",
+    "version": "1.0.0",
+    "transport": "http",
+    "default_config": {"host": "", "port": 80},
+    "state_variables": {
+        "mute_mode": {"type": "string", "label": "Mute mode"},
+        "muted": {"type": "boolean", "label": "Muted"},
+        "runtime": {"type": "integer", "label": "Runtime"},
+        "gauge": {"type": "integer", "label": "Gauge"},
+        "level": {"type": "integer", "label": "Level"},
+        "modes": {"type": "integer", "label": "Modes"},
+        "out1_names": {"type": "integer", "label": "Output 1 names"},
+        "out1_has_gain": {"type": "boolean", "label": "Output 1 has gain"},
+        "bays": {"type": "integer", "label": "Bays"},
+        "unit_status": {"type": "string", "label": "Unit status"},
+        "report_mode": {"type": "string", "label": "Report mode"},
+    },
+    "child_entity_types": {
+        "output": {
+            "id_format": {"type": "integer", "min": 1, "max": 2},
+            "state_variables": {"muted": {"type": "boolean"}, "gain": {"type": "integer"}},
+            "instances": {"count": 2},
+        }
+    },
+    "commands": {"query": {"label": "Query", "method": "GET", "path": "/status"}},
+    "responses": [
+        {
+            "json": True,
+            "set": {
+                "mute_mode": "out1.mute_mode",
+                "muted": "out1.muted",
+                "runtime": "remotes.r1.runtime",
+                "gauge": "remotes.r1.gauge",
+                "level": "level",
+                "modes": "modes",
+                "out1_names": "out1",
+                "out1_has_gain": {"key": "out1", "contains": "gain"},
+                "bays": "bays",
+            },
+        },
+        {
+            "json": True,
+            "require": "unit.mode",
+            "set": {"unit_status": "unit.status"},
+        },
+        {
+            "json": True,
+            "child_set": [
+                {"type": "output", "id": 1,
+                 "state": {"muted": "out1.muted", "gain": "out1.gain"}},
+                {"type": "output", "id": 2,
+                 "state": {"muted": "out2.muted", "gain": "out2.gain"}},
+            ],
+        },
+        # A JSON document carried inside a text line, read by json_path.
+        {
+            "match": r"^REPORT (\{.*\})$",
+            "mappings": [{"group": 1, "json_path": "out1.mute_mode",
+                          "state": "report_mode", "type": "string"}],
+        },
+    ],
+}
+
+
+@pytest.fixture
+def bundler(state, events):
+    state.set_event_bus(events)
+    cls = create_configurable_driver_class(BUNDLE_DEFINITION)
+    drv = cls("bundle1", {"host": "127.0.0.1", "port": 80}, state, events)
+    drv._register_declared_children()
+    return drv
+
+
+def test_loader_accepts_the_bundle_definition():
+    from openavc.drivers.driver_loader import validate_driver_definition
+
+    assert validate_driver_definition(BUNDLE_DEFINITION) == []
+
+
+async def test_a_bundled_reply_sets_every_value(bundler):
+    """Four values under two repeated names: every one is set, where the last
+    copy alone would have given two."""
+    body = (
+        '{"out1":{"mute_mode":"ON"}, "out1":{"muted":false},'
+        '"remotes":{"r1":{"runtime":840}},"remotes":{"r1":{"gauge":2}}}'
+    )
+    await bundler.on_data_received(body.encode())
+    assert bundler.get_state("mute_mode") == "ON"
+    assert bundler.get_state("muted") is False
+    assert bundler.get_state("runtime") == 840
+    assert bundler.get_state("gauge") == 2
+
+
+async def test_a_repeated_scalar_null_or_array_keeps_the_last_value(bundler):
+    await bundler.on_data_received(b'{"level":1,"level":2}')
+    assert bundler.get_state("level") == 2
+    await bundler.on_data_received(b'{"level":3,"level":null}')
+    assert bundler.get_state("level") is None
+    await bundler.on_data_received(b'{"modes":["a","b","c"],"modes":["d"]}')
+    assert bundler.get_state("modes") == 1
+
+
+async def test_an_object_and_a_scalar_under_one_name_keep_the_last(bundler):
+    await bundler.on_data_received(b'{"out1":{"muted":true}}')
+    assert bundler.get_state("muted") is True
+    # Object, then scalar: the scalar wins, out1.muted is not there, nothing
+    # is written (a missing path never clears a value).
+    await bundler.on_data_received(b'{"out1":{"muted":false},"out1":5}')
+    assert bundler.get_state("muted") is True
+    # Scalar, then object: the object wins.
+    await bundler.on_data_received(b'{"out1":5,"out1":{"muted":false}}')
+    assert bundler.get_state("muted") is False
+
+
+async def test_equal_objects_in_an_array_stay_separate(bundler):
+    await bundler.on_data_received(b'{"bays":[{"s":1},{"s":1}]}')
+    assert bundler.get_state("bays") == 2
+
+
+async def test_a_one_element_array_reply_with_a_repeat_inside(bundler):
+    await bundler.on_data_received(
+        b'[{"out1":{"mute_mode":"OFF"},"out1":{"muted":true}}]'
+    )
+    assert bundler.get_state("mute_mode") == "OFF"
+    assert bundler.get_state("muted") is True
+
+
+async def test_require_sees_a_name_from_the_earlier_copy(bundler):
+    """The required name is in the first copy and the value in the second:
+    the rule applies. With the last copy alone it was skipped."""
+    await bundler.on_data_received(
+        b'{"unit":{"mode":"A"},"unit":{"status":"ok"}}'
+    )
+    assert bundler.get_state("unit_status") == "ok"
+
+
+async def test_contains_and_a_count_see_names_from_every_copy(bundler):
+    """A read of the repeated object itself: contains finds a name from the
+    earlier copy, and the object's size counts every copy's names."""
+    await bundler.on_data_received(
+        b'{"out1":{"gain":4},"out1":{"muted":false}}'
+    )
+    assert bundler.get_state("out1_has_gain") is True
+    assert bundler.get_state("out1_names") == 2
+
+
+async def test_children_read_from_every_copy(bundler):
+    await bundler.on_data_received(
+        b'{"out1":{"muted":true},"out2":{"gain":7},"out1":{"gain":3},'
+        b'"out2":{"muted":false}}'
+    )
+    one = bundler.get_child_state("output", 1)
+    two = bundler.get_child_state("output", 2)
+    assert (one["muted"], one["gain"]) == (True, 3)
+    assert (two["muted"], two["gain"]) == (False, 7)
+
+
+async def test_json_path_in_a_text_line_reads_every_copy(bundler):
+    await bundler.on_data_received(
+        b'REPORT {"out1":{"mute_mode":"ON"},"out1":{"muted":true}}'
+    )
+    assert bundler.get_state("report_mode") == "ON"
+
+
+async def test_a_reply_with_no_repeat_reads_as_before(bundler):
+    await bundler.on_data_received(
+        b'{"out1":{"mute_mode":"ON","muted":true,"gain":2},'
+        b'"remotes":{"r1":{"runtime":10,"gauge":3}},"level":4,"bays":[{}]}'
+    )
+    assert bundler.get_state("mute_mode") == "ON"
+    assert bundler.get_state("muted") is True
+    assert bundler.get_state("runtime") == 10
+    assert bundler.get_state("gauge") == 3
+    assert bundler.get_state("level") == 4
+    assert bundler.get_state("out1_names") == 3
+    assert bundler.get_state("bays") == 1

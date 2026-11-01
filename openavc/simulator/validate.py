@@ -57,7 +57,6 @@ from __future__ import annotations
 import argparse
 import ast
 import fnmatch
-import json
 import logging
 import re
 import sys
@@ -75,6 +74,7 @@ from openavc.drivers.compiled_protocol import (
     derive_config,
     follow_up_queries,
     is_passthrough_send,
+    parse_json_reply,
     safe_substitute,
     send_regex,
     state_var_default,
@@ -2233,7 +2233,7 @@ def _matches_json_rules(message: str, json_keys: set[str]) -> bool:
     if not json_keys:
         return False
     try:
-        obj = json.loads(message)
+        obj = parse_json_reply(message)
     except (ValueError, TypeError):
         return False
     if isinstance(obj, list) and len(obj) == 1 and isinstance(obj[0], dict):

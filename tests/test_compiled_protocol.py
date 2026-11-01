@@ -562,3 +562,177 @@ def test_boolean_reads_a_zero_padded_flag_by_its_value():
         assert reader("False", "boolean") is False, reader.__name__
         # Anything the device sends that is neither is still false.
         assert reader("standby", "boolean") is False, reader.__name__
+
+
+# ── parse_json_reply ──
+
+
+def _assert_same_tree(got, want):
+    """Equal, and every object's names in the same order, at every level."""
+    assert type(got) is type(want)
+    if isinstance(want, dict):
+        assert list(got) == list(want)
+        for name in want:
+            _assert_same_tree(got[name], want[name])
+    elif isinstance(want, list):
+        assert len(got) == len(want)
+        for g, w in zip(got, want):
+            _assert_same_tree(g, w)
+    else:
+        assert got == want
+
+
+def test_parse_json_reply_is_json_loads_for_a_reply_with_no_repeat():
+    import json
+
+    from openavc.drivers.compiled_protocol import parse_json_reply
+
+    for text in (
+        '{"b": 1, "a": {"z": [1, 2, {"y": null, "x": true}], "w": "Ünï"}}',
+        '[{"a": 1}, {"a": 1}, [], {}]',
+        '{"level": -4.5, "on": false, "name": "", "list": [[{"k": {}}]]}',
+        "[]", "{}", "7", '"text"', "null",
+    ):
+        _assert_same_tree(parse_json_reply(text), json.loads(text))
+        _assert_same_tree(parse_json_reply(text.encode()), json.loads(text))
+
+
+def test_parse_json_reply_keeps_every_copy_of_a_bundled_reply():
+    """The shape the merge exists for: one notification bundling several
+    addresses by repeating the names above them."""
+    from openavc.drivers.compiled_protocol import parse_json_reply
+
+    text = (
+        '{"out1":{"mute_mode":"ON"}, "out1":{"muted":false},'
+        '"remotes":{"r1":{"runtime":840}},"remotes":{"r1":{"gauge":2}}}'
+    )
+    assert parse_json_reply(text) == {
+        "out1": {"mute_mode": "ON", "muted": False},
+        "remotes": {"r1": {"runtime": 840, "gauge": 2}},
+    }
+
+
+def test_parse_json_reply_merges_three_copies_and_nested_repeats():
+    from openavc.drivers.compiled_protocol import parse_json_reply
+
+    text = (
+        '{"a":{"x":1},"a":{"y":2},"a":{"z":{"p":1},"z":{"q":2}}}'
+    )
+    _assert_same_tree(
+        parse_json_reply(text),
+        {"a": {"x": 1, "y": 2, "z": {"p": 1, "q": 2}}},
+    )
+
+
+def test_parse_json_reply_later_copy_wins_on_a_name_both_hold():
+    from openavc.drivers.compiled_protocol import parse_json_reply
+
+    _assert_same_tree(
+        parse_json_reply('{"a":{"x":1,"y":1},"a":{"x":2}}'),
+        {"a": {"x": 2, "y": 1}},
+    )
+    # Through a nested object too: only the shared leaf is replaced.
+    _assert_same_tree(
+        parse_json_reply('{"a":{"n":{"x":1,"y":1}},"a":{"n":{"x":2}}}'),
+        {"a": {"n": {"x": 2, "y": 1}}},
+    )
+
+
+def test_parse_json_reply_keeps_the_last_value_of_any_other_repeat():
+    """A scalar, null, an array, and an object against a non-object (either
+    order) are not merged: the last value wins, exactly as json.loads."""
+    import json
+
+    from openavc.drivers.compiled_protocol import parse_json_reply
+
+    for text in (
+        '{"a":1,"a":2}',
+        '{"a":"on","a":null}',
+        '{"a":null,"a":"on"}',
+        '{"a":[1,2],"a":[3]}',
+        '{"a":{"x":1},"a":[{"y":2}]}',
+        '{"a":[{"y":2}],"a":{"x":1}}',
+        '{"a":{"x":1},"a":5}',
+        '{"a":5,"a":{"x":1}}',
+        '{"a":{"x":1},"a":null}',
+        # A non-object between two objects starts again from the last one.
+        '{"a":{"x":1},"a":0,"a":{"y":2}}',
+    ):
+        _assert_same_tree(parse_json_reply(text), json.loads(text))
+
+
+def test_parse_json_reply_keeps_names_in_first_appearance_order():
+    from openavc.drivers.compiled_protocol import parse_json_reply
+
+    got = parse_json_reply('{"b":{"x":1},"a":0,"b":{"y":2},"c":1}')
+    assert list(got) == ["b", "a", "c"]
+    assert list(got["b"]) == ["x", "y"]
+
+
+def test_parse_json_reply_never_merges_array_elements():
+    """Equal objects in an array stay two elements; a repeat inside one
+    element merges within that element only."""
+    from openavc.drivers.compiled_protocol import parse_json_reply
+
+    assert parse_json_reply('[{"a":1},{"a":1}]') == [{"a": 1}, {"a": 1}]
+    assert parse_json_reply(
+        '{"bays":[{"s":{"x":1},"s":{"y":2}},{"s":{"x":1}}]}'
+    ) == {"bays": [{"s": {"x": 1, "y": 2}}, {"s": {"x": 1}}]}
+
+
+def test_parse_json_reply_refuses_what_json_loads_refuses():
+    import pytest
+
+    from openavc.drivers.compiled_protocol import parse_json_reply
+
+    for text in ('{"a":1,', "not json", '{a:1}', ""):
+        with pytest.raises(ValueError):
+            parse_json_reply(text)
+
+
+def test_parse_json_reply_only_adds_to_what_json_loads_gives():
+    """Seeded fuzz over objects that repeat names: every scalar and null
+    json.loads yields is at the same path after the merge, every array has the
+    same elements in the same places (an object inside one may hold more, from
+    its own repeats), and every object holds at least the same names. The
+    merge only adds."""
+    import json
+    import random
+
+    from openavc.drivers.compiled_protocol import parse_json_reply
+
+    rng = random.Random(289)
+
+    def value(depth):
+        roll = rng.random()
+        if depth < 3 and roll < 0.45:
+            return obj(depth + 1)
+        if depth < 3 and roll < 0.55:
+            return "[" + ",".join(value(depth + 1) for _ in range(rng.randint(0, 3))) + "]"
+        return rng.choice(['1', '2', 'null', 'true', '"s"', '"t"'])
+
+    def obj(depth):
+        names = rng.choices("abc", k=rng.randint(0, 5))
+        return "{" + ",".join(f'"{n}":{value(depth)}' for n in names) + "}"
+
+    def kept(old, new):
+        if isinstance(old, dict):
+            assert isinstance(new, dict)
+            for name, inner in old.items():
+                assert name in new
+                kept(inner, new[name])
+        elif isinstance(old, list):
+            assert isinstance(new, list) and len(new) == len(old)
+            for inner_old, inner_new in zip(old, new):
+                kept(inner_old, inner_new)
+        else:
+            assert new == old and type(new) is type(old)
+
+    repeats = 0
+    for _ in range(3000):
+        text = obj(0)
+        before, after = json.loads(text), parse_json_reply(text)
+        kept(before, after)
+        repeats += before != after
+    # The fuzz has to exercise the merge, not just the fast path.
+    assert repeats > 300

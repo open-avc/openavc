@@ -24,6 +24,7 @@ it must not pull in the driver runtime or transport stack.
 
 from __future__ import annotations
 
+import json
 import math
 import re
 from dataclasses import dataclass, field
@@ -701,6 +702,55 @@ def _warn_unusable_min(var_def: dict[str, Any]) -> None:
             "state variable declares a non-numeric 'min' %r; defaulting to 0",
             var_def.get("min"),
         )
+
+
+# ── Reading a device's JSON ──
+
+
+def _put_merging(obj: dict[str, Any], name: str, value: Any) -> None:
+    """Put ``value`` under ``name``, merged into an object already held there."""
+    held = obj.get(name)
+    if isinstance(held, dict) and isinstance(value, dict):
+        for inner_name, inner_value in value.items():
+            _put_merging(held, inner_name, inner_value)
+    else:
+        obj[name] = value
+
+
+def _merge_repeated_names(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """``object_pairs_hook`` that keeps the values under every copy of a name.
+
+    Some devices bundle several addresses into one reply by repeating a name,
+    each copy holding another part: ``{"ch1":{"mute":true},"ch1":{"gain":4}}``.
+    Plain ``json.loads`` keeps only the last copy, so the first half of that
+    reply would be lost without a word. Two objects under one name are merged,
+    recursively, the later copy winning on a name both hold. Every other repeat
+    (a scalar, null, an array, an object and a non-object in either order)
+    keeps the last value, exactly as ``json.loads`` does, and names stay in
+    the order they first appeared. Arrays are never merged: their elements are
+    separate values however alike they look.
+
+    The decoder calls this innermost object first, so every value here is
+    already a fresh dict with its own repeats merged, and merging into the
+    earlier copy in place touches nothing else.
+    """
+    obj = dict(pairs)
+    if len(obj) == len(pairs):
+        return obj
+    obj = {}
+    for name, value in pairs:
+        _put_merging(obj, name, value)
+    return obj
+
+
+def parse_json_reply(text: str | bytes) -> Any:
+    """Parse JSON a device sent, for the rules that read it.
+
+    ``json.loads``, raising what it raises, except that an object repeating a
+    name keeps the values under every copy (``_merge_repeated_names``). A
+    reply with no repeated name parses to exactly what ``json.loads`` gives.
+    """
+    return json.loads(text, object_pairs_hook=_merge_repeated_names)
 
 
 # ── Value coercion ──

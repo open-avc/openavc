@@ -3041,7 +3041,7 @@ class ConfigurableDriver(BaseDriver):
             obj: Any = raw_value
         else:
             try:
-                obj = json.loads(raw_value)
+                obj = compiled_protocol.parse_json_reply(raw_value)
             except (ValueError, TypeError):
                 return _JSON_PATH_MISSING
 
@@ -3103,9 +3103,13 @@ class ConfigurableDriver(BaseDriver):
         object — several device protocols wrap every reply that way (per-unit
         addressing with one unit per datagram). Multi-element arrays are
         ambiguous and still fall through to regex matching.
+
+        An object that repeats a name keeps the values under every copy
+        (``compiled_protocol.parse_json_reply``): a device that bundles several
+        addresses under one name loses none of them.
         """
         try:
-            obj = json.loads(text)
+            obj = compiled_protocol.parse_json_reply(text)
         except (ValueError, TypeError):
             return False
         if isinstance(obj, list) and len(obj) == 1 and isinstance(obj[0], dict):
