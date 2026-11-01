@@ -47,12 +47,17 @@ jobs:
         id: ver
         run: echo "version=${VERSION#v}" >> "$GITHUB_OUTPUT"
 
+      # ARM emulation for the pi-gen chroots. pi-gen's build-docker.sh checks
+      # whether the host's arm64 binfmt entry works inside a chroot and, when it
+      # does not, registers the qemu-aarch64 from its own build container, so the
+      # host needs no QEMU package. This action registers fix-binary (F) handlers,
+      # which work in a chroot, the same way release.yml sets up its arm64 builds.
+      # Do not go back to apt's qemu-user-static: on Ubuntu 26.04 it is a virtual
+      # package with no install candidate, and the install fails the job.
       - name: Set up QEMU for ARM emulation
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y qemu-user-static binfmt-support
-          # pi-gen's build-docker.sh checks "which qemu-aarch64" (not qemu-aarch64-static)
-          sudo ln -sf /usr/bin/qemu-aarch64-static /usr/bin/qemu-aarch64
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
       - name: Clone pi-gen (arm64 branch)
         run: git clone --depth 1 --branch arm64 https://github.com/RPi-Distro/pi-gen.git installer/pi-image/pi-gen
