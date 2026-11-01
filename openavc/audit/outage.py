@@ -81,6 +81,9 @@ REPOPULATE_MAX_SECONDS = 120.0
 BACK_UNNOTICED_SECONDS = 30.0
 # A test that goes nowhere ends after this long.
 MAX_SECONDS = 15 * 60.0
+# The status values reported again are counted from this long before the
+# reconnect attempt began (the two clocks behind it, _began_since).
+CLOCK_MARGIN_SECONDS = 1.0
 # How often the device is pinged, and how long each ping waits.
 PING_SECONDS = 1.0
 # One ping says little: a ping can be lost, and a device powering down can
@@ -286,11 +289,19 @@ class OutageTest:
 
     def _began_since(self, after: float | None) -> float | None:
         """When the driver's current connect attempt began, when that was
-        after ``after`` (the drop it reconnected from); else None."""
+        after ``after`` (the drop it reconnected from); else None.
+
+        Taken ``CLOCK_MARGIN_SECONDS`` early, never before ``after``: the
+        driver keeps that moment on the monotonic clock and the state store
+        stamps writes on the wall clock, and where the two tick coarsely
+        (every 15.6 ms on Windows before Python 3.13) a read answered within a
+        few milliseconds of the connect can be stamped before it. Nothing the
+        device says is written in the moment before a reconnect attempt: it
+        was not connected."""
         began = self._sandbox.connection_began_at()
         if began is None or after is None or began < after:
             return None
-        return began
+        return max(after, began - CLOCK_MARGIN_SECONDS)
 
     # -- running ------------------------------------------------------------------
 

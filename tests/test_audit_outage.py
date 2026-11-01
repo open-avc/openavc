@@ -585,7 +585,10 @@ async def test_a_probe_that_notices_after_the_device_is_back_is_waited_for(drive
         _DRIVER_REGISTRY.pop("acme_watched", None)
 
 
-async def test_what_a_held_reconnect_reads_before_it_is_announced_counts(driver):
+# 0.016: the connect time read a tick late, as Windows' coarse clocks before
+# Python 3.13 can (the model is answered within milliseconds of the connect).
+@pytest.mark.parametrize("skew", [0.0, 0.016])
+async def test_what_a_held_reconnect_reads_before_it_is_announced_counts(driver, skew):
     """After a drop for missed probes, the reconnect stays offline until the
     device answers a probe, and the driver's start-up reads on it come first:
     a model read once at connect, and never polled, was written before the
@@ -602,6 +605,13 @@ async def test_what_a_held_reconnect_reads_before_it_is_announced_counts(driver)
     await unit.start()
     session, run = await _connected(unit, driver_id="acme_watched")
     sandbox = run.listen.sandbox
+    began_at = sandbox.connection_began_at
+
+    def skewed() -> float | None:
+        began = began_at()
+        return None if began is None else began + skew
+
+    sandbox.connection_began_at = skewed
     await _until(lambda: sandbox.device_state().get("model") == "W3000")
     answering = {"yes": True}
 
