@@ -813,7 +813,8 @@ class BaseDriver(ABC):
     # Liveness watchdog knobs (see _liveness_probe). Class attributes so a
     # driver can tune them wholesale (`HEALTH_INTERVAL_S = 20.0`) or per
     # instance; the defaults suit most request/response protocols. INTERVAL is
-    # the gap between probes, TIMEOUT the per-probe reply deadline, and after
+    # the gap between probes, TIMEOUT the per-probe reply deadline (INTERVAL on
+    # a reconnect held offline, see _health_loop), and after
     # MAX_FAILURES consecutive misses the transport is torn down with a typed
     # ``no_response`` fault (FAULT_MESSAGE) so the platform reconnects and the
     # device card shows the real cause.
@@ -2605,6 +2606,16 @@ class BaseDriver(ABC):
         the time this loop starts, and the hold exists to ask whether the
         device is back.
 
+        A held connection's probe waits for its answer up to HEALTH_INTERVAL_S
+        rather than HEALTH_TIMEOUT_S. The device is shown offline already, so
+        nothing is lost by waiting, and a unit still starting up (one that
+        answers its first queries seconds late, then everything) is announced
+        when its answer arrives instead of at the next probe. The probes still
+        go out every interval: a miss there is followed by the next probe at
+        once. The probe stays the judge, so its own rules still decide what
+        counts as an answer (a YAML ``expect`` keeps a banner or unrelated
+        chatter from announcing a device that never answers the probe).
+
         While the device's own state holds the probe back (_liveness_held),
         nothing goes out and nothing is counted; the log says so once when
         the probe pauses and once when it resumes.
@@ -2613,13 +2624,15 @@ class BaseDriver(ABC):
         interval = float(self.HEALTH_INTERVAL_S)
         timeout = float(self.HEALTH_TIMEOUT_S)
         max_failures = max(int(self.HEALTH_MAX_FAILURES), 1)
-        probe_now = self._held
+        # Seconds before the next probe: none on a held connection, which
+        # exists to ask whether the device is back.
+        wait = 0.0 if self._held else interval
         paused = False
         try:
             while self._link_alive():
-                if not probe_now:
-                    await asyncio.sleep(interval)
-                probe_now = False
+                if wait > 0:
+                    await asyncio.sleep(wait)
+                wait = interval
                 if not self._link_alive():
                     return
                 try:
@@ -2651,12 +2664,15 @@ class BaseDriver(ABC):
                         # connection already.
                         await self._announce_held()
                     continue
+                held_probe = self._held
+                deadline = max(interval, timeout) if held_probe else timeout
+                started = time.monotonic()
                 try:
                     # asyncio.timeout, not wait_for: on Python 3.11 wait_for
                     # starts the probe as a task, which yields first, and a
                     # command sent in that gap would go out between the
                     # decision above and the probe.
-                    async with asyncio.timeout(timeout):
+                    async with asyncio.timeout(deadline):
                         await self._liveness_probe()
                 except asyncio.CancelledError:
                     raise
@@ -2672,12 +2688,16 @@ class BaseDriver(ABC):
                         self._force_disconnect(AUTH_FAILED, refused.message)
                         return
                     self._health_failures += 1
+                    if held_probe:
+                        # The next probe is due an interval after this one
+                        # went out, however much of it the wait used.
+                        wait = max(0.0, interval - (time.monotonic() - started))
                     # A held device is already shown offline: its misses are
                     # expected, and a device that stays down for hours would
                     # otherwise warn twice on every retry.
                     # The probe's deadline raises a timeout with no text.
                     why = str(exc) or (
-                        f"no answer within {timeout:g} s"
+                        f"no answer within {deadline:g} s"
                         if isinstance(exc, (asyncio.TimeoutError, TimeoutError))
                         else type(exc).__name__
                     )

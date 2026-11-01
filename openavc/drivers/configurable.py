@@ -2490,8 +2490,8 @@ class ConfigurableDriver(BaseDriver):
         reply to the probe as well as the good one: an error is still an
         answer, and a miss here drops the link. The reply deadline is
         enforced by the BaseDriver loop (HEALTH_TIMEOUT_S wraps this
-        coroutine), which cancels the await on timeout; the finally clears
-        the waiter either way.
+        coroutine, HEALTH_INTERVAL_S on a held reconnect), which cancels the
+        await on timeout; the finally clears the waiter either way.
         """
         lv = self._liveness_def
         if lv is None or self.transport is None:

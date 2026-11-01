@@ -206,6 +206,102 @@ async def test_watchdog_hung_probe_counts_as_miss() -> None:
     assert drv.last_fault.code == "no_response"
 
 
+def _held_driver(interval: float, timeout: float, failures: int = 2) -> Any:
+    """A reconnect held offline: the connection before it was dropped for
+    missed probes, so it shows offline until a probe is answered."""
+    drv = _make_driver()
+    drv.HEALTH_INTERVAL_S = interval
+    drv.HEALTH_TIMEOUT_S = timeout
+    drv.HEALTH_MAX_FAILURES = failures
+    drv._held = True
+    drv._answer_waiter = asyncio.get_running_loop().create_future()
+    drv.set_state("connected", False)
+    return drv
+
+
+@pytest.mark.asyncio
+async def test_a_held_reconnect_comes_online_on_a_late_answer() -> None:
+    """A unit still starting up answered the first probe on its reconnect
+    seconds after the reply deadline. That read as a miss, and the device
+    stayed offline until the next probe an interval later while it answered
+    everything else. On a held connection the probe waits up to the interval,
+    so the late answer brings the device online."""
+    drv = _held_driver(interval=5.0, timeout=0.05)
+
+    async def late_probe() -> None:
+        drv.probe_count += 1
+        await asyncio.sleep(0.3)
+
+    drv._liveness_probe = late_probe  # type: ignore[method-assign]
+    drv._start_health_loop()
+    try:
+        assert await _until(lambda: drv.get_state("connected") is True, 1.5)
+        assert drv.probe_count == 1
+        assert drv._health_failures == 0
+        assert drv._held is False
+    finally:
+        drv._stop_health_loop()
+
+
+@pytest.mark.asyncio
+async def test_a_connected_device_keeps_the_reply_deadline() -> None:
+    """Only a held connection waits longer: a device already shown online
+    that answers after HEALTH_TIMEOUT_S has missed the probe."""
+    drv = _make_driver()
+    drv.HEALTH_INTERVAL_S = 0.5
+    drv.HEALTH_TIMEOUT_S = 0.05
+
+    async def late_probe() -> None:
+        drv.probe_count += 1
+        await asyncio.sleep(0.3)
+
+    drv._liveness_probe = late_probe  # type: ignore[method-assign]
+    drv._start_health_loop()
+    try:
+        assert await _until(lambda: drv._health_failures >= 1, 1.5)
+        assert drv.get_state("connected") is True
+    finally:
+        drv._stop_health_loop()
+
+
+@pytest.mark.asyncio
+async def test_a_held_reconnect_still_probes_every_interval() -> None:
+    """Waiting longer for an answer does not space the probes out: each goes
+    out an interval after the one before, whether that one ran out of time
+    or failed at once."""
+    loop = asyncio.get_running_loop()
+    drv = _held_driver(interval=0.3, timeout=0.2, failures=3)
+    starts: list[float] = []
+
+    async def silent_probe() -> None:
+        starts.append(loop.time())
+        await asyncio.sleep(10)
+
+    drv._liveness_probe = silent_probe  # type: ignore[method-assign]
+    drv._start_health_loop()
+    assert await _until(lambda: drv._health_failures >= 3, 3.0)
+    await asyncio.sleep(0.4)  # closed after the third miss: nothing more goes out
+    assert len(starts) == 3
+    assert drv.get_state("connected") is False
+    gaps = [b - a for a, b in zip(starts, starts[1:])]
+    assert all(0.25 <= g < 0.42 for g in gaps), gaps
+
+    drv = _held_driver(interval=0.2, timeout=0.05, failures=3)
+    starts.clear()
+
+    async def failing_probe() -> None:
+        starts.append(loop.time())
+        raise ConnectionError()
+
+    drv._liveness_probe = failing_probe  # type: ignore[method-assign]
+    drv._start_health_loop()
+    assert await _until(lambda: drv._health_failures >= 3, 3.0)
+    await asyncio.sleep(0.4)  # closed after the third miss: nothing more goes out
+    assert len(starts) == 3
+    gaps = [b - a for a, b in zip(starts, starts[1:])]
+    assert all(g >= 0.15 for g in gaps), gaps
+
+
 @pytest.mark.asyncio
 async def test_a_missed_probe_says_why_in_the_log(caplog) -> None:
     """A timeout has no text of its own, so the log line said nothing after
