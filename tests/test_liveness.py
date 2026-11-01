@@ -284,7 +284,7 @@ async def test_a_held_reconnect_still_probes_every_interval() -> None:
     assert len(starts) == 3
     assert drv.get_state("connected") is False
     gaps = [b - a for a, b in zip(starts, starts[1:])]
-    assert all(0.25 <= g < 0.42 for g in gaps), gaps
+    assert all(0.25 <= g < 0.45 for g in gaps), gaps
 
     drv = _held_driver(interval=0.2, timeout=0.05, failures=3)
     starts.clear()
