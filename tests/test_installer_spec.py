@@ -47,9 +47,11 @@ def test_osc_modules_are_hidden_imports():
 
 
 def test_all_function_level_transport_imports_are_declared():
-    """Any `from openavc.transport.X import …` used inside a function body
-    must be in `hiddenimports`. Catches new transports added with the same
-    deferred-import pattern that bit OSC.
+    """Any `from openavc.transport.X import …`, `from openavc.transport import
+    X` or `from openavc.system.X import …` used inside a function body must be
+    in `hiddenimports`. Catches new transports added with the same
+    deferred-import pattern that bit OSC, and the modules a transport leans on
+    (the SSH key, the programs each install type ships).
     """
     hidden = _hidden_imports()
 
@@ -65,7 +67,8 @@ def test_all_function_level_transport_imports_are_declared():
     # any more, `referenced` came back empty and the assertion below passed
     # without looking at anything -- which is the one failure this test cannot
     # afford, since a green run is what says a new transport is safely bundled.
-    pattern = re.compile(r"from\s+(openavc\.transport\.\w+)\s+import", re.MULTILINE)
+    pattern = re.compile(r"from\s+(openavc\.(?:transport|system)\.\w+)\s+import", re.MULTILINE)
+    package_form = re.compile(r"from\s+openavc\.(transport|system)\s+import\s+(\w+)", re.MULTILINE)
     referenced = set()
     for py in REPO_ROOT.rglob("*.py"):
         if any(part in skip_dirs for part in py.parts):
@@ -75,6 +78,7 @@ def test_all_function_level_transport_imports_are_declared():
         except (OSError, UnicodeDecodeError):
             continue
         referenced.update(pattern.findall(text))
+        referenced.update(f"openavc.{pkg}.{mod}" for pkg, mod in package_form.findall(text))
 
     # Guard the guard: if the scan finds nothing, the assertion below is
     # satisfied by an empty set and reports success without having checked a

@@ -117,6 +117,12 @@ hiddenimports = [
     'openavc.transport.osc',
     'openavc.transport.osc_codec',
     'openavc.transport.ssh',
+    'openavc.transport.ssh_identity',
+    # The programs a transport runs, installed on appliance hardware (imported
+    # inside Engine.start and the fault classifier).
+    'openavc.system.os_programs',
+    'openavc.system.firewall',
+    'openavc.system.network',
     'openavc.transport.mqtt',
     'openavc.transport.snmp',
     'openavc.transport.snmp_codec',
