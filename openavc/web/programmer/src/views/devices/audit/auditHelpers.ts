@@ -27,6 +27,7 @@ import type {
   AuditSettingTrial,
   AuditTimelineEntry,
   AuditVerdict,
+  AuditWebPage,
 } from "../../../api/auditClient";
 import type { DiscoveryEvidence } from "../../../api/discoveryClient";
 import type { DriverParamDef } from "../../../api/types";
@@ -766,10 +767,8 @@ export function summaryLines(report: AuditReport): SummaryLine[] {
     });
   }
   const pages = Object.entries(fp.web ?? {}).map(([port, page]) => {
-    const bits = [page.status_line || page.error || "no answer"];
-    if (page.title) bits.push(`"${page.title}"`);
-    if (page.www_authenticate) bits.push("asks for sign-in");
-    return `${port}: ${bits.join(", ")}`;
+    const text = `${port}: ${webPageText(page)}`;
+    return page.followed ? `${text}, then ${urlPath(page.followed.url)}: ${webPageText(page.followed)}` : text;
   });
   if (pages.length > 0) lines.push({ label: "Web pages", value: pages.join("; ") });
 
@@ -790,6 +789,23 @@ export function summaryLines(report: AuditReport): SummaryLine[] {
   }
   lines.push(...driverLines(report.drivers ?? []));
   return lines;
+}
+
+/** One web page as the summary says it: its answer, title and sign-in. */
+function webPageText(page: AuditWebPage): string {
+  const bits = [page.status_line || page.error || "no answer"];
+  if (page.title) bits.push(`"${page.title}"`);
+  if (page.www_authenticate) bits.push("asks for sign-in");
+  return bits.join(", ");
+}
+
+/** The path of a page's URL ("/www/index.html"), or the URL as given. */
+function urlPath(url: string | undefined): string {
+  try {
+    return new URL(url ?? "").pathname;
+  } catch {
+    return url ?? "";
+  }
 }
 
 /** The summary's lines for each driver tested: which one, whether it

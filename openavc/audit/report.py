@@ -50,7 +50,11 @@
   ``report.json``, ``summary.html`` and ``timeline.txt`` alike, writes bytes
   ``hex aa 0b 01`` (``hex_pairs``), as the wizard shows them.
   Each web page carries ``tries``: 2 when it did not answer the first GET
-  and was asked once more (the exchange kept is the second).
+  and was asked once more (the exchange kept is the second), and
+  ``followed``: when it answered with a redirect to another page on the same
+  address and port, that page, read with one more GET (the same fields
+  without ``tries`` or ``followed``; never a second redirect); else null. A
+  redirect anywhere else is kept in ``location`` and not followed.
 - ``evidence``: the discovery Evidence records built from those observations.
 - ``verdict``: the matcher's identification, every driver each signal points
   at, and each named driver's declared signals judged against the device.
@@ -1427,6 +1431,21 @@ def _row(label: str, value_html: str) -> str:
     return f"<tr><th>{_e(label)}</th><td>{value_html}</td></tr>"
 
 
+def _page_bits(page: dict[str, Any]) -> list[str]:
+    """One web page as the summary describes it: its answer, title, server,
+    sign-in and redirect."""
+    bits = [page.get("status_line") or page.get("error") or "no answer"]
+    if page.get("title"):
+        bits.append(f"title \"{page['title']}\"")
+    if page.get("server"):
+        bits.append(f"server {page['server']}")
+    if page.get("www_authenticate"):
+        bits.append(f"asks for sign-in: {page['www_authenticate']}")
+    if page.get("location"):
+        bits.append(f"redirects to {page['location']}")
+    return bits
+
+
 def _join(items: list[str]) -> str:
     return ", ".join(items) if items else "none"
 
@@ -1571,20 +1590,18 @@ def render_summary(report: dict[str, Any]) -> str:
     if web:
         parts.append("<h3>Web pages</h3><table>")
         for port, page in web.items():
-            bits = [page.get("status_line") or page.get("error") or "no answer"]
+            bits = _page_bits(page)
             if (page.get("tries") or 1) > 1:
-                bits.append("asked twice" if not page.get("status_line") else "answered when asked again")
-            if page.get("title"):
-                bits.append(f"title \"{page['title']}\"")
-            if page.get("server"):
-                bits.append(f"server {page['server']}")
-            if page.get("www_authenticate"):
-                bits.append(f"asks for sign-in: {page['www_authenticate']}")
-            if page.get("location"):
-                bits.append(f"redirects to {page['location']}")
+                bits.insert(1, "asked twice" if not page.get("status_line") else "answered when asked again")
             if str(port) in {str(p) for p in ports.get("from_announcements", [])}:
                 bits.append("a port the device named in an announcement, not one the port check covers")
             parts.append(_row(f"Port {port} ({page.get('url', '')})", _e("; ".join(bits))))
+            followed = page.get("followed")
+            if followed:
+                parts.append(_row(
+                    f"Port {port}, the page it redirects to ({followed.get('url', '')})",
+                    _e("; ".join(_page_bits(followed))),
+                ))
         parts.append("</table>")
     certs = fp.get("certificates", {})
     if certs:

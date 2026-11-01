@@ -721,6 +721,15 @@ export interface AuditReportDriver {
 }
 
 /** The report record (report.json). Only the parts the wizard reads are typed. */
+/** One web page the network check read: its answer, as the report keeps it. */
+export interface AuditWebPage {
+  url?: string;
+  status_line: string;
+  title: string | null;
+  www_authenticate: string | null;
+  error: string;
+}
+
 export interface AuditReport {
   report_version: number;
   complete: boolean;
@@ -748,7 +757,9 @@ export interface AuditReport {
       /** Open ports outside the list checked, found from the device's own announcement. */
       from_announcements?: number[];
     };
-    web?: Record<string, { status_line: string; title: string | null; www_authenticate: string | null; error: string }>;
+    /** Each web port's answer to GET /, and the page a redirect there led to
+     *  on the same address and port (`followed`, null when none was followed). */
+    web?: Record<string, AuditWebPage & { followed?: AuditWebPage | null }>;
     mdns?: { services: { service_type: string | null }[] } | null;
     ssdp?: { device_types: string[] } | null;
     amx_ddp?: { make: string | null; model: string | null } | null;

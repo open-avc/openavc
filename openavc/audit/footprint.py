@@ -8,7 +8,8 @@ data away, the block gained a capture option (``SSDPScanner(capture=True)``,
 ``SNMPScanner(capture=True)``, ``observe_*`` probes, ``scan_host_port_states``,
 ``read_greeting``, ``http_get``).
 
-What it sends is what a Discovery scan sends, plus a ``GET /`` and a TLS
+What it sends is what a Discovery scan sends, plus a ``GET /`` (and of the
+page a redirect there leads to, on the same address and port) and a TLS
 handshake on web ports only, plus connect-and-listen reads that send no bytes:
 
 1. **The address.** Ping; reverse DNS; NetBIOS (every name, the workgroup, the
@@ -21,7 +22,8 @@ handshake on web ports only, plus connect-and-listen reads that send no bytes:
    1024 as well, when asked), paced, refused and filtered kept apart.
 4. **What each open port says**, connect and listen, nothing sent.
 5. **Web pages and certificates** on web ports: status, headers, title; the
-   certificate on TLS ports.
+   certificate on TLS ports. A redirect to another page on the same address
+   and port is followed once, and both answers are kept.
 6. **Announcements.** mDNS, SSDP and AMX DDP listeners start with the session
    and run until it ends, so a beacon sent once a minute is heard. mDNS asks
    for every catalog type, runs the DNS-SD enumeration, then asks for every
@@ -59,6 +61,7 @@ import socket
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
+from urllib.parse import urlsplit
 
 from openavc.discovery import icmp
 from openavc.discovery.amx_ddp_scanner import AMXDDPScanner
@@ -82,7 +85,7 @@ from openavc.discovery.explain import (
     evaluate_driver_signals,
     explain_matches,
 )
-from openavc.discovery.http_fetch import HttpExchange, http_get
+from openavc.discovery.http_fetch import HttpExchange, http_get, same_origin_redirect
 from openavc.discovery.mdns_scanner import BASELINE_SERVICE_TYPES, MDNSScanner
 from openavc.discovery.network_scanner import (
     get_local_subnets,
@@ -233,6 +236,9 @@ class Footprint:
     # How many GETs each web port took (a page that did not answer is asked
     # once more); a port asked once is not listed.
     web_tries: dict[int, int] = field(default_factory=dict)
+    # The page a web port's redirect led to, on the same address and port
+    # (http_fetch.same_origin_redirect); one redirect is followed, no more.
+    web_followed: dict[int, HttpExchange] = field(default_factory=dict)
     # Open ports the port check's list does not cover, found by a web page
     # answering on a port the device named in an announcement.
     ports_from_announcements: set[int] = field(default_factory=set)
@@ -312,7 +318,12 @@ class Footprint:
             },
             "greetings": {str(p): g.to_dict() for p, g in sorted(self.greetings.items())},
             "web": {
-                str(p): {**_web_dict(x), "tries": self.web_tries.get(p, 1)}
+                str(p): {
+                    **_web_dict(x), "tries": self.web_tries.get(p, 1),
+                    "followed": (
+                        _web_dict(self.web_followed[p]) if p in self.web_followed else None
+                    ),
+                }
                 for p, x in sorted(self.web.items())
             },
             "certificates": {str(p): c for p, c in sorted(self.certificates.items())},
@@ -348,14 +359,29 @@ def _worth_asking_again(exchange: HttpExchange) -> bool:
     return error != "refused" and not error.startswith("tls")
 
 
+def _page_text(exchange: HttpExchange) -> str:
+    """A page's status line and title, as the web check's line says it."""
+    text = exchange.status_line or f"HTTP {exchange.status}"
+    return text + (f', "{exchange.title()}"' if exchange.title() else "")
+
+
 def web_summary(fp: "Footprint") -> str:
     """The web check in one line: each port that answered (its status line
-    and its title, as the Report step says it), each that did not and why,
-    and the certificates."""
-    answered = [
-        f"{p}: {x.status_line or f'HTTP {x.status}'}" + (f', "{x.title()}"' if x.title() else "")
-        for p, x in sorted(fp.web.items()) if x.status is not None
-    ]
+    and its title, as the Report step says it, then the same for the page a
+    redirect led to), each that did not and why, and the certificates."""
+    answered = []
+    for p, x in sorted(fp.web.items()):
+        if x.status is None:
+            continue
+        text = f"{p}: {_page_text(x)}"
+        followed = fp.web_followed.get(p)
+        if followed is not None:
+            path = urlsplit(followed.url).path or "/"
+            text += f", then {path}: " + (
+                _page_text(followed) if followed.status is not None
+                else _web_failure(followed.error, 1)
+            )
+        answered.append(text)
     failed = [
         f"{p} ({_web_failure(x.error, fp.web_tries.get(p, 1))})"
         for p, x in sorted(fp.web.items()) if x.status is None
@@ -802,6 +828,17 @@ class NetworkCheck:
                     fp.ports_from_announcements.add(port)
                 if exchange.certificate:
                     fp.certificates[port] = exchange.certificate
+                # When / only redirects (to /www/index.html, say), the
+                # device's title and Server header are on the page it leads
+                # to. One redirect, on this address and port only.
+                target = same_origin_redirect(exchange)
+                if target is not None:
+                    followed = await http_get(
+                        target, timeout=WEB_TIMEOUT, source_ip=self._source_ip,
+                        max_bytes=WEB_BODY_BYTES, read_to_end=True,
+                    )
+                    if followed is not None:
+                        fp.web_followed[port] = followed
 
         async def certificate(port: int) -> None:
             async with sem:
@@ -1187,7 +1224,12 @@ class NetworkCheck:
 
         texts = banner_texts(banners)
         for port, exchange in sorted(fp.web.items()):
-            server = next((v for k, v in exchange.headers if k.lower() == "server"), "")
+            # The page a redirect led to first: the redirect's own answer may
+            # come from a front end that names nothing.
+            pages = [p for p in (fp.web_followed.get(port), exchange) if p is not None]
+            server = next(
+                (v for page in pages for k, v in page.headers if k.lower() == "server" and v), "",
+            )
             if server:
                 texts[f"http_server:{port}"] = server
         evidence.extend(derived_evidence(evidence, device.open_ports, index, texts))

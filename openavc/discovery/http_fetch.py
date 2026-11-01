@@ -11,6 +11,11 @@ is not trusted yet) and keeps the certificate the device presented.
 HTTP/1.0 with ``Connection: close`` on purpose: the server ends the response
 by closing, so no chunked body or keep-alive has to be understood to know
 where the page ends.
+
+A caller that wants the page a redirect leads to asks
+:func:`same_origin_redirect` for it and makes a second ``GET`` itself; only a
+redirect to the same scheme, host and port is ever offered, so a request
+never leaves the address it was sent to.
 """
 
 from __future__ import annotations
@@ -21,6 +26,7 @@ import re
 import ssl
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urljoin, urlsplit
 
 from openavc.discovery.certificates import discovery_tls_context, read_peer_certificate
 
@@ -90,6 +96,45 @@ class HttpExchange:
             return None
         text = " ".join(self._decode(match.group(1)).split())
         return text or None
+
+
+_REDIRECTS = frozenset({301, 302, 303, 307, 308})
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
+def _origin(url: str) -> tuple[str, str, int | None]:
+    parts = urlsplit(url)
+    scheme = parts.scheme.lower()
+    return scheme, (parts.hostname or "").lower(), parts.port or _DEFAULT_PORTS.get(scheme)
+
+
+def same_origin_redirect(exchange: HttpExchange) -> str | None:
+    """The page a redirect answer leads to, as a URL :func:`http_get` takes,
+    when it stays on the request's own scheme, host and port: a relative
+    ``Location``, or an absolute one naming the same address. None for any
+    other answer, a redirect elsewhere (another host, another port, a name
+    for the address), one that leads back to the page asked for, or a
+    ``Location`` that cannot be sent as a request line."""
+    if exchange.status not in _REDIRECTS:
+        return None
+    location = (exchange.header("location") or "").strip()
+    if not location:
+        return None
+    try:
+        target = urljoin(exchange.url, location)
+        here, there = _origin(exchange.url), _origin(target)
+        parts = urlsplit(target)
+    except ValueError:  # a port that is not a number, a malformed address
+        return None
+    if there != here or not here[1] or here[2] is None or "@" in parts.netloc:
+        return None
+    path = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
+    if any(ord(c) <= 0x20 or ord(c) == 0x7F for c in path):
+        return None
+    asked = urlsplit(exchange.url)
+    if path == (asked.path or "/") + (f"?{asked.query}" if asked.query else ""):
+        return None
+    return f"{here[0]}://{asked.hostname or here[1]}:{here[2]}{path}"
 
 
 def parse_head(head: str) -> list[tuple[str, str]]:

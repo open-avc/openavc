@@ -251,6 +251,31 @@ describe("the on-screen summary", () => {
     ]);
   });
 
+  it("says what the page a redirect led to answered, after the redirect", () => {
+    const redirected = {
+      ...report,
+      footprint: {
+        ...report.footprint,
+        web: {
+          "80": {
+            url: "http://10.0.0.50:80/", status_line: "HTTP/1.1 301 Moved Permanently",
+            title: "301 Moved Permanently", www_authenticate: null, error: "",
+            followed: {
+              url: "http://10.0.0.50:80/www/index.html", status_line: "HTTP/1.1 200 OK",
+              title: "Widget 3000", www_authenticate: null, error: "",
+            },
+          },
+        },
+      },
+    } as AuditReport;
+    expect(summaryLines(redirected).find((l) => l.label === "Web pages")).toEqual({
+      label: "Web pages",
+      value:
+        '80: HTTP/1.1 301 Moved Permanently, "301 Moved Permanently", ' +
+        'then /www/index.html: HTTP/1.1 200 OK, "Widget 3000"',
+    });
+  });
+
   it("says which open ports the device named in its own announcement", () => {
     const announced = {
       ...report,

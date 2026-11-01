@@ -665,6 +665,103 @@ async def test_a_page_on_a_port_the_device_announced_counts_it_open(monkeypatch,
     assert port in ports["open"] and ports["from_announcements"] == [port]
 
 
+def _redirecting(pages: dict[bytes, bytes], asked: list[bytes]):
+    """A web server answering each path from ``pages`` (the whole response,
+    ``{port}`` filled in), and noting every path it was asked for."""
+    port_box: dict[str, int] = {}
+
+    async def handler(reader, writer):
+        try:
+            request = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=5)
+            path = request.split(b" ", 2)[1]
+            asked.append(path)
+            writer.write(pages.get(path, b"HTTP/1.0 404 Not Found\r\n\r\n").replace(
+                b"{port}", str(port_box["port"]).encode(),
+            ))
+            await writer.drain()
+        except (asyncio.IncompleteReadError, asyncio.TimeoutError, ConnectionError):
+            pass
+        writer.close()
+
+    return handler, port_box
+
+
+async def test_a_redirect_on_the_same_address_is_followed_once(discovery, bench):
+    """A device whose / only redirects (a 301 to /www/index.html) said nothing
+    about itself on the page the check kept. The page the redirect leads to is
+    read too, on the same address and port, with the redirect kept beside it.
+    A redirect elsewhere is not followed, and neither is a second one."""
+    home_asked: list[bytes] = []
+    home, home_box = _redirecting({
+        b"/": (
+            b"HTTP/1.0 301 Moved Permanently\r\n"
+            b"Location: http://" + HOST.encode() + b":{port}/www/index.html\r\n\r\n"
+            b"<title>301 Moved Permanently</title>"
+        ),
+        b"/www/index.html": (
+            b"HTTP/1.0 200 OK\r\nServer: AcmeHTTP/9\r\nContent-Type: text/html\r\n\r\n"
+            b"<html><head><title>Widget 3000</title></head></html>"
+        ),
+    }, home_asked)
+    away_asked: list[bytes] = []
+    away, away_box = _redirecting({
+        b"/": b"HTTP/1.0 302 Found\r\nLocation: http://10.77.0.10/\r\n\r\n",
+    }, away_asked)
+    twice_asked: list[bytes] = []
+    twice, twice_box = _redirecting({
+        b"/": b"HTTP/1.0 302 Found\r\nLocation: /one\r\n\r\n",
+        b"/one": b"HTTP/1.0 302 Found\r\nLocation: /two\r\n\r\n",
+    }, twice_asked)
+    servers = []
+    try:
+        for handler, box in ((home, home_box), (away, away_box), (twice, twice_box)):
+            server, box["port"] = await _serve(handler)
+            servers.append(server)
+        ports = [home_box["port"], away_box["port"], twice_box["port"]]
+        # Nothing announced, so these three are the only web pages read.
+        check, _ = _check(
+            discovery, bench, port_list=ports, web_ports={p: "http" for p in ports},
+            listeners=_heard_listeners(bench, device_heard=False),
+        )
+        fp = await check.run()
+    finally:
+        for server in servers:
+            server.close()
+            await server.wait_closed()
+    home_port, away_port, twice_port = ports
+
+    assert home_asked == [b"/", b"/www/index.html"]
+    assert fp.web[home_port].status == 301
+    followed = fp.web_followed[home_port]
+    assert followed.url == f"http://{HOST}:{home_port}/www/index.html"
+    assert followed.title() == "Widget 3000"
+    record = fp.to_dict()["web"]
+    assert record[str(home_port)]["location"] == f"http://{HOST}:{home_port}/www/index.html"
+    assert record[str(home_port)]["followed"]["title"] == "Widget 3000"
+    assert record[str(home_port)]["followed"]["server"] == "AcmeHTTP/9"
+    # The page's Server header is read for a manufacturer, as the redirect's would be.
+    [named] = [ev for ev in fp.evidence if ev.data.get("kind") == "vendor_string"]
+    assert named.data["value"] == "acmehttp"
+    assert named.data["source_probe_id"] == f"http_server:{home_port}"
+
+    assert away_asked == [b"/"]
+    assert record[str(away_port)]["followed"] is None
+    assert record[str(away_port)]["location"] == "http://10.77.0.10/"
+
+    assert twice_asked == [b"/", b"/one"]
+    assert fp.web_followed[twice_port].status == 302
+    assert record[str(twice_port)]["followed"]["location"] == "/two"
+
+    said = {
+        home_port: 'HTTP/1.0 301 Moved Permanently, "301 Moved Permanently", '
+                   'then /www/index.html: HTTP/1.0 200 OK, "Widget 3000"',
+        away_port: "HTTP/1.0 302 Found",
+        twice_port: "HTTP/1.0 302 Found, then /one: HTTP/1.0 302 Found",
+    }
+    listed = "; ".join(f"{port}: {what}" for port, what in sorted(said.items()))
+    assert check.activities["web"].message == f"Pages: {listed}."
+
+
 async def test_a_manufacturer_the_driver_supplies_is_not_what_the_device_reported(discovery, bench):
     """``extract_manufacturer`` is the driver's word when its probe matches:
     it still counts for matching, and the report says the driver named it,

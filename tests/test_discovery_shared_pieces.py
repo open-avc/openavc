@@ -18,7 +18,7 @@ from openavc.discovery.engine import (
     mac_info_and_evidence,
 )
 from openavc.discovery.hints import build_signal_index, parse_driver_discovery
-from openavc.discovery.http_fetch import http_get, parse_head
+from openavc.discovery.http_fetch import HttpExchange, http_get, parse_head, same_origin_redirect
 from openavc.discovery.oui_database import OUIDatabase
 from openavc.discovery.port_scanner import BASELINE_PORTS, read_greeting
 from openavc.discovery.result import DeviceState
@@ -140,6 +140,50 @@ def test_parse_head_keeps_order_and_repeats():
     assert parse_head(head) == [
         ("Set-Cookie", "a=1"), ("Set-Cookie", "b=2"), ("Location", "/login"),
     ]
+
+
+def _redirect(url: str, status: int, location: str | None) -> HttpExchange:
+    head = f"HTTP/1.1 {status} Moved"
+    if location is not None:
+        head += f"\r\nLocation: {location}"
+    return HttpExchange(url=url, head=head, headers=parse_head(head))
+
+
+def test_a_redirect_is_followed_only_on_the_same_address_and_port():
+    """The page a redirect leads to is offered only when it stays where the
+    request went: the same scheme, address and port, written out or
+    relative. A request never leaves the address it was sent to."""
+    here = "http://10.0.0.5:80/"
+    follows = {
+        "http://10.0.0.5:80/www/index.html": "http://10.0.0.5:80/www/index.html",
+        "http://10.0.0.5/www/index.html": "http://10.0.0.5:80/www/index.html",
+        "/www/index.html": "http://10.0.0.5:80/www/index.html",
+        "www/index.html?lang=en#top": "http://10.0.0.5:80/www/index.html?lang=en",
+        "//10.0.0.5/login": "http://10.0.0.5:80/login",
+    }
+    for location, target in follows.items():
+        assert same_origin_redirect(_redirect(here, 301, location)) == target, location
+    assert same_origin_redirect(
+        _redirect("https://10.0.0.5:443/", 302, "https://10.0.0.5:443/www/index.html"),
+    ) == "https://10.0.0.5:443/www/index.html"
+
+    stays = [
+        "https://10.0.0.5:443/",           # another scheme and port
+        "http://10.0.0.5:8080/",           # another port
+        "http://10.0.0.6/",                # another address
+        "http://widget.local/",            # a name, even for this address
+        "//example.com/",                  # another host, scheme-relative
+        "http://user@10.0.0.5/",           # a sign-in in the address
+        "/",                               # the page asked for
+        "/a page",                         # not a request line
+        "http://10.0.0.5:x/",              # not a port
+        "",
+    ]
+    for location in stays:
+        assert same_origin_redirect(_redirect(here, 301, location)) is None, location
+    assert same_origin_redirect(_redirect(here, 301, None)) is None
+    assert same_origin_redirect(_redirect(here, 200, "/www/index.html")) is None
+    assert same_origin_redirect(_redirect(here, 304, "/www/index.html")) is None
 
 
 async def test_http_get_reports_why_nothing_came_back():

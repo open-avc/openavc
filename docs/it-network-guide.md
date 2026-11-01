@@ -312,7 +312,7 @@ Its network check sends, to the one device:
 
 1. A ping, a reverse DNS lookup, and a NetBIOS name query (UDP 137).
 2. A TCP connection to each port on the Thorough discovery list, started 50 ms apart. The Extended option adds every port from 1 to 1024.
-3. On each open port, a connection that sends nothing and listens for a few seconds; on web ports, and on a port the device names in an SSDP or mDNS announcement, `GET /` and a TLS handshake for the certificate.
+3. On each open port, a connection that sends nothing and listens for a few seconds; on web ports, and on a port the device names in an SSDP or mDNS announcement, `GET /` (and a `GET` of the page it redirects to, only when that page is on the same address and port) and a TLS handshake for the certificate.
 4. SNMP v2c reads (UDP 161), community `public` and any the integrator enters. The Extended option reads every value the device offers, up to a limit.
 5. mDNS and SSDP queries on their multicast groups, and listening for mDNS, SSDP and AMX DDP announcements until the audit ends. Only the audited device's announcements are kept.
 6. The driver-declared TCP and UDP identification probes of the community catalog, sent to the device's address only. Each sends its driver's own query, one at a time on a port. A port that answers with a login prompt is sent only the probes that look for that prompt.

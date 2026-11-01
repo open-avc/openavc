@@ -147,8 +147,9 @@ the multicast queries, and the driver catalog.
 - A TCP connection to each port on Discovery's thorough port list, started 50 ms apart (with
   **Extended**, also every port from 1 to 1024).
 - On each open port, a connection that only listens for a few seconds.
-- On web ports, and on a port the device names in an announcement, a `GET /`; the certificate
-  on TLS ports.
+- On web ports, and on a port the device names in an announcement, a `GET /`, and a `GET` of
+  the page it redirects to when that page is on the same address and port (one redirect, never
+  another address); the certificate on TLS ports.
 - SNMP v2c reads (UDP 161) with `public`, then any community you added.
 - mDNS and SSDP queries, and listening for mDNS, SSDP and AMX DDP announcements until the audit
   ends.
