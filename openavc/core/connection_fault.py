@@ -769,11 +769,16 @@ def classify_connection_fault(
 
     # 1. Required client binary missing (SSH shells out to `ssh`).
     if _is_client_missing(hay, chain):
-        client = "the OpenSSH 'ssh' client" if transport == "ssh" or "ssh" in hay else "the required client"
+        if transport == "ssh" or "ssh" in hay:
+            # Worded for the install type: a panel owner cannot install
+            # anything, a Linux admin needs the command, Docker needs a pull.
+            from openavc.system.os_programs import missing_program_sentence
+
+            return ConnectionFault(CLIENT_MISSING, missing_program_sentence())
         return ConnectionFault(
             CLIENT_MISSING,
-            f"Required client not found ({client}). Install it and make sure "
-            f"it's on the system PATH.",
+            "Required client not found. Install it and make sure it's on the "
+            "system PATH.",
         )
 
     # 2. Host key changed / rejected (possible MITM) — before auth_failed.

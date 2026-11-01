@@ -111,6 +111,7 @@ class Engine:
         self.panel_devices = PanelDeviceStore(get_data_dir() / "panel_devices.json")
         self.panel_devices.load()
         self._panel_sweep_task: asyncio.Task | None = None
+        self._os_programs_task: asyncio.Task | None = None
         # Panel interaction runtime (peer of the macro engine, see ui_events)
         self.ui_events = UIEventRuntime(self)
         from openavc.core.installed_equipment import InstalledEquipment
@@ -532,6 +533,15 @@ class Engine:
         self._panel_sweep_task = asyncio.create_task(self._panel_devices_sweep_loop())
         self._panel_sweep_task.add_done_callback(_log_task_exception)
 
+        # Appliance hardware installs the programs a transport runs (the SSH
+        # client) when its system lacks them, then retries the devices that
+        # were waiting. Returns at once on every other install type.
+        from openavc.system.os_programs import ensure_programs_loop
+        self._os_programs_task = asyncio.create_task(
+            ensure_programs_loop(self._retry_client_missing_devices)
+        )
+        self._os_programs_task.add_done_callback(_log_task_exception)
+
         # Files staged for a command by an earlier run are gone with it.
         self.file_staging.start()
 
@@ -683,6 +693,14 @@ class Engine:
             except asyncio.CancelledError:
                 pass
             self._panel_sweep_task = None
+
+        if self._os_programs_task and not self._os_programs_task.done():
+            self._os_programs_task.cancel()
+            try:
+                await self._os_programs_task
+            except asyncio.CancelledError:
+                pass
+        self._os_programs_task = None
 
         # Cancel in-flight macros (with the engine's grace drain) before the
         # devices they command are torn down — a macro racing disconnect_all
@@ -1870,6 +1888,18 @@ class Engine:
             },
             client_type="programmer",
         )
+
+    async def _retry_client_missing_devices(self) -> None:
+        """Reconnect every device that stopped retrying because a program it
+        needs was missing, now that the program is installed."""
+        for item in self.devices.list_devices():
+            device_id = item["id"]
+            if self.state.get(f"device.{device_id}.offline_reason") != "client_missing":
+                continue
+            try:
+                await self.devices.reconnect_device(device_id)
+            except Exception:
+                log.exception("[%s] Reconnect after installing the SSH client failed", device_id)
 
     async def _panel_devices_sweep_loop(self) -> None:
         """Drop pending and denied panel records past their time, and tell

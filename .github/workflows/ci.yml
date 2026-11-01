@@ -148,6 +148,39 @@ jobs:
           OPENAVC_DRIVERS_ROOT: ${{ runner.temp }}/openavc-drivers
         run: pytest tests/ -n auto --dist loadgroup -v --tb=short --ignore=tests/perf
 
+  # Installs run more than one Python: the Linux installer takes 3.11 or newer,
+  # the Pi image and appliance hardware run Debian's 3.13, Docker and the
+  # frozen builds 3.12. The suite above runs on 3.12, so this loads every
+  # platform module and every driver in the community library on the others.
+  python-versions:
+    name: Loads on Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Clone the community driver library
+        run: git clone --depth 1 https://github.com/open-avc/openavc-drivers.git "$RUNNER_TEMP/openavc-drivers"
+
+      - name: Load every module and driver
+        env:
+          OPENAVC_DATA_DIR: ${{ runner.temp }}/openavc-data
+        run: python scripts/import_everything.py "$RUNNER_TEMP/openavc-drivers"
+
   # The browser tests boot a real server and drive the Programmer IDE in
   # Chromium — the only automated proof the IDE works in a browser, and by far
   # the slowest thing here: about 5s a test against 40ms for a unit test, so a

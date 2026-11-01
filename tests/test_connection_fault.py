@@ -334,7 +334,9 @@ def test_client_missing_ssh_not_on_path():
         host="h", port=22, transport="ssh",
     )
     assert fault.code == CLIENT_MISSING
-    assert "Required client not found" in fault.message
+    from openavc.system.os_programs import missing_program_sentence
+
+    assert fault.message == missing_program_sentence()
 
 
 # --- serial ----------------------------------------------------------------

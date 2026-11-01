@@ -38,11 +38,14 @@ FROM python:3.12-slim
 # container's bounding set.
 # fonts-dejavu-core: plugins that render text into video (wireless
 # presentation connect cards) need at least one system font; slim ships none.
+# openssh-client: the SSH transport runs the system's ssh program, and slim
+# ships none (openavc/system/os_programs.py lists every such program).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     iputils-ping \
     iproute2 \
     libcap2-bin \
     fonts-dejavu-core \
+    openssh-client \
     && setcap cap_net_raw+ep /usr/bin/ping \
     && rm -rf /var/lib/apt/lists/*
 

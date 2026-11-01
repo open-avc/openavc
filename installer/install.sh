@@ -225,6 +225,31 @@ ensure_system_prereqs() {
             fi
             ;;
     esac
+    ensure_ssh_client
+}
+
+# The SSH transport runs the system's ssh program (switches, video bars and
+# other devices controlled over SSH). Most hosts have it; minimal and container
+# images do not. Package names per manager are in openavc/system/os_programs.py.
+# Never fatal: OpenAVC runs without it, and the device card says how to add it.
+ensure_ssh_client() {
+    if command -v ssh &>/dev/null; then
+        return 0
+    fi
+    info "Installing the SSH client (for devices controlled over SSH)..."
+    local installed=1
+    case "$PKG_MANAGER" in
+        apt)
+            apt-get update -qq && apt-get install -y -qq openssh-client && installed=0 ;;
+        dnf)
+            dnf install -y -q openssh-clients && installed=0 ;;
+        pacman)
+            pacman -Sy --noconfirm --quiet openssh && installed=0 ;;
+    esac
+    if [ "$installed" -ne 0 ]; then
+        warn "Could not install the SSH client. Devices controlled over SSH will not connect until it is installed."
+    fi
+    return 0
 }
 
 # --- Download ---

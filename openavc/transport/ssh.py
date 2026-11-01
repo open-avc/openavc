@@ -5,9 +5,11 @@ Many managed devices (network switches, some DSPs, headends) expose their
 control surface only as a text CLI reached over SSH. There is no MIT-compatible
 Python SSH library — paramiko and ssh2-python are LGPL, asyncssh is EPL — so
 this transport shells out to the operating system's OpenSSH client (``ssh``),
-which is BSD-licensed and ships by default on Windows 10+, every Linux, and
-macOS. Running ``ssh`` as a separate process keeps OpenAVC's MIT licence clean
-(no linking) and avoids any binary-wheel/ABI risk on ARM.
+which is BSD-licensed. Running ``ssh`` as a separate process keeps OpenAVC's
+MIT licence clean (no linking) and avoids any binary-wheel/ABI risk on ARM.
+The client is not on every host by default (slim Linux images and containers
+leave it out), so every install type ships or installs it: the table and the
+per-install-type rules are ``openavc/system/os_programs.py``.
 
 Design — deliberately mirrors :class:`openavc.transport.tcp.TCPTransport`:
 
@@ -228,8 +230,8 @@ class SSHTransport:
         binary = self._ssh_binary or shutil.which("ssh")
         if not binary:
             raise ConnectionError(
-                "OpenSSH client ('ssh') not found on PATH. Install OpenSSH "
-                "(bundled with Windows 10+/Linux/macOS) to use the SSH transport."
+                "OpenSSH client ('ssh') not found on PATH. Install the OpenSSH "
+                "client to use the SSH transport."
             )
         return binary
 
