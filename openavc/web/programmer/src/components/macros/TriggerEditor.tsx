@@ -376,6 +376,19 @@ function ScheduleEditor({
           {describeCron(cron)}
         </div>
       )}
+      <ScheduleTimeZone />
+    </div>
+  );
+}
+
+/** The zone a schedule's times are read in: the system's clock, which can
+ * differ from this browser's. */
+export function ScheduleTimeZone() {
+  const zone = useConnectionStore((s) => s.liveState["system.time_zone"]);
+  if (typeof zone !== "string" || !zone) return null;
+  return (
+    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+      This system's time zone: {zone}
     </div>
   );
 }

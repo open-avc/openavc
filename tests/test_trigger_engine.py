@@ -2,8 +2,9 @@
 
 import asyncio
 import logging
+import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -1099,6 +1100,11 @@ async def test_spawn_logs_unhandled_exception(trigger_engine, caplog):
 # --- Cron schedule decision: catch-up + dedup ---
 
 
+def _at(local: datetime) -> datetime:
+    """A local wall-clock time as the absolute time the loop records."""
+    return local.astimezone(timezone.utc)
+
+
 def test_schedule_prev_due_cold_start_recent(trigger_engine):
     pytest.importorskip("croniter")
     now = datetime(2026, 1, 1, 18, 0, 30)
@@ -1116,14 +1122,14 @@ def test_schedule_prev_due_cold_start_stale_skipped(trigger_engine):
 
 def test_schedule_prev_due_steady_state_fires_once(trigger_engine):
     pytest.importorskip("croniter")
-    last = datetime(2026, 1, 1, 17, 59, 30)
+    last = _at(datetime(2026, 1, 1, 17, 59, 30))
     now = datetime(2026, 1, 1, 18, 0, 20)
     _, fire = trigger_engine._schedule_prev_due("0 18 * * *", now, last)
     assert fire is True  # occurrence came due since the previous poll
 
     # Same occurrence next poll, no new one -> no double fire.
     _, fire2 = trigger_engine._schedule_prev_due(
-        "0 18 * * *", datetime(2026, 1, 1, 18, 0, 50), now
+        "0 18 * * *", datetime(2026, 1, 1, 18, 0, 50), _at(now)
     )
     assert fire2 is False
 
@@ -1131,7 +1137,7 @@ def test_schedule_prev_due_steady_state_fires_once(trigger_engine):
 def test_schedule_prev_due_catch_up_after_falling_behind(trigger_engine):
     """A schedule due during a >60s loop gap still fires (catch-up)."""
     pytest.importorskip("croniter")
-    last = datetime(2026, 1, 1, 17, 59, 50)
+    last = _at(datetime(2026, 1, 1, 17, 59, 50))
     now = datetime(2026, 1, 1, 18, 2, 0)  # loop fell ~130s behind
     prev, fire = trigger_engine._schedule_prev_due("0 18 * * *", now, last)
     assert prev == datetime(2026, 1, 1, 18, 0, 0)
@@ -1155,7 +1161,7 @@ async def test_cron_dedup_survives_reload(trigger_engine):
     }]
     trigger_engine.load_triggers(spec)
     # Record a prior fire, then simulate a hot reload (stop -> load -> start).
-    trigger_engine._cron_last_fires["sched"] = datetime(2026, 1, 1, 12, 0, 0)
+    trigger_engine._cron_last_fires["sched"] = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
     await trigger_engine.start()
     await trigger_engine.stop()
     trigger_engine.load_triggers(spec)
@@ -1173,6 +1179,84 @@ async def test_cron_dedup_survives_reload(trigger_engine):
         }],
     }])
     assert "sched" not in trigger_engine._cron_last_fires
+
+
+# --- The process's time zone changes between polls ---
+#
+# Cron reads the wall clock; the loop compares in absolute time. A zone change
+# (a panel on the server's own screen reporting the site's zone) moves the wall
+# clock by hours between two polls.
+
+posix_only = pytest.mark.skipif(not hasattr(time, "tzset"), reason="POSIX time zones")
+
+
+@pytest.fixture
+def process_tz():
+    """Set the process's TZ for a test and put it back afterwards."""
+    before = os.environ.get("TZ")
+
+    def set_tz(value: str) -> None:
+        os.environ["TZ"] = value
+        time.tzset()
+
+    yield set_tz
+    if before is None:
+        os.environ.pop("TZ", None)
+    else:
+        os.environ["TZ"] = before
+    time.tzset()
+
+
+@posix_only
+def test_a_zone_ahead_does_not_fire_the_hours_it_skipped(trigger_engine, process_tz):
+    pytest.importorskip("croniter")
+    process_tz("UTC0")
+    last = _at(datetime(2026, 6, 1, 10, 0, 0))  # 10:00 UTC
+    process_tz("JST-9")  # the wall clock jumps nine hours ahead
+    now = datetime(2026, 6, 1, 19, 0, 20)  # 19:00 in the new zone, 10:00:20 UTC
+    _, fire = trigger_engine._schedule_prev_due("0 18 * * *", now, last)
+    assert fire is False  # 18:00 there was 09:00 UTC, before the last poll
+
+
+@posix_only
+def test_a_zone_behind_fires_at_its_own_time(trigger_engine, process_tz):
+    pytest.importorskip("croniter")
+    process_tz("UTC0")
+    last = _at(datetime(2026, 6, 1, 19, 39, 0))
+    process_tz("EST5EDT,M3.2.0,M11.1.0")  # four hours back in June
+    _, early = trigger_engine._schedule_prev_due(
+        "0 23 * * *", datetime(2026, 6, 1, 15, 40, 0), last
+    )
+    assert early is False
+    _, on_time = trigger_engine._schedule_prev_due(
+        "0 23 * * *", datetime(2026, 6, 1, 23, 0, 20), _at(datetime(2026, 6, 1, 22, 59, 50))
+    )
+    assert on_time is True
+
+
+@posix_only
+def test_the_fire_record_holds_across_a_zone_change(trigger_engine, process_tz):
+    """A schedule that fired at 23:00 on UTC is not blocked at 23:00 in the
+    site's zone that evening, and one that fired for the same instant is."""
+    pytest.importorskip("croniter")
+    process_tz("UTC0")
+    trigger_engine._cron_last_fires["shutdown"] = _at(datetime(2026, 6, 1, 23, 0, 5))
+    process_tz("EST5EDT,M3.2.0,M11.1.0")
+    # 23:00 New York is 03:00 UTC the next day: a new occurrence.
+    assert not trigger_engine._already_fired("shutdown", _at(datetime(2026, 6, 1, 23, 0, 0)))
+    # 19:00 New York is the 23:00 UTC that already fired.
+    assert trigger_engine._already_fired("shutdown", _at(datetime(2026, 6, 1, 19, 0, 0)))
+
+
+@posix_only
+def test_the_hour_the_clocks_fall_back_fires_once(trigger_engine, process_tz):
+    pytest.importorskip("croniter")
+    process_tz("EST5EDT,M3.2.0,M11.1.0")
+    # 01:59 summer time, then the clocks go back: 01:30 comes round again.
+    last = datetime(2026, 11, 1, 5, 59, 50, tzinfo=timezone.utc)  # 01:59:50 EDT
+    second_pass = datetime(2026, 11, 1, 1, 30, 20, fold=1)  # 01:30:20 EST
+    _, fire = trigger_engine._schedule_prev_due("30 1 * * *", second_pass, last)
+    assert fire is False
 
 
 # --- Cooldown clock robustness ---

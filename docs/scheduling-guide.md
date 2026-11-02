@@ -40,6 +40,18 @@ A dropdown of common examples is available:
 | First Monday of each month | `0 9 1-7 * 1` |
 | Every hour | `0 * * * *` |
 
+### Time Zone
+
+Schedules run on the system's clock, in the system's time zone, which the schedule editor shows under the schedule as **This system's time zone**. A script that reads the time with `datetime.now()` gets the same clock, and so do the log's timestamps.
+
+| Install | Where the time zone comes from |
+|---------|-------------------------------|
+| Windows, Mac, Linux, Raspberry Pi | The computer's own time zone setting |
+| Appliance hardware | The panel's time zone setting, which the panel on the device's own screen reports when it opens |
+| Docker | The host computer's time zone, through the compose file's `/etc/localtime` line, or a zone named with `TZ` (see [Deployment](deployment.md#time-zone)) |
+
+If the editor shows the wrong zone, set the right one on that computer or panel, then restart it.
+
 ## Cron Syntax
 
 Standard 5-field cron expressions (minute, hour, day-of-month, month, day-of-week).

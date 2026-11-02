@@ -365,6 +365,11 @@ class Engine:
         self.state.set("system.update_progress", 0, source="system")
         self.state.set("system.update_error", "", source="system")
         self.state.set("system.deployment_type", detect_deployment_type().value, source="system")
+        # A zone the panel on this computer's screen reported before, applied
+        # before the first schedule is read.
+        from openavc.core import time_zone
+        time_zone.restore()
+        self.state.set("system.time_zone", time_zone.current_name(), source="system")
         # Publish the idle help state so a panel bound to it draws something on
         # a quiet day rather than a blank that reads as a broken binding.
         self.help.declare_keys()

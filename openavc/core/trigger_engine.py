@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, TYPE_CHECKING
 
 from openavc.core.condition_eval import eval_operator
@@ -382,13 +382,20 @@ class TriggerEngine:
     async def _cron_loop(self) -> None:
         """Check schedule triggers on a fixed interval, with catch-up.
 
-        ``last_check`` is the wall-clock time of the previous poll. In steady
-        state a schedule fires when its most recent occurrence (``prev``) fell
-        after ``last_check`` — so even if the loop falls behind (heavy load,
-        host suspend) a schedule that came due in the gap still fires once
+        ``last_check`` is the time of the previous poll. In steady state a
+        schedule fires when its most recent occurrence (``prev``) fell after
+        ``last_check`` — so even if the loop falls behind (heavy load, host
+        suspend) a schedule that came due in the gap still fires once
         (catch-up), instead of being silently dropped. The cron dedup map is
         instance state (``self._cron_last_fires``) so it survives a hot reload
         and won't double-fire a schedule near its scheduled minute.
+
+        Cron reads the local wall clock; every comparison is in absolute time
+        (UTC). The process's time zone can change while this runs
+        (core/time_zone.py), and so can the wall clock's offset twice a year:
+        compared as wall-clock times, a zone ahead of the old one would fire
+        every schedule in the hours it skipped, and the hour the clocks fall
+        back would fire its schedules twice.
         """
         # last_check is reset per start() on purpose: after a fresh start or
         # reload we treat it like a cold start (don't replay schedules from
@@ -401,6 +408,7 @@ class TriggerEngine:
                 if not self._running:
                     return
                 now = datetime.now()
+                now_at = now.astimezone(timezone.utc)
                 for ts in self._triggers.values():
                     t = ts.trigger
                     if t.get("type") != "schedule" or not t.get("enabled", True):
@@ -414,28 +422,37 @@ class TriggerEngine:
                         )
                         if not should_fire:
                             continue
-                        late = (now - prev).total_seconds()
+                        prev_at = prev.astimezone(timezone.utc)
+                        late = (now_at - prev_at).total_seconds()
                         if last_check is not None and late > 60:
                             log.warning(
                                 f"Cron trigger '{t['id']}' caught up a delayed "
                                 f"schedule ({late:.0f}s late; poll loop fell behind)"
                             )
                         # Prevent duplicate fires (cross-reload safety net)
-                        last = self._cron_last_fires.get(t["id"])
-                        if last and (last - prev).total_seconds() >= 0:
+                        if self._already_fired(t["id"], prev_at):
                             continue
-                        self._cron_last_fires[t["id"]] = now
+                        self._cron_last_fires[t["id"]] = now_at
                         self._initiate_fire(ts, {"trigger_type": "schedule", "cron": cron_expr})
                     except Exception:  # Catch-all: isolates individual trigger evaluation errors
                         log.exception(f"Error checking cron trigger '{t['id']}'")
-                last_check = now
+                last_check = now_at
         except asyncio.CancelledError:
             return
+
+    def _already_fired(self, trigger_id: str, prev_at: datetime) -> bool:
+        """True when this schedule already fired for the occurrence at
+        ``prev_at`` (absolute time) or a later one."""
+        last = self._cron_last_fires.get(trigger_id)
+        return last is not None and (last - prev_at).total_seconds() >= 0
 
     def _schedule_prev_due(
         self, cron_expr: str, now: datetime, last_check: datetime | None
     ) -> tuple[datetime, bool]:
         """Decide whether a schedule's most recent occurrence should fire.
+
+        ``now`` is the local wall clock, which is what cron reads;
+        ``last_check`` is the previous poll in absolute time (aware).
 
         Returns ``(prev_occurrence, should_fire)``. On a cold start
         (``last_check is None``) only a very recent occurrence fires, so a
@@ -446,9 +463,10 @@ class TriggerEngine:
         staleness cutoff would have silently dropped.
         """
         prev = croniter(cron_expr, now).get_prev(datetime)
+        prev_at = prev.astimezone(timezone.utc)
         if last_check is None:
-            return prev, (now - prev).total_seconds() <= 60
-        return prev, prev > last_check
+            return prev, (now.astimezone(timezone.utc) - prev_at).total_seconds() <= 60
+        return prev, prev_at > last_check
 
     # --- Execution pipeline ---
 

@@ -3672,6 +3672,26 @@ const tests = {
 
     // Even on an instance that admits anyone, the check-in is the first
     // request the page makes: then the plugin list, then the socket.
+    // The check-in names the zone this screen's browser runs in: from the
+    // system's own screen, the server sets its clock by it.
+    async access_the_check_in_names_the_screens_time_zone() {
+        clearAccessOverlay();
+        const rig = accessRig([{ access: 'open' }]);
+        try {
+            const app = mkApp();
+            app.start();
+            await rig.settle();
+            const first = rig.calls.find((c) => c.url && c.url.includes('/api/panel/access'));
+            const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            assert(first, 'the check-in was made');
+            assert(first.url.endsWith(`/api/panel/access?time_zone=${encodeURIComponent(zone)}`),
+                `the check-in names ${zone}, got ${first.url}`);
+        } finally {
+            rig.restore();
+            clearAccessOverlay();
+        }
+    },
+
     async access_the_check_in_comes_before_everything_else() {
         clearAccessOverlay();
         const rig = accessRig([{ access: 'open' }]);
@@ -3680,7 +3700,7 @@ const tests = {
             app.start();
             await rig.settle();
             const order = rig.calls.map((c) => (c.ws ? 'ws' : c.url));
-            assert(order[0] && order[0].endsWith('/api/panel/access'),
+            assert(order[0] && order[0].split('?')[0].endsWith('/api/panel/access'),
                 `the check-in is first, got ${JSON.stringify(order)}`);
             assert(order[1] && order[1].endsWith('/api/plugins/extensions'),
                 `the plugin list is second, got ${JSON.stringify(order)}`);

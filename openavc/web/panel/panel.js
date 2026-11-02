@@ -7704,8 +7704,13 @@ class PanelApp {
     async _fetchPanelAccess() {
         const pathParts = location.pathname.split('/panel');
         const basePath = pathParts[0] || '';
+        // The zone this screen runs in: a panel on the system's own screen
+        // sets the system's clock with it when the two disagree.
+        let zone = '';
+        try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (_) { /* no Intl */ }
+        const query = zone ? `?time_zone=${encodeURIComponent(zone)}` : '';
         try {
-            const res = await fetch(`${basePath}/api/panel/access`, { cache: 'no-store' });
+            const res = await fetch(`${basePath}/api/panel/access${query}`, { cache: 'no-store' });
             if (!res.ok) return null;
             const data = await res.json();
             return data && typeof data === 'object' ? data : null;

@@ -207,6 +207,7 @@ SCENARIOS = [
     # Panel access: the check-in comes first, and a device that is not
     # approved waits on a screen with its code.
     "access_the_check_in_comes_before_everything_else",
+    "access_the_check_in_names_the_screens_time_zone",
     "access_a_waiting_device_sees_its_code_and_is_let_in_on_approval",
     "access_denied_and_unavailable_say_what_to_do",
     "access_a_4010_close_asks_again_instead_of_reconnecting",

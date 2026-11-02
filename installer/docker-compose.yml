@@ -22,6 +22,11 @@ services:
       - NET_RAW
     volumes:
       - openavc-data:/data
+      # This computer's time zone, so schedules fire at local time (Linux).
+      # To name a zone instead, delete this line and add:
+      #   environment:
+      #     TZ: America/Chicago
+      - /etc/localtime:/etc/localtime:ro
     restart: unless-stopped
     # For serial/USB device passthrough, uncomment:
     # devices:

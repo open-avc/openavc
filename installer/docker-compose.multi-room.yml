@@ -25,6 +25,11 @@ services:
       # - "8444:8443"
     volumes:
       - room-101-data:/data
+      # This computer's time zone, so schedules fire at local time (Linux).
+      # To name a zone instead, delete this line and add:
+      #   environment:
+      #     TZ: America/Chicago
+      - /etc/localtime:/etc/localtime:ro
     restart: unless-stopped
 
   room-102:
@@ -34,6 +39,7 @@ services:
       - "8082:8080"
     volumes:
       - room-102-data:/data
+      - /etc/localtime:/etc/localtime:ro
     restart: unless-stopped
 
   room-103:
@@ -43,6 +49,7 @@ services:
       - "8083:8080"
     volumes:
       - room-103-data:/data
+      - /etc/localtime:/etc/localtime:ro
     restart: unless-stopped
 
 volumes:

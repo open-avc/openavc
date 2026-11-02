@@ -214,6 +214,16 @@ def _require_store(engine: Any) -> PanelDeviceStore:
     return store
 
 
+def _take_screen_time_zone(engine: Any, name: str) -> None:
+    from openavc.core import time_zone as site_time_zone
+
+    try:
+        if site_time_zone.adopt_from_local_screen(name) and engine is not None:
+            engine.state.set("system.time_zone", site_time_zone.current_name(), source="system")
+    except Exception:  # Catch-all: a clock problem never refuses a panel
+        log.exception("Could not take the time zone %r from this computer's screen", name)
+
+
 # --- The panel's own doors (open router) ---
 
 
@@ -222,6 +232,7 @@ async def panel_access_check_in(
     request: Request,
     response: Response,
     credentials: HTTPBasicCredentials | None = Depends(_basic),
+    time_zone: str | None = None,
 ) -> dict[str, Any]:
     """A panel page's first request: may this device connect, and if not, why.
 
@@ -230,8 +241,14 @@ async def panel_access_check_in(
     a code and a pending cookie; an approved device gets its cookie re-issued
     when it is a day old; a device the programmer just approved collects its
     real cookie here. Open tier: a waiting panel polls this every 3 seconds.
+
+    ``time_zone`` is the zone the panel's browser runs in. From this
+    computer's own screen it sets this server's clock when the two disagree
+    (core/time_zone.py); from anywhere else it is ignored.
     """
     engine = _get_engine()
+    if time_zone and is_local_console_request(request):
+        _take_screen_time_zone(engine, time_zone)
     if access_mode() == ACCESS_OPEN:
         return {"access": "open"}
     authenticated = programmer_auth_satisfied(request, credentials)

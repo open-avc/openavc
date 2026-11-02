@@ -372,6 +372,17 @@ For serial/USB device passthrough, uncomment the `devices:` block in the compose
 
 Device discovery, mDNS, and SSDP all need the container to be reachable on, and able to send packets to, the same physical network as your AV equipment. With Docker's default bridge network the container sits behind NAT on a private 172.x subnet and cannot see your LAN, so scans return zero devices. `network_mode: host` puts the container directly on the host's network stack so discovery works. `cap_add: NET_RAW` lets OpenAVC's unprivileged user run the ICMP ping sweep that finds live hosts.
 
+### Time zone
+
+Both compose files mount the host's `/etc/localtime`, so the container's clock, and every schedule, runs in the host computer's time zone. To use a different zone, delete that line and name one from the time zone database instead:
+
+```yaml
+    environment:
+      TZ: America/Chicago
+```
+
+Without either, the container runs on UTC, and a schedule set for 10 PM fires at 10 PM UTC. On Docker Desktop, if the mount is refused, use `TZ`.
+
 ### Docker Desktop on Windows or Mac
 
 Docker Desktop runs the Linux container inside a WSL2 (Windows) or HyperKit (Mac) virtual machine that does not share the host's LAN, so device discovery cannot work even with `network_mode: host`. If you need discovery on Windows or Mac, use the native installer instead. Docker Desktop is fine for evaluating the software or for IP-only deployments where you'll add devices manually.

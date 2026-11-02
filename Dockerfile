@@ -40,12 +40,15 @@ FROM python:3.12-slim
 # presentation connect cards) need at least one system font; slim ships none.
 # openssh-client: the SSH transport runs the system's ssh program, and slim
 # ships none (openavc/system/os_programs.py lists every such program).
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# tzdata: a TZ named in the compose file resolves; without the zone files the
+# C library reads an unknown name as UTC.
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     iputils-ping \
     iproute2 \
     libcap2-bin \
     fonts-dejavu-core \
     openssh-client \
+    tzdata \
     && setcap cap_net_raw+ep /usr/bin/ping \
     && rm -rf /var/lib/apt/lists/*
 
