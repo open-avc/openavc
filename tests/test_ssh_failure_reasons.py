@@ -59,11 +59,11 @@ _CLIENT = textwrap.dedent(
             port = int(args[i + 1])
         elif args[i] == "-o" and args[i + 1].startswith("LogLevel=") and level is None:
             level = args[i + 1].split("=", 1)[1]
-        elif args[i] == "-o" and args[i + 1].startswith("Acme"):
-            # An option it does not know: refused on stderr while it reads its
+        elif args[i] == "-o" and args[i + 1].startswith("Ciphers=+acme"):
+            # A cipher it does not have: refused on stderr while it reads its
             # arguments, before it opens the log or dials.
-            keyword = args[i + 1].split("=", 1)[0].lower()
-            sys.stderr.write(f"command-line: line 0: Bad configuration option: {keyword}\\n")
+            spec = args[i + 1].split("=", 1)[1]
+            sys.stderr.write(f"command-line line 0: Bad SSH2 cipher spec '{spec}'.\\n")
             sys.exit(255)
         if args[i] in ("-E", "-p", "-o"):
             i += 2
@@ -213,10 +213,10 @@ async def test_an_option_ssh_refuses_is_named_though_ssh_never_logs_it(
     stand_in, tmp_path, greeter,
 ):
     port = await greeter(b"SSH-2.0-AcmeBanner")
-    transport = await _drop(port, tmp_path, extra_ssh_options=["AcmeSetting=1"])
+    transport = await _drop(port, tmp_path, extra_ssh_options=["Ciphers=+acme-cipher"])
     try:
         assert transport.last_error == (
-            "command-line: line 0: Bad configuration option: acmesetting"
+            "command-line line 0: Bad SSH2 cipher spec '+acme-cipher'."
         )
         assert _classify(transport, port).code == INVALID_CONFIG
     finally:
@@ -365,8 +365,8 @@ async def test_a_closed_ssh_port_reads_refused_from_the_first_attempt(
     # The device offers only an algorithm the client does not use by default.
     (b"SSH-2.0-AcmeLegacy", "", "add KexAlgorithms=+diffie-hellman-group1-sha1 to SSH options"),
     # The device's own SSH options hold one ssh will not take.
-    (b"SSH-2.0-AcmeBanner", "AcmeSetting=1",
-     "refused an SSH option: Bad configuration option: acmesetting."),
+    (b"SSH-2.0-AcmeBanner", "Ciphers=+acme-cipher",
+     "can't use one of this device's SSH options: Bad SSH2 cipher spec '+acme-cipher'."),
 ])
 async def test_a_device_ssh_cannot_negotiate_with_says_why_and_stops_retrying(
     stand_in, manager, core, tmp_path, greeter, monkeypatch, driver, greeting, options, detail,

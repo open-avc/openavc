@@ -119,6 +119,56 @@ LEGACY_SSH_ALGORITHMS: tuple[str, ...] = (
 # "command-line: line 0: Bad configuration option: x").
 _OPTION_REFUSED = re.compile(r"^command-line:? line \d+: ")
 
+# The settings a device's own SSH options may carry: how the connection is
+# negotiated, kept up and signed in to. Nothing that runs a program
+# (ProxyCommand, LocalCommand, KnownHostsCommand), loads one
+# (PKCS11Provider), forwards a port or an agent, or reads another config
+# file. Running code on this computer needs the Programmer password even on
+# an instance open to everyone (api/auth.require_claimed_auth), and editing
+# a device does not, so this list is what keeps the field on the right side
+# of that rule. An allowlist rather than a denylist, because OpenSSH keeps
+# adding keywords (KnownHostsCommand arrived in 8.5) and a new one is safe
+# here only once somebody has read what it does. ssh reads a keyword in any
+# case, so this does too.
+DEVICE_SSH_OPTIONS = frozenset(keyword.lower() for keyword in (
+    # Algorithms: what old gear needs.
+    "Ciphers", "MACs", "KexAlgorithms", "HostKeyAlgorithms",
+    "PubkeyAcceptedAlgorithms", "PubkeyAcceptedKeyTypes",
+    "CASignatureAlgorithms", "RequiredRSASize", "Compression", "RekeyLimit",
+    # Connecting and staying connected.
+    "ConnectTimeout", "ConnectionAttempts", "ServerAliveInterval",
+    "ServerAliveCountMax", "TCPKeepAlive", "IPQoS", "AddressFamily",
+    "BindAddress", "BindInterface", "ObscureKeystrokeTiming", "EscapeChar",
+    # Signing in, and the device's host key.
+    "PreferredAuthentications", "PasswordAuthentication",
+    "KbdInteractiveAuthentication", "PubkeyAuthentication",
+    "NumberOfPasswordPrompts", "IdentitiesOnly", "GSSAPIAuthentication",
+    "CheckHostIP", "UpdateHostKeys", "HashKnownHosts",
+))
+
+_OPTION_KEYWORD = re.compile(r"\s*([A-Za-z][A-Za-z0-9]*)\s*(=|\s)")
+
+
+def refused_ssh_option(option: str) -> str | None:
+    """Why a device's SSH option is not passed to ssh, or None to pass it.
+
+    The sentence is the device card's (an ``invalid_config`` fault)."""
+    if any(ch in option for ch in "\r\n\0"):
+        return "Each SSH option has to be on a line of its own."
+    match = _OPTION_KEYWORD.match(option)
+    if match is None:
+        return (
+            f"SSH options take one Key=Value per line, and '{option.strip()}' "
+            f"is not one."
+        )
+    keyword = match.group(1)
+    if keyword.lower() not in DEVICE_SSH_OPTIONS:
+        return (
+            f"SSH options can't include {keyword}. Use them for connection "
+            f"settings such as Ciphers, MACs, KexAlgorithms or ConnectTimeout."
+        )
+    return None
+
 
 def default_known_hosts_path() -> str:
     """Per-user managed known_hosts file (kept out of the user's ~/.ssh)."""
@@ -288,6 +338,10 @@ class SSHTransport:
                 "IP address or hostname.",
                 code=INVALID_CONFIG,
             )
+        for opt in self._extra_ssh_options:
+            refused = refused_ssh_option(opt)
+            if refused is not None:
+                raise ConnectionFaultError(refused, code=INVALID_CONFIG)
         binary = self._resolve_binary()
         strict, known_hosts = self._known_hosts_option()
         argv = [

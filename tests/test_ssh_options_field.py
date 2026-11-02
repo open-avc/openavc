@@ -1,4 +1,5 @@
-"""Every device that connects over SSH is offered an SSH options field.
+"""Every device that connects over SSH is offered an SSH options field,
+for connection settings only.
 
 The setting belongs to the transport: BaseDriver reads ``extra_ssh_options``
 from any SSH device's config and passes each line to ssh as ``-o``. The Add
@@ -15,10 +16,12 @@ import copy
 import pytest
 
 from openavc.api.routes.drivers import list_drivers
+from openavc.core.connection_fault import INVALID_CONFIG, typed_fault_from_exc
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.drivers import registry
 from openavc.drivers.base import BaseDriver
+from openavc.transport.ssh import SSHTransport
 
 SCHEMA = {
     "host": {"type": "string", "required": True, "label": "IP Address"},
@@ -100,6 +103,62 @@ def test_a_driver_with_no_schema_is_left_to_the_keys_its_device_holds(drivers):
     # schema of one field would hide its address and login.
     registry.register_driver(_driver("acme_bare_switch", transport="ssh", config_schema={}))
     assert _listed("acme_bare_switch") == {}
+
+
+# --- what the field may hold -------------------------------------------------
+# Running a program on this computer needs the Programmer password even on an
+# instance open to everyone; editing a device does not. So the field carries
+# connection settings only, and anything else stops the connection before ssh
+# is started, with the reason on the device card.
+
+@pytest.mark.parametrize("option", [
+    "Ciphers=+aes128-cbc,3des-cbc",
+    "MACs=+hmac-md5",
+    "kexalgorithms=+diffie-hellman-group-exchange-sha1",
+    "HostKeyAlgorithms +ssh-dss",
+    "ConnectTimeout = 5",
+    "ServerAliveInterval=10",
+    "BindAddress=10.20.0.6",
+    "ObscureKeystrokeTiming=no",
+])
+def test_connection_settings_are_passed_to_ssh(option):
+    argv = SSHTransport(
+        "acme-switch.invalid", 22, "avc", lambda d: None, lambda: None,
+        ssh_binary="/usr/bin/ssh", extra_ssh_options=[option],
+    ).build_argv()
+    assert argv[argv.index(option) - 1] == "-o"
+
+
+@pytest.mark.parametrize("option, says", [
+    ("ProxyCommand=nc %h %p", "SSH options can't include ProxyCommand."),
+    ("proxycommand nc %h %p", "SSH options can't include proxycommand."),
+    ("LocalCommand=touch /tmp/acme", "SSH options can't include LocalCommand."),
+    ("PermitLocalCommand=yes", "SSH options can't include PermitLocalCommand."),
+    ("KnownHostsCommand=/bin/true", "SSH options can't include KnownHostsCommand."),
+    ("PKCS11Provider=/tmp/acme.so", "SSH options can't include PKCS11Provider."),
+    ("Include=/tmp/acme.conf", "SSH options can't include Include."),
+    ("Match exec true", "SSH options can't include Match."),
+    ("RemoteForward=8080 localhost:8080", "SSH options can't include RemoteForward."),
+    ("ForwardAgent=yes", "SSH options can't include ForwardAgent."),
+    ("LogLevel=QUIET", "SSH options can't include LogLevel."),
+    ("-oProxyCommand=nc %h %p", "is not one."),
+    ("Ciphers", "is not one."),
+    ("Ciphers=+aes128-cbc\nProxyCommand=nc %h %p", "on a line of its own."),
+])
+def test_anything_else_stops_the_connection_before_ssh_starts(monkeypatch, option, says):
+    async def _never(*args, **kwargs):
+        raise AssertionError("ssh was started")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", _never)
+    driver = _driver("acme_ssh_switch", transport="ssh")("acme_1", {
+        "host": "acme-switch.invalid", "port": 22, "username": "avc",
+        "extra_ssh_options": [option],
+    }, StateStore(), EventBus())
+    with pytest.raises(Exception) as caught:
+        asyncio.run(driver.connect())
+    fault = typed_fault_from_exc(caught.value)
+    assert fault is not None and fault.code == INVALID_CONFIG
+    assert says in fault.message
 
 
 def test_what_the_field_holds_reaches_ssh_one_option_per_line(monkeypatch):

@@ -45,7 +45,7 @@ To sign in with a key file of your own instead, enter its path on the OpenAVC se
 
 The first time OpenAVC connects to an SSH device it remembers the device's host key. If that key changes later (the device was replaced or reset), OpenAVC refuses the connection and the device page says the host key changed.
 
-Some older devices offer only encryption settings that current SSH clients no longer use by default. OpenAVC offers the ones such devices most often need. When a device needs another, its page names it and gives the line to add to **SSH options** (in **Edit**, under **Advanced**), such as `Ciphers=+aes128-cbc`. That box takes any OpenSSH option a device needs, one per line.
+Some older devices offer only encryption settings that current SSH clients no longer use by default. OpenAVC offers the ones such devices most often need. When a device needs another, its page names it and gives the line to add to **SSH options** (in **Edit**, under **Advanced**), such as `Ciphers=+aes128-cbc`. That box takes OpenSSH connection settings, one per line: the encryption lists, timeouts, keep-alives and sign-in choices. Any other setting, such as `ProxyCommand`, is refused, and the device page names it.
 
 ## Testing Commands
 

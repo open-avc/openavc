@@ -458,17 +458,17 @@ def _ssh_negotiation_fault(text: str) -> ConnectionFault:
     if match is None:
         return ConnectionFault(
             INVALID_CONFIG,
-            "The device's SSH server and the OpenAVC server's SSH client have "
-            "no encryption settings in common. Check the device's SSH settings.",
+            "This device's SSH encryption settings and OpenAVC's have nothing "
+            "in common. Check the SSH settings on the device.",
         )
     noun, keyword = _SSH_NEGOTIATION_KINDS[match.group(1).lower()]
     offer = match.group(2).rstrip(".,")
     return ConnectionFault(
         INVALID_CONFIG,
-        f"The device offers only SSH {noun} that the OpenAVC server's SSH "
-        f"client does not use by default: {', '.join(offer.split(','))}. To "
-        f"allow them, add {keyword}=+{offer} to SSH options in Edit Device "
-        f"(under Advanced).",
+        f"This device only offers older SSH encryption settings that OpenAVC "
+        f"does not use unless told to ({noun}: {', '.join(offer.split(','))}). "
+        f"To connect anyway, add {keyword}=+{offer} to SSH options in Edit "
+        f"Device, under Advanced.",
     )
 
 
@@ -476,8 +476,9 @@ def _ssh_option_refused_fault(match: re.Match[str]) -> ConnectionFault:
     detail = match.group(1).strip().rstrip(".")
     return ConnectionFault(
         INVALID_CONFIG,
-        f"The OpenAVC server's SSH client refused an SSH option: {detail}. "
-        f"Check this device's SSH options in Edit Device (under Advanced).",
+        f"The SSH client on the OpenAVC server can't use one of this device's "
+        f"SSH options: {detail}. Fix or remove it in SSH options in Edit "
+        f"Device, under Advanced.",
     )
 
 

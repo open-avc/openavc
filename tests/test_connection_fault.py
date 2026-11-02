@@ -423,7 +423,8 @@ def test_no_algorithm_in_common_names_the_option_that_allows_one(kind, offer, op
     assert fault.code == INVALID_CONFIG
     assert is_permanent_fault(fault.code)
     assert f"add {option} to SSH options in Edit Device" in fault.message
-    assert f"only SSH {names} " in fault.message
+    assert "only offers older SSH encryption settings" in fault.message
+    assert f"({names}: " in fault.message
     assert ", ".join(offer.split(",")) in fault.message
 
 
@@ -448,7 +449,7 @@ def test_a_negotiation_line_of_another_shape_still_stops_the_retries():
         exc=None, host="10.0.0.5", port=22, transport="ssh",
     )
     assert fault.code == INVALID_CONFIG
-    assert "no encryption settings in common" in fault.message
+    assert "have nothing in common" in fault.message
 
 
 # The three shapes OpenSSH 10.2 printed for an option it would not take: an
@@ -466,7 +467,7 @@ def test_an_option_ssh_refuses_is_quoted_and_stops_the_retries(line, quoted):
         host="10.0.0.5", port=22, transport="ssh",
     )
     assert fault.code == INVALID_CONFIG
-    assert f"refused an SSH option: {quoted} Check this device's SSH options" in fault.message
+    assert f"can't use one of this device's SSH options: {quoted} Fix or remove it" in fault.message
 
 
 # --- endpoint rendering ----------------------------------------------------

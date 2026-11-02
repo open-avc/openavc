@@ -2709,7 +2709,7 @@ The connection reads these keys from the device's config (declare the ones the i
 | `password` | The account's password, for password sign-in. |
 | `key_path` | A private key file on the OpenAVC server. Leave it blank to sign in with OpenAVC's own key, which the device page shows under **OpenAVC SSH key** for the integrator to add to the device's account. |
 | `host_key_policy` | `"accept-new"` (the default: remember a device's host key the first time, refuse a changed one), `"strict"`, or `"off"`. |
-| `extra_ssh_options` | Further OpenSSH `-o` options for this device as `Key=Value`: a list, or text with one per line. Every SSH device is offered an **SSH options** field for it in Edit Device, so declare it only to word it differently. |
+| `extra_ssh_options` | Further OpenSSH `-o` options for this device as `Key=Value`: a list, or text with one per line. Connection settings only (the algorithm lists, timeouts, keep-alives and sign-in choices); any other keyword, such as `ProxyCommand`, stops the connection with an `invalid_config` reason. Every SSH device is offered an **SSH options** field for it in Edit Device, so declare it only to word it differently. |
 | `ssh_legacy_algorithms` | `true` (the default) also offers the older algorithms some AV gear still requires. |
 
 ### MQTT Drivers (Python)
