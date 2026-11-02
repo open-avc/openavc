@@ -159,7 +159,8 @@ def record(data_dir: Path, entries: list[dict]) -> None:
     new = [e for e in entries if (e["port"], e["protocol"]) not in before]
     if new and sys.platform.startswith("linux"):
         log.info(
-            "Devices send updates to port "
+            "Devices send updates to "
+            + ("port " if len(new) == 1 else "ports ")
             + ", ".join(f"{e['port']}/{e['protocol']}" for e in new)
             + ". If this computer has a host firewall on (ufw or firewalld), "
             "OpenAVC opens "

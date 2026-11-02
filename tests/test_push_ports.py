@@ -200,6 +200,19 @@ def test_a_new_port_is_announced_on_linux_and_only_once(tmp_path, monkeypatch, c
     ]
 
 
+def test_two_new_ports_are_named_together(tmp_path, monkeypatch, caplog):
+    monkeypatch.setattr(sys, "platform", "linux")
+    entries = _collect(_device("cam1", "acme_dialback_cam"), _device("mix1", "acme_push_mixer"))
+    with caplog.at_level(logging.INFO, logger="openavc.core.push_ports"):
+        push_ports.record(tmp_path, entries)
+    said = [r.getMessage() for r in caplog.records if r.name == "openavc.core.push_ports"]
+    assert said == [
+        "Devices send updates to ports 17000/udp, 31004/tcp. If this computer has "
+        "a host firewall on (ufw or firewalld), OpenAVC opens them the next time "
+        "its service starts."
+    ]
+
+
 def test_nothing_is_announced_off_linux(tmp_path, monkeypatch, caplog):
     monkeypatch.setattr(sys, "platform", "win32")
     with caplog.at_level(logging.INFO, logger="openavc.core.push_ports"):
