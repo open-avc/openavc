@@ -3556,6 +3556,70 @@ const tests = {
             'a room where nobody touched anything stays quiet');
     },
 
+    // A label bound to a macro's progress reads the running step. A Wait Until
+    // sends more progress while it waits (waiting, then satisfied or timeout)
+    // with no description and no step numbers, and so do a group command's
+    // result and a condition's answer: the label read "Step 1 of 0" for as
+    // long as the wait lasted, in the middle of starting the room.
+    macro_progress_keeps_its_step_through_a_wait() {
+        const app = mkApp();
+        const label = {
+            id: 'status', type: 'label', text: '',
+            bindings: { show: { value: { source: 'macro_progress', macro: 'system_on', idle_text: 'Ready' } } },
+        };
+        renderProject(app, project({ elements: [label], placements: { status: { x: 5, y: 5, w: 40, h: 10 } } }));
+        const el = app.bindings.find(b => b.type === 'macro_progress').element;
+        assert(el.textContent === 'Ready', `idle, got "${el.textContent}"`);
+
+        const waiting = 'Waiting for cameras to finish waking up...';
+        app.handleMessage({ type: 'macro.started', macro_id: 'system_on', total_steps: 3 });
+        app.handleMessage({
+            type: 'macro.progress', macro_id: 'system_on', step_index: 1, total_steps: 3,
+            step_path: [1], action: 'wait_until', description: waiting, status: 'running',
+        });
+        assert(el.textContent === waiting, `the step, got "${el.textContent}"`);
+        for (const extra of [
+            { action: 'wait_until', condition_key: 'device.cam1.power', status: 'waiting', timeout: 30 },
+            { action: 'wait_until', condition_key: 'device.cam1.power', status: 'satisfied', waited_seconds: 9.8 },
+            { action: 'wait_until', condition_key: 'device.cam1.power', status: 'timeout', waited_seconds: 30, on_timeout: 'continue' },
+            { action: 'group.command', group: 'cameras', command: 'power_on', device_results: [], status: 'group_complete' },
+            { action: 'conditional', condition_result: true, branch: 'then', status: 'evaluated' },
+        ]) {
+            app.handleMessage({ type: 'macro.progress', macro_id: 'system_on', ...extra });
+            assert(el.textContent === waiting,
+                `still the step after a ${extra.status} message, got "${el.textContent}"`);
+        }
+
+        // A step with no description of its own shows its number, and keeps
+        // it through a wait the same way.
+        app.handleMessage({
+            type: 'macro.progress', macro_id: 'system_on', step_index: 2, total_steps: 3,
+            step_path: [2], action: 'wait_until', description: '', status: 'running',
+        });
+        assert(el.textContent === 'Step 3 of 3', `the number, got "${el.textContent}"`);
+        app.handleMessage({ type: 'macro.progress', macro_id: 'system_on', action: 'wait_until', status: 'waiting' });
+        assert(el.textContent === 'Step 3 of 3', `still the number, got "${el.textContent}"`);
+
+        app.handleMessage({ type: 'macro.completed', macro_id: 'system_on' });
+        assert(el.textContent === 'Ready', `idle again, got "${el.textContent}"`);
+    },
+
+    // A run whose steps are not known (a started frame without a count, a
+    // progress frame before any step) never reads "of 0": it keeps the idle text.
+    macro_progress_never_counts_to_zero() {
+        const app = mkApp();
+        const label = {
+            id: 'status', type: 'label', text: '',
+            bindings: { show: { value: { source: 'macro_progress', macro: 'system_on', idle_text: 'Ready' } } },
+        };
+        renderProject(app, project({ elements: [label], placements: { status: { x: 5, y: 5, w: 40, h: 10 } } }));
+        const el = app.bindings.find(b => b.type === 'macro_progress').element;
+        app.handleMessage({ type: 'macro.started', macro_id: 'system_on' });
+        app.handleMessage({ type: 'macro.progress', macro_id: 'system_on', action: 'wait_until', status: 'waiting' });
+        assert(el.textContent === 'Ready', `no count to show, got "${el.textContent}"`);
+        app.handleMessage({ type: 'macro.completed', macro_id: 'system_on' });
+    },
+
     // The same count, one surface over: a button lit while its macro runs went
     // dark on the first ending run even though another was still going.
     q139_a_button_stays_busy_while_a_second_run_is_still_going() {

@@ -199,6 +199,8 @@ SCENARIOS = [
     "q139_a_run_that_ends_does_not_take_another_runs_claim",
     "q139_a_claim_is_given_back_when_the_run_it_started_ends",
     "q139_a_button_stays_busy_while_a_second_run_is_still_going",
+    "macro_progress_keeps_its_step_through_a_wait",
+    "macro_progress_never_counts_to_zero",
     "q139_a_matrix_preset_and_lock_name_the_control_they_came_from",
     # The Programmer's session reaches the embedded panel's requests and socket.
     "bridge_sends_the_programmer_session_as_a_bearer_token",

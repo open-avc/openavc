@@ -971,14 +971,20 @@ class PanelApp {
                 this._updateMacroProgressBindings(msg.macro_id);
                 break;
 
-            case 'macro.progress':
-                if (this._runningMacros[msg.macro_id]) {
-                    this._runningMacros[msg.macro_id].description = msg.description || '';
-                    this._runningMacros[msg.macro_id].step_index = msg.step_index || 0;
-                    this._runningMacros[msg.macro_id].total_steps = msg.total_steps || 0;
+            case 'macro.progress': {
+                // Only a step's own message says which step is running. A Wait
+                // Until's waiting / satisfied / timeout, a group command's result
+                // and a condition's answer carry none of it, and overwriting
+                // from them read "Step 1 of 0" for as long as the wait lasted.
+                const run = this._runningMacros[msg.macro_id];
+                if (run) {
+                    if ('description' in msg) run.description = msg.description || '';
+                    if (typeof msg.step_index === 'number') run.step_index = msg.step_index;
+                    if (typeof msg.total_steps === 'number') run.total_steps = msg.total_steps;
                 }
                 this._updateMacroProgressBindings(msg.macro_id);
                 break;
+            }
 
             case 'macro.step_error':
                 this._reportMacroFailure(msg);
@@ -6354,7 +6360,9 @@ class PanelApp {
             if (b.type !== 'macro_progress') continue;
             if (b.binding.macro !== macroId) continue;
             const running = this._runningMacros[macroId];
-            if (running) {
+            // A run with no description and no step count to show (one whose
+            // steps are not known yet) keeps the idle text, never "of 0".
+            if (running && (running.description || running.total_steps > 0)) {
                 const text = running.description || `Step ${running.step_index + 1} of ${running.total_steps}`;
                 b.element.textContent = text;
                 // The step description comes from the macro, not the author.
