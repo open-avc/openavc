@@ -1024,27 +1024,33 @@ async def test_the_count_goes_back_down_when_a_load_unwinds(
     engine.SCRIPT_LOAD_TIMEOUT = 0.2
 
     # The count is 1 only between the timeout and the abandoned thread's NEXT
-    # platform call, which is where it unwinds. With a 5 ms loop that window
-    # was narrower than the scheduler's jitter on the Windows runner, and the
-    # thread reached its next call before the assertion ran (CI 2026-09-05).
-    # A 0.3 s gap was still too narrow on the macOS runner, whose 0.2 s
-    # timeout fired in the same millisecond as the 0.3 s call (2026-10-05).
-    # A 1 s gap makes the window a fact: the timeout lands at 0.2 s while
-    # the thread is asleep, the unwind comes at its 1 s call, and the 1.5 s
-    # wait below is after both.
-    _write_script(script_dir, "unwinds2.py", """\
+    # platform call, which is where it unwinds. Any window timed on a clock
+    # was a race: 5 ms lost to the Windows runner's scheduler (CI 2026-09-05),
+    # 0.3 s to the macOS runner's (2026-10-05), and 1 s to a starved Windows
+    # runner (2026-11-02). So the thread makes its next call only when the
+    # test opens a gate, after the count has been read; waiting on a file is
+    # no platform call, so the thread is not stopped while it waits.
+    gate = script_dir / "gate"
+    _write_script(script_dir, "unwinds2.py", f"""\
+        import os
         import time
         from openavc import state
 
-        while True:
-            state.set("var.y", 1)
-            time.sleep(1.0)
+        state.set("var.y", 1)
+        while not os.path.exists({str(gate)!r}):
+            time.sleep(0.01)
+        state.set("var.y", 2)
     """)
     engine.load_scripts([{"id": "unwinds2", "file": "unwinds2.py", "enabled": True}])
     assert state.get("system.abandoned_script_loads") == 1
 
-    await asyncio.sleep(1.5)
+    gate.write_text("open")
+    for _ in range(500):
+        if state.get("system.abandoned_script_loads") == 0:
+            break
+        await asyncio.sleep(0.01)
     assert state.get("system.abandoned_script_loads") == 0
+    assert state.get("var.y") == 1  # the call that unwound it was refused
 
 
 # ===== A loaded script that fails while running is recorded, not just logged =====

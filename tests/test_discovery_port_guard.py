@@ -87,7 +87,26 @@ class _Port:
                 writer.write(self.greeting)
                 await writer.drain()
             if self.hold_open:
-                await asyncio.sleep(self.hold_open)
+                # Hold the connection, but stop counting it the moment the
+                # client closes it: the close is what frees the port. A hold
+                # timed on its own clock outlived the client's identical one by
+                # a timer tick on Windows (sleeps there run in ~15 ms steps),
+                # and the next connection, correctly made after the close, was
+                # counted as a second one open at once.
+                loop = asyncio.get_running_loop()
+                deadline = loop.time() + self.hold_open
+                while (left := deadline - loop.time()) > 0:
+                    try:
+                        chunk = await asyncio.wait_for(reader.read(1024), timeout=left)
+                    except asyncio.TimeoutError:
+                        break
+                    if not chunk:
+                        return
+                    got += chunk
+                for line, answer in self.reply.items():
+                    if line in got:
+                        writer.write(answer)
+                        await writer.drain()
             while True:
                 try:
                     chunk = await asyncio.wait_for(reader.read(1024), timeout=3.0)
