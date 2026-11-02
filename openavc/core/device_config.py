@@ -33,6 +33,7 @@ import sys
 from dataclasses import dataclass
 from typing import Any, Iterable
 
+from openavc.core.typed_fields import trim_typed_fields
 from openavc.drivers.registry import (
     get_driver_bridge_ports,
     get_driver_default_config,
@@ -56,6 +57,9 @@ def resolve_device_config(device, project) -> dict:
       2. ``device.config`` — protocol fields saved in the project.
       3. ``project.connections[id]`` — connection-table overrides
          (host, port, baudrate, etc.) saved separately.
+
+    The merge then loses any space typed around an address, a port or a
+    login (``core.typed_fields``), before the bridge and USB rewrites.
     """
     cfg = device.model_dump() if hasattr(device, "model_dump") else dict(device)
     defaults = get_driver_default_config(cfg.get("driver", ""))
@@ -70,6 +74,9 @@ def resolve_device_config(device, project) -> dict:
     device_codes = device_config.get("ir_codes")
     if isinstance(default_codes, dict) and isinstance(device_codes, dict):
         merged["ir_codes"] = {**default_codes, **device_codes}
+    # A space typed around an address or a login comes off before anything
+    # dials it, so a project saved with one connects without an edit.
+    merged = trim_typed_fields(cfg.get("driver", ""), merged)
     cfg["config"] = resolve_bridge_binding(merged, project)
     # Rewrite a USB-serial device's volatile port from its stable adapter id —
     # the local-serial analog of the bridge rewrite above. The logic lives in
@@ -168,11 +175,11 @@ def resolve_bridge_binding(config: dict, project) -> dict:
         # binding unresolved and the downstream device wrongly offline.
         bridge_cfg = getattr(bridge_dev, "config", None) or {}
         bridge_conn = project.connections.get(bridge_id, {})
-        bridge_host = {
+        bridge_host = trim_typed_fields(bridge_dev.driver, {
             **get_driver_default_config(bridge_dev.driver),
             **bridge_cfg,
             **bridge_conn,
-        }.get("host")
+        }).get("host")
         if not bridge_host:
             log.warning(
                 "Bridge '%s' has no host configured — leaving the serial "

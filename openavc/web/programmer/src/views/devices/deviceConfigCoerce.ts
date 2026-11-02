@@ -267,9 +267,33 @@ export function requiredFieldsMessage(labels: string[]): string {
   return `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]} are required.`;
 }
 
+// The schema types a person types a single value into.
+const TRIMMED_SCHEMA_TYPES = new Set(["string", "integer", "number", "float"]);
+
+// Whether a value saved under `key` loses the spaces around it: a space typed
+// or pasted around an IP address, a port or a login is invisible and never
+// meant, and a TCP device cannot dial " 192.0.2.10". Every connection field
+// but the password, and every typed text or number field the schema
+// describes, unless it is a secret or a list to pick from. A password keeps
+// its spaces, and so does a multi-line text field. Mirrors trims_value in
+// openavc/core/typed_fields.py, which applies the same rule wherever a project
+// is saved and wherever a device's connection is resolved; keep the two in sync.
+export function trimsTypedValue(
+  key: string,
+  field: Record<string, unknown> | undefined,
+): boolean {
+  if (key === "password") return false;
+  if (field && (field.type === "password" || field.secret === true)) return false;
+  if (CONNECTION_FIELDS.has(key)) return true;
+  if (!field) return false;
+  if (Array.isArray(field.values) && field.values.length > 0) return false;
+  return TRIMMED_SCHEMA_TYPES.has(String(field.type || "string"));
+}
+
 // The Add and Edit dialogs' form back into a typed config: every key coerced
 // by its schema field, or, for a key the schema does not describe, by the
-// typed value it came from (`originals`). Empty normally means "unset, leave
+// typed value it came from (`originals`), after the spaces around a typed
+// value come off (trimsTypedValue). Empty normally means "unset, leave
 // alone", but an empty usb_serial is a deliberate clear (the user re-picked a
 // manual or no-serial port) and is kept so it overwrites a previously bound
 // adapter serial in the merge. A required field left blank refuses the save
@@ -291,9 +315,10 @@ export function buildConfigFromForm(
   ];
   if (missing.length > 0) return { ok: false, error: requiredFieldsMessage(missing) };
   const config: Record<string, unknown> = {};
-  for (const [key, val] of Object.entries(values)) {
-    if (val === "" && key !== "usb_serial") continue;
+  for (const [key, typed] of Object.entries(values)) {
     const field = schema[key];
+    const val = trimsTypedValue(key, field) ? typed.trim() : typed;
+    if (val === "" && key !== "usb_serial") continue;
     const listed = listedEnumValue(field, val);
     if (listed.found) {
       config[key] = listed.value;

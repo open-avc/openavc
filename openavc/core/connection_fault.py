@@ -641,8 +641,19 @@ def _is_client_missing(hay: str, chain: list[BaseException]) -> bool:
 
 
 def _endpoint(host: str, port: object) -> str:
-    """Render ``host:port`` for a message, degrading gracefully."""
-    host = (host or "").strip()
+    """Render ``host:port`` for a message, degrading gracefully.
+
+    The host is shown as it was dialed, never tidied: one with a space around
+    it is quoted so the space shows, since that space is then the fault. A
+    space typed into a device's settings is trimmed before it is dialed
+    (``core.typed_fields``); an address that still carries one came from
+    somewhere that rule does not reach.
+    """
+    host = host or ""
+    if not host.strip():
+        host = ""
+    elif host != host.strip():
+        host = f'"{host}"'
     has_port = port not in (None, "", 0)
     if host and has_port:
         return f"{host}:{port}"

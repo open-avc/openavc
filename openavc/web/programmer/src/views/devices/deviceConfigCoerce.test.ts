@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   buildConfigFromForm,
   coerceConfigValue,
@@ -6,6 +8,7 @@ import {
   missingRequiredFields,
   prefillConfigValues,
   requiredFieldsMessage,
+  trimsTypedValue,
 } from "./deviceConfigCoerce";
 
 // Nothing required, over the network: the case the coercion tests are about.
@@ -101,6 +104,54 @@ describe("buildConfigFromForm", () => {
   it("leaves an empty value unset, except a cleared USB serial", () => {
     const result = buildConfigFromForm({ host: "", usb_serial: "" }, {}, {}, NONE);
     expect(result).toEqual({ ok: true, config: { usb_serial: "" } });
+  });
+});
+
+// A space typed or pasted around an address is invisible, and a TCP device
+// cannot dial it. The server trims by the same rule (openavc/core/typed_fields.py);
+// both read one case file so they cannot drift.
+describe("spaces around a typed value", () => {
+  type TrimCase = { key: string; field: Record<string, unknown> | null; trims: boolean };
+  // vitest runs with openavc/web/programmer as the cwd.
+  const cases: TrimCase[] = JSON.parse(
+    readFileSync(resolve(process.cwd(), "../../../tests/fixtures/typed_field_trim_cases.json"), "utf-8"),
+  ).cases;
+
+  it.each(cases)("$key $field trims: $trims", ({ key, field, trims }) => {
+    expect(trimsTypedValue(key, field ?? undefined)).toBe(trims);
+  });
+
+  const schema = {
+    host: { type: "string", label: "IP Address" },
+    port: { type: "integer" },
+    password: { type: "password" },
+    notes: { type: "text" },
+  };
+
+  it("saves a pasted address and port without the spaces", () => {
+    const result = buildConfigFromForm(
+      { host: " 192.0.2.10 ", port: " 5000", username: "admin\t" }, schema, {}, NONE,
+    );
+    expect(result).toEqual({
+      ok: true, config: { host: "192.0.2.10", port: 5000, username: "admin" },
+    });
+  });
+
+  it("keeps a password and a multi-line note exactly as typed", () => {
+    const result = buildConfigFromForm(
+      { password: " pass word ", notes: " line one\n" }, schema, {}, NONE,
+    );
+    expect(result).toEqual({
+      ok: true, config: { password: " pass word ", notes: " line one\n" },
+    });
+  });
+
+  it("reads an address of only spaces as unset, and a required one as missing", () => {
+    expect(buildConfigFromForm({ host: "   " }, schema, {}, NONE)).toEqual({ ok: true, config: {} });
+    const required = { host: { type: "string", label: "IP Address", required: true } };
+    expect(buildConfigFromForm({ host: "  " }, required, {}, NONE)).toEqual({
+      ok: false, error: "IP Address is required.",
+    });
   });
 });
 

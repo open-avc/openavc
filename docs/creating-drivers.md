@@ -530,6 +530,8 @@ A field named `mac_address` (a plain string, not `secret`) is filled in from Dis
 
 Types: `string`, `text`, `integer`, `number`, `float`, `boolean`, `enum`, `table`. For `enum`, add a `"values"` array; for `table`, add a `"columns"` map (see below). Each `values` entry is a plain value or a `{value, label}` pair: the Add Device dropdown shows the label, and the value is what is saved and what `{placeholders}` send. In the Driver Builder, **Allowed Values** takes one row per choice, with the label optional.
 
+Spaces typed before or after a value are removed when it is saved, and again when the device connects, so an IP address pasted as `" 192.168.1.50"` dials `192.168.1.50`. That applies to every `string`, `integer`, `number` and `float` field and to the connection fields (`host`, `port`, `username`, `base_url` and the rest), never to a `secret: true` field, a `password`, a multi-line `text` field, a `table`, or a field with `values` to pick from. Mark a field `secret: true` or make it `text` when a space at either end is part of the value.
+
 `required: true` marks a field the driver cannot work without. Add Device and
 Edit Device refuse to save it blank and name it ("Model is required."), and a
 device edit through the REST API or the AI assistant is refused the same way.

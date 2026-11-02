@@ -1,0 +1,29 @@
+{
+  "_comment": "Which device settings lose the spaces around them. Read by tests/test_typed_fields.py (openavc/core/typed_fields.py trims_value) and deviceConfigCoerce.test.ts (trimsTypedValue): the two sides answer every case the same way.",
+  "cases": [
+    {"key": "host", "field": null, "trims": true},
+    {"key": "host", "field": {"type": "string", "label": "IP Address"}, "trims": true},
+    {"key": "port", "field": {"type": "integer"}, "trims": true},
+    {"key": "port", "field": null, "trims": true},
+    {"key": "username", "field": null, "trims": true},
+    {"key": "base_url", "field": {"type": "string"}, "trims": true},
+    {"key": "bridge_port", "field": null, "trims": true},
+    {"key": "usb_serial", "field": null, "trims": true},
+    {"key": "mac_address", "field": {"type": "string"}, "trims": true},
+    {"key": "machine_number", "field": {"label": "Machine number"}, "trims": true},
+    {"key": "display_id", "field": {"type": "number"}, "trims": true},
+    {"key": "gain", "field": {"type": "float"}, "trims": true},
+    {"key": "password", "field": null, "trims": false},
+    {"key": "password", "field": {"type": "string"}, "trims": false},
+    {"key": "password", "field": {"type": "password"}, "trims": false},
+    {"key": "api_key", "field": {"type": "string", "secret": true}, "trims": false},
+    {"key": "passcode", "field": {"type": "password"}, "trims": false},
+    {"key": "host", "field": {"type": "string", "secret": true}, "trims": false},
+    {"key": "notes", "field": {"type": "text"}, "trims": false},
+    {"key": "blocks", "field": {"type": "table"}, "trims": false},
+    {"key": "mode", "field": {"type": "enum", "values": ["a", "b"]}, "trims": false},
+    {"key": "mode", "field": {"type": "string", "values": [" a", "b"]}, "trims": false},
+    {"key": "enable_meters", "field": {"type": "boolean"}, "trims": false},
+    {"key": "display_id", "field": null, "trims": false}
+  ]
+}

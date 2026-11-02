@@ -1044,7 +1044,7 @@ export function AddDeviceDialog({
     const newDevice: DeviceConfig = {
       id: deviceId,
       driver: selectedDriver,
-      name: deviceName || deviceId,
+      name: deviceName.trim() || deviceId,
       config: protocolConfig,
     };
 

@@ -51,6 +51,7 @@ from openavc.core.script_engine import ScriptEngine
 from openavc.core.state_persister import StatePersister
 from openavc.core.state_store import StateStore, coerce_flat_primitive
 from openavc.core.trigger_engine import TriggerEngine
+from openavc.core.typed_fields import trim_device_settings
 from openavc.core.ui_events import UIEventRuntime
 from openavc.core.ws_hub import WSHub
 from openavc.discovery import network_scanner
@@ -872,6 +873,12 @@ class Engine:
                 "Reload to see the latest changes."
             )
 
+        if persist:
+            # Every door that saves a device's settings ends here, so this is
+            # where a stray space typed around an address or a login comes off
+            # (core/typed_fields.py). Before the diff, so a re-save of a padded
+            # value reconnects the device on the clean one.
+            trim_device_settings(new_project)
         if origin is ProjectOrigin.EDIT:
             self.installed_equipment.validate_edit(self.project, new_project, reassigned=reassigned_equipment)
         loaded_project = new_project
