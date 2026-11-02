@@ -1459,6 +1459,14 @@ A bare `key` is one of this driver's own state variables. Write a full state key
 
 The condition is checked when the frame arrives, so **the value it reads has to be one this driver keeps current** — poll the mode, or parse it from the same status dump. A mode read once at connect leaves the gate stuck wherever it was.
 
+**A value the device hasn't reported yet fails every comparison.** `equals`, `not_equals`, `gt` and the rest are all false until it arrives, so a gate on something the device reports (its model, how many zones it has) keeps its rule off until that report comes in. To keep the rule on until then, add `falsy`, which holds for a value not reported yet:
+
+```yaml
+only_when: { any: [{ key: zone_count, operator: equals, value: 4 }, { key: zone_count, operator: falsy }] }   # a four-zone unit, or not reported yet
+```
+
+`falsy` also holds for `0`, `false` and an empty string, so use it where none of those is a real reading.
+
 A rule that doesn't apply is skipped whole: the state variable keeps whatever it last held rather than being cleared, and the frame falls through to any later rule that matches it. Works on regex, `json: true`, and OSC address rules alike.
 
 **Reading many fields from one JSON reply.** A regex response stops at the first match, so it can't fill several state variables from a single JSON body. When a reply is a JSON object (common with HTTP/REST devices), use a `json: true` response instead — it parses the body once and applies every mapping:
