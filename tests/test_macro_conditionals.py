@@ -23,9 +23,11 @@ def events():
 def devices(state):
     d = MagicMock()
     d.send_command = AsyncMock()
-    # DeviceManager.accepts_commands for a device that is not held: its
-    # connected state.
-    d.accepts_commands = lambda device_id: bool(state.get(f"device.{device_id}.connected"))
+    # DeviceManager.command_goes_out for a device that is not held and a
+    # command that needs a connection: its connected state.
+    d.command_goes_out = lambda device_id, command: bool(
+        state.get(f"device.{device_id}.connected")
+    )
     return d
 
 

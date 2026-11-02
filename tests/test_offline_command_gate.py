@@ -7,11 +7,13 @@ sends a magic packet). Such a command declares ``available_offline`` and the
 gate lets it through while offline, so a macro, panel button, or schedule can
 wake a device that has gone fully off the network.
 
-Two halves are exercised here, both with an invented device (Acme):
+Three halves are exercised here, all with an invented device (Acme):
 
   - DeviceManager.send_command skips the connected-gate for an
     available_offline command but still blocks a normal one (and still runs
     param validation on the offline command);
+  - a macro step's "skip if offline" and a group command's offline skip ask
+    the same question, so neither drops the command the send would take;
   - resolve_device_actions maps the flag onto a promoted button's
     availability ("always") for both promotion styles, so the Quick Action
     stays visible/enabled while the device is offline.
@@ -23,6 +25,7 @@ import pytest
 
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
+from openavc.core.macro_engine import MacroEngine
 from openavc.core.state_store import StateStore
 from openavc.drivers.actions import resolve_device_actions
 from openavc.drivers.base import BaseDriver, CommandParamError
@@ -125,6 +128,62 @@ async def test_both_commands_run_while_connected(core):
     await dm.send_command("acme2", "wake")
     await dm.send_command("acme2", "beep")
     assert driver.calls == [("wake", None), ("beep", None)]
+
+
+# ── a macro's skips ask the send's question ──────────────────────────────────
+#
+# "Skip if offline" exists so a startup macro does not fail on a device that is
+# away. The Wake-on-LAN Power On is the one command that is needed exactly while
+# the device is away, so a skip that asked only "is it connected?" dropped it
+# every time, silently, and the space never turned on.
+
+
+def _macro_engine(core, dm):
+    state, events = core
+    engine = MacroEngine(state, events, dm)
+    engine.load_groups([{"id": "wall", "name": "Wall", "device_ids": ["acme1"]}])
+    return engine
+
+
+def _step(command, **extra):
+    return {"action": "device.command", "device": "acme1", "command": command, **extra}
+
+
+async def test_skip_if_offline_still_sends_a_command_that_needs_no_connection(core):
+    dm, driver = _offline_driver(core)
+    engine = _macro_engine(core, dm)
+    await engine.execute_steps([_step("wake", skip_if_offline=True)])
+    assert [c for c, _ in driver.calls] == ["wake"]
+
+
+async def test_skip_if_offline_still_skips_a_command_that_needs_the_device(core):
+    dm, driver = _offline_driver(core)
+    engine = _macro_engine(core, dm)
+    await engine.execute_steps([_step("beep", skip_if_offline=True)])
+    assert driver.calls == []
+
+
+async def test_group_command_sends_a_command_that_needs_no_connection(core):
+    dm, driver = _offline_driver(core)
+    engine = _macro_engine(core, dm)
+    await engine.execute_steps([{"action": "group.command", "group": "wall", "command": "wake"}])
+    assert [c for c, _ in driver.calls] == ["wake"]
+
+
+async def test_group_command_still_skips_an_offline_member_for_a_normal_command(core):
+    dm, driver = _offline_driver(core)
+    engine = _macro_engine(core, dm)
+    await engine.execute_steps([{"action": "group.command", "group": "wall", "command": "beep"}])
+    assert driver.calls == []
+
+
+def test_command_goes_out_is_the_send_gate(core):
+    dm, driver = _offline_driver(core)
+    assert dm.command_goes_out("acme1", "wake") is True
+    assert dm.command_goes_out("acme1", "beep") is False
+    # An unknown command is not offline-capable; a missing device has no driver.
+    assert dm.command_goes_out("acme1", "nope") is False
+    assert dm.command_goes_out("missing", "wake") is False
 
 
 # ── the YAML half: the flag has to reach DRIVER_INFO to do anything ──────────

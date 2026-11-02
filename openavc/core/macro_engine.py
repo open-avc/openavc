@@ -974,11 +974,13 @@ class MacroEngine:
         # Device offline guard
         if action == "device.command" and step.get("skip_if_offline"):
             device_id = step.get("device", "")
+            command = step.get("command", "")
             # Skipped when the command could not go out, the same rule the
             # send applies (a device held offline until it answers a poll
-            # still takes it).
-            if not self.devices.accepts_commands(device_id):
-                log.debug(f"  Macro step skipped (device offline): {device_id}.{step.get('command', '')}")
+            # still takes it, and so does a command that needs no connection,
+            # like a Wake-on-LAN Power On).
+            if not self.devices.command_goes_out(device_id, command):
+                log.debug(f"  Macro step skipped (device offline): {device_id}.{command}")
                 return
 
         if action == "device.command":
@@ -1026,7 +1028,7 @@ class MacroEngine:
                     )
                     missing_ids.append(did)
                     continue
-                if not self.devices.accepts_commands(did):
+                if not self.devices.command_goes_out(did, command):
                     log.debug(f"  Group command: skipping offline device '{did}'")
                     skipped_ids.append(did)
                     continue

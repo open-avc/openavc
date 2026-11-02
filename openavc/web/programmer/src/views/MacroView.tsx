@@ -4,7 +4,7 @@ import { MacroList } from "../components/macros/MacroList";
 import { MacroEditor } from "../components/macros/MacroEditor";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { Modal } from "../components/shared/Modal";
-import { macroToScript, generateId, getConversionWarnings } from "../components/macros/macroHelpers";
+import { macroToScript, generateId, getConversionWarnings, loadWorksOffline } from "../components/macros/macroHelpers";
 import { useMacroLint } from "../components/macros/macroLint";
 import { useTriggerRuns } from "../components/macros/triggerRuns";
 import { useProjectStore } from "../store/projectStore";
@@ -84,10 +84,11 @@ export function MacroView() {
   );
 
   // Show preview before converting (9.6)
-  const handleConvertToScript = useCallback(() => {
+  const handleConvertToScript = useCallback(async () => {
     const project = useProjectStore.getState().project;
     if (!selectedMacro || !project) return;
-    const source = macroToScript(selectedMacro, project.device_groups);
+    const worksOffline = await loadWorksOffline(selectedMacro, project.device_groups, api.getDevice);
+    const source = macroToScript(selectedMacro, project.device_groups, worksOffline);
     const warnings = getConversionWarnings(selectedMacro, project.device_groups);
     const scriptId = selectedMacro.id.replace(/^macro_/, "script_");
     const fileName = `${scriptId}.py`;

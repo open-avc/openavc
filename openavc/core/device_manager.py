@@ -907,9 +907,7 @@ class DeviceManager:
         # device that has gone fully off the network. Param validation below
         # still runs for every command. A connection held offline until the
         # device answers is open, so it takes commands (accepts_commands).
-        if not self.accepts_commands(device_id) and not self._command_available_offline(
-            driver, command
-        ):
+        if not self.command_goes_out(device_id, command):
             # Someone just asked for this device by name. That is the clearest
             # signal we ever get that it's wanted back, and most of the people
             # who send it are standing at a panel with no access to the IDE —
@@ -1117,8 +1115,8 @@ class DeviceManager:
         dropped it). A device that goes quiet in standby is held
         like that, and the Power On that wakes it has to reach it: refusing
         it there would leave the device off for good. The one rule for the
-        command and setting gates, a macro's "skip if offline" and a group
-        command's offline skip.
+        setting gate; a command asks command_goes_out, which adds the
+        commands that need no connection.
         """
         driver = self._devices.get(device_id)
         if driver is None:
@@ -1128,6 +1126,20 @@ class DeviceManager:
         if driver.get_state("connected"):
             return True
         return getattr(driver, "_held", False) is True
+
+    def command_goes_out(self, device_id: str, command: str) -> bool:
+        """Whether this command sent to this device now would go out.
+
+        The device accepts commands (accepts_commands), or the command
+        declares available_offline. The one rule for send_command's gate, a
+        macro's "skip if offline" and a group command's offline skip, so a
+        skip never drops a command the send would have let through: the
+        Wake-on-LAN Power On is needed exactly while the device is offline.
+        """
+        if self.accepts_commands(device_id):
+            return True
+        driver = self._devices.get(device_id)
+        return driver is not None and self._command_available_offline(driver, command)
 
     @staticmethod
     def _validate_command_params(

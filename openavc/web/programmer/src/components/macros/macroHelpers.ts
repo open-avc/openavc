@@ -193,9 +193,49 @@ function _macroUsesWaitUntilWithTimeout(steps: MacroStep[]): boolean {
   return false;
 }
 
+/** Whether a device's command works while the device is offline (the driver
+ * declares it available_offline, like a Wake-on-LAN Power On). */
+export type WorksOffline = (deviceId: string, command: string) => boolean;
+
+/** Every device a macro's command steps send to, its groups' members included. */
+function _commandDeviceIds(steps: MacroStep[], groups: DeviceGroup[] | undefined, into: Set<string>): Set<string> {
+  for (const step of steps) {
+    if (step.action === "device.command" && step.device) into.add(step.device);
+    if (step.action === "group.command") {
+      for (const id of groups?.find((g) => g.id === step.group)?.device_ids ?? []) into.add(id);
+    }
+    if (step.action === "conditional") {
+      _commandDeviceIds((step as any).then_steps ?? [], groups, into);
+      _commandDeviceIds((step as any).else_steps ?? [], groups, into);
+    }
+  }
+  return into;
+}
+
+/** Reads which of a macro's commands work while their device is offline, from
+ * each device's driver. A device that cannot be read counts as having none. */
+export async function loadWorksOffline(
+  macro: MacroConfig,
+  groups: DeviceGroup[] | undefined,
+  getDevice: (id: string) => Promise<{ commands: Record<string, unknown> }>,
+): Promise<WorksOffline> {
+  const offline = new Map<string, Set<string>>();
+  const ids = [..._commandDeviceIds(macro.steps, groups, new Set())];
+  const infos = await Promise.all(ids.map((id) => getDevice(id).catch(() => null)));
+  ids.forEach((id, i) => {
+    const commands = infos[i]?.commands ?? {};
+    const names = Object.entries(commands)
+      .filter(([, def]) => !!(def as { available_offline?: boolean } | null)?.available_offline)
+      .map(([name]) => name);
+    if (names.length) offline.set(id, new Set(names));
+  });
+  return (deviceId, command) => offline.get(deviceId)?.has(command) ?? false;
+}
+
 export function macroToScript(
   macro: MacroConfig,
   groups?: DeviceGroup[],
+  worksOffline?: WorksOffline,
 ): string {
   const triggers = macro.triggers ?? [];
   const hasTriggers = triggers.length > 0;
@@ -245,7 +285,7 @@ export function macroToScript(
           }
         }
         // Steps
-        _generateStepLines(body, macro.steps, "    ", groups);
+        _generateStepLines(body, macro.steps, "    ", groups, worksOffline);
       } else if (trigger.type === "event" && trigger.event_pattern) {
         body.push(`@on_event("${_pyEscape(trigger.event_pattern)}")`);
         body.push("async def on_trigger(event, payload):");
@@ -253,19 +293,19 @@ export function macroToScript(
           body.push(_conditionToGuard(cond, "    "));
           body.push("        return");
         }
-        _generateStepLines(body, macro.steps, "    ", groups);
+        _generateStepLines(body, macro.steps, "    ", groups, worksOffline);
       } else if (trigger.type === "schedule" && trigger.cron) {
         body.push(`# Schedule: ${_pyComment(trigger.cron)}`);
         body.push(`@on_event("schedule.macro_${_pyEscape(macro.id)}")`);
         body.push("async def on_trigger(event, payload):");
-        _generateStepLines(body, macro.steps, "    ", groups);
+        _generateStepLines(body, macro.steps, "    ", groups, worksOffline);
       } else if (trigger.type === "startup") {
         body.push("@on_event(\"system.started\")");
         body.push("async def on_startup(event, payload):");
         if ((trigger.delay_seconds ?? 0) > 0) {
           body.push(`    await asyncio.sleep(${trigger.delay_seconds})`);
         }
-        _generateStepLines(body, macro.steps, "    ", groups);
+        _generateStepLines(body, macro.steps, "    ", groups, worksOffline);
       }
     }
   }
@@ -277,7 +317,7 @@ export function macroToScript(
   if (macro.steps.length === 0) {
     body.push("    pass");
   } else {
-    _generateStepLines(body, macro.steps, "    ", groups);
+    _generateStepLines(body, macro.steps, "    ", groups, worksOffline);
   }
 
   // Build import list based on what the script needs
@@ -390,6 +430,7 @@ function _generateStepLines(
   steps: MacroStep[],
   indent: string,
   groups?: DeviceGroup[],
+  worksOffline?: WorksOffline,
 ): void {
   if (steps.length === 0) {
     lines.push(`${indent}pass`);
@@ -404,7 +445,7 @@ function _generateStepLines(
       // Wrap the actual step in else
       lines.push(`${indent}else:`);
       // Re-enter with extra indent
-      _generateStepLines(lines, [{ ...step, skip_if: undefined }], indent + "    ", groups);
+      _generateStepLines(lines, [{ ...step, skip_if: undefined }], indent + "    ", groups, worksOffline);
       continue;
     }
     switch (step.action) {
@@ -412,7 +453,9 @@ function _generateStepLines(
         const device = _pyEscape(step.device ?? "");
         const params = step.params ? `, ${_pyParamsDict(step.params)}` : "";
         const sendLine = `await devices.send("${device}", "${_pyEscape(step.command ?? "")}"${params})`;
-        if (step.skip_if_offline) {
+        // A command that works while the device is offline is never skipped,
+        // matching the macro engine: a Wake-on-LAN Power On is needed exactly then.
+        if (step.skip_if_offline && !worksOffline?.(step.device ?? "", step.command ?? "")) {
           lines.push(`${indent}if state.get("device.${device}.connected"):  # skip_if_offline`);
           lines.push(`${indent}    ${sendLine}`);
         } else {
@@ -430,12 +473,20 @@ function _generateStepLines(
         lines.push(
           `${indent}for device_id in ${_pyValue(deviceIds, false)}:`
         );
-        lines.push(
-          `${indent}    if not state.get(f"device.{device_id}.connected"):`
-        );
-        lines.push(
-          `${indent}        continue  # offline devices are skipped, matching the macro engine`
-        );
+        // Members whose command works while offline are sent it anyway, as the
+        // macro engine does.
+        const sendsOffline = deviceIds.filter((id) => worksOffline?.(id, step.command ?? ""));
+        if (sendsOffline.length < deviceIds.length) {
+          const exempt = sendsOffline.length
+            ? ` and device_id not in ${_pyValue(sendsOffline, false)}`
+            : "";
+          lines.push(
+            `${indent}    if not state.get(f"device.{device_id}.connected")${exempt}:`
+          );
+          lines.push(
+            `${indent}        continue  # offline devices are skipped, matching the macro engine`
+          );
+        }
         lines.push(
           `${indent}    await devices.send(device_id, "${_pyEscape(step.command ?? "")}"${params})`
         );
@@ -487,10 +538,10 @@ function _generateStepLines(
           lines.push(`${indent}if ${_conditionExpr(cond)}:`);
           const thenSteps = (step as any).then_steps ?? [];
           const elseSteps = (step as any).else_steps ?? [];
-          _generateStepLines(lines, thenSteps, indent + "    ", groups);
+          _generateStepLines(lines, thenSteps, indent + "    ", groups, worksOffline);
           if (elseSteps.length > 0) {
             lines.push(`${indent}else:`);
-            _generateStepLines(lines, elseSteps, indent + "    ", groups);
+            _generateStepLines(lines, elseSteps, indent + "    ", groups, worksOffline);
           }
         } else {
           lines.push(`${indent}# Conditional step with no condition set`);
