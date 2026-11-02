@@ -14,13 +14,20 @@
 # MediaMTX binds UDP 8189 for WebRTC — and until it is open a panel on the
 # network gets no picture and no explanation.
 #
+# And it opens the ports the project's devices send updates to, read from
+# push_ports.json (written by the server; see openavc/core/push_ports.py): a
+# driver whose device dials back to a port of OpenAVC's own (push:
+# tcp_listener) or sends to a multicast group (push: multicast). With those
+# shut, the updates are dropped and only polling is left.
+#
 # Ports are `port/proto` throughout, because a plugin port may be UDP and the
 # configured listeners never are. A state file from an older version holds
 # bare numbers; those are read as /tcp, which is what they were.
 #
 # TIMING, worth knowing: this runs BEFORE the server, so it acts on what the
-# previous run left behind. Enabling a plugin opens its port at the next
-# service start, not immediately. The server says so at the time.
+# previous run left behind. Enabling a plugin, or adding a device that
+# listens for pushes, opens its port at the next service start, not
+# immediately. The server says so at the time.
 #
 # - The "+" prefix runs this script as root (ufw/firewall-cmd need it)
 # - The "-" prefix ensures non-zero exit doesn't block service startup
@@ -40,6 +47,7 @@
 DATA_DIR="${1:-/var/lib/openavc}"
 CONFIG_FILE="$DATA_DIR/system.json"
 PLUGIN_PORTS_FILE="$DATA_DIR/plugin_ports.json"
+PUSH_PORTS_FILE="$DATA_DIR/push_ports.json"
 STATE_FILE="$DATA_DIR/.firewall_ports"
 LOG_TAG="firewall-sync"
 PYTHON="${PYTHON:-/usr/bin/python3}"
@@ -60,7 +68,7 @@ log() {
 # --- Desired ports from system.json (defaults match openavc/system_config.py) ---
 
 desired_ports() {
-    "$PYTHON" - "$CONFIG_FILE" "$PLUGIN_PORTS_FILE" <<'PYEOF'
+    "$PYTHON" - "$CONFIG_FILE" "$PLUGIN_PORTS_FILE" "$PUSH_PORTS_FILE" <<'PYEOF'
 import json, sys
 
 cfg = {}
@@ -80,21 +88,23 @@ if tls.get("enabled", False):
 if network.get("port80_redirect", False):
     ports.add((80, "tcp"))
 
-# Ports a plugin declared. A malformed entry is skipped rather than failing the
-# whole sync: one bad plugin manifest must not close the HTTP port.
-try:
-    with open(sys.argv[2]) as f:
-        declared = json.load(f).get("ports") or []
-except Exception:
-    declared = []
-for entry in declared:
+# Ports a plugin declared, then the ports devices push to. A malformed entry
+# (or file) is skipped rather than failing the whole sync: one bad entry must
+# not close the HTTP port.
+for path in sys.argv[2:4]:
     try:
-        port = int(entry["port"])
-        proto = str(entry.get("protocol", "tcp")).lower()
-    except (TypeError, ValueError, KeyError):
-        continue
-    if 1 <= port <= 65535 and proto in ("tcp", "udp"):
-        ports.add((port, proto))
+        with open(path) as f:
+            declared = json.load(f).get("ports") or []
+    except Exception:
+        declared = []
+    for entry in declared:
+        try:
+            port = int(entry["port"])
+            proto = str(entry.get("protocol", "tcp")).lower()
+        except (TypeError, ValueError, KeyError, AttributeError):
+            continue
+        if 1 <= port <= 65535 and proto in ("tcp", "udp"):
+            ports.add((port, proto))
 
 print(" ".join(f"{p}/{proto}" for p, proto in sorted(ports)))
 PYEOF

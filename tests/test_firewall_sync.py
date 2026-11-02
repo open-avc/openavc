@@ -26,13 +26,15 @@ pytestmark = gates.skipif_missing(
 )
 
 
-def run_sync(tmp_path, config=None, state=None, backend="ufw", plugin_ports=None):
+def run_sync(
+    tmp_path, config=None, state=None, backend="ufw", plugin_ports=None, push_ports=None,
+):
     """Run the helper in --dry-run mode; return (fields, planned_commands)."""
-    if plugin_ports is not None:
-        (tmp_path / "plugin_ports.json").write_text(
-            plugin_ports if isinstance(plugin_ports, str)
-            else json.dumps({"ports": plugin_ports})
-        )
+    for name, ports in (("plugin_ports.json", plugin_ports), ("push_ports.json", push_ports)):
+        if ports is not None:
+            (tmp_path / name).write_text(
+                ports if isinstance(ports, str) else json.dumps({"ports": ports})
+            )
     if config is not None:
         (tmp_path / "system.json").write_text(
             config if isinstance(config, str) else json.dumps(config)
@@ -213,3 +215,82 @@ def test_a_state_file_from_before_udp_existed_is_read_as_tcp(tmp_path):
     )
     assert fields["ADD"] == ""
     assert fields["REMOVE"] == ""
+
+
+# --- Ports the project's devices push to (push_ports.json, core/push_ports.py) ---
+
+
+def test_a_dial_back_camera_and_a_multicast_mixer_get_their_ports(tmp_path):
+    fields, planned = run_sync(
+        tmp_path,
+        config={"network": {"http_port": 8080}},
+        push_ports=[
+            {"port": 17000, "protocol": "udp", "devices": ["mix1"], "reason": "Pushes from Mixer"},
+            {"port": 31004, "protocol": "tcp", "devices": ["cam1"], "reason": "Pushes from Camera 1"},
+        ],
+    )
+    assert fields["DESIRED"] == "8080/tcp 17000/udp 31004/tcp"
+    assert "ufw allow 17000/udp comment OpenAVC (managed)" in planned
+    assert "ufw allow 31004/tcp comment OpenAVC (managed)" in planned
+
+
+def test_firewalld_opens_a_push_port_and_reloads(tmp_path):
+    _fields, planned = run_sync(
+        tmp_path,
+        backend="firewalld",
+        config={"network": {"http_port": 8080}},
+        state="8080/tcp",
+        push_ports=[{"port": 31004, "protocol": "tcp", "reason": "Pushes from Camera 1"}],
+    )
+    assert planned == [
+        "firewall-cmd --permanent --add-port=31004/tcp",
+        "firewall-cmd --reload",
+    ]
+
+
+def test_plugin_and_push_ports_are_opened_together_and_a_shared_one_once(tmp_path):
+    fields, _ = run_sync(
+        tmp_path,
+        config={"network": {"http_port": 8080}},
+        plugin_ports=[{"port": 8189, "protocol": "udp", "reason": "WebRTC video"}],
+        push_ports=[
+            {"port": 8189, "protocol": "udp", "reason": "Pushes from Mixer"},
+            {"port": 31004, "protocol": "tcp", "reason": "Pushes from Camera 1"},
+        ],
+    )
+    assert fields["DESIRED"] == "8080/tcp 8189/udp 31004/tcp"
+
+
+def test_a_device_removed_closes_its_push_port_and_nothing_else(tmp_path):
+    fields, planned = run_sync(
+        tmp_path,
+        config={"network": {"http_port": 8080}},
+        state="8080/tcp 8189/udp 31004/tcp",
+        plugin_ports=[{"port": 8189, "protocol": "udp", "reason": "WebRTC video"}],
+        push_ports=[],
+    )
+    assert fields["REMOVE"] == "31004/tcp"
+    assert planned == ["ufw delete allow 31004/tcp"]
+
+
+def test_a_corrupt_push_ports_file_leaves_everything_else_alone(tmp_path):
+    fields, _ = run_sync(
+        tmp_path,
+        config={"network": {"http_port": 8080}},
+        plugin_ports=[{"port": 8189, "protocol": "udp", "reason": "WebRTC video"}],
+        push_ports="{not json",
+    )
+    assert fields["DESIRED"] == "8080/tcp 8189/udp"
+
+
+def test_a_malformed_push_entry_is_skipped(tmp_path):
+    fields, _ = run_sync(
+        tmp_path,
+        config={"network": {"http_port": 8080}},
+        push_ports=[
+            "not an entry",
+            {"port": 0, "protocol": "tcp"},
+            {"port": 31004, "protocol": "tcp", "reason": "Pushes from Camera 1"},
+        ],
+    )
+    assert fields["DESIRED"] == "8080/tcp 31004/tcp"

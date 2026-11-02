@@ -124,6 +124,7 @@ class Engine:
         # A driver reload re-adds its devices undialed and asks for a bring-up
         # round, so the simulation redirect lands before the first connect.
         self.devices.request_bringup = self._schedule_device_bringup
+        self.devices.on_driver_reloaded = self._record_push_ports
         # "Ask for help" — raised by a macro step, never a stock control.
         self.help = HelpRequests(self)
         self.macros = MacroEngine(
@@ -447,6 +448,7 @@ class Engine:
         if resume_simulation:
             self._schedule_device_bringup()
             await self.wait_for_device_bringup()
+        self._record_push_ports()
 
         # Plugin System — scan and start plugins
         try:
@@ -939,6 +941,8 @@ class Engine:
         # count from the initial start (now fixed) doesn't linger in the store
         # and cloud relay.
         self.state.set("system.startup_errors", 0, source="system")
+        if diff.devices or diff.connections:
+            self._record_push_ports()
         if diff.project_meta:
             self.state.set("system.project_name", self.project.project.name,
                            source="system")
@@ -1174,6 +1178,23 @@ class Engine:
             # interval; falling back to system.json is the pre-existing
             # behaviour and is always safe.
             self.devices.project_reconnect_interval = None
+
+    def _record_push_ports(self) -> None:
+        """Write the ports this project's devices push to, for the Linux host
+        firewall helper (``core/push_ports.py``). Never fatal: a port left
+        shut costs a device its pushes, not its connection."""
+        from openavc.core import push_ports
+        from openavc.system_config import get_data_dir
+
+        if self.project is None:
+            return
+        try:
+            push_ports.record(
+                get_data_dir(),
+                push_ports.collect(self.project.devices, self.resolved_device_config),
+            )
+        except Exception:
+            log.exception("Could not record the ports devices push to")
 
     def resolved_device_config(self, device) -> dict:
         """The config this device actually dials — driver defaults, project

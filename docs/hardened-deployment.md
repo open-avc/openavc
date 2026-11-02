@@ -132,7 +132,7 @@ sudo ufw status
 
 The first two lines remove the rules OpenAVC added at install. OpenAVC does not add them back while the ports stay the same. **Expected:** after the restart, `ufw status` lists 8080 and 8443 only from `10.20.30.0/24`. If ufw was not active when OpenAVC was installed, enable it and restart OpenAVC once before running these lines (`sudo ufw allow from <your admin network> to any port 22 proto tcp` first if you reach the machine over SSH).
 
-Changing the HTTP or HTTPS port, or turning on HTTPS or Short URLs later, opens the new port to every address at the next service start. Scope it the same way.
+Changing the HTTP or HTTPS port, or turning on HTTPS or Short URLs later, opens the new port to every address at the next service start. So does adding a device that sends updates to a port of its own, such as a Panasonic PTZ camera's notification port (31004 by default) or an Audio-Technica mixer's (UDP 17000); a device should reach those only from the AV network. Scope each one the same way.
 
 ### Linux with firewalld
 

@@ -432,6 +432,10 @@ class DeviceManager:
         # connect, the same order a project save gets; without it (tests, a
         # bare manager) reload_driver dials the devices itself.
         self.request_bringup: Callable[[], None] | None = None
+        # Set by the engine: called after reload_driver, since a new version
+        # of a driver can listen for pushes on a port the old one did not
+        # (core/push_ports.py). None in a bare manager.
+        self.on_driver_reloaded: Callable[[], None] | None = None
 
         # Auto-reconnect when a device transport drops mid-session
         self.events.on(
@@ -1703,6 +1707,8 @@ class DeviceManager:
             except Exception:
                 log.exception(f"Failed to activate orphaned device '{device_id}'")
 
+        if self.on_driver_reloaded is not None:
+            self.on_driver_reloaded()
         return reconnected
 
     def get_devices_using_driver(self, driver_id: str) -> list[str]:

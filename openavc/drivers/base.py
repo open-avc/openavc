@@ -771,6 +771,30 @@ def magic_packet(mac: str) -> bytes:
     return b"\xff" * 6 + bytes.fromhex(normalized.replace(":", "")) * 16
 
 
+def resolve_push_value(value: Any, config: dict[str, Any]) -> Any:
+    """Resolve a push-block value: ``{config_field}`` tokens substitute from
+    ``config``; unknown fields are left verbatim so the warning a failed
+    subscription logs names exactly what did not resolve."""
+    if isinstance(value, str) and "{" in value:
+        return re.sub(
+            r"\{(\w+)\}",
+            lambda m: str(config.get(m.group(1), m.group(0))),
+            value,
+        )
+    return value
+
+
+def push_port(push_def: dict[str, Any], config: dict[str, Any]) -> int | None:
+    """The port a push block's ``port`` names, resolved from ``config``, or
+    None when it is not a number. What the multicast and dial-back listeners
+    bind, and what ``core/push_ports.py`` records for the host firewall."""
+    raw = resolve_push_value(push_def.get("port"), config)
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+
+
 def _verify_failure_error(
     said: str, cause: BaseException | None, host: Any, port: Any, transport: str,
 ) -> ConnectionError:
@@ -3063,16 +3087,9 @@ class BaseDriver(ABC):
     # --- Push notifications (DRIVER_INFO["push"]) ---
 
     def _resolve_push_value(self, value: Any) -> Any:
-        """Resolve a push-block value: ``{config_field}`` tokens substitute
-        from the device config; unknown fields are left verbatim so the
-        warning in _start_push names exactly what didn't resolve."""
-        if isinstance(value, str) and "{" in value:
-            return re.sub(
-                r"\{(\w+)\}",
-                lambda m: str(self.config.get(m.group(1), m.group(0))),
-                value,
-            )
-        return value
+        """Resolve a push-block value from this device's config
+        (:func:`resolve_push_value`)."""
+        return resolve_push_value(value, self.config)
 
     async def _start_push(self) -> None:
         """Subscribe to the driver's declared push channel, if any.
@@ -3111,11 +3128,8 @@ class BaseDriver(ABC):
 
         group = str(self._resolve_push_value(push_def.get("group", "")) or "")
         raw_port = self._resolve_push_value(push_def.get("port"))
-        try:
-            port = int(str(raw_port).strip())
-        except (TypeError, ValueError):
-            port = 0
-        if not is_multicast_group(group) or not (0 < port < 65536):
+        port = push_port(push_def, self.config)
+        if not is_multicast_group(group) or port is None or not (0 < port < 65536):
             log.warning(
                 f"[{self.device_id}] push: cannot subscribe — group "
                 f"{group!r} / port {raw_port!r} did not resolve to a "
@@ -3153,11 +3167,8 @@ class BaseDriver(ABC):
         from openavc.transport.frame_parsers import build_frame_parser
 
         raw_port = self._resolve_push_value(push_def.get("port"))
-        try:
-            port = int(str(raw_port).strip())
-        except (TypeError, ValueError):
-            port = -1
-        if not (0 <= port < 65536):
+        port = push_port(push_def, self.config)
+        if port is None or not (0 <= port < 65536):
             log.warning(
                 f"[{self.device_id}] push: cannot listen — port {raw_port!r} "
                 f"did not resolve to a TCP port (check the device's "

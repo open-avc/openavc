@@ -49,8 +49,9 @@ PORTS_FILENAME = "plugin_ports.json"
 VALID_PROTOCOLS = ("tcp", "udp")
 
 #: Ports the platform itself owns or that no plugin has any business asking the
-#: firewall to open. Refused at validation so a typo cannot open SSH.
-_REFUSED_PORTS = frozenset({22, 23, 25, 135, 137, 138, 139, 445, 3389, 5900})
+#: firewall to open. Refused at validation so a typo cannot open SSH, and never
+#: recorded for a device's pushes either (core/push_ports.py).
+HOST_PORTS = frozenset({22, 23, 25, 135, 137, 138, 139, 445, 3389, 5900})
 
 
 def validate_declaration(entries) -> tuple[bool, str]:
@@ -69,7 +70,7 @@ def validate_declaration(entries) -> tuple[bool, str]:
         port = entry.get("port")
         if not isinstance(port, int) or isinstance(port, bool) or not (1 <= port <= 65535):
             return False, f"network_ports entry has an invalid port: {port!r}"
-        if port in _REFUSED_PORTS:
+        if port in HOST_PORTS:
             return False, (
                 f"network_ports may not request port {port} -- it belongs to the "
                 "host, not to a plugin"
