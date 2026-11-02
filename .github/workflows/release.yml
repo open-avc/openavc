@@ -476,6 +476,15 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Every program an OpenAVC transport runs has to be in the image: the SSH
+      # client was once left out and no SSH device could connect in Docker.
+      # Checked on the image just published, the way a user pulls it.
+      - name: Check the published image has every transport program
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/openavc:${VERSION}"
+          docker run --rm --entrypoint python "$IMAGE" -c "import sys; from openavc.system.os_programs import missing_programs; m = [p.command for p in missing_programs()]; print('missing transport programs:', m); sys.exit(1 if m else 0)"
+          docker run --rm --entrypoint ssh "$IMAGE" -V
+
   # ── Create GitHub Release ──────────────────────────────────────────
   release:
     name: Create release
