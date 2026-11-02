@@ -1,9 +1,9 @@
 """Load every platform module, and every driver in a driver library, on the
 Python running this script.
 
-Installs run more than one Python: the Linux installer takes 3.11 or newer,
-the Pi image and appliance hardware run Debian's 3.13, Docker and the frozen
-builds run 3.12. The test suite runs on 3.12 only, so CI runs this on the
+Installs run more than one Python: the Linux installer takes 3.11 or newer
+(3.14 on a host whose only Python is 3.14), the Pi image and appliance
+hardware run Debian's 3.13, Docker and the frozen builds run 3.12. The test suite runs on 3.12 only, so CI runs this on the
 others: a module or driver that fails to load on one of them fails here.
 
     python scripts/import_everything.py [path/to/openavc-drivers]

@@ -148,10 +148,11 @@ jobs:
           OPENAVC_DRIVERS_ROOT: ${{ runner.temp }}/openavc-drivers
         run: pytest tests/ -n auto --dist loadgroup -v --tb=short --ignore=tests/perf
 
-  # Installs run more than one Python: the Linux installer takes 3.11 or newer,
-  # the Pi image and appliance hardware run Debian's 3.13, Docker and the
-  # frozen builds 3.12. The suite above runs on 3.12, so this loads every
-  # platform module and every driver in the community library on the others.
+  # Installs run more than one Python: the Linux installer takes 3.11 or newer
+  # (3.14 on a host whose only Python is 3.14, such as Fedora 43), the Pi image
+  # and appliance hardware run Debian's 3.13, Docker and the frozen builds
+  # 3.12. The suite above runs on 3.12, so this loads every platform module and
+  # every driver in the community library on the others.
   python-versions:
     name: Loads on Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
@@ -159,7 +160,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.13"]
+        python-version: ["3.11", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
 
