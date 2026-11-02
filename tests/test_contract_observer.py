@@ -177,6 +177,63 @@ async def test_an_osc_message_no_rule_matched_is_reported():
     assert events == [(UNMATCHED_RESPONSE, {"address": "/acme/meter", "args": [0.5]})]
 
 
+async def test_a_reply_a_json_rule_read_is_not_reported_when_an_after_json_rule_misses():
+    definition = _definition(
+        state_variables={
+            **_definition()["state_variables"],
+            "last_error": {"type": "string", "label": "Last Error"},
+        },
+        responses=[
+            {"json": True, "set": {"volume": {"key": "volume", "type": "integer"}}},
+            {
+                "match": r'"error"\s*:\s*"([^"]*)"',
+                "mappings": [{"group": 1, "state": "last_error"}],
+                "after_json": True,
+            },
+        ],
+    )
+    driver, events = _driver(definition)
+    await driver.on_data_received(b'{"volume": 12}\r')
+    await driver.on_data_received(b'{"volume": 13, "error": "busy"}\r')
+    assert driver.get_state("volume") == 13
+    assert driver.get_state("last_error") == "busy"
+    assert events == []
+    assert driver._last_unread == ""
+    # A body no rule reads is still reported.
+    await driver.on_data_received(b'{"lamp": 450}\r')
+    assert events == [(UNMATCHED_RESPONSE, {"text": '{"lamp": 450}'})]
+
+
+async def test_a_json_child_set_reports_an_unregistered_child_only_when_the_body_has_its_value():
+    definition = _definition(
+        child_entity_types={
+            "output": {
+                "id_format": {"type": "integer", "min": 1, "max": 4},
+                "state_variables": {"level": {"type": "integer"}},
+                "instances": {"count": 2},
+            },
+        },
+        responses=[
+            {
+                "json": True,
+                "child_set": [
+                    {"type": "output", "id": n, "state": {"level": f"levels.{n - 1}"}}
+                    for n in (1, 2, 3)
+                ],
+            },
+        ],
+    )
+    driver, events = _driver(definition)
+    driver._register_declared_children()
+    # A two-output unit's reply has nothing for output 3.
+    await driver.on_data_received(b'{"levels": [5, 6]}\r')
+    assert driver.get_child_state("output", 1)["level"] == 5
+    assert driver.get_child_state("output", 2)["level"] == 6
+    assert events == []
+    await driver.on_data_received(b'{"levels": [5, 6, 7]}\r')
+    assert events == [(CHILD_UNREGISTERED, {"child_type": "output", "local_id": 3})]
+
+
 # ---------------------------------------------------------------------------
 # The Builder's Test tab (decision 3)
 # ---------------------------------------------------------------------------

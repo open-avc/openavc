@@ -2689,9 +2689,12 @@ class ConfigurableDriver(BaseDriver):
                     )
                 return  # Stop at first match
 
+        # A body a json rule read was read, whether or not an after_json rule
+        # also wanted it.
+        if read_by_json:
+            return
         log.debug(f"[{self.device_id}] Unmatched response: {text!r}")
-        if not read_by_json:
-            self._last_unread = text[:80]
+        self._last_unread = text[:80]
         self._observe(UNMATCHED_RESPONSE, text=text)
 
     def _resolve_child_mappings(
@@ -3197,9 +3200,11 @@ class ConfigurableDriver(BaseDriver):
 
         Resolved, not written: a body that carries none of a rule's paths must
         neither apply nor stamp the rule's throttle window, so the caller
-        decides after seeing what came back. Unregistered ids are skipped
-        quietly — a device legitimately answers for units beyond a
-        user-configured roster."""
+        decides after seeing what came back. Unregistered ids are skipped — a
+        device legitimately answers for units beyond a user-configured roster —
+        and told to a contract observer only when the body carried a value for
+        one: a smaller unit's reply has nothing at the paths of the ids it
+        does not have."""
         writes: list[tuple[str, Any, dict[str, Any]]] = []
         for cm in child_mappings:
             ctype = cm["type"]
@@ -3207,11 +3212,17 @@ class ConfigurableDriver(BaseDriver):
             if local_id is None:
                 continue
             if not self.is_child_registered(ctype, local_id):
-                log.debug(
-                    f"[{self.device_id}] child_set: {ctype} {local_id!r} not "
-                    f"registered — skipping"
-                )
-                self._observe(CHILD_UNREGISTERED, child_type=ctype, local_id=local_id)
+                if any(
+                    self._read_json_mapping(obj, pm) is not _JSON_PATH_MISSING
+                    for pm in cm["props"]
+                ):
+                    log.debug(
+                        f"[{self.device_id}] child_set: {ctype} {local_id!r} "
+                        f"not registered — skipping"
+                    )
+                    self._observe(
+                        CHILD_UNREGISTERED, child_type=ctype, local_id=local_id
+                    )
                 continue
             updates: dict[str, Any] = {}
             for pm in cm["props"]:
