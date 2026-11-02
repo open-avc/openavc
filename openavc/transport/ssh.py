@@ -46,14 +46,18 @@ answering on every client. At INFO, ssh also prints the device's pre-login
 banner, to stderr and outside the log. A banner is device text ("If you are
 not authorized to access this system, disconnect now") that the classifier
 would read as a rejected login, so stderr is drained and logged at debug
-only. The log is read once ssh has exited: Windows' client holds it open,
-unreadable, until then.
+only. The one stderr line kept as a reason is ssh refusing an option it was
+given (a device's SSH options, or an algorithm the client no longer has):
+ssh writes that while it reads its arguments, before it opens the log and
+before it dials, so no banner can be one. The log is read once ssh has
+exited: Windows' client holds it open, unreadable, until then.
 """
 
 from __future__ import annotations
 
 import asyncio
 import os
+import re
 import shutil
 import stat
 import sys
@@ -109,6 +113,11 @@ LEGACY_SSH_ALGORITHMS: tuple[str, ...] = (
     "HostkeyAlgorithms=+ssh-rsa",
     "PubkeyAcceptedAlgorithms=+ssh-rsa",
 )
+
+# ssh refusing an option on its command line, on stderr: "command-line line
+# 0: Bad SSH2 cipher spec '+x'." (OpenSSH 10.2; the same build also writes
+# "command-line: line 0: Bad configuration option: x").
+_OPTION_REFUSED = re.compile(r"^command-line:? line \d+: ")
 
 
 def default_known_hosts_path() -> str:
@@ -174,6 +183,8 @@ class SSHTransport:
         self._log_path: str | None = None
         self._log_tail = ""
         self._log_read = False
+        # ssh's refusal of an option it was given (stderr, _OPTION_REFUSED).
+        self._option_refused = ""
         # A typed fault the classifier should prefer over matching the log —
         # set when the failure already knows its own code (a stalled write).
         # Cleared on every connect so a healed link can't report it.
@@ -342,6 +353,7 @@ class SSHTransport:
         self._remove_log()
         self._log_tail = ""
         self._log_read = False
+        self._option_refused = ""
         try:
             fd, self._log_path = tempfile.mkstemp(prefix="openavc-ssh-", suffix=".log")
             os.close(fd)
@@ -397,12 +409,14 @@ class SSHTransport:
                 # ssh writes why it failed just before it exits: let it exit,
                 # so the drop is reported with its reason.
                 await self._await_exit(2.0)
+                await self._await_stderr(1.0)
                 self._read_log()
                 await self._handle_disconnect()
 
     async def _stderr_loop(self) -> None:
         """Drain ssh's stderr: the device's pre-login banner and ssh's own
-        closing lines. Logged at debug, never read as a failure's cause."""
+        closing lines, logged at debug and never read as a failure's cause,
+        except ssh refusing an option it was given, which is kept."""
         assert self._proc is not None and self._proc.stderr is not None
         try:
             while True:
@@ -412,8 +426,17 @@ class SSHTransport:
                 text = line.decode("utf-8", errors="replace").rstrip()
                 if text:
                     log.debug(f"[{self._name}] ssh (stderr): {text}")
+                    if _OPTION_REFUSED.match(text) and not self._option_refused:
+                        self._option_refused = text
         except (asyncio.CancelledError, ConnectionError, OSError):
             return
+
+    async def _await_stderr(self, timeout: float) -> None:
+        """Once ssh has exited, let the stderr drain reach the end, so an
+        option ssh refused is in hand before anyone asks why it stopped."""
+        task = self._stderr_task
+        if task is not None and not task.done():
+            await asyncio.wait((task,), timeout=timeout)
 
     async def _await_exit(self, timeout: float) -> None:
         proc = self._proc
@@ -501,6 +524,7 @@ class SSHTransport:
         """
         try:
             await asyncio.wait_for(self._proc.wait(), timeout=timeout)  # type: ignore[union-attr]
+            await self._await_stderr(1.0)
             return False  # process exited within the window -> failed
         except asyncio.TimeoutError:
             return self.connected  # still running -> good
@@ -550,10 +574,10 @@ class SSHTransport:
 
     @property
     def last_error(self) -> str:
-        """The end of ssh's own log (auth, host key, refused port), trimmed.
-        Empty while ssh is still running."""
+        """The end of ssh's own log (auth, host key, refused port), trimmed,
+        after any option ssh refused. Empty while ssh is still running."""
         self._read_log()
-        return self._log_tail.strip()
+        return "\n".join(p for p in (self._option_refused, self._log_tail.strip()) if p)
 
     @property
     def last_fault(self) -> ConnectionFault | None:

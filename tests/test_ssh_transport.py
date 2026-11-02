@@ -291,13 +291,28 @@ async def test_async_on_data_exception_is_logged(caplog):
     (["MACs=+hmac-md5"], ["MACs=+hmac-md5"]),
     (("A=1", " B=2 "), ["A=1", "B=2"]),
     ("A=1", ["A=1"]),
-    ("A=1,B=2", ["A=1", "B=2"]),
     ("A=1\nB=2", ["A=1", "B=2"]),
-    ("  A=1 , , B=2  ", ["A=1", "B=2"]),
+    ("A=1\r\nB=2\r\n", ["A=1", "B=2"]),
+    ("  A=1 \n\n  B=2  ", ["A=1", "B=2"]),
+    # A comma separates the entries of one option's list, never two options.
+    ("Ciphers=+aes128-cbc,3des-cbc", ["Ciphers=+aes128-cbc,3des-cbc"]),
+    ("Ciphers=+aes128-cbc,3des-cbc\nMACs=+hmac-md5",
+     ["Ciphers=+aes128-cbc,3des-cbc", "MACs=+hmac-md5"]),
 ])
-def test_ssh_option_list_takes_a_list_or_a_line_of_text(raw, expect):
+def test_ssh_option_list_takes_a_list_or_one_option_per_line(raw, expect):
     from openavc.drivers.base import _ssh_option_list
     assert _ssh_option_list(raw) == expect
+
+
+def test_an_algorithm_list_reaches_ssh_as_one_option():
+    from openavc.drivers.base import _ssh_option_list
+
+    argv = _make(extra_ssh_options=_ssh_option_list(
+        "Ciphers=+aes128-cbc,3des-cbc\nMACs=+hmac-md5")).build_argv()
+    at = argv.index("Ciphers=+aes128-cbc,3des-cbc")
+    assert argv[at - 1] == "-o"
+    assert argv[argv.index("MACs=+hmac-md5") - 1] == "-o"
+    assert "3des-cbc" not in argv
 
 
 def test_device_config_reaches_the_ssh_transport(monkeypatch):

@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import errno
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -426,6 +427,60 @@ _HOST_KEY_SIGS = (
     "key verification failed",
 )
 
+# ssh and the device have no algorithm of one kind in common, in ssh's log:
+# "Unable to negotiate with 192.0.2.10 port 22: no matching cipher found.
+# Their offer: aes128-cbc,3des-cbc". Measured on OpenSSH 10.2 for all four
+# kinds below; the Windows client's MAC line is the same shape. Retrying
+# never helps, and the fix is one ssh option, which each kind names (the
+# "+" adds to the client's list, so a better mutual choice still wins).
+_SSH_NEGOTIATION_SIG = "unable to negotiate"
+_SSH_NEGOTIATION_RE = re.compile(
+    r"no matching (key exchange method|host key type|cipher|mac) found\.\s*"
+    r"their offer:\s*(\S+)",
+    re.IGNORECASE,
+)
+_SSH_NEGOTIATION_KINDS = {
+    "key exchange method": ("key exchange methods", "KexAlgorithms"),
+    "host key type": ("host key types", "HostKeyAlgorithms"),
+    "cipher": ("ciphers", "Ciphers"),
+    "mac": ("MACs", "MACs"),
+}
+
+# ssh refusing an option it was given, before it dials: "command-line line 0:
+# Bad SSH2 cipher spec '+x'.", or "command-line: line 0: Bad configuration
+# option: x". A device's SSH options, or an algorithm this client does not
+# have at all (DSA host keys are gone from OpenSSH 10).
+_SSH_OPTION_REFUSED_RE = re.compile(r"command-line:? line \d+:\s*(.+)", re.IGNORECASE)
+
+
+def _ssh_negotiation_fault(text: str) -> ConnectionFault:
+    match = _SSH_NEGOTIATION_RE.search(text)
+    if match is None:
+        return ConnectionFault(
+            INVALID_CONFIG,
+            "The device's SSH server and the OpenAVC server's SSH client have "
+            "no encryption settings in common. Check the device's SSH settings.",
+        )
+    noun, keyword = _SSH_NEGOTIATION_KINDS[match.group(1).lower()]
+    offer = match.group(2).rstrip(".,")
+    return ConnectionFault(
+        INVALID_CONFIG,
+        f"The device offers only SSH {noun} that the OpenAVC server's SSH "
+        f"client does not use by default: {', '.join(offer.split(','))}. To "
+        f"allow them, add {keyword}=+{offer} to SSH options in Edit Device "
+        f"(under Advanced).",
+    )
+
+
+def _ssh_option_refused_fault(match: re.Match[str]) -> ConnectionFault:
+    detail = match.group(1).strip().rstrip(".")
+    return ConnectionFault(
+        INVALID_CONFIG,
+        f"The OpenAVC server's SSH client refused an SSH option: {detail}. "
+        f"Check this device's SSH options in Edit Device (under Advanced).",
+    )
+
+
 # TLS certificate verification failed — the HTTPS analog of a rejected SSH host
 # key: the peer's identity couldn't be verified (self-signed, expired, wrong
 # hostname, or an unknown issuer). Every OpenSSL verification failure carries
@@ -799,6 +854,19 @@ def classify_connection_fault(
             "The device's SSH host key changed or was rejected. Verify the "
             "device, then re-accept it.",
         )
+
+    # 2b. ssh refused an option it was given, before it dialed. Matched on
+    #     the original text: the sentence quotes ssh, and an algorithm's
+    #     case is part of its name.
+    refused = _SSH_OPTION_REFUSED_RE.search(f"{le}\n{ex}")
+    if refused is not None:
+        return _ssh_option_refused_fault(refused)
+
+    # 2c. ssh and the device share no algorithm of one kind. Before every
+    #     network bucket: the line names the device's address and port, and
+    #     an unclassified one reads "dropped, retrying" for good.
+    if _SSH_NEGOTIATION_SIG in hay:
+        return _ssh_negotiation_fault(f"{le}\n{ex}")
 
     # 3. TLS certificate couldn't be verified (self-signed / expired / wrong
     #    host / unknown issuer). Point the integrator straight at the toggle —

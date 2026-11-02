@@ -179,3 +179,68 @@ describe("Edit Device saves what its form shows", () => {
     expect(sent.config).toMatchObject({ host: "10.0.0.5", port: null });
   });
 });
+
+// The server's driver list adds this field to every driver that connects over
+// SSH (openavc/drivers/registry.py config_schema_of); the form draws it like
+// any other schema field.
+const sshSwitch = driver({
+  id: "acme_ssh_switch",
+  name: "Acme SSH Switch",
+  transport: "ssh",
+  default_config: { port: 22, username: "admin" },
+  config_schema: {
+    host: { type: "string", required: true, label: "IP Address" },
+    username: { type: "string", default: "admin", label: "Username" },
+    extra_ssh_options: {
+      type: "text",
+      label: "SSH options",
+      description:
+        "Further OpenSSH settings for this device, one per line as Key=Value, " +
+        "such as Ciphers=+aes128-cbc. Most devices need none.",
+      advanced: true,
+    },
+  },
+});
+
+describe("Edit Device: SSH options", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.listDrivers).mockResolvedValue([sshSwitch]);
+  });
+
+  function open(config: Record<string, unknown>) {
+    const device = { id: "s1", driver: "acme_ssh_switch", name: "S1", config } as DeviceConfig;
+    useProjectStore.setState({
+      project: { devices: [device], connections: { s1: { host: "10.0.0.7", username: "admin" } } } as never,
+      load: vi.fn(() => Promise.resolve()),
+    });
+    render(<EditDeviceDialog device={device} onClose={() => {}} onSaved={() => {}} />);
+  }
+
+  it("is a box under Advanced, one option per line, saved as typed", async () => {
+    open({});
+    await userEvent.click(await screen.findByText("Advanced (1)"));
+    const box = screen.getByLabelText("SSH options");
+    expect(box.tagName).toBe("TEXTAREA");
+    await userEvent.type(box, "Ciphers=+aes128-cbc,3des-cbc{enter}MACs=+hmac-md5");
+    await userEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    const sent = vi.mocked(api.updateDevice).mock.calls[0][1];
+    expect(sent.config).toMatchObject({
+      host: "10.0.0.7",
+      extra_ssh_options: "Ciphers=+aes128-cbc,3des-cbc\nMACs=+hmac-md5",
+    });
+  });
+
+  it("opens with what the device holds, and a cleared box saves nothing", async () => {
+    open({ extra_ssh_options: "MACs=+hmac-md5" });
+    await userEvent.click(await screen.findByText("Advanced (1)"));
+    const box = screen.getByLabelText("SSH options");
+    expect(box).toHaveValue("MACs=+hmac-md5");
+    await userEvent.clear(box);
+    await userEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    const sent = vi.mocked(api.updateDevice).mock.calls[0][1];
+    expect(sent.config).not.toHaveProperty("extra_ssh_options");
+  });
+});

@@ -400,6 +400,75 @@ def test_an_ssh_session_the_device_stopped_answering_is_a_drop():
     assert fault.code == TRANSPORT_DISCONNECTED
 
 
+# --- ssh and the device share no algorithm ----------------------------------
+# The lines are OpenSSH 10.2's own, captured against a listener offering only
+# these algorithms. Each kind names the ssh option that adds to the client's
+# list, and none heals by retrying.
+
+@pytest.mark.parametrize("kind, offer, option, names", [
+    ("key exchange method", "diffie-hellman-group-exchange-sha1",
+     "KexAlgorithms=+diffie-hellman-group-exchange-sha1", "key exchange methods"),
+    ("host key type", "ssh-dss", "HostKeyAlgorithms=+ssh-dss", "host key types"),
+    ("cipher", "aes128-cbc,3des-cbc", "Ciphers=+aes128-cbc,3des-cbc", "ciphers"),
+    ("MAC", "hmac-md5,hmac-sha1-96", "MACs=+hmac-md5,hmac-sha1-96", "MACs"),
+])
+def test_no_algorithm_in_common_names_the_option_that_allows_one(kind, offer, option, names):
+    fault = classify_connection_fault(
+        last_error=(
+            f"Unable to negotiate with 10.0.0.5 port 22: no matching {kind} "
+            f"found. Their offer: {offer}"
+        ),
+        exc=None, host="10.0.0.5", port=22, transport="ssh",
+    )
+    assert fault.code == INVALID_CONFIG
+    assert is_permanent_fault(fault.code)
+    assert f"add {option} to SSH options in Edit Device" in fault.message
+    assert f"only SSH {names} " in fault.message
+    assert ", ".join(offer.split(",")) in fault.message
+
+
+def test_no_algorithm_in_common_wins_over_the_verify_steps_not_responding():
+    fault = classify_connection_fault(
+        last_error=(
+            "Unable to negotiate with 10.0.0.5 port 22: no matching MAC found. "
+            "Their offer: hmac-sha1"
+        ),
+        exc=ConnectionError("Device at 10.0.0.5:22 is not responding"),
+        host="10.0.0.5", port=22, transport="ssh",
+    )
+    assert fault.code == INVALID_CONFIG
+
+
+def test_a_negotiation_line_of_another_shape_still_stops_the_retries():
+    fault = classify_connection_fault(
+        last_error=(
+            "Unable to negotiate with 10.0.0.5 port 22: no matching compression "
+            "method found. Their offer: zlib"
+        ),
+        exc=None, host="10.0.0.5", port=22, transport="ssh",
+    )
+    assert fault.code == INVALID_CONFIG
+    assert "no encryption settings in common" in fault.message
+
+
+# The three shapes OpenSSH 10.2 printed for an option it would not take: an
+# unknown keyword, an algorithm it does not know, and one it no longer has.
+@pytest.mark.parametrize("line, quoted", [
+    ("command-line: line 0: Bad configuration option: acmesetting",
+     "Bad configuration option: acmesetting."),
+    ("command-line line 0: Bad SSH2 MAC spec '+hmac-acme'.",
+     "Bad SSH2 MAC spec '+hmac-acme'."),
+    ("command-line line 0: Bad key types '+ssh-dss'.", "Bad key types '+ssh-dss'."),
+])
+def test_an_option_ssh_refuses_is_quoted_and_stops_the_retries(line, quoted):
+    fault = classify_connection_fault(
+        last_error=line, exc=ConnectionError("Device at 10.0.0.5:22 is not responding"),
+        host="10.0.0.5", port=22, transport="ssh",
+    )
+    assert fault.code == INVALID_CONFIG
+    assert f"refused an SSH option: {quoted} Check this device's SSH options" in fault.message
+
+
 # --- endpoint rendering ----------------------------------------------------
 
 def test_endpoint_degrades_without_host():

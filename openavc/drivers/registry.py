@@ -162,6 +162,58 @@ def get_driver_bridge_ports(driver_id: str) -> dict[str, dict[str, Any]]:
     return result
 
 
+#: The config key BaseDriver reads further ``ssh -o`` options from.
+SSH_OPTIONS_KEY = "extra_ssh_options"
+
+# The field every device that connects over SSH is offered, whether or not
+# its driver declares it. It belongs to the transport, not to a driver: a
+# device whose SSH server offers only algorithms the computer's client no
+# longer uses by default has no other way to connect, and the offline reason
+# for that failure names this field and the line to put in it
+# (core/connection_fault.py). Advanced, because almost no device needs it.
+_SSH_OPTIONS_FIELD: dict[str, Any] = {
+    "type": "text",
+    "label": "SSH options",
+    "description": (
+        "Further OpenSSH settings for this device, one per line as "
+        "Key=Value, such as Ciphers=+aes128-cbc. Most devices need none."
+    ),
+    "advanced": True,
+}
+
+
+def _ssh_transports(info: dict[str, Any]) -> tuple[bool, bool]:
+    """(connects over ssh, also connects some other way): the driver's
+    transport, its ``transports``, and the choices of a ``transport`` field
+    in its own schema (a device's Connection setting)."""
+    names = {str(info.get("transport") or "tcp").lower()}
+    names.update(str(t).lower() for t in info.get("transports") or [])
+    choice = (info.get("config_schema") or {}).get("transport")
+    if isinstance(choice, dict):
+        for value in choice.get("values") or []:
+            names.add(str(value.get("value") if isinstance(value, dict) else value).lower())
+    return "ssh" in names, len(names - {"ssh"}) > 0
+
+
+def config_schema_of(info: dict[str, Any]) -> dict[str, Any]:
+    """The settings a person is asked for when adding or editing a device of
+    this driver: its own ``config_schema``, plus the SSH options field when
+    the driver connects over SSH and does not declare that key itself.
+
+    Only beside a declared schema. With none, the Edit dialog shows the keys
+    the device already holds instead, and a schema of one field would hide
+    its address and login. ``DRIVER_INFO`` is never changed.
+    """
+    schema = info.get("config_schema") or {}
+    over_ssh, other_ways = _ssh_transports(info)
+    if not over_ssh or not schema or SSH_OPTIONS_KEY in schema:
+        return schema
+    field = dict(_SSH_OPTIONS_FIELD)
+    if other_ways:
+        field["description"] += " Used only over SSH."
+    return {**schema, SSH_OPTIONS_KEY: field}
+
+
 def list_registered_drivers() -> list[dict[str, Any]]:
     """Return metadata for all registered drivers.
 
@@ -186,7 +238,7 @@ def list_registered_drivers() -> list[dict[str, Any]]:
             "transports": driver_class.DRIVER_INFO.get("transports", []),
             "bridge": driver_class.DRIVER_INFO.get("bridge", {}),
             "commands": driver_class.DRIVER_INFO.get("commands", {}),
-            "config_schema": driver_class.DRIVER_INFO.get("config_schema", {}),
+            "config_schema": config_schema_of(driver_class.DRIVER_INFO),
             "default_config": driver_class.DRIVER_INFO.get("default_config", {}),
             "state_variables": driver_class.DRIVER_INFO.get("state_variables", {}),
             "help": driver_class.DRIVER_INFO.get("help", {}),

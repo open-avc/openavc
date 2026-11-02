@@ -28,6 +28,7 @@ import pytest
 from openavc.core.connection_fault import (
     CONNECTION_REFUSED,
     HOST_KEY_REJECTED,
+    INVALID_CONFIG,
     TRANSPORT_DISCONNECTED,
     classify_connection_fault,
 )
@@ -58,6 +59,12 @@ _CLIENT = textwrap.dedent(
             port = int(args[i + 1])
         elif args[i] == "-o" and args[i + 1].startswith("LogLevel=") and level is None:
             level = args[i + 1].split("=", 1)[1]
+        elif args[i] == "-o" and args[i + 1].startswith("Acme"):
+            # An option it does not know: refused on stderr while it reads its
+            # arguments, before it opens the log or dials.
+            keyword = args[i + 1].split("=", 1)[0].lower()
+            sys.stderr.write(f"command-line: line 0: Bad configuration option: {keyword}\\n")
+            sys.exit(255)
         if args[i] in ("-E", "-p", "-o"):
             i += 2
         else:
@@ -158,12 +165,12 @@ async def greeter():
         server.close()
 
 
-async def _drop(port: int, tmp_path) -> SSHTransport:
+async def _drop(port: int, tmp_path, **options) -> SSHTransport:
     """Start a session against the port and wait for it to drop."""
     dropped = asyncio.Event()
     transport = await SSHTransport.create(
         "127.0.0.1", port, "admin", lambda data: None, dropped.set,
-        known_hosts_path=str(tmp_path / "known_hosts"),
+        known_hosts_path=str(tmp_path / "known_hosts"), **options,
     )
     await asyncio.wait_for(dropped.wait(), 10)
     return transport
@@ -195,6 +202,23 @@ async def test_a_key_exchange_with_no_common_algorithm_is_named(
     transport = await _drop(port, tmp_path)
     try:
         assert "no matching key exchange method found" in transport.last_error
+        fault = _classify(transport, port)
+        assert fault.code == INVALID_CONFIG
+        assert "add KexAlgorithms=+diffie-hellman-group1-sha1 to SSH options" in fault.message
+    finally:
+        await transport.close()
+
+
+async def test_an_option_ssh_refuses_is_named_though_ssh_never_logs_it(
+    stand_in, tmp_path, greeter,
+):
+    port = await greeter(b"SSH-2.0-AcmeBanner")
+    transport = await _drop(port, tmp_path, extra_ssh_options=["AcmeSetting=1"])
+    try:
+        assert transport.last_error == (
+            "command-line: line 0: Bad configuration option: acmesetting"
+        )
+        assert _classify(transport, port).code == INVALID_CONFIG
     finally:
         await transport.close()
 
@@ -334,6 +358,45 @@ async def test_a_closed_ssh_port_reads_refused_from_the_first_attempt(
     })
     assert state.get("device.shell.offline_reason") == CONNECTION_REFUSED
     assert f"127.0.0.1:{port}" in state.get("device.shell.offline_detail")
+
+
+@pytest.mark.parametrize("driver", [AcmeSshShellDriver, AcmeSshConsoleDriver])
+@pytest.mark.parametrize("greeting, options, detail", [
+    # The device offers only an algorithm the client does not use by default.
+    (b"SSH-2.0-AcmeLegacy", "", "add KexAlgorithms=+diffie-hellman-group1-sha1 to SSH options"),
+    # The device's own SSH options hold one ssh will not take.
+    (b"SSH-2.0-AcmeBanner", "AcmeSetting=1",
+     "refused an SSH option: Bad configuration option: acmesetting."),
+])
+async def test_a_device_ssh_cannot_negotiate_with_says_why_and_stops_retrying(
+    stand_in, manager, core, tmp_path, greeter, monkeypatch, driver, greeting, options, detail,
+):
+    state, _ = core
+    # Retries come at once, so the test sees the loop give up: a permanent
+    # fault is allowed a couple of attempts, then nothing more.
+    monkeypatch.setattr(manager, "_reconnect_delay", lambda device_id, attempt: 0.01)
+    port = await greeter(greeting)
+    await manager.add_device({
+        "id": "shell",
+        "driver": driver.DRIVER_INFO["id"],
+        "name": "Shell",
+        "config": {
+            **driver.DRIVER_INFO["default_config"],
+            "host": "127.0.0.1", "port": port,
+            "known_hosts_path": str(tmp_path / "known_hosts"),
+            "extra_ssh_options": options,
+        },
+    })
+    assert state.get("device.shell.offline_reason") == INVALID_CONFIG
+    assert detail in state.get("device.shell.offline_detail")
+    for _ in range(300):
+        if state.get("device.shell.reconnect_failed") is True:
+            break
+        await asyncio.sleep(0.05)
+    assert state.get("device.shell.reconnect_failed") is True
+    assert "shell" not in manager._reconnect_tasks
+    assert state.get("device.shell.offline_reason") == INVALID_CONFIG
+    assert detail in state.get("device.shell.offline_detail")
 
 
 # --- In the log ---------------------------------------------------------------

@@ -714,23 +714,20 @@ _CHILD_STRING_ID_MAX_LEN = 128
 def _ssh_option_list(value: object) -> list[str]:
     """Normalise a device's ``extra_ssh_options`` into ssh ``-o`` arguments.
 
-    A driver can declare a list; a config_schema string field gives one line
-    of text. Both reach here, so both are accepted: a string splits on
-    newlines and commas, and blanks drop out. Nothing is validated beyond
-    that -- an unknown keyword is ssh's error to report, and inventing our
-    own allowlist would just be a second thing to keep current.
+    A driver can declare a list; the SSH options field every SSH device gets
+    (drivers/registry.py) is text, one option per line. Both reach here: a
+    string splits on line breaks only, and blanks drop out. Never on commas,
+    which separate the entries of an algorithm list inside ONE option
+    (``Ciphers=+aes128-cbc,3des-cbc``). Nothing is validated beyond that --
+    an option ssh will not take is ssh's to report (connection_fault.py
+    reads its words), and an allowlist of our own would be a second thing
+    to keep current.
     """
     if value is None or value == "":
         return []
     if isinstance(value, (list, tuple)):
         return [str(v).strip() for v in value if str(v).strip()]
-    newline = chr(10)
-    out: list[str] = []
-    for line in str(value).replace(",", newline).split(newline):
-        opt = line.strip()
-        if opt:
-            out.append(opt)
-    return out
+    return [line.strip() for line in str(value).splitlines() if line.strip()]
 
 
 #: The port a Wake-on-LAN magic packet is sent to unless a driver says otherwise

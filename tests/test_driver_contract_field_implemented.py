@@ -163,14 +163,15 @@ RUNTIME_OPT_OUT = {
     # (configurable.py's driver_info, device_manager's driver listing) and
     # reads none of these. These passed the old name-keyed check only
     # because words like "values" and "help" are everywhere in the server.
-    "configSchemaEntry.help":
-        "Connection-form presentation: help text under the input.",
+    # `advanced`, `description` and `help` are deliberately NOT listed, though
+    # the runtime still reads none of them: drivers/registry.py writes one
+    # config field of its own (the SSH options field every SSH driver is
+    # listed with), whose `advanced` is this block's anchor, and the same file
+    # names `description` there and the driver's own `help` block. So the
+    # scoped search counts all three as read, and an opt-out for a field the
+    # check believes is covered is stale the day it is written.
     "configSchemaEntry.regex":
         "Connection-form validation, applied by the IDE while editing.",
-    "configSchemaEntry.advanced":
-        "Connection-form presentation: collapse the field behind Advanced "
-        "when the device is added or edited (DeviceDialogs). Nothing on the "
-        "wire changes; the value is read exactly as it always was.",
     # These four were passing on a coincidence until 2026-08-01. The scoped
     # search wants `columns` -- configSchemaEntry's distinctive sibling -- in
     # the same file as the field, and the only `columns` in reach was
@@ -188,8 +189,6 @@ RUNTIME_OPT_OUT = {
     "configSchemaEntry.required":
         "Connection-form validation: the field is mandatory in the device "
         "config form. Nothing on the wire consults it.",
-    "configSchemaEntry.description":
-        "Connection-form presentation: prose shown beside the input.",
     # config_schema's `columns` and help's `overview`/`connection` belong here
     # on the same reasoning, and are deliberately NOT listed: each is declared
     # in only one block, so it takes the unscoped grep and passes on ordinary
