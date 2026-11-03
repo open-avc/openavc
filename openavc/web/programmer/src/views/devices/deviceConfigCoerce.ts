@@ -49,6 +49,31 @@ export function prefillConfigValues(
   return prefilled;
 }
 
+// The standard port of each connection a driver may offer under `transport`
+// (telnet is spelled "tcp" in driver config). The same two ports the server
+// names when Connection and Port disagree after a failed connection
+// (`_WELL_KNOWN_TRANSPORT_PORTS` in core/connection_fault.py); pinned against
+// it by tests/test_transport_port_parity.py.
+export const STANDARD_TRANSPORT_PORTS: Record<string, string> = { ssh: "22", tcp: "23", telnet: "23" };
+
+// One field of the form changed. When it is Connection (`transport`) and Port
+// is still the old connection's standard port, Port moves to the new one's:
+// switching a switch from SSH to telnet left Port on 22, and the device then
+// sat offline looking like dead hardware. A port anyone typed (22023, 2222)
+// is theirs and stays.
+export function withConfigValue(
+  values: Record<string, string>,
+  key: string,
+  value: string,
+): Record<string, string> {
+  const next = { ...values, [key]: value };
+  if (key !== "transport") return next;
+  const was = STANDARD_TRANSPORT_PORTS[(values.transport ?? "").toLowerCase()];
+  const now = STANDARD_TRANSPORT_PORTS[value.toLowerCase()];
+  if (was && now && was !== now && (values.port ?? "").trim() === was) next.port = now;
+  return next;
+}
+
 // Which input widget a config field renders as. Centralised so the dialogs
 // can't disagree with the coercion rules below — and so `secret: true`
 // (the Driver Builder's Secret checkbox, e.g. generic_http's passwords and

@@ -36,6 +36,8 @@ When you pick a USB adapter that reports a serial number, OpenAVC saves that ser
 
 Some devices, such as managed network switches and some video bars, are controlled over SSH. OpenAVC connects to them with the SSH client of the computer it runs on. Windows, macOS, the Raspberry Pi image, the Docker image and the Linux installer all include one. Appliance hardware installs it by itself once it can reach the internet.
 
+Some drivers offer both SSH and telnet under **Connection**. When you change it in **Add Device** or **Edit**, a **Port** still on the standard port (22 for SSH, 23 for telnet) changes with it. A port you typed yourself stays as it is. If Connection and Port still disagree when the device connects, the device page names both settings.
+
 A device's driver signs in with a password or with a key, chosen in **Edit**:
 
 - **Password.** Enter the account's username and password.

@@ -6,7 +6,7 @@ import type { DeviceConfig, DriverInfo } from "../../api/types";
 import { DeviceSettingsSetupDialog, hasDriverSetupSettings } from "../../components/shared/DeviceSettingsSetupDialog";
 import { Modal } from "../../components/shared/Modal";
 import { normalizeOptionList } from "../../components/shared/paramOptions";
-import { buildConfigFromForm, configFieldKind, splitConnectionFields, CONNECTION_FIELDS, SERIAL_PICKER_FIELDS, IR_PICKER_FIELDS, prefillConfigValues, type ConnectionMode } from "./deviceConfigCoerce";
+import { buildConfigFromForm, configFieldKind, splitConnectionFields, CONNECTION_FIELDS, SERIAL_PICKER_FIELDS, IR_PICKER_FIELDS, prefillConfigValues, withConfigValue, type ConnectionMode } from "./deviceConfigCoerce";
 import { parseApiError } from "../../api/errors";
 import { booleanWord } from "../../components/shared/booleanWords";
 
@@ -162,7 +162,7 @@ export function ConfigFieldInputs({
                 {...labelled}
                 value={configValues[key] ?? ""}
                 onChange={(e) =>
-                  setConfigValues((v) => ({ ...v, [key]: e.target.value }))
+                  setConfigValues((v) => withConfigValue(v, key, e.target.value))
                 }
                 style={{ width: "100%" }}
               >

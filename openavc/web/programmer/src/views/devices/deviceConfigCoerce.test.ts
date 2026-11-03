@@ -9,6 +9,7 @@ import {
   prefillConfigValues,
   requiredFieldsMessage,
   trimsTypedValue,
+  withConfigValue,
 } from "./deviceConfigCoerce";
 
 // Nothing required, over the network: the case the coercion tests are about.
@@ -281,5 +282,28 @@ describe("required config fields", () => {
       level: { type: "integer", required: true, label: "Level" },
     };
     expect(missingRequiredFields({ enabled: "false", level: "0" }, schema, {}, "network")).toEqual([]);
+  });
+});
+
+describe("withConfigValue: Port follows Connection", () => {
+  it("moves Port from 22 to 23 when Connection goes from SSH to telnet, and back", () => {
+    const ssh = { transport: "ssh", port: "22", host: "192.0.2.10" };
+    const telnet = withConfigValue(ssh, "transport", "tcp");
+    expect(telnet).toEqual({ transport: "tcp", port: "23", host: "192.0.2.10" });
+    expect(withConfigValue(telnet, "transport", "ssh")).toEqual(ssh);
+  });
+
+  it("leaves a port somebody chose", () => {
+    expect(withConfigValue({ transport: "ssh", port: "22023" }, "transport", "tcp").port).toBe("22023");
+    expect(withConfigValue({ transport: "ssh", port: "" }, "transport", "tcp").port).toBe("");
+  });
+
+  it("only moves between connections that have a standard port", () => {
+    expect(withConfigValue({ transport: "tcp", port: "23" }, "transport", "udp").port).toBe("23");
+    expect(withConfigValue({ port: "22" }, "transport", "tcp").port).toBe("22");
+  });
+
+  it("changes nothing else for any other field", () => {
+    expect(withConfigValue({ transport: "ssh", port: "22" }, "port", "2222")).toEqual({ transport: "ssh", port: "2222" });
   });
 });
