@@ -79,7 +79,9 @@ class TCPSimulator(BaseSimulator):
 
         This is the main method to implement. The framework calls it once per
         received message (line-delimited for text protocols, or raw chunks
-        for binary protocols when no delimiter is set).
+        for binary protocols when no delimiter is set). In line mode an empty
+        line is never passed on, so a login prompt, which a blank password
+        answers with one, is read in ``authenticate_client`` instead.
 
         Use self.state to read current state, self.set_state(k, v) to update it.
         Use self.active_errors to check for injected error conditions.
