@@ -440,16 +440,16 @@ export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, l
             for (const d of project.devices) {
               suggestions.push(
                 {
-                  label: `device.${d.id}.connected`,
+                  label: `device.connected.${d.id}`,
                   kind: monaco.languages.CompletionItemKind.Event,
-                  insertText: `device.${d.id}.connected`,
+                  insertText: `device.connected.${d.id}`,
                   detail: `${d.name} connected`,
                   range,
                 },
                 {
-                  label: `device.${d.id}.disconnected`,
+                  label: `device.disconnected.${d.id}`,
                   kind: monaco.languages.CompletionItemKind.Event,
-                  insertText: `device.${d.id}.disconnected`,
+                  insertText: `device.disconnected.${d.id}`,
                   detail: `${d.name} disconnected`,
                   range,
                 },
