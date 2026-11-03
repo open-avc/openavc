@@ -4,7 +4,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CapacityInfo, DeviceInfo, LogEntry, SingleClientInfo } from "./api";
-import { BASE, fetchDevices } from "./api";
+import { BASE, fetchDevices, fetchLog } from "./api";
+import { mergeStoredLog } from "./protocolLog";
 import { authSubprotocols } from "./session";
 
 // ── WebSocket singleton ──
@@ -115,6 +116,27 @@ export function useSimStore() {
   const [stopped, setStopped] = useState(false);
   const logRef = useRef(log);
   logRef.current = log;
+  // The newest entry Clear removed, in the simulator's clock. Stored entries
+  // at or before it stay cleared when the socket reopens.
+  const clearedAtRef = useRef(0);
+
+  // Called each time the socket opens. The socket is open first, so anything
+  // logged from here on arrives live and the stored copy covers everything
+  // before; an entry in both is shown once.
+  const loadDevicesAndLog = useCallback(async () => {
+    let current: DeviceInfo[];
+    try {
+      current = await fetchDevices();
+    } catch {
+      return;
+    }
+    setDevices(current);
+    const results = await Promise.allSettled(
+      current.map((d) => fetchLog(d.device_id, MAX_LOG)),
+    );
+    const stored = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+    setLog((prev) => mergeStoredLog(prev, stored, clearedAtRef.current, MAX_LOG));
+  }, []);
 
   // Connect WebSocket and poll devices on mount
   useEffect(() => {
@@ -172,15 +194,13 @@ export function useSimStore() {
           .then((d) => setDevices(d))
           .catch(() => setStopped(true));
       } else if (isConnected) {
-        // Server is back — refresh everything
+        // Connected, or back: refresh everything, the log included.
         setStopped(false);
-        fetchDevices()
-          .then(setDevices)
-          .catch(() => {});
+        void loadDevicesAndLog();
       }
     });
     return unsub;
-  }, []);
+  }, [loadDevicesAndLog]);
 
   // Listen to WebSocket messages
   useEffect(() => {
@@ -249,7 +269,13 @@ export function useSimStore() {
     return unsub;
   }, []);
 
-  const clearLog = useCallback(() => setLog([]), []);
+  const clearLog = useCallback(() => {
+    const shown = logRef.current;
+    if (shown.length > 0) {
+      clearedAtRef.current = Math.max(clearedAtRef.current, shown[shown.length - 1].timestamp);
+    }
+    setLog([]);
+  }, []);
 
   return { devices, log, connected, stopped, clearLog };
 }
