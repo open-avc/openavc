@@ -444,6 +444,18 @@ CASES["binding_reach"] = _project([
             # come back clean here or the check would teach the wrong set.
             {"id": "plugin_ok", "type": "plugin",
              "plugin_id": "acme", "plugin_type": "widget"},
+            # A tab: lit while its page shows, and its words and icon per state.
+            # A page nav draws all of that, so it must come back clean.
+            {"id": "nav_tab_ok", "type": "page_nav", "label": "Video",
+             "target_page": "main", "highlight_current": True,
+             "bindings": {"show": {"look": {"key": "device.acme.online",
+                                            "states": {"true": {"label": "VIDEO", "icon": "tv"},
+                                                       "false": {"label": "Video (off)"}}}}}},
+            # ...but a page nav has no artwork, so a state's picture is unseen.
+            {"id": "nav_tab_picture", "type": "page_nav", "label": "Audio",
+             "target_page": "main",
+             "bindings": {"show": {"look": {"key": "device.acme.online",
+                                            "states": {"true": {"button_image": "assets://a.png"}}}}}},
         ],
         [_landscape({
             "text_with_look": _pct_box(0, 0, 20, 10),
@@ -457,6 +469,8 @@ CASES["binding_reach"] = _project([
             "visible_only": _pct_box(75, 20, 20, 20),
             "unknown_kind": _pct_box(75, 45, 20, 20),
             "plugin_ok": _pct_box(0, 70, 20, 20),
+            "nav_tab_ok": _pct_box(75, 70, 20, 12),
+            "nav_tab_picture": _pct_box(50, 70, 20, 12),
         })],
     ),
 ])
@@ -1760,6 +1774,7 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "lbl_bound",                           # show.value supplies the text
         "lbl_look_states", "lbl_look_binary",  # ...and so does show.look's state text
         "img_look_ok",                         # an image draws a picture per state
+        "nav_tab_ok",                          # a page nav lights, and draws state words and icons
         "lbl_macro",                           # a macro-progress label needs no state key
         "custom_ok",                           # a custom control that names its page
         "kp_default", "kp_at_default",         # a keypad that waits the default
@@ -1921,6 +1936,10 @@ def test_a_state_picture_is_warned_only_where_nothing_draws_it(verdicts) -> None
         for finding in python_side:
             by_element.setdefault(finding["element_id"], []).append(finding["message"])
     assert "img_look_ok" not in by_element
+    assert any(
+        "a page_nav takes only color, text and an icon" in m
+        for m in by_element["nav_tab_picture"]
+    )
     assert any("picture (button_image)" in m for m in by_element["lbl_look_picture"])
     assert any(
         "an image takes only color and a picture" in m and "label element" in m

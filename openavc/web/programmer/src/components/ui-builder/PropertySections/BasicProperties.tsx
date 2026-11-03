@@ -323,6 +323,18 @@ export function BasicProperties({
           />
         </FieldRow>
       )}
+      {element.type === "page_nav" && (
+        <FieldRow label="Current page">
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={!!element.highlight_current}
+              onChange={(e) => onChange({ highlight_current: e.target.checked || undefined })}
+            />
+            Light up while its page is showing
+          </label>
+        </FieldRow>
+      )}
 
       {/* Slider min/max/step/orientation/thumb/show value */}
       {element.type === "slider" && (

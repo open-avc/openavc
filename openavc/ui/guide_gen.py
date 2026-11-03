@@ -379,6 +379,14 @@ picture, and a device that cannot be reached, show `src`. A picture is always
 an asset ref written into the look itself (`"assets://holiday.png"`), never read
 out of a variable, so to change an image with the season, have the script set a
 variable to `christmas` and give the image a `christmas` state with its picture.
+
+A `page_nav` with `highlight_current: true` lights up while its page is on that
+panel's screen: its `target_page`, or the overlay or sidebar it opens while that
+is open. Lit is the accent fill a lit toggle button wears, drawn over its
+`show.look` colours; its words and icon still come from the look. Each panel
+works it out from the page it is showing, never from state, so a tab bar needs
+no variable and no macro: a row of `page_nav` master elements, each with
+`highlight_current: true`. A `$back` or `$dismiss` nav never lights.
 """
 
 DO_ACTIONS = """\

@@ -233,7 +233,7 @@ you asked for never happens. Check this table before binding.
 | level_meter | `show.value` |
 | list | `show.value`, `show.items` |
 | matrix | nothing |
-| page_nav | nothing |
+| page_nav | `show.look` |
 | plugin | nothing |
 | select | `show.value`, `show.look` |
 | slider | `show.value` |
@@ -244,12 +244,12 @@ you asked for never happens. Check this table before binding.
 element type, from the page tree rather than from the renderer.
 
 `show.look` carries per-state **colour** wherever it is read. Per-state **text**
-(`states[].label`) is drawn by `button`, `camera_preset` and `label` and by nothing else, so a
+(`states[].label`) is drawn by `button`, `camera_preset`, `label` and `page_nav` and by nothing else, so a
 `states[].label` on any other type never appears on screen. A label that should
 read ONLINE / OFFLINE needs its text in `show.value`.
 
 Per-state **icon** (`states[].icon`, or `style_active.icon` in the binary form)
-is narrower still: `button` and `camera_preset` and nothing else. A state's appearance is
+is narrower still: `button`, `camera_preset` and `page_nav` and nothing else. A state's appearance is
 applied as style, and an icon is content -- it appears only where the evaluator
 goes on to rebuild the icon+text layout. A `label` draws its own top-level
 `icon`; it just cannot change it per state.
@@ -261,6 +261,14 @@ picture, and a device that cannot be reached, show `src`. A picture is always
 an asset ref written into the look itself (`"assets://holiday.png"`), never read
 out of a variable, so to change an image with the season, have the script set a
 variable to `christmas` and give the image a `christmas` state with its picture.
+
+A `page_nav` with `highlight_current: true` lights up while its page is on that
+panel's screen: its `target_page`, or the overlay or sidebar it opens while that
+is open. Lit is the accent fill a lit toggle button wears, drawn over its
+`show.look` colours; its words and icon still come from the look. Each panel
+works it out from the page it is showing, never from state, so a tab bar needs
+no variable and no macro: a row of `page_nav` master elements, each with
+`highlight_current: true`. A `$back` or `$dismiss` nav never lights.
 
 ## What a `do` action can be called
 
@@ -337,7 +345,7 @@ element second.
 | level_meter | `label`, `max`, `min`, `orientation` |
 | list | `item_height`, `items`, `label`, `list_style`, `options` |
 | matrix | `label`, `matrix_config`, `matrix_style` |
-| page_nav | `label`, `target_page` (+ the shared icon set) |
+| page_nav | `highlight_current`, `label`, `target_page` (+ the shared icon set) |
 | plugin | `grant`, `plugin_config`, `plugin_id`, `plugin_type` |
 | select | `label`, `options` |
 | slider | `display_decimals`, `label`, `max`, `min`, `orientation`, `output_max`, `output_min`, `response`, `response_db_range`, `scale_to_full`, `send_on_release`, `send_throttle_ms`, `step`, `thumb_size`, `unit` |

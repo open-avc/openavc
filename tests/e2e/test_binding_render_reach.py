@@ -208,6 +208,8 @@ def test_the_types_that_draw_a_state_label_are_the_ones_recorded(panel_page) -> 
         "list": {"options": [{"value": "a", "label": "A"}]},
         "select": {"options": [{"value": "a", "label": "A"}]},
         "matrix": {"matrix_config": {"inputs": 2, "outputs": 2}},
+        # A page nav with nowhere to go is drawn disabled and reads nothing.
+        "page_nav": {"target_page": "main"},
     }
     drawn = set()
     for type_ in sorted(HONORED_SHOW_SLOTS):
@@ -349,3 +351,96 @@ def test_a_missing_picture_says_so_once_and_a_good_one_clears_it(panel_page) -> 
     ])
     assert [s["notes"] for s in seen] == [1, 1, 0]
     assert [s["shown"] for s in seen] == [False, False, True]
+
+
+# --- A page nav: lit while its page is showing, and a button's Appearance -----
+
+# Render one page nav on page `main`, then walk steps: a page change, an overlay
+# opened or closed, or new state. Each step reports what the nav draws.
+NAV_STEPS_JS = r"""
+([element, steps]) => {
+  const app = window.__openavcPanel;
+  const box = document.getElementById('box');
+  box.innerHTML = '';
+  app.bindings = [];
+  app.state = {};
+  app.overlayStack = [];
+  app.currentPage = 'main';
+  const node = app.renderElement(Object.assign({ id: 'probe', type: 'page_nav' }, element));
+  box.appendChild(node);
+  const btn = node.matches('button') ? node : node.querySelector('button');
+  const seen = [];
+  for (const step of steps) {
+    if (step.state) app.state = step.state;
+    if (step.page) app.currentPage = step.page;
+    if (step.open) { app.overlayStack.push(step.open); app.evaluateAllBindings(); }
+    else if (step.close) app.dismissOverlay();
+    else app.evaluateAllBindings();
+    seen.push({
+      registered: app.bindings.map(b => b.type),
+      lit: btn.classList.contains('nav-current'),
+      current: btn.getAttribute('aria-current'),
+      bg: btn.style.backgroundColor,
+      text: (btn.textContent || '').trim(),
+    });
+  }
+  return seen;
+}
+"""
+
+ACCENT = "rgb(33, 150, 243)"  # the panel's default accent, with no theme loaded
+
+
+def _nav_steps(page, element: dict, steps: list[dict]) -> list[dict]:
+    return page.evaluate(NAV_STEPS_JS, [element, steps])
+
+
+def test_a_page_nav_lights_while_its_page_is_showing(panel_page) -> None:
+    seen = _nav_steps(panel_page, {
+        "label": "Video", "target_page": "video", "highlight_current": True,
+    }, [{"page": "main"}, {"page": "video"}, {"page": "main"}])
+    assert seen[0]["registered"] == ["nav_look"]
+    assert [s["lit"] for s in seen] == [False, True, False]
+    assert [s["current"] for s in seen] == [None, "page", None]
+    assert seen[1]["bg"] == ACCENT
+    assert seen[2]["bg"] == ""
+
+
+def test_a_page_nav_to_an_overlay_is_lit_while_it_is_open(panel_page) -> None:
+    """Closing an overlay re-renders nothing under it, so the nav is redrawn."""
+    seen = _nav_steps(panel_page, {
+        "label": "Help", "target_page": "help", "highlight_current": True,
+    }, [{}, {"open": "help"}, {"close": True}])
+    assert [s["lit"] for s in seen] == [False, True, False]
+
+
+def test_a_page_nav_lights_only_when_asked_to(panel_page) -> None:
+    """Off unless set, so a nav saved before the setting existed is unchanged."""
+    seen = _nav_steps(panel_page, {"label": "Main", "target_page": "main"}, [{}])
+    assert seen[0]["registered"] == []
+    assert seen[0]["lit"] is False
+
+
+def test_a_back_nav_never_lights(panel_page) -> None:
+    seen = _nav_steps(panel_page, {
+        "label": "Back", "target_page": "$back", "highlight_current": True,
+    }, [{}, {"open": "help"}])
+    assert [s["lit"] for s in seen] == [False, False]
+
+
+def test_a_page_nav_takes_its_appearance_and_lit_draws_over_the_colour(panel_page) -> None:
+    """The state's words stay while lit; the state's colour shows when not lit."""
+    seen = _nav_steps(panel_page, {
+        "label": "Mode", "target_page": "main", "highlight_current": True,
+        "bindings": {"show": {"look": {"key": "var.mode", "states": {
+            "a": {"label": "ALPHA", "bg_color": "rgb(255, 0, 0)"},
+        }}}},
+    }, [
+        {"state": {"var.mode": "a"}},
+        {"page": "other"},
+        {"state": {"var.mode": "b"}},
+    ])
+    assert [s["text"] for s in seen] == ["ALPHA", "ALPHA", "Mode"]
+    assert seen[0]["lit"] and seen[0]["bg"] == ACCENT
+    assert not seen[1]["lit"] and seen[1]["bg"] == "rgb(255, 0, 0)"
+    assert seen[2]["bg"] == ""

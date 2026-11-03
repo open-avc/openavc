@@ -134,7 +134,7 @@ HONORED_SHOW_SLOTS: dict[str, frozenset[str]] = {
     "level_meter": frozenset({"value"}),
     "list": frozenset({"items", "value"}),
     "matrix": frozenset(),
-    "page_nav": frozenset(),
+    "page_nav": frozenset({"look"}),
     "plugin": frozenset(),
     "select": frozenset({"look", "value"}),
     "slider": frozenset({"value"}),
@@ -155,25 +155,26 @@ RENDERED_TYPES = frozenset(HONORED_SHOW_SLOTS)
 #: dot, a select styles its options, an image swaps its picture -- so a
 #: ``states[].label`` on those never appears.
 #:
-#: ``label`` differs from the other two in what happens when a state names no
-#: label: a button falls back to its own ``label`` field, while a label keeps
-#: whatever text it already had (its ``text``, or a bound ``show.value``) and
-#: takes only colour from that state.
-STATE_LABEL_TYPES = frozenset({"button", "camera_preset", "label"})
+#: ``label`` differs from the others in what happens when a state names no
+#: label: a button or a page nav falls back to its own ``label`` field, while a
+#: label keeps whatever text it already had (its ``text``, or a bound
+#: ``show.value``) and takes only colour from that state.
+STATE_LABEL_TYPES = frozenset({"button", "camera_preset", "label", "page_nav"})
 
 #: Types whose ``look`` binding renders a per-state ICON, which is a smaller set
 #: than the one above.
 #:
 #: A state's appearance is merged into the element's style and applied, and an
 #: icon is not a style property -- it is content, and something has to rebuild
-#: the icon+text layout for it to appear. Only the button's evaluator does
-#: (``evaluateFeedback`` calls ``renderElementContent``); the label's
-#: (``evaluateLabelLook``) deliberately does colour and words and nothing else.
+#: the icon+text layout for it to appear. The button's evaluator does
+#: (``evaluateFeedback`` calls ``renderElementContent``), and so does the page
+#: nav's; the label's (``evaluateLabelLook``) deliberately does colour and words
+#: and nothing else.
 #:
 #: So a label draws its OWN ``icon`` -- ``renderLabel`` builds that at render
 #: time -- and ignores one named by a state. That difference is invisible from
 #: the project file, which is why it is written down here.
-STATE_ICON_TYPES = frozenset({"button", "camera_preset"})
+STATE_ICON_TYPES = frozenset({"button", "camera_preset", "page_nav"})
 
 #: Types whose ``look`` binding renders a per-state PICTURE (a state's
 #: ``button_image``).
@@ -252,7 +253,8 @@ HONORED_PROPERTIES: dict[str, frozenset[str]] = {
     "list": frozenset({"item_height", "items", "label", "list_style", "options"}),
     "matrix": frozenset({"label", "matrix_config", "matrix_style"}),
     "page_nav": frozenset({
-        "icon", "icon_color", "icon_position", "icon_size", "label", "target_page",
+        "highlight_current", "icon", "icon_color", "icon_position", "icon_size", "label",
+        "target_page",
     }),
     "plugin": frozenset({"grant", "plugin_config", "plugin_id", "plugin_type"}),
     "select": frozenset({"label", "options"}),

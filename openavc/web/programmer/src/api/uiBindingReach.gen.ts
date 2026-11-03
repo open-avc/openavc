@@ -48,7 +48,9 @@ export const HONORED_SHOW_SLOTS: Record<string, string[]> =
     "value"
   ],
   "matrix": [],
-  "page_nav": [],
+  "page_nav": [
+    "look"
+  ],
   "plugin": [],
   "select": [
     "look",
@@ -72,7 +74,7 @@ export const HONORED_SHOW_SLOTS: Record<string, string[]> =
  * status LED tints its dot, a select styles its options, an image swaps its
  * picture -- so a `states[].label` on those never appears anywhere.
  */
-export const STATE_LABEL_TYPES: string[] = ["button", "camera_preset", "label"];
+export const STATE_LABEL_TYPES: string[] = ["button", "camera_preset", "label", "page_nav"];
 
 /**
  * Types whose `look` binding renders a per-state ICON -- a smaller set again.
@@ -81,7 +83,7 @@ export const STATE_LABEL_TYPES: string[] = ["button", "camera_preset", "label"];
  * has to rebuild the icon+text layout for it to appear, and only the button's
  * evaluator does. A label draws its own `icon` and ignores one named by a state.
  */
-export const STATE_ICON_TYPES: string[] = ["button", "camera_preset"];
+export const STATE_ICON_TYPES: string[] = ["button", "camera_preset", "page_nav"];
 
 /**
  * Types whose `look` binding renders a per-state PICTURE (a state's
@@ -213,6 +215,7 @@ export const HONORED_PROPERTIES: Record<string, string[]> =
     "matrix_style"
   ],
   "page_nav": [
+    "highlight_current",
     "icon",
     "icon_color",
     "icon_position",

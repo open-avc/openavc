@@ -416,6 +416,9 @@ class UIElement(_ForwardCompatModel):
     send_throttle_ms: int | None = None  # slider/fader: min ms between live sends (default per element)
     display_decimals: int | None = None  # slider/fader/gauge/label: decimal places shown in the value readout
     target_page: str | None = None
+    # page_nav: lit (accent fill) while its target page or overlay is on this
+    # panel's screen. Absent is off, so a nav saved before it existed is unchanged.
+    highlight_current: bool | None = None
     options: list[dict[str, Any]] | None = None
     placeholder: str | None = None
     src: str | None = None

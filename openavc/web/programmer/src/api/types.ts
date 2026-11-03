@@ -235,6 +235,8 @@ export interface UIElement {
   send_throttle_ms?: number; // slider/fader: min ms between live sends
   display_decimals?: number; // slider/fader/gauge/label: decimal places in the value readout
   target_page?: string;
+  /** page_nav: lit while its target page or overlay is on this panel's screen. */
+  highlight_current?: boolean;
   options?: UIElementOption[];
   placeholder?: string;
   src?: string;

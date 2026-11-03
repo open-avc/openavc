@@ -113,7 +113,7 @@ Validate also asks the device's driver whether each command you have chosen has 
 | **Slider** | Range input (sends value on change) | Volume, lighting level, shade position |
 | **Select** | Dropdown selector | Input selection, preset recall |
 | **Status LED** | Colored indicator mapped to state values | Projector warming, system active, mute indicator |
-| **Page Nav** | Button that navigates to another page | "Advanced", "Lighting", "Camera" |
+| **Page Nav** | Button that navigates to another page, and lights up while that page is showing | "Advanced", "Lighting", "Camera", a row of tabs |
 | **Text Input** | Text entry field | IP address entry, room name |
 | **Image** | A picture, which can change with a state | Logo, floor plan, a background that changes with the season |
 | **Camera Preset** | Camera preset button with optional thumbnail | PTZ camera preset recall |
@@ -165,6 +165,8 @@ Click the **+** tab to add pages. Common patterns for AV rooms:
 - **Lighting**: Lighting presets and manual level control
 - **Camera**: PTZ camera presets, directional controls
 - **Advanced**: Technical controls, diagnostics, IP info
+
+**Tabs that show the current page:** a Page Nav lights up while its page is on the panel's screen, in the theme's accent color (or the nav's own **Accent Color**). That is how to build a row of tabs with the current one lit: place one Page Nav per page, usually as master elements so the row is on every page, and each lights on its own page. It is the **Light up while its page is showing** setting in the Page Nav's properties, on for every Page Nav you place. A Page Nav to an overlay or sidebar is lit while it is open, and one set to `$back` never lights. Each panel lights the tab for the page it is showing, so two tablets on different pages each light their own. Page Navs placed before this setting existed have it off; tick it to turn it on.
 
 Most rooms need 2-4 pages. Start with a Main page that handles the 80% use case, then add pages for less common tasks. Right-click a page tab for options including **Set as home page**. This moves the page first, and a newly opened panel starts there. An explicit `?page=` link can open a different page. Live project updates preserve the page the operator has already selected.
 
@@ -307,7 +309,7 @@ The **Appearance** card changes an element's look based on a state value. This i
 
 - **Source**: pick a category (Variables, Devices, Plugins, System) then the specific state key.
 - **Condition**: when the state key equals a value, the element is "active." For boolean keys you get a Yes / No toggle; for string keys you get a dropdown of the values the key can take: what the driver declares for it (its listed values, or the choices of the command that sets it) plus whatever the device reports now. So a Wireless button can be bound to `hdmi2` while the display is still on HDMI 1.
-- **Active appearance**: background color, text color, and optional label text when the condition is true. Buttons and camera presets also get an icon and icon color; a label draws its own icon and cannot change it per state, so those fields are not offered there. Buttons, camera presets and images also get an **Image**, a picture for that state.
+- **Active appearance**: background color, text color, and optional label text when the condition is true. Buttons, camera presets and page navs also get an icon and icon color; a label draws its own icon and cannot change it per state, so those fields are not offered there. Buttons, camera presets and images also get an **Image**, a picture for that state.
 - **Inactive appearance**: the same, for when the condition is false. A color left empty draws the element's own color.
 - **Live preview**: the editor shows the current value and whether the condition is active or inactive right now.
 
@@ -316,6 +318,8 @@ The **Appearance** card changes an element's look based on a state value. This i
 **Status text on a label:** a Label reads Appearance too, so the plain way to show a device's status in words is one label with a state map: `true` shows ONLINE in green, `false` shows OFFLINE in red. If a state sets only a color and no label text, the label keeps whatever text it already had, so you can tint a live value without replacing it.
 
 Example: on the source-select buttons, set Appearance so that when `var.current_source` equals `"laptop"`, the Laptop button shows as highlighted and all others show as dimmed.
+
+**A Page Nav reads Appearance too,** with the same colors, words and icon per state a button has, so a tab can say what its page is doing ("Display: ON"). While its page is showing, the lit color draws over the state's color and the state's words stay.
 
 **A picture per state on an Image:** an Image reads Appearance too, and each state picks its own picture (and, if you want one, a background color). This is how a panel's background changes with the season: a script that works out the date sets `var.season` to `christmas`, and the Image's `christmas` state shows the holiday picture. Set the Image's own picture as well. It shows whenever no state picks one, and while the device behind the state key cannot be reached. Because the pictures are picked in the Appearance card rather than typed into a variable, an asset a state still shows cannot be deleted by mistake.
 

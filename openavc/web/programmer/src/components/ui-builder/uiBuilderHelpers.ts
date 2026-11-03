@@ -162,6 +162,10 @@ export const BINDING_CAPABILITIES: Record<string, BindingCapability> = {
   // An image changes its picture per state: a script sets a variable to
   // `christmas` and the background becomes the holiday one.
   image: { look: "feedback", lookWithoutText: true },
+  // A Page Nav takes a button's Appearance: colours, words and an icon per
+  // state. Its lit tab is a property of its own (highlight_current), not a
+  // binding: it follows the page on screen, not state.
+  page_nav: { look: "feedback" },
   slider: {
     value: { editor: "slider", link: true },
     does: [{ interaction: "change", label: "On change", editor: "actions" }],
@@ -198,7 +202,7 @@ export const BINDING_CAPABILITIES: Record<string, BindingCapability> = {
       { interaction: "audio_mute_route", label: "Audio mute", editor: "actions" },
     ],
   },
-  // page_nav / group / clock / plugin / custom: "Visible when…" only.
+  // group / clock / plugin / custom: "Visible when…" only.
   // A custom control talks to the room through its own message bridge, not
   // through bindings, so there is nothing here to give it.
 };
@@ -353,7 +357,10 @@ export function createDefaultElement(
         response: "linear",
       };
     case "page_nav":
-      return { ...base, label: "Next Page", target_page: "" };
+      // Lit while its page is showing, on for every nav placed from now on.
+      // Absent on navs placed before, so a panel already installed does not
+      // change its look when it updates.
+      return { ...base, label: "Next Page", target_page: "", highlight_current: true };
     case "select":
       return {
         ...base,

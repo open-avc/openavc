@@ -1433,6 +1433,7 @@ class PanelApp {
             if (!elId) return true;
             return !overlayEl?.querySelector(`[data-element-id="${elId}"]`);
         });
+        this._refreshPageNavs();
     }
 
     dismissAllOverlays() {
@@ -3022,7 +3023,59 @@ class PanelApp {
 
         this.applyStyle(el, this.getThemedStyle(element.type, element.style));
         this.renderElementContent(el, element);
+
+        // Appearance, and lit while its page is showing. One binding and one
+        // evaluator for both, because both write the same colours.
+        if (element.target_page) {
+            if (element.bindings?.show?.look) {
+                this.bindings.push({
+                    type: 'nav_look',
+                    element: el,
+                    elementDef: element,
+                    binding: element.bindings.show.look,
+                });
+            } else if (element.highlight_current) {
+                // Nothing to read from state: drawn when the page changes and
+                // never on a state batch, which an empty key list matches none of.
+                this.bindings.push({
+                    type: 'nav_look',
+                    element: el,
+                    elementDef: element,
+                    binding: { _keys: [] },
+                });
+            }
+        }
         return el;
+    }
+
+    /**
+     * Whether a Page Nav set to light up has its page on this panel's screen:
+     * the page itself, or an overlay or sidebar open over it.
+     *
+     * From this panel's own `currentPage` and overlay stack, never from state.
+     * State reaches every panel in the building, and one tablet changing page
+     * must not light the tabs on another.
+     */
+    _navShowsItsPage(elementDef) {
+        if (!elementDef.highlight_current) return false;
+        const target = elementDef.target_page;
+        // `$back` and `$dismiss` are moves, not places.
+        if (!target || target.startsWith('$')) return false;
+        return this.currentPage === target || this.overlayStack.includes(target);
+    }
+
+    /**
+     * Redraw every Page Nav after an overlay closes. Opening one evaluates
+     * everything, and a page change renders everything again, but closing one
+     * re-renders nothing under it, so a tab to the overlay would stay lit.
+     */
+    _refreshPageNavs() {
+        for (const b of this.bindings) {
+            if (b.type !== 'nav_look') continue;
+            try { this._evaluateBinding(b); }
+            catch (e) { console.error('Binding error:', e); }
+        }
+        this.evaluateUiOverrides();
     }
 
     renderSelect(element) {
@@ -6819,6 +6872,9 @@ class PanelApp {
             case 'image_look':
                 this.evaluateImageLook(b);
                 break;
+            case 'nav_look':
+                this.evaluateNavLook(b);
+                break;
             case 'text':
                 this.evaluateText(b);
                 break;
@@ -7171,6 +7227,79 @@ class PanelApp {
         this._clearStateColours(element, rest);
         this.applyStyle(element, { ...rest, ...appearance });
         this._showImagePicture(element, elementDef, appearance.button_image || elementDef.src);
+    }
+
+    /**
+     * A Page Nav's look: its Appearance state, and lit while its page is on
+     * this panel's screen.
+     *
+     * Its own evaluator rather than the button's, which also redraws artwork,
+     * display modes and frameless chrome that a Page Nav does not have. Lit
+     * is the accent a lit toggle wears, drawn over the state's colours; the
+     * words and the icon still come from the state. A device that cannot be
+     * reached takes the state away and leaves lit alone: which page is
+     * showing is still true.
+     */
+    evaluateNavLook(b) {
+        const { element, elementDef, binding } = b;
+        const rest = this.getThemedStyle(elementDef.type, elementDef.style || {});
+        const offline = this._bindingOffline(b);
+        this._markBindingAvailability(b, offline);
+
+        let appearance = {};
+        let labelPath = ['label'];
+        if (binding.key && !offline) {
+            const stateValue = this.state[binding.key];
+            if (binding.states) {
+                const stateKey = stateValue != null ? String(stateValue) : (binding.default_state || '');
+                appearance = binding.states[stateKey]
+                    || binding.states[binding.default_state || '']
+                    || {};
+                const matched = binding.states[stateKey] !== undefined
+                    ? stateKey
+                    : (binding.default_state || '');
+                labelPath = ['bindings', 'show', 'look', 'states', matched, 'label'];
+            } else {
+                const condition = binding.condition || {};
+                const isActive = stateValue !== undefined &&
+                    String(stateValue).toLowerCase() === String(condition.equals).toLowerCase();
+                appearance = (isActive ? binding.style_active : binding.style_inactive) || {};
+                labelPath = ['bindings', 'show', 'look',
+                    isActive ? 'style_active' : 'style_inactive', 'label'];
+                const legacyText = isActive ? binding.label_active : binding.label_inactive;
+                if (legacyText !== undefined && legacyText !== null) {
+                    appearance = { ...appearance, label: legacyText };
+                    labelPath = ['bindings', 'show', 'look',
+                        isActive ? 'label_active' : 'label_inactive'];
+                }
+            }
+        }
+
+        const lit = this._navShowsItsPage(elementDef);
+        this._clearStateColours(element, rest);
+        this.applyStyle(element, {
+            ...rest, ...appearance, ...(lit ? this._toggleOnStyle(elementDef) : {}),
+        });
+        element.classList.toggle('nav-current', lit);
+        if (lit) element.setAttribute('aria-current', 'page');
+        else element.removeAttribute('aria-current');
+
+        // Words and icon only where a look can change them. A nav that only
+        // lights keeps what it drew, so a `ui.<id>.label` a script set is not
+        // written over on every page change.
+        if (!binding.key) return;
+        const named = appearance.label !== undefined;
+        this._setLabelText(element,
+            named ? String(appearance.label) : (elementDef.label || elementDef.target_page || ''),
+            named ? labelPath : ['label']);
+        const icon = appearance.icon || elementDef.icon || elementDef.style?.icon;
+        if (icon) {
+            this.renderElementContent(element, {
+                ...elementDef,
+                icon: appearance.icon || elementDef.icon,
+                icon_color: appearance.icon_color || elementDef.icon_color,
+            });
+        }
     }
 
     evaluateFeedback(b) {
