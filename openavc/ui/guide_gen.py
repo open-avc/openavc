@@ -64,6 +64,7 @@ from openavc.ui.page_review import (
     MATRIX_CONFIG_KEYS,
     RENDERED_TYPES,
     STATE_ICON_TYPES,
+    STATE_IMAGE_TYPES,
     STATE_LABEL_TYPES,
     STRUCTURAL_PROPERTIES,
     TOUCH_MIN_MM,
@@ -370,6 +371,14 @@ is narrower still: %(state_icon_types)s and nothing else. A state's appearance i
 applied as style, and an icon is content -- it appears only where the evaluator
 goes on to rebuild the icon+text layout. A `label` draws its own top-level
 `icon`; it just cannot change it per state.
+
+Per-state **picture** (`states[].button_image`, or `style_active.button_image`
+in the binary form) is drawn by %(state_image_types)s. On an `image` it replaces
+the element's own `src` while that state matches; a state that names no
+picture, and a device that cannot be reached, show `src`. A picture is always
+an asset ref written into the look itself (`"assets://holiday.png"`), never read
+out of a variable, so to change an image with the season, have the script set a
+variable to `christmas` and give the image a `christmas` state with its picture.
 """
 
 DO_ACTIONS = """\
@@ -1108,6 +1117,7 @@ def render() -> str:
         BINDINGS_TAIL % {
             "state_label_types": _and_list(sorted(STATE_LABEL_TYPES)),
             "state_icon_types": _and_list(sorted(STATE_ICON_TYPES)),
+            "state_image_types": _and_list(sorted(STATE_IMAGE_TYPES)),
         },
         DO_ACTIONS % {
             "actions": "\n".join(f"- `{name}`" for name in sorted(DISPATCHED_ACTIONS)),

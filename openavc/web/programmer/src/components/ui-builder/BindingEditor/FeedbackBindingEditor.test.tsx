@@ -115,3 +115,39 @@ describe("multi-state appearance names", () => {
     });
   });
 });
+
+describe("what the card offers and seeds, per element", () => {
+  function Card({ changed, ...gates }: {
+    changed: (value: Record<string, unknown>) => void;
+    showConditionalLabel?: boolean; showImageField?: boolean;
+    showIconField?: boolean; showTextColor?: boolean;
+  }) {
+    const [value, setValue] = useState<Record<string, unknown>>(initial);
+    return <FeedbackBindingEditor value={value} onClear={vi.fn()} {...gates} onChange={(next) => {
+      changed(next);
+      setValue(next);
+    }} />;
+  }
+
+  it("on an image, offers no words or text colour and adds a state with nothing seeded", async () => {
+    const user = userEvent.setup();
+    const changed = vi.fn();
+    render(<Card changed={changed} showImageField showTextColor={false} />);
+    expect(screen.queryByPlaceholderText("Display text")).not.toBeInTheDocument();
+    expect(screen.queryByText("Text")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Image")).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: /Add State/ }));
+    expect(changed.mock.calls[0][0].states.state_3).toEqual({});
+  });
+
+  it("on a button, seeds a new state with colours and its name as words", async () => {
+    const user = userEvent.setup();
+    const changed = vi.fn();
+    render(<Card changed={changed} showConditionalLabel showImageField showIconField />);
+    expect(screen.getAllByPlaceholderText("Display text")).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: /Add State/ }));
+    expect(changed.mock.calls[0][0].states.state_3).toEqual({
+      bg_color: "#424242", text_color: "#999999", label: "STATE_3",
+    });
+  });
+});

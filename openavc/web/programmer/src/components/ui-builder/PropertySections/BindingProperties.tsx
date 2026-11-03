@@ -14,7 +14,7 @@ import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
 import { DeviceValuePicker } from "../BindingEditor/DeviceValuePicker";
 import { ConditionGroupEditor, type ConditionGroup } from "../../shared/ConditionGroupEditor";
 import { useConnectionStore } from "../../../store/connectionStore";
-import { STATE_ICON_TYPES, STATE_LABEL_TYPES } from "../../../api/uiBindingReach.gen";
+import { STATE_ICON_TYPES, STATE_IMAGE_TYPES, STATE_LABEL_TYPES } from "../../../api/uiBindingReach.gen";
 import { hasReading } from "../../../api/stateClient";
 import { valueText } from "../../shared/booleanWords";
 
@@ -244,18 +244,19 @@ export function BindingProperties({ element, project, onChange }: BindingPropert
       body = (
         // Keyed by element so nothing inside it -- a half-typed state key, the
         // category last picked -- outlives the element it was chosen for. The
-        // two gates come from the panel's own tables rather than a type name:
-        // per-state TEXT is drawn by three types and a per-state ICON by two,
-        // and spelling either as `=== "button"` is what hid the label field
-        // from a label while offering it an icon nothing draws.
+        // three gates come from the panel's own tables rather than a type name:
+        // per-state TEXT, ICON and PICTURE are each drawn by their own set of
+        // types, and spelling any of them as `=== "button"` is what hid the
+        // label field from a label while offering it an icon nothing draws.
         <FeedbackBindingEditor
           key={element.id}
           value={lookBinding}
           onChange={(v) => setShowKey("look", v)}
           onClear={() => setShowKey("look", null)}
-          showImageField={element.type === "button"}
+          showImageField={STATE_IMAGE_TYPES.includes(element.type)}
           showConditionalLabel={STATE_LABEL_TYPES.includes(element.type)}
           showIconField={STATE_ICON_TYPES.includes(element.type)}
+          showTextColor={!cap.lookWithoutText}
         />
       );
     }

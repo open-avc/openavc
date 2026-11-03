@@ -115,7 +115,7 @@ Validate also asks the device's driver whether each command you have chosen has 
 | **Status LED** | Colored indicator mapped to state values | Projector warming, system active, mute indicator |
 | **Page Nav** | Button that navigates to another page | "Advanced", "Lighting", "Camera" |
 | **Text Input** | Text entry field | IP address entry, room name |
-| **Image** | Static image display | Logo, room diagram, floor plan |
+| **Image** | A picture, which can change with a state | Logo, floor plan, a background that changes with the season |
 | **Camera Preset** | Camera preset button with optional thumbnail | PTZ camera preset recall |
 | **Gauge** | Circular arc meter with value binding | Temperature, signal level, volume position |
 | **Level Meter** | Segmented bar (audio VU style) | Audio levels, signal strength |
@@ -307,7 +307,7 @@ The **Appearance** card changes an element's look based on a state value. This i
 
 - **Source**: pick a category (Variables, Devices, Plugins, System) then the specific state key.
 - **Condition**: when the state key equals a value, the element is "active." For boolean keys you get a Yes / No toggle; for string keys you get a dropdown of the values the key can take: what the driver declares for it (its listed values, or the choices of the command that sets it) plus whatever the device reports now. So a Wireless button can be bound to `hdmi2` while the display is still on HDMI 1.
-- **Active appearance**: background color, text color, and optional label text when the condition is true. Buttons and camera presets also get an icon and icon color; a label draws its own icon and cannot change it per state, so those fields are not offered there.
+- **Active appearance**: background color, text color, and optional label text when the condition is true. Buttons and camera presets also get an icon and icon color; a label draws its own icon and cannot change it per state, so those fields are not offered there. Buttons, camera presets and images also get an **Image**, a picture for that state.
 - **Inactive appearance**: the same, for when the condition is false. A color left empty draws the element's own color.
 - **Live preview**: the editor shows the current value and whether the condition is active or inactive right now.
 
@@ -316,6 +316,8 @@ The **Appearance** card changes an element's look based on a state value. This i
 **Status text on a label:** a Label reads Appearance too, so the plain way to show a device's status in words is one label with a state map: `true` shows ONLINE in green, `false` shows OFFLINE in red. If a state sets only a color and no label text, the label keeps whatever text it already had, so you can tint a live value without replacing it.
 
 Example: on the source-select buttons, set Appearance so that when `var.current_source` equals `"laptop"`, the Laptop button shows as highlighted and all others show as dimmed.
+
+**A picture per state on an Image:** an Image reads Appearance too, and each state picks its own picture (and, if you want one, a background color). This is how a panel's background changes with the season: a script that works out the date sets `var.season` to `christmas`, and the Image's `christmas` state shows the holiday picture. Set the Image's own picture as well. It shows whenever no state picks one, and while the device behind the state key cannot be reached. Because the pictures are picked in the Appearance card rather than typed into a variable, an asset a state still shows cannot be deleted by mistake.
 
 **Multi-state appearance:** for devices with more than two states (e.g., projector power: on/off/warming/cooling), use a multi-state map instead of a simple active/inactive condition. Define a state map where each value gets its own color and label (and, on a button or camera preset, its own icon). Add a row per state value, pick colors, and the element updates per state. This eliminates the need for scripts to handle transitional states like warming and cooling.
 
@@ -552,7 +554,7 @@ Projects can include uploaded image assets (PNG, JPG, SVG, etc.) stored in the p
 - The Asset Picker shows thumbnails of all uploaded images with search by filename
 - A warning appears when uploading images larger than 500KB with a suggestion to compress
 - Unused assets (not referenced by any element) are flagged so you can clean up
-- Deleting an asset something still shows is refused, and the message names what shows it — a page background, a control, a master element, a theme or a plugin. Point those somewhere else first. There is no undo: the only way back is uploading the file again
+- Deleting an asset something still shows is refused, and the message names what shows it — a page background, a control (including a picture picked for one of its Appearance states), a master element, a theme or a plugin. Point those somewhere else first. There is no undo: the only way back is uploading the file again
 - Assets are included automatically when you export a project as `.zip`
 
 ## Preview Mode
@@ -647,8 +649,9 @@ A control bound to a device the system cannot reach stops showing a value. It
 draws dimmed with a dashed edge, and where it would print a number it prints
 `--` instead: a fader or slider loses its handle, a gauge empties its arc, a
 meter goes dark, a dropdown or text box shows nothing, a status LED shows its
-default color, and a button bound to a device state goes back to its own label
-and color rather than claiming the device is on or muted.
+default color, a button bound to a device state goes back to its own label
+and color rather than claiming the device is on or muted, and an image goes
+back to its own picture.
 
 **A button or camera preset that only sends a command gets a lighter version of the same mark.**
 It keeps its color, its label and its artwork -- none of those are wrong just

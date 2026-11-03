@@ -128,7 +128,7 @@ HONORED_SHOW_SLOTS: dict[str, frozenset[str]] = {
     "fader": frozenset({"value"}),
     "gauge": frozenset({"value"}),
     "group": frozenset(),
-    "image": frozenset(),
+    "image": frozenset({"look"}),
     "keypad": frozenset(),
     "label": frozenset({"look", "value"}),
     "level_meter": frozenset({"value"}),
@@ -151,8 +151,9 @@ HONORED_SHOW_SLOTS: dict[str, frozenset[str]] = {
 RENDERED_TYPES = frozenset(HONORED_SHOW_SLOTS)
 
 #: Types whose ``look`` binding renders per-state TEXT. Everything else that
-#: reads ``look`` takes only colour from it -- a status LED tints its dot, a
-#: select styles its options -- so a ``states[].label`` on those never appears.
+#: reads ``look`` takes colour from it and no words -- a status LED tints its
+#: dot, a select styles its options, an image swaps its picture -- so a
+#: ``states[].label`` on those never appears.
 #:
 #: ``label`` differs from the other two in what happens when a state names no
 #: label: a button falls back to its own ``label`` field, while a label keeps
@@ -173,6 +174,16 @@ STATE_LABEL_TYPES = frozenset({"button", "camera_preset", "label"})
 #: time -- and ignores one named by a state. That difference is invisible from
 #: the project file, which is why it is written down here.
 STATE_ICON_TYPES = frozenset({"button", "camera_preset"})
+
+#: Types whose ``look`` binding renders a per-state PICTURE (a state's
+#: ``button_image``).
+#:
+#: One field name on every type, so a state's picture is spelled the same way
+#: wherever it is drawn: a button and a camera preset show it as their artwork,
+#: an image shows it in place of its own ``src``. Everything else that reads
+#: ``look`` has nowhere to put a picture, and one named there is stored and
+#: never seen.
+STATE_IMAGE_TYPES = frozenset({"button", "camera_preset", "image"})
 
 
 # --- What the panel reads off the element itself, per type -----------------
@@ -1386,8 +1397,8 @@ INERT_WITHOUT: dict[str, tuple[str, str | None, str]] = {
 }
 
 
-def _look_icon_states(look: Mapping[str, Any]) -> list[str]:
-    """Which states of a ``show.look`` name an icon, in both spellings.
+def _look_states_naming(look: Mapping[str, Any], field: str) -> list[str]:
+    """Which states of a ``show.look`` name ``field`` (an icon, a picture), in both spellings.
 
     The multi-state form carries one appearance per state; the binary form
     carries two, ``style_active`` and ``style_inactive``. Both are offered by
@@ -1397,12 +1408,37 @@ def _look_icon_states(look: Mapping[str, Any]) -> list[str]:
     if isinstance(states, Mapping):
         return sorted(
             str(name) for name, spec in states.items()
-            if isinstance(spec, Mapping) and spec.get("icon")
+            if isinstance(spec, Mapping) and spec.get(field)
         )
     return [
-        half for half, field in (("active", "style_active"), ("inactive", "style_inactive"))
-        if isinstance(look.get(field), Mapping) and look[field].get("icon")
+        half for half, side in (("active", "style_active"), ("inactive", "style_inactive"))
+        if isinstance(look.get(side), Mapping) and look[side].get(field)
     ]
+
+
+def _look_takes(el_type: str) -> str:
+    """What a type draws from ``show.look``, in words, for a sentence that says so."""
+    parts = ["color"]
+    if el_type in STATE_LABEL_TYPES:
+        parts.append("text")
+    if el_type in STATE_ICON_TYPES:
+        parts.append("an icon")
+    if el_type in STATE_IMAGE_TYPES:
+        parts.append("a picture")
+    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+
+
+def _a(el_type: str) -> str:
+    """A type name with its article: "a button", "an image"."""
+    return f"an {el_type}" if el_type[:1] in ("a", "e", "i", "o", "u") else f"a {el_type}"
+
+
+#: Where to put per-state words instead, for a type that has no words of its
+#: own to change. An image's ``label`` is its alt text, so "use the element's
+#: own label" would send the author to a field that never appears.
+_STATE_TEXT_REMEDY = {
+    "image": "Place a label element bound to the same key over it.",
+}
 
 
 def look_supplies_text(look: Any) -> bool:
@@ -1706,14 +1742,14 @@ def binding_findings(element: Mapping[str, Any]) -> list[Finding]:
         findings.append(Finding(
             el_id,
             "binding_not_rendered",
-            f"{el_id} ({el_type}) declares show.{slot}, which a {el_type} does not render "
+            f"{el_id} ({el_type}) declares show.{slot}, which {_a(el_type)} does not render "
             f"-- it reads {reads}. That binding has no effect.{extra}",
             key=("binding_not_rendered", el_id, slot),
         ))
 
     # A look binding can be honored for its colour while its state labels are
-    # not: a status LED tints its dot, a select styles its options, and neither
-    # has anywhere to put text.
+    # not: a status LED tints its dot, a select styles its options, an image
+    # swaps its picture, and none of them has anywhere to put text.
     look = show.get("look")
     if (
         "look" in honored
@@ -1730,9 +1766,12 @@ def binding_findings(element: Mapping[str, Any]) -> list[Finding]:
                 el_id,
                 "binding_not_rendered",
                 f"{el_id} ({el_type}): show.look.states sets a label for "
-                f"{', '.join(labelled)}, but a {el_type} takes only color from show.look, "
-                f"so that text never appears. Use the element's own label, or a label "
-                f"element bound to the same key.",
+                f"{', '.join(labelled)}, but {_a(el_type)} takes only "
+                f"{_look_takes(el_type)} from show.look, so that text never appears. "
+                + _STATE_TEXT_REMEDY.get(
+                    el_type,
+                    "Use the element's own label, or a label element bound to the same key.",
+                ),
                 key=("binding_not_rendered", el_id, "look.states.label"),
             ))
 
@@ -1740,9 +1779,8 @@ def binding_findings(element: Mapping[str, Any]) -> list[Finding]:
     # AND its text while a per-state icon is still dropped, because an icon is
     # content rather than style and only the button's evaluator rebuilds it.
     if "look" in honored and el_type not in STATE_ICON_TYPES and isinstance(look, Mapping):
-        iconed = _look_icon_states(look)
+        iconed = _look_states_naming(look, "icon")
         if iconed:
-            took = "color and text" if el_type in STATE_LABEL_TYPES else "color"
             remedy = (
                 "Set the element's own icon -- it draws that one, it just cannot "
                 "change it per state."
@@ -1753,9 +1791,24 @@ def binding_findings(element: Mapping[str, Any]) -> list[Finding]:
                 el_id,
                 "binding_not_rendered",
                 f"{el_id} ({el_type}): show.look sets an icon for {', '.join(iconed)}, "
-                f"but a {el_type} takes only {took} from show.look, so that icon never "
-                f"appears. {remedy}",
+                f"but {_a(el_type)} takes only {_look_takes(el_type)} from show.look, so "
+                f"that icon never appears. {remedy}",
                 key=("binding_not_rendered", el_id, "look.icon"),
+            ))
+
+    # ...and a per-state picture, which only the types in STATE_IMAGE_TYPES draw.
+    # A label, a status LED or a select stores one and never shows it.
+    if "look" in honored and el_type not in STATE_IMAGE_TYPES and isinstance(look, Mapping):
+        pictured = _look_states_naming(look, "button_image")
+        if pictured:
+            findings.append(Finding(
+                el_id,
+                "binding_not_rendered",
+                f"{el_id} ({el_type}): show.look sets a picture (button_image) for "
+                f"{', '.join(pictured)}, but {_a(el_type)} takes only "
+                f"{_look_takes(el_type)} from show.look, so that picture never appears. "
+                f"Use an image element bound to the same key.",
+                key=("binding_not_rendered", el_id, "look.button_image"),
             ))
 
     # A binding the renderer DOES read, that names nothing to read. It is the

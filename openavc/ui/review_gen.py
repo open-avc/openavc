@@ -1,7 +1,7 @@
 """Render the binding-reach tables into the Programmer IDE's types.
 
 Produces ``openavc/web/programmer/src/api/uiBindingReach.gen.ts`` from
-``HONORED_SHOW_SLOTS`` and ``STATE_LABEL_TYPES`` in ``page_review.py``. Data
+``HONORED_SHOW_SLOTS`` and the per-state tables in ``page_review.py``. Data
 only -- the rows, not the arithmetic over them -- so the Builder and the AI door
 answer "does this element type's renderer read this binding" from one table.
 
@@ -31,6 +31,7 @@ from openavc.ui.page_review import (
     MACRO_ONLY_ACTIONS,
     MATRIX_CONFIG_KEYS,
     STATE_ICON_TYPES,
+    STATE_IMAGE_TYPES,
     STATE_LABEL_TYPES,
     STRUCTURAL_PROPERTIES,
 )
@@ -63,9 +64,9 @@ export const HONORED_SHOW_SLOTS: Record<string, string[]> =
 /**
  * Types whose `look` binding renders per-state TEXT.
  *
- * Everything else that reads `look` takes only colour from it -- a status LED
- * tints its dot, a select styles its options -- so a `states[].label` on those
- * never appears anywhere.
+ * Everything else that reads `look` takes colour from it and no words -- a
+ * status LED tints its dot, a select styles its options, an image swaps its
+ * picture -- so a `states[].label` on those never appears anywhere.
  */
 export const STATE_LABEL_TYPES: string[] = %(state_labels)s;
 
@@ -77,6 +78,13 @@ export const STATE_LABEL_TYPES: string[] = %(state_labels)s;
  * evaluator does. A label draws its own `icon` and ignores one named by a state.
  */
 export const STATE_ICON_TYPES: string[] = %(state_icons)s;
+
+/**
+ * Types whose `look` binding renders a per-state PICTURE (a state's
+ * `button_image`): artwork on a button or camera preset, the picture itself on
+ * an image. Anywhere else one is stored and never seen.
+ */
+export const STATE_IMAGE_TYPES: string[] = %(state_images)s;
 
 /** The slots worth naming in a message, in the order a reader expects them. */
 export const REVIEWED_SHOW_SLOTS = ["value", "look", "items"] as const;
@@ -162,6 +170,7 @@ def render() -> str:
         "honored": honored,
         "state_labels": json.dumps(sorted(STATE_LABEL_TYPES), ensure_ascii=False),
         "state_icons": json.dumps(sorted(STATE_ICON_TYPES), ensure_ascii=False),
+        "state_images": json.dumps(sorted(STATE_IMAGE_TYPES), ensure_ascii=False),
         "properties": json.dumps(
             {name: sorted(props) for name, props in HONORED_PROPERTIES.items()},
             indent=2,

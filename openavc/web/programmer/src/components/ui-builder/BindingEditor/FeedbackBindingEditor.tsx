@@ -15,6 +15,7 @@ import { useProjectStore } from "../../../store/projectStore";
 import { useConnectionStore } from "../../../store/connectionStore";
 import { IconPicker } from "../IconPicker";
 import { AssetPicker } from "../AssetPicker";
+import * as api from "../../../api/restClient";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
 import { hasReading } from "../../../api/stateClient";
 import { fetchDeclaredValues } from "./declaredValues";
@@ -26,8 +27,14 @@ interface FeedbackBindingEditorProps {
   onClear: () => void;
   /** Show per-state label fields -- the types whose look renders TEXT. */
   showConditionalLabel?: boolean;
-  /** Show per-state image picker (for image-capable buttons) */
+  /** Show the per-state picture: a button's artwork, an image's picture. */
   showImageField?: boolean;
+  /**
+   * Show text colour, the colour presets and seeded state colours. Off for an
+   * element that draws no words (an image), where a colour seeded on every new
+   * state would paint a grey box behind the picture before one is chosen.
+   */
+  showTextColor?: boolean;
   /**
    * Show per-state icon pickers.
    *
@@ -47,6 +54,7 @@ export function FeedbackBindingEditor({
   showConditionalLabel = false,
   showImageField = false,
   showIconField = false,
+  showTextColor = true,
 }: FeedbackBindingEditorProps) {
   const projectVariables = useProjectStore((s) => s.project?.variables);
   const projectDevices = useProjectStore((s) => s.project?.devices);
@@ -260,11 +268,22 @@ export function FeedbackBindingEditor({
     closed: { bg_color: "#424242", text_color: "#999999" },
   };
 
+  // What a new state starts with: its colours and its words, where this element
+  // draws them. Nothing else, so the card never writes a field the panel
+  // ignores (and the review then badges).
+  const seedState = (name: string): Record<string, unknown> => {
+    const seed: Record<string, unknown> = {};
+    if (showTextColor) {
+      Object.assign(seed, defaultColors[name.toLowerCase()] || { bg_color: "#424242", text_color: "#999999" });
+    }
+    if (showConditionalLabel) seed.label = name.toUpperCase();
+    return seed;
+  };
+
   const handleAddState = (key?: string) => {
     const newKey = key || `state_${Object.keys(statesMap).length + 1}`;
-    const colors = defaultColors[newKey.toLowerCase()] || { bg_color: "#424242", text_color: "#999999" };
     handleChange({
-      states: { ...statesMap, [newKey]: { ...colors, label: newKey.toUpperCase() } },
+      states: { ...statesMap, [newKey]: seedState(newKey) },
       default_state: defaultState || newKey,
       condition: undefined,
       style_active: undefined,
@@ -313,13 +332,10 @@ export function FeedbackBindingEditor({
   const switchToMultiState = () => {
     const seedStates: Record<string, Record<string, unknown>> = {};
     if (observedValues.length > 0) {
-      for (const v of observedValues) {
-        const colors = defaultColors[v.toLowerCase()] || { bg_color: "#424242", text_color: "#999999" };
-        seedStates[v] = { ...colors, label: v.toUpperCase() };
-      }
+      for (const v of observedValues) seedStates[v] = seedState(v);
     } else {
-      seedStates.on = { bg_color: "#4CAF50", text_color: "#ffffff", label: "ON" };
-      seedStates.off = { bg_color: "#424242", text_color: "#999999", label: "OFF" };
+      seedStates.on = seedState("on");
+      seedStates.off = seedState("off");
     }
     const firstKey = Object.keys(seedStates)[0];
     handleChange({
@@ -537,6 +553,7 @@ export function FeedbackBindingEditor({
                     onChange={(c) => handleUpdateStateAppearance(sk, { bg_color: c })}
                   />
                 </div>
+                {showTextColor && (
                 <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
                   <span style={colorLabelStyle}>Text</span>
                   <InlineColorPicker
@@ -544,6 +561,8 @@ export function FeedbackBindingEditor({
                     onChange={(c) => handleUpdateStateAppearance(sk, { text_color: c })}
                   />
                 </div>
+                )}
+                {showConditionalLabel && (
                 <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
                   <span style={{ ...colorLabelStyle, width: 56 }}>Label</span>
                   <input
@@ -553,6 +572,7 @@ export function FeedbackBindingEditor({
                     style={{ ...inputStyle, flex: 1 }}
                   />
                 </div>
+                )}
                 {showIconField && (
                 <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
                   <span style={{ ...colorLabelStyle, width: 56 }}>Icon</span>
@@ -583,13 +603,20 @@ export function FeedbackBindingEditor({
 
                 {/* Preview */}
                 <div style={{
-                  display: "flex", alignItems: "center", justifyContent: "center",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
                   padding: "6px 12px", borderRadius: 4,
                   background: String(appearance.bg_color || "var(--bg-hover)"),
                   color: String(appearance.text_color || "var(--text-primary)"),
                   fontSize: 12, fontWeight: 500, minHeight: 28,
                 }}>
-                  {String(appearance.label || sk)}
+                  {showImageField && !!appearance.button_image && (
+                    <img
+                      src={api.getAssetUrl(String(appearance.button_image).replace("assets://", ""))}
+                      alt=""
+                      style={{ maxHeight: 40, maxWidth: "100%", objectFit: "contain" }}
+                    />
+                  )}
+                  {(showConditionalLabel || !appearance.button_image) && String(appearance.label || sk)}
                 </div>
               </div>
             );
@@ -598,7 +625,7 @@ export function FeedbackBindingEditor({
       )}
 
       {/* Quick presets (simple mode only) */}
-      {stateKey && !isMultiState && !styleActive.bg_color && !styleInactive.bg_color && (
+      {stateKey && showTextColor && !isMultiState && !styleActive.bg_color && !styleInactive.bg_color && (
         <div>
           <label style={labelStyle}>Quick Presets</label>
           <div style={{ display: "flex", gap: "var(--space-xs)", flexWrap: "wrap" }}>
@@ -712,6 +739,7 @@ export function FeedbackBindingEditor({
                 onChange={(c) => handleChange({ style_active: { ...styleActive, bg_color: c } })}
               />
             </div>
+            {showTextColor && (
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
               <span style={colorLabelStyle}>Text</span>
               <InlineColorPicker
@@ -719,6 +747,7 @@ export function FeedbackBindingEditor({
                 onChange={(c) => handleChange({ style_active: { ...styleActive, text_color: c } })}
               />
             </div>
+            )}
             {showConditionalLabel && (
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
                 <span style={{ ...colorLabelStyle, width: 56 }}>Label</span>
@@ -786,6 +815,7 @@ export function FeedbackBindingEditor({
                 onChange={(c) => handleChange({ style_inactive: { ...styleInactive, bg_color: c } })}
               />
             </div>
+            {showTextColor && (
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
               <span style={colorLabelStyle}>Text</span>
               <InlineColorPicker
@@ -793,6 +823,7 @@ export function FeedbackBindingEditor({
                 onChange={(c) => handleChange({ style_inactive: { ...styleInactive, text_color: c } })}
               />
             </div>
+            )}
             {showConditionalLabel && (
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
                 <span style={{ ...colorLabelStyle, width: 56 }}>Label</span>

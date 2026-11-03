@@ -31,6 +31,7 @@ from openavc.ui.page_review import (
     MATRIX_CONFIG_KEYS,
     MINIMUM_VISIBLE_PX,
     STATE_ICON_TYPES,
+    STATE_IMAGE_TYPES,
     STATE_LABEL_TYPES,
     STRUCTURAL_PROPERTIES,
     TOUCH_MIN_MM,
@@ -183,6 +184,43 @@ def test_only_the_state_icon_types_can_draw_a_state_icon(
         if "renderElementContent" in panel_method_bodies.get(evaluator_for.get(bind_type, ""), "")
     )
     assert derived == STATE_ICON_TYPES
+
+
+#: A read of a state's picture: ``appearance.button_image``,
+#: ``activeStyle.button_image``. The element's OWN ``button_image`` is not a
+#: state's, so ``elementDef.button_image`` does not count; nor does the word in
+#: a comment, which is why this is a property read and not a substring.
+_STATE_PICTURE_READ = re.compile(r"(?<!elementDef)(?<!elementDef\?)\.button_image\b")
+
+
+def test_only_the_state_image_types_can_draw_a_state_picture(
+    panel_method_bodies: dict[str, str], renderer_by_type: dict[str, str],
+) -> None:
+    """A per-state picture appears only where the look's evaluator reads one.
+
+    The button's evaluator draws a state's ``button_image`` as its artwork, the
+    image's draws it in place of ``src``, and the label's, the LED's and the
+    select's never read it. Derived from the evaluators the same way as the
+    text and icon tables, so the Builder offers the Image field exactly where
+    the panel draws it.
+    """
+    look_binding_type = {}
+    for el_type, fn_name in renderer_by_type.items():
+        for block in _PUSH_BLOCK.findall(panel_method_bodies[fn_name]):
+            if "bindings.show.look" not in block:
+                continue
+            if (m := re.search(r"type:\s*'([\w_]+)'", block)) is not None:
+                look_binding_type[el_type] = m.group(1)
+    assert look_binding_type, "no renderer registers a show.look binding"
+
+    evaluator_for = dict(_EVALUATOR.findall("\n".join(panel_method_bodies.values())))
+    derived = frozenset(
+        el_type for el_type, bind_type in look_binding_type.items()
+        if _STATE_PICTURE_READ.search(
+            panel_method_bodies.get(evaluator_for.get(bind_type, ""), "")
+        )
+    )
+    assert derived == STATE_IMAGE_TYPES
 
 
 # --- The property table ----------------------------------------------------

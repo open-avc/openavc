@@ -32,7 +32,9 @@ export const HONORED_SHOW_SLOTS: Record<string, string[]> =
     "value"
   ],
   "group": [],
-  "image": [],
+  "image": [
+    "look"
+  ],
   "keypad": [],
   "label": [
     "look",
@@ -66,9 +68,9 @@ export const HONORED_SHOW_SLOTS: Record<string, string[]> =
 /**
  * Types whose `look` binding renders per-state TEXT.
  *
- * Everything else that reads `look` takes only colour from it -- a status LED
- * tints its dot, a select styles its options -- so a `states[].label` on those
- * never appears anywhere.
+ * Everything else that reads `look` takes colour from it and no words -- a
+ * status LED tints its dot, a select styles its options, an image swaps its
+ * picture -- so a `states[].label` on those never appears anywhere.
  */
 export const STATE_LABEL_TYPES: string[] = ["button", "camera_preset", "label"];
 
@@ -80,6 +82,13 @@ export const STATE_LABEL_TYPES: string[] = ["button", "camera_preset", "label"];
  * evaluator does. A label draws its own `icon` and ignores one named by a state.
  */
 export const STATE_ICON_TYPES: string[] = ["button", "camera_preset"];
+
+/**
+ * Types whose `look` binding renders a per-state PICTURE (a state's
+ * `button_image`): artwork on a button or camera preset, the picture itself on
+ * an image. Anywhere else one is stored and never seen.
+ */
+export const STATE_IMAGE_TYPES: string[] = ["button", "camera_preset", "image"];
 
 /** The slots worth naming in a message, in the order a reader expects them. */
 export const REVIEWED_SHOW_SLOTS = ["value", "look", "items"] as const;

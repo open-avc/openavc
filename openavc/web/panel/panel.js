@@ -3148,25 +3148,95 @@ class PanelApp {
         el.className = 'panel-element panel-image';
         el.dataset.elementId = element.id;
 
-        if (element.src) {
-            const img = document.createElement('img');
-            img.src = this.resolveAssetUrl(element.src);
-            img.alt = element.label || 'Panel image';
-            img.loading = 'lazy';
-            if (element.object_fit) img.style.objectFit = element.object_fit;
-            img.onerror = () => {
-                img.style.display = 'none';
-                const placeholder = document.createElement('div');
-                placeholder.textContent = 'Image not found';
-                placeholder.title = element.src;
-                placeholder.style.cssText = 'display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--panel-text);opacity:0.5;font-size:0.8571rem;';
-                el.appendChild(placeholder);
-            };
-            el.appendChild(img);
+        this._showImagePicture(el, element, element.src);
+        this.applyStyle(el, this.getThemedStyle(element.type, element.style));
+
+        // Appearance: a picture per state, so a variable a script sets (the
+        // season, the room's mode) changes what the Image shows. The pictures
+        // are named in the look itself, never read out of a variable, so the
+        // asset check still sees every one of them.
+        if (element.bindings?.show?.look) {
+            this.bindings.push({
+                type: 'image_look',
+                element: el,
+                elementDef: element,
+                binding: element.bindings.show.look,
+            });
+            this._preloadStatePictures(element.bindings.show.look);
         }
 
-        this.applyStyle(el, this.getThemedStyle(element.type, element.style));
         return el;
+    }
+
+    /**
+     * Show one picture in an Image, or say it could not be loaded.
+     *
+     * The Image keeps ONE <img> and at most one "Image not found" note for its
+     * whole life, because a state look swaps the picture many times: a new
+     * note per failure would stack them, and a picture that loads after one
+     * that failed has to take the note away again. No picture at all removes
+     * both, so an Image whose pictures all live in its states draws nothing
+     * until one of them is chosen.
+     */
+    _showImagePicture(el, elementDef, src) {
+        if (el._pictureSrc === src) return;
+        el._pictureSrc = src;
+        let img = el._pictureImg;
+        if (!src) {
+            img?.remove();
+            el._pictureImg = null;
+            el._pictureMissing?.remove();
+            el._pictureMissing = null;
+            return;
+        }
+        if (!img) {
+            img = document.createElement('img');
+            img.alt = elementDef.label || 'Panel image';
+            img.loading = 'lazy';
+            if (elementDef.object_fit) img.style.objectFit = elementDef.object_fit;
+            img.onload = () => {
+                img.style.display = '';
+                el._pictureMissing?.remove();
+                el._pictureMissing = null;
+            };
+            img.onerror = () => {
+                img.style.display = 'none';
+                let note = el._pictureMissing;
+                if (!note) {
+                    note = document.createElement('div');
+                    note.textContent = 'Image not found';
+                    note.style.cssText = 'display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--panel-text);opacity:0.5;font-size:0.8571rem;';
+                    el.appendChild(note);
+                    el._pictureMissing = note;
+                }
+                note.title = el._pictureSrc || '';
+            };
+            el.prepend(img);
+            el._pictureImg = img;
+        }
+        img.src = this.resolveAssetUrl(src);
+    }
+
+    /**
+     * Fetch every picture a look can show, once, so a state change swaps the
+     * picture at once instead of leaving the Image blank while it downloads.
+     */
+    _preloadStatePictures(look) {
+        const pictures = new Set();
+        const take = (appearance) => {
+            if (appearance && typeof appearance === 'object' && appearance.button_image) {
+                pictures.add(String(appearance.button_image));
+            }
+        };
+        if (look.states && typeof look.states === 'object') {
+            Object.values(look.states).forEach(take);
+        }
+        take(look.style_active);
+        take(look.style_inactive);
+        for (const ref of pictures) {
+            const probe = new Image();
+            probe.src = this.resolveAssetUrl(ref);
+        }
     }
 
     renderCameraPreset(element) {
@@ -6746,6 +6816,9 @@ class PanelApp {
             case 'label_look':
                 this.evaluateLabelLook(b);
                 break;
+            case 'image_look':
+                this.evaluateImageLook(b);
+                break;
             case 'text':
                 this.evaluateText(b);
                 break;
@@ -7056,6 +7129,48 @@ class PanelApp {
         // was, and so is the record of where it came from. That is precisely
         // why the source is recorded on write rather than re-derived -- nothing
         // here could work out what is on screen.
+    }
+
+    /**
+     * An Image's state-driven look: the matching state's picture, and its
+     * colours.
+     *
+     * Its own evaluator rather than the button's, which also re-applies
+     * frameless chrome, retints an artwork layer and redraws words and an
+     * icon -- none of which an Image has. This does the two things an Image
+     * wants and nothing else.
+     *
+     * A state that names no picture shows the Image's own `src`, and so does
+     * a device that cannot be reached: no state is claimed while the device
+     * behind the key is away, the rule every other look follows.
+     */
+    evaluateImageLook(b) {
+        const { element, elementDef, binding } = b;
+        const rest = this.getThemedStyle(elementDef.type, elementDef.style || {});
+
+        const offline = this._bindingOffline(b);
+        this._markBindingAvailability(b, offline);
+
+        let appearance = {};
+        if (!offline) {
+            const stateValue = this.state[binding.key];
+            if (binding.states) {
+                const stateKey = stateValue != null ? String(stateValue) : (binding.default_state || '');
+                appearance = binding.states[stateKey]
+                    || binding.states[binding.default_state || '']
+                    || {};
+            } else {
+                // The binary form, compared the way the button compares it.
+                const condition = binding.condition || {};
+                const isActive = stateValue !== undefined &&
+                    String(stateValue).toLowerCase() === String(condition.equals).toLowerCase();
+                appearance = (isActive ? binding.style_active : binding.style_inactive) || {};
+            }
+        }
+
+        this._clearStateColours(element, rest);
+        this.applyStyle(element, { ...rest, ...appearance });
+        this._showImagePicture(element, elementDef, appearance.button_image || elementDef.src);
     }
 
     evaluateFeedback(b) {
@@ -8424,9 +8539,16 @@ class PanelApp {
             const opacity = style.background_opacity != null ? style.background_opacity : 1;
 
             if (opacity < 1) {
-                // Use a child div for opacity control (can't opacity just the bg image)
+                // Use a child div for opacity control (can't opacity just the bg image).
+                // One per element, reused: a state look calls this on every
+                // change, and a new layer each time would stack them.
                 el.style.position = 'relative';
-                const bgLayer = document.createElement('div');
+                let bgLayer = el.querySelector(':scope > .panel-bg-image-layer');
+                if (!bgLayer) {
+                    bgLayer = document.createElement('div');
+                    bgLayer.className = 'panel-bg-image-layer';
+                    el.prepend(bgLayer);
+                }
                 bgLayer.style.position = 'absolute';
                 bgLayer.style.inset = '0';
                 bgLayer.style.zIndex = '0';
@@ -8436,7 +8558,6 @@ class PanelApp {
                 bgLayer.style.backgroundPosition = this._sanitizeCssValue(pos);
                 bgLayer.style.backgroundRepeat = 'no-repeat';
                 bgLayer.style.opacity = String(parseFloat(opacity) || 1);
-                el.prepend(bgLayer);
                 // Ensure content is above the bg layer
                 Array.from(el.children).forEach(child => {
                     if (child !== bgLayer && !child.style.zIndex) {

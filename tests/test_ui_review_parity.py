@@ -606,6 +606,28 @@ CASES["vocabulary"] = _project([
                  "key": "device.acme.online", "condition": {"equals": "true"},
                  "style_active": {"bg_color": "#0f0", "icon": "check"},
                  "style_inactive": {"bg_color": "#f00"}}}}},
+            # An image whose picture changes with a variable a script sets: a
+            # picture and a background colour per state, both drawn. Silent.
+            {"id": "img_look_ok", "type": "image", "src": "assets://everyday.png",
+             "bindings": {"show": {"look": {
+                 "key": "var.season", "default_state": "everyday",
+                 "states": {"everyday": {},
+                            "christmas": {"button_image": "assets://christmas.png",
+                                          "bg_color": "#0b3d0b"}}}}}},
+            # ...but words on an image's state are drawn nowhere: an image's
+            # `label` is its alt text, so the remedy cannot point at it.
+            {"id": "img_look_label", "type": "image", "src": "assets://everyday.png",
+             "bindings": {"show": {"look": {
+                 "key": "var.season", "default_state": "everyday",
+                 "states": {"everyday": {"label": "Everyday"},
+                            "christmas": {"button_image": "assets://christmas.png",
+                                          "label": "Merry"}}}}}},
+            # ...and a picture on a type that has nowhere to put one. A label
+            # takes colour and words from a look and stores the picture unseen.
+            {"id": "lbl_look_picture", "type": "label", "text": "Season",
+             "bindings": {"show": {"look": {
+                 "key": "var.season",
+                 "states": {"christmas": {"button_image": "assets://christmas.png"}}}}}},
             # A binding the renderer reads, that names nothing to read. The
             # half-finished state the Text editor passes through, and the one
             # every other check treats as supplied and stays quiet about.
@@ -687,6 +709,9 @@ CASES["vocabulary"] = _project([
             "lbl_look_icon": _pct_box(88, 68, 11, 8),
             "led_look_icon": _pct_box(88, 78, 6, 8),
             "lbl_look_colour_only": _pct_box(68, 45, 20, 8),
+            "img_look_ok": _pct_box(89, 25, 10, 8),
+            "img_look_label": _pct_box(89, 35, 10, 8),
+            "lbl_look_picture": _pct_box(89, 45, 10, 8),
             "img_srcless": _pct_box(70, 10, 12, 12),
             "nav_nowhere": _pct_box(85, 10, 12, 12),
             "meter_invented": _pct_box(50, 0, 8, 40),
@@ -1734,6 +1759,7 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "mtx_tiles_ok",                        # a tile wall whose locks are real variables
         "lbl_bound",                           # show.value supplies the text
         "lbl_look_states", "lbl_look_binary",  # ...and so does show.look's state text
+        "img_look_ok",                         # an image draws a picture per state
         "lbl_macro",                           # a macro-progress label needs no state key
         "custom_ok",                           # a custom control that names its page
         "kp_default", "kp_at_default",         # a keypad that waits the default
@@ -1882,3 +1908,21 @@ def test_an_unknown_type_answers_once_about_the_type(verdicts) -> None:
     assert [f["kind"] for f in findings] == ["unknown_element_type"]
     # The whole set is in the message, because this is where an author learns it.
     assert "plugin" in findings[0]["message"]
+
+
+def test_a_state_picture_is_warned_only_where_nothing_draws_it(verdicts) -> None:
+    """The picture check shares its kind with the text and icon checks, so the
+    kinds list above cannot see it go. An image draws a picture per state and
+    says nothing; a label stores one unseen and is told so; an image given
+    state words is told an image takes colour and a picture, not text.
+    """
+    by_element: dict[str, list[str]] = {}
+    for python_side, _ in verdicts.values():
+        for finding in python_side:
+            by_element.setdefault(finding["element_id"], []).append(finding["message"])
+    assert "img_look_ok" not in by_element
+    assert any("picture (button_image)" in m for m in by_element["lbl_look_picture"])
+    assert any(
+        "an image takes only color and a picture" in m and "label element" in m
+        for m in by_element["img_look_label"]
+    )

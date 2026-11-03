@@ -219,3 +219,133 @@ def test_the_types_that_draw_a_state_label_are_the_ones_recorded(panel_page) -> 
         if "ONLINE" in result["text"]:
             drawn.add(type_)
     assert drawn == set(STATE_LABEL_TYPES)
+
+
+# --- An image's picture per state -------------------------------------------
+#
+# The pictures are inline SVG data URIs: the harness stubs `fetch`, and a
+# data URI loads without a server, so a load or an error is the browser's own.
+
+def _svg(fill: str) -> str:
+    from urllib.parse import quote
+
+    svg = (
+        "<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4'>"
+        f"<rect width='4' height='4' fill='{fill}'/></svg>"
+    )
+    return "data:image/svg+xml," + quote(svg)
+
+
+EVERYDAY, CHRISTMAS, EASTER = _svg("gray"), _svg("green"), _svg("yellow")
+BROKEN = "data:image/png;base64,bm90IGEgcGljdHVyZQ=="
+
+# Render one image, then step through a list of whole states, evaluating after
+# each and reporting what the image shows. Async so a picture that fails or
+# loads has had its event before the next step reads the result.
+IMAGE_STEPS_JS = r"""
+async ([element, steps]) => {
+  const app = window.__openavcPanel;
+  const box = document.getElementById('box');
+  box.innerHTML = '';
+  app.bindings = [];
+  app.state = {};
+  const node = app.renderElement(Object.assign({ id: 'probe', type: 'image' }, element));
+  box.appendChild(node);
+  const seen = [];
+  for (const state of steps) {
+    app.state = state;
+    app.evaluateAllBindings();
+    await new Promise(r => setTimeout(r, 150));
+    const imgs = node.querySelectorAll('img');
+    seen.push({
+      registered: app.bindings.map(b => b.type),
+      imgs: imgs.length,
+      src: imgs.length ? imgs[0].getAttribute('src') : null,
+      shown: imgs.length ? imgs[0].style.display !== 'none' : false,
+      notes: [...node.querySelectorAll('div')].filter(d => d.textContent === 'Image not found').length,
+      bg: node.style.backgroundColor,
+    });
+  }
+  return seen;
+}
+"""
+
+
+def _image_steps(page, element: dict, steps: list[dict]) -> list[dict]:
+    return page.evaluate(IMAGE_STEPS_JS, [element, steps])
+
+
+def _seasons(key: str) -> dict:
+    return {"bindings": {"show": {"look": {
+        "key": key, "default_state": "everyday",
+        "states": {
+            "everyday": {},
+            "christmas": {"button_image": CHRISTMAS, "bg_color": "rgb(0, 80, 0)"},
+            "easter": {"button_image": EASTER},
+        },
+    }}}}
+
+
+def test_an_image_changes_its_picture_with_the_state(panel_page) -> None:
+    """The feature: a variable a script sets picks the picture, and back."""
+    seen = _image_steps(panel_page, {"src": EVERYDAY, **_seasons("var.season")}, [
+        {"var.season": "everyday"},
+        {"var.season": "christmas"},
+        {"var.season": "easter"},
+        {"var.season": "everyday"},
+    ])
+    assert seen[0]["registered"] == ["image_look"]
+    assert [s["src"] for s in seen] == [EVERYDAY, CHRISTMAS, EASTER, EVERYDAY]
+    # One <img> throughout, swapped rather than stacked.
+    assert {s["imgs"] for s in seen} == {1}
+    # The state's background colour comes and goes with it.
+    assert seen[1]["bg"] == "rgb(0, 80, 0)"
+    assert seen[2]["bg"] == "" and seen[3]["bg"] == ""
+
+
+def test_an_image_shows_its_own_picture_when_no_state_names_one(panel_page) -> None:
+    """An unmatched value falls to the default state, which names no picture."""
+    seen = _image_steps(panel_page, {"src": EVERYDAY, **_seasons("var.season")}, [
+        {"var.season": "halloween"},
+        {},
+    ])
+    assert [s["src"] for s in seen] == [EVERYDAY, EVERYDAY]
+
+
+def test_an_image_claims_no_state_while_its_device_is_unreachable(panel_page) -> None:
+    """Offline shows the image's own picture, as a button shows its own face."""
+    key = "device.acme_widget.mode"
+    seen = _image_steps(panel_page, {"src": EVERYDAY, **_seasons(key)}, [
+        {key: "christmas", "device.acme_widget.connected": True},
+        {key: "christmas", "device.acme_widget.connected": False},
+        {key: "christmas", "device.acme_widget.connected": True},
+    ])
+    assert [s["src"] for s in seen] == [CHRISTMAS, EVERYDAY, CHRISTMAS]
+    assert seen[1]["bg"] == ""
+
+
+def test_an_image_whose_pictures_are_all_in_its_states(panel_page) -> None:
+    """No `src`: nothing drawn until a state names a picture, and nothing after."""
+    seen = _image_steps(panel_page, _seasons("var.season"), [
+        {"var.season": "everyday"},
+        {"var.season": "christmas"},
+        {"var.season": "everyday"},
+    ])
+    assert [s["imgs"] for s in seen] == [0, 1, 0]
+    assert seen[1]["src"] == CHRISTMAS
+
+
+def test_a_missing_picture_says_so_once_and_a_good_one_clears_it(panel_page) -> None:
+    """One "Image not found" however many pictures fail, gone when one loads."""
+    look = {"bindings": {"show": {"look": {"key": "var.season", "states": {
+        "a": {"button_image": BROKEN},
+        "b": {"button_image": BROKEN + "QQ=="},
+        "c": {"button_image": CHRISTMAS},
+    }}}}}
+    seen = _image_steps(panel_page, {"src": EVERYDAY, **look}, [
+        {"var.season": "a"},
+        {"var.season": "b"},
+        {"var.season": "c"},
+    ])
+    assert [s["notes"] for s in seen] == [1, 1, 0]
+    assert [s["shown"] for s in seen] == [False, False, True]
