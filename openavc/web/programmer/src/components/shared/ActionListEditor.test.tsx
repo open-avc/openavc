@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ActionTestButton } from "./ActionListEditor";
-import { ApiError } from "../../api/errors";
+import { ApiError, SERVER_NOT_ANSWERING } from "../../api/errors";
 
 /**
  * The Test button's whole job is explaining a refusal to somebody who does not
@@ -61,7 +61,7 @@ describe("the Test button on an action", () => {
     render(<ActionTestButton action={action} />);
     await userEvent.click(screen.getByRole("button", { name: /Test/ }));
 
-    expect(showError).toHaveBeenCalledWith("Test failed: Failed to fetch");
+    expect(showError).toHaveBeenCalledWith(`Test failed: ${SERVER_NOT_ANSWERING}`);
   });
 
   it("reports the command as sent when the device takes it", async () => {

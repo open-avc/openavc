@@ -49,13 +49,31 @@ export class ApiError extends Error {
   }
 }
 
+/** What the page says when its own OpenAVC server did not answer at all. */
+export const SERVER_NOT_ANSWERING =
+  "The OpenAVC server is not answering. Check that it is running and reachable on the network, then try again.";
+
+// The TypeError a fetch rejects with when no answer came back at all (the
+// server stopped, the network dropped, the connection was refused), in each
+// browser's own words: Chrome and Edge, Firefox, then Safari's. Any other
+// TypeError is a fault in the page and keeps its own text.
+const NO_ANSWER_MESSAGES =
+  /^(Failed to fetch|NetworkError when attempting to fetch resource\.?|Load failed|The network connection was lost\.?|Could not connect to the server\.?|The Internet connection appears to be offline\.?)$/;
+
+/** True when a fetch got no answer from the server at all. */
+export function isNoAnswerError(e: unknown): boolean {
+  return e instanceof TypeError && NO_ANSWER_MESSAGES.test(e.message);
+}
+
 /**
  * Unwrap any thrown value to a clean, human-readable string. Handles the typed
- * `ApiError` directly and still parses the legacy "API <status>: <body>"
- * string envelope for anything that isn't (defensive).
+ * `ApiError` directly, turns a fetch that got no answer into one sentence
+ * saying so, and still parses the legacy "API <status>: <body>" string
+ * envelope for anything else (defensive).
  */
 export function parseApiError(e: unknown): string {
   if (e instanceof ApiError) return e.detail;
+  if (isNoAnswerError(e)) return SERVER_NOT_ANSWERING;
   if (!(e instanceof Error)) return String(e);
   const match = e.message.match(/^API \d+: (.+)/s);
   if (!match) return e.message;

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { ApiError, apiErrorList, parseApiError } from "./errors";
+import { ApiError, SERVER_NOT_ANSWERING, apiErrorList, parseApiError } from "./errors";
 import { request } from "./base";
 
 afterEach(() => {
@@ -54,6 +54,30 @@ describe("parseApiError", () => {
 
   it("still unwraps a legacy 'API <status>: <body>' string Error", () => {
     expect(parseApiError(new Error('API 400: {"detail":"bad field"}'))).toBe("bad field");
+  });
+
+  it.each([
+    "Failed to fetch",
+    "NetworkError when attempting to fetch resource.",
+    "Load failed",
+    "The network connection was lost.",
+    "Could not connect to the server.",
+    "The Internet connection appears to be offline.",
+  ])("says the server is not answering when a fetch got no answer (%s)", (message) => {
+    expect(parseApiError(new TypeError(message))).toBe(SERVER_NOT_ANSWERING);
+  });
+
+  it("keeps the text of a TypeError that is not a fetch with no answer", () => {
+    const fault = new TypeError("Cannot read properties of undefined (reading 'id')");
+    expect(parseApiError(fault)).toBe(fault.message);
+    // The same words in a plain Error are not the browser's fetch failure.
+    expect(parseApiError(new Error("Failed to fetch"))).toBe("Failed to fetch");
+  });
+
+  it("says the server is not answering when request() cannot reach it", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    const error = await request("/status").catch((e: unknown) => e);
+    expect(parseApiError(error)).toBe(SERVER_NOT_ANSWERING);
   });
 
   it("returns the message for a non-API Error", () => {
