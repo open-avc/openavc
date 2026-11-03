@@ -255,6 +255,9 @@ export function DeviceStatesSubTab() {
                 )}
                 {groupDevices.map((d) => {
                   const isConnected = liveState[`device.${d.id}.connected`] === true;
+                  // Put to sleep by one of its own commands. The dot is the
+                  // same grey as offline, so the word goes on the line below.
+                  const isAsleep = !isConnected && liveState[`device.${d.id}.asleep`] === true;
                   return (
                     <div
                       key={d.id}
@@ -271,13 +274,18 @@ export function DeviceStatesSubTab() {
                       onMouseEnter={(e) => { if (selectedDeviceId !== d.id) e.currentTarget.style.background = "var(--bg-hover)"; }}
                       onMouseLeave={(e) => { if (selectedDeviceId !== d.id) e.currentTarget.style.background = "transparent"; }}
                     >
-                      <div style={{
-                        width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
-                        background: isConnected ? "var(--color-success)" : "var(--text-muted)",
-                      }} />
+                      <div
+                        title={isConnected ? "Connected" : isAsleep ? "Asleep" : "Offline"}
+                        style={{
+                          width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                          background: isConnected ? "var(--color-success)" : "var(--text-muted)",
+                        }}
+                      />
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 500, color: "var(--text-primary)" }}>{d.name}</div>
-                        <div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{driverLabel(d.driver)}</div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {driverLabel(d.driver)}{isAsleep ? " · Asleep" : ""}
+                        </div>
                       </div>
                       <Cpu size={14} style={{ color: "var(--text-muted)", flexShrink: 0, opacity: 0.5 }} />
                     </div>

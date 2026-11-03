@@ -188,6 +188,9 @@ function DeviceCommandConfig({
   }, [selectedDevice]);
 
   const commands = deviceInfo?.commands ?? {};
+  // Put to sleep by one of its own commands (device.<id>.asleep), read from
+  // the same fetch as `connected` beside it.
+  const deviceAsleep = deviceInfo?.state?.asleep === true;
   const commandDef = commands[selectedCommand] as
     | Record<string, unknown>
     | undefined;
@@ -219,9 +222,13 @@ function DeviceCommandConfig({
           }}>
             <span style={{
               width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
-              background: deviceInfo.connected ? "#10b981" : "#ef4444",
+              background: deviceInfo.connected
+                ? "#10b981"
+                : deviceAsleep
+                  ? "var(--text-muted)"
+                  : "#ef4444",
             }} />
-            <span>{deviceInfo.connected ? "Connected" : "Offline"}</span>
+            <span>{deviceInfo.connected ? "Connected" : deviceAsleep ? "Asleep" : "Offline"}</span>
             <span style={{ color: "var(--border-color)" }}>|</span>
             <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{driverLabel(deviceInfo.driver)}</span>
             {deviceInfo.state && String(deviceInfo.state.host || "") && (

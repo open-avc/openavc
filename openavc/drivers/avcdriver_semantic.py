@@ -1716,6 +1716,7 @@ def validate_driver_definition(
                         f"a declared state variable"
                     )
         errors.extend(command_confirm_errors(f"Command '{cmd_name}'", cmd_def))
+        errors.extend(command_sleep_errors(cmd_name, cmd_def, commands))
         errors.extend(
             file_command_errors(f"Command '{cmd_name}'", cmd_def, python=False)
         )
@@ -3576,6 +3577,64 @@ def validate_driver_issues(
     )
     warnings = validate_driver_warnings(driver_def)
     return _as_issues(errors, "error") + _as_issues(warnings, "warning")
+
+
+def _unevaluated(value: Any) -> bool:
+    """True for ``python_info``'s placeholder for a value read from a constant
+    or built at runtime (it is defined there, and that module imports this
+    one), which no rule can judge from the source."""
+    return type(value).__name__ == "_Unevaluated"
+
+
+def command_sleep_errors(
+    cmd_name: str, cmd_def: dict[str, Any], commands: dict[str, Any]
+) -> list[str]:
+    """A command's ``sleeps_device`` names a command that can wake the device.
+
+    Shared with the Python surface (``python_info``). The wake command has to
+    work with the device off the network (``available_offline``) and say how
+    long the device takes to come back (``restarts_device_for``), because the
+    wait after it is sent is the driver's measured number and the device that
+    has not returned by then reads as the real fault.
+    """
+    wake = cmd_def.get("sleeps_device")
+    if wake is None or _unevaluated(wake):
+        return []
+    where = f"Command '{cmd_name}'"
+    if not isinstance(wake, str) or not wake.strip():
+        return [f"{where}: 'sleeps_device' must name the command that wakes the device"]
+    if wake == cmd_name:
+        return [
+            f"{where}: 'sleeps_device' names this command itself; name the "
+            f"command that wakes the device"
+        ]
+    names = {n for n in commands if isinstance(n, str) and n != UNEVALUATED_KEY}
+    if wake not in names:
+        if UNEVALUATED_KEY in commands:
+            return []
+        return [
+            f"{where}: 'sleeps_device' names '{wake}', which is not a declared "
+            f"command{_did_you_mean(wake, names)}"
+        ]
+    wake_def = commands.get(wake)
+    if not isinstance(wake_def, dict):
+        return []
+    errors: list[str] = []
+    offline = wake_def.get("available_offline")
+    if not _unevaluated(offline) and offline is not True:
+        errors.append(
+            f"{where}: 'sleeps_device' names '{wake}', which does not set "
+            f"available_offline: true, so it cannot wake a device that is off "
+            f"the network"
+        )
+    restarts = wake_def.get("restarts_device_for")
+    if not _unevaluated(restarts) and not restarts:
+        errors.append(
+            f"{where}: 'sleeps_device' names '{wake}', which declares no "
+            f"restarts_device_for: give it the measured seconds the device takes "
+            f"to come back after '{wake}'"
+        )
+    return errors
 
 
 def command_confirm_errors(where: str, cmd_def: dict[str, Any]) -> list[str]:

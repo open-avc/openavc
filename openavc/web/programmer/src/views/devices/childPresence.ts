@@ -29,7 +29,7 @@
  */
 
 /** Codes this module knows by name. The vocabulary itself lives server-side in
- *  core/connection_fault.py; these are the two the UI has to branch on. */
+ *  core/connection_fault.py; these are the ones the UI has to branch on. */
 const NOT_FITTED = "not_fitted";
 const PARENT_OFFLINE = "parent_offline";
 const SERVICE_FAULT = "service_fault";
@@ -55,7 +55,21 @@ export interface ChildPresence {
   detail: string;
 }
 
-export function childPresence(state: ChildState | undefined): ChildPresence {
+/** What the parent device is doing, as far as its children are concerned. */
+export interface ChildContext {
+  /** The parent is away on purpose: asleep, restarting or paused. Every child
+   *  carries `parent_offline` then (the platform writes it whenever the
+   *  parent's `connected` goes false), and that is expected rather than
+   *  something to go and fix, so it is not trouble. A code the driver set
+   *  itself is still trouble: the platform leaves it in place because it is
+   *  more specific than `parent_offline` and still true. */
+  parentAway?: boolean;
+}
+
+export function childPresence(
+  state: ChildState | undefined,
+  context: ChildContext = {},
+): ChildPresence {
   const online = state?.online;
   // Undefined rather than false is the pre-registration / stale-snapshot
   // case. Treat it as present: a child the platform has not heard about yet
@@ -66,7 +80,25 @@ export function childPresence(state: ChildState | undefined): ChildPresence {
   // An unrecognised code counts as trouble: a driver writing one this
   // taxonomy does not define is a bug, and the safe reading of "I do not know
   // this code" is not "everything is fine".
-  return { ok, trouble: !ok && reason !== NOT_FITTED, reason, detail };
+  const expected =
+    reason === NOT_FITTED || (context.parentAway === true && reason === PARENT_OFFLINE);
+  return { ok, trouble: !ok && !expected, reason, detail };
+}
+
+/**
+ * Whether a device is away on purpose, the case `ChildContext.parentAway`
+ * describes: a command put it to sleep (`asleep`), a command is restarting it
+ * (`restarting`), or Live Test / a Device Audit holds it (`paused`).
+ */
+export function parentAwayFrom(
+  liveState: Record<string, unknown>,
+  deviceId: string,
+): boolean {
+  return Boolean(
+    liveState[`device.${deviceId}.asleep`] ||
+      liveState[`device.${deviceId}.restarting`] ||
+      liveState[`device.${deviceId}.paused`],
+  );
 }
 
 /**
@@ -120,17 +152,23 @@ export function childStateFor(
 const RESERVED = ["online", "offline_reason", "offline_detail"] as const;
 
 /** How many of these children are in trouble — an empty slot is not. */
-export function countTrouble(states: (ChildState | undefined)[]): number {
+export function countTrouble(
+  states: (ChildState | undefined)[],
+  context: ChildContext = {},
+): number {
   let n = 0;
-  for (const s of states) if (childPresence(s).trouble) n++;
+  for (const s of states) if (childPresence(s, context).trouble) n++;
   return n;
 }
 
 /** The trouble codes present across these children, for `troublePhrase`. */
-export function troubleReasons(states: (ChildState | undefined)[]): string[] {
+export function troubleReasons(
+  states: (ChildState | undefined)[],
+  context: ChildContext = {},
+): string[] {
   const out: string[] = [];
   for (const s of states) {
-    const p = childPresence(s);
+    const p = childPresence(s, context);
     if (p.trouble) out.push(p.reason);
   }
   return out;
@@ -216,6 +254,7 @@ export function scanChildTrouble(
   liveState: Record<string, unknown>,
   deviceId: string,
   childTypes: Record<string, ChildTypeInfo>,
+  context: ChildContext = {},
 ): TroubleGroup[] {
   const types = Object.keys(childTypes);
   if (types.length === 0) return [];
@@ -251,7 +290,7 @@ export function scanChildTrouble(
     const names: string[] = [];
     const reasons: string[] = [];
     for (const [padded, state] of bucket) {
-      const presence = childPresence(state);
+      const presence = childPresence(state, context);
       if (!presence.trouble) continue;
       const authored = typeof state.label === "string" ? state.label : "";
       const fromDevice = labelField && typeof state[labelField] === "string"

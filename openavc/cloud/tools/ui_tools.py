@@ -104,7 +104,7 @@ _PLATFORM_DEVICE_PROPERTIES = frozenset({
     "connected", "enabled", "host", "name", "offline_detail", "offline_reason",
     "orphan_reason", "orphaned", "paused", "paused_for", "reconnect_attempt",
     "reconnect_failed",
-    "restarting", "online", "status", "last_seen", "error",
+    "restarting", "asleep", "wake_command", "online", "status", "last_seen", "error",
 })
 
 

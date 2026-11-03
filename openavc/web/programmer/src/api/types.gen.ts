@@ -135,7 +135,7 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   paramEntry: new Set(["accept", "child_type", "decimals", "default", "description", "help", "label", "map", "max", "max_bytes", "min", "offset", "options_from", "options_state", "pattern", "required", "scale", "secret", "trim", "type", "type_from", "unit", "values"]),
   oscArg: new Set(["type", "value"]),
   udpSendEntry: new Set(["broadcast", "host", "magic_packet", "payload", "port"]),
-  commandEntry: new Set(["address", "args", "available_offline", "body", "confirm", "headers", "help", "label", "method", "params", "path", "query_for", "query_params", "raw", "restarts_device_for", "returns_file", "send", "sets", "udp"]),
+  commandEntry: new Set(["address", "args", "available_offline", "body", "confirm", "headers", "help", "label", "method", "params", "path", "query_for", "query_params", "raw", "restarts_device_for", "returns_file", "send", "sets", "sleeps_device", "udp"]),
   actionEntry: new Set(["availability", "command", "confirm", "icon", "id", "kind", "label", "params", "url", "visible_when"]),
   visibleWhenCondition: new Set(["key", "operator", "value"]),
   mappingEntry: new Set(["arg", "contains", "group", "json_path", "key", "map", "state", "type", "value"]),
@@ -504,6 +504,26 @@ export interface DriverCommandDef {
    * 0.34.0.
    */
   restarts_device_for?: number;
+  /**
+   * The command that wakes the device, when sending THIS command puts it to
+   * sleep and takes it off the network until then (a display whose standby
+   * closes its control port, a computer told to shut down or sleep). After
+   * this command runs and the device drops, the platform reports it as asleep
+   * rather than as a fault: device.<id>.asleep is true, no offline_reason is
+   * published (nothing counts it as an error or alerts on it), the device page
+   * and the panel say "Asleep. <wake command> wakes it.", and panel controls
+   * that send the wake command stay live while the rest grey out. The named
+   * command must exist, set available_offline: true (it has to work with the
+   * device off the network, a Wake-on-LAN power_on for example) and declare
+   * restarts_device_for with the MEASURED seconds the device takes to come
+   * back, because after it is sent the device that has not returned in that
+   * time reads as the real fault. A device still connected 15 minutes after
+   * this command did not go to sleep, and a later drop is a fault. Leave it
+   * unset when the control channel stays up in standby. Takes effect on
+   * platform 0.39.0; an older platform ignores it and still runs the driver,
+   * so it does not raise min_platform_version.
+   */
+  sleeps_device?: string;
   /**
    * Ask before sending this command by hand. true for a generic question, or
    * the sentence to ask, written like help (e.g. "Erases every preset and

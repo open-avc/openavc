@@ -1063,13 +1063,15 @@ def held_connection_fault() -> ConnectionFault:
 # its own.
 
 
-def restarting_message(seconds_left: int) -> str:
+def restarting_message(seconds_left: int, waking: bool = False) -> str:
     """What ``offline_detail`` says while a commanded restart is in progress.
 
     ``seconds_left`` is what remains of the driver's declared window, not the
     window it declared: a card opened twenty seconds in should not still be
-    promising the original figure.
+    promising the original figure. ``waking`` is the same window opened by a
+    sleeping device's wake command (``sleeps_device``).
     """
     remaining = max(1, int(seconds_left))
     unit = "second" if remaining == 1 else "seconds"
-    return f"Restarting. It should be back in about {remaining} {unit}."
+    lead = "Waking up" if waking else "Restarting"
+    return f"{lead}. It should be back in about {remaining} {unit}."

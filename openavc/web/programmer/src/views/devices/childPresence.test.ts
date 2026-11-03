@@ -3,6 +3,7 @@ import {
   childPresence,
   childStateFor,
   countTrouble,
+  parentAwayFrom,
   troublePhrase,
   troubleReasons,
   scanChildTrouble,
@@ -121,6 +122,69 @@ describe("an empty slot is not a fault", () => {
 describe("countTrouble", () => {
   it("counts only the children that are in trouble", () => {
     expect(countTrouble([{ online: true }, { online: false }, { online: false }])).toBe(2);
+  });
+});
+
+describe("a parent that is away on purpose", () => {
+  // Asleep, restarting or paused: the platform puts parent_offline on every
+  // child with nothing of its own claimed, and nobody needs to go and look.
+  const AWAY = { parentAway: true };
+  const FOLLOWED = { online: false, offline_reason: "parent_offline" };
+
+  it("does not make a parent_offline child trouble", () => {
+    const p = childPresence(FOLLOWED, AWAY);
+    expect(p.ok).toBe(false);
+    expect(p.trouble).toBe(false);
+    expect(p.reason).toBe("parent_offline");
+  });
+
+  it("still counts a code the driver set itself", () => {
+    expect(
+      childPresence({ online: false, offline_reason: "not_responding" }, AWAY).trouble,
+    ).toBe(true);
+  });
+
+  it("leaves them out of the down count and the reasons", () => {
+    expect(countTrouble([FOLLOWED, FOLLOWED], AWAY)).toBe(0);
+    expect(troubleReasons([FOLLOWED, FOLLOWED], AWAY)).toEqual([]);
+    // Without the context they are what they have always been.
+    expect(countTrouble([FOLLOWED, FOLLOWED])).toBe(2);
+  });
+
+  it("leaves them out of the device-page scan", () => {
+    const groups = scanChildTrouble(
+      { "device.mx.decoder.0a1d.online": false, "device.mx.decoder.0a1d.offline_reason": "parent_offline" },
+      "mx",
+      { decoder: { label: "Decoder" } },
+      AWAY,
+    );
+    expect(groups).toEqual([]);
+  });
+});
+
+describe("parentAwayFrom", () => {
+  it("reads asleep, restarting and paused as away", () => {
+    expect(parentAwayFrom({ "device.mx.asleep": true }, "mx")).toBe(true);
+    expect(parentAwayFrom({ "device.mx.restarting": true }, "mx")).toBe(true);
+    expect(parentAwayFrom({ "device.mx.paused": true }, "mx")).toBe(true);
+  });
+
+  it("reads a device that is merely offline as not away", () => {
+    expect(
+      parentAwayFrom(
+        {
+          "device.mx.connected": false,
+          "device.mx.asleep": null,
+          "device.mx.restarting": null,
+          "device.mx.paused": false,
+        },
+        "mx",
+      ),
+    ).toBe(false);
+  });
+
+  it("reads another device's state as nothing to do with this one", () => {
+    expect(parentAwayFrom({ "device.other.asleep": true }, "mx")).toBe(false);
   });
 });
 

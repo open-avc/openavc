@@ -91,7 +91,9 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
     }
     const next: Record<string, DriverCommandDef> = {};
     for (const [k, v] of Object.entries(commands)) {
-      next[k === oldName ? newName : k] = v;
+      // A command naming the renamed one as its wake command follows it.
+      next[k === oldName ? newName : k] =
+        v.sleeps_device === oldName ? { ...v, sleeps_device: newName } : v;
     }
     onUpdate({ commands: next });
     if (expanded === oldName) setExpanded(newName);
@@ -470,6 +472,14 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                   </div>
                 </label>
 
+                <SleepsDeviceField
+                  commandId={name}
+                  value={cmd.sleeps_device}
+                  commands={commands}
+                  labelStyle={labelStyle}
+                  onChange={(sleeps_device) => updateCommand(name, { sleeps_device })}
+                />
+
                 <CommandConfirmField
                   confirm={cmd.confirm}
                   labelStyle={labelStyle}
@@ -512,6 +522,143 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
       >
         <Plus size={14} /> Add Command
       </button>
+    </div>
+  );
+}
+
+/** A command's `sleeps_device`: the id of the command that wakes the device
+ *  after this one puts it to sleep. Unticked removes the key; ticking picks
+ *  the first command that runs while the device is offline, the only kind
+ *  that can wake it. A value naming any other command (an imported driver, or
+ *  a wake command whose offline box was unticked since) is still shown, so it
+ *  is not silently replaced, and what it is missing is said under it. */
+export function SleepsDeviceField({
+  commandId,
+  value,
+  commands,
+  labelStyle,
+  onChange,
+}: {
+  commandId: string;
+  value: string | undefined;
+  commands: Record<string, DriverCommandDef>;
+  labelStyle: React.CSSProperties;
+  onChange: (sleepsDevice: string | undefined) => void;
+}) {
+  const current = typeof value === "string" ? value : "";
+  // Ticked with nothing to pick yet: kept here until a wake command exists,
+  // because an empty `sleeps_device` is not a value the driver can carry.
+  const [ticked, setTicked] = useState(current !== "");
+  const enabled = ticked || current !== "";
+  const wakers = Object.entries(commands).filter(
+    ([id, c]) => id !== commandId && c.available_offline === true,
+  );
+  const listed = wakers.some(([id]) => id === current);
+  const picked = current ? commands[current] : undefined;
+  const pickedName = picked?.label || current;
+  const needs: string[] = [];
+  if (picked) {
+    if (!picked.available_offline) needs.push("\"Runs while the device is offline\" ticked");
+    if (!picked.restarts_device_for) needs.push("\"Restarts the device for\" set");
+  }
+  const optionText = (id: string, c: DriverCommandDef | undefined) =>
+    c?.label ? `${c.label} (${id})` : id;
+  const hint: React.CSSProperties = {
+    fontSize: "11px",
+    color: "var(--text-muted)",
+    marginTop: "var(--space-xs)",
+  };
+  const warning: React.CSSProperties = {
+    fontSize: "11px",
+    color: "var(--color-warning, #d97706)",
+    padding: "var(--space-xs) var(--space-sm)",
+    marginTop: "var(--space-xs)",
+    borderRadius: "var(--border-radius)",
+    background: "rgba(255, 152, 0, 0.12)",
+    border: "1px solid rgba(255, 152, 0, 0.35)",
+  };
+
+  return (
+    <div style={{ marginBottom: "var(--space-md)" }}>
+      <label
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 6,
+          fontSize: "var(--font-size-sm)",
+          color: "var(--text-secondary)",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => {
+            if (e.target.checked) {
+              setTicked(true);
+              if (wakers.length > 0) onChange(wakers[0][0]);
+            } else {
+              setTicked(false);
+              onChange(undefined);
+            }
+          }}
+          style={{ marginTop: 3 }}
+        />
+        <span>
+          Puts the device to sleep
+          <div style={hint}>
+            Tick this when sending the command takes the device off the network
+            until another command wakes it, like a display whose standby closes
+            its control port or a computer told to shut down. While it is asleep
+            it is not reported as a fault: nothing alerts on it, and its page and
+            the panel say which command wakes it. Leave this unticked when the
+            device stays reachable in standby.
+          </div>
+        </span>
+      </label>
+      {enabled && (
+        <div style={{ marginTop: "var(--space-sm)" }}>
+          <label style={labelStyle}>Woken by</label>
+          <select
+            aria-label="Woken by"
+            value={current}
+            onChange={(e) => onChange(e.target.value || undefined)}
+            style={{ width: "100%" }}
+          >
+            {!listed && (
+              <option value={current}>
+                {current ? optionText(current, picked) : "Pick a command"}
+              </option>
+            )}
+            {wakers.map(([id, c]) => (
+              <option key={id} value={id}>
+                {optionText(id, c)}
+              </option>
+            ))}
+          </select>
+          {wakers.length === 0 ? (
+            <div style={warning}>
+              No command can wake it yet. On the command that wakes the device,
+              tick &quot;Runs while the device is offline&quot; and fill in
+              &quot;Restarts the device for&quot;.
+            </div>
+          ) : (
+            <div style={hint}>
+              Lists the commands with &quot;Runs while the device is
+              offline&quot; ticked.
+            </div>
+          )}
+          {current && !picked && (
+            <div style={warning}>
+              &quot;{current}&quot; is not a command in this driver.
+            </div>
+          )}
+          {needs.length > 0 && (
+            <div style={warning}>
+              {pickedName} also needs {needs.join(" and ")}.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

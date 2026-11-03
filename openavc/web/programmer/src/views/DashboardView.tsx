@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Cpu, Zap, Cloud, FileCode, AlertTriangle, Clock, ArrowRight, ArrowUpCircle, Monitor, Copy, Check, ExternalLink, QrCode, Printer, X, Tablet } from "lucide-react";
+import { Cpu, Zap, Cloud, FileCode, AlertTriangle, Clock, ArrowRight, ArrowUpCircle, Monitor, Copy, Check, ExternalLink, QrCode, Printer, X, Tablet, Moon } from "lucide-react";
 import qrcode from "qrcode-generator";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { DeviceStatusDot } from "../components/shared/DeviceStatusDot";
@@ -28,6 +28,7 @@ import {
 } from "../api/monitorHelpers";
 import { parseApiError } from "../api/errors";
 import { driverLabel } from "../components/shared/driverLabel";
+import { asleepHeadline, summarizeDashboardDevices } from "./dashboardDevices";
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -945,12 +946,11 @@ export function DashboardView() {
     return <ViewContainer title="Dashboard"><p style={{ color: "var(--text-muted)" }}>Loading...</p></ViewContainer>;
   }
 
-  const connectedCount = devices.filter(d => {
-    if (d.enabled === false) return false;
-    return liveState[`device.${d.id}.connected`] === true;
-  }).length;
-  const enabledCount = devices.filter(d => d.enabled !== false).length;
-  const disconnectedCount = enabledCount - connectedCount;
+  const deviceSummary = summarizeDashboardDevices(devices, liveState);
+  const connectedCount = deviceSummary.connected;
+  const enabledCount = deviceSummary.enabled;
+  const disconnectedCount = deviceSummary.disconnected.length;
+  const asleepCount = deviceSummary.asleep.length;
 
   const triggerCount = macros.reduce((sum, m) => sum + (m.triggers?.filter(t => t.enabled !== false).length ?? 0), 0);
   const scriptCount = scripts.filter(s => s.enabled).length;
@@ -1196,7 +1196,29 @@ export function DashboardView() {
                   {String(disconnectedCount) + " device" + (disconnectedCount !== 1 ? "s" : "") + " disconnected"}
                 </div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                  {devices.filter(d => d.enabled !== false && liveState[`device.${d.id}.connected`] !== true).map(d => String(d.name)).join(", ")}
+                  {deviceSummary.disconnected.join(", ")}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Asleep: put to sleep by one of its own commands and waiting for
+              its wake command. Not a fault, so not in the card above. */}
+          {asleepCount > 0 && (
+            <div style={{
+              ...cardStyle,
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-md)",
+              marginBottom: "var(--space-xl)",
+            }}>
+              <Moon size={18} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+              <div>
+                <div style={{ fontWeight: 500, fontSize: "var(--font-size-sm)" }}>
+                  {asleepHeadline(asleepCount)}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                  {deviceSummary.asleep.join(", ")}
                 </div>
               </div>
             </div>
@@ -1214,6 +1236,7 @@ export function DashboardView() {
                 {devices.map(dev => {
                   const isEnabled = dev.enabled !== false;
                   const isConnected = liveState[`device.${dev.id}.connected`] === true;
+                  const isAsleep = !isConnected && liveState[`device.${dev.id}.asleep`] === true;
                   // Each tile opens its own device, not just the Devices screen.
                   const openDevice = () => useNavigationStore.getState().navigateTo("devices", { type: "device", id: dev.id });
                   return (
@@ -1234,12 +1257,12 @@ export function DashboardView() {
                         ...cardStyle,
                         padding: "var(--space-sm) var(--space-md)",
                         opacity: isEnabled ? 1 : 0.5,
-                        borderColor: !isEnabled ? "var(--border-color)" : isConnected ? "rgba(76,175,80,0.3)" : "rgba(239,68,68,0.3)",
+                        borderColor: !isEnabled || isAsleep ? "var(--border-color)" : isConnected ? "rgba(76,175,80,0.3)" : "rgba(239,68,68,0.3)",
                         cursor: "pointer",
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-                        <DeviceStatusDot connected={isConnected} />
+                        <DeviceStatusDot connected={isConnected} asleep={isAsleep} />
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontWeight: 500, fontSize: "var(--font-size-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {String(dev.name)}

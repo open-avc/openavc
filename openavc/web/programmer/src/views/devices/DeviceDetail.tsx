@@ -1,7 +1,7 @@
 import { InstalledEquipment } from "./InstalledEquipment";
 import { BuiltInEquipmentNotice } from "../../components/shared/BuiltInEquipmentNotice";
 import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Send, Pencil, Trash2, Wifi, WifiOff, Power, RefreshCw, Copy, Settings, Check, X, Loader2, Search, Pause, Play, AlertTriangle, ClipboardCheck } from "lucide-react";
+import { Send, Pencil, Trash2, Wifi, WifiOff, Power, RefreshCw, Copy, Settings, Check, X, Loader2, Search, Pause, Play, AlertTriangle, ClipboardCheck, Moon } from "lucide-react";
 import { CopyButton } from "../../components/shared/CopyButton";
 import { DeviceStatusDot } from "../../components/shared/DeviceStatusDot";
 import { pausedBannerText } from "../../components/shared/pausedText";
@@ -28,7 +28,7 @@ import {
   MonitorCell, MonitorControl, MonitorLimitsPanel, type DeclaredReading,
 } from "../../components/shared/MonitorControl";
 import type { MonitorConfig } from "../../api/types";
-import { scanChildTrouble, troubleSummary } from "./childPresence";
+import { parentAwayFrom, scanChildTrouble, troubleSummary } from "./childPresence";
 import type { ChildTypeInfo } from "./childPresence";
 import { DEVICE_STALE_TITLE, LastHeard, staleValueStyle } from "./staleReading";
 import { normalizeOptionList, parseStateOptionList, settingValueText } from "../../components/shared/paramOptions";
@@ -298,6 +298,11 @@ export function DeviceDetail({
   // for the whole window (core/device_manager.py), so the offline banner below
   // never fires and this one takes its place.
   const restarting = Boolean(liveState[`device.${deviceId}.restarting`]);
+  // Off the network because a command put it to sleep (sleeps_device). Like
+  // restarting, `offline_reason` is null the whole time and `offline_detail`
+  // carries the sentence ("Asleep. Power On wakes it."), so the asleep banner
+  // below takes the offline banner's place.
+  const asleep = Boolean(liveState[`device.${deviceId}.asleep`]);
   // Server-built, human-readable offline reason (device.<id>.offline_detail).
   // The taxonomy lives server-side; this view only renders the message.
   const offlineDetail = String(liveState[`device.${deviceId}.offline_detail`] ?? "");
@@ -454,6 +459,7 @@ export function DeviceDetail({
             paused={paused}
             pausedFor={pausedFor}
             restarting={restarting}
+            asleep={asleep}
             size={12}
           />
           <h2 style={{ fontSize: "var(--font-size-xl)", flex: 1 }}>{deviceName}</h2>
@@ -702,6 +708,32 @@ export function DeviceDetail({
         </div>
       )}
 
+      {/* Asleep banner: a command put the device to sleep and it stays off the
+          network until its wake command. Nothing is wrong and there is nothing
+          to check, so no troubleshooting steps; `offline_detail` names the
+          command that wakes it. */}
+      {asleep && !orphaned && !paused && !restarting && (
+        <div
+          role="status"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-sm)",
+            padding: "var(--space-sm) var(--space-md)",
+            borderRadius: "var(--border-radius)",
+            marginBottom: "var(--space-md)",
+            fontSize: "var(--font-size-sm)",
+            background: "var(--bg-hover)",
+            color: "var(--text-secondary)",
+          }}
+        >
+          <Moon size={14} style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1 }}>
+            {offlineDetail || "Asleep."}
+          </span>
+        </div>
+      )}
+
       {/* Paused banner — Live Test or a Device Audit holds the device.
           Auto-reconnect is suspended; offer Resume so a pause left behind by
           a closed test is recoverable here. */}
@@ -769,7 +801,7 @@ export function DeviceDetail({
       )}
 
       {/* Offline reason banner — actionable cause from device.<id>.offline_detail */}
-      {!connected && isEnabled && !orphaned && !paused && !restarting && offlineDetail && (
+      {!connected && isEnabled && !orphaned && !paused && !restarting && !asleep && offlineDetail && (
         <OfflineBanner
           installed={installed}
           detail={offlineDetail}
@@ -984,6 +1016,7 @@ export function DeviceDetail({
         deviceId={deviceId}
         search={searchTerm}
         connected={connected}
+        parentAway={parentAwayFrom(liveState, deviceId)}
         childKeyCount={hiddenChildKeyCount}
         config={deviceConfig?.config}
         driverInfo={deviceInfo?.driver_info}

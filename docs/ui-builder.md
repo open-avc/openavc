@@ -668,6 +668,16 @@ that takes. While that is happening the panel says it is restarting and counts
 down rather than reporting a fault, and a press is answered with the same
 sentence instead of "check the IP address and network".
 
+**A device that was put to sleep keeps its wake button.** When a driver says a
+command puts the device to sleep (a display whose standby turns its network
+off, a computer that was shut down), the device reads as asleep. Controls that
+send its wake command, such as Power On, stay live with their feedback showing;
+every other control bound to the device is marked as it is for any device that
+cannot be reached, and a press on one says "<device> is asleep. Power On wakes
+it." A control whose press sends only a command that works while the device is
+offline (a Power On by Wake-on-LAN) is never marked as one that will be refused.
+Bind a label to `device.<id>.asleep` or `offline_detail` to show it.
+
 This matters most on the controls that carry a number somebody acts on. A fader
 sitting at the top of its travel over `0.0 dB`, for an amplifier nobody can
 reach, is not a neutral wrong answer.

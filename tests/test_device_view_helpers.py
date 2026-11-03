@@ -74,6 +74,7 @@ SCENARIOS = [
     "l174_no_state_is_offline",
     "l174_counts_only_the_passed_list",
     "l174_empty",
+    "l174_asleep_is_not_offline",
 ]
 
 

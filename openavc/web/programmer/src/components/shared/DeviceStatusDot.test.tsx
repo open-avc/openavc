@@ -25,3 +25,26 @@ describe("DeviceStatusDot", () => {
     expect(titleOf(<DeviceStatusDot connected={false} paused />)).toBe("Paused");
   });
 });
+
+describe("DeviceStatusDot asleep", () => {
+  function colorOf(el: React.ReactElement): string | null {
+    const { container } = render(el);
+    return container.querySelector("span")?.style.backgroundColor ?? null;
+  }
+
+  it("says Asleep instead of Disconnected", () => {
+    expect(titleOf(<DeviceStatusDot connected={false} asleep />)).toBe("Asleep");
+  });
+
+  it("is drawn in the muted colour, not the fault red", () => {
+    expect(colorOf(<DeviceStatusDot connected={false} asleep />)).toBe("var(--text-muted)");
+    expect(colorOf(<DeviceStatusDot connected={false} />)).toBe("var(--color-error)");
+  });
+
+  it("gives way to a pause and to a restart", () => {
+    expect(titleOf(<DeviceStatusDot connected={false} asleep paused pausedFor="audit" />)).toBe(
+      "Paused for a Device Audit",
+    );
+    expect(titleOf(<DeviceStatusDot connected={false} asleep restarting />)).toBe("Restarting");
+  });
+});

@@ -240,6 +240,39 @@ describe("a device that is offline", () => {
   });
 });
 
+describe("a device that is asleep, restarting or paused", () => {
+  // Away on purpose: every child follows it to parent_offline, and that is
+  // what was expected, so nothing is counted as down.
+  const FOLLOWED = { a: "parent_offline", b: "parent_offline" };
+
+  it("does not count the children it took with it as down", async () => {
+    mocks.listChildEntities.mockResolvedValue(payload(["a", "b", "c"], FOLLOWED));
+    render(panel({ connected: false, parentAway: true }));
+
+    const row = await screen.findByTestId("child-row-a");
+    const dot = within(row).getByTestId("child-presence-dot");
+    expect(dot.getAttribute("data-ok")).toBe("false");
+    expect(dot.getAttribute("data-trouble")).toBe("false");
+    expect(screen.queryByTestId("child-type-down-decoder")).toBeNull();
+    expect(screen.queryByTestId("child-trouble-filter")).toBeNull();
+    // Not hoisted either: the roster keeps its own order.
+    const rows = screen.getAllByTestId(/^child-row-/);
+    expect(rows.map((r) => r.getAttribute("data-testid"))).toEqual([
+      "child-row-a", "child-row-b", "child-row-c",
+    ]);
+  });
+
+  it("still counts a child the driver said was not responding", async () => {
+    mocks.listChildEntities.mockResolvedValue(
+      payload(["a", "b", "c"], { a: "parent_offline", b: "not_responding" }),
+    );
+    render(panel({ connected: false, parentAway: true }));
+
+    const badge = await screen.findByTestId("child-type-down-decoder");
+    expect(badge.textContent).toContain("1 down");
+  });
+});
+
 describe("ordering", () => {
   it("lifts what is not answering to the top", async () => {
     mocks.listChildEntities.mockResolvedValue(

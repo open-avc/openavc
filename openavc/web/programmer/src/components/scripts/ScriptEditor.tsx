@@ -392,6 +392,21 @@ export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, l
               });
             }
           }
+          // `device.<id>.asleep` is only in live state while a device is
+          // asleep, so offer it for every device the project has.
+          if (project) {
+            for (const d of project.devices) {
+              const key = `device.${d.id}.asleep`;
+              if (key in liveState) continue;
+              suggestions.push({
+                label: key,
+                kind: monaco.languages.CompletionItemKind.Variable,
+                insertText: key,
+                detail: `${d.name}: asleep`,
+                range,
+              });
+            }
+          }
         }
 
         // Dynamic event pattern completions

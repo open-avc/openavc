@@ -2281,6 +2281,51 @@ const tests = {
             'reconnect: and the mark goes');
     },
 
+    // A device put to sleep on purpose keeps its wake button live: the press
+    // goes out with the device off the network (`wake_devices`, resolved on
+    // the server) and its feedback is the true "off". Every other control
+    // bound to the device is marked, and a device that is merely unreachable
+    // marks both.
+    asleep_device_keeps_its_wake_control_live() {
+        const app = mkApp();
+        const proj = project({
+            elements: [
+                {
+                    id: 'on', type: 'button', label: 'Power On',
+                    bindings: {
+                        show: { look: { key: 'device.tv.power', default_state: 'off',
+                            states: { on: { label: 'ON' }, off: { label: 'OFF' } } } },
+                        do: { press: [{ action: 'device.command', device: 'tv', command: 'power_on' }] },
+                    },
+                    wake_devices: ['tv'],
+                },
+                {
+                    id: 'vol', type: 'fader', label: 'Volume', min: 0, max: 100,
+                    bindings: { show: { value: { key: 'device.tv.volume' } } },
+                },
+            ],
+            placements: { on: { x: 5, y: 5, w: 20, h: 10 }, vol: { x: 30, y: 5, w: 20, h: 60 } },
+        });
+        app.state = { 'device.tv.connected': true, 'device.tv.power': 'off', 'device.tv.volume': 20 };
+        renderProject(app, proj);
+        const on = app.root.querySelector('[data-element-id="on"]');
+        const vol = app.root.querySelector('[data-element-id="vol"]');
+        assert(app.bindings.some(b => b.elementDef?.id === 'on'),
+            'the wake button reads a device key, so it has a binding to mark');
+
+        app.state['device.tv.connected'] = false;
+        app.state['device.tv.asleep'] = true;
+        app.evaluateAllBindings(['device.tv.connected', 'device.tv.asleep']);
+        assert(!on.classList.contains('device-offline'), 'asleep: the wake button stays live');
+        assert(vol.classList.contains('device-offline'), 'asleep: the volume control is marked');
+
+        app.state['device.tv.asleep'] = null;
+        app.evaluateAllBindings(['device.tv.asleep']);
+        assert(on.classList.contains('device-offline'),
+            'unreachable, not asleep: the wake button is marked like the rest');
+        assert(vol.classList.contains('device-offline'), 'unreachable: the volume control too');
+    },
+
     // A fader that names no unit prints none. It used to print "%", so a dB
     // gain whose driver declared no unit read "-41.0 %"; the slider and the
     // gauge never did. A fader that names one still prints it.

@@ -32,7 +32,7 @@ const LS = {
 {
   const r = H.computeStatusCounts([{ id: "d1" }, { id: "d2" }, { id: "d3" }], LS);
   results.l174_counts_by_status = {
-    pass: eq(r, { total: 3, online: 1, offline: 1, orphaned: 1 }),
+    pass: eq(r, { total: 3, online: 1, offline: 1, asleep: 0, orphaned: 1 }),
     detail: r,
   };
 }
@@ -40,7 +40,7 @@ const LS = {
   // Orphaned takes precedence over connected.
   const r = H.computeStatusCounts([{ id: "d4" }], LS);
   results.l174_orphaned_precedence = {
-    pass: eq(r, { total: 1, online: 0, offline: 0, orphaned: 1 }),
+    pass: eq(r, { total: 1, online: 0, offline: 0, asleep: 0, orphaned: 1 }),
     detail: r,
   };
 }
@@ -48,7 +48,7 @@ const LS = {
   // No live state -> offline.
   const r = H.computeStatusCounts([{ id: "nostate" }], LS);
   results.l174_no_state_is_offline = {
-    pass: eq(r, { total: 1, online: 0, offline: 1, orphaned: 0 }),
+    pass: eq(r, { total: 1, online: 0, offline: 1, asleep: 0, orphaned: 0 }),
     detail: r,
   };
 }
@@ -58,13 +58,23 @@ const LS = {
   const subset = [{ id: "d1" }];
   const r = H.computeStatusCounts(subset, { "device.d1.connected": true, "device.d2.connected": true });
   results.l174_counts_only_the_passed_list = {
-    pass: eq(r, { total: 1, online: 1, offline: 0, orphaned: 0 }),
+    pass: eq(r, { total: 1, online: 1, offline: 0, asleep: 0, orphaned: 0 }),
     detail: r,
   };
 }
 {
   const r = H.computeStatusCounts([], LS);
-  results.l174_empty = { pass: eq(r, { total: 0, online: 0, offline: 0, orphaned: 0 }), detail: r };
+  results.l174_empty = { pass: eq(r, { total: 0, online: 0, offline: 0, asleep: 0, orphaned: 0 }), detail: r };
+}
+{
+  // A device put to sleep on purpose is counted under Asleep, not Offline.
+  const r = H.computeStatusCounts([{ id: "tv" }, { id: "amp" }], {
+    "device.tv.connected": false, "device.tv.asleep": true, "device.amp.connected": false,
+  });
+  results.l174_asleep_is_not_offline = {
+    pass: eq(r, { total: 2, online: 0, offline: 1, asleep: 1, orphaned: 0 }),
+    detail: r,
+  };
 }
 
 process.stdout.write(JSON.stringify(results));

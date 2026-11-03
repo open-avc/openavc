@@ -48,10 +48,16 @@ class AlertMonitor:
         state: StateStore,
         events: EventBus,
         monitors_provider: Callable[[], list[dict[str, Any]]] | None = None,
+        away_on_purpose: Callable[[str], bool] | None = None,
     ):
         self._agent = agent
         self._state = state
         self._events = events
+        # Asks the device manager whether a device is away because we asked
+        # (a restart window open, a sleeping command sent). The state flags say
+        # the same once they are published, but the drop writes `connected`
+        # first, and an immediate rule would fire in between.
+        self._away_on_purpose = away_on_purpose
         # Reads the project's monitor list. A callable rather than the project
         # itself because the project is replaced wholesale on every save, and
         # this must always see the one that is running.
@@ -242,17 +248,64 @@ class AlertMonitor:
             parts = key.split(".")
             if len(parts) >= 2:
                 self._last_state_times[parts[1]] = time.time()
+            # The device's quiet just changed (it fell asleep, woke, or a
+            # restart window ended): its presence keys are judged again with
+            # the values they hold now, so a wake that fails alerts on the real
+            # fault even though `connected` itself did not change.
+            if len(parts) == 3 and parts[2] in QUIET_FLAGS and not new_value:
+                self._evaluate_presence(parts[1])
 
-        # Evaluate threshold and pattern rules. Two sources — the cloud's
-        # fleet-wide rules and the project's own monitors — one evaluator.
+        self._evaluate(key, new_value)
+
+    def _evaluate(self, key: str, value: Any) -> None:
+        """Evaluate threshold and pattern rules for one key. Two sources (the
+        cloud's fleet-wide rules and the project's own monitors), one
+        evaluator. A presence key of a quiet device disarms instead."""
+        quiet = self._quiet_presence_key(key)
         for rule in self._all_rules():
             if not rule.get("enabled", True):
                 continue
+            if quiet:
+                self._pattern_timers.pop(f"rule:{rule.get('id')}:{key}", None)
+                continue
             rule_type = rule.get("rule_type", "")
             if rule_type == "threshold":
-                self._evaluate_threshold(rule, key, new_value)
+                self._evaluate_threshold(rule, key, value)
             elif rule_type == "pattern":
-                self._evaluate_pattern(rule, key, new_value)
+                self._evaluate_pattern(rule, key, value)
+
+    # --- Quiet devices ---
+
+    def _quiet_device(self, device_id: str) -> bool:
+        """True while the device is away on purpose: asleep after a command
+        declaring sleeps_device, or inside a commanded restart (or the wake
+        that follows a sleep). Nothing is wrong, so nobody is told."""
+        if any(self._state.get(f"device.{device_id}.{flag}") for flag in QUIET_FLAGS):
+            return True
+        if self._away_on_purpose is None:
+            return False
+        try:
+            return bool(self._away_on_purpose(device_id))
+        except Exception:  # noqa: BLE001 - a monitor must never break a state write
+            return False
+
+    def _quiet_presence_key(self, key: str) -> bool:
+        """True for a presence key (the device's or a child's) of a quiet device."""
+        parts = key.split(".")
+        if len(parts) < 3 or parts[0] != "device" or parts[-1] not in PRESENCE_PROPS:
+            return False
+        return self._quiet_device(parts[1])
+
+    def _evaluate_presence(self, device_id: str) -> None:
+        """Judge every presence key of one device again, with its current value."""
+        try:
+            current = self._state.get_matching(f"device.{device_id}.*")
+        except Exception:  # noqa: BLE001 - a monitor must never break a state write
+            log.debug("Could not read %s's presence keys", device_id, exc_info=True)
+            return
+        for key, value in current.items():
+            if key.split(".")[-1] in PRESENCE_PROPS:
+                self._evaluate(key, value)
 
     # --- Rule Evaluation ---
 
@@ -427,6 +480,9 @@ class AlertMonitor:
             # The value is read LIVE rather than remembered from arming time,
             # so the alert states what is true when it is sent.
             key = alert_key.split(":", 2)[-1]
+            if self._quiet_presence_key(key):
+                self._pattern_timers.pop(alert_key, None)
+                continue
             value = self._state.get(key)
             if rule.get("rule_type") == "threshold":
                 payload = self._threshold_alert(rule, key, value)
@@ -471,6 +527,9 @@ class AlertMonitor:
                 # fnmatch — a literal fnmatch of "device." matched nothing.
                 full_key = f"device.{device_id}"
                 if not _matches_key_prefix(full_key, key_prefix):
+                    continue
+                # Asleep or restarting on purpose: silent, and not wrong.
+                if self._quiet_device(device_id):
                     continue
 
                 alert_key = f"rule:{rule['id']}:{device_id}"
@@ -836,6 +895,13 @@ def _check_resolved(value: Any, fire_operator: str, resolve_value: Any) -> bool:
         return _compare(value, inverse_op, resolve_value)
     # For non-numeric operators (=, !=, contains, etc.) resolve when no longer triggered
     return not _compare(value, fire_operator, resolve_value)
+
+
+# The keys a device's (or a child's) reachability is published under, and the
+# flags that say its absence was asked for. A rule on one of these keys of a
+# device that is asleep or restarting neither arms nor fires.
+PRESENCE_PROPS = frozenset({"connected", "online", "offline_reason", "offline_detail", "reconnect_attempt"})
+QUIET_FLAGS = ("asleep", "restarting")
 
 
 def _extract_device_id(key: str) -> str | None:

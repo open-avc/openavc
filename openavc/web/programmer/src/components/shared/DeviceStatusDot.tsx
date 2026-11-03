@@ -12,12 +12,19 @@ interface DeviceStatusDotProps {
   /** Away because a command restarted it (device.<id>.restarting) — absence
    *  we asked for, coming back on its own, so not the red a fault gets. */
   restarting?: boolean;
+  /** Off the network because a command put it to sleep (device.<id>.asleep).
+   *  Waiting for its wake command, not a fault, so not the red either. */
+  asleep?: boolean;
   size?: number;
 }
 
 /** The rule this dot keeps: GREEN means you can drive this device right now.
- *  Anything else is amber or red, and the tooltip (plus the card's own banner)
- *  says which of the four it is.
+ *  Anything else is amber, grey or red, and the tooltip (plus the card's own
+ *  banner) says which of the five it is.
+ *
+ *  Asleep takes the muted text colour: the device was put to sleep on purpose
+ *  and stays that way until its wake command, so it is neither the red of a
+ *  fault nor the amber of something that will come back by itself.
  *
  *  Paused used to take `--color-info` for that middle band, on the reasonable
  *  assumption that the token was a blue — its fallback is `#6aa3d6`. It is not:
@@ -32,8 +39,10 @@ interface DeviceStatusDotProps {
  *  triangle rather than a dot. */
 const ATTENTION = "var(--color-warning, #f59e0b)";
 
+const ASLEEP = "var(--text-muted)";
+
 export function DeviceStatusDot({
-  connected, orphaned, paused, pausedFor, restarting, size = 10,
+  connected, orphaned, paused, pausedFor, restarting, asleep, size = 10,
 }: DeviceStatusDotProps) {
   const color = orphaned
     ? ATTENTION
@@ -41,18 +50,22 @@ export function DeviceStatusDot({
       ? ATTENTION
       : paused
         ? ATTENTION
-        : connected
-          ? "var(--color-success)"
-          : "var(--color-error)";
+        : asleep
+          ? ASLEEP
+          : connected
+            ? "var(--color-success)"
+            : "var(--color-error)";
   const title = orphaned
     ? "Driver not installed"
     : restarting
       ? "Restarting"
       : paused
         ? pausedTitle(pausedFor)
-        : connected
-          ? "Connected"
-          : "Disconnected";
+        : asleep
+          ? "Asleep"
+          : connected
+            ? "Connected"
+            : "Disconnected";
   const shape = orphaned
     ? {
         width: 0,

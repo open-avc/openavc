@@ -148,7 +148,7 @@ def _build_commands_meta(commands_def: dict[str, Any]) -> dict[str, Any]:
         }
         for key in (
             "method", "path", "body", "address", "args", "help",
-            "available_offline", "restarts_device_for", "sets", "query_for",
+            "available_offline", "restarts_device_for", "sleeps_device", "sets", "query_for",
             "confirm",
         ):
             if key in cmd_def:

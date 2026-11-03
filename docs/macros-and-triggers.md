@@ -187,7 +187,9 @@ Every step has an optional **Skip this step if...** guard in the Guards section 
 
 This is simpler than a full conditional block when you just want to skip one step. For example: skip the "power on" command if `device.projector.power` already equals `"on"`.
 
-Device Command steps also have a **Skip if device is offline** checkbox. When checked, the step is silently skipped instead of failing if the device is disconnected. This is useful for macros that control optional equipment that may not always be present. A device shown offline only because it stopped answering its polls, with its connection still open, still gets the command, so a display that goes quiet in standby can still be switched on. A command that works while the device is offline, like a Power On sent by Wake-on-LAN, is never skipped either.
+Device Command steps also have a **Skip if device is offline** checkbox. When checked, the step is silently skipped instead of failing if the device is disconnected. This is useful for macros that control optional equipment that may not always be present. A device shown offline only because it stopped answering its polls, with its connection still open, still gets the command, so a display that goes quiet in standby can still be switched on. A command that works while the device is offline, like a Power On sent by Wake-on-LAN, is never skipped either. A device that was put to sleep on purpose (its card reads "Asleep") is offline, so its other commands are skipped and its wake command still runs.
+
+A trigger on `device.<id>.connected` fires whenever the device goes off the network, including when it was put to sleep or told to restart. To act only on a fault, watch `device.<id>.offline_reason` instead: it stays empty while a device is asleep or restarting on purpose. `device.<id>.asleep` (`true` while asleep) is a trigger source of its own.
 
 ## Dynamic Parameters
 

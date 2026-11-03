@@ -341,10 +341,14 @@ export function DeviceValuePicker({
         >
           <option value="">Select device...</option>
           {project.devices.map((d) => {
-            const connected = useConnectionStore.getState().liveState[`device.${d.id}.connected`];
+            const liveState = useConnectionStore.getState().liveState;
+            const connected = liveState[`device.${d.id}.connected`];
+            // Put to sleep by one of its own commands: said in words, because
+            // an <option> can carry no other mark than the hollow dot.
+            const asleep = !connected && liveState[`device.${d.id}.asleep`] === true;
             return (
               <option key={d.id} value={d.id}>
-                {connected ? "● " : "○ "}{d.name} ({driverLabel(d.driver)})
+                {connected ? "● " : "○ "}{d.name} ({driverLabel(d.driver)}){asleep ? ", asleep" : ""}
               </option>
             );
           })}

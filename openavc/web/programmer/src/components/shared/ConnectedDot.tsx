@@ -10,11 +10,19 @@
 import type { ReactNode } from "react";
 import { useConnectionStore } from "../../store/connectionStore";
 
-export function ConnectedDot({ connected }: { connected: boolean }) {
+export function ConnectedDot({
+  connected,
+  asleep = false,
+}: {
+  connected: boolean;
+  /** Put to sleep by one of its own commands (device.<id>.asleep). Drawn
+   *  hollow like any device that is not connected; the tooltip says which. */
+  asleep?: boolean;
+}) {
   return (
     <span
       aria-hidden
-      title={connected ? "Connected" : "Offline"}
+      title={connected ? "Connected" : asleep ? "Asleep" : "Offline"}
       style={{
         width: 7,
         height: 7,
@@ -37,7 +45,8 @@ export function ConnectedDot({ connected }: { connected: boolean }) {
  * Pre-existing behaviour, kept deliberately rather than fixed in passing.
  */
 export function connectedDot(deviceId: string): ReactNode {
-  const connected =
-    useConnectionStore.getState().liveState[`device.${deviceId}.connected`] === true;
-  return <ConnectedDot connected={connected} />;
+  const liveState = useConnectionStore.getState().liveState;
+  const connected = liveState[`device.${deviceId}.connected`] === true;
+  const asleep = liveState[`device.${deviceId}.asleep`] === true;
+  return <ConnectedDot connected={connected} asleep={asleep} />;
 }

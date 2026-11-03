@@ -285,6 +285,12 @@ def friendly_error(
                 f"{device} is restarting. It should be back in about "
                 f"{restart_seconds} {unit}."
             ) if device else msg
+        # A device put to sleep on purpose (sleeps_device): the same refusal,
+        # and the instruction is the wake command, which still works.
+        asleep_wake = getattr(exc, "asleep_wake", None)
+        if asleep_wake is not None:
+            target = device or "The equipment"
+            return f"{target} is asleep. {asleep_wake} wakes it."
         # Our own refusal is already a sentence somebody can read -- the device
         # manager raises "Device 'x' is not connected" when a command is sent
         # to a device that is not there. Wrapping that produced "Connection

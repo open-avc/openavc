@@ -34,6 +34,7 @@ from openavc.core.connection_fault import (
     restarting_message,
     typed_fault_from_exc,
 )
+from openavc.core.device_sleep import SleepBook, asleep_message, command_label, wake_command_of
 from openavc.drivers.avcdriver_semantic import undeclared_child_type_reason
 from openavc.drivers.base import (
     CommandParamError,
@@ -105,6 +106,18 @@ def device_restarting(device_id: str, seconds_left: int) -> ConnectionError:
     )
     exc.device_id = device_id
     exc.restart_seconds = max(1, int(seconds_left))
+    return exc
+
+
+def device_asleep(device_id: str, wake_label: str) -> ConnectionError:
+    """The "we put it to sleep" refusal: the device is off the network because
+    a sleeping command (``sleeps_device``) ran, and ``wake_label`` names the
+    command that brings it back. ``asleep_wake`` is what ``friendly_error``
+    turns into the sentence, read as an attribute like ``restart_seconds``.
+    """
+    exc = ConnectionError(f"Device '{device_id}' is asleep")
+    exc.device_id = device_id
+    exc.asleep_wake = wake_label
     return exc
 
 
@@ -408,6 +421,12 @@ class DeviceManager:
         # command the device shrugs off therefore costs nothing visible, which
         # is the right way round for a number an author is estimating.
         self._restart_windows: dict[str, float] = {}
+        # The restart windows a wake command opened (sleeps_device): the same
+        # window, worded "Waking up" rather than "Restarting".
+        self._waking: set[str] = set()
+        # Devices armed or asleep after a command declaring `sleeps_device`
+        # (core/device_sleep.py): in memory and in {data_dir}/device_sleep.json.
+        self._sleep = SleepBook()
         # Set by SimulationManager while a simulated bench is running: given a
         # device id, returns its driver id when that device has no simulator
         # and so was never redirected. Such a device fails against its REAL
@@ -787,6 +806,9 @@ class DeviceManager:
         # while the old one's window was open would inherit a suppression it
         # never asked for.
         self._restart_windows.pop(device_id, None)
+        self._waking.discard(device_id)
+        # And a sleep: a device re-added under this id never went to sleep.
+        self._sleep.end(device_id)
         # Forget this device's credentials, so a password that is no longer
         # configured anywhere stops masking text in an unrelated device's log.
         get_secret_registry().forget(device_id)
@@ -923,6 +945,9 @@ class DeviceManager:
             remaining = self.restart_seconds_left(device_id)
             if remaining is not None:
                 raise device_restarting(device_id, remaining)
+            sleep = self._sleep.get(device_id)
+            if sleep is not None and sleep.asleep:
+                raise device_asleep(device_id, sleep.wake_label)
             raise not_connected(device_id)
         try:
             params = self._coerce_child_id_params(driver, command, params)
@@ -943,8 +968,65 @@ class DeviceManager:
         # Armed only on a send that did not raise. A command that never left
         # the building has not restarted anything, and arming on the attempt
         # would suppress the very fault that stopped it.
+        woke = self._note_sleep_command(device_id, driver, command)
         self._arm_restart_window(device_id, driver, command)
+        if woke:
+            self._publish_waking(device_id)
         return result
+
+    def _note_sleep_command(self, device_id: str, driver: BaseDriver, command: str) -> bool:
+        """Arm the device after a command declaring ``sleeps_device``, or end
+        its sleep after the wake command. True when the wake command ended a
+        sleep the device was actually in (core/device_sleep.py)."""
+        info = getattr(driver, "DRIVER_INFO", {}) or {}
+        commands = info.get("commands") or {}
+        wake = wake_command_of(commands, command)
+        if wake is not None:
+            self._sleep.arm(
+                device_id, wake, command_label(commands, wake), str(info.get("id") or ""),
+            )
+            log.info("[%s] %s puts the device to sleep; %s wakes it", device_id, command, wake)
+            return False
+        sleep = self._sleep.get(device_id)
+        if sleep is not None and command == sleep.wake:
+            self._sleep.end(device_id)
+            if sleep.asleep:
+                self._waking.add(device_id)
+                return True
+        return False
+
+    def _publish_waking(self, device_id: str) -> None:
+        """Right after the wake command: the sleep is over, and the device is
+        coming back for as long as the wake command's window says."""
+        if self.state.get(f"device.{device_id}.connected"):
+            return
+        remaining = self.restart_seconds_left(device_id)
+        self.state.set_batch(
+            {
+                f"device.{device_id}.asleep": None,
+                f"device.{device_id}.wake_command": None,
+                f"device.{device_id}.restarting": True if remaining is not None else None,
+                f"device.{device_id}.offline_reason": None,
+                f"device.{device_id}.offline_detail": (
+                    restarting_message(remaining, waking=True) if remaining is not None else None
+                ),
+            },
+            source="device_manager",
+        )
+
+    def sleep_of(self, device_id: str):
+        """The device's sleep (core/device_sleep.Sleep), or None."""
+        return self._sleep.get(device_id)
+
+    def away_on_purpose(self, device_id: str) -> bool:
+        """True while the device is, or is about to be, away because we asked:
+        a commanded-restart window is open, or a sleeping command was sent and
+        the device has not stayed awake past it. Asked by the alert monitor at
+        the moment a drop writes ``connected``, before the restarting or asleep
+        flag is published."""
+        if self.restart_seconds_left(device_id) is not None:
+            return True
+        return self._sleep.get(device_id) is not None and not self._sleep.stayed_awake(device_id)
 
     def _arm_restart_window(
         self, device_id: str, driver: BaseDriver, command: str
@@ -986,12 +1068,14 @@ class DeviceManager:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             self._restart_windows.pop(device_id, None)
+            self._waking.discard(device_id)
             return None
         return max(1, int(round(remaining)))
 
     def _end_restart_window(self, device_id: str) -> None:
         """Drop the window without waiting for it to expire."""
         self._restart_windows.pop(device_id, None)
+        self._waking.discard(device_id)
 
     @staticmethod
     def _check_command_declared(
@@ -1109,6 +1193,15 @@ class DeviceManager:
         info = getattr(driver, "DRIVER_INFO", {}) or {}
         cmd_def = (info.get("commands") or {}).get(command)
         return isinstance(cmd_def, dict) and bool(cmd_def.get("available_offline"))
+
+    def command_works_offline(self, device_id: str, command: Any) -> bool:
+        """Whether ``command`` goes out to ``device_id`` with no live
+        connection (``available_offline``). False for an unknown device or
+        command. Asked by ui/action_devices.py for the panel's press marks."""
+        driver = self._devices.get(device_id)
+        if driver is None or not isinstance(command, str):
+            return False
+        return self._command_available_offline(driver, command)
 
     def accepts_commands(self, device_id: str) -> bool:
         """Whether a command sent to this device now would go out.
@@ -2183,16 +2276,46 @@ class DeviceManager:
             self.state.set_batch(
                 {
                     f"device.{device_id}.restarting": True,
+                    f"device.{device_id}.asleep": None,
+                    f"device.{device_id}.wake_command": None,
                     f"device.{device_id}.offline_reason": None,
-                    f"device.{device_id}.offline_detail": restarting_message(remaining),
+                    f"device.{device_id}.offline_detail": restarting_message(
+                        remaining, waking=device_id in self._waking,
+                    ),
                 },
                 source="device_manager",
             )
             return fault.code
         self._end_restart_window(device_id)
+        # A device we put to sleep (sleeps_device) is asleep, not faulty, for
+        # every failure that is only its absence: the same None offline_reason
+        # the restart window relies on. A permanent fault means it answered,
+        # and a device still connected long after the sleeping command stayed
+        # awake; either ends the sleep and the fault is published as itself.
+        sleep = self._sleep.get(device_id, self._driver_id(device_id, driver))
+        if sleep is not None:
+            if is_permanent_fault(fault.code) or self._sleep.stayed_awake(device_id):
+                self._sleep.end(device_id)
+            else:
+                if not sleep.asleep:
+                    log.info("[%s] Asleep; %s wakes it", device_id, sleep.wake_label)
+                self._sleep.mark_asleep(device_id)
+                self.state.set_batch(
+                    {
+                        f"device.{device_id}.asleep": True,
+                        f"device.{device_id}.wake_command": sleep.wake,
+                        f"device.{device_id}.restarting": None,
+                        f"device.{device_id}.offline_reason": None,
+                        f"device.{device_id}.offline_detail": asleep_message(sleep.wake_label),
+                    },
+                    source="device_manager",
+                )
+                return fault.code
         self.state.set_batch(
             {
                 f"device.{device_id}.restarting": None,
+                f"device.{device_id}.asleep": None,
+                f"device.{device_id}.wake_command": None,
                 f"device.{device_id}.offline_reason": fault.code,
                 f"device.{device_id}.offline_detail": fault.message,
             },
@@ -2200,16 +2323,25 @@ class DeviceManager:
         )
         return fault.code
 
+    def _driver_id(self, device_id: str, driver: BaseDriver | None) -> str | None:
+        """The id of the driver behind ``device_id``, or None when unknown."""
+        drv = driver if driver is not None else self._devices.get(device_id)
+        info = getattr(drv, "DRIVER_INFO", None) or {}
+        return str(info.get("id")) if info.get("id") else None
+
     def _clear_offline_reason(self, device_id: str) -> None:
         """Clear the offline-reason keys after a successful (re)connect.
 
-        Also ends any commanded-restart window: the device came back, which is
-        the outcome the window existed to wait for.
+        Also ends any commanded-restart window and any sleep: the device came
+        back, which is the outcome both existed to wait for.
         """
         self._end_restart_window(device_id)
+        self._sleep.end(device_id)
         self.state.set_batch(
             {
                 f"device.{device_id}.restarting": None,
+                f"device.{device_id}.asleep": None,
+                f"device.{device_id}.wake_command": None,
                 f"device.{device_id}.offline_reason": None,
                 f"device.{device_id}.offline_detail": None,
             },
@@ -2559,6 +2691,8 @@ class DeviceManager:
         self.state.set_batch(
             {
                 f"device.{device_id}.restarting": None,
+                f"device.{device_id}.asleep": None,
+                f"device.{device_id}.wake_command": None,
                 f"device.{device_id}.offline_reason": fault.code,
                 f"device.{device_id}.offline_detail": fault.message,
             },
@@ -2623,6 +2757,9 @@ class DeviceManager:
         """
         if self.restart_seconds_left(device_id) is not None:
             return
+        # Same for a device we put to sleep: the drop is the sleep.
+        if self._sleep.get(device_id) is not None:
+            return
         last = self._last_connect_at.get(device_id)
         if last is not None and (time.monotonic() - last) < _FLAP_WINDOW_SECONDS:
             self._flap_counts[device_id] = self._flap_counts.get(device_id, 0) + 1
@@ -2658,6 +2795,12 @@ class DeviceManager:
             base = _RECONNECT_RAMP_SECONDS[attempt]
         else:
             base = self._reconnect_interval()
+        # A device asleep on purpose is retried at the steady interval, never
+        # escalated: it has not flapped (a display woken by its own remote is
+        # found again within one interval).
+        sleep = self._sleep.get(device_id)
+        if sleep is not None and sleep.asleep:
+            return base * (1.0 + random.uniform(-_RECONNECT_JITTER, _RECONNECT_JITTER))
         flaps = min(self._flap_counts.get(device_id, 0), _MAX_FLAP_ESCALATIONS)
         base *= 2 ** flaps
         return base * (1.0 + random.uniform(-_RECONNECT_JITTER, _RECONNECT_JITTER))
@@ -2801,6 +2944,11 @@ class DeviceManager:
                 # WebSocket to every panel) per attempt would be pure noise
                 # for a number nothing counts down from any more.
                 noisy = attempt < _RECONNECT_LOG_FIRST or attempt % _RECONNECT_LOG_EVERY == 0
+                # A device asleep on purpose is silent: nothing is wrong, and
+                # it may stay asleep all night (one line said it fell asleep).
+                sleep = self._sleep.get(device_id)
+                if sleep is not None and sleep.asleep:
+                    noisy = False
                 if noisy:
                     self.state.set(
                         f"device.{device_id}.reconnect_attempt", attempt + 1,

@@ -14,7 +14,7 @@ import { DeviceGroupsPanel } from "./devices/DeviceGroupsPanel";
 import { DeviceListItem } from "./devices/DeviceListItem";
 import { AddDeviceDialog, EditDeviceDialog } from "./devices/DeviceDialogs";
 import { findDeviceReferences } from "./devices/deviceUtils";
-import { computeStatusCounts } from "./deviceViewHelpers";
+import { computeStatusCounts, deviceStatusOf, type DeviceListStatus } from "./deviceViewHelpers";
 
 type DeviceSubTab = "devices" | "groups" | "discovery" | "drivers";
 
@@ -41,7 +41,7 @@ export function DeviceView() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editDevice, setEditDevice] = useState<DeviceConfig | null>(null);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline" | "orphaned">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | DeviceListStatus>("all");
   const [duplicateSource, setDuplicateSource] = useState<DeviceConfig | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkMode, setBulkMode] = useState(false);
@@ -158,14 +158,7 @@ export function DeviceView() {
     // Apply status filter
     let statusFiltered = filtered;
     if (statusFilter !== "all") {
-      statusFiltered = filtered.filter((dev) => {
-        const isOrphaned = !!ls[`device.${dev.id}.orphaned`];
-        const isConnected = !!ls[`device.${dev.id}.connected`];
-        if (statusFilter === "orphaned") return isOrphaned;
-        if (statusFilter === "online") return !isOrphaned && isConnected;
-        if (statusFilter === "offline") return !isOrphaned && !isConnected;
-        return true;
-      });
+      statusFiltered = filtered.filter((dev) => deviceStatusOf(dev.id, ls) === statusFilter);
     }
 
     // Re-group with status-filtered devices
@@ -468,6 +461,7 @@ export function DeviceView() {
                 { key: "all" as const, label: "All", count: statusCounts.total },
                 { key: "online" as const, label: "Online", count: statusCounts.online },
                 { key: "offline" as const, label: "Offline", count: statusCounts.offline },
+                { key: "asleep" as const, label: "Asleep", count: statusCounts.asleep },
                 { key: "orphaned" as const, label: "Orphaned", count: statusCounts.orphaned },
               ] as const).filter((f) => f.key === "all" || f.count > 0).map((f) => (
                 <button

@@ -1579,6 +1579,12 @@ class Engine:
             ui,
             [m.model_dump(mode="json") for m in self.project.macros],
             [g.model_dump(mode="json") for g in self.project.device_groups],
+            # Which commands go out with the device offline (the press marks);
+            # without a device manager every command needs a connection.
+            works_offline=(
+                self.devices.command_works_offline
+                if getattr(self, "devices", None) is not None else None
+            ),
         )
 
     def panel_lock_accepts(self, code: str) -> bool:
@@ -2239,6 +2245,7 @@ class Engine:
             alert_monitor = AlertMonitor(
                 self.cloud_agent, self.state, self.events,
                 monitors_provider=self.monitors,
+                away_on_purpose=self.devices.away_on_purpose,
             )
             self.cloud_agent.set_alert_monitor(alert_monitor)
 

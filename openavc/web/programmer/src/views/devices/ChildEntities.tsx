@@ -57,6 +57,7 @@ export function ChildEntities({
   deviceId,
   search,
   connected,
+  parentAway = false,
   childKeyCount,
   config,
   driverInfo,
@@ -70,6 +71,10 @@ export function ChildEntities({
   /** Live `device.<id>.connected`. Decides whether "connect the device" is
       advice or an insult. */
   connected: boolean;
+  /** The device is asleep, restarting or paused (`parentAwayFrom`). Its
+      children all read `parent_offline` then, which is expected, so none of
+      them is counted as down. */
+  parentAway?: boolean;
   /** How many child-entity state keys this device has in live state, counted
       by the page above (the same number its Live State panel reports as
       hidden). It changes exactly when children register or deregister, which
@@ -225,6 +230,7 @@ export function ChildEntities({
       (data.children[t] ?? []).map((e) =>
         childStateFor(liveState, deviceId, t, e),
       ),
+      { parentAway },
     );
   }
 
@@ -361,6 +367,7 @@ export function ChildEntities({
             schema={schema}
             entries={entries}
             emptyMessage={emptyRosterMessage(schema, connected, config, driverInfo)}
+            parentAway={parentAway}
             onLabelSaved={handleLabelSaved}
             declarations={declarations}
             monitors={monitors}
@@ -649,6 +656,7 @@ function ChildEntityList({
   schema,
   entries,
   emptyMessage,
+  parentAway,
   onLabelSaved,
   declarations,
   monitors,
@@ -661,6 +669,8 @@ function ChildEntityList({
   /** What to say when this type has no children, worked out by the panel
       above from what the driver declares and whether the device is up. */
   emptyMessage: ReactNode;
+  /** The device is away on purpose; see ChildEntities. */
+  parentAway: boolean;
   /** A label was saved for one of these children. */
   onLabelSaved: (childType: string, localId: number | string, label: string) => void;
   /** Every child reading's declaration, by suffix under `device.<id>.`. */
@@ -766,29 +776,31 @@ function ChildEntityList({
     const down: ChildEntityEntry[] = [];
     const up: ChildEntityEntry[] = [];
     for (const e of entries) {
-      (childPresence(liveStateForChild(e)).trouble ? down : up).push(e);
+      (childPresence(liveStateForChild(e), { parentAway }).trouble ? down : up).push(e);
     }
     return down.length === 0 ? entries : [...down, ...up];
-  }, [entries, liveStateForChild]);
+  }, [entries, liveStateForChild, parentAway]);
 
   const downCount = useMemo(
-    () => countTrouble(entries.map((e) => liveStateForChild(e))),
-    [entries, liveStateForChild],
+    () => countTrouble(entries.map((e) => liveStateForChild(e)), { parentAway }),
+    [entries, liveStateForChild, parentAway],
   );
 
   // What to CALL the trouble in the filter's own label. All-parent_offline
   // reads very differently from all-not_responding, and "not answering" for
   // both was the wording this had before either code existed.
   const downPhrase = useMemo(
-    () => troublePhrase(troubleReasons(entries.map((e) => liveStateForChild(e)))),
-    [entries, liveStateForChild],
+    () => troublePhrase(
+      troubleReasons(entries.map((e) => liveStateForChild(e)), { parentAway }),
+    ),
+    [entries, liveStateForChild, parentAway],
   );
 
   const visible = useMemo(
     () => (troubleOnly
-      ? ordered.filter((e) => childPresence(liveStateForChild(e)).trouble)
+      ? ordered.filter((e) => childPresence(liveStateForChild(e), { parentAway }).trouble)
       : ordered),
-    [ordered, troubleOnly, liveStateForChild],
+    [ordered, troubleOnly, liveStateForChild, parentAway],
   );
 
   // How much room the ID column needs. A numbered roster is two or three
@@ -1005,7 +1017,7 @@ function ChildEntityList({
                   >
                     {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                   </button>
-                  <PresenceDot state={liveS} />
+                  <PresenceDot state={liveS} parentAway={parentAway} />
                   <div
                     style={{
                       width: idWidth,
@@ -1325,8 +1337,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
  *  reason it is not counted in "N down": a mixer with nothing chained to it is
  *  a working mixer, and seven red rings would send somebody looking for
  *  hardware that was never installed. */
-function PresenceDot({ state }: { state: Record<string, unknown> }) {
-  const { ok, trouble, reason, detail } = childPresence(state);
+function PresenceDot({
+  state,
+  parentAway,
+}: {
+  state: Record<string, unknown>;
+  parentAway: boolean;
+}) {
+  const { ok, trouble, reason, detail } = childPresence(state, { parentAway });
   const title = ok
     ? "In service"
     : detail || (reason ? `Not in service (${reason})` : "Not answering");

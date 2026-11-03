@@ -205,7 +205,7 @@ const FIRST_THEME_WAIT_MS = 1000;
 const DEVICE_PLATFORM_PROPS = new Set([
     'connected', 'enabled', 'name', 'offline_detail', 'offline_reason',
     'orphan_reason', 'orphaned', 'paused', 'paused_for', 'reconnect_attempt',
-    'reconnect_failed', 'restarting',
+    'reconnect_failed', 'restarting', 'asleep', 'wake_command',
 ]);
 
 // The same set, for a child entity's reserved props. A child carries the
@@ -264,6 +264,9 @@ class PanelApp {
         // Preview only: element_id -> the devices its press reaches, from the
         // server's ui.definition (the Builder's copy never carries them).
         this._servedActionDevices = null;
+        // Preview only: element_id -> the devices its press reaches through a
+        // command that works while they are offline (`wake_devices`).
+        this._servedWakeDevices = null;
         // The in-place text edit in flight, or null. Edit mode only. Held here
         // rather than per-element so the freeze in `_setLabelText` is one
         // comparison, and so opening a second edit closes the first.
@@ -906,6 +909,7 @@ class PanelApp {
                 if (this.embedded) {
                     if (!this.editMode) {
                         this._servedActionDevices = this._actionDevicesById(msg.ui);
+                        this._servedWakeDevices = this._actionDevicesById(msg.ui, 'wake_devices');
                         this.evaluateActionAvailability();
                     }
                     break;
@@ -6459,11 +6463,35 @@ class PanelApp {
         return id ? this._deviceOffline(id) : false;
     }
 
-    /** Whether this binding's reading can be believed. */
+    /**
+     * Whether this binding's reading can be believed.
+     *
+     * One exception: a device put to sleep on purpose (`device.<id>.asleep`)
+     * keeps the readings of a control whose press wakes it. That press goes
+     * out with the device off the network (`wake_devices`, resolved on the
+     * server from the drivers' `available_offline`), and its feedback is the
+     * true "off", so the Power On button stays live while every other control
+     * bound to the device greys out.
+     */
     _bindingOffline(b) {
         const ids = this._bindingDeviceIds(b);
         if (!ids) return false;
-        return ids.some(id => this._deviceOffline(id));
+        const wakes = this._elementWakeDevices(b.elementDef);
+        return ids.some(id => this._deviceOffline(id) && !(wakes.includes(id) && this._deviceAsleep(id)));
+    }
+
+    /** True while the device is asleep on purpose (never in the design canvas). */
+    _deviceAsleep(deviceId) {
+        if (this.editMode) return false;
+        return this.state[`device.${deviceId}.asleep`] === true;
+    }
+
+    /** The devices an element's press reaches through a command that works offline. */
+    _elementWakeDevices(elementDef) {
+        const list = this._servedWakeDevices
+            ? this._servedWakeDevices.get(elementDef?.id)
+            : elementDef?.wake_devices;
+        return Array.isArray(list) ? list : [];
     }
 
     /**
@@ -6535,14 +6563,14 @@ class PanelApp {
     }
 
     /** Element id -> the devices its press reaches, from a resolved definition. */
-    _actionDevicesById(ui) {
+    _actionDevicesById(ui, key = 'action_devices') {
         const byId = new Map();
         const pages = Array.isArray(ui?.pages) ? ui.pages : [];
         const elements = pages.flatMap(p => (Array.isArray(p?.elements) ? p.elements : []))
             .concat(Array.isArray(ui?.master_elements) ? ui.master_elements : []);
         for (const element of elements) {
-            if (element?.id && Array.isArray(element.action_devices)) {
-                byId.set(element.id, element.action_devices);
+            if (element?.id && Array.isArray(element[key])) {
+                byId.set(element.id, element[key]);
             }
         }
         return byId;
@@ -6647,7 +6675,11 @@ class PanelApp {
         let flipped = null;
         if (changedKeys) {
             for (const k of changedKeys) {
-                if (typeof k === 'string' && k.startsWith('device.') && k.endsWith('.connected')) {
+                // `asleep` too: it lands just after `connected` drops, and it
+                // decides whether a wake control's reading still counts.
+                if (typeof k === 'string' && k.startsWith('device.')
+                    && (k.endsWith('.connected')
+                        || (k.endsWith('.asleep') && k.split('.').length === 3))) {
                     (flipped || (flipped = new Set())).add(k.split('.')[1]);
                 }
             }

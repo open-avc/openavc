@@ -172,6 +172,28 @@ describe("Device Command action", () => {
     expect(screen.queryByText("gain_db")).toBeNull();
     expect(screen.getByPlaceholderText("Enter Gain (dB)...")).toBeTruthy();
   });
+
+  it("says Asleep, not Offline, for a device a command put to sleep", async () => {
+    vi.spyOn(api, "getDevice").mockResolvedValue({
+      id: "disp_1",
+      driver: "acme_display",
+      connected: false,
+      state: { connected: false, asleep: true, wake_command: "power_on" },
+      commands: { power_on: { label: "Power On" } },
+    } as never);
+    const withDisplay = {
+      ...project, devices: [{ id: "disp_1", name: "Display", driver: "acme_display" }],
+    } as unknown as ProjectConfig;
+    render(
+      <ActionPicker
+        value={{ action: "device.command", device: "disp_1", command: "", params: {} }}
+        project={withDisplay}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(await screen.findByText("Asleep")).toBeTruthy();
+    expect(screen.queryByText("Offline")).toBeNull();
+  });
 });
 
 describe("Emit Event action", () => {

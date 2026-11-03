@@ -53,7 +53,7 @@ Some older devices offer only encryption settings that current SSH clients no lo
 
 After adding a device, click it in the device list to open the detail panel:
 
-- **Connection status**: green dot = connected, red dot = disconnected, amber dot = paused or restarting (hover for which). A device paused for a Device Audit or for Live Test in the Driver Builder says so on its page, with **Resume** to reconnect it.
+- **Connection status**: green dot = connected, red dot = disconnected, amber dot = paused or restarting (hover for which), grey dot = asleep (put to sleep on purpose; its wake command brings it back). A device paused for a Device Audit or for Live Test in the Driver Builder says so on its page, with **Resume** to reconnect it.
 - **Live state**: real-time values for all state variables (power, input, etc.). A fractional reading is rounded to the precision its driver declares; hover it for the full value.
 - **Command testing**: select a command from the dropdown, fill any parameters, click **Send**. The line below says it was sent, and shows the device's answer when the driver returns one.
 - **Raw log**: see the bytes sent and received for debugging
@@ -212,6 +212,8 @@ An offline device shows the reason on its card and detail view (can't reach it, 
 **A device with no IP address is not dialed.** Its card says "No address is set for this device. Enter its IP address or hostname in the device's Connection Settings." and it is not retried until the address is added (adding it under **Edit** connects it).
 
 **A device that was told to restart is not reported as a fault.** Some equipment drops off the network when you power it on, reboot it or reset it, and a driver can declare how long that takes. For that long the card says the device is restarting and counts down instead of showing an offline reason, nothing counts it as an error, and no alert fires. It clears the moment the device answers again. If the device does not come back, the countdown ends and the real reason appears; if something turns up that a person has to fix, like a rejected login, that appears immediately.
+
+**A device that was put to sleep is not reported as a fault either.** A display whose standby turns its network off, or a computer that was shut down, cannot be reached until it is woken, and a driver can say which command sends it to sleep and which wakes it. After that command, the card reads "Asleep. Power On wakes it." instead of an offline reason, nothing counts it as an error, and no alert fires. Power On still works. It clears when the device is back. After Power On the card says the device is waking up, and if it does not come back in the time its driver gives, the real reason appears. A device that stays reachable after the sleep command is not marked asleep, so a fault later still reads as one.
 
 The exception is a **rejected login**: retrying the same credentials can't succeed, and many devices lock out the controller's IP address after a few failed attempts, so after one failed try OpenAVC stops and waits instead of retrying. The same happens when the password is changed on a device that is already connected: the first refused login or status check takes it offline. Fix what the card names: a username or password is changed under **Edit** (saving it triggers a fresh attempt), and a device that pairs instead, such as a TV that shows a prompt, names its own step. **Reconnect** tries once more. Drivers that ship with a vendor's default credentials still get that first try automatically.
 
