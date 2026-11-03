@@ -667,18 +667,35 @@ if WEB_PANEL_DIR.exists():
     ))
 
 
-@app.middleware("http")
-async def _panel_no_cache(request, call_next):
-    """Force browsers to revalidate /panel assets via ETag (no stale-cache trap).
+def revalidate_header(path: str, content_type: str) -> str | None:
+    """The Cache-Control for a response the browser must check before reusing.
 
-    Without this, the panel iframe inside the Theme Studio happily serves
-    cached panel.css / panel.js for hours, masking deployed fixes. ETag
-    revalidation keeps cache cheap (304 on no-change) without ever serving
-    truly stale content.
+    ``no-cache`` makes the browser revalidate through the ETag every time: a
+    304 when nothing changed, so it stays cheap, and never a stale copy.
+
+    /panel: everything. The panel iframe inside the Theme Studio otherwise
+    serves cached panel.css / panel.js for hours, masking deployed fixes.
+
+    /programmer and /simulator: the HTML page only. Its asset names change with
+    every build, so the page is what must be fresh. Sent without a header it
+    gets reused on the browser's own guess (a tenth of its age, so days for a
+    page installed weeks ago): a Simulator window opened after an update ran
+    the previous build, and once the old asset names are gone the page is
+    blank.
     """
+    if path.startswith("/panel"):
+        return "no-cache"
+    if path.startswith(("/programmer", "/simulator")) and content_type.startswith("text/html"):
+        return "no-cache"
+    return None
+
+
+@app.middleware("http")
+async def _revalidate_pages(request, call_next):
     response = await call_next(request)
-    if request.url.path.startswith("/panel"):
-        response.headers["Cache-Control"] = "no-cache"
+    header = revalidate_header(request.url.path, response.headers.get("content-type", ""))
+    if header:
+        response.headers["Cache-Control"] = header
     return response
 
 # Serve Programmer UI static files (Vite build output)
