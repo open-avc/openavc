@@ -15,6 +15,7 @@ from openavc.core.required_config import (
 from openavc.core.state_store import is_flat_primitive
 from openavc.utils.paths import is_safe_script_filename, safe_path_within
 from openavc.drivers.registry import is_driver_registered, list_registered_drivers, register_driver
+from openavc.utils.outbound import internet_client
 
 
 #: Said once per reply that carries one, at the moment it is broken rather
@@ -542,7 +543,7 @@ class DeviceToolsMixin:
 
         base_url = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main"
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with internet_client(timeout=10.0) as client:
                 resp = await client.get(f"{base_url}/devices.json")
                 resp.raise_for_status()
                 data = resp.json()
@@ -586,7 +587,7 @@ class DeviceToolsMixin:
 
         base_url = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main"
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with internet_client(timeout=10.0) as client:
                 resp = await client.get(f"{base_url}/index.json")
                 resp.raise_for_status()
                 data = resp.json()

@@ -19,6 +19,7 @@ import websockets
 from websockets.exceptions import ConnectionClosed, InvalidURI, InvalidHandshake
 
 from openavc.utils.logger import get_logger
+from openavc.utils.outbound import internet_tls_kwargs
 from openavc.utils.request_origin import CLOUD_SESSION_HEADER, TUNNEL_HEADER
 
 if TYPE_CHECKING:
@@ -116,8 +117,9 @@ class TunnelHandler:
             # of all. What bounds a stalled response now is the cloud: it
             # gives up on silence and sends http_cancel, and nothing reaches
             # here at all until the local server has answered with headers.
+            # This computer's own server: never through a proxy.
             self._http_client = httpx.AsyncClient(
-                timeout=httpx.Timeout(30.0, read=300.0), verify=False,
+                timeout=httpx.Timeout(30.0, read=300.0), verify=False, trust_env=False,
             )
         return self._http_client
 
@@ -242,6 +244,7 @@ class TunnelHandler:
                 # 16 MB matches the typical FastAPI/Starlette default on the
                 # cloud receive side and keeps memory bounded.
                 max_size=2**24,
+                **internet_tls_kwargs(ws_url),
             )
 
             self._tunnels[tunnel_id] = conn
@@ -638,6 +641,7 @@ class TunnelHandler:
                 subprotocols=subprotocols,
                 additional_headers=additional_headers or None,
                 ssl=ssl_ctx,
+                proxy=None,  # this computer's own server: never through a proxy
             )
 
             # The tunnel may have been closed while we awaited the connect.

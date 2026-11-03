@@ -40,6 +40,7 @@ import httpx
 
 from openavc import config as cfg
 from openavc.utils.logger import get_logger
+from openavc.utils.outbound import internet_client
 
 log = get_logger(__name__)
 
@@ -214,7 +215,13 @@ async def upload_report(
     signed = _signing_headers(body)
     timeout = httpx.Timeout(TOTAL_TIMEOUT, connect=CONNECT_TIMEOUT)
     try:
-        async with httpx.AsyncClient(timeout=timeout, transport=transport) as client:
+        # A test hands in a mock transport; every real send is an internet
+        # request (OS certificate store, the environment's proxy).
+        client_cm = (
+            httpx.AsyncClient(timeout=timeout, transport=transport)
+            if transport is not None else internet_client(timeout=timeout)
+        )
+        async with client_cm as client:
             resp = await client.post(
                 url, content=body, headers={"Content-Type": content_type, **signed},
             )

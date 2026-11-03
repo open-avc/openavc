@@ -53,6 +53,7 @@ from openavc.drivers.registry import (
     require_mutable_driver,
     unregister_driver,
 )
+from openavc.utils.outbound import internet_client, internet_failure
 
 log = get_logger(__name__)
 
@@ -518,7 +519,7 @@ async def _download_companion(
 
     companion_filepath = driver_repo / companion_filename
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with internet_client(timeout=15.0) as client:
             resp = await client.get(companion_url)
             resp.raise_for_status()
             await _verify_against_catalog(catalog, companion_url, resp.content)
@@ -591,7 +592,7 @@ async def _try_download_python_companion(
 
     companion_filepath = driver_repo / companion_filename
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with internet_client(timeout=15.0) as client:
             resp = await client.get(companion_url)
             if resp.status_code == 404:
                 # The one case we can be sure about: this version ships without
@@ -631,8 +632,12 @@ async def get_community_drivers(refresh: bool = False) -> dict[str, Any]:
     if not hasattr(get_community_drivers, "_cache"):
         get_community_drivers._cache = CommunityIndexCache()
 
-    drivers = await get_community_drivers._cache.get_drivers(force=refresh)
-    return {"drivers": drivers, "error": None if drivers else _COMMUNITY_UNREACHABLE}
+    cache = get_community_drivers._cache
+    drivers = await cache.get_drivers(force=refresh)
+    return {
+        "drivers": drivers,
+        "error": None if drivers else (cache.failure_sentence or _COMMUNITY_UNREACHABLE),
+    }
 
 
 @router.post("/drivers/install")
@@ -683,7 +688,7 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
     # Verifying after the write would mean a driver that fails the check has
     # already landed in driver_repo/, where the loader would find it.
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with internet_client(timeout=15.0) as client:
             resp = await client.get(url)
             resp.raise_for_status()
             yaml_text = resp.text
@@ -693,7 +698,12 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
     except httpx.HTTPStatusError as e:
         raise HTTPException(status_code=502, detail=f"GitHub returned {e.response.status_code}")
     except httpx.RequestError as e:
-        raise _api_error(502, f"Failed to download driver '{body.driver_id}'", e)
+        raise _api_error(
+            502,
+            internet_failure(e, "raw.githubusercontent.com")
+            or f"Failed to download driver '{body.driver_id}'",
+            e,
+        )
 
     # For YAML drivers, also enforce min_platform_version parsed from the file
     # itself. This guards endpoints that call install_community_driver without
@@ -1365,7 +1375,7 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
     new_filepath = driver_repo / new_filename
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with internet_client(timeout=15.0) as client:
             resp = await client.get(file_url)
             resp.raise_for_status()
             new_content = resp.text
@@ -1373,7 +1383,12 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
     except httpx.HTTPStatusError as e:
         raise HTTPException(status_code=502, detail=f"GitHub returned {e.response.status_code}")
     except httpx.RequestError as e:
-        raise _api_error(502, f"Failed to download driver '{driver_id}'", e)
+        raise _api_error(
+            502,
+            internet_failure(e, "raw.githubusercontent.com")
+            or f"Failed to download driver '{driver_id}'",
+            e,
+        )
 
     # Check before the swap below unregisters the driver and deletes the old
     # file: a failed update must leave the working driver in place.

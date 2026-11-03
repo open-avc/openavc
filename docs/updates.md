@@ -68,6 +68,10 @@ Docker and Git deployments still check for updates and show notifications, but y
 
 Every deployment above can also be updated without an internet connection. See [Updating a System With No Internet Access](#updating-a-system-with-no-internet-access).
 
+## Behind a Proxy or a Firewall That Inspects Encrypted Traffic
+
+Update checks and downloads check certificates against the computer's own certificate store, and take a proxy from the service's environment (`HTTPS_PROXY`). If a check says the connection "was answered with a certificate this computer does not trust", install your organization's certificate authority in that store; if the network only reaches the internet through a proxy, set `HTTPS_PROXY` on the service. The steps for each install type are in the [Network & Security Cut Sheet](it-network-guide.md#behind-a-proxy-or-a-firewall-that-inspects-encrypted-traffic).
+
 ## Updating a System With No Internet Access
 
 OpenAVC needs an internet connection to *find* and *download* a new version, not to install one. A system on an isolated network can be updated from files you carry to it.

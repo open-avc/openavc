@@ -35,6 +35,7 @@ from time import time
 from typing import Any, TYPE_CHECKING
 
 from openavc.utils.logger import get_logger
+from openavc.utils.outbound import is_local_destination
 from openavc.version import __version__ as _platform_version
 
 if TYPE_CHECKING:
@@ -1278,7 +1279,10 @@ class ISCManager:
             url = f"ws://{host}:{port}{ISC_WS_PATH}"
         log.debug(f"ISC: Connecting to {url}")
 
-        async with websockets.connect(url, close_timeout=5, ssl=ssl_ctx) as ws:
+        # A peer on the local network is reached directly, whatever the proxy
+        # settings say (utils/outbound.py).
+        proxy: bool | None = None if is_local_destination(host) else True
+        async with websockets.connect(url, close_timeout=5, ssl=ssl_ctx, proxy=proxy) as ws:
             # Send hello with our own nonce so the peer must prove key
             # possession over it before we disclose our HMAC.
             client_nonce = secrets.token_hex(32)

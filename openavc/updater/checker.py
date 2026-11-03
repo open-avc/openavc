@@ -15,6 +15,7 @@ from typing import Any
 import httpx
 
 from openavc.version import __version__
+from openavc.utils.outbound import internet_client, internet_failure
 
 log = logging.getLogger(__name__)
 
@@ -138,7 +139,7 @@ class UpdateChecker:
         self._last_check_error = ""
 
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
+            async with internet_client(timeout=15.0) as client:
                 response = await client.get(
                     GITHUB_RELEASES_URL,
                     headers={
@@ -153,7 +154,7 @@ class UpdateChecker:
             log.warning("Update check failed: %s", self._last_check_error)
             return None
         except httpx.RequestError as e:
-            self._last_check_error = f"Network error: {e}"
+            self._last_check_error = internet_failure(e, "api.github.com") or f"Network error: {e}"
             log.warning("Update check failed: %s", self._last_check_error)
             return None
         except Exception as e:

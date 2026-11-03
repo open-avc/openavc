@@ -16,8 +16,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import httpx
-
 from openavc.updater.checker import ReleaseInfo, UpdateChecker
 from openavc.updater.platform import (
     DeploymentType,
@@ -27,6 +25,7 @@ from openavc.updater.platform import (
     update_instructions,
 )
 from openavc.version import __version__
+from openavc.utils.outbound import internet_client, internet_failure
 
 log = logging.getLogger(__name__)
 
@@ -333,7 +332,7 @@ class UpdateManager:
         downloaded = 0
         total = 0
         try:
-            async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:
+            async with internet_client(timeout=300.0, follow_redirects=True) as client:
                 async with client.stream("GET", url) as response:
                     response.raise_for_status()
                     total = int(response.headers.get("content-length", 0))
@@ -371,7 +370,7 @@ class UpdateManager:
         """Download SHA256SUMS.txt and verify the artifact checksum."""
         self._set_state("system.update_status", "verifying")
 
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as c:
+        async with internet_client(timeout=30.0, follow_redirects=True) as c:
             resp = await c.get(checksum_url)
             resp.raise_for_status()
             checksums_text = resp.text
@@ -419,7 +418,7 @@ class UpdateManager:
         """
         sig_path = Path(str(artifact_path) + ".sig")
         try:
-            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as c:
+            async with internet_client(timeout=30.0, follow_redirects=True) as c:
                 resp = await c.get(sig_url)
                 resp.raise_for_status()
                 sig_path.write_bytes(resp.content)
@@ -609,7 +608,7 @@ class UpdateManager:
             self._cleanup_failed_apply(release.version, "Update cancelled")
             raise
         except Exception as e:
-            error_msg = f"Update failed: {e}"
+            error_msg = f"Update failed: {internet_failure(e, 'github.com') or e}"
             log.exception(error_msg)
             self._cleanup_failed_apply(release.version, error_msg)
             return {"success": False, "error": error_msg}
@@ -728,7 +727,7 @@ class UpdateManager:
             self._cleanup_failed_apply(target_version, "Update cancelled")
             raise
         except Exception as e:
-            error_msg = f"Update failed: {e}"
+            error_msg = f"Update failed: {internet_failure(e, 'github.com') or e}"
             log.exception(error_msg)
             self._cleanup_failed_apply(target_version, error_msg)
             return {"success": False, "error": error_msg}

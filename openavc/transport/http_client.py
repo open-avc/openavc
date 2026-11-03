@@ -31,6 +31,12 @@ a device's traffic.
 Reach devices through: the same hook gives a driver's own client the adapter
 Settings chose for device traffic (:class:`ReachDevicesTransport`), as the
 platform's transport binds its own, again with nothing in the driver.
+
+Proxy: equipment at a local address is never reached through a proxy
+(``utils/outbound.py``). With a proxy in the environment, the platform's
+transport and a driver's own client both connect to a local destination
+directly and follow the environment for anything else (a cloud service); with
+none, both are exactly the clients httpx builds.
 """
 
 from __future__ import annotations
@@ -55,6 +61,7 @@ from openavc.core.device_traffic import (
     record_traffic,
 )
 from openavc.utils.logger import get_logger
+from openavc.utils.outbound import device_transport, env_proxy_for, environment_has_proxy
 from openavc.transport.pacing import sleep_at_least
 
 log = get_logger(__name__)
@@ -290,30 +297,36 @@ class ReachDevicesTransport(httpx.AsyncBaseTransport):
     ``limits``), so a self-signed device the driver trusts with
     ``verify=False`` still connects and ``verify=True`` still verifies.
 
-    Like any client given a transport, the client no longer picks up proxy
-    settings from the environment (``HTTP_PROXY`` and the like): device
-    traffic pinned to an adapter goes to the device, not through a proxy,
-    exactly as the platform's own HTTP transport does when pinned.
+    Also the transport a driver's own client gets, with nothing pinned, while
+    the environment names a proxy: then a request that leaves unbound goes to
+    a local destination directly and through the environment's proxy to
+    anything else (``utils/outbound.py`` ``env_proxy_for``), unless the
+    driver built its client with ``trust_env=False``. Pinned traffic goes to
+    the device, never through a proxy, exactly as the platform's own HTTP
+    transport does when pinned.
     """
 
     def __init__(self, settings: dict[str, Any] | None = None) -> None:
         self._settings = dict(settings or {})
-        self._pools: dict[str | None, httpx.AsyncHTTPTransport] = {}
+        self._pools: dict[tuple[str | None, str | None], httpx.AsyncHTTPTransport] = {}
 
-    def pool_for(self, host: str) -> httpx.AsyncHTTPTransport:
-        """The connection pool a request to ``host`` goes through now."""
+    def pool_for(self, host: str, url: str | None = None) -> httpx.AsyncHTTPTransport:
+        """The connection pool a request to ``host`` (at ``url``) goes through now."""
         from openavc.transport.endpoint import control_bind_address
 
         address = control_bind_address(host)
-        pool = self._pools.get(address)
+        proxy = None
+        if address is None and url is not None and self._settings.get("trust_env", True):
+            proxy = env_proxy_for(url)
+        pool = self._pools.get((address, proxy))
         if pool is None:
-            pool = httpx.AsyncHTTPTransport(local_address=address, **self._settings)
-            self._pools[address] = pool
+            pool = httpx.AsyncHTTPTransport(local_address=address, proxy=proxy, **self._settings)
+            self._pools[(address, proxy)] = pool
         return pool
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         try:
-            pool = self.pool_for(request.url.host)
+            pool = self.pool_for(request.url.host, str(request.url))
         except ConnectionError as exc:
             # The chosen adapter has no address: refused as httpx refuses a
             # connection, so a driver's own handling of one sees it, with the
@@ -334,8 +347,10 @@ def _reach_devices_transport(driver: Any, kwargs: dict[str, Any]) -> ReachDevice
     None when the driver chose its own way out (``transport=``, ``mounts=`` or
     ``proxy=``: a test's ``MockTransport``, a proxy someone configured) and
     when this device's own traffic is not bound (nothing pinned, or a device
-    on this computer), so with nothing pinned a driver's client is exactly
-    the one it asked for.
+    on this computer) and the environment names no proxy, so with nothing
+    pinned and no proxy a driver's client is exactly the one it asked for.
+    Unbound with a proxy in the environment, the transport keeps local
+    destinations off the proxy (:class:`ReachDevicesTransport`).
     """
     if any(kwargs.get(name) is not None for name in ("transport", "mounts", "proxy")):
         return None
@@ -346,7 +361,7 @@ def _reach_devices_transport(driver: Any, kwargs: dict[str, Any]) -> ReachDevice
         # request (pool_for), where an unbound client would leave through
         # another adapter.
         bind = ""
-    if bind is None:
+    if bind is None and (kwargs.get("trust_env") is False or not environment_has_proxy()):
         return None
     return ReachDevicesTransport(
         {name: kwargs[name] for name in _TRANSPORT_SETTINGS if name in kwargs}
@@ -405,6 +420,49 @@ def capture_driver_clients() -> None:
 
     init.__wrapped__ = _original_client_init  # type: ignore[attr-defined]
     httpx.AsyncClient.__init__ = init  # type: ignore[method-assign]
+
+
+_original_ws_connect_init: Any = None
+
+
+def capture_driver_websockets() -> None:
+    """Keep a WebSocket a driver opens itself off the environment's proxy
+    when it goes to equipment at a local address.
+
+    ``websockets.connect`` uses the environment's proxy by default, the HTTPS
+    one for ``ws://`` too, so with ``HTTPS_PROXY`` set a driver's connection
+    to a display on the AV network went to the proxy. When a driver's code
+    opens a connection (:func:`_owning_driver`) without choosing ``proxy=``
+    itself, to a local destination (``utils/outbound.py``), the proxy is
+    turned off for it. Anything else is left as websockets builds it.
+    Idempotent; called once when the driver base class is imported.
+    """
+    global _original_ws_connect_init
+    if _original_ws_connect_init is not None:
+        return
+    from urllib.parse import urlsplit
+
+    from websockets.asyncio.client import connect
+
+    from openavc.utils.outbound import is_local_destination
+
+    _original_ws_connect_init = connect.__init__
+
+    def init(conn: Any, uri: str, *args: Any, **kwargs: Any) -> None:
+        if "proxy" not in kwargs:
+            frame = inspect.currentframe()
+            try:
+                driver = _owning_driver(frame.f_back if frame is not None else None)
+                if driver is not None and is_local_destination(urlsplit(str(uri)).hostname):
+                    kwargs["proxy"] = None
+            except Exception:  # never cost a connection
+                log.debug("Could not check a driver's WebSocket for a proxy", exc_info=True)
+            finally:
+                frame = None
+        _original_ws_connect_init(conn, uri, *args, **kwargs)
+
+    init.__wrapped__ = _original_ws_connect_init  # type: ignore[attr-defined]
+    connect.__init__ = init  # type: ignore[method-assign]
 
 
 class SSEEventStream:
@@ -814,6 +872,10 @@ class HTTPClientTransport:
             transport = httpx.AsyncHTTPTransport(
                 local_address=self._local_address, verify=self.verify_ssl
             )
+        elif environment_has_proxy():
+            # A proxy in the environment: a device at a local address is
+            # reached directly, anything else through the proxy (outbound.py).
+            transport = device_transport(self.base_url, verify=self.verify_ssl)
 
         self._client = httpx.AsyncClient(
             base_url=self.base_url,

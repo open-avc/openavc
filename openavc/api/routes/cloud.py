@@ -17,6 +17,7 @@ from openavc.api._engine import _get_engine
 from openavc.api.errors import api_error as _api_error
 from openavc.api.models import CloudPairRequest
 from openavc.utils.logger import get_logger
+from openavc.utils.outbound import internet_client
 
 router = APIRouter(route_class=ProgrammerRoute)
 log = get_logger(__name__)
@@ -152,7 +153,7 @@ async def cloud_pair(data: CloudPairRequest) -> dict[str, Any]:
         # project name seeds a shorter name instead of failing the pairing.
         payload["name"] = room[:200]
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with internet_client(timeout=30.0) as client:
             resp = await client.post(
                 f"{cloud_api_url}/api/v1/systems/pair",
                 json=payload,
@@ -267,7 +268,7 @@ async def _remove_from_the_portal() -> bool:
     if not system_id or not key or not api_url:
         return False
     try:
-        async with httpx.AsyncClient(timeout=UNPAIR_CLOUD_TIMEOUT_SEC) as client:
+        async with internet_client(timeout=UNPAIR_CLOUD_TIMEOUT_SEC) as client:
             resp = await client.post(
                 f"{api_url}/api/v1/systems/unpair",
                 headers=_sign_request(system_id, key, b""),

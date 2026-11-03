@@ -59,7 +59,7 @@ from openavc.drivers.spec import (
 )
 from openavc.core.state_store import StateStore, is_flat_primitive
 from openavc.transport.frame_parsers import FrameParser
-from openavc.transport.http_client import capture_driver_clients
+from openavc.transport.http_client import capture_driver_clients, capture_driver_websockets
 from openavc.transport.udp import UDPTransport
 from openavc.utils.log_redaction import (
     collect_identity_values,
@@ -97,8 +97,10 @@ _SILENCE_CHECK_TRANSPORTS = frozenset(SILENCE_CHECK_TRANSPORTS)
 _HELD_CHECK_S = 0.5
 
 # An httpx client a driver creates for itself is recorded for its device like
-# the platform's own transports, with nothing in the driver.
+# the platform's own transports, with nothing in the driver; it and a
+# WebSocket the driver opens itself reach local equipment without a proxy.
 capture_driver_clients()
+capture_driver_websockets()
 
 # Env var that turns driver-contract violations from a warning into a raise.
 # Set in openavc's own tests/conftest.py and in a driver author's test harness,

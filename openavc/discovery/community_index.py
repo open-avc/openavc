@@ -13,6 +13,7 @@ import json
 import logging
 import time
 from typing import Any
+from openavc.utils.outbound import internet_client, internet_failure, is_internet_failure_sentence
 
 log = logging.getLogger("discovery.community")
 
@@ -23,18 +24,14 @@ CACHE_TTL = 600  # 10 minutes
 async def _fetch_raw_with_retry(path: str) -> tuple[bytes | None, str]:
     """Fetch a file from the community repo with one retry.
 
-    Returns (bytes, "") or (None, why it failed).
+    Returns (bytes, "") or (None, why it failed). When the network's security
+    refused the connection (an untrusted certificate, a proxy), why is the
+    sentence for the reader (``utils/outbound.py`` ``internet_failure``).
     """
-    try:
-        import httpx
-    except ImportError:
-        log.warning("httpx not installed — cannot fetch %s", path)
-        return None, "httpx is not installed"
-
     last_error: Exception | None = None
     for attempt in range(2):
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with internet_client(timeout=10.0) as client:
                 resp = await client.get(f"{COMMUNITY_REPO_URL}/{path}")
                 resp.raise_for_status()
                 return resp.content, ""
@@ -44,6 +41,10 @@ async def _fetch_raw_with_retry(path: str) -> tuple[bytes | None, str]:
                 import asyncio
                 await asyncio.sleep(2.0)
     log.warning("Failed to fetch %s after 2 attempts: %s", path, last_error)
+    if last_error is not None:
+        sentence = internet_failure(last_error, "raw.githubusercontent.com")
+        if sentence:
+            return None, sentence
     return None, str(last_error) or type(last_error).__name__
 
 
@@ -68,6 +69,9 @@ class CommunityIndexCache:
         self._sha256: str = ""
         self._last_error: str = ""
         self._last_attempt: float = 0.0
+        # The reader's sentence when the network's security refused the last
+        # fetch (a certificate this computer does not trust, a proxy).
+        self.failure_sentence: str = ""
 
     def identity(self) -> dict[str, Any]:
         """Which catalog the cached drivers came from.
@@ -107,6 +111,7 @@ class CommunityIndexCache:
                 error = f"index.json is not valid JSON: {e}"
         if data is None:
             self._last_error = error or "no data"
+            self.failure_sentence = error if is_internet_failure_sentence(error) else ""
             if self._drivers:
                 log.info("Using stale community index cache (%d drivers)", len(self._drivers))
             return self._drivers
@@ -127,6 +132,7 @@ class CommunityIndexCache:
         self._fetched_at = now
         self._sha256 = hashlib.sha256(raw or b"").hexdigest()
         self._last_error = ""
+        self.failure_sentence = ""
         log.info("Community index fetched: %d drivers", len(drivers))
         return self._drivers
 

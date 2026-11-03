@@ -18,6 +18,7 @@ from fastapi.responses import StreamingResponse
 
 import openavc.config as cfg
 from openavc.api.auth import require_programmer_auth
+from openavc.utils.outbound import internet_client
 
 log = logging.getLogger(__name__)
 
@@ -117,7 +118,7 @@ async def _cloud_request(
     detail (via _error_message) instead of the raw cloud body relayed verbatim.
     """
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with internet_client(timeout=timeout) as client:
             if method == "POST":
                 resp = await client.post(url, content=content, headers=headers)
             elif method == "GET":
@@ -167,7 +168,7 @@ async def _cloud_ai_refusal() -> str | None:
     try:
         api_url, system_id, system_key = _check_cloud_ready()
         headers = _sign_request(system_id, system_key, b"")
-        async with httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=4.0)) as client:
+        async with internet_client(timeout=httpx.Timeout(8.0, connect=4.0)) as client:
             resp = await client.get(
                 f"{api_url}/api/v1/ai/system/status", headers=headers
             )
@@ -239,7 +240,7 @@ async def ai_chat(request: Request, stream: bool = Query(False)):
     if stream:
         async def relay_stream():
             try:
-                async with httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
+                async with internet_client(timeout=httpx.Timeout(300.0, connect=10.0)) as client:
                     async with client.stream(
                         "POST",
                         cloud_url,

@@ -21,6 +21,7 @@ dependencies = [
     "httpx==0.28.1",             # BSD-3 - Async HTTP client (for HTTP transport)
     "gmqtt==0.7.0",              # MIT - Async MQTT client (for MQTT transport; pure Python, asyncio-native)
     "certifi==2026.6.17",        # MPL-2.0 (CA data) - CA bundle for stdlib ssl on the frozen macOS app (already pulled in by httpx); see openavc/main.py
+    "truststore==0.10.5",        # MIT - pure Python; the OS certificate store for OpenAVC's own internet requests (a network that inspects encrypted traffic); see openavc/utils/outbound.py
     "croniter==6.2.2",           # MIT - Cron expression parser (pure Python)
     "defusedxml==0.7.1",         # PSF - Safe XML parsing (prevents XXE/billion laughs)
     "ifaddr==0.2.0",             # MIT - Network interface detection (discovery subnet auto-detect)

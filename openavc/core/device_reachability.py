@@ -69,6 +69,7 @@ from openavc.discovery.network_scanner import resolve_address
 from openavc.discovery.port_guard import held_ports
 from openavc.transport.endpoint import control_bind_address
 from openavc.utils.logger import get_logger
+from openavc.utils.outbound import device_transport
 
 log = get_logger(__name__)
 
@@ -424,6 +425,10 @@ async def _head(host: str, port: Any, cfg: dict[str, Any]) -> str | None:
     if bind:
         # httpx ignores the client's `verify` once it is handed a transport.
         kwargs["transport"] = httpx.AsyncHTTPTransport(local_address=bind, verify=verify)
+    else:
+        # The way the device's own connection goes: directly to a local
+        # address, through the environment's proxy to anything else.
+        kwargs["transport"] = device_transport(url, verify=verify)
     try:
         async with httpx.AsyncClient(**kwargs) as client:
             await client.head(url)

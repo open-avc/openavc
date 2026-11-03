@@ -36,6 +36,7 @@ from openavc.core.device_config import (
     same_serial_port,
 )
 from openavc.utils.logger import get_logger
+from openavc.utils.outbound import device_transport
 
 log = get_logger(__name__)
 
@@ -767,7 +768,10 @@ async def _test_http_raw(body: TestCommandRequest) -> dict:
 
     try:
         async with httpx.AsyncClient(
-            timeout=body.timeout, verify=body.verify_ssl
+            timeout=body.timeout,
+            # Directly to equipment at a local address, whatever the proxy
+            # settings say (utils/outbound.py); the transport carries verify.
+            transport=device_transport(url, verify=body.verify_ssl),
         ) as client:
             resp = await client.request(method, url)
             return {

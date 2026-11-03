@@ -30,14 +30,14 @@ if len(sys.argv) > 1 and sys.argv[1] in ("--version", "-V"):
 
 # CA trust store for stdlib `ssl` in the frozen macOS app. A PyInstaller .app has
 # no OpenSSL-readable CA bundle, and macOS keeps its roots in the Keychain rather
-# than in files OpenSSL reads. So `ssl.create_default_context()`, used by the
-# `websockets` client for the cloud agent and the remote-UI tunnel, fails every
-# wss:// handshake with CERTIFICATE_VERIFY_FAILED. (httpx is unaffected because it
-# trusts certifi directly, which is why pairing's REST call succeeds while the
-# agent stays disconnected.) Point stdlib ssl at the bundled certifi store so the
-# default context can verify cloud.openavc.com. Linux reads /etc/ssl/certs and
-# Windows reads its system store, so this is scoped to frozen macOS. An explicit
-# SSL_CERT_FILE already in the environment always wins.
+# than in files OpenSSL reads, so `ssl.create_default_context()` fails every
+# verified handshake with CERTIFICATE_VERIFY_FAILED. OpenAVC's own internet
+# connections (the cloud agent and its tunnels included) verify with
+# utils/outbound.py instead, which asks the Keychain; this keeps any other
+# default context (a device connection that verifies its certificate) working
+# by pointing stdlib ssl at the bundled certifi store. Linux reads
+# /etc/ssl/certs and Windows reads its system store, so this is scoped to frozen
+# macOS. An explicit SSL_CERT_FILE already in the environment always wins.
 if (
     getattr(sys, 'frozen', False)
     and sys.platform == 'darwin'

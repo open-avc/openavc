@@ -267,6 +267,14 @@ hiddenimports = [
     'anyio._backends._asyncio',
     'sniffio',
     'certifi',
+    # truststore (the OS certificate store for internet requests,
+    # utils/outbound.py); its per-OS backends are imported by platform.
+    'truststore',
+    'truststore._api',
+    'truststore._windows',
+    'truststore._macos',
+    'truststore._openssl',
+    'truststore._ssl_constants',
     # gmqtt (MQTT transport) — imported lazily inside the transport, so list
     # every submodule so the frozen build bundles the whole client.
     'gmqtt',

@@ -366,6 +366,31 @@ The following features require outbound internet access if enabled:
 
 If your network policy blocks outbound HTTPS, all local functionality is unaffected. Update checks will fail silently, and the cloud agent (if enabled) will retry with exponential backoff up to a 5-minute interval, then remain dormant until connectivity is restored.
 
+### Behind a proxy or a firewall that inspects encrypted traffic
+
+**Certificates.** Every connection in the table above checks the server's certificate against the operating system's certificate store, then against the public certificate authorities OpenAVC ships with. A firewall that inspects encrypted traffic re-signs each site with your organization's own certificate authority. When that authority is already installed in the computer's store (Group Policy, MDM and most managed images do this), OpenAVC needs no setting. Otherwise, install it where the OpenAVC service reads it:
+
+| Install type | Where the certificate authority goes |
+|---|---|
+| Windows | **Local Computer** > Trusted Root Certification Authorities (the service runs as Local System, so a certificate installed for one user does not reach it) |
+| macOS | The System keychain, trusted for SSL |
+| Linux, Raspberry Pi | Copy the PEM file to `/usr/local/share/ca-certificates/<name>.crt`, run `sudo update-ca-certificates`, then `sudo systemctl restart openavc` |
+| Docker | Mount the PEM file into the container and set `SSL_CERT_FILE` to its path (for example `SSL_CERT_FILE: /certs/inspection-ca.pem` under `environment:`). A file named in `SSL_CERT_FILE` (or a directory in `SSL_CERT_DIR`) is trusted in addition to the store on every install type. |
+
+When the authority is missing, Browse Drivers, Updates and installs say that the connection "was answered with a certificate this computer does not trust". Device connections are not affected: AV equipment is checked against its own driver settings, as before.
+
+**Outbound proxy.** Where the network reaches the internet only through a proxy, set `HTTPS_PROXY` (and `HTTP_PROXY`, usually the same value) in the OpenAVC service's own environment, for example `http://proxy.example.edu:8080`, or `http://user:password@proxy.example.edu:8080` for a proxy that asks for a sign-in. Automatic proxy configuration (a PAC file or WPAD) is not read, so name the proxy itself. An installed OpenAVC runs as a service with no signed-in user, so a proxy set in a person's Windows or browser settings does not reach it.
+
+What goes through the proxy: OpenAVC's own internet connections in the table above, plus a driver for an internet service. Equipment at a private, loopback or link-local address, or with a `.local` or single-label name, is always reached directly, whatever the proxy settings say. A device addressed by a DNS name on your own network (`display1.av.example.edu`) needs that domain in `NO_PROXY` (for example `NO_PROXY=.av.example.edu`).
+
+| Install type | How to set it |
+|---|---|
+| Windows | In an administrator PowerShell, add the variable to the ones the service already has, then restart it (an update keeps a variable you add): `$key = 'HKLM:\SYSTEM\CurrentControlSet\Services\OpenAVC\Parameters'`, then `Set-ItemProperty $key AppEnvironmentExtra ((Get-ItemProperty $key).AppEnvironmentExtra + 'HTTPS_PROXY=http://proxy.example.edu:8080') -Type MultiString`, then `Restart-Service OpenAVC`. Do not use `nssm set OpenAVC AppEnvironmentExtra` with a single value: it replaces every variable the installer set. |
+| Linux, Raspberry Pi | `sudo systemctl edit openavc`, add `[Service]` with `Environment=HTTPS_PROXY=http://proxy.example.edu:8080` and `Environment=HTTP_PROXY=http://proxy.example.edu:8080`, save, then `sudo systemctl restart openavc`. Updates keep the file, and an update's own downloads use the same settings. Run the installer itself with the variables exported in your shell. |
+| Docker | Under the service's `environment:` in `docker-compose.yml`: `HTTPS_PROXY`, `HTTP_PROXY` and, for named equipment, `NO_PROXY`. |
+| macOS | The proxy in System Settings > Network applies, because the app runs as the signed-in user. |
+| Run by hand (`python -m openavc.main`) | The shell's variables apply, and on Windows and macOS the signed-in user's system proxy setting too. |
+
 ### Integrity of downloaded code
 
 Community drivers and plugins are code. A Python driver is imported and run by the server, and a plugin runs in the server process with the capabilities its manifest declares. Installing one is a decision to trust it, the same as installing any software.
@@ -538,7 +563,8 @@ The OpenAVC Cloud platform provides remote monitoring, fleet management, and AI-
 | Protocol | WebSocket over TLS 1.2+ |
 | Direction | **Outbound only.** The device initiates the connection. No inbound ports required. |
 | Port | 443 (standard HTTPS) |
-| Certificate validation | Required. Standard CA-signed certificate. |
+| Certificate validation | Required. Standard CA-signed certificate, checked against the operating system's certificate store (see [Behind a proxy or a firewall that inspects encrypted traffic](#behind-a-proxy-or-a-firewall-that-inspects-encrypted-traffic)). |
+| Proxy | `HTTPS_PROXY` in the service's environment, when the network requires one. |
 | Keepalive | Server-initiated ping/pong over the WebSocket |
 | Reconnection | Exponential backoff: 5s, 10s, 20s, 40s ... up to 5 minutes |
 

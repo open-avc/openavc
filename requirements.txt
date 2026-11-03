@@ -18,6 +18,7 @@ packaging==24.2              # Apache-2.0/BSD-2 - version parsing (plugin/driver
 
 # HTTP client (for HTTP transport + driver installs)
 httpx==0.28.1                # BSD-3-Clause
+truststore==0.10.5           # MIT - pure Python; OS certificate store for internet requests (openavc/utils/outbound.py)
 
 # MQTT client (for MQTT transport — pub/sub devices, BMS/IoT bridges)
 gmqtt==0.7.0                 # MIT - pure Python, asyncio-native

@@ -181,7 +181,8 @@ def _get_client() -> httpx.AsyncClient:
     """
     global _client
     if _client is None:
-        _client = httpx.AsyncClient(timeout=TIMEOUT_S, limits=_LIMITS)
+        # The simulator on this computer: never through a proxy.
+        _client = httpx.AsyncClient(timeout=TIMEOUT_S, limits=_LIMITS, trust_env=False)
     return _client
 
 
@@ -255,7 +256,7 @@ async def simulator_ws_proxy(ws: WebSocket) -> None:
 
     upstream_url = f"ws://127.0.0.1:{active_simulator_ui_port()}/ws"
     try:
-        upstream = await websockets.connect(upstream_url, open_timeout=5)
+        upstream = await websockets.connect(upstream_url, open_timeout=5, proxy=None)
     except Exception as e:
         # Same reasoning as the HTTP side: a stopped simulator is expected.
         log.debug(f"Simulator WS proxy could not reach {upstream_url}: {e}")

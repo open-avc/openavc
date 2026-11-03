@@ -39,6 +39,7 @@ from openavc.core.plugin_artifacts import (
 from openavc.system_config import PLUGIN_REPO_DIR
 from openavc.utils.logger import get_logger
 from openavc.utils.spawn import CREATE_NO_WINDOW
+from openavc.utils.outbound import internet_client
 
 log = get_logger(__name__)
 
@@ -249,7 +250,7 @@ async def _install_native_dep_archive(
     # resolves to internal/metadata address space before fetching.
     await _validate_download_url(url)
 
-    async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+    async with internet_client(timeout=60.0, follow_redirects=True) as client:
         data = await _download_capped(
             client, url, label=f"native dependency {dep_name}"
         )

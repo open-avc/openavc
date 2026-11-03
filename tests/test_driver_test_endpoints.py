@@ -14,6 +14,7 @@ Two hardening fixes on the live-test paths:
 """
 from __future__ import annotations
 
+import ssl
 from types import SimpleNamespace
 
 import httpx
@@ -80,7 +81,9 @@ async def test_raw_http_test_verifies_tls_by_default(captured_httpx):
     )
     result = await _test_http_raw(body)
     assert result["success"] is True
-    assert captured_httpx["verify"] is True
+    # The transport carries verify (httpx ignores the client's once handed one).
+    tls = captured_httpx["transport"]._pool._ssl_context
+    assert tls.verify_mode == ssl.CERT_REQUIRED and tls.check_hostname
 
 
 async def test_raw_http_test_honors_verify_ssl_opt_out(captured_httpx):
@@ -89,7 +92,7 @@ async def test_raw_http_test_honors_verify_ssl_opt_out(captured_httpx):
         command_string="GET /status", verify_ssl=False,
     )
     await _test_http_raw(body)
-    assert captured_httpx["verify"] is False
+    assert captured_httpx["transport"]._pool._ssl_context.verify_mode == ssl.CERT_NONE
 
 
 def _engine_with_http_device(device_id: str, config: dict):

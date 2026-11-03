@@ -58,6 +58,10 @@ The standard installs keep the OS firewall in step with the features you enable 
 - **Docker:** the container cannot (and should not) manage the host firewall. With the single-room compose file (host networking), open the ports on the host exactly as you would for a native install. With bridge networking (multi-room), Docker's published ports handle reachability itself.
 - **macOS:** the macOS application firewall is app-based and off by default; when enabled, its default settings automatically allow signed software — which the OpenAVC server is — to receive incoming connections. If your organization disables that auto-allow, approve OpenAVC once in System Settings > Network > Firewall.
 
+### Behind a proxy or an inspecting firewall
+
+OpenAVC's own internet connections (updates, the driver and plugin libraries, the cloud) trust the operating system's certificate store and take a proxy from the service's environment. Where a network inspects encrypted traffic or only reaches the internet through a proxy, the [Network & Security Cut Sheet](it-network-guide.md#behind-a-proxy-or-a-firewall-that-inspects-encrypted-traffic) has the setting for each install type.
+
 ## Data Directory
 
 OpenAVC separates application code from user data. The application directory contains server code and built frontends. The data directory contains your projects, drivers, configuration, and backups. Updates replace application files but never touch the data directory.

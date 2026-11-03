@@ -33,6 +33,7 @@ from openavc.core.plugin_artifacts import _check_zip_bomb, _download_capped
 from openavc.utils.logger import get_logger
 from openavc.utils.paths import safe_path_within
 from openavc.utils.spawn import CREATE_NO_WINDOW
+from openavc.utils.outbound import internet_client
 
 log = get_logger(__name__)
 
@@ -131,7 +132,7 @@ async def _install_deps_from_pypi(
     installed: set[str] = set()  # Track what we've installed to avoid loops
     queue = list(requirements)
 
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+    async with internet_client(timeout=30.0, follow_redirects=True) as client:
         while queue:
             req = queue.pop(0)
             pkg_name, version_spec = _parse_requirement(req)

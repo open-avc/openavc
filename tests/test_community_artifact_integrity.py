@@ -392,6 +392,7 @@ async def test_an_unreachable_library_says_so_and_a_cached_one_is_kept():
 
     cache = MagicMock()
     cache.get_drivers = AsyncMock(return_value=[])
+    cache.failure_sentence = ""
     with patch.object(drivers.get_community_drivers, "_cache", cache, create=True):
         empty = await drivers.get_community_drivers()
     assert empty == {

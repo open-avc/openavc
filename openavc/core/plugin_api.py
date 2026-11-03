@@ -514,7 +514,18 @@ class PluginAPI:
             for k, v in request.headers.items()
             if k.lower() not in _HOP_BY_HOP and k.lower() not in ("host", "content-length")
         }
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        # An internet service: the OS certificate store and the environment's
+        # proxy. A sidecar on this computer or the local network: directly.
+        from urllib.parse import urlsplit
+
+        from openavc.utils.outbound import internet_client, is_local_destination
+
+        client_cm = (
+            httpx.AsyncClient(timeout=timeout, trust_env=False)
+            if is_local_destination(urlsplit(url).hostname)
+            else internet_client(timeout=timeout)
+        )
+        async with client_cm as client:
             upstream = await client.request(
                 request.method,
                 url,

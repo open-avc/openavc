@@ -37,6 +37,7 @@ from openavc.core.project_loader import (
 )
 from openavc.utils.community_integrity import CommunityArtifactError
 from openavc.utils.logger import get_logger
+from openavc.utils.outbound import internet_failure
 
 log = get_logger(__name__)
 
@@ -544,6 +545,14 @@ async def install_plugin_endpoint(plugin_id: str, request: Request) -> dict[str,
         if "already installed" in str(e):
             raise _api_error(409, str(e), e)
         raise _api_error(400, str(e), e)
+    except httpx.RequestError as e:
+        # The download never arrived. A certificate or proxy refusal says so.
+        raise _api_error(
+            502,
+            internet_failure(e, "raw.githubusercontent.com")
+            or f"Could not download plugin '{plugin_id}'. Check that this system can reach the internet.",
+            e,
+        )
     except Exception as e:
         raise _api_error(500, f"Failed to install plugin '{plugin_id}'", e)
 

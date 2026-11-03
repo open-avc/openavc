@@ -55,6 +55,7 @@ from openavc.utils.community_integrity import (
 )
 from openavc.utils.logger import get_logger
 from openavc.utils.paths import safe_path_within
+from openavc.utils.outbound import internet_client, internet_failure
 
 log = get_logger(__name__)
 
@@ -149,7 +150,7 @@ class CommunityPluginCache:
             return self._data, None
 
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
+            async with internet_client(timeout=15.0) as client:
                 resp = await client.get(f"{COMMUNITY_REPO_URL}/index.json")
                 resp.raise_for_status()
                 data = resp.json()
@@ -159,7 +160,7 @@ class CommunityPluginCache:
                 return self._data, None
         except (httpx.HTTPError, OSError, ValueError, KeyError) as e:
             # HTTPError: status/transport errors; OSError: network; ValueError/KeyError: JSON
-            self._error = str(e)
+            self._error = internet_failure(e, "raw.githubusercontent.com") or str(e)
             log.warning(f"Failed to fetch community plugin index: {e}")
             return self._data, self._error
 
@@ -184,7 +185,7 @@ async def _fetch_plugin_hashes(plugin_id: str) -> ArtifactHashes:
     """
     files = None
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with internet_client(timeout=15.0) as client:
             resp = await client.get(f"{COMMUNITY_REPO_URL}/manifest.json")
             resp.raise_for_status()
             data = resp.json()
@@ -296,7 +297,7 @@ async def _do_install(plugin_id: str, file_url: str) -> dict[str, Any]:
     catalog = await _plugin_catalog_check(plugin_id)
 
     try:
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        async with internet_client(timeout=30.0, follow_redirects=True) as client:
             if file_url.endswith(".py"):
                 # Single file plugin
                 content = await _download_capped(

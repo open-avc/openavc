@@ -40,6 +40,7 @@ from openavc.cloud.protocol import (
 from openavc.cloud.session import Session, SessionInvalid
 from openavc.cloud.sequencer import Sequencer
 from openavc.utils.logger import get_logger
+from openavc.utils.outbound import internet_tls_kwargs
 from openavc.version import __version__
 
 if TYPE_CHECKING:
@@ -509,13 +510,17 @@ class CloudAgent:
             event.set()
         self._throttles.clear()
 
-        # Connect WebSocket
+        # Connect WebSocket. wss:// verifies the way every other internet
+        # request does (utils/outbound.py: the OS certificate store, then
+        # certifi), so the cloud and the downloads trust the same certificates;
+        # the proxy comes from the environment.
         self._ws = await websockets.connect(
             self._endpoint,
             ping_interval=None,  # We handle our own ping/pong
             ping_timeout=None,
             close_timeout=10,
             max_size=MAX_MESSAGE_BYTES,  # 1 MB — the shared wire cap
+            **internet_tls_kwargs(self._endpoint),
         )
 
         try:

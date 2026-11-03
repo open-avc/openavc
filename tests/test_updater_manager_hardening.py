@@ -302,7 +302,7 @@ async def test_download_removes_partial_on_error(tmp_path, monkeypatch):
         def stream(self, method, url):
             return _FailStream()
 
-    monkeypatch.setattr("openavc.updater.manager.httpx.AsyncClient", _Client)
+    monkeypatch.setattr("openavc.updater.manager.internet_client", _Client)
     with pytest.raises(OSError):
         await mgr._download_artifact("https://x/a.tar.gz", "a.tar.gz")
     assert not (mgr._data_dir / "update-cache" / "a.tar.gz").exists()

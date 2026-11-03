@@ -26,6 +26,7 @@ from typing import Any
 from urllib.parse import quote
 
 from openavc.transport.ir_render import UnsupportedProtocolError, is_supported, render_pronto
+from openavc.utils.outbound import internet_client
 
 log = logging.getLogger("ir.database")
 
@@ -147,16 +148,11 @@ class IrDatabase:
 
     async def _fetch_text(self, path: str) -> str | None:
         """Fetch a text file from the database CDN with one retry. None on failure."""
-        try:
-            import httpx
-        except ImportError:
-            log.warning("httpx not installed — cannot fetch IR database")
-            return None
         url = f"{IRDB_CDN}/{quote(path, safe='/,@')}"
         last_error: Exception | None = None
         for attempt in range(2):
             try:
-                async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+                async with internet_client(timeout=15.0, follow_redirects=True) as client:
                     resp = await client.get(url)
                     resp.raise_for_status()
                     return resp.text
