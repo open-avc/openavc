@@ -218,6 +218,30 @@ others. Three things are worth knowing before you allow it:
   because an SNMP agent ignores a request it will not serve instead of
   refusing it.
 
+**SSH-controlled devices (TCP 22).** Managed switches, some video bars and
+headends are controlled over SSH. OpenAVC connects with the OpenSSH client on
+its host, signing in with a password or with OpenAVC's own key (shown on the
+device's page). Three things are worth knowing:
+
+- **Host keys are checked.** The first connection remembers the device's host
+  key, and a changed key is refused until someone re-accepts it (see SSH host
+  key changed below).
+- **A few older algorithms are also offered.** To reach AV equipment whose SSH
+  is older than current OpenSSH defaults, OpenAVC also offers `hmac-sha1`,
+  `diffie-hellman-group14-sha1`, `diffie-hellman-group1-sha1` and `ssh-rsa`.
+  They are added after the client's own list, so a device that supports
+  stronger algorithms still uses those; only a device that offers nothing
+  newer connects with these. To hold one device to stronger algorithms, list
+  them in its **SSH options** (Edit Device, under Advanced), for example
+  `MACs=hmac-sha2-256,hmac-sha2-512`, which replaces the older offer for that
+  device.
+- **Anything weaker is allowed per device, by hand.** A device that offers only
+  algorithms outside that list does not connect; its banner names them and
+  gives the line that allows them for that one device. SSH options accept
+  connection settings only (algorithm lists, timeouts, keep-alives, sign-in
+  choices). A setting that would run a program on the OpenAVC host, such as
+  `ProxyCommand`, is refused.
+
 **Wake-on-LAN (UDP 9).** A display, projector or PC that is powered on over the network is sent a Wake-on-LAN packet, only when a power-on command runs: to the broadcast address 255.255.255.255 and usually also straight to the device's own address. Some drivers use port 7. A broadcast stays on the network segment it is sent on; routers do not forward it. With **Reach devices through** (Settings > Network) set to **Every connected adapter**, the broadcast is sent once on each network the OpenAVC host is connected to. Choose the AV adapter there to keep it on the AV network. It is then sent on that network only, from the adapter's self-assigned 169.254 address on a network with no DHCP server, and not at all while that adapter has no address (unplugged, say); it is never sent on another network instead.
 
 **Lighting over sACN (UDP 5568).** The sACN lighting driver sends lighting levels to a multicast group for each universe (239.255.0.1 for universe 1): on every change, and about once a second when nothing changes. Set to unicast, it sends them straight to one lighting node's address instead. A multicast group stays on the network segment it is sent on. With **Reach devices through** set to **Every connected adapter**, the levels are sent once on each network the OpenAVC host is connected to, so they also reach a campus network or Wi-Fi the host is on. Wi-Fi sends multicast at its slowest rate, so a busy universe can slow a Wi-Fi network. Choose the lighting adapter there to keep the levels on the lighting network. They then go out on that network only (from its self-assigned 169.254 address on a network with no DHCP server), and stop while that adapter has no address (unplugged, say); they are never sent on another network instead.
@@ -237,6 +261,7 @@ When a device can't connect, its card in the Programmer shows an "Offline" banne
 | Device didn't respond as expected, or stopped answering | The connection opened, but the device never answered in the expected protocol, or answered and then went quiet. | If it never answered: that the address, the port, the driver and the transport (e.g. SSH vs Telnet) are right for this device. If it stopped: whether the device is powered on and responsive. |
 | Device stopped accepting data | The connection is still open, but the device has stopped reading from it — typically equipment that has locked up without dropping its network link. | The device itself rather than the network: whether it is responsive at its own front panel or web interface. It usually needs a power cycle. OpenAVC keeps retrying, so it recovers by itself once the device does. |
 | Required client not found | A client OpenAVC shells out to is missing on the host (e.g. the OpenSSH `ssh` client). | That the client is installed and on the system PATH on the OpenAVC host. |
+| Device only offers older SSH encryption | The device's SSH server offers only algorithms the OpenAVC host's SSH client does not use unless told to. | Whether newer firmware for the device supports current SSH. If not, the banner gives the line that allows the named algorithm for this device only, in its SSH options. |
 
 For a network reason (connection refused, can't reach the device, no response, stopped accepting data), OpenAVC retries automatically and does not stop. Attempts start about a second apart and settle to one every 5 seconds, so a device that is repaired, powered back on, or plugged back in comes back by itself within seconds. While a device is inside a declared restart window (see above) the interval is about two seconds instead. Reasons that retrying can't fix — authentication failed, SSH host key changed, an untrusted TLS certificate, invalid connection settings, or a missing client — stop the retry loop early instead, and the banner says so. Fix the cause and press Reconnect. The same reason is also published as the `device.<id>.offline_reason` state key for automation and monitoring.
 
