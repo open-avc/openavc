@@ -330,6 +330,79 @@ def driver_id_from_file(filepath: Path) -> str | None:
     return None
 
 
+def _is_driver(filepath: Path, driver_id: str) -> bool:
+    """Whether a main driver file is driver ``driver_id``.
+
+    A file is the driver its source declares. One whose id cannot be read
+    (half-written source saved from Code) is the driver its name says, so a
+    syntax error never makes a driver's file disappear from its own id.
+    """
+    declared = driver_id_from_file(filepath)
+    if declared is not None:
+        return declared == driver_id
+    return filepath.stem == driver_id
+
+
+def driver_files_for(
+    directory: Path | str, driver_id: str, extension: str
+) -> list[Path]:
+    """Every main driver file of one kind (``".py"`` or ``".avcdriver"``) in
+    ``directory`` that is driver ``driver_id``, the one named
+    ``<id><extension>`` first, then by name.
+
+    A driver uploaded before uploads were named by their id keeps the name it
+    arrived with, and a renamed copy can sit beside the properly named one, so
+    a driver id is looked up by what each file declares. When several files
+    are the same driver, the one named for its id is the one that loads, is
+    edited in Code and is exported; deleting the driver removes them all.
+    Companions and underscore helpers are never driver files.
+    """
+    directory = Path(directory)
+    if not directory.is_dir():
+        return []
+    found = [
+        filepath
+        for filepath in sorted(directory.glob(f"*{extension}"))
+        if _is_driver_file(filepath) and _is_driver(filepath, driver_id)
+    ]
+    found.sort(key=lambda path: path.stem != driver_id)
+    return found
+
+
+class AmbiguousDriverFile(Exception):
+    """Several files are one driver and none is named for its id."""
+
+    def __init__(self, driver_id: str, files: Sequence[Path]):
+        self.driver_id = driver_id
+        self.files = list(files)
+        names = ", ".join(path.name for path in self.files)
+        super().__init__(
+            f"More than one file in the driver library is driver "
+            f"'{driver_id}' ({names}). Delete the driver, then import the "
+            f"copy you want to keep."
+        )
+
+
+def python_driver_file(directory: Path | str, driver_id: str) -> Path:
+    """THE file that is Python driver ``driver_id`` in ``directory``.
+
+    ``<id>.py`` when it is that driver, else the one file that declares the
+    id, else ``<id>.py`` (which may not exist: the caller decides whether
+    that is "not found" or "create it"). Raises ``AmbiguousDriverFile`` when
+    several files declare the id and none is named for it, rather than
+    guessing which one to edit or replace.
+    """
+    conventional = Path(directory) / f"{driver_id}.py"
+    if conventional.is_file() and _is_driver(conventional, driver_id):
+        return conventional  # it wins over any renamed copy anyway
+    files = driver_files_for(directory, driver_id, ".py")
+    if not files:
+        return conventional
+    if len(files) == 1 or files[0].stem == driver_id:
+        return files[0]
+    raise AmbiguousDriverFile(driver_id, files)
+
+
 def find_driver_file_by_id(
     directories: Sequence[Path | str], driver_id: str
 ) -> Path | None:
@@ -350,11 +423,45 @@ def find_driver_file_by_id(
         dir_path = Path(directory)
         if not dir_path.is_dir():
             continue
-        for filepath in sorted(dir_path.glob(f"*{DRIVER_EXTENSION}")):
+        # The file named for the id first, as everywhere (driver_files_for).
+        candidates = sorted(
+            dir_path.glob(f"*{DRIVER_EXTENSION}"),
+            key=lambda path: (path.stem != driver_id, path.name),
+        )
+        for filepath in candidates:
             if driver_id_from_file(filepath) == driver_id:
                 found = filepath
                 break  # first match within a directory; a later dir may override
     return found
+
+
+def _takes_the_id(
+    loaded: tuple[int, Path] | None, dir_index: int, filepath: Path, driver_id: str
+) -> bool:
+    """Whether ``filepath`` should serve ``driver_id`` over the copy already
+    loaded (``(dir index, file)``, or None). A later directory wins; within
+    one, the file named for the id wins over a renamed copy, and otherwise
+    the first file stays."""
+    if loaded is None:
+        return True
+    loaded_index, loaded_path = loaded
+    if loaded_index != dir_index:
+        log.info(
+            f"Driver '{driver_id}' from {filepath.name} overrides the copy "
+            f"loaded from an earlier directory"
+        )
+        return True
+    if filepath.stem == driver_id and loaded_path.stem != driver_id:
+        log.warning(
+            f"Driver '{driver_id}' is in both {loaded_path.name} and "
+            f"{filepath.name}; {filepath.name} is used"
+        )
+        return True
+    log.warning(
+        f"Driver '{driver_id}' is in both {loaded_path.name} and "
+        f"{filepath.name}; {loaded_path.name} is used"
+    )
+    return False
 
 
 def load_driver_files(directories: Sequence[Path | str]) -> int:
@@ -366,14 +473,16 @@ def load_driver_files(directories: Sequence[Path | str]) -> int:
     a same-id driver in a later directory (the user's ``driver_repo``)
     replaces one from an earlier directory (the read-only built-in
     definitions), so an installed or edited user copy actually serves the
-    id. Within a single directory a duplicate id is a conflict — the first
-    file (alphabetical) wins and the rest are skipped with a warning.
+    id. Within a single directory a duplicate id is a conflict: the file named
+    for the id wins (``driver_files_for``), else the first alphabetically, and
+    the rest are skipped with a warning.
 
     Returns the number of distinct drivers successfully registered.
     """
     from openavc.drivers.configurable import create_configurable_driver_class
 
-    registered: dict[str, int] = {}  # driver_id -> index of the dir it loaded from
+    # driver_id -> (index of the dir it loaded from, the file it loaded from)
+    registered: dict[str, tuple[int, Path]] = {}
     for dir_index, dir_path in enumerate(directories):
         dir_path = Path(dir_path)
         if not dir_path.exists():
@@ -385,18 +494,12 @@ def load_driver_files(directories: Sequence[Path | str]) -> int:
                 continue
 
             driver_id = driver_def.get("id", "")
-            if driver_id in registered:
-                if registered[driver_id] == dir_index:
-                    log.warning(f"Duplicate driver ID '{driver_id}' in {filepath.name} — skipping")
-                    continue
-                log.info(
-                    f"Driver '{driver_id}' from {filepath.name} overrides the "
-                    f"copy loaded from an earlier directory"
-                )
+            if not _takes_the_id(registered.get(driver_id), dir_index, filepath, driver_id):
+                continue
             try:
                 driver_class = create_configurable_driver_class(driver_def)
                 register_driver(driver_class)
-                registered[driver_id] = dir_index
+                registered[driver_id] = (dir_index, filepath)
                 log.info(f"Loaded driver: {driver_id} from {filepath.name}")
             except Exception:  # Catch-all: YAML parsing/validation can fail in many ways
                 log.exception(f"Failed to create driver class from {filepath}")
@@ -504,11 +607,13 @@ def load_python_drivers(directories: Sequence[Path | str]) -> int:
     Scan directories for .py driver files, load them, and register.
 
     Same precedence as ``load_driver_files``: later directories win for a
-    duplicate id; within one directory the first file (alphabetical) wins.
+    duplicate id; within one directory the file named for the id wins, else
+    the first alphabetically.
 
     Returns the number of distinct drivers successfully registered.
     """
-    registered: dict[str, int] = {}  # driver_id -> index of the dir it loaded from
+    # driver_id -> (index of the dir it loaded from, the file it loaded from)
+    registered: dict[str, tuple[int, Path]] = {}
     for dir_index, dir_path in enumerate(directories):
         dir_path = Path(dir_path)
         if not dir_path.exists():
@@ -523,17 +628,11 @@ def load_python_drivers(directories: Sequence[Path | str]) -> int:
                 continue
 
             driver_id = driver_class.DRIVER_INFO.get("id", "")
-            if driver_id in registered:
-                if registered[driver_id] == dir_index:
-                    log.warning(f"Duplicate Python driver ID '{driver_id}' in {filepath.name} — skipping")
-                    continue
-                log.info(
-                    f"Python driver '{driver_id}' from {filepath.name} overrides "
-                    f"the copy loaded from an earlier directory"
-                )
+            if not _takes_the_id(registered.get(driver_id), dir_index, filepath, driver_id):
+                continue
             try:
                 register_driver(driver_class)
-                registered[driver_id] = dir_index
+                registered[driver_id] = (dir_index, filepath)
                 log.info(f"Loaded Python driver: {driver_id} from {filepath.name}")
             except Exception:
                 log.exception(f"Failed to register Python driver from {filepath}")
@@ -860,7 +959,11 @@ def list_python_drivers(directories: Sequence[Path | str]) -> list[dict[str, Any
 
             driver_id = entry["id"]
             if driver_id in seen_ids:
-                continue
+                # The file named for the id is the one that loads
+                # (load_python_drivers), so it is the one listed.
+                if filepath.stem != driver_id:
+                    continue
+                drivers[:] = [d for d in drivers if d["id"] != driver_id]
             seen_ids.add(driver_id)
 
             # Check if loaded in registry

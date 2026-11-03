@@ -3,7 +3,9 @@
 CRUD over the ``.py`` files in ``driver_repo/``: list, read, save, create,
 delete, hot-reload, and export as a bundle. Every path resolves through
 `_safe_driver_path`, so a driver id can only ever name a file inside
-``driver_repo/``.
+``driver_repo/``, and it names the file that IS that driver
+(``driver_loader.python_driver_file``): the one whose source declares the id,
+whatever it was called when it was uploaded.
 
 **A Python driver is a file set, not a file.** The main ``<id>.py`` travels
 with its conventional siblings — ``<id>_discovery.py`` (discovery probe) and
@@ -34,7 +36,13 @@ from openavc.api._engine import _get_engine
 from openavc.api.auth import authenticate_claimed_request, require_claimed_auth
 from openavc.api.errors import api_error as _api_error
 from openavc.api.models import PythonDriverCreateRequest
-from openavc.drivers.driver_loader import driver_companions, require_mutable_driver_file
+from openavc.drivers.driver_loader import (
+    AmbiguousDriverFile,
+    driver_companions,
+    driver_files_for,
+    python_driver_file,
+    require_mutable_driver_file,
+)
 from openavc.utils.logger import get_logger
 from openavc.drivers.registry import register_driver, require_mutable_driver, unregister_driver
 
@@ -64,16 +72,22 @@ def remove_python_companions(main_path: Path) -> list[str]:
     return removed
 
 
-def _safe_driver_path(driver_id: str) -> Path:
-    """Resolve a driver ID to a safe file path in driver_repo/."""
-    from openavc.system_config import DRIVER_REPO_DIR
-
-    # Sanitize: only allow alphanumeric + underscore + hyphen
+def _check_driver_id(driver_id: str) -> None:
+    """Refuse a driver ID that could not be a file name in driver_repo/."""
     import re
     if not re.match(r'^[a-zA-Z0-9_-]+$', driver_id):
         raise HTTPException(status_code=400, detail="Invalid driver ID: only alphanumeric, underscore, and hyphen allowed")
 
-    filepath = DRIVER_REPO_DIR / f"{driver_id}.py"
+
+def _safe_driver_path(driver_id: str) -> Path:
+    """Resolve a driver ID to a safe file path in driver_repo/."""
+    from openavc.system_config import DRIVER_REPO_DIR
+
+    _check_driver_id(driver_id)
+    try:
+        filepath = python_driver_file(DRIVER_REPO_DIR, driver_id)
+    except AmbiguousDriverFile as e:
+        raise HTTPException(status_code=409, detail=str(e))
 
     # Ensure path stays within driver_repo/
     try:
@@ -123,6 +137,8 @@ async def export_python_driver_bundle(driver_id: str):
     Bundles the main ``{id}.py`` plus any sibling ``{id}_discovery.py`` and
     ``{id}_sim.py`` present in ``driver_repo/``, so the whole driver can be
     handed to someone as a single file and re-imported via /drivers/upload-bundle.
+    The files are named for the id inside the zip even when the installed
+    copy kept another name.
     """
     import io
     import zipfile
@@ -137,7 +153,7 @@ async def export_python_driver_bundle(driver_id: str):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for fp in files:
-            zf.write(fp, arcname=fp.name)
+            zf.write(fp, arcname=f"{driver_id}{fp.name[len(main_path.stem):]}")
 
     return Response(
         content=buf.getvalue(),
@@ -233,11 +249,15 @@ async def create_python_driver(body: PythonDriverCreateRequest) -> dict:
 @router.delete("/python-drivers/{driver_id}", dependencies=[Depends(require_claimed_auth)])
 @endpoint_policy(EndpointPolicy(HostCategory.PROGRAMMER, authenticate_claimed_request))
 async def delete_python_driver(driver_id: str) -> dict:
-    """Delete a Python driver file."""
-    require_mutable_driver(driver_id)
-    filepath = _safe_driver_path(driver_id)
+    """Delete a Python driver: every file that is that driver, with each
+    one's companions, so a renamed copy cannot come back at the next start."""
+    from openavc.system_config import DRIVER_REPO_DIR
 
-    if not filepath.exists():
+    require_mutable_driver(driver_id)
+    _check_driver_id(driver_id)  # several copies are no bar to deleting them all
+    files = driver_files_for(DRIVER_REPO_DIR, driver_id, ".py")
+
+    if not files:
         raise HTTPException(status_code=404, detail=f"Python driver '{driver_id}' not found")
 
     # Check if devices are using this driver
@@ -249,18 +269,17 @@ async def delete_python_driver(driver_id: str) -> dict:
             detail=f"Cannot delete driver '{driver_id}': used by devices: {', '.join(using)}",
         )
 
-    # Remove file + its sibling companions (discovery / sim), so deleting a
-    # driver that was imported or installed as a bundle doesn't leave orphans.
-    filepath.unlink()
-    removed_companions = remove_python_companions(filepath)
+    # Remove each file + its sibling companions (discovery / sim), so deleting
+    # a driver that was imported or installed as a bundle doesn't leave orphans.
+    import sys
+    removed_companions: list[str] = []
+    for filepath in files:
+        filepath.unlink()
+        removed_companions.extend(remove_python_companions(filepath))
+        sys.modules.pop(f"openavc_driver_{filepath.stem}", None)
 
     # Unregister from driver registry
     unregister_driver(driver_id)
-
-    # Clean up sys.modules
-    import sys
-    module_name = f"openavc_driver_{driver_id}"
-    sys.modules.pop(module_name, None)
 
     log.info(f"Deleted Python driver: {driver_id}")
     # Discovery stops suggesting it, and stops running its discovery check.

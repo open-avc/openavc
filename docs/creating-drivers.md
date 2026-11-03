@@ -2878,7 +2878,7 @@ These companions sit next to the main file in `driver_repo/`. They don't appear 
 In the **Code** view, the **Python Drivers** section header has an **Import** button (the upload icon), and each driver row has an **Export** button (the download icon):
 
 - **Export** downloads the driver and any companions as a single `.zip` bundle, so you can hand the whole driver to someone else in one file.
-- **Import** accepts either a single `.py` file or a `.zip` bundle. A bundle is unpacked into `driver_repo/`, the main driver is loaded, and the companions come along with it.
+- **Import** accepts either a single `.py` file or a `.zip` bundle. A bundle is unpacked into `driver_repo/`, the main driver is loaded, and the companions come along with it. The driver is saved under the `id` in its `DRIVER_INFO`, whatever the file was called, so a renamed copy or a second browser download (`my_driver (2).py`) imports like the original. Importing a driver that is already installed replaces it.
 
 A single `.py` file is enough to control hardware on its own; importing the bundle is what brings the simulator and the discovery companion too.
 

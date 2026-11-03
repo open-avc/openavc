@@ -39,7 +39,11 @@ from openavc.api.models import (
 )
 from openavc.api.routes.python_drivers import remove_python_companions
 from openavc.drivers.driver_loader import (
-    COMPANION_SUFFIXES, declared_driver_info, require_mutable_driver_file,
+    COMPANION_SUFFIXES,
+    declared_driver_info,
+    driver_companions,
+    driver_files_for,
+    require_mutable_driver_file,
 )
 from openavc.utils.logger import get_logger
 from openavc.drivers.registry import (
@@ -793,6 +797,50 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
     }
 
 
+# A driver id that can also be its file name.
+_FILE_NAME_ID = re.compile(r'^[a-zA-Z0-9_\-]+$')
+
+
+def _named_for_its_id(filename: str, content: bytes) -> str | None:
+    """The file name an uploaded driver is saved under: its declared id plus
+    its extension, or None when the id cannot be read or cannot be a file name.
+
+    Every other door finds a driver's file by its id, and a browser renames a
+    second download of the same file ("academy_td1 (2).py"), so the name it
+    arrived with is not the one it keeps.
+    """
+    driver_id = declared_driver_info(filename, content).get("id")
+    if not isinstance(driver_id, str) or not _FILE_NAME_ID.match(driver_id):
+        return None
+    return f"{driver_id}{Path(filename).suffix}"
+
+
+def _remove_other_copies(driver_repo: Path, driver_id: str, kept: Path) -> list[str]:
+    """Remove the other files in driver_repo that are this driver, of the
+    kept file's kind, now that ``kept`` is the driver. A renamed copy left
+    behind would be found again by the Code view, export and uninstall. A
+    Python copy's simulator and discovery files move to the kept name when it
+    has none of its own. Returns the names removed."""
+    import sys
+
+    removed: list[str] = []
+    for other in driver_files_for(driver_repo, driver_id, kept.suffix):
+        if other == kept:
+            continue
+        if other.suffix == ".py":
+            for companion in driver_companions(other):
+                target = kept.with_name(f"{kept.stem}{companion.name[len(other.stem):]}")
+                if target.exists():
+                    companion.unlink(missing_ok=True)
+                else:
+                    companion.rename(target)
+            sys.modules.pop(f"openavc_driver_{other.stem}", None)
+        other.unlink(missing_ok=True)
+        removed.append(other.name)
+        log.info(f"Driver '{driver_id}': removed {other.name}, replaced by {kept.name}")
+    return removed
+
+
 @router.post("/drivers/upload")
 async def upload_driver(request: Request) -> dict[str, Any]:
     """Upload a driver file (.avcdriver or .py) from the user's computer."""
@@ -818,17 +866,23 @@ async def upload_driver(request: Request) -> dict[str, Any]:
     filename = _PurePosixPath(raw_filename).name
     if not filename.endswith((".avcdriver", ".py")):
         raise HTTPException(status_code=422, detail="File must be .avcdriver or .py")
-    # Reject filenames with suspicious characters (allow alphanumeric, hyphens, underscores, dots)
-    if not _re.match(r'^[a-zA-Z0-9_\-]+\.(avcdriver|py)$', filename):
-        raise HTTPException(status_code=422, detail="Invalid filename — use only letters, numbers, hyphens, and underscores")
 
     content = await upload.read()
 
     # The same gate Browse Community applies, before the file lands: a driver
     # hand-imported from a partner's website is the same file the catalog
     # install would have refused, and the systems this protects are exactly the
-    # ones that have not updated.
+    # ones that have not updated. Asked of the name it arrived with, too.
     require_mutable_driver_file(filename, content)
+
+    # Saved under its declared id; only a driver whose id cannot be read keeps
+    # the name it arrived with, and then that name must be a safe one.
+    named = _named_for_its_id(filename, content)
+    if named is not None:
+        filename = named
+    elif not _re.match(r'^[a-zA-Z0-9_\-]+\.(avcdriver|py)$', filename):
+        raise HTTPException(status_code=422, detail="Invalid filename — use only letters, numbers, hyphens, and underscores")
+
     _enforce_declared_floor(_declared_min_platform_version(filename, content))
 
     filepath = driver_repo / filename
@@ -886,6 +940,8 @@ async def upload_driver(request: Request) -> dict[str, Any]:
     except Exception as e:
         filepath.unlink(missing_ok=True)
         raise _api_error(500, f"Failed to load uploaded driver '{filename}'", e)
+
+    _remove_other_copies(driver_repo, driver_id, filepath)
 
     # Promote any project devices waiting on this driver — same flow as
     # /drivers/install so manual uploads behave identically.
@@ -995,6 +1051,22 @@ async def upload_driver_bundle(request: Request) -> dict[str, Any]:
     for name, data in entries.items():
         require_mutable_driver_file(name, data)
 
+    # The main file and its conventional Python companions are saved under the
+    # driver's declared id, as at the single-file door. A YAML driver's
+    # companion keeps its name: the YAML names it.
+    named = _named_for_its_id(main_name, entries[main_name])
+    if named is not None and named != main_name:
+        main_stem = PurePosixPath(main_name).stem
+        new_stem = PurePosixPath(named).stem
+        renamed: dict[str, bytes] = {}
+        for name, data in entries.items():
+            if name == main_name:
+                name = named
+            elif main_name.endswith(".py") and name.startswith(main_stem) and name[len(main_stem):] in COMPANION_SUFFIXES:
+                name = f"{new_stem}{name[len(main_stem):]}"
+            renamed[name] = data
+        entries, main_name = renamed, named
+
     # Same gate as the single-file door, and for the same reason — asked
     # before the write loop so a refused bundle leaves the tree untouched.
     _enforce_declared_floor(
@@ -1034,6 +1106,8 @@ async def upload_driver_bundle(request: Request) -> dict[str, Any]:
         for fp in created:
             fp.unlink(missing_ok=True)
         raise _api_error(500, f"Failed to load uploaded driver bundle '{raw_name}'", e)
+
+    _remove_other_copies(driver_repo, driver_id, main_path)
 
     # Refresh discovery hints + promote any devices waiting on this driver,
     # matching the single-file upload / community install paths.
@@ -1143,63 +1217,51 @@ async def uninstall_driver(driver_id: str) -> dict[str, Any]:
     if not driver_repo.exists():
         raise HTTPException(status_code=404, detail="Driver not found")
 
-    # Find the file by stem or by reading the driver ID from the file
-    deleted_file = None
-    for filepath in list(driver_repo.glob("*.avcdriver")) + list(driver_repo.glob("*.py")):
-        if filepath.name.startswith("_"):
-            continue
-        if filepath.stem == driver_id:
-            deleted_file = filepath
-            break
-        # Check actual ID inside YAML files
-        try:
-            if filepath.suffix == ".avcdriver":
-                import yaml
-                data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
-                if isinstance(data, dict) and data.get("id") == driver_id:
-                    deleted_file = filepath
-                    break
-        except (yaml.YAMLError, OSError):
-            continue
-
-    if not deleted_file:
+    # Every file that is this driver, a renamed upload included, so a copy
+    # left behind cannot register the driver again at the next start.
+    driver_files = (
+        driver_files_for(driver_repo, driver_id, ".avcdriver")
+        + driver_files_for(driver_repo, driver_id, ".py")
+    )
+    if not driver_files:
         raise HTTPException(status_code=404, detail=f"Driver '{driver_id}' not found in driver_repo")
 
-    # If the YAML declared a Python companion, delete it too — the
-    # install endpoint fetches the pair as one unit, and leaving the
-    # companion behind would clutter the Code tab and the Installed
-    # Drivers panel with an orphaned probe file.
-    companion_to_delete: Path | None = None
-    if deleted_file.suffix == ".avcdriver":
-        try:
-            yaml_text = deleted_file.read_text(encoding="utf-8")
-        except OSError:
-            yaml_text = ""
-        if yaml_text:
-            relpath = _companion_relpath_from_yaml(yaml_text)
-            if relpath:
-                from pathlib import PurePosixPath
-                companion_filename = PurePosixPath(relpath).name
-                candidate = driver_repo / companion_filename
-                # Only remove if it actually lives in driver_repo (so a
-                # stray "../foo.py" path can't escape) and the companion
-                # follows the documented `_discovery.py` suffix — anything
-                # else is the user's own .py and shouldn't be touched.
-                try:
-                    candidate.resolve().relative_to(driver_repo.resolve())
-                except ValueError:
-                    candidate = None
-                if candidate and candidate.exists() and candidate.name.endswith("_discovery.py"):
-                    companion_to_delete = candidate
+    for deleted_file in driver_files:
+        # If the YAML declared a Python companion, delete it too — the
+        # install endpoint fetches the pair as one unit, and leaving the
+        # companion behind would clutter the Code tab and the Installed
+        # Drivers panel with an orphaned probe file.
+        companion_to_delete: Path | None = None
+        if deleted_file.suffix == ".avcdriver":
+            try:
+                yaml_text = deleted_file.read_text(encoding="utf-8")
+            except OSError:
+                yaml_text = ""
+            if yaml_text:
+                relpath = _companion_relpath_from_yaml(yaml_text)
+                if relpath:
+                    from pathlib import PurePosixPath
+                    companion_filename = PurePosixPath(relpath).name
+                    candidate: Path | None = driver_repo / companion_filename
+                    # Only remove if it actually lives in driver_repo (so a
+                    # stray "../foo.py" path can't escape) and the companion
+                    # follows the documented `_discovery.py` suffix — anything
+                    # else is the user's own .py and shouldn't be touched.
+                    try:
+                        candidate.resolve().relative_to(driver_repo.resolve())
+                    except ValueError:
+                        candidate = None
+                    if candidate and candidate.exists() and candidate.name.endswith("_discovery.py"):
+                        companion_to_delete = candidate
 
-    deleted_file.unlink(missing_ok=True)
-    if companion_to_delete is not None:
-        companion_to_delete.unlink(missing_ok=True)
-    # Python drivers carry their companions by naming convention rather than a
-    # YAML declaration; drop the discovery / sim siblings to match the install
-    # side, which fetches them as part of the same install.
-    if deleted_file.suffix == ".py":
-        remove_python_companions(deleted_file)
+        deleted_file.unlink(missing_ok=True)
+        if companion_to_delete is not None:
+            companion_to_delete.unlink(missing_ok=True)
+        # Python drivers carry their companions by naming convention rather than a
+        # YAML declaration; drop the discovery / sim siblings to match the install
+        # side, which fetches them as part of the same install.
+        if deleted_file.suffix == ".py":
+            remove_python_companions(deleted_file)
     unregister_driver(driver_id)
 
     # Refresh discovery engine so stale matches are cleared
