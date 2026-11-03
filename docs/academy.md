@@ -10,6 +10,8 @@
 
 **Drivers** is a practical add-on covering Driver Builder, YAML and introductory Python driver authoring. Build commands, read reported state, separate channels and diagnose protocol failures against your own online practice amplifier and display. The labs progress from guided edits to adding a capability from a device manual. Complete the practical checkpoints and a short retryable knowledge check to earn a certificate of completion.
 
+**Basic Scripting** introduces Python project scripts through a zone-level controller. Calculate different targets from one request, apply per-zone limits, combine reported readings and diagnose failed requests. The lessons explain Python as you use it, with a community driver and the built-in Simulator. Complete seven practical checkpoints and all eight scenarios in the retryable knowledge check to earn a certificate of completion. No previous Python experience is required.
+
 [How certification works](https://academy.openavc.com/mod/page/view.php?id=87) has the pass marks, attempt limits and what the certificate shows.
 
 ## Which one first
@@ -17,8 +19,9 @@
 - New to OpenAVC: start with Foundations, then continue to Associate.
 - Already built [your first space](tutorial-first-space.md) from this site: go straight to Associate. Foundations is short, and it fills in what the tutorial skips, so it is worth a look when you have an hour.
 - Comfortable adding devices in the Programmer and ready to author drivers: take Drivers.
+- Comfortable opening projects, adding devices and using the Simulator: take Basic Scripting to add calculations and combined feedback to your projects. Many common control jobs can still use macros without scripting.
 
-General project scripting and Cloud do not yet have courses. The [Scripting Guide](scripting-guide.md) and [classroom tutorial](tutorial-classroom.md) cover scripts; [Creating Drivers](creating-drivers.md) is the driver-authoring reference.
+Advanced Scripting and Cloud do not yet have courses. The [Scripting Guide](scripting-guide.md) and [classroom tutorial](tutorial-classroom.md) provide further scripting examples; [Creating Drivers](creating-drivers.md) is the driver-authoring reference.
 
 ## What you need
 
