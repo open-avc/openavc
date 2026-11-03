@@ -16,8 +16,10 @@ from fastapi import APIRouter, HTTPException
 from openavc.api._engine import _get_engine
 from openavc.api.errors import api_error as _api_error
 from openavc.api.models import CloudPairRequest
+from openavc.utils.logger import get_logger
 
 router = APIRouter(route_class=ProgrammerRoute)
+log = get_logger(__name__)
 open_router = APIRouter(route_class=PublicProgrammerRoute)
 
 
@@ -238,10 +240,57 @@ async def cloud_pair(data: CloudPairRequest) -> dict[str, Any]:
     return result
 
 
+# How long Unpair waits for the cloud to confirm before unpairing locally anyway.
+UNPAIR_CLOUD_TIMEOUT_SEC = 10.0
+
+
+async def _remove_from_the_portal() -> bool:
+    """Tell the cloud this system is handing itself back, signed with its key
+    while it still has one. True when the cloud confirmed the unpair.
+
+    Without this the system cleared its keys and stopped its agent while the
+    portal kept it paired: listed as offline, raising its offline alerts and
+    counting on the bill. Sent while the agent is still connected, so the cloud
+    records the unpair before it closes the socket and writes no outage for a
+    system somebody removed. Any answer but 204 (a cloud from before this
+    door, a refused signature, no connection) is False, and the local unpair
+    goes ahead all the same.
+    """
+    import httpx
+
+    import openavc.config as cfg
+    from openavc.api.ai_proxy import _get_cloud_api_url, _get_system_key_bytes, _sign_request
+
+    system_id = cfg.CLOUD_SYSTEM_ID
+    key = _get_system_key_bytes()
+    api_url = _get_cloud_api_url()
+    if not system_id or not key or not api_url:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=UNPAIR_CLOUD_TIMEOUT_SEC) as client:
+            resp = await client.post(
+                f"{api_url}/api/v1/systems/unpair",
+                headers=_sign_request(system_id, key, b""),
+                content=b"",
+            )
+    except httpx.HTTPError as e:
+        log.warning(f"Unpair: the cloud could not be reached ({e!r}); unpairing here only")
+        return False
+    if resp.status_code != 204:
+        log.warning(f"Unpair: the cloud answered HTTP {resp.status_code}; unpairing here only")
+        return False
+    return True
+
+
 @router.post("/cloud/unpair")
 async def cloud_unpair() -> dict[str, Any]:
-    """Unpair this instance from the cloud platform."""
+    """Unpair this instance from the cloud platform.
+
+    The cloud is told first (``_remove_from_the_portal``); ``portal_removed``
+    says whether it confirmed. The local unpair happens either way.
+    """
     engine = _get_engine()
+    portal_removed = await _remove_from_the_portal()
 
     # Stop the cloud agent
     if engine.cloud_agent:
@@ -262,4 +311,4 @@ async def cloud_unpair() -> dict[str, Any]:
         "endpoint": "",
     })
 
-    return {"status": "unpaired"}
+    return {"status": "unpaired", "portal_removed": portal_removed}

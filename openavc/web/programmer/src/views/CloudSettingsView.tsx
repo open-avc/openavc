@@ -91,6 +91,11 @@ const helpTextStyle: React.CSSProperties = {
   lineHeight: 1.5,
 };
 
+// Shown when the server unpaired but the cloud did not confirm removing the
+// system: until somebody removes it there, the portal lists it as offline.
+const UNPAIRED_HERE_ONLY =
+  "Unpaired here, but the cloud did not confirm it, so the cloud portal may still list this system as offline. If it does, open the system in the portal and choose Unpair System.";
+
 export function CloudSettingsView() {
   const [status, setStatus] = useState<CloudStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -152,8 +157,12 @@ export function CloudSettingsView() {
     setError(null);
     setSuccess(null);
     try {
-      await cloudUnpair();
-      setSuccess("Unpaired successfully.");
+      const result = await cloudUnpair();
+      if (result.portal_removed === false) {
+        setError(UNPAIRED_HERE_ONLY);
+      } else {
+        setSuccess("Unpaired, and removed from the cloud portal.");
+      }
       await fetchStatus();
     } catch (e) {
       setError(parseApiError(e));
@@ -419,7 +428,7 @@ export function CloudSettingsView() {
       {showUnpairConfirm && (
         <ConfirmDialog
           title="Unpair from Cloud"
-          message="Unpair from cloud? You will need a new pairing token to reconnect."
+          message="Unpair from cloud? This also removes the system from the cloud portal. You will need a new pairing token to reconnect."
           confirmLabel="Unpair"
           onConfirm={handleUnpair}
           onCancel={() => setShowUnpairConfirm(false)}

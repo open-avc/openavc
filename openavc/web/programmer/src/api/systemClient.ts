@@ -43,8 +43,11 @@ export async function cloudPair(
   });
 }
 
-export async function cloudUnpair(): Promise<{ status: string }> {
-  return request<{ status: string }>("/cloud/unpair", { method: "POST" });
+// `portal_removed` is false when the cloud did not confirm the unpair (it could
+// not be reached, or runs a version without the door): the portal may still
+// list the system.
+export async function cloudUnpair(): Promise<{ status: string; portal_removed?: boolean }> {
+  return request<{ status: string; portal_removed?: boolean }>("/cloud/unpair", { method: "POST" });
 }
 
 // --- Logs ---
