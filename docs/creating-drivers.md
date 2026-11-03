@@ -3091,6 +3091,8 @@ Everything else — the clean-slate reset, the connected declare and event, poll
 
 The device's credentials are masked when the traffic is shown, as on every other channel.
 
+**A proxy set for OpenAVC.** Where a site sets `HTTPS_PROXY` on the OpenAVC service (the [Network & Security Cut Sheet](it-network-guide.md#behind-a-proxy-or-a-firewall-that-inspects-encrypted-traffic) says how), an `httpx` client your driver creates and a `websockets` connection it opens reach a device at a private, loopback or link-local address, or with a `.local` or single-label name, directly. Anything else (a manufacturer's cloud API) goes through the proxy, as `HTTPS_PROXY` and `NO_PROXY` say. A client built with `trust_env=False` or with its own `transport=`, `mounts=` or `proxy=`, and a connection given its own `proxy=`, are left as you built them. With no proxy set, nothing changes.
+
 **The network adapter a session you own leaves through.** On a computer connected to more than one network, Settings > Network > **Reach devices through** can send all device traffic out through one adapter. Every platform transport follows it.
 
 - **An `httpx` client** your driver creates follows it too, with nothing to add, and keeps the `verify`, `cert`, `limits` and other settings you gave it, so a device with a self-signed certificate still connects with `verify=False`. A client you give your own `transport=`, `mounts=` or `proxy=` is left exactly as you built it. That is also how a client that reaches a service on the internet rather than a device (a manufacturer's cloud API) stays off the chosen adapter, which may have no route to the internet. While the chosen adapter has no address, each request fails with `httpx.ConnectError` naming the adapter.
