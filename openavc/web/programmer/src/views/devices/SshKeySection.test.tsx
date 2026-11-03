@@ -10,7 +10,7 @@ vi.mock("../../api/deviceClient", () => ({
 }));
 
 import { ApiError } from "../../api/errors";
-import { SshKeySection, SSH_KEY_HELP, SSH_KEY_TITLE } from "./SshKeySection";
+import { SshKeySection, SSH_KEY_HELP, SSH_KEY_TITLE, canUseSshKey } from "./SshKeySection";
 
 const KEY = {
   public_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7acme openavc@acme-host",
@@ -42,5 +42,45 @@ describe("SshKeySection", () => {
 
   it("uses no em dash in what it says", () => {
     expect(SSH_KEY_HELP).not.toMatch(/—/);
+  });
+});
+
+// The card says "In Edit, choose key sign-in". A driver that signs in with a
+// password only has no such choice, so its devices get no card.
+describe("canUseSshKey", () => {
+  const offersKey = {
+    config_schema: { ssh_auth_method: { type: "enum", values: ["password", "key"] } },
+    default_config: { ssh_auth_method: "password" },
+  };
+  const passwordOnly = {
+    config_schema: { username: { type: "string" } },
+    default_config: { ssh_auth_method: "password" },
+  };
+
+  it("shows for a driver that offers key sign-in, whatever the device is set to", () => {
+    expect(canUseSshKey(offersKey, { ssh_auth_method: "password" })).toBe(true);
+    expect(canUseSshKey(offersKey, {})).toBe(true);
+  });
+
+  it("does not show for a password-only driver", () => {
+    expect(canUseSshKey(passwordOnly, {})).toBe(false);
+    expect(canUseSshKey(passwordOnly, { ssh_auth_method: "Password" })).toBe(false);
+  });
+
+  it("shows when the device is set to key sign-in", () => {
+    expect(canUseSshKey(passwordOnly, { ssh_auth_method: "key" })).toBe(true);
+  });
+
+  it("shows when nothing names a sign-in method, because the key is what signs in then", () => {
+    expect(canUseSshKey({ config_schema: {}, default_config: {} }, {})).toBe(true);
+    expect(canUseSshKey(undefined, undefined)).toBe(true);
+  });
+
+  it("reads a choice written as an option object", () => {
+    const labelled = {
+      config_schema: { ssh_auth_method: { values: [{ value: "password" }, { value: "key", label: "Key" }] } },
+      default_config: { ssh_auth_method: "password" },
+    };
+    expect(canUseSshKey(labelled, {})).toBe(true);
   });
 });

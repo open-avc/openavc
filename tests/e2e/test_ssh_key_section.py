@@ -1,8 +1,9 @@
 """The page of a device that connects over SSH shows OpenAVC's own SSH key.
 
 The section carries the public key line, what to do with it, its fingerprint
-and a copy button; a device on any other transport shows none of it. The seed
-controller is kept disabled so nothing dials the address.
+and a copy button. A device on any other transport shows none of it, and nor
+does one that signs in with a password on a driver offering no key sign-in.
+The seed controller is kept disabled so nothing dials the address.
 """
 
 from __future__ import annotations
@@ -18,11 +19,11 @@ HELP = (
 )
 
 
-def _project(connection: dict) -> dict:
+def _project(connection: dict, config: dict | None = None) -> dict:
     return {
         "devices": [{
             "id": "ctrl1", "driver": "e2e_test_controller", "name": "Test Controller",
-            "config": {"initial_children": 0}, "enabled": False,
+            "config": {"initial_children": 0, **(config or {})}, "enabled": False,
             "pending_settings": {}, "child_entities": {},
         }],
         "connections": {"ctrl1": connection},
@@ -61,6 +62,16 @@ def test_an_ssh_device_shows_openavcs_key(server_factory, page: Page):
 def test_a_device_on_another_transport_shows_no_key(server_factory, page: Page):
     server = server_factory(project_overrides=_project(
         {"host": "127.0.0.1", "port": 9},
+    ))
+    _open_device(page, server.base_url)
+    expect(page.get_by_text("Live State").first).to_be_visible(timeout=EXPECT_TIMEOUT)
+    expect(page.get_by_test_id("ssh-key-section")).to_have_count(0)
+
+
+def test_a_password_only_ssh_device_shows_no_key(server_factory, page: Page):
+    server = server_factory(project_overrides=_project(
+        {"transport": "ssh", "host": "127.0.0.1", "port": 22},
+        {"ssh_auth_method": "password"},
     ))
     _open_device(page, server.base_url)
     expect(page.get_by_text("Live State").first).to_be_visible(timeout=EXPECT_TIMEOUT)

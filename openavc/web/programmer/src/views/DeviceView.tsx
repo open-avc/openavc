@@ -681,6 +681,9 @@ export function DeviceView() {
               onDuplicate={(config) => setDuplicateSource(config)}
               onBrowseDrivers={() => setSubTab("drivers")}
               onOpenDevice={(id) => setSelectedId(id)}
+              installedDriver={drivers.find(
+                (d) => d.id === deviceConfigs.find((dev) => dev.id === selectedId)?.driver,
+              )}
             />
           ) : (
             <div

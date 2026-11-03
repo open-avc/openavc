@@ -34,14 +34,14 @@ When you pick a USB adapter that reports a serial number, OpenAVC saves that ser
 
 ## SSH Connections
 
-Some devices, such as managed network switches and some video bars, are controlled over SSH. OpenAVC connects to them with the SSH client of the computer it runs on. Windows, macOS, the Raspberry Pi image, the Docker image and the Linux installer all include one. Appliance hardware installs it by itself once it can reach the internet.
+Some devices, such as managed network switches, some audio DSPs and some video bars, are controlled over SSH. OpenAVC connects to them with the SSH client of the computer it runs on. Windows, macOS, the Raspberry Pi image, the Docker image and the Linux installer all include one. Appliance hardware installs it by itself once it can reach the internet.
 
 Some drivers offer both SSH and telnet under **Connection**. When you change it in **Add Device** or **Edit**, a **Port** still on the standard port (22 for SSH, 23 for telnet) changes with it. A port you typed yourself stays as it is. If Connection and Port still disagree when the device connects, the device page names both settings.
 
-A device's driver signs in with a password or with a key, chosen in **Edit**:
+A device signs in with a password or with a key, chosen in **Edit** (some drivers offer only a password):
 
 - **Password.** Enter the account's username and password.
-- **Key.** OpenAVC has an SSH key of its own. The page of any device that connects over SSH shows it under **OpenAVC SSH key**, with a **Copy** button and its fingerprint. Add that key to the account OpenAVC signs in with on the device (the device's manual says where: often a "public key" or "authorized keys" setting for the user). Then choose key sign-in and leave the private key path blank. All SSH devices use the same OpenAVC key.
+- **Key.** OpenAVC has an SSH key of its own. The page of an SSH device that can sign in with a key shows it under **OpenAVC SSH key**, with a **Copy** button and its fingerprint. Add that key to the account OpenAVC signs in with on the device (the device's manual says where: often a "public key" or "authorized keys" setting for the user). Then choose key sign-in and leave the private key path blank. All SSH devices use the same OpenAVC key.
 
 To sign in with a key file of your own instead, enter its path on the OpenAVC server in the private key path setting. The file must be readable by the account the OpenAVC service runs as.
 

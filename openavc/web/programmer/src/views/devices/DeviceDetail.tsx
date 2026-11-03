@@ -12,7 +12,7 @@ import { useConnectionStore } from "../../store/connectionStore";
 import * as api from "../../api/restClient";
 import { getAuditDeviceTarget } from "../../api/auditClient";
 import { useAuditStore } from "../../store/auditStore";
-import type { BridgePort, DeviceConfig, DeviceInfo, DeviceSettingValue, DriverParamDef } from "../../api/types";
+import type { BridgePort, DeviceConfig, DeviceInfo, DeviceSettingValue, DriverInfo, DriverParamDef } from "../../api/types";
 import { CommandParamForm } from "../../components/shared/CommandParamForm";
 import { fileParamNames, fileParamsBlocked, isFileCommand } from "../../components/shared/commandFiles";
 import { CommandFileRunStatus, useCommandFileRun } from "./CommandFileRun";
@@ -46,7 +46,7 @@ import { InlineProtocolEditor } from "./InlineProtocolEditor";
 import { IrCodesEditor } from "./IrCodesEditor";
 import { ConfigTableEditor } from "./ConfigTableEditor";
 import { BridgeIrPort } from "./BridgeIrPort";
-import { SshKeySection } from "./SshKeySection";
+import { SshKeySection, canUseSshKey } from "./SshKeySection";
 import { ApiError, parseApiError } from "../../api/errors";
 import { useConnectionTestResult } from "./useConnectionTestResult";
 import { driverLabel } from "../../components/shared/driverLabel";
@@ -62,6 +62,7 @@ export function DeviceDetail({
   onDuplicate,
   onBrowseDrivers,
   onOpenDevice,
+  installedDriver,
 }: {
   deviceId: string;
   onEdit: (config: DeviceConfig) => void;
@@ -69,6 +70,9 @@ export function DeviceDetail({
   onDuplicate: (config: DeviceConfig) => void;
   onBrowseDrivers?: () => void;
   onOpenDevice?: (deviceId: string) => void;
+  /** The installed definition of this device's driver: what the page knows
+   *  of the driver while the device is disabled and nothing is running it. */
+  installedDriver?: DriverInfo;
 }) {
   const project = useProjectStore((s) => s.project);
   const update = useProjectStore((s) => s.update);
@@ -838,9 +842,13 @@ export function DeviceDetail({
         </div>
       )}
 
-      {/* OpenAVC's own SSH key, for a device that connects over SSH: key
-          sign-in uses it whenever the device's key path is blank. */}
-      {deviceInfo?.connection?.transport === "ssh" && (
+      {/* OpenAVC's own SSH key, for a device that connects over SSH and can
+          sign in with a key: key sign-in uses it whenever the device's key
+          path is blank. */}
+      {deviceInfo?.connection?.transport === "ssh" && canUseSshKey(
+        Object.keys(deviceInfo.driver_info ?? {}).length > 0 ? deviceInfo.driver_info : installedDriver,
+        { ...deviceConfig?.config, ...project?.connections?.[deviceId] },
+      ) && (
         <SshKeySection sectionStyle={sectionStyle} sectionTitleStyle={sectionTitleStyle} />
       )}
 

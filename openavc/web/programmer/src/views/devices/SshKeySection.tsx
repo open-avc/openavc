@@ -1,8 +1,8 @@
 /**
  * OpenAVC's own SSH public key, shown on the page of a device that connects
- * over SSH. Key sign-in uses this key whenever the device's key path is blank,
- * so the integrator adds it to the device's account and never has to place a
- * key file on the server.
+ * over SSH and can sign in with a key. Key sign-in uses this key whenever the
+ * device's key path is blank, so the integrator adds it to the device's account
+ * and never has to place a key file on the server.
  */
 import { useEffect, useState } from "react";
 import { CopyButton } from "../../components/shared/CopyButton";
@@ -13,6 +13,31 @@ export const SSH_KEY_TITLE = "OpenAVC SSH key";
 export const SSH_KEY_HELP =
   "Add this key to the device's user account to sign in without a password. " +
   "In Edit, choose key sign-in and leave the private key path blank.";
+
+/**
+ * Whether the key card belongs on this device's page: its driver offers key
+ * sign-in, or the device signs in with a key now. `config` is the device's
+ * config with its connections row laid over it. Like the platform, a device
+ * that names no sign-in method uses the key; only "password" does not. A
+ * password-only driver (it offers no `ssh_auth_method` choice) gets no card,
+ * since its Edit dialog has no key sign-in to choose.
+ */
+export function canUseSshKey(
+  driver: { config_schema?: unknown; default_config?: unknown } | undefined,
+  config: Record<string, unknown> | undefined,
+): boolean {
+  const field = (driver?.config_schema as Record<string, { values?: unknown }> | undefined)
+    ?.ssh_auth_method;
+  if (Array.isArray(field?.values)) {
+    const offered = field.values.map((v) =>
+      String(v && typeof v === "object" ? (v as { value?: unknown }).value : v).toLowerCase(),
+    );
+    if (offered.includes("key")) return true;
+  }
+  const defaults = (driver?.default_config ?? {}) as Record<string, unknown>;
+  const method = config?.ssh_auth_method ?? defaults.ssh_auth_method;
+  return String(method || "key").toLowerCase() !== "password";
+}
 
 interface SshKeySectionProps {
   sectionStyle: React.CSSProperties;
