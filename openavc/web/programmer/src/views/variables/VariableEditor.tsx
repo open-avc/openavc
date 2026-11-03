@@ -764,17 +764,15 @@ export function VariablesSubTab() {
               ) : selectedVar.type === "string" ? (
                 <div>
                   <label style={{ ...miniLabel, marginBottom: 2 }}>Allowed Values (one per line, leave empty for any)</label>
-                  <textarea
+                  <AllowedValuesBox
+                    key={selectedVar.id}
+                    allowed={selectedVar.validation?.allowed ?? null}
                     style={{ ...detailInput, minHeight: 60, resize: "vertical", fontFamily: "var(--font-mono)", fontSize: 12 }}
-                    value={(selectedVar.validation?.allowed ?? []).join("\n")}
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      const allowed = raw ? raw.split("\n").filter((s) => s.length > 0) : null;
+                    onChange={(allowed) => {
                       handleUpdate(selectedVar.id, {
-                        validation: { ...selectedVar.validation, allowed: allowed && allowed.length > 0 ? allowed : null },
+                        validation: { ...selectedVar.validation, allowed },
                       });
                     }}
-                    placeholder={"e.g.\npresentation\nmeeting\nstandby"}
                   />
                 </div>
               ) : (
@@ -955,6 +953,42 @@ export function VariablesSubTab() {
 // ==========================================================================
 // Source Binding Editor (for variable detail panel)
 // ==========================================================================
+
+/**
+ * The allowed values, one per line.
+ *
+ * Holds what is typed and saves the non-empty lines. Drawing the saved list
+ * instead dropped the empty line Enter had just made, so a second value could
+ * only be pasted in, never typed.
+ */
+export function AllowedValuesBox({ allowed, onChange, style }: {
+  allowed: string[] | null;
+  onChange: (allowed: string[] | null) => void;
+  style: React.CSSProperties;
+}) {
+  const [draft, setDraft] = useState((allowed ?? []).join("\n"));
+  const saved = (allowed ?? []).join("\n");
+  // A list changed somewhere else (another tab, an undo) replaces the draft,
+  // unless the draft already says the same thing with a line still open.
+  useEffect(() => {
+    setDraft((current) =>
+      current.split("\n").filter((line) => line.length > 0).join("\n") === saved ? current : saved,
+    );
+  }, [saved]);
+  return (
+    <textarea
+      aria-label="Allowed values"
+      style={style}
+      value={draft}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        const lines = e.target.value.split("\n").filter((line) => line.length > 0);
+        onChange(lines.length > 0 ? lines : null);
+      }}
+      placeholder={"e.g.\npresentation\nmeeting\nstandby"}
+    />
+  );
+}
 
 function SourceBindingEditor({
   variable,
