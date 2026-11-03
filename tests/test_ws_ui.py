@@ -645,3 +645,66 @@ async def test_a_slow_interaction_does_not_hold_the_next_one(monkeypatch):
         "type": "error", "source_type": "ui.press", "element_id": "slow",
         "message": "The product did not confirm the command finished.",
     }]
+
+
+# A fader streams its value while it is dragged, faster than a slow device
+# takes each one. The device must end where the finger stopped, without the
+# values queuing behind each other or overlapping on the wire.
+
+
+class _SlowChangeEngine:
+    def __init__(self, seconds):
+        self.seconds = seconds
+        self.ran = []
+        self.running = 0
+        self.most_at_once = 0
+
+    async def handle_ui_event(self, event_type, element_id, data=None):
+        self.running += 1
+        self.most_at_once = max(self.most_at_once, self.running)
+        try:
+            await asyncio.sleep(self.seconds)
+            self.ran.append((element_id, data["value"]))
+        finally:
+            self.running -= 1
+        return []
+
+
+async def _until_idle():
+    async with asyncio.timeout(2):
+        while ws._ui_changes or ws._ui_events_running:
+            await asyncio.sleep(0.01)
+
+
+@pytest.mark.asyncio
+async def test_a_dragged_fader_ends_on_its_last_value_without_queuing():
+    engine, socket = _SlowChangeEngine(0.02), _Socket()
+    started = time.monotonic()
+    for value in range(30):
+        await ws._run_ui_change(socket, "ui.change", engine, "fader", {"value": value})
+        await asyncio.sleep(0.005)
+    sent_for = time.monotonic() - started
+    await _until_idle()
+    values = [v for _, v in engine.ran]
+    assert values[0] == 0 and values[-1] == 29
+    assert len(values) < 30
+    assert values == sorted(values)
+    assert engine.most_at_once == 1
+    # Thirty values held one by one would take 30 x 20 ms to read; streamed,
+    # reading them takes as long as the drag.
+    assert sent_for < 30 * 0.02
+    assert socket.frames == []
+
+
+@pytest.mark.asyncio
+async def test_a_slow_fader_holds_neither_another_control_nor_a_press():
+    engine, socket = _SlowEngine(), _Socket()
+    async with asyncio.timeout(1):
+        await ws._run_ui_change(socket, "ui.change", engine, "slow", {"value": 1})
+        await ws._run_ui_change(socket, "ui.change", engine, "slow", {"value": 2})
+        await ws._run_ui_change(socket, "ui.change", engine, "fast", {"value": 3})
+        await ws._run_ui_event(socket, "ui.press", engine, "press", "fast")
+    assert engine.handled == ["fast", "fast"]
+    engine.finish.set()
+    await _until_idle()
+    assert engine.handled == ["fast", "fast", "slow", "slow"]

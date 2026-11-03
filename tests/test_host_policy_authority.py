@@ -187,14 +187,19 @@ async def test_committed_settings_acknowledgement_preserves_host_revocation(rig,
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('interaction', ['press', 'change'])
 @pytest.mark.parametrize('hold', [0, 10])
 @pytest.mark.parametrize('change', ['logout', 'host', 'disconnect'])
-async def test_slow_ui_work_drains_with_its_connection(rig, monkeypatch, hold, change):
+async def test_slow_ui_work_drains_with_its_connection(rig, monkeypatch, hold, change, interaction):
     monkeypatch.setattr(ws, 'UI_EVENT_HOLD_SEC', hold)
+    # A press is held up to UI_EVENT_HOLD_SEC; a fader's change never is, and
+    # a second value waits behind the first. Neither outlives the connection.
+    element = 'button' if interaction == 'press' else 'fader'
     rig.engine.project.ui.pages = ProjectConfig.model_validate({
         'project': {'id': 'example', 'name': 'Example'},
         'ui': {'pages': [{'id': 'page', 'name': 'Page', 'elements': [{
-            'id': 'button', 'type': 'button', 'bindings': {'do': {'press': [
+            'id': element, 'type': 'button' if interaction == 'press' else 'fader',
+            'bindings': {'do': {interaction: [
                 {'action': 'state.set', 'key': 'var.late_effect', 'value': 1},
             ]}},
         }]}]},
@@ -202,6 +207,8 @@ async def test_slow_ui_work_drains_with_its_connection(rig, monkeypatch, hold, c
     entered, cleaning, release_cleanup, ready = (asyncio.Event() for _ in range(4))
 
     async def subscriber(event, payload):
+        if payload.get('value') == 2:
+            return  # the fader's waiting value: it would set var.late_effect
         entered.set()
         try:
             await asyncio.Future()
@@ -209,7 +216,7 @@ async def test_slow_ui_work_drains_with_its_connection(rig, monkeypatch, hold, c
             cleaning.set()
             await release_cleanup.wait()
 
-    handler = rig.engine.events.on('ui.press.button', subscriber)
+    handler = rig.engine.events.on(f'ui.{interaction}.{element}', subscriber)
     queue = asyncio.Queue()
     await queue.put({'type': 'websocket.connect'})
 
@@ -220,16 +227,22 @@ async def test_slow_ui_work_drains_with_its_connection(rig, monkeypatch, hold, c
     task = asyncio.create_task(rig.app(scope('/ws?client=programmer', rig.token, socket=True), queue.get, send))
     try:
         await asyncio.wait_for(ready.wait(), 1)
-        await queue.put({'type': 'websocket.receive', 'text': json.dumps({'type': 'ui.press', 'element_id': 'button'})})
+        first = {'type': f'ui.{interaction}', 'element_id': element}
+        if interaction == 'change':
+            first['value'] = 1
+        await queue.put({'type': 'websocket.receive', 'text': json.dumps(first)})
         await asyncio.wait_for(entered.wait(), 1)
-        await asyncio.sleep(.02)  # hold=0 has returned to receive; hold=10 has not.
+        if interaction == 'change':
+            await queue.put({'type': 'websocket.receive', 'text': json.dumps({**first, 'value': 2})})
+        # hold=0 has returned to receive; hold=10 has not, unless it is a change.
+        await asyncio.sleep(.02)
         if change == 'logout':
             assert (await http(rig, '/api/auth/session', method='DELETE'))[1]['revoked']
         elif change == 'host':
             rig.host.current = PolicySnapshot(2, False, True)
             rig.host.refresh()
         else:
-            if hold:
+            if hold and interaction == 'press':
                 # Transport disconnect arrives through receive after the hold.
                 task.cancel()
             else:
@@ -242,6 +255,7 @@ async def test_slow_ui_work_drains_with_its_connection(rig, monkeypatch, hold, c
         assert not rig.host._admissions
         assert rig.engine.state.get('var.late_effect') is None
         assert not ws._ui_events_running
+        assert not ws._ui_changes
     finally:
         release_cleanup.set()
         if not task.done():

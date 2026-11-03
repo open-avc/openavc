@@ -286,6 +286,7 @@ async def _run_ws_connection(
         # never this connection or its admitted authority. Include work still
         # inside the initial hold, and await cancellation before the policy
         # wrapper records this connection as drained.
+        _ui_changes.pop(ws_id, None)
         interactions = _ui_events_running.pop(ws_id, set())
         for task in interactions:
             task.cancel()
@@ -525,9 +526,32 @@ _FLAT_PRIMITIVE_REQUIRED = "Value must be a flat primitive (str, int, float, boo
 # waited for this long before the next message is read; one still running
 # then (a command to a device that is slow to confirm it) finishes on its own
 # and sends its error frame when it does, so the panel's later presses and
-# releases are not held behind it.
+# releases are not held behind it. A ui.change is never held: see
+# _run_ui_change.
 UI_EVENT_HOLD_SEC = 0.5
 _ui_events_running: dict[int, set[asyncio.Task]] = {}
+
+# The ui.change values each connection has waiting, per control: ws id ->
+# element id -> the newest value not yet run, or None while one runs with
+# nothing behind it. A control with no entry has nothing running.
+_ui_changes: dict[int, dict[str, dict[str, Any] | None]] = {}
+
+
+def _own_ui_work(ws: WebSocket, work: Any) -> asyncio.Task:
+    """Start a panel interaction as a task its connection owns: the connection
+    cancels and awaits it on the way out."""
+    task = asyncio.ensure_future(work)
+    ws_id = id(ws)
+    interactions = _ui_events_running.setdefault(ws_id, set())
+    interactions.add(task)
+
+    def completed(finished: asyncio.Task) -> None:
+        interactions.discard(finished)
+        if not interactions and _ui_events_running.get(ws_id) is interactions:
+            _ui_events_running.pop(ws_id)
+
+    task.add_done_callback(completed)
+    return task
 
 
 async def _run_ui_event(
@@ -540,20 +564,59 @@ async def _run_ui_event(
 ) -> None:
     """Run one panel interaction, holding the panel's message loop at most
     ``UI_EVENT_HOLD_SEC`` for it."""
-    task = asyncio.ensure_future(
-        _ui_event(ws, msg_type, engine, event_type, element_id, data)
-    )
-    ws_id = id(ws)
-    interactions = _ui_events_running.setdefault(ws_id, set())
-    interactions.add(task)
-
-    def completed(finished: asyncio.Task) -> None:
-        interactions.discard(finished)
-        if not interactions and _ui_events_running.get(ws_id) is interactions:
-            _ui_events_running.pop(ws_id)
-
-    task.add_done_callback(completed)
+    task = _own_ui_work(ws, _ui_event(ws, msg_type, engine, event_type, element_id, data))
     await asyncio.wait({task}, timeout=UI_EVENT_HOLD_SEC)
+
+
+async def _run_ui_change(
+    ws: WebSocket, msg_type: str, engine: Any, element_id: str, data: dict[str, Any],
+) -> None:
+    """Run a control's new value, newest value first, without holding the
+    panel's message loop.
+
+    A fader or slider sends its value every ``send_throttle_ms`` while it is
+    dragged, and the command bound to it can take longer than that: a device
+    that answers each set, an HTTP device. Held like a press, the values
+    queued behind one another, so the device trailed the finger by seconds
+    and kept moving after the finger let go. So per control, one value runs
+    at a time and only the newest waits behind it, replacing any older one
+    still waiting. Every drag ends on the value where it stopped, the
+    commands for one control never overlap or arrive out of order, and a
+    slow device gets as many values as it can take.
+    """
+    ws_id = id(ws)
+    changes = _ui_changes.setdefault(ws_id, {})
+    if element_id in changes:
+        changes[element_id] = data
+        return
+    changes[element_id] = None
+    _own_ui_work(ws, _ui_change_run(ws, msg_type, engine, element_id, data, changes))
+    # One turn of the loop, so the value starts (its event, its write_back,
+    # its command on the wire) before the panel's next message is read.
+    await asyncio.sleep(0)
+
+
+async def _ui_change_run(
+    ws: WebSocket,
+    msg_type: str,
+    engine: Any,
+    element_id: str,
+    data: dict[str, Any],
+    changes: dict[str, dict[str, Any] | None],
+) -> None:
+    """Run one control's values until none is waiting (see _run_ui_change)."""
+    try:
+        while True:
+            await _ui_event(ws, msg_type, engine, "change", element_id, data)
+            waiting = changes.get(element_id)
+            if waiting is None:
+                return
+            changes[element_id] = None
+            data = waiting
+    finally:
+        changes.pop(element_id, None)
+        if not changes and _ui_changes.get(id(ws)) is changes:
+            _ui_changes.pop(id(ws))
 
 
 async def _ui_event(
@@ -693,7 +756,7 @@ async def _handle_message(
         if not is_flat_primitive(value):
             await _send_ws_error(ws, msg_type, _FLAT_PRIMITIVE_REQUIRED)
             return
-        await _run_ui_event(ws, msg_type, engine, "change", element_id, {"value": value})
+        await _run_ui_change(ws, msg_type, engine, element_id, {"value": value})
 
     elif msg_type == "ui.select":
         # List item selection — drives the list element's do.select action
