@@ -413,7 +413,7 @@ If the suggested driver is a community driver you haven't installed yet, click *
 
 Some devices ship with their network control surface disabled by default. If the scan doesn't find a device you know is on the network, check whether it needs to be enabled in the device's setup software:
 
-- **Biamp Tesira / TesiraFORTÉ.** Open the device's System Manager, go to Network Settings, and turn on both *Discovery* and *Telnet*. Both default to off. Leave *System Security* off too — the OpenAVC driver expects an unauthenticated Telnet session, which matches the standard Tesira deployment when the DSP is on a private AV VLAN.
+- **Biamp Tesira / TesiraFORTÉ.** In Tesira software, open **Tools > Device Maintenance > Network Settings** and turn on *Discovery Service*, plus *Telnet* or *SSH*. All three default to off. Telnet needs *System Security* off. SSH works with it on or off: without System Security the user is `default`; with it, sign in as a Tesira user of Controller level or higher.
 - **QSC Q-SYS Core.** External control is on by default on TCP 1702. If the design has been hardened with a username/password, enter those in the driver config.
 - **Yamaha MTX/MRX.** RCP must be enabled in MTX-MRX Editor under System → Remote Control. The device allows up to 8 simultaneous network sessions.
 - **Symetrix Composer DSPs.** Ensure the controller numbers you want to drive have the *Push* checkbox enabled in Tools → Controller Manager, then compile and push the design to the unit.

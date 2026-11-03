@@ -166,7 +166,7 @@ server log names the address it could not reach.
 
 | Port | Protocol | Device type | Example |
 |------|----------|-------------|---------|
-| 22 | TCP (SSH) | Embedded devices, AV processors | SSH-managed gear |
+| 22 | TCP (SSH) | Embedded devices, AV processors | Managed switches, Biamp Tesira |
 | 23 | TCP (Telnet) | Switchers, DSPs, amplifiers | Extron, Biamp, QSC, Kramer, Shure, LG |
 | 80 | TCP (HTTP) | Devices with web APIs | Panasonic cameras, REST-based devices |
 | 443 | TCP (HTTPS) | Devices with secure web APIs | Newer AV-over-IP devices |
@@ -184,7 +184,6 @@ server log names the address it could not reach.
 | 9090 | TCP | Devices with web APIs | Alternate HTTP management |
 | 10500 | TCP | PTZ cameras | Sony VISCA over IP |
 | 41794 | TCP | Crestron-compatible devices | Crestron CTP |
-| 49152 | TCP | Audio DSPs | Biamp Tesira |
 | 49280 | TCP | Audio mixers | Yamaha RCP (CL/QL/TF/Rivage/DM3) |
 | 52000 | TCP | Audio DSPs | QSC Q-SYS |
 | 61000 | TCP | Wireless microphones | Shure DCS |
@@ -193,7 +192,7 @@ server log names the address it could not reach.
 | 5568 | UDP multicast | Lighting nodes, gateways and fixtures | sACN (E1.31) lighting levels, to one group per universe (239.255.0.1 for universe 1) |
 | 5343 | TCP | Network-attached control surfaces | Elgato Network Dock, Stream Deck Studio (Stream Deck plugin) |
 
-An OpenAVC instance controlling only PJLink projectors and a Biamp DSP, for example, will only generate traffic on ports 4352 and 49152. If your network policy requires explicit allow-listing, the exact ports in use for a given deployment can be determined from the project's device configuration.
+An OpenAVC instance controlling only PJLink projectors and a Biamp DSP, for example, will only generate traffic on ports 4352 and 23 (22 if the DSP is set to SSH). If your network policy requires explicit allow-listing, the exact ports in use for a given deployment can be determined from the project's device configuration.
 
 **SNMP-controlled devices (port 161).** Rack PDUs, UPSes, managed switches
 and environmental sensors are usually controlled over SNMP rather than a
@@ -218,8 +217,8 @@ others. Three things are worth knowing before you allow it:
   because an SNMP agent ignores a request it will not serve instead of
   refusing it.
 
-**SSH-controlled devices (TCP 22).** Managed switches, some video bars and
-headends are controlled over SSH. OpenAVC connects with the OpenSSH client on
+**SSH-controlled devices (TCP 22).** Managed switches, some audio DSPs, video
+bars and headends are controlled over SSH. OpenAVC connects with the OpenSSH client on
 its host, signing in with a password or with OpenAVC's own key (shown on the
 device's page). Three things are worth knowing:
 
