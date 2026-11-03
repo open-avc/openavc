@@ -15,6 +15,7 @@ import { invalidatePluginMacroActions } from "../components/macros/pluginMacroAc
 import { showSuccess, showInfo, showError } from "../store/toastStore";
 import type { ProjectConfig } from "../api/types";
 import * as api from "../api/restClient";
+import { waitForServerReady } from "../api/serverReady";
 
 // How long the "just fired" highlight stays lit on a trigger card after a
 // trigger.fired message.
@@ -43,6 +44,12 @@ export function useWebSocket() {
   const setFullState = useConnectionStore((s) => s.setFullState);
 
   useEffect(() => {
+    // Bumped on every reconnect, disconnect and unmount: a readiness wait left
+    // over from an earlier connection sees it and stops, rather than loading
+    // after a newer connection already has.
+    let connection = 0;
+    let connectedBefore = false;
+
     // Helper: sync state + subscribe logs (used on initial connect AND reconnects)
     const syncOnConnect = () => {
       setConnected(true);
@@ -52,6 +59,23 @@ export function useWebSocket() {
       // Re-subscribe to log stream
       ws.send({ type: "log.subscribe" });
       useLogStore.getState().setLogSubscribed(true);
+      // A reconnect can land while the server is restarting: the socket is
+      // admitted before loadFromServer's REST calls are answered, so they wait
+      // for it (api/serverReady.ts). The first connect follows a page the
+      // server only serves once it is up.
+      const reconnect = connectedBefore;
+      connectedBefore = true;
+      if (!reconnect) {
+        loadFromServer();
+        return;
+      }
+      const thisConnection = ++connection;
+      void waitForServerReady(() => thisConnection === connection).then((ready) => {
+        if (ready) loadFromServer();
+      });
+    };
+
+    const loadFromServer = () => {
       // Load plugins + their UI extensions on every (re)connect. plugin.* events
       // only fire on changes, not on a fresh connect, so without this the UI
       // Builder's plugin-element config form has no schema after a reload and
@@ -90,6 +114,7 @@ export function useWebSocket() {
     });
 
     const unsubDisconnect = ws.onDisconnect(() => {
+      connection++;
       setConnected(false);
       useLogStore.getState().setLogSubscribed(false);
       useLogStore.getState().clearMacroRuns();
@@ -471,6 +496,7 @@ export function useWebSocket() {
     });
 
     return () => {
+      connection++;
       if (reloadTimer) clearTimeout(reloadTimer);
       if (pluginRefreshTimer) clearTimeout(pluginRefreshTimer);
       macroResetTimers.forEach(clearTimeout);
