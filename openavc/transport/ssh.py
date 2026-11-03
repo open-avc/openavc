@@ -30,9 +30,11 @@ Authentication:
 * **Password:** OpenSSH never reads a password from stdin — it uses an askpass
   helper. We point ``SSH_ASKPASS`` at a tiny generated helper that echoes the
   password (sourced from the subprocess environment, never written to disk) and
-  set ``SSH_ASKPASS_REQUIRE=force`` (OpenSSH 8.4+). This is pty-free and works
-  on POSIX. On Windows, key auth is recommended; password auth is best-effort
-  (older Windows OpenSSH builds ignore SSH_ASKPASS).
+  set ``SSH_ASKPASS_REQUIRE=force`` (OpenSSH 8.4+), plus ``DISPLAY``, which an
+  older client checks before it will use the helper. This is pty-free. On
+  Windows it is measured against password and keyboard-interactive servers
+  with the built-in client of Windows 11 (OpenSSH_for_Windows 9.5) and with
+  Microsoft's 8.1 build, the client Windows 10 ships.
 
 Host keys use trust-on-first-use by default (``StrictHostKeyChecking=accept-new``)
 against a managed ``known_hosts`` file, so a changed key (a possible MITM) is
@@ -107,11 +109,19 @@ def _log_task_exception(task: asyncio.Task) -> None:
 # that offers nothing better. For AV control gear that is the right call --
 # the alternative is not a safer connection, it is no connection -- and a
 # device that supports better is unaffected because "+" never downgrades it.
+#
+# Every keyword here has to be one the OLDEST client we run on knows: ssh
+# refuses to start on an option it does not recognise ("Bad configuration
+# option"), so one new name fails every connection, key sign-in included.
+# The last entry is spelled PubkeyAcceptedKeyTypes for that reason. OpenSSH
+# 8.5 renamed it PubkeyAcceptedAlgorithms and still accepts the old name, but
+# a client before 8.5 knows only the old one: the client in Windows 10
+# (8.1), Ubuntu 20.04 (8.2), Debian 11 (8.4).
 LEGACY_SSH_ALGORITHMS: tuple[str, ...] = (
     "MACs=+hmac-sha1",
     "KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group1-sha1",
     "HostkeyAlgorithms=+ssh-rsa",
-    "PubkeyAcceptedAlgorithms=+ssh-rsa",
+    "PubkeyAcceptedKeyTypes=+ssh-rsa",
 )
 
 # ssh refusing an option on its command line, on stderr: "command-line line
@@ -668,11 +678,23 @@ def _write_askpass_helper() -> str:
     The password is only ever read from the (subprocess) environment, never
     written to the file, so it does not land on disk. The helper is created
     0700 and removed on transport close.
+
+    On Windows the helper is a cmd script, and cmd must print the password
+    without ever parsing it. ``echo %VAR%`` substitutes before parsing, so
+    ``& | < >`` in a password run as command syntax (``Pass&word`` sends
+    ``Pass`` and then runs ``word``), ``^`` is dropped, and ``on``, ``off``,
+    ``/?`` or a blank password are read as echo's own arguments (a blank one
+    sends the text ``ECHO is off.``). Delayed expansion (``!VAR!``) substitutes
+    after parsing, and ``echo(`` prints whatever follows it, nothing included.
     """
     if sys.platform == "win32":
         fd, path = tempfile.mkstemp(prefix="openavc-askpass-", suffix=".cmd")
-        with os.fdopen(fd, "w", newline="\r\n") as f:
-            f.write("@echo off\r\necho %OPENAVC_SSH_PASSWORD%\r\n")
+        with os.fdopen(fd, "w", newline="") as f:
+            f.write(
+                "@echo off\r\n"
+                "setlocal EnableDelayedExpansion\r\n"
+                "echo(!OPENAVC_SSH_PASSWORD!\r\n"
+            )
         return path
     fd, path = tempfile.mkstemp(prefix="openavc-askpass-", suffix=".sh")
     with os.fdopen(fd, "w") as f:

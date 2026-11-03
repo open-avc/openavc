@@ -109,6 +109,19 @@ def test_legacy_algorithms_only_add_never_replace():
         assert value.startswith("+"), f"{keyword} must add, not replace"
 
 
+def test_the_compat_list_uses_keyword_names_older_clients_know():
+    """ssh will not start on a keyword it does not recognise, so one new name
+    in this list fails every connection on an older client, key sign-in too.
+
+    PubkeyAcceptedAlgorithms is OpenSSH 8.5's name; the client in Windows 10
+    (8.1), Ubuntu 20.04 (8.2) and Debian 11 (8.4) knows only
+    PubkeyAcceptedKeyTypes, which 8.5 and later still accept.
+    """
+    keywords = {option.partition("=")[0] for option in LEGACY_SSH_ALGORITHMS}
+    assert "PubkeyAcceptedAlgorithms" not in keywords
+    assert "PubkeyAcceptedKeyTypes" in keywords
+
+
 def test_legacy_algorithms_can_be_turned_off():
     argv = _make(legacy_algorithms=False).build_argv()
     for option in LEGACY_SSH_ALGORITHMS:
@@ -213,6 +226,38 @@ def test_askpass_helper_is_self_cleaning_content():
         assert "OPENAVC_SSH_PASSWORD" in body
     finally:
         os.remove(path)
+
+
+# Passwords the helper must print exactly. On Windows the helper is a cmd
+# script, where & | < > are command syntax, ^ is an escape, and on / off / /?
+# / a blank value are echo's own arguments; on POSIX it is sh.
+_AWKWARD_PASSWORDS = [
+    "Pass&word1", "Pass|word1", "Pass<word1", "Pass>word1", "Pass^word1",
+    "a^^b", "Pass!word1", "!a!b!", "Pa%OS%ss1", "%%", 'Pass"word1',
+    "Pass word1", "Pass(word)1", ")", "P@ss#w$rd*1", "Pass;word,1",
+    "on", "off", "ON", "/?", "", " ", " leading", "trailing ",
+    "x|y^z<w>v!u%t\"s", "$HOME", "`id`", "\\back\\slash",
+]
+
+
+@pytest.mark.parametrize("password", _AWKWARD_PASSWORDS)
+def test_askpass_helper_prints_the_password_exactly(password):
+    """Run the generated helper the way ssh does and read what it prints.
+
+    ssh sends the helper's output, less its line ending, as the password, so
+    anything else here is a sign-in that fails with the right password typed.
+    """
+    import subprocess
+
+    path = _write_askpass_helper()
+    try:
+        env = dict(os.environ, OPENAVC_SSH_PASSWORD=password)
+        out = subprocess.run(
+            [path], env=env, capture_output=True, timeout=30, check=True,
+        ).stdout.decode("utf-8")
+    finally:
+        os.remove(path)
+    assert out.removesuffix("\n").removesuffix("\r") == password
 
 
 @pytest.mark.asyncio
