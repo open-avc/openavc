@@ -408,7 +408,7 @@ class TestSnapshotPacing:
         agent = _RecordingAgent(config={
             "state_batch_max_size": 500,
             "state_batch_pace_threshold": 2_000,
-            "state_batch_pace_delay": 0.5,   # would dominate if it ran
+            "state_batch_pace_delay": 5.0,   # would dominate if it ran
             "state_batch_interval": 60,
             "state_batch_interval_child": 60,
             "state_batch_interval_low": 60,
@@ -420,9 +420,10 @@ class TestSnapshotPacing:
         elapsed = time.perf_counter() - start
         try:
             assert len(agent.sent) == 2
-            # Without pacing, the elapsed time stays well under one pace
-            # interval (0.5 s).
-            assert elapsed < 0.25, (
+            # Paced, the second chunk would wait the whole 5 s delay; unpaced,
+            # two chunks take a fraction of a second even on a slow CI runner
+            # (0.34 s seen on Windows). Half the delay tells them apart.
+            assert elapsed < 2.5, (
                 f"below-threshold snapshot took {elapsed:.3f}s — pacing engaged"
             )
         finally:
