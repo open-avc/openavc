@@ -230,12 +230,12 @@ class Engine:
     async def start(self) -> None:
         """
         Start the engine:
-        1. Load project.avc
-        2. Initialize user variables
-        3. Connect all devices
-        4. Load macros
-        5. Register UI bindings
-        6. Start state batch push
+        1. Start state batch push (first: clients can already be connected)
+        2. Load project.avc
+        3. Initialize user variables
+        4. Connect all devices
+        5. Load macros
+        6. Register UI bindings
         7. Emit system.started
 
         This is a deliberately separate inline sequence from
@@ -249,6 +249,19 @@ class Engine:
         """
         log.info("Engine starting...")
         self._start_time = time.time()
+
+        # The WebSocket hub listens to the state store and pushes from here
+        # on, before the first state write. /ws admits a client as soon as the
+        # engine exists, not when start() returns: a Programmer tab or a panel
+        # reconnecting into a restart is registered and snapshotted while the
+        # project loads and devices come up, and is owed every change after
+        # its snapshot (ws_hub.add_client). A write made before the hub
+        # listens (the simulation resuming, a device's first connect) never
+        # reaches a client that was already connected.
+        self._state_sub_ids.append(
+            self.state.subscribe("*", self.ws.on_state_change)
+        )
+        self.ws.start_state_flush()
 
         # Ensure system.json exists in data directory
         from openavc.system_config import (
@@ -479,11 +492,6 @@ class Engine:
         macros_data_triggers = [m.model_dump() for m in self.project.macros]
         self.triggers.load_triggers(macros_data_triggers)
 
-        # Subscribe to all state changes for WebSocket batching
-        self._state_sub_ids.append(
-            self.state.subscribe("*", self.ws.on_state_change)
-        )
-
         # Bridge macro events to WebSocket for live progress tracking
         self._event_sub_ids.append(self.events.on("macro.started.*", self._on_macro_event))
         self._event_sub_ids.append(self.events.on("macro.progress.*", self._on_macro_event))
@@ -528,9 +536,6 @@ class Engine:
         from openavc.cloud.config import apply_saved_cloud_config
         apply_saved_cloud_config()
         await self._start_cloud_agent()
-
-        # Start the batch flush task
-        self.ws.start_state_flush()
 
         # Start periodic backup timer (every 30 min if project has changed)
         self._periodic_backup_task = asyncio.create_task(self._periodic_backup_loop())

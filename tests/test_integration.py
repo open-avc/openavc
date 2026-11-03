@@ -214,3 +214,61 @@ async def test_trigger_fires_on_condition(engine_with_project):
     # The auto_off trigger should have fired system_off macro
     assert engine.state.get("var.room_active") is False
     assert engine.state.get("var.room_mode") == "idle"
+
+
+# --- Test 5: A client connected while the engine starts ---
+
+
+class _RecordingClient:
+    """Stands in for a WebSocket: keeps every message the hub delivers."""
+
+    def __init__(self):
+        self.received: list[dict] = []
+
+    async def send_text(self, text: str):
+        self.received.append(json.loads(text))
+
+
+async def test_client_connected_during_startup_converges_on_live_state(sim):
+    """/ws admits a client as soon as the engine exists, so a Programmer tab or
+    a panel that reconnects into a restart is snapshotted before the project
+    and its devices are up. Its snapshot plus every push after it must add up
+    to what a client connecting afterwards gets, the device's first connect
+    included."""
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".avc", delete=False, dir=tempfile.gettempdir()
+    ) as f:
+        json.dump(_make_project(sim.port), f)
+        tmp_path = f.name
+
+    engine = Engine(tmp_path)
+    client = _RecordingClient()
+    # What api/ws.py does on connect: register with delivery held, snapshot,
+    # release.
+    engine.ws.add_client(client, defer_delivery=True, client_type="programmer")
+    seen = dict(engine.state.snapshot())
+    engine.ws.mark_client_ready(client)
+    try:
+        await engine.start()
+        # Drain until nothing is pending, then read the store with no await in
+        # between, so a write landing mid-drain cannot make the two differ.
+        for _ in range(20):
+            await engine.ws.flush_state_batch()
+            await engine.ws.flush_sends()
+            if not engine.ws._state_batch and not engine.ws._state_deleted_keys:
+                break
+        live = engine.state.snapshot()
+
+        for msg in client.received:
+            if msg["type"] == "state.update":
+                seen.update(msg["changes"])
+            elif msg["type"] == "state.delete":
+                for key in msg["keys"]:
+                    seen.pop(key, None)
+
+        assert seen.get("device.proj1.connected") is True
+        assert seen == live
+    finally:
+        engine.ws.remove_client(client)
+        await engine.stop()
+        Path(tmp_path).unlink(missing_ok=True)
