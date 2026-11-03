@@ -5421,6 +5421,18 @@ class PanelApp {
         }
 
         this.applyStyle(el, this.getThemedStyle(element.type, element.style));
+
+        // Appearance: the frame's colour or background picture per state (a
+        // divisible space in use, an alarm zone gone red).
+        if (element.bindings?.show?.look) {
+            this.bindings.push({
+                type: 'group_look',
+                element: el,
+                elementDef: element,
+                binding: element.bindings.show.look,
+            });
+            this._preloadStatePictures(element.bindings.show.look);
+        }
         return el;
     }
 
@@ -6875,6 +6887,9 @@ class PanelApp {
             case 'nav_look':
                 this.evaluateNavLook(b);
                 break;
+            case 'group_look':
+                this.evaluateGroupLook(b);
+                break;
             case 'text':
                 this.evaluateText(b);
                 break;
@@ -7299,6 +7314,48 @@ class PanelApp {
                 icon: appearance.icon || elementDef.icon,
                 icon_color: appearance.icon_color || elementDef.icon_color,
             });
+        }
+    }
+
+    /**
+     * A Container's look: the matching state's colours, and its picture drawn
+     * as the frame's background the way the Container's own background
+     * picture is (its size, position and opacity apply).
+     *
+     * A device that cannot be reached puts the Container back on its own look
+     * and claims no state, the rule every other look follows. It does NOT take
+     * the unavailable mark the other controls take: that mark drains colour
+     * with a filter, and on a container the filter reaches every control
+     * inside it, including ones bound to a variable that is still true.
+     */
+    evaluateGroupLook(b) {
+        const { element, elementDef, binding } = b;
+        const rest = this.getThemedStyle(elementDef.type, elementDef.style || {});
+
+        let appearance = {};
+        if (!this._bindingOffline(b)) {
+            const stateValue = this.state[binding.key];
+            if (binding.states) {
+                const stateKey = stateValue != null ? String(stateValue) : (binding.default_state || '');
+                appearance = binding.states[stateKey]
+                    || binding.states[binding.default_state || '']
+                    || {};
+            } else {
+                const condition = binding.condition || {};
+                const isActive = stateValue !== undefined &&
+                    String(stateValue).toLowerCase() === String(condition.equals).toLowerCase();
+                appearance = (isActive ? binding.style_active : binding.style_inactive) || {};
+            }
+        }
+
+        const style = { ...rest, ...appearance };
+        if (appearance.button_image) style.background_image = appearance.button_image;
+        this._clearStateColours(element, rest);
+        this.applyStyle(element, style);
+        // A faded picture is a layer of its own, which applyStyle reuses but
+        // never takes away: a state with no picture removes it here.
+        if (!style.background_image) {
+            element.querySelector(':scope > .panel-bg-image-layer')?.remove();
         }
     }
 
@@ -8671,7 +8728,9 @@ class PanelApp {
                 // Use a child div for opacity control (can't opacity just the bg image).
                 // One per element, reused: a state look calls this on every
                 // change, and a new layer each time would stack them.
-                el.style.position = 'relative';
+                // Never over a position already set: a state look runs after
+                // the element is placed, and `relative` would unplace it.
+                if (!el.style.position) el.style.position = 'relative';
                 let bgLayer = el.querySelector(':scope > .panel-bg-image-layer');
                 if (!bgLayer) {
                     bgLayer = document.createElement('div');
@@ -8687,9 +8746,11 @@ class PanelApp {
                 bgLayer.style.backgroundPosition = this._sanitizeCssValue(pos);
                 bgLayer.style.backgroundRepeat = 'no-repeat';
                 bgLayer.style.opacity = String(parseFloat(opacity) || 1);
-                // Ensure content is above the bg layer
+                // Ensure content is above the bg layer. A child that is placed
+                // already (a container's controls) is positioned, so it paints
+                // above the layer as it is; lifting it would unplace it.
                 Array.from(el.children).forEach(child => {
-                    if (child !== bgLayer && !child.style.zIndex) {
+                    if (child !== bgLayer && !child.style.zIndex && !child.style.position) {
                         child.style.position = 'relative';
                         child.style.zIndex = '1';
                     }

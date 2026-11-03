@@ -452,6 +452,16 @@ CASES["binding_reach"] = _project([
                                             "states": {"true": {"label": "VIDEO", "icon": "tv"},
                                                        "false": {"label": "Video (off)"}}}}}},
             # ...but a page nav has no artwork, so a state's picture is unseen.
+            # A container whose frame changes with state: a colour and a
+            # background picture, both drawn. Silent.
+            {"id": "grp_look_ok", "type": "group", "label": "Divisible",
+             "bindings": {"show": {"look": {"key": "var.room_mode",
+                                            "states": {"combined": {"bg_color": "#1b5e20",
+                                                                    "button_image": "assets://joined.png"}}}}}},
+            # ...but its caption is its own, so a state's words are unseen.
+            {"id": "grp_look_label", "type": "group", "label": "Zone",
+             "bindings": {"show": {"look": {"key": "var.alarm",
+                                            "states": {"true": {"bg_color": "#c62828", "label": "ALARM"}}}}}},
             {"id": "nav_tab_picture", "type": "page_nav", "label": "Audio",
              "target_page": "main",
              "bindings": {"show": {"look": {"key": "device.acme.online",
@@ -471,6 +481,8 @@ CASES["binding_reach"] = _project([
             "plugin_ok": _pct_box(0, 70, 20, 20),
             "nav_tab_ok": _pct_box(75, 70, 20, 12),
             "nav_tab_picture": _pct_box(50, 70, 20, 12),
+            "grp_look_ok": _pct_box(25, 65, 20, 12),
+            "grp_look_label": _pct_box(25, 85, 20, 12),
         })],
     ),
 ])
@@ -1775,6 +1787,7 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "lbl_look_states", "lbl_look_binary",  # ...and so does show.look's state text
         "img_look_ok",                         # an image draws a picture per state
         "nav_tab_ok",                          # a page nav lights, and draws state words and icons
+        "grp_look_ok",                         # a container draws a colour and picture per state
         "lbl_macro",                           # a macro-progress label needs no state key
         "custom_ok",                           # a custom control that names its page
         "kp_default", "kp_at_default",         # a keypad that waits the default
@@ -1939,6 +1952,10 @@ def test_a_state_picture_is_warned_only_where_nothing_draws_it(verdicts) -> None
     assert any(
         "a page_nav takes only color, text and an icon" in m
         for m in by_element["nav_tab_picture"]
+    )
+    assert any(
+        "a group takes only color and a picture" in m
+        for m in by_element["grp_look_label"]
     )
     assert any("picture (button_image)" in m for m in by_element["lbl_look_picture"])
     assert any(

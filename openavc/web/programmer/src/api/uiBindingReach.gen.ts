@@ -31,7 +31,9 @@ export const HONORED_SHOW_SLOTS: Record<string, string[]> =
   "gauge": [
     "value"
   ],
-  "group": [],
+  "group": [
+    "look"
+  ],
   "image": [
     "look"
   ],
@@ -90,7 +92,7 @@ export const STATE_ICON_TYPES: string[] = ["button", "camera_preset", "page_nav"
  * `button_image`): artwork on a button or camera preset, the picture itself on
  * an image. Anywhere else one is stored and never seen.
  */
-export const STATE_IMAGE_TYPES: string[] = ["button", "camera_preset", "image"];
+export const STATE_IMAGE_TYPES: string[] = ["button", "camera_preset", "group", "image"];
 
 /** The slots worth naming in a message, in the order a reader expects them. */
 export const REVIEWED_SHOW_SLOTS = ["value", "look", "items"] as const;

@@ -166,6 +166,8 @@ export const BINDING_CAPABILITIES: Record<string, BindingCapability> = {
   // state. Its lit tab is a property of its own (highlight_current), not a
   // binding: it follows the page on screen, not state.
   page_nav: { look: "feedback" },
+  // A Container's frame takes a colour or a background picture per state.
+  group: { look: "feedback", lookWithoutText: true },
   slider: {
     value: { editor: "slider", link: true },
     does: [{ interaction: "change", label: "On change", editor: "actions" }],
@@ -202,7 +204,7 @@ export const BINDING_CAPABILITIES: Record<string, BindingCapability> = {
       { interaction: "audio_mute_route", label: "Audio mute", editor: "actions" },
     ],
   },
-  // group / clock / plugin / custom: "Visible when…" only.
+  // clock / plugin / custom: "Visible when…" only.
   // A custom control talks to the room through its own message bridge, not
   // through bindings, so there is nothing here to give it.
 };

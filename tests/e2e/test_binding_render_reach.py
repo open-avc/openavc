@@ -444,3 +444,93 @@ def test_a_page_nav_takes_its_appearance_and_lit_draws_over_the_colour(panel_pag
     assert seen[0]["lit"] and seen[0]["bg"] == ACCENT
     assert not seen[1]["lit"] and seen[1]["bg"] == "rgb(255, 0, 0)"
     assert seen[2]["bg"] == ""
+
+
+# --- A container: a colour or a background picture per state ----------------
+
+# Render one group with a child inside it, stand in for placement (both get the
+# inline `position: absolute` the layout engine gives them), then walk states.
+GROUP_STEPS_JS = r"""
+([element, steps]) => {
+  const app = window.__openavcPanel;
+  const box = document.getElementById('box');
+  box.innerHTML = '';
+  app.bindings = [];
+  app.state = {};
+  const node = app.renderElement(Object.assign({ id: 'probe', type: 'group' }, element));
+  node.style.position = 'absolute';
+  const child = document.createElement('div');
+  child.style.position = 'absolute';
+  child.textContent = 'child';
+  node.appendChild(child);
+  box.appendChild(node);
+  const seen = [];
+  for (const state of steps) {
+    app.state = state;
+    app.evaluateAllBindings();
+    seen.push({
+      registered: app.bindings.map(b => b.type),
+      bg: node.style.backgroundColor,
+      image: node.style.backgroundImage,
+      layers: node.querySelectorAll(':scope > .panel-bg-image-layer').length,
+      layerImage: node.querySelector(':scope > .panel-bg-image-layer')?.style.backgroundImage || '',
+      position: node.style.position,
+      childPosition: child.style.position,
+      offline: node.classList.contains('device-offline'),
+    });
+  }
+  return seen;
+}
+"""
+
+
+def _group_steps(page, element: dict, steps: list[dict]) -> list[dict]:
+    return page.evaluate(GROUP_STEPS_JS, [element, steps])
+
+
+def _modes(key: str) -> dict:
+    return {"bindings": {"show": {"look": {"key": key, "states": {
+        "combined": {"bg_color": "rgb(0, 80, 0)", "button_image": CHRISTMAS},
+        "alarm": {"bg_color": "rgb(200, 0, 0)"},
+    }}}}}
+
+
+def test_a_container_takes_a_colour_and_a_picture_per_state(panel_page) -> None:
+    seen = _group_steps(panel_page, {"label": "Room", **_modes("var.mode")}, [
+        {"var.mode": "combined"},
+        {"var.mode": "alarm"},
+        {"var.mode": "split"},
+    ])
+    assert seen[0]["registered"] == ["group_look"]
+    assert seen[0]["bg"] == "rgb(0, 80, 0)" and CHRISTMAS[:20] in seen[0]["image"]
+    assert seen[1]["bg"] == "rgb(200, 0, 0)" and seen[1]["image"] == ""
+    assert seen[2]["bg"] == "" and seen[2]["image"] == ""
+
+
+def test_a_faded_state_picture_is_one_layer_and_moves_nothing(panel_page) -> None:
+    """The faded picture is a layer of its own: one, reused, gone with the
+    picture, and drawing it neither unplaces the container nor its controls."""
+    element = {"label": "Room", "style": {"background_opacity": 0.5}, **_modes("var.mode")}
+    seen = _group_steps(panel_page, element, [
+        {"var.mode": "combined"},
+        {"var.mode": "alarm"},
+        {"var.mode": "combined"},
+        {"var.mode": "combined"},
+    ])
+    assert [s["layers"] for s in seen] == [1, 0, 1, 1]
+    assert CHRISTMAS[:20] in seen[0]["layerImage"]
+    assert {s["position"] for s in seen} == {"absolute"}
+    assert {s["childPosition"] for s in seen} == {"absolute"}
+
+
+def test_a_container_claims_no_state_and_drains_nothing_while_away(panel_page) -> None:
+    """Back to its own look while the device is away, without the unavailable
+    mark: on a container that mark would grey every control inside it."""
+    key = "device.acme_widget.mode"
+    seen = _group_steps(panel_page, {"label": "Room", **_modes(key)}, [
+        {key: "alarm", "device.acme_widget.connected": True},
+        {key: "alarm", "device.acme_widget.connected": False},
+    ])
+    assert seen[0]["bg"] == "rgb(200, 0, 0)"
+    assert seen[1]["bg"] == ""
+    assert not any(s["offline"] for s in seen)

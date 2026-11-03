@@ -127,7 +127,7 @@ HONORED_SHOW_SLOTS: dict[str, frozenset[str]] = {
     "custom": frozenset(),
     "fader": frozenset({"value"}),
     "gauge": frozenset({"value"}),
-    "group": frozenset(),
+    "group": frozenset({"look"}),
     "image": frozenset({"look"}),
     "keypad": frozenset(),
     "label": frozenset({"look", "value"}),
@@ -181,10 +181,10 @@ STATE_ICON_TYPES = frozenset({"button", "camera_preset", "page_nav"})
 #:
 #: One field name on every type, so a state's picture is spelled the same way
 #: wherever it is drawn: a button and a camera preset show it as their artwork,
-#: an image shows it in place of its own ``src``. Everything else that reads
-#: ``look`` has nowhere to put a picture, and one named there is stored and
-#: never seen.
-STATE_IMAGE_TYPES = frozenset({"button", "camera_preset", "image"})
+#: an image shows it in place of its own ``src``, a group (Container) draws it
+#: as its frame's background. Everything else that reads ``look`` has nowhere to
+#: put a picture, and one named there is stored and never seen.
+STATE_IMAGE_TYPES = frozenset({"button", "camera_preset", "group", "image"})
 
 
 # --- What the panel reads off the element itself, per type -----------------

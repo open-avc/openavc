@@ -120,7 +120,7 @@ Validate also asks the device's driver whether each command you have chosen has 
 | **Gauge** | Circular arc meter with value binding | Temperature, signal level, volume position |
 | **Level Meter** | Segmented bar (audio VU style) | Audio levels, signal strength |
 | **Fader** | Mixing console style fader with handle | Audio volume, lighting level |
-| **Container** | A labelled frame that really holds things: whatever you put inside moves, resizes and hides with it | "Audio Controls", "Display Settings" section |
+| **Container** | A labelled frame that really holds things: whatever you put inside moves, resizes and hides with it. Its color or background picture can change with a state | "Audio Controls", "Display Settings" section, a divisible space shown combined |
 | **Clock** | Time, date, countdown, elapsed, meeting timer | Current time display, meeting countdown |
 | **Keypad** | Numeric 0-9 pad with display. Mask Display shows a dot for each digit typed | TV channel entry, PIN entry |
 | **List** | Scrollable list (static, selectable, multi-select, action) | Source list, room schedule, preset recall |
@@ -309,7 +309,7 @@ The **Appearance** card changes an element's look based on a state value. This i
 
 - **Source**: pick a category (Variables, Devices, Plugins, System) then the specific state key.
 - **Condition**: when the state key equals a value, the element is "active." For boolean keys you get a Yes / No toggle; for string keys you get a dropdown of the values the key can take: what the driver declares for it (its listed values, or the choices of the command that sets it) plus whatever the device reports now. So a Wireless button can be bound to `hdmi2` while the display is still on HDMI 1.
-- **Active appearance**: background color, text color, and optional label text when the condition is true. Buttons, camera presets and page navs also get an icon and icon color; a label draws its own icon and cannot change it per state, so those fields are not offered there. Buttons, camera presets and images also get an **Image**, a picture for that state.
+- **Active appearance**: background color, text color, and optional label text when the condition is true. Buttons, camera presets and page navs also get an icon and icon color; a label draws its own icon and cannot change it per state, so those fields are not offered there. Buttons, camera presets and images also get an **Image**, a picture for that state, and a Container gets one as its background picture.
 - **Inactive appearance**: the same, for when the condition is false. A color left empty draws the element's own color.
 - **Live preview**: the editor shows the current value and whether the condition is active or inactive right now.
 
@@ -837,6 +837,8 @@ A container cannot be moved inside itself or inside anything already inside it, 
 Copy and paste behave the same way. Copying a container puts its contents on the clipboard with it, and pasting rebuilds them inside the pasted container. Copy a control without its container and you get that control on its own, pasted onto the page at the size it was drawn.
 
 **Z-order inside a container** is the order of its own contents, not of the whole page. The up and down arrows on a selected row in the Outline move it among its neighbours under the same parent.
+
+**A container's frame can change with a state.** Under **Bindings**, its **Appearance** card gives each state a background color and an **Image**, a background picture drawn the way the container's own background picture is (its size, position and opacity apply). That is how a divisible space shows when it is combined, or an alarm zone goes red. A state that names neither keeps the container's own look, and so does a device that cannot be reached; the controls inside the container are never dimmed because of the container's state.
 
 ## Page Groups
 
