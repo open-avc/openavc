@@ -1084,7 +1084,11 @@ class HTTPClientTransport:
 
             import time
             self.last_data_received = time.monotonic()
-            log.info(
+            # Debug, like a TCP device's TX and RX: a device that polls makes
+            # several requests every interval, and at info they filled the
+            # system log and the Dashboard's Recent Activity. Every exchange
+            # is in the device's traffic recording (_record_response).
+            log.debug(
                 f"[{self._name}] {method} {path} -> {result.status_code}"
             )
             self._record_response(method, target, response, body)

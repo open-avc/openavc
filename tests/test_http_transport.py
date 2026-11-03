@@ -119,6 +119,33 @@ async def test_get(transport):
     assert "/api/status" in resp.json_data["path"]
 
 
+async def test_a_request_is_not_logged_above_debug(transport):
+    """A device that polls makes several requests every interval. Logged at
+    info, they pushed everything else out of the system log and the
+    Dashboard's Recent Activity, which shows the last lines above debug."""
+    import logging
+
+    records: list[logging.LogRecord] = []
+
+    class Keep(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    logger = logging.getLogger("openavc.transport.http_client")
+    handler = Keep(level=logging.DEBUG)
+    old_level = logger.level
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
+    try:
+        await transport.get("/api/status")
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(old_level)
+    lines = [r for r in records if "/api/status" in r.getMessage()]
+    assert lines, "the request line is still written, at debug"
+    assert all(r.levelno <= logging.DEBUG for r in lines)
+
+
 async def test_get_with_params(transport):
     resp = await transport.get("/api/search", params={"q": "test"})
     assert resp.ok
