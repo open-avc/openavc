@@ -133,7 +133,7 @@ def _wrong_key(tmp_path):
 
 def _newer_format(tmp_path):
     envelope = json.loads((tmp_path / LOGINS_FILENAME).read_text(encoding="utf-8"))
-    envelope["version"] = 2
+    envelope["version"] = 99
     (tmp_path / LOGINS_FILENAME).write_text(json.dumps(envelope), encoding="utf-8")
 
 
@@ -360,8 +360,8 @@ def test_the_engine_sweep_dates_a_device_that_left_the_project(engine):
     engine.device_logins.save("gone1", "acme_widget_login", {"password": "Old-Pass"})
     engine._sweep_device_logins()
     entries = engine.device_logins._entries
-    assert entries[("proj1", "acme_widget_login")].removed_at is None
-    assert entries[("gone1", "acme_widget_login")].removed_at is not None
+    assert entries[(None, "proj1", "acme_widget_login")].removed_at is None
+    assert entries[(None, "gone1", "acme_widget_login")].removed_at is not None
 
 
 def test_the_store_is_one_per_data_folder(tmp_path):

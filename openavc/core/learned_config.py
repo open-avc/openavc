@@ -125,7 +125,10 @@ def learned_fields(driver: Any) -> dict[str, str]:
         if not isinstance(field_def, dict):
             continue
         source = field_def.get("learned_from")
-        if isinstance(source, str) and source.strip() and not field_def.get("secret"):
+        # Never a login: a learned value is written straight into the project,
+        # and a login belongs in this system's login file (core/device_logins).
+        secret = field_def.get("secret") is True or field_def.get("type") == "password"
+        if isinstance(source, str) and source.strip() and not secret:
             fields[name] = source.strip()
     return fields
 

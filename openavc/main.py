@@ -161,6 +161,10 @@ async def _initialize_engine(app: FastAPI) -> None:
                 # code back: the rolled-back code may predate the running version's
                 # project-format migrations, so the restore must run on this side.
                 restore_pre_update_data(data_dir, project_path=Path(config.PROJECT_PATH))
+                # The earlier version reads each device login from the project,
+                # and the Project Library is not in the pre-update backup.
+                from openavc.core.device_logins import put_back_for_rollback
+                put_back_for_rollback(data_dir, Path(config.PROJECT_PATH))
                 success = perform_rollback(data_dir, automatic=True)
                 if success:
                     # Windows: exit 42 tells NSSM not to restart (installer handles it)

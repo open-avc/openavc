@@ -23,6 +23,7 @@ from openavc.api import rest, ws
 from openavc.cloud.ai_tool_handler import AIToolHandler
 from openavc.core.connection_fault import UNREACHABLE, classify_connection_fault
 from openavc.core.device_config import connection_of, resolve_device_config
+from openavc.core.device_logins import SAVED_LOGIN
 from openavc.core.engine import Engine
 from openavc.core.event_bus import EventBus
 from openavc.core.project_loader import (
@@ -243,11 +244,14 @@ async def test_edit_device_stores_and_dials_the_clean_address(camera_engine):
     }})
     assert resp.status_code == 200, resp.text
     device, connection = _saved(engine)
+    # The password is saved on this system as typed, spaces and all.
     assert connection == {
-        "host": "192.0.2.20", "port": 5500, "username": "admin", "password": " pass word ",
+        "host": "192.0.2.20", "port": 5500, "username": "admin", "password": SAVED_LOGIN,
     }
+    assert engine.device_logins.login("cam1", "acme_trim_camera", "password") == " pass word "
     assert device.config == {"mac_address": "00:11:22:33:44:55"}
     assert engine.devices.get_driver("cam1").config["host"] == "192.0.2.20"
+    assert engine.devices.get_driver("cam1").config["password"] == " pass word "
 
 
 async def test_a_connection_row_is_stored_clean(camera_engine):
@@ -276,7 +280,8 @@ async def test_add_device_through_the_whole_project_save_stores_the_clean_addres
     resp = client.put("/api/project", json=body)
     assert resp.status_code == 200, resp.text
     saved = load_project(engine.project_path)
-    assert saved.connections["cam2"] == {"host": "192.0.2.40", "password": " p "}
+    assert saved.connections["cam2"] == {"host": "192.0.2.40", "password": SAVED_LOGIN}
+    assert engine.device_logins.login("cam2", "acme_trim_camera", "password") == " p "
 
 
 async def test_the_ai_device_tools_store_the_clean_address(camera_engine):
@@ -293,7 +298,8 @@ async def test_the_ai_device_tools_store_the_clean_address(camera_engine):
     assert result == {"status": "created", "id": "cam3"}
     saved = load_project(engine.project_path).connections["cam3"]
     assert saved["host"] == "192.0.2.51"
-    assert saved["password"] == " p "
+    assert saved["password"] == SAVED_LOGIN
+    assert engine.device_logins.login("cam3", "acme_trim_camera", "password") == " p "
 
 
 # --- the message names what was dialed ---

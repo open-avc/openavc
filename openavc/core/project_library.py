@@ -21,6 +21,7 @@ from typing import Any
 from openavc import config
 from openavc.core import asset_tree, theme_tree
 from openavc.core.custom_ui import extract_from_zip, zip_entries
+from openavc.core.device_logins import device_logins, move_logins
 from openavc.core.project_loader import (
     ISCConfig,
     ProjectConfig,
@@ -173,6 +174,111 @@ def _read_scripts_dir(scripts_dir: Path) -> dict[str, str]:
         for f in sorted(scripts_dir.glob("*.py")):
             result[f.name] = f.read_text(encoding="utf-8")
     return result
+
+
+# --- Device logins ---
+#
+# A library copy keeps no login in its file: each is filed under the copy's
+# library id in this system's login file (core/device_logins), with the marker
+# left in the copy. Saving the running project to the library files the
+# running project's logins under the copy; opening a copy brings its logins
+# back for every device the running project has none saved for.
+
+
+def _file_library_logins(sid: str, data: dict[str, Any]) -> dict[str, Any]:
+    """``data`` (a project about to be written as library copy ``sid``) with
+    the running project's saved logins filed under ``sid``, and any login it
+    still holds in the clear moved there too. On a failure the copy is
+    written as it is, and opening it finds the running project's logins."""
+    devices = [
+        (d.get("id"), d.get("driver")) for d in data.get("devices") or []
+        if isinstance(d, dict) and isinstance(d.get("id"), str) and isinstance(d.get("driver"), str)
+    ]
+    logins = device_logins()
+    try:
+        logins.file_library(sid, devices)
+    except Exception:
+        log.exception("Could not file the saved device logins under library project '%s'", sid)
+        return data
+    return move_logins(data, logins, typed=False, library=sid)
+
+
+def _copy_logins_moved(avc: Path, sid: str, logins) -> tuple[bytes, dict[str, Any]] | None:
+    """The library copy at ``avc`` as it is on disk and as it is with its
+    logins moved under ``sid``; None when it holds none (or cannot be read)."""
+    try:
+        original = avc.read_bytes()
+        raw = json.loads(original.decode("utf-8"))
+    except (OSError, ValueError):
+        log.warning("Could not read library project '%s' to move its device logins", sid)
+        return None
+    if not isinstance(raw, dict):
+        return None
+    moved = move_logins(raw, logins, typed=False, library=sid)
+    return None if moved is raw else (original, moved)
+
+
+def _move_copy_logins(sid: str) -> None:
+    """Move the logins a just-imported library copy holds under its id."""
+    try:
+        result = _copy_logins_moved(_lib_dir() / sid / "project.avc", sid, device_logins())
+        if result is not None:
+            _atomic_write_text(
+                _lib_dir() / sid / "project.avc",
+                json.dumps(result[1], indent=4, ensure_ascii=False),
+            )
+    except Exception:  # the next start tries again
+        log.exception("Could not move the device logins of imported library project '%s'", sid)
+
+
+def move_library_logins(logins=None) -> None:
+    """Every library copy that still holds a login in the clear: its logins
+    are filed under its library id and the copy keeps the marker. Run at
+    start, once the drivers that say which settings are logins are loaded.
+
+    Every copy this rewrites is backed up first, together, in one zip in the
+    data folder's ``backups/``; if that backup cannot be written, no copy is
+    rewritten. Copies are left in whatever format version they were saved
+    in. The logins of a copy no longer in the library are deleted.
+    """
+    logins = logins if logins is not None else device_logins()
+    lib = _lib_dir()
+    present: set[str] = set()
+    pending: list[tuple[str, Path, bytes, dict[str, Any]]] = []
+    for avc in sorted(lib.glob("*/project.avc")):
+        sid = avc.parent.name
+        if sid.startswith("."):
+            continue
+        present.add(sid)
+        result = _copy_logins_moved(avc, sid, logins)
+        if result is not None:
+            pending.append((sid, avc, *result))
+    for gone in sorted(logins.libraries() - present):
+        logins.drop_library(gone)
+    if not pending:
+        return
+
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup = lib.parent / "backups" / f"library-before-moving-device-logins-{stamp}.zip"
+    try:
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for sid, _, original, _ in pending:
+                zf.writestr(f"{sid}/project.avc", original)
+        tmp = backup.with_suffix(".zip.tmp")
+        tmp.write_bytes(buf.getvalue())
+        tmp.replace(backup)
+    except OSError:
+        log.exception("Could not back up the library, so its device logins stay in its copies for now")
+        return
+    for sid, avc, _, moved in pending:
+        try:
+            _atomic_write_text(avc, json.dumps(moved, indent=4, ensure_ascii=False))
+        except OSError:
+            log.exception("Could not rewrite library project '%s' without its device logins", sid)
+    log.info("Moved the device logins out of %d library project(s); the copies as they were: %s",
+             len(pending), backup)
 
 
 def _project_meta(project_id: str, data: dict[str, Any],
@@ -490,6 +596,10 @@ def _write_project_tree(
     data["project"]["created"] = created
     data["project"]["modified"] = datetime.now().isoformat()
 
+    # The running project's saved logins become this copy's, before the copy
+    # is written with the markers that point at them.
+    data = _file_library_logins(sid, data)
+
     avc_path = project_dir / "project.avc"
     _atomic_write_text(avc_path, json.dumps(data, indent=4, ensure_ascii=False))
 
@@ -600,6 +710,10 @@ def delete_project(project_id: str) -> bool:
     if not project_dir.exists():
         return False
     shutil.rmtree(project_dir)
+    try:
+        device_logins().drop_library(sid)
+    except Exception:  # the next start deletes them instead
+        log.exception("Could not delete the saved device logins of library project '%s'", sid)
     log.info(f"Deleted project '{sid}' from library")
     return True
 
@@ -638,6 +752,12 @@ def duplicate_project(source_id: str, new_id: str, new_name: str) -> None:
 
     project_dir = _lib_dir() / new_sid
     project_dir.mkdir(parents=True, exist_ok=True)
+
+    # The copy's saved logins go with it.
+    try:
+        device_logins().copy_library(sanitize_id(source_id), new_sid)
+    except Exception:  # opening it then finds the running project's
+        log.exception("Could not copy the saved device logins of library project '%s'", source_id)
 
     avc_path = project_dir / "project.avc"
     _atomic_write_text(avc_path, json.dumps(data, indent=4, ensure_ascii=False))
@@ -722,6 +842,12 @@ def open_from_library(
     data["project"]["modified"] = now
 
     project = policy.compose(ProjectConfig(**data), for_load=True)
+    # The copy's own saved logins, for each device the running project has
+    # none saved for (this system's current login always wins).
+    try:
+        device_logins().adopt_library(sanitize_id(project_id), [(d.id, d.driver) for d in project.devices])
+    except Exception:  # those devices then ask for their login
+        log.exception("Could not bring in the saved device logins of library project '%s'", project_id)
     save_project(project_path, project)
 
     replace_scripts(scripts_dir, scripts)
@@ -967,6 +1093,8 @@ def _import_avc(content: bytes, override_id: str | None) -> dict[str, Any]:
     except BaseException:
         shutil.rmtree(project_dir, ignore_errors=True)
         raise
+
+    _move_copy_logins(pid)
 
     missing = _check_missing_drivers(data)
     warnings = []
@@ -1251,6 +1379,9 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
         # affected drivers simply reported as missing below.
         installed_drivers = _install_bundled_drivers(zf)
         installed_plugins, unloadable_plugins = _install_bundled_plugins(zf)
+
+    # After the drivers, which say which of their settings are logins.
+    _move_copy_logins(pid)
 
     # Check for still-missing drivers after installing bundled ones
     missing = _check_missing_drivers(data)

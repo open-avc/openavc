@@ -979,6 +979,18 @@ class UpdateManager:
             log.info("Exiting for update — appliance supervisor will apply and restart (exit 0)")
             os._exit(0)
 
+    def _exit_for_rollback(self) -> None:
+        """Put each saved device login back into the project files, then exit.
+
+        The earlier version reads every login from the project
+        (``core.device_logins.put_back_for_rollback``). Done at the last
+        moment, and the exit happens holding the project save lock, so no save
+        lands after the logins are back and writes the markers over them.
+        """
+        from openavc.core.device_logins import put_back_for_rollback
+
+        put_back_for_rollback(self._data_dir, self._project_path, then=self._restart_process)
+
     async def rollback(self) -> dict[str, Any]:
         """Rollback to the previous version."""
         if self._firmware_host:
@@ -1036,7 +1048,7 @@ class UpdateManager:
             # Schedule process exit so the API response can be sent first.
             # On Windows, the installer (launched by perform_rollback) handles restart.
             # On Linux, systemd restarts the service and ExecStartPre applies the rollback.
-            asyncio.get_running_loop().call_later(1.0, self._restart_process)
+            asyncio.get_running_loop().call_later(1.0, self._exit_for_rollback)
             return {"success": True, "message": "Rollback initiated, server will restart"}
         else:
             self._set_state("system.update_status", "error")

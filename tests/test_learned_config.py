@@ -331,6 +331,7 @@ def test_learned_fields_skips_secrets():
             "a": {"learned_from": "x"},
             "b": {"learned_from": "y", "secret": True},
             "c": {"type": "string"},
+            "d": {"learned_from": "z", "type": "password"},
         }}
     assert learned_fields(_D()) == {"a": "x"}
 

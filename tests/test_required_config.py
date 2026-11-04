@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 
 from openavc.api import rest, ws
 from openavc.cloud.ai_tool_handler import AIToolHandler
+from openavc.core.device_logins import SAVED_LOGIN
 from openavc.core.engine import Engine
 from openavc.core.project_loader import (
     DeviceConfig,
@@ -245,7 +246,9 @@ async def test_patch_counts_a_stored_password_it_was_not_sent(camera_engine):
     client, engine = camera_engine
     resp = client.patch("/api/devices/cam1", json={"config": {"model": "w20"}})
     assert resp.status_code == 200, resp.text
-    assert load_project(engine.project_path).connections["cam1"]["password"] == "stored"
+    # Kept, and moved out of the project into this system's login file.
+    assert load_project(engine.project_path).connections["cam1"]["password"] == SAVED_LOGIN
+    assert engine.device_logins.login("cam1", "acme_camera", "password") == "stored"
 
 
 async def test_patch_does_not_ask_for_an_ip_address_of_a_serial_or_bridged_device(camera_engine):

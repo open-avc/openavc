@@ -206,6 +206,24 @@ def _reset_global_state():
     # Same for the Reach devices through address it keeps.
     from openavc import reach_devices
     reach_devices.forget()
+    # Device logins saved in the session's data folder, and the per-folder
+    # stores holding them: an engine built on that folder would otherwise
+    # start the next test with the last one's logins, and a project it loads
+    # would keep them over its own (core/device_logins.py). Each store is
+    # emptied in place too, since an engine built at import (openavc.main's)
+    # holds its store directly.
+    from openavc.core import device_logins
+    from openavc.system_config import get_data_dir
+    for store in device_logins._stores.values():
+        store._entries = {}
+        store._loaded = False
+        store._unreadable = None
+    device_logins._stores.clear()
+    for name in (device_logins.LOGINS_FILENAME, device_logins.KEY_FILENAME):
+        try:
+            (get_data_dir() / name).unlink()
+        except FileNotFoundError:
+            pass
 
 
 @pytest.fixture(autouse=True)

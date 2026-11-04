@@ -26,7 +26,7 @@ from typing import Any
 from openavc import config, runtime_flags
 from openavc.core.client_origin import reload_origin
 from openavc.core.device_config import bridge_first, resolve_device_config
-from openavc.core.device_logins import fill_saved_logins
+from openavc.core.device_logins import fill_saved_logins, move_logins
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
 from openavc.core.help_requests import HelpRequests
@@ -398,10 +398,27 @@ class Engine:
         # Load project — with corruption recovery
         loaded_project = self._load_project_safe()
         self.project = self.installed_equipment.compose(loaded_project, for_load=True)
+        # A login the project still holds in the clear (every login, on the
+        # first start of a version that keeps them in this system's login
+        # file) moves into that file before anything dials, and the project
+        # keeps the marker. Nobody saved the file this rewrites, so it is
+        # backed up first; a move that cannot finish changes nothing.
+        moved = self._move_logins(self.project, typed=False)
+        if moved is not self.project and await self._back_up_before_moving_logins():
+            self.project = moved
         # Exports and backups read the saved project. Materialize a newly
         # inserted host reference before any hardware or programming starts.
         if self.project != loaded_project:
             await save_project_async(self.project_path, self.project)
+        # The Project Library's copies, the same way, each under its own id.
+        # Inline, like the other start-up moves above: it reads one small file
+        # per saved project.
+        try:
+            from openavc.core.project_library import move_library_logins
+
+            move_library_logins(self.device_logins)
+        except Exception:  # never block startup on the library
+            log.exception("Could not move the device logins out of the Project Library")
         # Whatever that had to do to get a project, say so. Published from the
         # record on disk rather than from this boot, so a notice nobody has
         # dismissed survives the restart that would otherwise bury it.
@@ -897,6 +914,17 @@ class Engine:
             self.installed_equipment.validate_edit(self.project, new_project, reassigned=reassigned_equipment)
         loaded_project = new_project
         new_project = self.installed_equipment.compose(new_project, for_load=origin is ProjectOrigin.LOAD)
+        # Every project that comes in ends here, so this is where a login it
+        # holds in the clear moves into this system's login file and the
+        # marker takes its place (core/device_logins). A login somebody typed
+        # replaces the saved one; one in a copy (a backup, the library, an
+        # import, a push) only fills a gap. A reload rewrites a file nobody
+        # saved, so it is backed up first.
+        as_given = new_project
+        new_project = self._move_logins(new_project, typed=origin is ProjectOrigin.EDIT)
+        if new_project is not as_given and not persist:
+            if not await self._back_up_before_moving_logins():
+                new_project = as_given
         # A file reload can insert host equipment too. Preserve that reference
         # on disk even when the caller did not request another project save.
         if persist or new_project != loaded_project:
@@ -908,7 +936,10 @@ class Engine:
         if origin is ProjectOrigin.LOAD:
             diff = ProjectDiff.all_dirty()
         else:
-            diff = ProjectDiff.compute(self.project, new_project)
+            # Against the project as it was given: a login typed over the
+            # marker leaves the marker in place, and the device still has to
+            # reconnect with the new login.
+            diff = ProjectDiff.compute(self.project, as_given)
 
         # Snapshot for rollback on reconcile failure
         prev_project = self.project
@@ -1220,6 +1251,32 @@ class Engine:
         if installed is not None:
             return installed
         return fill_saved_logins(resolve_device_config(device, self.project), self.device_logins)
+
+    def _move_logins(self, project: ProjectConfig, *, typed: bool) -> ProjectConfig:
+        """``project`` with each login it holds in the clear moved into this
+        system's login file (``core.device_logins.move_logins``): the same
+        object when nothing moved or the move could not finish. Product
+        hardware is left out; its login never lives in the project."""
+        try:
+            built_in = {d.id for d in project.devices if self.installed_equipment.matches(d)}
+            return move_logins(project, self.device_logins, typed=typed, skip=built_in.__contains__)
+        except Exception:  # a move that fails leaves every login where it was
+            log.exception("Could not move the device logins out of the project")
+            return project
+
+    async def _back_up_before_moving_logins(self) -> bool:
+        """Back up the project file before the move rewrites it. False when
+        the backup failed, and the file must then stay as it is."""
+        from openavc.core.backup_manager import create_backup
+
+        try:
+            await asyncio.to_thread(
+                create_backup, self.project_path, "Before moving device logins out of the project",
+            )
+        except Exception:
+            log.exception("Could not back up the project, so its device logins stay in it for now")
+            return False
+        return True
 
     def _sweep_device_logins(self) -> None:
         """Date the saved logins of devices that left the project, and delete

@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi import HTTPException
 
+from openavc.core.device_logins import SAVED_LOGIN
 from openavc.core.engine import Engine
 from openavc.core.project_loader import ProjectConfig, ProjectMeta
 from openavc.drivers.base import BaseDriver
@@ -85,7 +86,9 @@ async def test_the_setting_entered_on_the_card_adds_the_device(engine, vault_dri
     ))
     assert result["status"] == "ok"
     saved = engine.project.devices[-1]
-    assert saved.config["api_key"] == "k-123"
+    # A secret setting is saved on this system, not in the project.
+    assert saved.config["api_key"] == SAVED_LOGIN
+    assert engine.device_logins.login(saved.id, "acme_vault_test", "api_key") == "k-123"
     assert engine.project.connections[saved.id]["host"] == "192.0.2.60"
 
 

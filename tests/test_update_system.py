@@ -676,11 +676,15 @@ class TestRollbackAPISchedulesRestart:
             result = await mgr.rollback()
 
         assert result["success"] is True
-        # Verify call_later(1.0, _restart_process) was called
+        # The exit is scheduled 1s out, through the step that puts each saved
+        # device login back into the project files for the earlier version.
         mock_loop.call_later.assert_called_once()
         delay, callback = mock_loop.call_later.call_args[0]
         assert delay == 1.0
-        assert callback == mgr._restart_process
+        assert callback == mgr._exit_for_rollback
+        with patch("openavc.core.device_logins.put_back_for_rollback") as put_back:
+            callback()
+        put_back.assert_called_once_with(mgr._data_dir, mgr._project_path, then=mgr._restart_process)
 
 
 # ===========================================================================
