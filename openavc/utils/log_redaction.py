@@ -66,7 +66,7 @@ from urllib.parse import quote, quote_plus
 # PIN, and the keys a device hands out or a stream signs in with.
 SECRET_KEY_EXACT = frozenset({
     "username", "user", "bearer", "psk", "pin", "key", "app_key", "client_key",
-    "session_key", "stream_key", "access_key", "pre_shared_key",
+    "session_key", "stream_key", "display_key", "access_key", "pre_shared_key",
 })
 SECRET_KEY_SUBSTRINGS = (
     "password", "passwd", "passphrase", "secret",
@@ -115,6 +115,126 @@ def redact_config(config: dict[str, Any]) -> dict[str, Any]:
             REDACTED if (is_secret_key(key) and value not in (None, "")) else value
         )
     return redacted
+
+
+# The password in a URL written scheme://user:password@host. The username stays.
+_URL_PASSWORD = re.compile(
+    r"(?P<head>\b[a-z][a-z0-9+.\-]*://[^\s/@:]*:)(?P<password>[^\s/@]+)(?=@)",
+    re.IGNORECASE,
+)
+
+
+def _named_secret(key: Any) -> bool:
+    return is_secret_key(key) and str(key).lower() not in IDENTITY_KEYS
+
+
+def _mask_url_password(text: str) -> str:
+    return _URL_PASSWORD.sub(lambda m: m.group("head") + REDACTED, text)
+
+
+def mask_secrets_by_name(value: Any, _secret: bool = False) -> Any:
+    """A copy of a nested config with every credential shown as :data:`REDACTED`.
+
+    For a config whose fields nothing declares secret, such as a plugin's: a
+    field named like a credential (:func:`is_secret_key`) at any depth, inside
+    groups and lists, and the password of any URL written ``user:password@host``.
+    A username stays visible, since it names an account rather than unlocking
+    one (:data:`IDENTITY_KEYS`). An empty value stays empty and a yes/no stays
+    as it is, so "not set" and a switch like ``password_required`` still read.
+
+    :func:`keep_masked_secrets` is the other half: a value sent back as
+    :data:`REDACTED` keeps the one already saved.
+    """
+    if isinstance(value, dict):
+        return {
+            key: mask_secrets_by_name(item, _secret or _named_secret(key))
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [mask_secrets_by_name(item, _secret) for item in value]
+    if isinstance(value, bool) or value is None:
+        return value
+    if _secret and value != "" and isinstance(value, (str, int, float)):
+        return REDACTED
+    if isinstance(value, str):
+        return _mask_url_password(value)
+    return value
+
+
+def _matching_item(item: Any, stored: list, index: int) -> Any:
+    """The saved list entry an incoming one stands for: the one with the same
+    id when it carries one (a list can be reordered or added to), else the
+    entry at the same position."""
+    if isinstance(item, dict):
+        ids = [
+            (key, val) for key, val in item.items()
+            if (key == "id" or str(key).endswith("_id"))
+            and isinstance(val, (str, int)) and not isinstance(val, bool)
+            and val != ""
+        ]
+        if ids:
+            for key, val in ids:
+                for candidate in stored:
+                    if isinstance(candidate, dict) and candidate.get(key) == val:
+                        return candidate
+            return None
+    return stored[index] if index < len(stored) else None
+
+
+def keep_masked_secrets(
+    incoming: Any, stored: Any, _path: str = "", _secret: bool = False,
+) -> tuple[Any, list[str]]:
+    """Put back each saved credential that ``incoming`` carries as :data:`REDACTED`.
+
+    The write half of :func:`mask_secrets_by_name`: a caller that read the
+    masked copy and sends it back changed means "keep the saved one" wherever
+    it still says ``***``, never "set the password to ``***``". Returns the
+    config to save and the places (``streams[1].password``) where ``***`` came
+    back with no saved value to stand for; a caller refuses the write rather
+    than store the marker as somebody's password.
+    """
+    unresolved: list[str] = []
+    if isinstance(incoming, dict):
+        saved = stored if isinstance(stored, dict) else {}
+        out = {}
+        for key, item in incoming.items():
+            out[key], missed = keep_masked_secrets(
+                item, saved.get(key), f"{_path}.{key}" if _path else str(key),
+                _secret or _named_secret(key),
+            )
+            unresolved += missed
+        return out, unresolved
+    if isinstance(incoming, list):
+        saved_list = stored if isinstance(stored, list) else []
+        out_list = []
+        for index, item in enumerate(incoming):
+            restored, missed = keep_masked_secrets(
+                item, _matching_item(item, saved_list, index),
+                f"{_path}[{index}]", _secret,
+            )
+            out_list.append(restored)
+            unresolved += missed
+        return out_list, unresolved
+    if not isinstance(incoming, str) or REDACTED not in incoming:
+        return incoming, unresolved
+    if incoming == REDACTED and _secret:
+        if (
+            isinstance(stored, (str, int, float))
+            and not isinstance(stored, bool)
+            and stored not in ("", REDACTED)
+        ):
+            return stored, unresolved
+        return incoming, [_path]
+    masked_url = any(
+        m.group("password") == REDACTED for m in _URL_PASSWORD.finditer(incoming)
+    )
+    if not masked_url:
+        return incoming, unresolved
+    if isinstance(stored, str) and _mask_url_password(stored) == incoming:
+        return stored, unresolved
+    # The address changed around a masked password: the saved one cannot be
+    # known to belong to the new address.
+    return incoming, [_path]
 
 
 def _declared_secret(config_schema: dict[str, Any] | None) -> set[str]:

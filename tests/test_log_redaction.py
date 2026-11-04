@@ -35,7 +35,9 @@ from openavc.utils.log_redaction import (
     compile_secret_pattern,
     get_secret_registry,
     is_secret_key,
+    keep_masked_secrets,
     mask_secret_fields,
+    mask_secrets_by_name,
     redact_config,
     redact_text,
     secret_config_keys,
@@ -160,7 +162,8 @@ def test_the_longer_of_two_overlapping_credentials_wins(clean_registry):
 
 @pytest.mark.parametrize(
     "key", ["password", "Password", "api_key", "passphrase", "token", "username",
-            "psk", "PSK", "pin", "key", "app_key", "client_key", "stream_key"]
+            "psk", "PSK", "pin", "key", "app_key", "client_key", "stream_key",
+            "display_key"]
 )
 def test_conventional_credential_names_are_recognised(key):
     assert is_secret_key(key) is True
@@ -527,3 +530,80 @@ def test_registry_pattern_cache_follows_a_runtime_addition():
     assert registry.redact_for("acme_1", "tok abcd1234") == "tok abcd1234"
     registry.add_runtime_secret("acme_1", "abcd1234")
     assert registry.redact_for("acme_1", "tok abcd1234") == "tok ***"
+
+
+# --------------------------------------------------------------------------
+# A config nothing declares the secrets of, masked by name and kept on write
+# --------------------------------------------------------------------------
+
+_NESTED = {
+    "host": "10.0.0.9",
+    "password": "hunter2-x",
+    "password_required": True,
+    "pin": 4821,
+    "group": {"api_key": "ak-551", "label": "Main"},
+    "items": [
+        {"id": "a", "username": "viewer", "token": "tok-aaaa",
+         "url": "rtsp://viewer:pass-aaaa@10.0.0.21/live"},
+        {"id": "b", "username": "", "token": "",
+         "url": "http://10.0.0.22/status"},
+    ],
+}
+
+
+def test_mask_secrets_by_name_hides_every_credential_at_any_depth():
+    shown = mask_secrets_by_name(_NESTED)
+    assert shown["host"] == "10.0.0.9"
+    assert shown["password"] == "***"
+    assert shown["password_required"] is True, "a switch is not a credential"
+    assert shown["pin"] == "***"
+    assert shown["group"] == {"api_key": "***", "label": "Main"}
+    first, second = shown["items"]
+    assert first["username"] == "viewer", "a username names an account, it unlocks nothing"
+    assert first["token"] == "***"
+    assert first["url"] == "rtsp://viewer:***@10.0.0.21/live"
+    assert second["token"] == "", "an empty one still reads as not set"
+    assert second["url"] == "http://10.0.0.22/status"
+    assert _NESTED["password"] == "hunter2-x", "the original is not touched"
+
+
+def test_keep_masked_secrets_puts_back_what_came_back_masked():
+    incoming = mask_secrets_by_name(_NESTED)
+    incoming["host"] = "10.0.0.10"
+    incoming["items"].reverse()
+    restored, unresolved = keep_masked_secrets(incoming, _NESTED)
+    assert unresolved == []
+    assert restored["host"] == "10.0.0.10"
+    assert restored["password"] == "hunter2-x"
+    assert restored["pin"] == 4821
+    assert restored["group"]["api_key"] == "ak-551"
+    by_id = {item["id"]: item for item in restored["items"]}
+    assert by_id["a"]["token"] == "tok-aaaa"
+    assert by_id["a"]["url"] == "rtsp://viewer:pass-aaaa@10.0.0.21/live"
+
+
+def test_keep_masked_secrets_takes_a_new_value_as_given():
+    incoming = mask_secrets_by_name(_NESTED)
+    incoming["password"] = "a-new-one"
+    restored, unresolved = keep_masked_secrets(incoming, _NESTED)
+    assert unresolved == []
+    assert restored["password"] == "a-new-one"
+
+
+def test_keep_masked_secrets_names_a_mask_with_nothing_behind_it():
+    incoming = mask_secrets_by_name(_NESTED)
+    incoming["items"][1]["token"] = "***"
+    incoming["items"][0]["url"] = "rtsp://viewer:***@10.0.0.99/live"
+    incoming["items"].append({"id": "c", "token": "***"})
+    _restored, unresolved = keep_masked_secrets(incoming, _NESTED)
+    assert unresolved == ["items[0].url", "items[1].token", "items[2].token"]
+
+
+def test_keep_masked_secrets_leaves_a_mask_in_an_ordinary_field_alone():
+    """Only a credential's *** stands for a saved value. Anywhere else it is
+    what somebody typed."""
+    restored, unresolved = keep_masked_secrets(
+        {"label": "***", "note": "rated ***"}, {"label": "Lobby", "note": "x"},
+    )
+    assert unresolved == []
+    assert restored == {"label": "***", "note": "rated ***"}

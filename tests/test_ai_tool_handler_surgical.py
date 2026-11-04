@@ -2754,3 +2754,158 @@ async def test_delete_ui_page_masters_shown_nowhere_fall_back_to_everywhere(hand
         await handler._delete_ui_page({"page_id": "settings"})
 
     assert mock_engine.project.ui.master_elements[0].pages == "*"
+
+
+# ===== Plugin passwords never reach the chat =====
+
+_ACME_SAVED = {
+    "broker": "10.0.0.9",
+    "password": "hunter2-broker",
+    "connection": {"api_key": "ak-551-secret", "verify_tls": True},
+    "streams": [
+        {"stream_id": "lobby", "username": "viewer",
+         "password": "lobby-pass-1",
+         "rtsp_url": "rtsp://viewer:lobby-pass-1@10.0.0.21/live"},
+        {"stream_id": "stage", "username": "", "password": "",
+         "rtsp_url": "rtsp://10.0.0.22/live"},
+    ],
+}
+
+
+@pytest.mark.asyncio
+async def test_get_plugin_config_masks_the_plugins_passwords(handler, mock_engine):
+    import copy
+
+    from openavc.core.project_loader import PluginConfig
+
+    mock_engine.project.plugins = {
+        "acme_bridge": PluginConfig(enabled=True, config=copy.deepcopy(_ACME_SAVED)),
+    }
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        result = await handler._get_plugin_config({"plugin_id": "acme_bridge"})
+
+    shown = repr(result)
+    for secret in ("hunter2-broker", "ak-551-secret", "lobby-pass-1"):
+        assert secret not in shown
+    config = result["config"]
+    assert config["broker"] == "10.0.0.9"
+    assert config["password"] == "***"
+    assert config["connection"] == {"api_key": "***", "verify_tls": True}
+    lobby, stage = config["streams"]
+    assert lobby["username"] == "viewer"
+    assert lobby["rtsp_url"] == "rtsp://viewer:***@10.0.0.21/live"
+    assert stage["password"] == ""
+    assert "send *** back" in result["masked"]
+    # Reading it changed nothing on the box.
+    assert mock_engine.project.plugins["acme_bridge"].config == _ACME_SAVED
+
+
+@pytest.mark.asyncio
+async def test_a_config_sent_back_with_masks_keeps_the_saved_passwords(
+    handler, mock_agent, mock_engine
+):
+    """The AI reads the masked copy, changes one setting, and sends the whole
+    thing back. Every *** it left alone stays the real value."""
+    import copy
+
+    from openavc.core.project_loader import PluginConfig
+
+    mock_engine.project.plugins = {
+        "acme_bridge": PluginConfig(enabled=True, config=copy.deepcopy(_ACME_SAVED)),
+    }
+    mock_engine.plugin_loader = _plugin_loader_mock()
+
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        read = await handler._get_plugin_config({"plugin_id": "acme_bridge"})
+        edited = copy.deepcopy(read["config"])
+        edited["broker"] = "10.0.0.10"
+        edited["streams"].reverse()  # a reorder still finds each stream's own
+        edited["streams"].append({
+            "stream_id": "foyer", "username": "", "password": "new-foyer-pass",
+            "rtsp_url": "rtsp://10.0.0.23/live",
+        })
+        msg = _make_tool_call_msg("update_plugin_config", {
+            "plugin_id": "acme_bridge", "config": edited,
+        })
+        await handler.handle(msg)
+        await _drain()
+
+    assert _get_result_payload(mock_agent)["success"] is True
+    saved = mock_engine.project.plugins["acme_bridge"].config
+    assert saved["broker"] == "10.0.0.10"
+    assert saved["password"] == "hunter2-broker"
+    assert saved["connection"]["api_key"] == "ak-551-secret"
+    by_id = {s["stream_id"]: s for s in saved["streams"]}
+    assert by_id["lobby"]["password"] == "lobby-pass-1"
+    assert by_id["lobby"]["rtsp_url"] == "rtsp://viewer:lobby-pass-1@10.0.0.21/live"
+    assert by_id["foyer"]["password"] == "new-foyer-pass"
+    assert "***" not in repr(saved)
+    # The plugin was handed the real values too, not the masks.
+    applied = mock_engine.plugin_loader.restart_or_apply.call_args[0][1]
+    assert applied == saved
+
+
+@pytest.mark.asyncio
+async def test_a_mask_with_nothing_saved_behind_it_is_refused(
+    handler, mock_agent, mock_engine
+):
+    """*** where there is no saved value, or around a changed address, would
+    otherwise become somebody's password. Nothing is written."""
+    import copy
+
+    from openavc.core.project_loader import PluginConfig
+    from openavc.utils.log_redaction import mask_secrets_by_name
+
+    mock_engine.project.plugins = {
+        "acme_bridge": PluginConfig(enabled=True, config=copy.deepcopy(_ACME_SAVED)),
+    }
+    mock_engine.plugin_loader = _plugin_loader_mock()
+    edited = mask_secrets_by_name(copy.deepcopy(_ACME_SAVED))
+    edited["streams"][1]["password"] = "***"
+    edited["streams"][0]["rtsp_url"] = "rtsp://viewer:***@10.0.0.99/live"
+
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        msg = _make_tool_call_msg("update_plugin_config", {
+            "plugin_id": "acme_bridge", "config": edited,
+        })
+        await handler.handle(msg)
+        await _drain()
+
+    payload = _get_result_payload(mock_agent)
+    assert payload["success"] is False
+    assert "streams[0].rtsp_url" in payload["error"]
+    assert "streams[1].password" in payload["error"]
+    assert mock_engine.project.plugins["acme_bridge"].config == _ACME_SAVED
+    mock_engine.plugin_loader.restart_or_apply.assert_not_awaited()
+    mock_engine.apply_project_edit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_enable_plugin_answers_with_the_config_masked(handler, mock_agent, mock_engine):
+    import copy
+
+    from openavc.core.plugin_loader import _PLUGIN_CLASS_REGISTRY, _REGISTRY_LOCK
+    from openavc.core.project_loader import PluginConfig
+
+    class _AcmeBridge:
+        CONFIG_SCHEMA = {}
+
+    mock_engine.project.plugins = {
+        "acme_bridge": PluginConfig(enabled=False, config=copy.deepcopy(_ACME_SAVED)),
+    }
+    mock_engine.plugin_loader = _plugin_loader_mock()
+    with _REGISTRY_LOCK:
+        _PLUGIN_CLASS_REGISTRY["acme_bridge"] = _AcmeBridge
+    try:
+        with patch.object(handler, "_get_engine", return_value=mock_engine):
+            result = await handler._enable_plugin({"plugin_id": "acme_bridge"})
+    finally:
+        with _REGISTRY_LOCK:
+            _PLUGIN_CLASS_REGISTRY.pop("acme_bridge", None)
+
+    assert result["status"] == "enabled"
+    assert result["config"]["password"] == "***"
+    assert "hunter2-broker" not in repr(result)
+    # The plugin started with the real config.
+    started = mock_engine.plugin_loader.start_plugin.call_args[0][1]
+    assert started["password"] == "hunter2-broker"

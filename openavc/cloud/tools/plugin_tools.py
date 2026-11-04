@@ -5,11 +5,29 @@ text reaches it only when the plugin marked it for the reader by raising
 ``PluginRefusal``; anything else is the platform's sentence pointing at the
 Programmer's Log (``PluginLoader.error_for_cloud``). The Programmer's plugin
 card still shows the plugin's text as it stands.
+
+For the same reason a plugin's passwords and keys never go into an answer: a
+config comes back with them as ``***`` (``mask_secrets_by_name``, by field
+name, since a plugin's schema has no way to mark a field secret), and a config
+sent back with ``***`` still in a field keeps the saved value there.
 """
 
 from typing import Any
 
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
+from openavc.utils.log_redaction import keep_masked_secrets, mask_secrets_by_name
+
+# Said with a config that had something masked, so the next write sends it back.
+MASKED_NOTE = (
+    "Passwords and keys show as ***. To keep a saved one, send *** back "
+    "unchanged; to change it, send the new value."
+)
+
+
+def _masked(config: Any) -> dict[str, Any]:
+    """The config as an answer may carry it, and the note when it hid something."""
+    shown = mask_secrets_by_name(config)
+    return {"config": shown, **({"masked": MASKED_NOTE} if shown != config else {})}
 
 
 def _as_sentence(text: str) -> str:
@@ -169,13 +187,13 @@ class PluginToolsMixin:
                 "status": "error",
                 "error": f"{said} The enable was rolled back; its config is preserved.",
                 "plugin_id": plugin_id,
-                "config": config,
+                **_masked(config),
             }
 
         return {
             "status": "enabled",
             "plugin_id": plugin_id,
-            "config": config,
+            **_masked(config),
         }
 
     async def _disable_plugin(self, input: dict) -> Any:
@@ -223,7 +241,7 @@ class PluginToolsMixin:
         setup_fields = []
         result: dict[str, Any] = {
             "plugin_id": plugin_id,
-            "config": entry.config,
+            **_masked(entry.config),
         }
 
         if plugin_class:
@@ -271,6 +289,20 @@ class PluginToolsMixin:
 
         if plugin_id not in engine.project.plugins:
             return {"error": f"Plugin '{plugin_id}' not in project"}
+
+        # The config the AI read had its passwords as ***; one sent back
+        # unchanged means keep the saved value, never "the password is ***".
+        new_config, unresolved = keep_masked_secrets(
+            new_config, engine.project.plugins[plugin_id].config,
+        )
+        if unresolved:
+            return {
+                "error": (
+                    f"Plugin '{plugin_id}': {', '.join(unresolved)} came back as *** "
+                    "but there is no saved value there to keep. Send the real "
+                    "value, or ask the user to enter it in the Programmer."
+                )
+            }
 
         # Validate config against plugin's CONFIG_SCHEMA if available.
         # Wrong types are rejected; required fields that aren't set yet
