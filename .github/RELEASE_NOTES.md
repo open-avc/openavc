@@ -1,48 +1,57 @@
-# OpenAVC v0.38.0
+# OpenAVC v0.39.0
 
-This release adds Report a problem to device pages, a Programmer password reset for every install type, and a message when a Remote Access session ends. Discovery scans no longer connect to ports in use by connected project devices.
+This release adds per-state colors and pictures for Containers and Images, Page Navs that light up like tabs, and a choice of which devices to simulate. SSH-controlled devices now connect on every install type, updates and driver installs work on networks that inspect encrypted traffic, and a device put to sleep on purpose reads Asleep instead of offline.
+
+## UI Builder
+
+* New: a Container's color or background picture can change with a state, set in its Appearance card. The controls inside are not dimmed by the Container's state.
+* New: an Image can show a different picture for each state, set in its Appearance card, so a script can change a panel's background for a holiday or an event. A state with no picture, and a device that can't be reached, show the Image's own picture. A Camera Preset's Appearance card also gains the Image field.
+* New: a Page Nav lights up while its page is showing, so a row of them works as tabs, and it takes Appearance like a button. **Light up while its page is showing** is on for Page Navs placed from now on; tick it on older ones.
+* Fixed: a button or Container with a faded background picture and an Appearance binding no longer moves when its state changes.
 
 ## Programmer
 
-* New **Report a problem** link on device pages: under the device name, on the Offline banner, and after a failed command. It sends the OpenAVC team the device's settings (passwords hidden), address, recent messages, log lines and driver file. The dialog shows the report's contents before sending, and **Download** saves a copy instead. No cloud account or pairing needed.
-* New **Send to OpenAVC** button on the Device Audit's last step, next to Download report.
-* New **Forgot your password?** link on the sign-in screen, with the steps to reset the Programmer login: **Reset Programmer Password** in the Windows tray or Mac menu bar, a file named `openavc-reset-password` on a Raspberry Pi's SD card boot partition, or a file named `reset-programmer-password` in the data folder on Linux and Docker. The reset clears the username, password and API key, and new ones are set at the next sign-in.
-* Windows: the OpenAVC Programmer and OpenAVC Panel shortcuts now open on the port set in Settings > Network. New **OpenAVC Tray** Start menu entry restarts the tray icon after Quit.
-* Driver Builder: importing a YAML file with the ID of an installed driver now shows **Update Driver**, **Import a Copy** and **Cancel**. Update Driver replaces the installed driver and reconnects its devices with their settings kept.
-* Smaller fixes: clicking a device tile on the Dashboard opens that device; Browse Community shows a connection error with Retry when the driver library can't be reached; Set Variable on a Stream Deck key, dial or touch zone lists only variables; removed the Panel Access card's instruction to close a Remote Programming session before opening Remote Panel.
+* New: choose which devices to simulate while the others stay on real equipment. The choice survives a restart, and editing a device or disabling and re-enabling it keeps it.
+* New: `macros.start(id)` in a script starts a macro without waiting for it, so a long macro run from a script timer runs to its last step instead of being stopped at the 30-second script limit. A handler or timer that runs past the limit now shows "timed out after 30s" in the log.
+* Device Audit: Continue on the Commands step first names any suggested command not tried yet and any command sent with no answer to "Did it happen?". The network check follows a redirect on the same address and reads the page it leads to. Power cycle and cable pull results now count values a driver reads once at connect, and replies a driver read with a JSON rule are no longer counted as unread.
+* Fixed: schedules run in the site's time zone on appliance hardware and in Docker, and the schedule editor shows the system's time zone. A schedule set inside the hour the clocks go back no longer fires twice.
+* Fixed: after a restart or update, a Programmer left open shows each device online as it connects, and its first change saves instead of failing with a conflict. On a system with a Programmer password, the tab first asks you to sign in again.
+* Smaller fixes: after an update, the Programmer and Simulator open the new version instead of a copy the browser kept; when the OpenAVC server stops answering, the Programmer says so instead of showing "Failed to fetch"; a Python driver imported under another file name, such as a second browser download, opens in Code; a device controlled over HTTP no longer fills the log and the Dashboard's Recent Activity; the Simulator's Protocol Log shows what a device sent before the window opened; a variable's Allowed Values box takes a new line on Enter.
+
+## Panel
+
+* A slider or fader now sends while it is dragged: the first movement at once, then one command per Rate interval, and the value it stops on last. When a device answers more slowly than the rate, the values in between are skipped, so the device follows the finger and stops where it was let go. On release only is unchanged.
+* Fixed: a panel left open across a restart or update shows each device online as it connects.
+* Fixed: a macro's progress on a panel no longer reads "Step 1 of 0" while the macro waits.
 
 ## Device control and drivers
 
-* A command parameter left out of a script, a REST call or an AI assistant command is now sent with the driver's default value. A required parameter left out is still refused.
-* A device that sends a login prompt while its Password setting is blank now shows offline with "The device asks for a sign-in, and the Password setting is blank." Devices whose driver skips the login when no password is set can take up to 2.5 seconds longer to connect over TCP.
-* Fixed: a standby command sent during polling could wake the device again.
-* Driver authors: new `then_query:` on response rules, a list of queries sent as soon as the rule matches. Use it for a device that reports that something changed but not the new value. In the Driver Builder it is the Then Query list on each text rule. Drivers using it still install and run on earlier releases.
-* Driver authors: a `liveness` probe is now paused while polling is paused by the device's state. Earlier releases send it in every state, so a driver with a state-paused poll needs `min_platform_version` 0.38.0 to add one. Python drivers override `_liveness_held()`.
-* Driver authors: a `tcp_probe` is sent to a port with a login prompt only when its `expect` matches the prompt. New `ctx.hold_port` for discovery companions.
-* Driver authors: new **Connections** section on each simulated TCP device, for simulating a device that accepts one control connection at a time. Drivers can set it with `simulator.single_client`, also on the Driver Builder's Simulation tab. `python -m openavc.simulator.validate` no longer reports a prompt after a reply as an error.
-
-## Discovery
-
-* Scans no longer connect to ports in use by connected project devices. Those devices are identified by their project driver, and displays and projectors that accept one control connection at a time stay connected during a scan.
-* Probes are sent to each port one at a time. A port with a login prompt is sent only the probes written for that prompt.
-* New **Probes** line on each Discovery card: for each port, whether it was in use, had a login prompt, and how many probes connected or read its greeting.
-* Test Connection on a connected device reports the existing connection instead of opening a second one. The Device Audit's network check uses the same rules as a scan.
-* Fixed: a device advertising a 169.254 address next to its real one showed as two cards.
+* New: a device put to sleep on purpose reads "Asleep. Power On wakes it." on its page and on the panel, is listed as asleep on the Dashboard, and raises no alert. Power On stays usable while its other controls are greyed out. If the device does not come back after Power On, the reason it is offline is shown.
+* SSH-controlled devices now connect on every install type. The Docker image and the Linux installer include the SSH client, and appliance hardware installs it after this update once it can reach the internet. When the client is missing, the device page says how to add it.
+* New: OpenAVC makes its own SSH key and shows it under **OpenAVC SSH key** on the page of an SSH device that can sign in with a key. Add it to the device's user account and choose key sign-in. A blank private key path now means this key.
+* New: an **SSH options** box in Edit Device, under Advanced, one OpenSSH connection setting per line. A device whose SSH server offers only older encryption settings now shows what it offers and the line to add there, instead of retrying forever.
+* Fixed: SSH devices connect from Windows 10 and other computers with an SSH client older than OpenSSH 8.5. On Windows, a device password containing &, |, <, > or ^ is now sent exactly as typed (part of such a password could run as a command on the OpenAVC computer).
+* Fixed: Skip if device is offline and group commands now send a command that works while the device is offline, such as a Wake-on-LAN Power On.
+* Fixed: a device dropped for missed keep-alive probes comes back online as soon as it answers. A reconnect that never answers is now retried after max_failures times the probe interval (60 seconds at the defaults) instead of about 40.
+* Fixed: on Linux with ufw or firewalld on, a device that sends its own updates to OpenAVC now gets them through. OpenAVC opens those ports in the host firewall when its service starts.
+* Smaller fixes: a device whose IP address, port or login name was saved with a space before or after it now connects (passwords keep their spaces); changing Connection between SSH and telnet changes a Port left on 22 or 23 to match; a JSON reply that repeats a name keeps the values under every copy.
+* Driver authors: new `read_back:` on a command, queries sent right after it so the new value shows at once instead of at the next poll. The Driver Builder edits it as **Reads its value back** on each command. Drivers using it still install on earlier releases, which read the value at the next poll.
+* Driver authors: new `sleeps_device` on the command that takes a device off the network, naming the command that wakes it.
 
 ## Cloud
 
-* When a Remote Access session is closed in the portal or times out, the Programmer and panel now show "This remote session has ended. Open it again from the portal."
-* Fixed: files over 10 MB, such as large asset library images or a project export, failed to load through Remote Access.
-* The AI assistant's connection test and the cloud port diagnostics show a port held by a connected device as in use by that device. The AI's raw command test is refused on that port.
-
-## Plugins
-
-* When a plugin fails to start, the AI assistant shows the plugin's error only if the plugin raised `PluginRefusal` (new in 0.38.0). For any other start-up error, the reply refers to the Programmer's Log.
+* Fixed: Unpair in the Programmer now removes the system from the cloud portal as well, so it no longer shows offline there or raises alerts. If the cloud can't be reached, the system unpairs anyway and the Programmer says to remove it in the portal.
+* Fixed: the cloud assistant no longer sees a plugin's passwords and keys. It reads them as `***` and leaves them as they are when it changes a plugin's settings.
 
 ## IT and security
 
-* **Send to OpenAVC** uploads the report to `https://cloud.openavc.com/api/v1/reports`, from paired and unpaired systems. Nothing is sent without pressing it. If the OpenAVC server can't reach that address, the browser uploads the same file. Added to the Network & Security Cut Sheet.
+* Updates, Browse Drivers and driver and plugin installs now work on networks that inspect encrypted traffic. OpenAVC's own internet connections trust the computer's certificate store, so an authority installed by Group Policy, MDM or `update-ca-certificates` needs no setting. A proxy set on the service with `HTTPS_PROXY` is used for those connections, and equipment at a local address is always reached directly. The Network & Security Cut Sheet has the steps for each install type.
+* New: on Windows, an update runs its installer only if the installer is signed by OpenAVC LLC. Anything else is refused before it runs, and the Updates view says why.
+* Fixed: driver and plugin installs now take files only from the official catalogs' main branch, and a download that redirects is checked again at each step.
+* Fixed: a driver's sign-in password and any token it saves are masked in the in-app log.
 
 ## Updating
 
-* Project format stays at 0.16.0, so a project saved on this version opens on v0.37.2.
+* Project format stays at 0.16.0, so a project saved on this version opens on v0.38.0 and v0.37.2.
+* Docker: to run schedules in the site's time zone, add the `/etc/localtime` line or a `TZ` setting to an existing compose file (Deployment guide, Time zone). The image now includes the SSH client and time zone data.
+* Linux: the installer now works on a computer whose only Python is 3.14, such as Fedora 43. A Linux, Pi or Docker update downloads one new package, `truststore`.
