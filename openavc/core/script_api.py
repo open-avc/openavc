@@ -305,7 +305,8 @@ class _EventProxy:
 
 
 class _MacroProxy:
-    """Proxy to MacroEngine. Lets scripts do await macros.execute('system_off')."""
+    """Proxy to MacroEngine. Lets scripts do await macros.execute('system_off'),
+    or macros.start('system_off') to run it without waiting."""
 
     def __init__(self):
         self._engine: MacroEngine | None = None
@@ -324,6 +325,37 @@ class _MacroProxy:
         # them. Outside any macro this is an empty chain (normal behavior).
         from openavc.core.macro_engine import active_call_chain
         await self._engine.execute(macro_id, _call_chain=active_call_chain())
+
+    @_leashed
+    def start(self, macro_id: str) -> None:
+        """Start a macro and return at once, without waiting for it to finish.
+
+        ``execute`` runs the steps inside the handler or timer that awaited
+        it, so they count against ``ScriptEngine.HANDLER_TIMEOUT`` and a long
+        macro is cancelled partway through. Here the run is the macro
+        engine's, the way a panel press starts one, so it finishes whatever
+        becomes of the script.
+
+        Synchronous on purpose: it works from a plain ``def`` callback and as
+        ``after(300, macros.start, "system_off")``. A missing macro, or one
+        that would re-enter the macro this handler is running inside, raises
+        here, the same ``ValueError`` ``execute`` raises.
+        """
+        if self._engine is None:
+            raise RuntimeError("Script API not configured — macro proxy not bound")
+        # A script's top-level code runs in a worker thread with no event
+        # loop, and that code runs again on every reload. Said here, in the
+        # script's own terms, rather than as asyncio's "no running event loop".
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            raise RuntimeError(
+                f"macros.start('{macro_id}') runs from a handler or a timer, not "
+                f"from a script's top level. To start it once the script has "
+                f"loaded, use after(0, macros.start, '{macro_id}')"
+            ) from None
+        from openavc.core.macro_engine import active_call_chain
+        self._engine.start(macro_id, _call_chain=active_call_chain())
 
 
 class _LogProxy:

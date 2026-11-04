@@ -73,6 +73,12 @@ async def run_within_handler_limit(awaitable: Any, limit: float) -> None:
         if scope.expired():
             raise HandlerTimedOut() from None
         raise
+    # The limit cancelled the body and something inside it caught the
+    # cancellation and returned, so asyncio raised nothing. An awaited macro
+    # does exactly that (it ends as "cancelled"), and without this a macro cut
+    # off halfway left no error against the script that ran it.
+    if scope.expired():
+        raise HandlerTimedOut()
 
 
 def describe_parameters(fn: Callable) -> dict[str, Any]:

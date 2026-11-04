@@ -156,7 +156,15 @@ export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, l
             insertText: 'execute("${1:macro_id}")',
             insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
             detail: "(macro_id: str) -> None",
-            documentation: { value: 'Execute a macro by its ID. Runs all steps in order.\n\n```python\nawait macros.execute("macro_system_on")\n```' },
+            documentation: { value: 'Run a macro by its ID and wait for its last step. The wait counts toward the 30 second limit on a handler or timer, so use start for a long macro.\n\n```python\nawait macros.execute("macro_system_on")\n```' },
+            range,
+          }, {
+            label: "start",
+            kind: monaco.languages.CompletionItemKind.Method,
+            insertText: 'start("${1:macro_id}")',
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            detail: "(macro_id: str) -> None",
+            documentation: { value: 'Start a macro by its ID and continue at once, without waiting (no await). It runs to its last step however long it takes.\n\n```python\nmacros.start("macro_system_off")\n```' },
             range,
           });
         }
@@ -335,7 +343,7 @@ export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, l
         }
 
         // Dynamic macro ID completions
-        if (textUntilPosition.match(/macros\.execute\(\s*["']\s*$/)) {
+        if (textUntilPosition.match(/macros\.(execute|start)\(\s*["']\s*$/)) {
           const project = useProjectStore.getState().project;
           if (project) {
             for (const m of project.macros) {

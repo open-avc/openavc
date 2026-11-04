@@ -84,7 +84,7 @@ def _log_detached_failure(task: asyncio.Task) -> None:
         return
     exc = task.exception()
     if exc is not None:
-        log.error(f"Macro task failed after the caller stopped waiting: {exc}")
+        log.error(f"Macro task failed with nobody waiting on it: {exc}")
 
 
 class MacroEngine:
@@ -141,8 +141,8 @@ class MacroEngine:
         # tick can't both register before either fires preemption and
         # then cancel each other (A49).
         self._start_lock = asyncio.Lock()
-        # Strong references to the tasks execute_detached starts, so a macro
-        # nobody is awaiting any more is not collected out from under itself.
+        # Strong references to the tasks start() runs, so a macro nobody is
+        # awaiting any more is not collected out from under itself.
         self._detached: set[asyncio.Task] = set()
         self._max_depth = 10  # maximum nested macro call depth
         self._max_conditional_depth = 5  # maximum nesting of conditional steps
@@ -156,10 +156,11 @@ class MacroEngine:
     def has_macro(self, macro_id: str) -> bool:
         """Is this macro loaded?
 
-        Here rather than in the caller because ``execute`` already decides it
-        one line down, and a second reading of the same dict is what drifts.
-        A caller that starts a macro in the background has no other way to ask:
-        the refusal ``execute`` raises happens inside a task nobody is holding.
+        Here rather than in the caller because ``_refuse_start`` already
+        decides it for ``execute`` and ``start``, and a second reading of the
+        same dict is what drifts. A caller that starts a macro in the
+        background its own way (a panel press) has no other way to ask: the
+        refusal ``execute`` raises happens inside a task nobody is holding.
         """
         return macro_id in self._macros
 
@@ -378,10 +379,6 @@ class MacroEngine:
                 detect circular/recursive calls without blocking independent
                 concurrent chains.
         """
-        macro = self._macros.get(macro_id)
-        if macro is None:
-            raise ValueError(f"Macro '{macro_id}' not found")
-
         # An awaited subroutine must return its failure/cancellation to the
         # calling step. Only the outer invocation owns the event-only outcome;
         # swallowing it here would let dependent parent steps keep running.
@@ -389,15 +386,8 @@ class MacroEngine:
         if _call_chain is None:
             _call_chain = frozenset()
 
-        if macro_id in _call_chain:
-            raise ValueError(
-                f"Macro '{macro_id}' blocked — circular/recursive call detected "
-                f"(call chain: {' -> '.join(_call_chain)} -> {macro_id})"
-            )
-        if len(_call_chain) >= self._max_depth:
-            raise ValueError(
-                f"Macro '{macro_id}' blocked — max nesting depth ({self._max_depth}) reached"
-            )
+        self._refuse_start(macro_id, _call_chain)
+        macro = self._macros[macro_id]
         _call_chain = _call_chain | {macro_id}
         # Publish the chain to this task's context so handler tasks spawned
         # by this macro's steps (and any macros.execute() they make) inherit
@@ -565,6 +555,52 @@ class MacroEngine:
             if not task_set:
                 self._running.pop(macro_id, None)
 
+    def _refuse_start(self, macro_id: str, call_chain: frozenset[str]) -> None:
+        """Raise ``ValueError`` for a macro that cannot start from this chain:
+        one that does not exist, one already in the chain, or one past the
+        nesting limit. ``execute`` asks before it runs, and ``start`` asks
+        before it makes a task, where the refusal still reaches the caller."""
+        if not self.has_macro(macro_id):
+            raise ValueError(f"Macro '{macro_id}' not found")
+        if macro_id in call_chain:
+            raise ValueError(
+                f"Macro '{macro_id}' blocked — circular/recursive call detected "
+                f"(call chain: {' -> '.join(call_chain)} -> {macro_id})"
+            )
+        if len(call_chain) >= self._max_depth:
+            raise ValueError(
+                f"Macro '{macro_id}' blocked — max nesting depth ({self._max_depth}) reached"
+            )
+
+    def start(
+        self,
+        macro_id: str,
+        context: dict[str, Any] | None = None,
+        *,
+        _call_chain: frozenset[str] | None = None,
+    ) -> asyncio.Task:
+        """Run a macro in its own task and return that task at once.
+
+        The run is the engine's from here: it is held in ``_detached`` until
+        it ends, its failure is logged rather than lost, and it answers to the
+        same cancel and cancel_group as any other run. What started it can
+        finish, time out or be reloaded without stopping it, which is the
+        point -- a script's timer that awaited a long macro was cut off at the
+        handler limit partway through the steps.
+
+        Raises ``ValueError`` for a macro that does not exist or would
+        re-enter ``_call_chain``, before the task exists, so the caller hears
+        it. Needs a running event loop.
+        """
+        self._refuse_start(macro_id, _call_chain or frozenset())
+        task = asyncio.create_task(
+            self.execute(macro_id, context, _call_chain=_call_chain)
+        )
+        self._detached.add(task)
+        task.add_done_callback(self._detached.discard)
+        task.add_done_callback(_log_detached_failure)
+        return task
+
     async def execute_detached(
         self,
         macro_id: str,
@@ -589,24 +625,19 @@ class MacroEngine:
 
         The automation doors keep awaiting ``execute`` directly: a trigger, a
         script, a plugin and a panel press have no socket to lose, and one of
-        them waiting for a device is the feature.
+        them waiting for a device is the feature. A script that must not wait
+        (its handler limit would cut the macro off) calls ``start``.
 
         Raises ``ValueError`` for a macro that does not exist, so a caller can
-        still answer 404 — that refusal has to happen here rather than inside
-        the task, where nobody would see it.
+        still answer 404 — ``start`` refuses before it makes the task, since
+        a refusal inside the task would reach nobody.
         """
-        if not self.has_macro(macro_id):
-            raise ValueError(f"Macro '{macro_id}' not found")
-
         # Read at call time, not bound as a default: the constant is the knob
         # a test turns down, and a default argument would freeze it at import.
         if wait_seconds is None:
             wait_seconds = OPERATOR_RUN_WAIT_SECONDS
 
-        task = asyncio.create_task(self.execute(macro_id, context))
-        self._detached.add(task)
-        task.add_done_callback(self._detached.discard)
-        task.add_done_callback(_log_detached_failure)
+        task = self.start(macro_id, context)
         try:
             # shield, so the timeout ends the WAIT and not the macro.
             await asyncio.wait_for(asyncio.shield(task), timeout=wait_seconds)

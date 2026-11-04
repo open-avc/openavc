@@ -168,11 +168,14 @@ await events.emit("custom.room_ready", {"zone": "auditorium"})
 
 ## macros
 
-Execute named macros.
+Run named macros.
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `await macros.execute(macro_id)` | `None` | Run a macro by ID. The macro must exist in the project. |
+| `await macros.execute(macro_id)` | `None` | Run a macro by ID and wait for its last step. The wait counts toward the 30-second limit on a handler or timer callback. |
+| `macros.start(macro_id)` | `None` | Start a macro by ID and return at once (no `await`). The macro runs to its last step however long it takes. Call it from a handler or timer, not from a script's top level. |
+
+Both raise `ValueError` for a macro that is not in the project.
 
 ---
 

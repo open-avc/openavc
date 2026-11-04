@@ -44,11 +44,11 @@ If a handler cannot accept that single argument, the script is refused when it l
 
 #### Synchronous vs. asynchronous handlers
 
-A handler can be a plain `def` (synchronous) or an `async def`. Prefer `async def` for anything that talks to a device, waits, or does real work — async handlers run as independent tasks, so a slow one never holds up other events or state changes, and they get a built-in timeout.
+A handler can be a plain `def` (synchronous) or an `async def`. Prefer `async def` for anything that talks to a device, waits, or does real work — async handlers run as independent tasks, so a slow one never holds up other events or state changes, and they are stopped after 30 seconds.
 
 A synchronous handler runs **inline on the control loop**: nothing else (device commands, the touch panel, other handlers) runs until it returns. Keep sync handlers to quick, in-memory work like `state.set(...)` or `log.info(...)`. Never call `time.sleep()`, a blocking network request, or any long loop in a sync handler — it will freeze the whole system until it finishes. If you need to wait, use an async handler with `await delay(seconds)`.
 
-The same rules apply to `after()`/`every()` timer callbacks: an async callback gets the built-in timeout, a sync callback runs inline and must stay quick. Either way, a callback that fails or times out raises a `script.error` event rather than failing silently.
+The same rules apply to `after()`/`every()` timer callbacks: an async callback is stopped after 30 seconds, a sync callback runs inline and must stay quick. Either way, a callback that fails or times out raises a `script.error` event rather than failing silently.
 
 ```python
 # Fine: quick, synchronous reaction
@@ -298,10 +298,25 @@ those can arrive from anywhere.
 ### macros (Macro Engine)
 
 ```python
-await macros.execute(macro_id)
+await macros.execute(macro_id)   # run it and wait for its last step
+macros.start(macro_id)           # start it and continue at once (no await)
 ```
 
-Runs a macro by its ID. The macro must exist in the project definition.
+Both run a macro by its ID. A macro that is not in the project raises `ValueError`.
+
+Use `await macros.execute(...)` when the next line of your script needs the macro to have finished. The wait counts toward the 30-second limit on every async handler and timer callback: a macro still running at 30 seconds is stopped partway, its remaining steps never run, and the log shows the handler as timed out.
+
+Use `macros.start(...)` for anything longer, such as a shutdown that waits for a projector to cool or a computer to turn off. It returns at once, the way a panel button's Macro action does, and the macro runs to its last step on its own, even if the script is reloaded.
+
+```python
+from openavc import after, macros, on_event
+
+@on_event("custom.space_empty")
+def space_empty(event):
+    after(600, macros.start, "system_off")  # System Off in 10 minutes
+```
+
+Call `macros.start` from a handler or a timer callback, not from a script's top level. To act when a started macro ends, handle `macro.completed.<macro_id>` (see [Event Types](#event-types)).
 
 ### log (Logger)
 
