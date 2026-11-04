@@ -48,6 +48,7 @@ INVALID_CONFIG = "invalid_config"  # bad connection settings (baud/parity/port/.
 TRANSPORT_DISCONNECTED = "transport_disconnected"  # generic fallback
 BRIDGE_OFFLINE = "bridge_offline"  # a device bound to a bridge port whose bridge is down
 NO_SIMULATOR = "no_simulator"  # simulating, but this driver ships no simulator
+LOGIN_MISSING = "login_missing"  # the project says a login is saved here, and none is
 
 
 @dataclass(frozen=True)
@@ -75,6 +76,7 @@ _DRIVER_FAULT_CODES = frozenset({
     CLIENT_MISSING,
     INVALID_CONFIG,
     TRANSPORT_DISCONNECTED,
+    LOGIN_MISSING,
 })
 
 # Canonical generic wording per code, used when a typed fault carries no
@@ -116,6 +118,13 @@ _DEFAULT_MESSAGES = {
     INVALID_CONFIG: (
         "The device's connection settings are invalid. Check the "
         "configuration (e.g. baud rate, parity, data bits, or port)."
+    ),
+    # Raised by BaseDriver before dialing (core/device_logins.py): the project
+    # holds the "saved on this system" marker where a login goes, and this
+    # system has no saved login for that device and driver.
+    LOGIN_MISSING: (
+        "No login for this device is saved on this system. Enter it "
+        "under Edit."
     ),
     TRANSPORT_DISCONNECTED: (
         "The connection to the device dropped. OpenAVC is retrying "
@@ -184,6 +193,7 @@ _PERMANENT_FAULT_CODES = frozenset({
     TLS_CERT_UNTRUSTED,
     INVALID_CONFIG,
     CLIENT_MISSING,
+    LOGIN_MISSING,
 })
 
 

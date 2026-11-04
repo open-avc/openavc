@@ -30,6 +30,7 @@ describe("Report a problem on the Offline banner", () => {
     ["invalid_config", false],
     ["bridge_offline", false],
     ["no_simulator", false],
+    ["login_missing", false],
     ["", true],
     ["a_code_from_a_newer_server", true],
   ];

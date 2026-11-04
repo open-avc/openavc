@@ -26,6 +26,7 @@ from typing import Any
 from openavc import config, runtime_flags
 from openavc.core.client_origin import reload_origin
 from openavc.core.device_config import bridge_first, resolve_device_config
+from openavc.core.device_logins import fill_saved_logins
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
 from openavc.core.help_requests import HelpRequests
@@ -111,6 +112,11 @@ class Engine:
         from openavc.system_config import get_data_dir
         self.panel_devices = PanelDeviceStore(get_data_dir() / "panel_devices.json")
         self.panel_devices.load()
+        # The device logins saved on this system (core/device_logins). Read
+        # from disk on first use; neither of its files exists until a login
+        # is saved.
+        from openavc.core.device_logins import device_logins
+        self.device_logins = device_logins(get_data_dir())
         self._panel_sweep_task: asyncio.Task | None = None
         self._os_programs_task: asyncio.Task | None = None
         # Panel interaction runtime (peer of the macro engine, see ui_events)
@@ -438,6 +444,7 @@ class Engine:
         # N x 5 s. Each add_device is independent (writes to its own device_id
         # keys in state/config dicts), so gather is safe.
         startup_errors: list[str] = []
+        self._sweep_device_logins()
         resolved = {
             d.id: self.resolved_device_config(d) for d in self.project.devices
         }
@@ -1204,9 +1211,26 @@ class Engine:
     def resolved_device_config(self, device) -> dict:
         """The config this device actually dials — driver defaults, project
         config, and the connection table layered, with bridge/USB bindings
-        resolved. See ``core.device_config``."""
+        resolved (``core.device_config``), and each setting the project marks
+        as saved on this system filled from the login file
+        (``core.device_logins``). What is handed to the device manager, and
+        so to the driver; a reader that shows or sends a device's settings
+        uses ``resolve_device_config``, which keeps the marker."""
         installed = self.installed_equipment.resolve(device)
-        return installed if installed is not None else resolve_device_config(device, self.project)
+        if installed is not None:
+            return installed
+        return fill_saved_logins(resolve_device_config(device, self.project), self.device_logins)
+
+    def _sweep_device_logins(self) -> None:
+        """Date the saved logins of devices that left the project, and delete
+        those gone 90 days (``DeviceLogins.sweep``). Never fatal: a sweep that
+        cannot write leaves the dates as they were, and the logins in place."""
+        if self.project is None:
+            return
+        try:
+            self.device_logins.sweep((d.id, d.driver) for d in self.project.devices)
+        except Exception:
+            log.exception("Could not update the saved device logins")
 
     def _schedule_device_bringup(self) -> None:
         """Ask for a device bring-up round, starting the worker if it is idle.
@@ -1276,6 +1300,7 @@ class Engine:
         if not self.project:
             return
 
+        self._sweep_device_logins()
         # Build merged configs (device.config + connection table overrides)
         project_devices: dict[str, dict] = {}
         for d in self.project.devices:

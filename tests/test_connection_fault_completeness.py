@@ -148,6 +148,7 @@ _RECONCILED_CODES = frozenset({
     "connection_refused",
     "host_key_rejected",
     "invalid_config",
+    "login_missing",
     "no_response",
     "no_simulator",
     "tls_cert_untrusted",

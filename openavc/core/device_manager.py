@@ -21,6 +21,7 @@ from urllib.parse import urlsplit
 from openavc.core.connection_fault import (
     BRIDGE_OFFLINE,
     INVALID_CONFIG,
+    LOGIN_MISSING,
     NO_RESPONSE,
     TRANSPORT_DISCONNECTED,
     UNREACHABLE,
@@ -2723,10 +2724,11 @@ class DeviceManager:
     def _start_reconnect(self, device_id: str) -> None:
         """Start a background reconnect loop for a device.
 
-        A device with no address to dial gets none: retrying cannot supply
-        one, so it stops at once, the way a rejected login does, rather than
-        after the attempts a device-reported fault is allowed. The card
-        already says what to set; editing the device or Reconnect retries.
+        A device with no address to dial gets none, and neither does one whose
+        login is not saved on this system: retrying cannot supply either, so it
+        stops at once, the way a rejected login does, rather than after the
+        attempts a device-reported fault is allowed. The card already says what
+        to set; editing the device or Reconnect retries.
         """
         if self._simulation_gap(device_id) is not None:
             return
@@ -2735,6 +2737,9 @@ class DeviceManager:
         driver = self._devices.get(device_id)
         if driver is not None and driver.address_missing():
             self._stop_reconnect_for_permanent_fault(device_id, INVALID_CONFIG)
+            return
+        if driver is not None and driver.login_missing():
+            self._stop_reconnect_for_permanent_fault(device_id, LOGIN_MISSING)
             return
         self._note_flap(device_id)
         task = asyncio.create_task(self._reconnect_loop(device_id))

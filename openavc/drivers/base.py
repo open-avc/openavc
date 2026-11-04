@@ -33,6 +33,7 @@ from openavc.core.connection_fault import (
     CHILD_NOT_FITTED,
     CHILD_PARENT_OFFLINE,
     INVALID_CONFIG,
+    LOGIN_MISSING,
     NO_FAULT_CLAIMED,
     NO_RESPONSE,
     TRANSPORT_DISCONNECTED,
@@ -48,6 +49,7 @@ from openavc.core.connection_fault import (
     typed_fault_from_exc,
 )
 from openavc.core.condition_eval import _coerce_bool
+from openavc.core.device_logins import SAVED_LOGIN, marked_fields
 from openavc.core.device_traffic import record_traffic
 from openavc.core.event_bus import EventBus, detach_emit_chain
 from openavc.drivers.compiled_protocol import state_var_default
@@ -1070,10 +1072,12 @@ class BaseDriver(ABC):
         """Publish this device's config credentials to the redaction registry."""
         try:
             schema = self.DRIVER_INFO.get("config_schema")
+            # The marker is not a login, and is masked nowhere.
+            config = {k: v for k, v in (self.config or {}).items() if v != SAVED_LOGIN}
             get_secret_registry().set_config_secrets(
                 self.device_id,
-                collect_secret_values(self.config, schema),
-                identities=collect_identity_values(self.config, schema),
+                collect_secret_values(config, schema),
+                identities=collect_identity_values(config, schema),
             )
         except Exception:  # pragma: no cover - never block a driver from loading
             log.debug(
@@ -1393,6 +1397,13 @@ class BaseDriver(ABC):
             raise ConnectionFaultError(bridge_port_missing_message(), code=INVALID_CONFIG)
         if self.address_missing():
             raise ConnectionFaultError(no_address_message(), code=INVALID_CONFIG)
+        # A setting still holding the "saved on this system" marker had no
+        # saved login to fill it (core/device_logins.py). Refused here, before
+        # anything is sent, so the device is never sent the marker as its
+        # login. A bridge-routed device returned above: it sends through its
+        # bridge's own connection and signs in to nothing.
+        if self.login_missing():
+            raise ConnectionFaultError(code=LOGIN_MISSING)
 
         # Stage 3 — establishment: driver-owned setup hook, then the
         # transport (or driver-owned session) itself.
@@ -2527,6 +2538,12 @@ class BaseDriver(ABC):
         null its references (the health loop keeps running until
         _link_alive() goes false). Default: no-op.
         """
+
+    def login_missing(self) -> bool:
+        """True when a setting still holds the "saved on this system" marker:
+        the project says a login is saved, and this system had none to fill it
+        in (``core.device_logins``). Retrying cannot supply one."""
+        return bool(marked_fields(self.config))
 
     def address_missing(self) -> bool:
         """True when this device dials a network address it does not have.

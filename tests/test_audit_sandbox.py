@@ -253,6 +253,7 @@ async def test_a_project_save_and_simulation_never_reach_the_audit_device(driver
         devices=engine_devices,
         state=engine_state,
         resolved_device_config=lambda d: d,
+        _sweep_device_logins=lambda: None,
     )
     server, port = await _fake_device()
     sandbox = DriverSandbox(audit_device_id("s8"), DRIVER_ID, {"host": "127.0.0.1", "port": port})

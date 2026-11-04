@@ -345,13 +345,18 @@ def saved_settings(session: "AuditSession", project: Any) -> list[dict[str, Any]
 
 
 def _saved_config(session: "AuditSession", project: Any, device_id: str) -> dict[str, Any]:
+    """The settings the device dials with, its saved logins filled in from this
+    system's login file (``core.device_logins``), as the engine hands them to
+    a driver."""
     from openavc.core.device_config import resolve_device_config
+    from openavc.core.device_logins import device_logins, fill_saved_logins
 
     offered = {s["device_id"] for s in saved_settings(session, project)}
     if device_id not in offered:
         raise AuditError(NOT_SAVED_HERE)
     device = next(d for d in project.devices if d.id == device_id)
-    return dict(resolve_device_config(device, project)["config"])
+    resolved = fill_saved_logins(resolve_device_config(device, project), device_logins())
+    return dict(resolved["config"])
 
 
 async def set_connection(

@@ -1800,6 +1800,7 @@ const PERMANENT_OFFLINE_REASONS = new Set([
   "tls_cert_untrusted",
   "invalid_config",
   "client_missing",
+  "login_missing",
 ]);
 
 /** The device is fine; some of what it manages is not. Deliberately quieter
@@ -1890,7 +1891,8 @@ export function offlineNextStep(
 
 /** Faults no driver change fixes: the address does not answer, a setting or a
  *  program on this computer, the device's own key or settings, the bridge it
- *  goes through, or a driver with no simulator while simulation runs. */
+ *  goes through, a driver with no simulator while simulation runs, or a login
+ *  not saved on this computer. */
 const OFFLINE_NOT_THE_DRIVER = new Set([
   "unreachable",
   "tls_cert_untrusted",
@@ -1899,6 +1901,7 @@ const OFFLINE_NOT_THE_DRIVER = new Set([
   "invalid_config",
   "bridge_offline",
   "no_simulator",
+  "login_missing",
 ]);
 
 /** Report a problem on the Offline banner: a fault the driver could have

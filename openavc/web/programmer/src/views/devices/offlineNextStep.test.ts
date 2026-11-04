@@ -28,6 +28,12 @@ describe("the Offline banner's next step", () => {
     );
   });
 
+  it("stops on a login that is not saved on this system, which the line above names", () => {
+    expect(offlineNextStep("login_missing", true, true)).toBe(
+      "Not retrying: this won't clear on its own. Fix the cause above, then press Reconnect.",
+    );
+  });
+
   it("keeps retrying a device that is simply not there", () => {
     expect(offlineNextStep("unreachable", false, true)).toBe(
       "Reconnecting automatically, and will keep trying until the device comes back.",
