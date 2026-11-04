@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import time
 from typing import Any
 
 import pytest
@@ -27,6 +28,11 @@ from openavc.core.state_store import StateStore
 from openavc.drivers.avcdriver_semantic import validate_driver_definition
 from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.drivers.dry_run import capture_http_transport, capture_osc_transport
+
+
+# How much earlier a line can be read on the device's side than the gap the
+# driver kept: each is read when the device's read loop next wakes.
+ARRIVAL_JITTER_S = 0.02
 
 
 def _acme(**extra: Any) -> dict[str, Any]:
@@ -137,7 +143,6 @@ async def display():
     ``reply_after`` seconds), a get with the value, and records each line it
     receives with the time it arrived and whether the reply to the line
     before it had already gone out."""
-    loop = asyncio.get_running_loop()
     dev: dict[str, Any] = {
         "volume": 20, "inputs": {"1": "1", "2": "2"}, "input": "1",
         "lines": [], "times": [], "replied_before": [], "replied": True,
@@ -157,7 +162,9 @@ async def display():
                     raw, buf = buf.split(b"\r", 1)
                     line = raw.decode()
                     dev["lines"].append(line)
-                    dev["times"].append(loop.time())
+                    # perf_counter: the loop's clock moves in 15.6 ms steps
+                    # on Windows, coarser than the gaps measured here.
+                    dev["times"].append(time.perf_counter())
                     dev["replied_before"].append(dev["replied"])
                     dev["replied"] = False
                     if dev["reply_after"]:
@@ -211,8 +218,9 @@ async def test_the_value_is_read_after_the_sets_reply(display) -> None:
         assert dev["lines"] == ["SV035", "GV"]
         # The get reached the device after the set's reply had gone out.
         assert dev["replied_before"][1] is True
-        # Spaced from the command by its inter_command_delay.
-        assert dev["times"][1] - dev["times"][0] >= 0.1
+        # Spaced from the command by its inter_command_delay, less what the
+        # two reads on the device's side can differ by.
+        assert dev["times"][1] - dev["times"][0] >= 0.1 - ARRIVAL_JITTER_S
     finally:
         await drv.disconnect()
 
@@ -231,7 +239,7 @@ async def test_without_a_delay_the_get_keeps_a_lines_gap(display) -> None:
         await drv.send_command("set_volume", {"level": 12})
         assert await _until(lambda: drv.get_state("volume") == 12, 3.0)
         assert dev["lines"] == ["SV012", "GV"]
-        assert dev["times"][1] - dev["times"][0] >= 0.04
+        assert dev["times"][1] - dev["times"][0] >= 0.05 - ARRIVAL_JITTER_S
     finally:
         await drv.disconnect()
 
