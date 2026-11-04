@@ -11,6 +11,11 @@ on:
     - cron: "17 7 * * *"
   workflow_dispatch:
 
+# Every job only reads the repository. The Windows leg's installer check
+# downloads the latest release's assets with this token, which is a read too.
+permissions:
+  contents: read
+
 jobs:
   # Which parts of the tree this push or pull request touched, for a job that
   # only has to run when its part did. Anything it cannot work out (a new

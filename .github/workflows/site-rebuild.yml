@@ -3,6 +3,9 @@ name: Trigger marketing site rebuild
 on:
   workflow_dispatch:
 
+# Calls a Netlify build hook and nothing else: no GitHub token needed.
+permissions: {}
+
 jobs:
   rebuild:
     name: Rebuild openavc.com

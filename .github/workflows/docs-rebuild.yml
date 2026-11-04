@@ -6,6 +6,9 @@ on:
     paths:
       - 'docs/**'
 
+# Calls a Netlify build hook and nothing else: no GitHub token needed.
+permissions: {}
+
 jobs:
   trigger-rebuild:
     name: Rebuild docs.openavc.com
