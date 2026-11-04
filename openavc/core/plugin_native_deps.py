@@ -34,6 +34,7 @@ import httpx
 from openavc.core.plugin_artifacts import (
     _MAX_UNCOMPRESSED_BYTES,
     _download_capped,
+    _validate_download_request,
     _validate_download_url,
 )
 from openavc.system_config import PLUGIN_REPO_DIR
@@ -247,10 +248,15 @@ async def _install_native_dep_archive(
 
     # SSRF guard: the URL comes from plugin-declared native_dependencies and
     # points at an arbitrary host (not the catalog), so reject anything that
-    # resolves to internal/metadata address space before fetching.
+    # resolves to internal/metadata address space before fetching. Release
+    # downloads redirect, so the same check runs again on every hop.
     await _validate_download_url(url)
 
-    async with internet_client(timeout=60.0, follow_redirects=True) as client:
+    async with internet_client(
+        timeout=60.0,
+        follow_redirects=True,
+        event_hooks={"request": [_validate_download_request]},
+    ) as client:
         data = await _download_capped(
             client, url, label=f"native dependency {dep_name}"
         )

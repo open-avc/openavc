@@ -44,7 +44,7 @@ def test_any_other_github_repo_refused():
     # The whole point: "is it GitHub?" is not a source check. A .py driver is
     # imported and registered, so an attacker's own repo on the same host must
     # not pass.
-    with pytest.raises(CommunityArtifactError, match="path under"):
+    with pytest.raises(CommunityArtifactError, match="main branch of the official catalog"):
         validate_catalog_url(
             f"{RAW}/attacker/evil-drivers/main/audio/acme_widget.py",
             owner_repo=DRIVERS_OWNER_REPO,
@@ -109,6 +109,50 @@ def test_api_host_uses_its_own_prefix():
         )
 
 
+# The catalog's own path also serves files that are not the catalog: another
+# branch, a pull request's ref, a commit from the repository's fork network
+# (anyone can add one by opening a pull request), an issue attachment, a
+# release asset. Only the published branch is the catalog.
+@pytest.mark.parametrize("url", [
+    f"{RAW}/open-avc/openavc-drivers/refs/pull/9/head/audio/acme_widget.py",
+    f"{RAW}/open-avc/openavc-drivers/44752fe01b60a0bf8063583857fcc3fb602accb3/audio/acme_widget.py",
+    f"{RAW}/open-avc/openavc-drivers/some-branch/audio/acme_widget.py",
+    f"{RAW}/open-avc/openavc-drivers/refs/heads/main/audio/acme_widget.py",
+    "https://github.com/open-avc/openavc-drivers/files/12655792/acme_widget.py",
+    "https://github.com/open-avc/openavc-drivers/releases/download/v1/acme_widget.py",
+    "https://github.com/open-avc/openavc-drivers/raw/some-branch/audio/acme_widget.py",
+    f"https://api.github.com/repos/{DRIVERS_OWNER_REPO}/contents/audio/acme_widget.py?ref=refs/pull/9/head",
+    f"https://api.github.com/repos/{DRIVERS_OWNER_REPO}/contents/audio/acme_widget.py?ref=main&ref=other",
+    f"https://api.github.com/repos/{DRIVERS_OWNER_REPO}/zipball/main",
+])
+def test_a_file_off_the_catalogs_branch_is_refused(url):
+    with pytest.raises(CommunityArtifactError, match="main branch of the official catalog"):
+        validate_catalog_url(url, owner_repo=DRIVERS_OWNER_REPO)
+
+
+@pytest.mark.parametrize("url", [
+    f"{RAW}/open-avc/openavc-drivers/main/audio/acme_widget.py",
+    "https://github.com/open-avc/openavc-drivers/raw/main/audio/acme_widget.py",
+    f"https://api.github.com/repos/{DRIVERS_OWNER_REPO}/contents/audio?ref=main",
+    f"https://api.github.com/repos/{DRIVERS_OWNER_REPO}/contents/audio",
+])
+def test_a_file_on_the_catalogs_branch_is_accepted(url):
+    validate_catalog_url(url, owner_repo=DRIVERS_OWNER_REPO)
+
+
+@pytest.mark.parametrize("netloc", [
+    "raw.githubusercontent.com:443",
+    "raw.githubusercontent.com:8443",
+    "raw.githubusercontent.com:notaport",
+])
+def test_an_explicit_port_is_refused(netloc):
+    with pytest.raises(CommunityArtifactError, match="not allowed"):
+        validate_catalog_url(
+            f"https://{netloc}/open-avc/openavc-drivers/main/audio/acme_widget.py",
+            owner_repo=DRIVERS_OWNER_REPO,
+        )
+
+
 # --- Mapping a URL back to its catalog key ---------------------------------
 
 
@@ -129,6 +173,19 @@ def test_catalog_relpath_handles_nested_paths():
 def test_catalog_relpath_rejects_a_foreign_repo():
     assert catalog_relpath(
         f"{RAW}/attacker/evil/main/audio/x.py", owner_repo=DRIVERS_OWNER_REPO
+    ) is None
+
+
+def test_catalog_relpath_rejects_another_ref():
+    # A hash is never looked up under a path read off a ref the catalog was not
+    # built from.
+    assert catalog_relpath(
+        f"{RAW}/open-avc/openavc-drivers/refs/pull/9/head/audio/x.py",
+        owner_repo=DRIVERS_OWNER_REPO,
+    ) is None
+    assert catalog_relpath(
+        f"{RAW}/open-avc/openavc-drivers/some-branch/audio/x.py",
+        owner_repo=DRIVERS_OWNER_REPO,
     ) is None
 
 

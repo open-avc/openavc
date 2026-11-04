@@ -233,17 +233,23 @@ async def get_driver_help(driver_id: str) -> dict[str, Any]:
 # Base URL for the community driver repo on GitHub
 COMMUNITY_REPO_URL = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main"
 
-# Hosts the install / update endpoints are allowed to fetch from. Used
-# by both the YAML download and the sibling companion download so the
-# allowlist stays consistent.
-#
-# A host check alone is NOT the gate — see _require_catalog_url below. Kept
-# for the error text and for the discovery-hint fetches that aren't installs.
-_GITHUB_HOSTS: frozenset[str] = frozenset({
-    "raw.githubusercontent.com",
-    "github.com",
-    "api.github.com",
-})
+def _drivers_owner_repo() -> str:
+    from openavc.utils.community_integrity import DRIVERS_OWNER_REPO
+    return DRIVERS_OWNER_REPO
+
+
+def _is_catalog_url(url: str) -> bool:
+    """True when ``url`` is a file on the driver catalog's published branch."""
+    from openavc.utils.community_integrity import (
+        DRIVERS_OWNER_REPO,
+        CommunityArtifactError,
+        validate_catalog_url,
+    )
+    try:
+        validate_catalog_url(url, owner_repo=DRIVERS_OWNER_REPO)
+    except CommunityArtifactError:
+        return False
+    return True
 
 
 def _require_catalog_url(url: str, *, what: str) -> None:
@@ -474,11 +480,11 @@ async def _download_companion(
     """Download a YAML driver's sibling Python companion.
 
     Resolves ``companion_relpath`` against the YAML's URL via
-    ``urljoin``, validates the resulting host stays on the GitHub
-    allowlist (so a hostile YAML can't redirect the fetch to an
-    arbitrary URL), sanitizes the filename the same way the upload
-    endpoint does, and writes the file to ``driver_repo``. Returns
-    the local path.
+    ``urljoin`` and holds the result to the same catalog rule as the
+    YAML itself (the path comes from downloaded content, so a host
+    check would let it name any repository on GitHub), sanitizes the
+    filename the same way the upload endpoint does, and writes the
+    file to ``driver_repo``. Returns the local path.
 
     Raises ``HTTPException`` with a descriptive 422 / 502 on any
     failure so callers can roll back partial state.
@@ -486,19 +492,7 @@ async def _download_companion(
     import re
     import httpx
     from pathlib import PurePosixPath
-    from urllib.parse import urljoin, urlparse
-
-    companion_url = urljoin(yaml_url, companion_relpath)
-    parsed = urlparse(companion_url)
-    if not parsed.hostname or parsed.hostname not in _GITHUB_HOSTS:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"Driver '{driver_id}' references companion at "
-                f"{companion_url!r}, which is not on an allowed host "
-                f"({', '.join(sorted(_GITHUB_HOSTS))})."
-            ),
-        )
+    from urllib.parse import urljoin
 
     companion_filename = PurePosixPath(companion_relpath).name
     # Require the documented ``_discovery.py`` suffix. Anything else is
@@ -514,6 +508,17 @@ async def _download_companion(
                 f"{companion_relpath!r} with an invalid filename — must "
                 "end in '_discovery.py' and use only letters, numbers, "
                 "hyphens, and underscores."
+            ),
+        )
+
+    companion_url = urljoin(yaml_url, companion_relpath)
+    if not _is_catalog_url(companion_url):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Driver '{driver_id}' references companion at "
+                f"{companion_url!r}, which is not a file in the official "
+                f"community driver catalog ({_drivers_owner_repo()})."
             ),
         )
 
@@ -579,15 +584,14 @@ async def _try_download_python_companion(
     """
     import re
     import httpx
-    from urllib.parse import urljoin, urlparse
+    from urllib.parse import urljoin
 
     # Convention-named, but validate anyway: only the two documented suffixes,
     # so a redirect can't land an arbitrary .py in driver_repo.
     if not re.match(r'^[a-zA-Z0-9_\-]+_(discovery|sim)\.py$', companion_filename):
         return CompanionFetch(None)
     companion_url = urljoin(main_url, companion_filename)
-    parsed = urlparse(companion_url)
-    if not parsed.hostname or parsed.hostname not in _GITHUB_HOSTS:
+    if not _is_catalog_url(companion_url):
         return CompanionFetch(None)
 
     companion_filepath = driver_repo / companion_filename

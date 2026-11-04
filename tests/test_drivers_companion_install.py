@@ -117,18 +117,18 @@ async def test_download_companion_writes_to_repo(tmp_path):
 
 @pytest.mark.asyncio
 async def test_download_companion_rejects_off_allowlist_url(tmp_path):
-    # If the YAML companion path resolves to a non-GitHub host (e.g. an
-    # absolute URL pointing at attacker.example), fail before any fetch.
+    # If the YAML companion path resolves off the catalog (e.g. an absolute
+    # URL pointing at attacker.example), fail before any fetch.
     yaml_url = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/utility/foo.avcdriver"
     with pytest.raises(HTTPException) as exc:
         await _download_companion(
             yaml_url=yaml_url,
-            companion_relpath="https://attacker.example/evil.py",
+            companion_relpath="https://attacker.example/evil_discovery.py",
             driver_repo=tmp_path,
             driver_id="foo",
         )
     assert exc.value.status_code == 422
-    assert "allowed host" in exc.value.detail
+    assert "official community driver catalog" in exc.value.detail
 
 
 @pytest.mark.asyncio

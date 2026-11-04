@@ -85,6 +85,12 @@ async def _validate_download_url(url: str) -> None:
             )
 
 
+async def _validate_download_request(request: httpx.Request) -> None:
+    """:func:`_validate_download_url` as an httpx request hook, so a client that
+    follows redirects checks every hop and not just the URL it was given."""
+    await _validate_download_url(str(request.url))
+
+
 async def _download_capped(
     client: httpx.AsyncClient,
     url: str,

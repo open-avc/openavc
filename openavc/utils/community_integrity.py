@@ -11,7 +11,8 @@ Two controls live here, and it is worth being precise about what each one buys,
 because a control that looks like verification but isn't is worse than none.
 
 **Source pinning** (:func:`validate_catalog_url`). A URL must be https and must
-sit under the one official catalog repository. A hostname-only "is it GitHub?"
+name a file on the published branch of the one official catalog repository,
+and a client that follows redirects asks the same of every hop. A hostname-only "is it GitHub?"
 check gives false assurance: any attacker-controlled GitHub repo passes it, yet
 the code runs in-process. This is the control that stops an install being aimed
 somewhere else entirely — including by a caller that isn't a person, such as an
@@ -49,7 +50,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Awaitable, Callable, Mapping
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from openavc.utils.logger import get_logger
 
@@ -59,12 +60,24 @@ log = get_logger(__name__)
 DRIVERS_OWNER_REPO = "open-avc/openavc-drivers"
 PLUGINS_OWNER_REPO = "open-avc/openavc-plugins"
 
+# The branch the catalogs are built from. The repository's path serves more
+# than that branch: another branch, a pull request's ref (``refs/pull/N/head``),
+# and any commit in the repository's fork network, which anyone can add to by
+# opening a pull request. None of those is reviewed catalog content, and for an
+# id the catalog does not list there are no hashes to catch it, so the ref is
+# part of the source pin.
+CATALOG_REF = "main"
+
 # For a URL to count as "from an official catalog" its host must be one of these
-# and its path must sit under the required prefix for that host.
+# and its path must sit under the required prefix for that host. github.com is
+# held to its raw-file route, which redirects to the raw host; the rest of a
+# repository's github.com path serves other things (issue attachments, release
+# assets). api.github.com is held to the contents API, whose ref is the query's
+# ``ref`` and is checked separately.
 _HOST_PREFIXES = {
-    "raw.githubusercontent.com": "/{owner_repo}/",
-    "github.com": "/{owner_repo}/",
-    "api.github.com": "/repos/{owner_repo}/",
+    "raw.githubusercontent.com": "/{owner_repo}/" + CATALOG_REF + "/",
+    "github.com": "/{owner_repo}/raw/" + CATALOG_REF + "/",
+    "api.github.com": "/repos/{owner_repo}/contents/",
 }
 
 
@@ -78,11 +91,16 @@ class ArtifactMismatch(CommunityArtifactError):
 
 
 def validate_catalog_url(url: str, *, owner_repo: str) -> None:
-    """Raise unless ``url`` is an https URL under the official catalog repo.
+    """Raise unless ``url`` is an https URL for a file on the official catalog
+    repo's :data:`CATALOG_REF` branch.
 
     Rejecting anything else is what keeps "community driver" and "community
     plugin" meaning the curated, reviewed catalog rather than any repository
-    that happens to live on the same host.
+    that happens to live on the same host, or any commit that happens to be
+    reachable under the catalog's own path.
+
+    Asked of every URL an install fetches, redirect hops included where the
+    client follows them.
     """
     parsed = urlparse(url)
     if parsed.scheme != "https":
@@ -90,19 +108,28 @@ def validate_catalog_url(url: str, *, owner_repo: str) -> None:
             f"Community artifact URL must use https, got: {parsed.scheme or url!r}"
         )
     template = _HOST_PREFIXES.get(parsed.hostname or "")
-    if template is None:
+    try:
+        port = parsed.port
+    except ValueError:
+        port = -1
+    if template is None or port is not None:
         raise CommunityArtifactError(
             f"Community artifact URL must come from the official catalog "
-            f"({owner_repo}); host {parsed.hostname or url!r} is not allowed"
+            f"({owner_repo}); host {parsed.netloc or url!r} is not allowed"
         )
     # Decode %2e%2e / %2f before the prefix and traversal checks so an encoded
     # path can't masquerade as the catalog and then resolve elsewhere.
     path = unquote(parsed.path)
     prefix = template.format(owner_repo=owner_repo)
-    if not path.startswith(prefix) or ".." in path.split("/"):
+    refs = parse_qs(parsed.query).get("ref", [CATALOG_REF])
+    if (
+        not path.startswith(prefix)
+        or ".." in path.split("/")
+        or refs != [CATALOG_REF]
+    ):
         raise CommunityArtifactError(
-            f"Community artifact URL must be a path under {owner_repo}; "
-            f"path {parsed.path!r} is not"
+            f"Community artifact URL must be a file on the {CATALOG_REF} branch "
+            f"of the official catalog ({owner_repo}); {parsed.path!r} is not"
         )
 
 
@@ -119,8 +146,14 @@ def catalog_relpath(url: str, *, owner_repo: str) -> str | None:
         return None
     parts = unquote(parsed.path).lstrip("/").split("/")
     owner, repo = owner_repo.split("/", 1)
-    # owner / repo / ref / rest...
-    if len(parts) < 4 or parts[0] != owner or parts[1] != repo:
+    # owner / repo / ref / rest... -- and only the catalog's own branch: a path
+    # read off another ref names a file the catalog never published.
+    if (
+        len(parts) < 4
+        or parts[0] != owner
+        or parts[1] != repo
+        or parts[2] != CATALOG_REF
+    ):
         return None
     return "/".join(parts[3:]) or None
 

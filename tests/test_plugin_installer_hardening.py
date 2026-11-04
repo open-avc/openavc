@@ -16,6 +16,7 @@ import zipfile
 from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 import openavc.core.plugin_artifacts as artifacts
@@ -184,6 +185,87 @@ class TestCatalogUrl:
                 "evil", "https://raw.githubusercontent.com/attacker/evil/main/x.py"
             )
         assert not (tmp_path / "evil").exists()
+
+
+# ═══════════════════════════════════════════════════════════
+#  redirects: every hop is checked, not just the first URL
+# ═══════════════════════════════════════════════════════════
+
+
+def _real_client_over(handler):
+    """``internet_client`` as the installer calls it, over a mock transport:
+    a real httpx client, so redirects and request hooks behave as they do on
+    the wire."""
+    def factory(**kwargs):
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler), **kwargs)
+    return factory
+
+
+class TestRedirectHops:
+
+    async def test_a_redirect_off_the_catalog_is_refused(self, tmp_path):
+        offsite = "https://raw.githubusercontent.com/attacker/evil/main/acme_thing.py"
+        requested = []
+
+        def handler(request):
+            url = str(request.url)
+            requested.append(url)
+            if url.endswith("/manifest.json"):
+                return httpx.Response(200, json={"plugins": {}})
+            if url == offsite:
+                return httpx.Response(200, text=_plugin_src("acme_thing"))
+            return httpx.Response(302, headers={"location": offsite})
+
+        with patch.object(pi, "internet_client", _real_client_over(handler)):
+            with pytest.raises(ValueError, match="official catalog"):
+                await install_plugin("acme_thing", f"{CATALOG}/acme_thing.py")
+        assert offsite not in requested
+        assert not (tmp_path / "acme_thing").exists()
+
+    async def test_a_redirect_within_the_catalog_is_followed(self, tmp_path):
+        # github.com's raw route answers with a redirect to the raw host.
+        start = "https://github.com/open-avc/openavc-plugins/raw/main/acme_thing.py"
+
+        def handler(request):
+            url = str(request.url)
+            if url.endswith("/manifest.json"):
+                return httpx.Response(200, json={"plugins": {}})
+            if url == start:
+                return httpx.Response(
+                    302, headers={"location": f"{CATALOG}/acme_thing.py"}
+                )
+            return httpx.Response(200, text=_plugin_src("acme_thing"))
+
+        with patch.object(pi, "internet_client", _real_client_over(handler)):
+            result = await install_plugin("acme_thing", start)
+        assert result["status"] == "installed"
+
+    @pytest.mark.parametrize("target, refusal", [
+        ("http://169.254.169.254/latest/meta-data/", "https"),
+        ("https://internal.acme.test/x.zip", "disallowed"),
+    ])
+    async def test_a_native_dependency_redirect_into_the_network_is_refused(
+        self, tmp_path, target, refusal
+    ):
+        requested = []
+
+        def handler(request):
+            requested.append(str(request.url))
+            return httpx.Response(302, headers={"location": target})
+
+        addresses = {"releases.acme.test": "140.82.112.3", "internal.acme.test": "10.0.0.5"}
+
+        async def resolve(host, port, **kwargs):
+            return [(2, 1, 6, "", (addresses[host], port))]
+
+        loop = asyncio.get_event_loop()
+        info = {"url": "https://releases.acme.test/x.zip", "extract": "f"}
+        with patch.object(loop, "getaddrinfo", resolve), patch.object(
+            native_deps, "internet_client", _real_client_over(handler)
+        ):
+            with pytest.raises(ValueError, match=refusal):
+                await native_deps._install_native_dep_archive("dep", info, tmp_path)
+        assert requested == ["https://releases.acme.test/x.zip"]
 
 
 # ═══════════════════════════════════════════════════════════

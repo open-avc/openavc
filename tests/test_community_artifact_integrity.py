@@ -130,6 +130,68 @@ async def test_install_refuses_a_driver_from_another_github_repo(driver_repo, mo
     assert list(driver_repo.iterdir()) == []
 
 
+# raw.githubusercontent.com serves more than the catalog's main branch under the
+# catalog's own path: another branch, a pull request's ref, and any commit in
+# the repository's fork network, which anyone can push to by opening a pull
+# request. For a driver id the catalog does not list there are no hashes to
+# check against, so the URL itself is the only gate.
+_NOT_MAIN = [
+    f"{CATALOG.rsplit('/', 1)[0]}/refs/pull/9/head/audio/acme_widget.avcdriver",
+    f"{CATALOG.rsplit('/', 1)[0]}/44752fe01b60a0bf8063583857fcc3fb602accb3/audio/acme_widget.avcdriver",
+    f"{CATALOG.rsplit('/', 1)[0]}/some-branch/audio/acme_widget.avcdriver",
+    "https://github.com/open-avc/openavc-drivers/files/12655792/acme_widget.avcdriver",
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("url", _NOT_MAIN)
+async def test_install_refuses_a_driver_that_is_not_on_the_catalogs_main_branch(
+    driver_repo, monkeypatch, url
+):
+    _catalog_says(monkeypatch, None)
+    client = _client(_resp(YAML_BODY))
+    with patch("httpx.AsyncClient", return_value=client):
+        with pytest.raises(HTTPException) as exc:
+            await install_community_driver(
+                CommunityDriverInstallRequest(driver_id="acme_widget", file_url=url)
+            )
+    assert exc.value.status_code == 422
+    assert "main branch" in exc.value.detail
+    client.get.assert_not_called()
+    assert list(driver_repo.iterdir()) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("companion", [
+    "../../../../attacker/evil/main/acme_widget_discovery.py",
+    "https://raw.githubusercontent.com/attacker/evil/main/acme_widget_discovery.py",
+    "../../refs/pull/9/head/audio/acme_widget_discovery.py",
+])
+async def test_a_companion_off_the_catalog_is_refused_and_rolled_back(
+    driver_repo, monkeypatch, companion
+):
+    # The companion's path comes from the downloaded YAML, so it is resolved
+    # against the YAML's URL and then held to the same rule as the YAML itself.
+    _catalog_says(monkeypatch, None)
+    yaml_text = YAML_BODY + f"discovery:\n  python:\n    file: {companion}\n"
+    companion_client = _client(_resp("async def probe(ctx):\n    return None\n"))
+    with patch(
+        "httpx.AsyncClient",
+        side_effect=[_client(_resp(yaml_text)), companion_client],
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await install_community_driver(
+                CommunityDriverInstallRequest(
+                    driver_id="acme_widget",
+                    file_url=f"{CATALOG}/audio/acme_widget.avcdriver",
+                )
+            )
+    assert exc.value.status_code == 422
+    assert "open-avc/openavc-drivers" in exc.value.detail
+    companion_client.get.assert_not_called()
+    assert list(driver_repo.iterdir()) == []
+
+
 @pytest.mark.asyncio
 async def test_install_refuses_a_plaintext_http_url(driver_repo, monkeypatch):
     _catalog_says(monkeypatch, None)

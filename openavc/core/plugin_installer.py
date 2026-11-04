@@ -101,6 +101,13 @@ def _validate_catalog_url(url: str) -> None:
 
 
 
+async def _require_catalog_request(request: httpx.Request) -> None:
+    """Every request an install sends, redirect hops included, is held to the
+    catalog rule. A check of the first URL alone would let a redirect take the
+    download anywhere."""
+    _validate_catalog_url(str(request.url))
+
+
 def _is_safe_entry_name(name: str) -> bool:
     """True if a GitHub Contents API entry name is a plain filename.
 
@@ -297,7 +304,11 @@ async def _do_install(plugin_id: str, file_url: str) -> dict[str, Any]:
     catalog = await _plugin_catalog_check(plugin_id)
 
     try:
-        async with internet_client(timeout=30.0, follow_redirects=True) as client:
+        async with internet_client(
+            timeout=30.0,
+            follow_redirects=True,
+            event_hooks={"request": [_require_catalog_request]},
+        ) as client:
             if file_url.endswith(".py"):
                 # Single file plugin
                 content = await _download_capped(
