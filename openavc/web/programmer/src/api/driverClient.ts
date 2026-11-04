@@ -131,6 +131,9 @@ export interface DryRunResult {
   /** UDP only: every host:port the datagram went to (a magic packet goes to
    *  the broadcast address and to the device). */
   udp_targets?: string[] | null;
+  /** What the command's read_back sends after it, each its own message, in
+   *  order: the same forms as `wire` / `wire_hex`, plus an HTTP body. */
+  read_back?: { wire: string; wire_hex: string | null; body?: string | null }[];
 }
 
 export interface TestCommandRequest {

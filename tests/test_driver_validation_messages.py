@@ -976,6 +976,40 @@ CASES: dict[str, Any] = {
     "then_query_placeholder_names_nothing": _resp(
         match="CHG", then_query=["PWR {unit}?\r"]
     ),
+    # --- read_back (a command's own read-back queries) ---
+    "read_back_not_a_query": _d(commands={"set": {"send": "S\r", "read_back": 5}}),
+    "read_back_empty_list": _d(commands={"set": {"send": "S\r", "read_back": []}}),
+    "read_back_blank_entry": _d(commands={"set": {"send": "S\r", "read_back": ["G\r", " "]}}),
+    "read_back_true_on_send_command": _d(commands={"set": {"send": "S\r", "read_back": True}}),
+    "read_back_on_udp_command": _d(
+        commands={"wake": {"udp": {"payload": "W", "port": 9}, "read_back": "G\r"}}
+    ),
+    "read_back_names_itself": _d(commands={"set": {"send": "S\r", "read_back": "set"}}),
+    "read_back_names_a_command_that_reads_back": _d(
+        commands={
+            "set": {"send": "S\r", "read_back": "get"},
+            "get": {"send": "G\r", "read_back": "G\r"},
+        }
+    ),
+    "read_back_named_command_has_a_param_this_one_lacks": _d(
+        commands={
+            "set": {"send": "S\r", "read_back": ["get"]},
+            "get": {"send": "G{zone}\r", "params": {"zone": {"type": "integer"}}},
+        }
+    ),
+    "read_back_osc_not_an_address": _d(
+        transport="osc",
+        commands={"set": {"address": "/fader", "read_back": "fader"}},
+    ),
+    "read_back_placeholder_names_nothing": _d(
+        commands={
+            "set": {
+                "send": "S{zone}\r",
+                "params": {"zone": {"type": "integer"}},
+                "read_back": "G{zon}\r",
+            }
+        }
+    ),
     # --- {name} placeholders ---
     "command_placeholder_names_nothing": _d(
         commands={

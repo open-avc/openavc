@@ -1686,6 +1686,28 @@ DEFS = {
                 'doc': 'Declares this command as a status query: the device answers it by reporting the named state variable. The auto-generated simulator replies with that variable\'s current value instead of inferring one from the command name. Must name a declared state variable; on a command with exactly one child_id parameter it may instead name a state variable of that parameter\'s child type.',
                 'since': '0.24.0',
             },
+            'read_back': {
+                'doc': "YAML drivers only. Queries sent once this command has gone out, each as its own message, so its new value is read straight away instead of at the next poll: for a device whose answer to a set carries no value (an acknowledgement such as \"OK\"), that never reports a client's own change back to it, or whose document asks for each reply before the next message. A query or a list of them. A command name runs that command with this one's values for its parameters, so each parameter it declares has to be a parameter of this command too. Anything else is sent the way a poll query is: on tcp, serial and udp a raw protocol string (send_frame applies, command_prefix / command_suffix do not), on HTTP a path read with GET, on OSC an address sent with no arguments; {param} placeholders take this command's parameters as it sent them (after map: and scale) and config fields. true reads back from the command itself: on OSC its own address with no arguments, on HTTP a GET of its own path (without its query_params or body). The queries go out after the command's write (on HTTP, after its response) and are spaced like poll lines; a device that needs each reply before the next message declares inter_command_delay, which spaces them from the command too. None go out while polling.when_state holds the poll. A query already waiting to go out is not queued twice, so a slider dragged through many values is still read back after its last one. Keep the poll that reads these values: it is what reads them on a platform that ignores read_back. Not on a udp: or ir: command.",
+                'enhancement_since': '0.39.0',
+                'one_of': (
+                    {
+                        'type': 'boolean',
+                        'const': True,
+                    },
+                    {
+                        'type': 'string',
+                        'min_len': 1,
+                    },
+                    {
+                        'type': 'array',
+                        'min_items': 1,
+                        'items': {
+                            'type': 'string',
+                            'min_len': 1,
+                        },
+                    },
+                ),
+            },
             'available_offline': {
                 'type': 'boolean',
                 'doc': "Let this command run while the device is offline (no live connection). Default false: the platform blocks commands to a disconnected device. Set true only for a command whose handler needs no connection — the canonical case is a Wake-on-LAN power_on that sends a magic packet instead of talking to the device over its (dead) control link. Param validation still runs; the driver's handler must not assume a live transport. When such a command is promoted to a Quick Action button, the button stays available regardless of connection state.",

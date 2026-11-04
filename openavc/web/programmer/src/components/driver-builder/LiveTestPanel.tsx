@@ -1349,6 +1349,7 @@ function WirePreview({
 
   const headers = Object.entries(preview.headers ?? {});
   const targets = preview.udp_targets ?? [];
+  const readBack = preview.read_back ?? [];
   return (
     <span style={{ whiteSpace: "pre-wrap" }}>
       {visibleBytes(preview.wire)}
@@ -1358,6 +1359,17 @@ function WirePreview({
       {preview.body ? `\n${visibleBytes(preview.body)}` : ""}
       {targets.length > 0 && (
         <span style={muted}>{`\nas a UDP datagram to ${targets.join(" and ")}`}</span>
+      )}
+      {readBack.length > 0 && (
+        <span data-testid="read-back-preview">
+          <span style={muted}>{"\nthen reads the value back with"}</span>
+          {readBack.map((q, i) => (
+            <span key={i}>
+              {`\n${visibleBytes(q.wire)}`}
+              {q.body ? `\n${visibleBytes(q.body)}` : ""}
+            </span>
+          ))}
+        </span>
       )}
     </span>
   );

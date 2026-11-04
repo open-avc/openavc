@@ -26,6 +26,7 @@ from openavc.drivers.avcdriver_semantic import (
     UNEVALUATED_KEY,
     child_param_reference_errors,
     command_confirm_errors,
+    command_read_back_errors,
     command_sleep_errors,
     config_learned_from_errors,
     device_setting_state_key_errors,
@@ -339,6 +340,11 @@ def python_driver_info_issues(
             if cmd_def.get("confirm") is not UNEVALUATED:
                 issues.extend(command_confirm_errors(f"Command '{cmd_name}'", cmd_def))
             issues.extend(command_sleep_errors(cmd_name, cmd_def, commands))
+            issues.extend(
+                command_read_back_errors(
+                    cmd_name, cmd_def, commands, info.get("transport"), python=True
+                )
+            )
             issues.extend(
                 file_command_errors(f"Command '{cmd_name}'", cmd_def, python=True)
             )

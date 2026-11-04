@@ -91,9 +91,18 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
     }
     const next: Record<string, DriverCommandDef> = {};
     for (const [k, v] of Object.entries(commands)) {
-      // A command naming the renamed one as its wake command follows it.
-      next[k === oldName ? newName : k] =
-        v.sleeps_device === oldName ? { ...v, sleeps_device: newName } : v;
+      // A command naming the renamed one as its wake command, or as a
+      // read-back query, follows it.
+      let moved = v.sleeps_device === oldName ? { ...v, sleeps_device: newName } : v;
+      if (moved.read_back === oldName) {
+        moved = { ...moved, read_back: newName };
+      } else if (Array.isArray(moved.read_back) && moved.read_back.includes(oldName)) {
+        moved = {
+          ...moved,
+          read_back: moved.read_back.map((q) => (q === oldName ? newName : q)),
+        };
+      }
+      next[k === oldName ? newName : k] = moved;
     }
     onUpdate({ commands: next });
     if (expanded === oldName) setExpanded(newName);
@@ -501,6 +510,17 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
                   draft={draft}
                   onUpdate={(partial) => updateCommand(name, partial)}
                 />
+
+                {!cmd.udp && (
+                  <ReadBackField
+                    commandId={name}
+                    value={cmd.read_back}
+                    route={commandRoute(cmd, draft.transport)}
+                    commandNames={commandNames}
+                    labelStyle={labelStyle}
+                    onChange={(read_back) => updateCommand(name, { read_back })}
+                  />
+                )}
               </div>
             )}
           </div>
@@ -656,6 +676,225 @@ export function SleepsDeviceField({
             <div style={warning}>
               {pickedName} also needs {needs.join(" and ")}.
             </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** How the runtime sends a command, picked from its own fields the way
+ *  ConfigurableDriver picks it: an address is OSC, a path or method is HTTP,
+ *  anything else goes over the byte stream. */
+export function commandRoute(
+  cmd: DriverCommandDef,
+  transport: string | undefined,
+): "osc" | "http" | "raw" {
+  if (cmd.address !== undefined || transport === "osc") return "osc";
+  if (cmd.path !== undefined || cmd.method !== undefined || transport === "http") {
+    return "http";
+  }
+  return "raw";
+}
+
+/** A `read_back` value as the rows the field edits: `true` is no rows (the
+ *  command's own address or path), a string one row, a list its rows. */
+export function readBackRows(value: DriverCommandDef["read_back"]): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string");
+  return [];
+}
+
+/** The rows as the value the driver carries: one query is a string, more a
+ *  list, none removes the key. Blank rows are not queries. */
+export function readBackValue(rows: string[]): string | string[] | undefined {
+  const queries = rows.filter((r) => r.trim() !== "");
+  if (queries.length === 0) return undefined;
+  return queries.length === 1 ? queries[0] : queries;
+}
+
+/** A command's `read_back`: the queries sent once it has gone out, each as
+ *  its own message, so its new value is read at once instead of at the next
+ *  poll. On an OSC or HTTP command it may read itself back (`true`). Unticked
+ *  removes the key. Ticked with no query typed yet is kept here, because an
+ *  empty `read_back` is not a value the driver can carry. */
+export function ReadBackField({
+  commandId,
+  value,
+  route,
+  commandNames,
+  labelStyle,
+  onChange,
+}: {
+  commandId: string;
+  value: DriverCommandDef["read_back"];
+  route: "osc" | "http" | "raw";
+  commandNames: string[];
+  labelStyle: React.CSSProperties;
+  onChange: (readBack: DriverCommandDef["read_back"]) => void;
+}) {
+  const ownForm = route === "osc" || route === "http";
+  const fromValue = readBackRows(value);
+  const [rows, setRows] = useState<string[]>(fromValue.length > 0 ? fromValue : [""]);
+  const [ticked, setTicked] = useState(value !== undefined && value !== false);
+  // Follow a value changed from outside (an undo, a reloaded draft) without
+  // dropping the blank row somebody is typing into.
+  const valueKey = JSON.stringify(fromValue);
+  useEffect(() => {
+    const kept = rows.filter((r) => r.trim() !== "");
+    if (JSON.stringify(kept) !== valueKey) {
+      setRows(fromValue.length > 0 ? fromValue : [""]);
+    }
+    if (value !== undefined) setTicked(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [valueKey, value === true]);
+
+  const enabled = ticked || value !== undefined;
+  const own = value === true;
+  const others = commandNames.filter((n) => n !== commandId);
+  const listId = `read-back-commands-${commandId}`;
+  const hint: React.CSSProperties = {
+    fontSize: "11px",
+    color: "var(--text-muted)",
+    marginTop: "var(--space-xs)",
+  };
+
+  const writeRows = (next: string[]) => {
+    setRows(next);
+    onChange(readBackValue(next));
+  };
+
+  const ownLabel =
+    route === "osc"
+      ? "This command's own address, with no arguments"
+      : "A GET of this command's own path";
+  const rowsHint =
+    route === "osc"
+      ? "Each is an OSC address, sent with no arguments, or the name of a command to run."
+      : route === "http"
+        ? "Each is a path read with GET, or the name of a command to run, for an API that reads with POST."
+        : "Each is sent as its own message, the way a poll query is, or names a command to run.";
+  const placeholder =
+    route === "osc"
+      ? "e.g., /ch/{channel:02d}/mix/fader"
+      : route === "http"
+        ? "e.g., /api/status"
+        : "e.g., GET VOLUME\\r";
+
+  return (
+    <div style={{ marginTop: "var(--space-md)" }}>
+      <label
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 6,
+          fontSize: "var(--font-size-sm)",
+          color: "var(--text-secondary)",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => {
+            if (e.target.checked) {
+              setTicked(true);
+              if (ownForm) onChange(true);
+              else setRows([""]);
+            } else {
+              setTicked(false);
+              setRows([""]);
+              onChange(undefined);
+            }
+          }}
+          style={{ marginTop: 3 }}
+        />
+        <span>
+          Reads its value back
+          <div style={hint}>
+            Tick this when the device&apos;s answer to this command does not say
+            the new value, or the device never reports a change it was sent.
+            OpenAVC then reads the value straight after sending instead of at
+            the next poll, except while Pause Polling holds the poll. Keep the
+            value in Poll Queries as well: OpenAVC before 0.39.0 reads it only
+            there.
+          </div>
+        </span>
+      </label>
+      {enabled && (
+        <div style={{ marginTop: "var(--space-sm)" }}>
+          {ownForm && (
+            <>
+              <label style={labelStyle}>Read back with</label>
+              <select
+                aria-label="Read back with"
+                value={own ? "own" : "queries"}
+                onChange={(e) => {
+                  if (e.target.value === "own") onChange(true);
+                  else onChange(readBackValue(rows));
+                }}
+                style={{ width: "100%", marginBottom: "var(--space-sm)" }}
+              >
+                <option value="own">{ownLabel}</option>
+                <option value="queries">The queries below</option>
+              </select>
+            </>
+          )}
+          {!own && (
+            <>
+              {!ownForm && <label style={labelStyle}>Read back with</label>}
+              <datalist id={listId}>
+                {others.map((n) => (
+                  <option key={n} value={n} />
+                ))}
+              </datalist>
+              {rows.map((row, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex",
+                    gap: "var(--space-sm)",
+                    marginBottom: "var(--space-xs)",
+                    alignItems: "center",
+                  }}
+                >
+                  <input
+                    aria-label={`Read-back query ${i + 1}`}
+                    list={listId}
+                    value={row}
+                    onChange={(e) =>
+                      writeRows(rows.map((r, j) => (j === i ? e.target.value : r)))
+                    }
+                    placeholder={placeholder}
+                    style={{ flex: 1, fontFamily: "var(--font-mono)" }}
+                  />
+                  <button
+                    aria-label={`Remove read-back query ${i + 1}`}
+                    onClick={() => {
+                      const next = rows.filter((_, j) => j !== i);
+                      writeRows(next.length > 0 ? next : [""]);
+                    }}
+                    style={{ padding: "2px", color: "var(--text-muted)" }}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={() => setRows([...rows, ""])}
+                style={{
+                  fontSize: "var(--font-size-sm)",
+                  color: "var(--accent)",
+                  padding: "var(--space-xs) 0",
+                }}
+              >
+                + Add a query
+              </button>
+              <div style={hint}>
+                {rowsHint} {"{param}"} takes this command&apos;s value as it was
+                sent. A command named here is sent with this command&apos;s
+                values for its parameters.
+              </div>
+            </>
           )}
         </div>
       )}

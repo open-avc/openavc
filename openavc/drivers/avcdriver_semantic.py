@@ -490,6 +490,25 @@ def validate_substitutions(driver_def: dict[str, Any]) -> list[str]:
                             _CMD_SOURCES,
                         )
                     )
+            # A read-back query is filled from this command's parameters too;
+            # one that names a command is that command's to fill.
+            read_back = cmd.get("read_back")
+            read_backs = (
+                [read_back] if isinstance(read_back, str)
+                else read_back if isinstance(read_back, list) else []
+            )
+            for i, entry in enumerate(read_backs):
+                if not isinstance(entry, str) or entry in commands:
+                    continue
+                errors.extend(
+                    _unresolved_substitutions(
+                        f"commands.{name}.read_back"
+                        + (f"[{i}]" if isinstance(read_back, list) else ""),
+                        entry,
+                        resolvable,
+                        _CMD_SOURCES,
+                    )
+                )
             udp = cmd.get("udp")
             if isinstance(udp, dict):
                 for field in ("payload", "host", "port"):
@@ -1717,6 +1736,11 @@ def validate_driver_definition(
                     )
         errors.extend(command_confirm_errors(f"Command '{cmd_name}'", cmd_def))
         errors.extend(command_sleep_errors(cmd_name, cmd_def, commands))
+        errors.extend(
+            command_read_back_errors(
+                cmd_name, cmd_def, commands, driver_def.get("transport")
+            )
+        )
         errors.extend(
             file_command_errors(f"Command '{cmd_name}'", cmd_def, python=False)
         )
@@ -3634,6 +3658,102 @@ def command_sleep_errors(
             f"restarts_device_for: give it the measured seconds the device takes "
             f"to come back after '{wake}'"
         )
+    return errors
+
+
+def command_read_back_errors(
+    cmd_name: str,
+    cmd_def: dict[str, Any],
+    commands: dict[str, Any],
+    transport: Any,
+    python: bool = False,
+) -> list[str]:
+    """A command's ``read_back`` is something the runtime can send after it.
+
+    ``true`` reads the command's own OSC address or HTTP path; a string or a
+    list of them names a command, or is a query sent as a poll query is. A
+    named command gets the parameters this one shares with it by name, so
+    each parameter it declares has to be one of this command's; and it may
+    not read back itself, or one press would read back without end. Shared with the Python surface
+    (``python_info``), which refuses the field outright: a Python driver
+    reads a value back in its own send_command.
+    """
+    raw = cmd_def.get("read_back")
+    if raw is None or _unevaluated(raw):
+        return []
+    where = f"Command '{cmd_name}'"
+    if python:
+        return [
+            f"{where}: 'read_back' is read by YAML drivers; a Python driver "
+            f"reads the value back in its own send_command"
+        ]
+    if cmd_def.get("udp") is not None or cmd_def.get("ir") is not None:
+        how = "udp" if cmd_def.get("udp") is not None else "ir"
+        return [
+            f"{where}: 'read_back' reads a value back over the device's "
+            f"connection, and a '{how}' command is sent beside it, so nothing "
+            f"would answer"
+        ]
+    shape = (
+        "'read_back' must be true, a query, or a list of queries"
+    )
+    if raw is True:
+        if cmd_def.get("address") is None and not (
+            cmd_def.get("path") or cmd_def.get("method")
+        ):
+            return [
+                f"{where}: 'read_back: true' reads back from an OSC command's "
+                f"own address or an HTTP command's own path. Name the query "
+                f"that reads this command's value instead"
+            ]
+        return []
+    if isinstance(raw, str):
+        entries = [raw]
+    elif isinstance(raw, list) and raw:
+        entries = raw
+    else:
+        return [f"{where}: {shape}"]
+    if any(not isinstance(e, str) or not e.strip() for e in entries):
+        return [f"{where}: {shape}"]
+
+    errors: list[str] = []
+    own_params = cmd_def.get("params")
+    own_params = own_params if isinstance(own_params, dict) else {}
+    for i, entry in enumerate(entries):
+        at = f"{where}: read_back" + (f"[{i}]" if isinstance(raw, list) else "")
+        if entry == cmd_name:
+            errors.append(
+                f"{at} names this command itself; name the query that reads "
+                f"its value"
+            )
+            continue
+        named = commands.get(entry) if isinstance(commands, dict) else None
+        if isinstance(named, dict):
+            if named.get("read_back") is not None:
+                errors.append(
+                    f"{at} names '{entry}', which has a read_back of its own. "
+                    f"Name a command that only reads"
+                )
+            if named.get("udp") is not None or named.get("ir") is not None:
+                errors.append(
+                    f"{at} names '{entry}', which is sent beside the device's "
+                    f"connection, so nothing would answer it"
+                )
+            declared = named.get("params")
+            if isinstance(declared, dict) and UNEVALUATED_KEY not in declared:
+                for pname in declared:
+                    if pname not in own_params:
+                        errors.append(
+                            f"{at} names '{entry}', whose parameter '{pname}' "
+                            f"is not a parameter of this command, so it would "
+                            f"be sent without it"
+                        )
+            continue
+        if transport == "osc" and not entry.startswith("/"):
+            errors.append(
+                f"{at} '{entry}' is neither a command nor an OSC address "
+                f"(an address starts with /)"
+            )
     return errors
 
 

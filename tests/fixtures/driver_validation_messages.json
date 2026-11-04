@@ -844,6 +844,36 @@
  "quick_actions_not_list": [
   "quick_actions: must be a list of command ids"
  ],
+ "read_back_blank_entry": [
+  "Command 'set': 'read_back' must be true, a query, or a list of queries"
+ ],
+ "read_back_empty_list": [
+  "Command 'set': 'read_back' must be true, a query, or a list of queries"
+ ],
+ "read_back_named_command_has_a_param_this_one_lacks": [
+  "Command 'set': read_back[0] names 'get', whose parameter 'zone' is not a parameter of this command, so it would be sent without it"
+ ],
+ "read_back_names_a_command_that_reads_back": [
+  "Command 'set': read_back names 'get', which has a read_back of its own. Name a command that only reads"
+ ],
+ "read_back_names_itself": [
+  "Command 'set': read_back names this command itself; name the query that reads its value"
+ ],
+ "read_back_not_a_query": [
+  "Command 'set': 'read_back' must be true, a query, or a list of queries"
+ ],
+ "read_back_on_udp_command": [
+  "Command 'wake': 'read_back' reads a value back over the device's connection, and a 'udp' command is sent beside it, so nothing would answer"
+ ],
+ "read_back_osc_not_an_address": [
+  "Command 'set': read_back 'fader' is neither a command nor an OSC address (an address starts with /)"
+ ],
+ "read_back_placeholder_names_nothing": [
+  "commands.set.read_back: '{zon}' resolves to nothing (did you mean 'zone'?). It names no parameter of this command and no config field, so it would be sent to the device as written"
+ ],
+ "read_back_true_on_send_command": [
+  "Command 'set': 'read_back: true' reads back from an OSC command's own address or an HTTP command's own path. Name the query that reads this command's value instead"
+ ],
  "response_after_json_on_json_rule": [
   "Response 0: after_json applies to regex rules; a json: true rule already reads the body"
  ],

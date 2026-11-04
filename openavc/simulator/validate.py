@@ -73,6 +73,7 @@ from openavc.drivers.compiled_protocol import (
     decode_delimiter,
     derive_config,
     follow_up_queries,
+    read_back_queries,
     is_passthrough_send,
     parse_json_reply,
     safe_substitute,
@@ -174,6 +175,7 @@ def validate_yaml_driver(path: Path) -> ValidationResult:
         # addresses, and its built-in system addresses.
         _check_osc_command_coverage(result, commands, sim_handlers, responses, driver_def)
         _check_osc_poll_coverage(result, queries, commands, sim_handlers, responses, driver_def)
+        _check_osc_read_back_coverage(result, commands, sim_handlers, responses, driver_def)
     else:
         # ── Check 2: Command handler coverage ──
         _check_command_coverage(result, commands, sim_handlers, driver_def)
@@ -187,6 +189,11 @@ def validate_yaml_driver(path: Path) -> ValidationResult:
         _check_poll_coverage(
             result, follow_up_queries(driver_def), sim_handlers, driver_def,
             label="then_query entry",
+        )
+        # And so do the commands' read-back queries.
+        _check_poll_coverage(
+            result, read_back_queries(driver_def), sim_handlers, driver_def,
+            label="read_back entry",
         )
 
         # ── Check 4b: every reply ends where the driver splits the stream ──
@@ -1177,6 +1184,36 @@ def _check_osc_poll_coverage(
                 "poll_coverage",
                 f"No simulator handler matches OSC polling query: {sample!r}"
             )
+
+
+def _check_osc_read_back_coverage(
+    result: ValidationResult,
+    commands: dict,
+    sim_handlers: list,
+    responses: list,
+    driver_def: dict,
+) -> None:
+    """Check every OSC address a command's ``read_back`` sends is answered
+    by the simulator. ``true`` sends the command's own address, which
+    command coverage checks; a read-back naming a command is that
+    command's. A parameter in the address takes a sample value."""
+    patterns = _collect_osc_patterns(sim_handlers, responses)
+    config = _effective_config(driver_def)
+    for cmd_def in (commands or {}).values():
+        if not isinstance(cmd_def, dict):
+            continue
+        raw = cmd_def.get("read_back")
+        lines = [raw] if isinstance(raw, str) else raw if isinstance(raw, list) else []
+        for line in lines:
+            if not isinstance(line, str) or not line or line in commands:
+                continue
+            sample = _substitute_config(line, config)
+            sample = re.sub(r"\{[A-Za-z_][A-Za-z0-9_]*(?::[^{}]*)?\}", "1", sample)
+            if not _osc_address_covered(sample, patterns):
+                result.error(
+                    "poll_coverage",
+                    f"No simulator handler matches OSC read_back query: {sample!r}"
+                )
 
 
 # Transports where the driver reads replies by splitting a byte stream on its

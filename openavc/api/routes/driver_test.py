@@ -351,6 +351,13 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
             error_text = f"Send failed: {e}"
             send_result = None
 
+        # The command's read_back goes out on its own after the command; let
+        # it, so what it read is in the reply and the state changes instead
+        # of being cut off by the disconnect below.
+        read_back_tasks = list(getattr(driver, "_read_back_tasks", ()))
+        if read_back_tasks and error_text is None:
+            await asyncio.wait(read_back_tasks, timeout=body.timeout)
+
         # If nothing has come back yet, give the device a moment to reply.
         if not received_chunks and error_text is None:
             try:
@@ -411,6 +418,8 @@ async def _dry_run_command(body: TestCommandRequest) -> dict:
     No connect, so no socket, no auth handshake and no on_connect — this is
     the command's wire form, not a connection test.
     """
+    import asyncio
+
     try:
         built = _build_test_driver(body, port_fallback=0)
     except _TestDriverBuildError as e:
@@ -435,11 +444,21 @@ async def _dry_run_command(body: TestCommandRequest) -> dict:
 
     captured = capture_command_transport(driver, cmd_def)
     route, capture, udp_capture = captured.route, captured.transport, captured.udp
+    # A preview records what is sent, not when: the read-back's spacing
+    # from the command is not sat out.
+    driver._pace_lines = False
 
     try:
         await driver.send_command(command, body.params or {})
     except Exception as e:
         return {"dry_run": True, "success": False, "error": str(e), "route": route}
+
+    # What the command's read_back sends after it, recorded on the same
+    # capture once the command's own message is in.
+    own = len(getattr(capture, "requests", None) or getattr(capture, "frames", []))
+    read_back_tasks = list(getattr(driver, "_read_back_tasks", ()))
+    if read_back_tasks:
+        await asyncio.gather(*read_back_tasks, return_exceptions=True)
 
     result: dict[str, Any] = {
         "dry_run": True,
@@ -450,6 +469,7 @@ async def _dry_run_command(body: TestCommandRequest) -> dict:
         "wire_hex": None,
         "headers": None,
         "body": None,
+        "read_back": [],
     }
 
     if route == "http":
@@ -460,6 +480,14 @@ async def _dry_run_command(body: TestCommandRequest) -> dict:
             result["wire"] = f"{sent['method']} {sent['target']}"
             result["headers"] = sent["headers"]
             result["body"] = sent["body"]
+        result["read_back"] = [
+            {
+                "wire": f"{sent['method']} {sent['target']}",
+                "wire_hex": None,
+                "body": sent["body"] or None,
+            }
+            for sent in capture.requests[own:]
+        ]
         return result
 
     if route == "udp":
@@ -478,25 +506,31 @@ async def _dry_run_command(body: TestCommandRequest) -> dict:
     if not capture.frames:
         return result
 
-    data = b"".join(capture.frames)
+    data = b"".join(capture.frames[:own])
     result["wire_hex"] = data.hex()
+    result["wire"] = _describe_frame(route, data)
+    result["read_back"] = [
+        {"wire": _describe_frame(route, frame), "wire_hex": frame.hex()}
+        for frame in capture.frames[own:]
+    ]
+    return result
+
+
+def _describe_frame(route: str, data: bytes) -> str:
+    """One captured message as the preview shows it. An OSC packet is read
+    back with the codec's own decoder, so the address and typed args shown
+    are the ones actually encoded rather than a second pass over the
+    templates."""
     if route == "osc":
-        # Read the captured packet back with the codec's own decoder, so the
-        # address and typed args shown are the ones actually encoded rather
-        # than a second pass over the templates.
         from openavc.transport.osc_codec import osc_decode_message
 
         try:
             address, args = osc_decode_message(data)
         except Exception:
-            result["wire"] = _decode_for_display(data)
-            return result
+            return _decode_for_display(data)
         rendered = ", ".join(f"{tag}={value}" for tag, value in args)
-        result["wire"] = f"{address} [{rendered}]" if args else address
-        return result
-
-    result["wire"] = _decode_for_display(data)
-    return result
+        return f"{address} [{rendered}]" if args else address
+    return _decode_for_display(data)
 
 
 def _decode_for_display(data: bytes) -> str:

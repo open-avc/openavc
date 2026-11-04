@@ -8208,6 +8208,201 @@
   },
   "transport": "tcp"
  },
+ "read_back_blank_entry": {
+  "commands": {
+   "set": {
+    "read_back": [
+     "G\r",
+     " "
+    ],
+    "send": "S\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "read_back_empty_list": {
+  "commands": {
+   "set": {
+    "read_back": [],
+    "send": "S\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "read_back_named_command_has_a_param_this_one_lacks": {
+  "commands": {
+   "get": {
+    "params": {
+     "zone": {
+      "type": "integer"
+     }
+    },
+    "send": "G{zone}\r"
+   },
+   "set": {
+    "read_back": [
+     "get"
+    ],
+    "send": "S\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "read_back_names_a_command_that_reads_back": {
+  "commands": {
+   "get": {
+    "read_back": "G\r",
+    "send": "G\r"
+   },
+   "set": {
+    "read_back": "get",
+    "send": "S\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "read_back_names_itself": {
+  "commands": {
+   "set": {
+    "read_back": "set",
+    "send": "S\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "read_back_not_a_query": {
+  "commands": {
+   "set": {
+    "read_back": 5,
+    "send": "S\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "read_back_on_udp_command": {
+  "commands": {
+   "wake": {
+    "read_back": "G\r",
+    "udp": {
+     "payload": "W",
+     "port": 9
+    }
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "read_back_osc_not_an_address": {
+  "commands": {
+   "set": {
+    "address": "/fader",
+    "read_back": "fader"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "osc"
+ },
+ "read_back_placeholder_names_nothing": {
+  "commands": {
+   "set": {
+    "params": {
+     "zone": {
+      "type": "integer"
+     }
+    },
+    "read_back": "G{zon}\r",
+    "send": "S{zone}\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "read_back_true_on_send_command": {
+  "commands": {
+   "set": {
+    "read_back": true,
+    "send": "S\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "response_after_json_on_json_rule": {
   "commands": {
    "noop": {

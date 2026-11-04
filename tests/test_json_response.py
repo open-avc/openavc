@@ -281,12 +281,13 @@ async def test_dispatch_query_command_name_runs_command(driver):
     """A query naming a command runs it (so on_connect-only queries work)."""
     called = []
 
-    async def fake_send(command, params=None):
-        called.append(command)
+    async def fake_send(command, params=None, *, read_back=False):
+        called.append((command, read_back))
 
-    driver.send_command = fake_send
+    driver._send_command = fake_send
     await driver._dispatch_query("query_status")
-    assert called == ["query_status"]
+    # The driver's own line: run without the command's read_back.
+    assert called == [("query_status", False)]
 
 
 # ── after_json: one regex rule kept alive past the json rules ──────────────

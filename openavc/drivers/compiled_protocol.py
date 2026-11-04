@@ -1308,6 +1308,100 @@ def follow_up_queries(definition: dict[str, Any]) -> list[Any]:
     return entries
 
 
+def read_back_queries(definition: dict[str, Any]) -> list[Any]:
+    """Every command's ``read_back`` queries, in the shapes a poll entry
+    takes: what a driver sends after a command, for the simulator to answer
+    and its checks to cover.
+
+    A query that reads what the command ``sets`` (exactly one variable)
+    carries that variable as its ``query_for``, so the simulator answers it
+    with the value the command has just set. One filled from the command's
+    child_id parameter is answered for every child of that type
+    (``each_child``), the parameter's placeholder written as ``{child_id}``;
+    one filled from any other parameter of the command cannot be enumerated
+    ahead and is left out. A query naming a command, and ``true``, are left
+    out too: the simulator answers the command, and an OSC or HTTP command's
+    own address or path, already.
+
+    A query the poll, the start-up or a response rule's follow-ups already
+    send is left out, as follow_up_queries leaves out what the poll sends."""
+    commands = definition.get("commands")
+    if not isinstance(commands, dict):
+        return []
+    sent_texts: set[str] = set()
+    polling = definition.get("polling")
+    sent: list[Any] = []
+    if isinstance(polling, dict) and isinstance(polling.get("queries"), list):
+        sent += polling["queries"]
+    if isinstance(definition.get("on_connect"), list):
+        sent += definition["on_connect"]
+    sent += follow_up_queries(definition)
+    for entry in sent:
+        text = entry.get("send") if isinstance(entry, dict) else entry
+        if isinstance(text, str):
+            sent_texts.add(text)
+
+    child_types = definition.get("child_entity_types")
+    child_types = child_types if isinstance(child_types, dict) else {}
+    declared = definition.get("state_variables")
+    declared = declared if isinstance(declared, dict) else {}
+    entries: list[Any] = []
+
+    for cmd_def in commands.values():
+        if not isinstance(cmd_def, dict):
+            continue
+        raw = cmd_def.get("read_back")
+        lines = [raw] if isinstance(raw, str) else raw if isinstance(raw, list) else []
+        params = cmd_def.get("params")
+        params = params if isinstance(params, dict) else {}
+        sets = cmd_def.get("sets")
+        set_vars = list(sets) if isinstance(sets, dict) else []
+        for line in lines:
+            if not isinstance(line, str) or not line or line in commands:
+                continue
+            used = [
+                m.group(1) for m in _ANY_PLACEHOLDER.finditer(line)
+                if m.group(1) in params
+            ]
+            entry: Any
+            if not used:
+                if line in sent_texts:
+                    continue
+                entry = (
+                    {"send": line, "query_for": set_vars[0]}
+                    if len(set_vars) == 1 and set_vars[0] in declared
+                    else line
+                )
+            else:
+                pdef = params.get(used[0])
+                ctype = pdef.get("child_type") if isinstance(pdef, dict) else None
+                tdef = child_types.get(ctype) if isinstance(ctype, str) else None
+                cvars = tdef.get("state_variables") if isinstance(tdef, dict) else None
+                if (
+                    len(set(used)) != 1
+                    or not isinstance(pdef, dict)
+                    or pdef.get("type") != "child_id"
+                    or not isinstance(cvars, dict)
+                    or len(set_vars) != 1
+                    or set_vars[0] not in cvars
+                ):
+                    continue
+                name = used[0]
+                template = re.sub(
+                    r"\{" + re.escape(name) + r"((?::[^{}]*)?)\}",
+                    lambda m: "{child_id" + m.group(1) + "}",
+                    line,
+                )
+                if template in sent_texts:
+                    continue
+                entry = {
+                    "each_child": ctype, "send": template, "query_for": set_vars[0],
+                }
+            if entry not in entries:
+                entries.append(entry)
+    return entries
+
+
 def build_throttle(resp: dict[str, Any]) -> dict[str, Any] | None:
     """Compile a response entry's optional ``throttle: <seconds>`` into a
     per-instance {window, last} state dict (None when absent/invalid).

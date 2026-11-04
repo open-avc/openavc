@@ -256,6 +256,10 @@ class ConfigurableDriver(BaseDriver):
         # (infinity while one is going out).
         self._follow_up_tasks: set[asyncio.Task[None]] = set()
         self._follow_up_until: dict[tuple[int, str], float] = {}
+        # Commands' read_back rounds (_read_back): the tasks sending them,
+        # and the queries waiting to go out, so one is not queued twice.
+        self._read_back_tasks: set[asyncio.Task[None]] = set()
+        self._read_back_waiting: set[str] = set()
 
         # Telnet/serial login handshake state. Active only during
         # _perform_auth_handshake() — outside that window on_data_received
@@ -531,6 +535,7 @@ class ConfigurableDriver(BaseDriver):
     async def _close_session(self) -> None:
         self._drop_all_held()
         self._drop_follow_ups()
+        self._drop_read_backs()
         await super()._close_session()
 
     @staticmethod
@@ -982,7 +987,7 @@ class ConfigurableDriver(BaseDriver):
         commands = self._definition.get("commands", {})
         if transport_type == "http":
             if query in commands:
-                response = await self.send_command(query)
+                response = await self._send_command(query)
             else:
                 formatted = (
                     self._substitute_for_wire("polling query", query, self.config)
@@ -996,7 +1001,7 @@ class ConfigurableDriver(BaseDriver):
             self._judge_http_answer(query, response)
         elif transport_type == "udp":
             if query in commands:
-                await self.send_command(query)
+                await self._send_command(query)
             else:
                 formatted = (
                     self._substitute_for_wire("polling query", query, self.config)
@@ -1012,7 +1017,7 @@ class ConfigurableDriver(BaseDriver):
                 # sent as authored, still wrapped in the send_frame packet header
                 # (no-op unless declared) so a length-framed protocol's raw
                 # queries reach the device correctly.
-                await self.send_command(query)
+                await self._send_command(query)
             else:
                 formatted = (
                     self._substitute_for_wire("polling query", query, self.config)
@@ -1372,6 +1377,188 @@ class ConfigurableDriver(BaseDriver):
             task.cancel()
         self._follow_up_tasks.clear()
         self._follow_up_until.clear()
+
+    def _read_back_sends(
+        self,
+        command: str,
+        cmd_def: dict[str, Any],
+        given: dict[str, Any],
+        wire: dict[str, Any],
+    ) -> list[tuple[str, tuple[str, Any]]]:
+        """A command's ``read_back:`` as what each query sends, built now,
+        while this call's parameters are at hand: ``(key, (kind, what))``.
+
+        ``kind`` is ``"command"`` (``what`` is the command's name and the
+        parameters it shares with this one, as the caller gave them),
+        ``"osc"`` (an address, sent with no arguments), ``"http"`` (a path,
+        read with GET) or ``"raw"`` (the bytes, built as a poll query's
+        are). ``key`` is what says two queries are the same one.
+        """
+        raw = cmd_def.get("read_back")
+        transport_type = self._definition.get("transport")
+        commands = self._definition.get("commands") or {}
+        all_params = {**self.config, **self._push_params(), **wire}
+        where = f"commands.{command}.read_back"
+        out: list[tuple[str, tuple[str, Any]]] = []
+
+        if raw is True:
+            # The command's own address or path, filled as the send filled it.
+            if self._is_osc_command(cmd_def):
+                address = self._substitute_for_wire(
+                    f"commands.{command}.address", cmd_def.get("address", ""),
+                    all_params,
+                )
+                out.append((f"osc {address}", ("osc", address)))
+            elif self._is_http_command(cmd_def):
+                path = self._substitute_for_wire(
+                    f"commands.{command}.path", cmd_def.get("path") or "/",
+                    all_params,
+                )
+                out.append((f"http {path}", ("http", path)))
+            else:
+                log.debug(
+                    f"[{self.device_id}] read_back: true on '{command}' names "
+                    f"no query: only an OSC or HTTP command reads itself back"
+                )
+            return out
+        if isinstance(raw, str):
+            entries = [raw]
+        elif isinstance(raw, list):
+            entries = [e for e in raw if isinstance(e, str) and e]
+        else:
+            return out
+
+        for entry in entries:
+            named = commands.get(entry)
+            if isinstance(named, dict) and entry != command:
+                declared = named.get("params") or {}
+                shared = {k: v for k, v in given.items() if k in declared}
+                key = f"command {entry} {sorted(shared.items(), key=lambda kv: kv[0])!r}"
+                out.append((key, ("command", (entry, shared))))
+                continue
+            text = self._substitute_for_wire(where, entry, all_params)
+            if transport_type == "osc":
+                out.append((f"osc {text}", ("osc", text)))
+            elif transport_type == "http":
+                out.append((f"http {text}", ("http", text)))
+            elif transport_type == "udp":
+                out.append((f"raw {text}", ("raw", _safe_encode_escapes(text))))
+            else:  # tcp / serial: wrapped in send_frame like a poll query
+                data = self._apply_send_frame(_safe_encode_escapes(text))
+                out.append((f"raw {text}", ("raw", data)))
+        return out
+
+    def _read_back(
+        self,
+        command: str,
+        cmd_def: dict[str, Any],
+        given: dict[str, Any],
+        wire: dict[str, Any],
+    ) -> None:
+        """Send a command's ``read_back:`` queries now that its write is done.
+
+        A device whose answer to a set carries no value, or that never
+        reports a client's own change back to it, has its new value read at
+        once instead of at the next poll. The round runs as its own task, so
+        the caller does not wait for it: its lines are paced like a poll's
+        and may wait on a gate.
+
+        A query already waiting to go out is not queued again. That one goes
+        out after this command's write (scheduled only once the write is
+        done), so it reads this command's value: a slider dragged through
+        many values reads back after the last one, not once per value.
+        """
+        if not cmd_def.get("read_back"):
+            return
+        try:
+            sends = self._read_back_sends(command, cmd_def, given, wire)
+        except Exception as exc:
+            log.warning(
+                f"[{self.device_id}] read_back after '{command}' not sent; the "
+                f"next poll reads the value: {exc}"
+            )
+            return
+        fresh = [s for s in sends if s[0] not in self._read_back_waiting]
+        if not fresh:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        for key, _what in fresh:
+            self._read_back_waiting.add(key)
+        task = loop.create_task(self._send_read_backs(command, fresh))
+        self._read_back_tasks.add(task)
+        task.add_done_callback(self._read_back_tasks.discard)
+
+    async def _send_read_backs(
+        self, command: str, sends: list[tuple[str, tuple[str, Any]]],
+    ) -> None:
+        """Send one command's read-back queries the way a poll sends its
+        lines (_read_back).
+
+        The command's own write counts as the line before the first query:
+        on a link this driver spaces itself, the first one keeps a line's gap
+        from it. With an ``inter_command_delay`` the transport holds every
+        write that long after the command's, so the device answers the
+        command before the query reaches it. Nothing goes out while
+        ``polling.when_state`` holds the poll: a command that put the unit
+        in standby is not followed by a query that wakes it. A failed query
+        ends the round; the next poll reads the value."""
+        polling = self._definition.get("polling") or {}
+        try:
+            gap = self._line_gap()
+            if gap > 0:
+                await sleep_at_least(gap)
+            for key, (kind, what) in sends:
+                if not self.transport or not self.transport.connected:
+                    return
+                await self._pace_line()
+                if await self._line_gate_shut(polling, None, quiet=True) == "poll":
+                    log.debug(
+                        f"[{self.device_id}] read_back after '{command}' not "
+                        f"sent: polling.when_state holds the poll"
+                    )
+                    return
+                # From here a second press queues its own query: this one may
+                # already be on its way ahead of that press's write.
+                self._read_back_waiting.discard(key)
+                await self._send_read_back(kind, what)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.warning(
+                f"[{self.device_id}] read_back after '{command}' failed; the "
+                f"next poll reads the value: {exc}"
+            )
+        finally:
+            for key, _what in sends:
+                self._read_back_waiting.discard(key)
+
+    async def _send_read_back(self, kind: str, what: Any) -> None:
+        """Send one read-back query (_read_back_sends). A reply goes through
+        the matcher like any other. An HTTP answer is not weighed against the
+        credential here: the poll that follows judges the connection."""
+        if kind == "command":
+            name, params = what
+            await self._send_command(name, params)
+        elif kind == "osc":
+            from openavc.transport.osc_codec import osc_encode_message
+
+            await self.transport.send(osc_encode_message(what))
+        elif kind == "http":
+            response = await self.transport.get(what)
+            await self._process_http_response(what, response)
+        else:
+            await self.transport.send(what)
+
+    def _drop_read_backs(self) -> None:
+        """Cancel every read-back round under way: the connection it would
+        send on is going away."""
+        for task in list(self._read_back_tasks):
+            task.cancel()
+        self._read_back_tasks.clear()
+        self._read_back_waiting.clear()
 
     def _coerce_child_local_id(self, child_type: str, raw: Any) -> int | str | None:
         """Coerce a routed child id (regex capture or literal) to the type's
@@ -1898,7 +2085,25 @@ class ConfigurableDriver(BaseDriver):
     async def send_command(
         self, command: str, params: dict[str, Any] | None = None
     ) -> Any:
-        """Look up command in definition, substitute params, send."""
+        """Look up command in definition, substitute params, send.
+
+        A command that declares ``read_back:`` then reads its new value with
+        its own queries (_read_back). The driver's own lines (start-up, poll,
+        a response rule's follow-ups, a read-back that names a command) send
+        through _send_command without one: they are reads, or the read
+        itself.
+        """
+        return await self._send_command(command, params, read_back=True)
+
+    async def _send_command(
+        self,
+        command: str,
+        params: dict[str, Any] | None = None,
+        *,
+        read_back: bool = False,
+    ) -> Any:
+        """send_command's body; ``read_back`` schedules the command's
+        ``read_back:`` queries once its write is done."""
         params = params or {}
 
         commands = self._definition.get("commands", {})
@@ -1942,6 +2147,9 @@ class ConfigurableDriver(BaseDriver):
         params = _normalize_and_validate_command_params(
             command, cmd_def.get("params", {}), params
         )
+        # The values as the caller meant them: a read-back that names another
+        # command passes these on, and that command maps them itself.
+        given = params
 
         # Wire-value translation (opt-in): a param may declare a ``map:``
         # translating the validated user-facing value to what the protocol
@@ -1954,11 +2162,19 @@ class ConfigurableDriver(BaseDriver):
 
         # Check if this is an OSC command (has 'address' key)
         if self._is_osc_command(cmd_def):
-            return await self._send_osc_command(command, cmd_def, params)
+            result = await self._send_osc_command(command, cmd_def, params)
+            if read_back and result:
+                self._read_back(command, cmd_def, given, params)
+            return result
 
         # Check if this is an HTTP transport command (has 'path' or 'method' keys)
         if self._is_http_command(cmd_def):
-            return await self._send_http_command(command, cmd_def, params)
+            response = await self._send_http_command(command, cmd_def, params)
+            # Read back whatever the device answered: a set it refused shows
+            # its unchanged value.
+            if read_back and response is not None:
+                self._read_back(command, cmd_def, given, params)
+            return response
 
         data = self.build_wire(command, params)
         if data is None:
@@ -1966,6 +2182,8 @@ class ConfigurableDriver(BaseDriver):
 
         await self.transport.send(data)
         log.debug(f"[{self.device_id}] Sent command '{command}': {data!r}")
+        if read_back:
+            self._read_back(command, cmd_def, given, params)
         return True
 
     def build_wire(
@@ -3486,7 +3704,7 @@ class ConfigurableDriver(BaseDriver):
                             continue
                         commands = self._definition.get("commands", {})
                         if query in commands:
-                            await self.send_command(query)
+                            await self._send_command(query)
                         else:
                             from openavc.transport.osc_codec import osc_encode_message
                             address = self._safe_substitute(query, self.config) if "{" in query else query
