@@ -316,7 +316,7 @@ def space_empty(event):
     after(600, macros.start, "system_off")  # System Off in 10 minutes
 ```
 
-Call `macros.start` from a handler or a timer callback, not from a script's top level. To act when a started macro ends, handle `macro.completed.<macro_id>` (see [Event Types](#event-types)).
+Call `macros.start` from a handler or a timer callback, not from a script's top level; to run a macro when the system starts, give the macro a Startup trigger instead. To act when a started macro ends, handle `macro.completed.<macro_id>` (see [Event Types](#event-types)).
 
 ### log (Logger)
 

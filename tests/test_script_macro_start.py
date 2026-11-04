@@ -166,9 +166,20 @@ async def test_start_from_a_scripts_top_level_says_how(room):
     proxy = script_api._MacroProxy()
     proxy._bind(macros)
 
-    with pytest.raises(RuntimeError, match=r"after\(0, macros\.start, 'long_off'\)"):
+    with pytest.raises(RuntimeError, match="give the macro a Startup trigger"):
         await asyncio.to_thread(proxy.start, "long_off")
     assert macros._detached == set()
+
+
+async def test_start_handed_straight_to_a_timer(room):
+    """The documented shape: after(600, macros.start, "system_off")."""
+    state, macros, _, _, errors = room
+    proxy = script_api._MacroProxy()
+    proxy._bind(macros)
+
+    script_api.after(0.01, proxy.start, "long_off")
+    assert await _wait_for(lambda: state.get("var.last_step") is True)
+    assert errors == []
 
 
 async def test_start_keeps_the_call_chain_across_the_script_boundary():

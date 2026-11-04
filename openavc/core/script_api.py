@@ -344,15 +344,17 @@ class _MacroProxy:
         if self._engine is None:
             raise RuntimeError("Script API not configured — macro proxy not bound")
         # A script's top-level code runs in a worker thread with no event
-        # loop, and that code runs again on every reload. Said here, in the
-        # script's own terms, rather than as asyncio's "no running event loop".
+        # loop, and that code runs again on every save and reload, so the
+        # remedy is the macro's own Startup trigger, never a timer here. Said
+        # in the script's own terms rather than as asyncio's "no running
+        # event loop".
         try:
             asyncio.get_running_loop()
         except RuntimeError:
             raise RuntimeError(
                 f"macros.start('{macro_id}') runs from a handler or a timer, not "
-                f"from a script's top level. To start it once the script has "
-                f"loaded, use after(0, macros.start, '{macro_id}')"
+                f"from a script's top level. To run '{macro_id}' when the system "
+                f"starts, give the macro a Startup trigger."
             ) from None
         from openavc.core.macro_engine import active_call_chain
         self._engine.start(macro_id, _call_chain=active_call_chain())
