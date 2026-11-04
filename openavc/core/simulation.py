@@ -1,9 +1,10 @@
 """
-Simulation manager — launches the openavc-simulator subprocess and
+Simulation manager — launches the device simulator subprocess and
 redirects device connections to simulated endpoints.
 
-The simulator is a separate application (openavc-simulator/) that runs
-fake protocol servers. This module handles:
+The simulator (``openavc/simulator/``, started as ``python -m
+openavc.simulator``) runs in its own process and serves fake protocol
+servers. This module handles:
   - Spawning the simulator process with the right driver/device config
   - Swapping device connection addresses to localhost:sim_port
   - Restoring original connections when simulation stops
