@@ -136,6 +136,33 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: choco install innosetup -y --no-progress
 
+      # A Windows update runs its installer only when it is signed by OpenAVC
+      # LLC (openavc/updater/installer_signature.py). The tests prove the
+      # refusals with someone else's signed program; this proves the check
+      # accepts a real OpenAVC installer, the latest release's, and refuses a
+      # copy of it with one byte changed. Its certificate has usually expired
+      # (they last three days), so this also proves the signing timestamp is
+      # honored. Red here means every Windows install on this code would
+      # refuse its next update.
+      - name: Check the updater accepts the latest release's installer
+        if: matrix.os == 'windows-latest'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $d = Join-Path $env:RUNNER_TEMP 'installer-check'
+          New-Item -ItemType Directory -Force $d | Out-Null
+          gh release download -R open-avc/openavc -p 'OpenAVC-Setup-*.exe' -D $d
+          $exe = (Get-ChildItem $d -Filter 'OpenAVC-Setup-*.exe' | Select-Object -First 1).FullName
+          python -m openavc.updater.installer_signature $exe
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $b = [IO.File]::ReadAllBytes($exe); $b[1000000] = $b[1000000] -bxor 0xFF
+          $tampered = Join-Path $d 'tampered.exe'
+          [IO.File]::WriteAllBytes($tampered, $b)
+          $out = python -m openavc.updater.installer_signature $tampered
+          $out
+          if ($LASTEXITCODE -ne 1 -or -not ($out -match 'changed after it was signed')) { exit 1 }
+          exit 0
+
       - name: Lint with ruff
         run: ruff check openavc/ tests/
 

@@ -436,8 +436,9 @@ class UpdateManager:
 
         These are the paths where the ``.sig`` sidecar matters (Linux/Pi via
         update-helper.sh, macOS via openavc-macos-run.sh, the Android
-        appliance). Windows self-updates via an Azure-signed installer .exe, so
-        it has its own authenticity layer and needs no ``.sig``.
+        appliance). Windows self-updates via the Authenticode-signed installer
+        .exe, whose signature _apply_windows checks before scheduling it, so it
+        needs no ``.sig``.
         """
         return self._deployment_type in (
             DeploymentType.LINUX_PACKAGE,
@@ -584,7 +585,7 @@ class UpdateManager:
             # Step 4: Apply (platform-specific)
             self._set_state("system.update_status", "applying")
             if self._deployment_type == DeploymentType.WINDOWS_INSTALLER:
-                self._apply_windows(artifact_path, release.version)
+                await asyncio.to_thread(self._apply_windows, artifact_path, release.version)
             elif self._deployment_type in (DeploymentType.LINUX_PACKAGE,
                                            DeploymentType.MACOS_APP,
                                            DeploymentType.ANDROID_APPLIANCE):
@@ -708,7 +709,7 @@ class UpdateManager:
             # Step 5: Apply (platform-specific)
             self._set_state("system.update_status", "applying")
             if self._deployment_type == DeploymentType.WINDOWS_INSTALLER:
-                self._apply_windows(artifact_path, target_version)
+                await asyncio.to_thread(self._apply_windows, artifact_path, target_version)
             elif self._deployment_type in (DeploymentType.LINUX_PACKAGE,
                                            DeploymentType.MACOS_APP,
                                            DeploymentType.ANDROID_APPLIANCE):
@@ -879,8 +880,24 @@ class UpdateManager:
         as a child of the dying server gets killed before it can replace files.
         Task Scheduler runs the task in its own process tree under
         taskhostw.exe, completely outside NSSM's awareness.
+
+        The task runs the installer as SYSTEM, so nothing is scheduled until
+        its Authenticode signature is checked against OpenAVC LLC's signer
+        (installer_signature.py). A refused installer is deleted, so a later
+        rollback cannot pick it up from the cache. Blocking (PowerShell and
+        schtasks): callers run this in a thread.
         """
+        from openavc.updater.installer_signature import (
+            InstallerSignatureError,
+            check_installer,
+        )
         from openavc.updater.rollback import _launch_installer_via_scheduler
+
+        try:
+            check_installer(artifact_path, new_version)
+        except InstallerSignatureError:
+            artifact_path.unlink(missing_ok=True)
+            raise
 
         log.info("Scheduling silent installer: %s", artifact_path.name)
         if not _launch_installer_via_scheduler(artifact_path, new_version):

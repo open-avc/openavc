@@ -169,6 +169,14 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
 
+      # An installed Windows system refuses an update whose installer is not
+      # signed by OpenAVC LLC (openavc/updater/installer_signature.py). The same
+      # check runs here, so a release that every Windows install would refuse
+      # fails before it is published.
+      - name: Check the updater accepts the installer
+        if: env.SIGNING_ENABLED != ''
+        run: python -m openavc.updater.installer_signature dist/OpenAVC-Setup-${{ env.VERSION }}.exe
+
       - uses: actions/upload-artifact@v4
         with:
           name: windows-installer
@@ -537,7 +545,8 @@ jobs:
       # service-user-writable checksums channel); SHA256SUMS.txt.sig covers the
       # install.sh path. openssl dgst -verify (openssl 1.1.1 + 3.x) is the
       # verifier — no extra binary to ship, and the root helper can't use the
-      # venv it's replacing. Windows/macOS installers are OS-signed already but
+      # venv it's replacing. Windows/macOS installers are OS-signed (the Windows
+      # updater checks the installer's Authenticode signature, not its .sig) but
       # get a .sig too for a uniform model. `files: release/*` uploads the .sig
       # siblings automatically.
       - name: Sign release artifacts

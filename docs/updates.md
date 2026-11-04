@@ -31,6 +31,8 @@ On Linux, the Raspberry Pi appliance, and macOS, updates are also **cryptographi
 
 Signature checking is active on systems running v0.32.1 or later, the first release to carry the trusted key. The update onto v0.32.1 itself is checked against its published checksum, the same way earlier updates were.
 
+On Windows, the downloaded installer's digital signature is checked before it runs. Windows must confirm the signature and that the file is unchanged since it was signed, and the signer must be OpenAVC LLC. An unsigned installer, one signed by anyone else, or one with a single byte changed is refused and nothing runs. The Updates view says why, and where to download the installer to run it yourself. This check is active on systems running v0.39.0 or later.
+
 Do not close the browser or power off the system during this process. After the restart, the Programmer IDE reconnects automatically and shows a confirmation toast.
 
 ### If an update cannot be installed right now
