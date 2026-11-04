@@ -42,12 +42,29 @@ from fnmatch import fnmatch
 from time import time
 from typing import TYPE_CHECKING, Any, Callable
 
+from openavc.utils.log_redaction import IDENTITY_KEYS, REDACTED, is_secret_key
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from openavc.core.event_bus import EventBus
 
 log = get_logger(__name__)
+
+
+def _loggable(key: str, value: Any) -> str:
+    """A state value as the debug log shows it: masked under a credential's
+    name (``auth_token``, ``password``), the rule a problem report applies to
+    state, since nothing registered such a value as a secret to mask. A
+    username is shown, as it is in every other log line."""
+    name = key.rsplit(".", 1)[-1]
+    if (
+        isinstance(value, str)
+        and value
+        and is_secret_key(name)
+        and name.lower() not in IDENTITY_KEYS
+    ):
+        return REDACTED
+    return repr(value)
 
 
 @dataclass
@@ -344,7 +361,8 @@ class StateStore:
         self._history.append(HistoryEntry(key, old_value, value, source))
 
         if log.isEnabledFor(10):  # DEBUG = 10
-            log.debug(f"State: {key} = {value!r} (was {old_value!r}, source={source})")
+            shown, was = _loggable(key, value), _loggable(key, old_value)
+            log.debug(f"State: {key} = {shown} (was {was}, source={source})")
 
         change = (key, old_value, value, source)
         self._notify([change])
@@ -380,7 +398,8 @@ class StateStore:
 
         if log.isEnabledFor(10):
             for key, old_value, new_value, _ in changes:
-                log.debug(f"State: {key} = {new_value!r} (was {old_value!r}, source={source})")
+                shown, was = _loggable(key, new_value), _loggable(key, old_value)
+                log.debug(f"State: {key} = {shown} (was {was}, source={source})")
 
         # Phase 2: notify listeners (state is fully updated at this point).
         self._notify(changes)
@@ -403,7 +422,7 @@ class StateStore:
         self._history.append(HistoryEntry(key, old_value, None, source))
 
         if log.isEnabledFor(10):
-            log.debug(f"State: {key} deleted (was {old_value!r}, source={source})")
+            log.debug(f"State: {key} deleted (was {_loggable(key, old_value)}, source={source})")
 
         # Notify listeners. The key is already removed from _store at this
         # point, which lets consumers distinguish delete from set-to-None

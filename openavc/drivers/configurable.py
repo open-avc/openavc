@@ -1747,6 +1747,11 @@ class ConfigurableDriver(BaseDriver):
         password_field = auth_def.get("password_field", "password")
         username = str(self.config.get(username_field, "") or "")
         password = str(self.config.get(password_field, "") or "")
+        # The field auth names is the password whatever it is called, so it is
+        # masked in this device's log lines even when its name is not one the
+        # redaction rule recognizes and the driver did not declare it secret.
+        if password:
+            self.redact_in_log(password)
 
         username_prompt = auth_def.get("username_prompt", "")
         password_prompt = auth_def.get("password_prompt", "")
