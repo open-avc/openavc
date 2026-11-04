@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 const mocks = vi.hoisted(() => ({
   liveState: {} as Record<string, unknown>,
   showError: vi.fn(),
+  devices: [] as Array<{ id: string; name: string; driver: string; config: Record<string, unknown> }>,
 }));
 
 vi.mock("../../store/pluginStore", () => ({
@@ -24,7 +25,7 @@ vi.mock("../../store/connectionStore", () => ({
 }));
 
 vi.mock("../../store/projectStore", () => ({
-  useProjectStore: (selector: (s: unknown) => unknown) => selector({ dirty: false }),
+  useProjectStore: (selector: (s: unknown) => unknown) => selector({ dirty: false, project: { devices: mocks.devices } }),
 }));
 
 vi.mock("../../store/toastStore", () => ({ showError: mocks.showError }));
@@ -51,11 +52,16 @@ const SIMULATING = {
 beforeEach(() => {
   mocks.liveState = {};
   mocks.showError.mockReset();
+  mocks.devices = [
+    { id: "display", name: "Test Display", driver: "acme", config: {} },
+    { id: "controller", name: "Test Controller", driver: "acme", config: {} },
+  ];
   localStorage.removeItem("sim_confirm_dismissed");
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("Sidebar: the Simulator UI tab", () => {
@@ -114,5 +120,68 @@ describe("Sidebar: the Simulator UI tab", () => {
     render(<Sidebar activeView="dashboard" onViewChange={vi.fn()} />);
     await userEvent.click(screen.getByRole("button", { name: "Simulate Devices" }));
     expect(screen.getByText("The Simulator UI opens in a new browser tab")).toBeTruthy();
+  });
+
+  it("asks for devices even when the old confirmation was dismissed, then sends only the selection", async () => {
+    localStorage.setItem("sim_confirm_dismissed", "true");
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{"ui_url":"/simulator/"}'));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(window, "open").mockReturnValue(null);
+    render(<Sidebar activeView="dashboard" onViewChange={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Simulate Devices" }));
+    expect(fetchMock).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("checkbox", { name: /Test Controller/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Start Simulation" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/simulation/start", expect.objectContaining({
+      body: JSON.stringify({ device_ids: ["display"] }),
+    }));
+  });
+
+  it("keeps all-devices mode when all are selected, including devices hidden by search", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{"ui_url":"/simulator/"}'));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(window, "open").mockReturnValue(null);
+    render(<Sidebar activeView="dashboard" onViewChange={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Simulate Devices" }));
+    await userEvent.type(screen.getByRole("searchbox", { name: "Find devices" }), "display");
+    expect(screen.getAllByRole("checkbox")).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: "Start Simulation" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/simulation/start", expect.objectContaining({
+      body: JSON.stringify({ device_ids: null }),
+    }));
+  });
+
+  it("requires a selection, and select-all restores it", async () => {
+    render(<Sidebar activeView="dashboard" onViewChange={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Simulate Devices" }));
+    await userEvent.click(screen.getByRole("button", { name: "Clear selection" }));
+    expect(screen.getByRole("button", { name: "Start Simulation" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Select all" }));
+    expect(screen.getByRole("button", { name: "Start Simulation" })).toBeEnabled();
+  });
+
+  it("cannot start an empty project", async () => {
+    mocks.devices = [];
+    render(<Sidebar activeView="dashboard" onViewChange={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Simulate Devices" }));
+    expect(screen.getByRole("button", { name: "Start Simulation" })).toBeDisabled();
+  });
+
+  it("selects devices loaded after the dialog opens, until a person changes the selection", async () => {
+    const loadedDevices = mocks.devices;
+    mocks.devices = [];
+    const props = { activeView: "dashboard", onViewChange: vi.fn() };
+    const { rerender } = render(<Sidebar {...props} />);
+    await userEvent.click(screen.getByRole("button", { name: "Simulate Devices" }));
+    mocks.devices = loadedDevices;
+    rerender(<Sidebar {...props} />);
+    expect(screen.getAllByRole("checkbox")).toHaveLength(2);
+    for (const checkbox of screen.getAllByRole("checkbox")) expect(checkbox).toBeChecked();
+    await userEvent.click(screen.getByRole("checkbox", { name: /Test Controller/ }));
+    mocks.devices = [...loadedDevices, { id: "new", name: "New Device", driver: "acme", config: {} }];
+    rerender(<Sidebar {...props} />);
+    expect(screen.getByRole("checkbox", { name: /Test Display/ })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Test Controller/ })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /New Device/ })).not.toBeChecked();
   });
 });

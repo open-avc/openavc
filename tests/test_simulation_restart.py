@@ -15,8 +15,7 @@ subprocess and its HTTP answers stubbed:
 - a comeback that fails, and a simulator that stops mid-run, leave the devices
   on their real addresses, say so in ``system.simulation_error``, and keep the
   record so the next start tries again
-- the selection a start was given is what comes back, until a save widens the
-  run to every device, as it does while running
+- the selection a start was given survives saves and subsequent restarts
 """
 
 from __future__ import annotations
@@ -273,12 +272,18 @@ async def test_the_selection_a_start_was_given_is_what_comes_back(rig):
     try:
         assert eng.simulation.simulated_devices == ["d2"]
         assert sorted(_DialRecorder.attempts) == [_real(1), _simulated(2), _real(3)]
-        # A save simulates every device the project has, so from then on a
-        # restart brings back every device too.
+        # Saving must not pull the real devices into the simulation.
         eng._schedule_device_bringup()
         await eng.wait_for_device_bringup()
-        assert sorted(eng.simulation.simulated_devices) == ["d1", "d2", "d3"]
-        assert json.loads(rig.record.read_text()) == {"device_ids": None}
+        assert eng.simulation.simulated_devices == ["d2"]
+        assert json.loads(rig.record.read_text()) == {"device_ids": ["d2"]}
+    finally:
+        await eng.stop()
+
+    _DialRecorder.attempts = []
+    eng = await _boot(rig, devices=(1, 2, 3))
+    try:
+        assert sorted(_DialRecorder.attempts) == [_real(1), _simulated(2), _real(3)]
     finally:
         await eng.stop()
 

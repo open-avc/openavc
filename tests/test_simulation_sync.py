@@ -105,6 +105,59 @@ def _active_manager(dm) -> SimulationManager:
     return mgr
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("selection", [None, ["simulated"]])
+async def test_sync_keeps_real_devices_out_of_a_selected_simulation(monkeypatch, selection):
+    """A replaced real driver and a newly added device follow the start's
+    selection. The all-devices mode still includes additions automatically."""
+    dm = _FakeDeviceManager(
+        device_configs={did: {"driver": "acme", "config": {}}
+                        for did in ("simulated", "real", "new")},
+        devices={"simulated": _FakeDriver("127.0.0.1", 19001),
+                 "real": _FakeDriver(), "new": _FakeDriver()},
+    )
+    mgr = _active_manager(dm)
+    mgr._selection = selection
+    mgr._sim_ports = {"simulated": 19001}
+    monkeypatch.setattr("openavc.core.simulation._write_record", lambda ids: None)
+    calls = _install_fake_aiohttp(monkeypatch, lambda *a: _FakeResp(200, {"port": 19002}))
+
+    await mgr.sync()
+
+    if selection is None:
+        assert set(mgr.simulated_devices) == {"simulated", "real", "new"}
+        assert len(calls) == 2
+    else:
+        assert mgr.simulated_devices == ["simulated"]
+        assert calls == []
+        assert dm._devices["real"].config == {"host": "10.0.0.5", "port": 4001}
+        assert dm._devices["new"].config == {"host": "10.0.0.5", "port": 4001}
+        assert dm.reconnected == []
+        assert mgr._selection == selection
+
+
+@pytest.mark.asyncio
+async def test_selected_device_rejoins_after_removal(monkeypatch):
+    """Removing a device does not erase its selection: re-adding the same id
+    must restore its simulator, without adding an unselected device."""
+    dm = _FakeDeviceManager({}, {})
+    mgr = _active_manager(dm)
+    mgr._selection = ["selected"]
+    mgr._sim_ports = {"selected": 19001}
+    monkeypatch.setattr("openavc.core.simulation._write_record", lambda ids: None)
+    _install_fake_aiohttp(monkeypatch, lambda *a: _FakeResp(200, {"port": 19002}))
+    await mgr.sync()
+    assert mgr.simulated_devices == []
+
+    dm._device_configs = {did: {"driver": "acme", "config": {}} for did in ("selected", "real")}
+    dm._devices = {did: _FakeDriver() for did in dm._device_configs}
+    await mgr.sync()
+
+    assert mgr.simulated_devices == ["selected"]
+    assert dm._devices["selected"].config["port"] == 19002
+    assert dm._devices["real"].config["host"] == "10.0.0.5"
+
+
 # ── full payload incl. child_entities ────────────────────────
 
 def test_device_sim_payload_includes_full_config_and_children():

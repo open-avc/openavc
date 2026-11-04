@@ -2,6 +2,7 @@ import { useState } from "react";
 import { getTunnelPrefix } from "../../api/restClient";
 import { useConnectionStore } from "../../store/connectionStore";
 import { showError } from "../../store/toastStore";
+import { SimulationStartDialog } from "./SimulationStartDialog";
 
 /**
  * The notice on every view while the devices are simulated, and while
@@ -19,13 +20,20 @@ export function SimulationBar() {
   const active = useConnectionStore((s) => Boolean(s.liveState["system.simulation_active"]));
   const error = useConnectionStore((s) => String(s.liveState["system.simulation_error"] ?? ""));
   const [busy, setBusy] = useState(false);
+  const [showSelection, setShowSelection] = useState(false);
 
   if (!active && !error) return null;
 
-  const post = async (action: "start" | "stop", failure: string) => {
+  const post = async (action: "start" | "stop", failure: string, deviceIds: string[] | null = null) => {
     setBusy(true);
     try {
-      const res = await fetch(`${getTunnelPrefix()}/api/simulation/${action}`, { method: "POST" });
+      const res = await fetch(`${getTunnelPrefix()}/api/simulation/${action}`, {
+        method: "POST",
+        ...(action === "start" ? {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ device_ids: deviceIds }),
+        } : {}),
+      });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         showError(body.detail || failure);
@@ -56,60 +64,71 @@ export function SimulationBar() {
   };
 
   return (
-    <div
-      role="status"
-      data-testid="simulation-bar"
-      style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        gap: "var(--space-md)",
-        padding: "var(--space-sm) var(--space-md)",
-        background: `rgba(${tint}, 0.12)`,
-        borderBottom: `1px solid rgba(${tint}, 0.3)`,
-        fontSize: 13, color: "var(--text-primary)", flexShrink: 0,
-      }}
-    >
-      {active ? (
-        <span>
-          <strong>Simulation is on.</strong> The devices are connected to
-          simulators, not the real equipment. It stays on after a restart until
-          you stop it.
-        </span>
-      ) : (
-        <span>
-          {error} Simulation comes back at the next restart unless you turn it off.
-        </span>
+    <>
+      {showSelection && (
+        <SimulationStartDialog
+          onClose={() => setShowSelection(false)}
+          onStart={(deviceIds) => {
+            setShowSelection(false);
+            void post("start", "Failed to start simulation", deviceIds);
+          }}
+        />
       )}
-      <div style={{ display: "flex", gap: "var(--space-sm)", flexShrink: 0 }}>
+      <div
+        role="status"
+        data-testid="simulation-bar"
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          gap: "var(--space-md)",
+          padding: "var(--space-sm) var(--space-md)",
+          background: `rgba(${tint}, 0.12)`,
+          borderBottom: `1px solid rgba(${tint}, 0.3)`,
+          fontSize: 13, color: "var(--text-primary)", flexShrink: 0,
+        }}
+      >
         {active ? (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => { void post("stop", "Failed to stop simulation"); }}
-            style={primaryStyle}
-          >
-            Stop Simulation
-          </button>
+          <span>
+            <strong>Simulation is on.</strong> Selected devices use simulators.
+            Unselected devices keep their real connections. It stays on after a restart until
+            you stop it.
+          </span>
         ) : (
-          <>
+          <span>
+            {error} Simulation comes back at the next restart unless you turn it off.
+          </span>
+        )}
+        <div style={{ display: "flex", gap: "var(--space-sm)", flexShrink: 0 }}>
+          {active ? (
             <button
               type="button"
               disabled={busy}
-              onClick={() => { void post("start", "Failed to start simulation"); }}
+              onClick={() => { void post("stop", "Failed to stop simulation"); }}
               style={primaryStyle}
             >
-              Start Simulation
+              Stop Simulation
             </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => { void post("stop", "Failed to turn off simulation"); }}
-              style={buttonStyle}
-            >
-              Turn Off Simulation
-            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setShowSelection(true)}
+                style={primaryStyle}
+              >
+                Start Simulation
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => { void post("stop", "Failed to turn off simulation"); }}
+                style={buttonStyle}
+              >
+                Turn Off Simulation
+              </button>
           </>
         )}
       </div>
     </div>
+    </>
   );
 }

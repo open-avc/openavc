@@ -22,7 +22,7 @@ The Programmer IDE is a web-based design environment with these sidebar sections
 - **Settings**: Server configuration (port, who can connect, panel access, logging)
 - **Updates**: Check for and install OpenAVC updates
 
-At the bottom of the sidebar, the **Simulate Devices** button (play icon) starts the device simulator so you can test your project without real hardware. See [Device Simulator](simulator.md) for details.
+At the bottom of the sidebar, **Simulate Devices** (play icon) lets you choose which devices to simulate. All are checked by default; uncheck devices you want to keep on real equipment. See [Device Simulator](simulator.md) for details.
 
 If you have used Crestron SIMPL or Extron Global Configurator, the workflow will feel familiar: add hardware, define logic, build a touch panel, and test it live. The difference is that everything runs in a browser and there is no proprietary hardware required.
 

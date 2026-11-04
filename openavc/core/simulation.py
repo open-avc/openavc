@@ -388,8 +388,8 @@ class SimulationManager:
         # simulator (which would deadlock and kill the simulator).
         self._drain_tasks: list[asyncio.Task] = []
         # What the running simulation was started for: None for every device.
-        # sync() simulates every device the project has, so it becomes None
-        # there, and the record follows.
+        # An explicit selection survives project edits, including removing
+        # and re-adding a device. Only the all-devices mode includes new ids.
         self._selection: list[str] | None = None
         # Set by load_resume() at startup when the record says simulation was
         # on; resume() consumes it in the first bring-up round.
@@ -1308,14 +1308,10 @@ class SimulationManager:
         if not self._active or not self._process or self._process.returncode is not None:
             return
 
-        # From here every device the project has is simulated, whatever the
-        # start was given, so a restart brings back all of them too.
-        if self._selection is not None:
-            self._selection = None
-            _write_record(None)
-
         dm = self.engine.devices
         current_device_ids = set(dm._device_configs.keys())
+        if self._selection is not None:
+            current_device_ids.intersection_update(self._selection)
         simulated_ids = set(self._sim_ports.keys())
 
         # New devices that need simulators

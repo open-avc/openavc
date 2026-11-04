@@ -3,7 +3,7 @@
  * @vitest-environment-options { "url": "http://localhost:8080/programmer/" }
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // Simulation stays on through a restart until somebody stops it, so every
@@ -13,6 +13,12 @@ import userEvent from "@testing-library/user-event";
 // from simulating again.
 
 vi.mock("../../store/toastStore", () => ({ showError: vi.fn() }));
+vi.mock("../../store/projectStore", () => ({
+  useProjectStore: (selector: (s: unknown) => unknown) => selector({ project: { devices: [
+    { id: "display", name: "Test Display", driver: "acme", config: {} },
+    { id: "controller", name: "Test Controller", driver: "acme", config: {} },
+  ] } }),
+}));
 
 import { useConnectionStore } from "../../store/connectionStore";
 import { showError } from "../../store/toastStore";
@@ -41,12 +47,12 @@ describe("SimulationBar", () => {
     expect(screen.queryByTestId("simulation-bar")).not.toBeInTheDocument();
   });
 
-  it("says the real equipment is not being controlled, and stops it", async () => {
+  it("describes mixed simulation, and stops it", async () => {
     useConnectionStore.setState({ liveState: { "system.simulation_active": true } });
     render(<SimulationBar />);
 
     expect(screen.getByTestId("simulation-bar")).toHaveTextContent(
-      "Simulation is on. The devices are connected to simulators, not the real equipment.",
+      "Simulation is on. Selected devices use simulators.",
     );
     expect(screen.getByTestId("simulation-bar")).toHaveTextContent(
       "It stays on after a restart until you stop it.",
@@ -74,6 +80,10 @@ describe("SimulationBar", () => {
     expect(screen.queryByRole("button", { name: "Stop Simulation" })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Start Simulation" }));
+    const dialog = screen.getByRole("dialog", { name: "Start Device Simulation" });
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: /Test Controller/ }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Start Simulation" }));
+    expect(fetchMock.mock.calls[0][1].body).toBe(JSON.stringify({ device_ids: ["display"] }));
     await userEvent.click(screen.getByRole("button", { name: "Turn Off Simulation" }));
     expect(posted()).toEqual(["/api/simulation/start", "/api/simulation/stop"]);
   });
@@ -88,6 +98,7 @@ describe("SimulationBar", () => {
     render(<SimulationBar />);
 
     await userEvent.click(screen.getByRole("button", { name: "Start Simulation" }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Start Simulation" }));
     expect(showError).toHaveBeenCalledWith("No project loaded");
   });
 });

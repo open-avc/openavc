@@ -6,12 +6,14 @@ The Device Simulator lets you develop and test projects without real AV hardware
 
 ### From the Programmer IDE
 
-Click the **play button** at the bottom of the sidebar. A confirmation dialog explains what will happen, then:
+Click **Simulate Devices** (the play button at the bottom of the sidebar). Choose which devices to simulate, then click **Start Simulation**. All devices are checked by default. Use **Find devices**, **Select all** or **Clear selection** to choose a smaller set, such as a simulated display beside a real controller.
 
-1. The simulator starts with all devices from your project
-2. Device connections redirect to the simulated devices
+1. The simulator starts with the devices you selected
+2. Their connections redirect to the simulated devices; unselected devices keep their real connections
 3. The Simulator UI opens in a new browser tab
-4. Your drivers reconnect and start talking to virtual hardware
+4. The selected devices' drivers reconnect and start talking to virtual hardware
+
+When all devices are selected, new devices added to the project are also simulated. When you select only some devices, new devices use their real connections. The dialog says which will happen. To choose a different set, stop simulation and start it again.
 
 If you close the Simulator UI tab, click **Open Simulator UI**, just above the stop button, to open it again.
 
@@ -19,13 +21,13 @@ Click the **stop button** (same location) to stop simulation and restore real de
 
 ### While Simulation Is On
 
-Simulation stays on until you stop it, including through a restart of the server, an update or a power cut: when the server starts again, the devices go straight back to their simulators without reaching the real equipment. So a system left simulating cannot be missed, it is marked in three places:
+Simulation stays on until you stop it, including through a restart of the server, an update or a power cut. Your selection is kept: when the server starts again, the selected devices go straight back to their simulators without reaching the real equipment, and the others use their real connections. So a system left simulating cannot be missed, it is marked in three places:
 
 - A bar across the top of every Programmer view, with a **Stop Simulation** button.
 - A small **Simulated** tag in the bottom-left corner of every touch panel.
 - **Simulating** beside the system's name on its page in OpenAVC Cloud.
 
-If simulation cannot come back after a restart (the simulator's port is taken by another program, for example), the devices connect to the real equipment and the bar says why. Click **Start Simulation** to try again, or **Turn Off Simulation** so the next restart does not simulate either. The same bar appears if the simulator stops by itself while it is running.
+If simulation cannot come back after a restart (the simulator's port is taken by another program, for example), the devices connect to the real equipment and the bar says why. Click **Start Simulation** to choose devices and try again, or **Turn Off Simulation** so the next restart does not simulate either. The same bar appears if the simulator stops by itself while it is running.
 
 ### Standalone
 
@@ -97,7 +99,9 @@ When you change state from the Simulator UI (adjusting a slider, toggling a butt
 
 Drivers that declare a `push:` block (devices that deliver notifications on a channel of their own rather than the control connection) are simulated faithfully too. With a multicast push block, the simulator emits the driver's notification templates to the same group and port. With an SSE push block, the simulated HTTP device serves the declared event-stream paths and delivers the templates to subscribers. With a TCP-listener push block, the simulated device plays the dial-back loop the real one does: it accepts the driver's registration, then opens a connection back to the driver's listener port for each notification, framed exactly as the real device frames it. With an HTTP-listener push block, the simulated device posts the templates to the callback URL the driver registered on it, webhook style. In every case, push updates flow end to end exactly as they would from the real device.
 
-When you add or remove devices while simulation is active, the simulator automatically syncs -- new devices get simulated, removed devices are cleaned up. A device whose settings you change on its page (a module table, a channel count, a credential) gets its simulator restarted with the new settings. Installing a missing driver counts too, including one you install after simulation has started: the device it was holding up joins the running simulation and connects to its simulator rather than the real address in the project. No restart needed.
+When you add or remove devices while simulation is active, the simulator automatically syncs. Removed devices are cleaned up; new devices are simulated only if you started with all devices selected. Editing a device or disabling and re-enabling it keeps it in or out of the selection. A selected device removed and later added with the same ID rejoins the simulation.
+
+A simulated device whose settings you change on its page (a module table, a channel count, a credential) gets its simulator restarted with the new settings. Installing a missing driver counts too, including one you install after simulation has started: a selected device it was holding up joins the running simulation and connects to its simulator rather than the real address in the project. No restart needed.
 
 ## Which Drivers Support Simulation
 
@@ -105,7 +109,7 @@ All YAML drivers (`.avcdriver`) get basic simulation automatically — the simul
 
 Python drivers need a companion simulator file (`_sim.py`) placed alongside the driver.
 
-While simulation runs, a device whose driver has no simulator stays disconnected, and its page names the driver. Add a simulator for it, or stop simulation to control the real device.
+While simulation runs, a selected device whose driver has no simulator stays disconnected, and its page names the driver. Add a simulator for it, or stop simulation and leave it unchecked when starting again to control the real device.
 
 Check the Browse Drivers view for the simulator badge (play icon) to see which community drivers include enhanced simulation support.
 

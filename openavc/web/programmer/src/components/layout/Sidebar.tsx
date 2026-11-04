@@ -23,7 +23,7 @@ import {
   LogOut,
   AlertTriangle,
 } from "lucide-react";
-import { Modal } from "../shared/Modal";
+import { SimulationStartDialog } from "../shared/SimulationStartDialog";
 import { usePluginStore } from "../../store/pluginStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useProjectStore } from "../../store/projectStore";
@@ -159,7 +159,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
     setTimeout(() => window.removeEventListener("message", onMessage), 30000);
   };
 
-  const startSimulation = async () => {
+  const startSimulation = async (deviceIds: string[] | null) => {
     // Open the simulator tab synchronously so the user-gesture flag is still
     // valid and popup blockers don't intercept it. We navigate it once we
     // know the actual URL — or close it if the start fails.
@@ -177,7 +177,11 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
     }
     setSimBusy(true);
     try {
-      const res = await fetch(`${getTunnelPrefix()}/api/simulation/start`, { method: "POST" });
+      const res = await fetch(`${getTunnelPrefix()}/api/simulation/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ device_ids: deviceIds }),
+      });
       if (res.ok) {
         const data = await res.json();
         // A path on this origin, never an absolute URL. It used to fall back to
@@ -322,12 +326,9 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
               setSimBusy(false);
             }
           } else {
-            // Show confirmation unless user has dismissed it
-            if (localStorage.getItem("sim_confirm_dismissed") !== "true") {
-              setShowSimConfirm(true);
-            } else {
-              await startSimulation();
-            }
+            // Always ask for the selection, even if an older informational
+            // confirmation was dismissed. Otherwise real devices can move.
+            setShowSimConfirm(true);
           }
         }}
         aria-label={simulationActive ? "Stop Simulation" : simBusy ? "Starting..." : "Simulate Devices"}
@@ -345,49 +346,14 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
         </span>
       </button>
       {showSimConfirm && (
-        <Modal
+        <SimulationStartDialog
+          opensSimulatorTab
           onClose={() => setShowSimConfirm(false)}
-          label="Start Device Simulation"
-          panelStyle={{
-            background: "var(--bg-surface)", border: "1px solid var(--border-color)",
-            borderRadius: 8, padding: "24px 28px", maxWidth: 420, width: "90%",
-            boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+          onStart={(deviceIds) => {
+            setShowSimConfirm(false);
+            void startSimulation(deviceIds);
           }}
-        >
-            <h3 style={{ margin: "0 0 12px", fontSize: 16 }}>Start Device Simulation</h3>
-            <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6, margin: "0 0 8px" }}>
-              This will redirect all device connections to simulated virtual devices on your local machine.
-            </p>
-            <ul style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.8, margin: "0 0 16px", paddingLeft: 18 }}>
-              <li>Devices will disconnect from real hardware</li>
-              <li>Only drivers with simulation support will respond</li>
-              <li>IP addresses and ports from your project are assumed correct</li>
-              <li>The Simulator UI opens in a new browser tab</li>
-              <li>Stop simulation to reconnect to real devices</li>
-              <li>Simulation stays on after a restart until you stop it</li>
-            </ul>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-              <input type="checkbox" id="sim-dismiss" style={{ accentColor: "var(--accent)" }} />
-              <label htmlFor="sim-dismiss" style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Don't show this again
-              </label>
-            </div>
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button onClick={() => setShowSimConfirm(false)} style={{
-                padding: "6px 16px", borderRadius: 4, fontSize: 13,
-                background: "var(--bg-hover)", color: "var(--text-secondary)",
-              }}>Cancel</button>
-              <button onClick={async () => {
-                const dismiss = (document.getElementById("sim-dismiss") as HTMLInputElement)?.checked;
-                if (dismiss) localStorage.setItem("sim_confirm_dismissed", "true");
-                setShowSimConfirm(false);
-                await startSimulation();
-              }} style={{
-                padding: "6px 16px", borderRadius: 4, fontSize: 13,
-                background: "var(--accent-bg)", color: "#fff",
-              }}>Start Simulation</button>
-            </div>
-        </Modal>
+        />
       )}
       <button
         className={`${styles.navItem} ${activeView === "updates" ? styles.active : ""}`}
