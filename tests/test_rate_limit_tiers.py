@@ -45,6 +45,11 @@ EXPECTED_STRICT = {
     # The admin password, typed on a waiting panel.
     ("POST", "/api/panel/access/claim"),
     ("POST", "/api/panel/unlock"),
+    # A passphrase sealing device logins into an export, or opening the ones
+    # an import brought.
+    ("POST", "/api/project/export"),
+    ("POST", "/api/library/{project_id}/export"),
+    ("POST", "/api/library/{project_id}/logins"),
 }
 
 # Commissioning operations. Every non-GET route under the control roots lands

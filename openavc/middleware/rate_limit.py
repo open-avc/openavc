@@ -261,6 +261,12 @@ def _classify(method: str, path: str) -> str:
             return "strict"
         if path.startswith("/api/backups/") and "/restore" in path:
             return "strict"
+        # A passphrase that seals device logins into an export or opens the
+        # ones an import brought: each guess costs a slow key derivation.
+        if path == "/api/project/export":
+            return "strict"
+        if path.startswith("/api/library/") and path.endswith(("/export", "/logins")):
+            return "strict"
 
     # Device setup reads the description, children, settings and driver metadata
     # after each write. These protected routes share the commissioning budget;

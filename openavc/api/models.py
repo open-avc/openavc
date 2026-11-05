@@ -282,6 +282,13 @@ class LibraryOpenRequest(BaseModel):
     project_id: str | None = None
 
 
+class LoginsPassphraseRequest(BaseModel):
+    """A passphrase that seals device logins into an export, or opens the
+    ones an import brought. Sent in a body, never in a URL, and never kept."""
+
+    passphrase: str
+
+
 class LibraryDuplicateRequest(BaseModel):
     new_id: str
     new_name: str

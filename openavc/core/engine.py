@@ -45,6 +45,7 @@ from openavc.core.project_loader import (
     ProjectConfig,
     ProjectMeta,
     load_project,
+    refresh_crash_copy,
     save_project,
     save_project_async,
 )
@@ -407,12 +408,15 @@ class Engine:
         # took no backup of its own, an installer run by hand), so it is
         # backed up first; a move that cannot finish changes nothing.
         moved = self._move_logins(self.project, typed=False)
-        if moved is not self.project and await self._back_up_before_moving_logins():
+        logins_moved = moved is not self.project and await self._back_up_before_moving_logins()
+        if logins_moved:
             self.project = moved
         # Exports and backups read the saved project. Materialize a newly
         # inserted host reference before any hardware or programming starts.
         if self.project != loaded_project:
             await save_project_async(self.project_path, self.project)
+            if logins_moved:
+                await asyncio.to_thread(refresh_crash_copy, self.project_path)
         # The Project Library's copies, the same way, each under its own id.
         # Inline, like the other start-up moves above: it reads one small file
         # per saved project.
@@ -934,6 +938,11 @@ class Engine:
             # object in place, so after this await new_project matches the
             # bytes on disk exactly — no re-read or re-validation needed.
             await save_project_async(self.project_path, new_project)
+            # The crash copy is the file this save replaced, which held the
+            # logins just moved when they came in on disk (a backup restored,
+            # a bare push).
+            if new_project is not as_given:
+                await asyncio.to_thread(refresh_crash_copy, self.project_path)
 
         if origin is ProjectOrigin.LOAD:
             diff = ProjectDiff.all_dirty()

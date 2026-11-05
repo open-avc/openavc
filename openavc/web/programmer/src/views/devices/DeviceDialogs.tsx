@@ -29,8 +29,9 @@ export function ConfigFieldInputs({
   setConfigValues: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   /** Settings the project marks saved on this system that this system has
    *  no login for (the device info's `needs_login`): an empty box to enter
-   *  one, never "Saved on this system". */
-  waiting?: ReadonlySet<string>;
+   *  one, never "Saved on this system". `null` while the server has not
+   *  answered yet: a marked setting then shows neither. */
+  waiting?: ReadonlySet<string> | null;
 }) {
   const schemaFor = (key: string) =>
     (driverInfo?.config_schema as Record<string, Record<string, unknown>>)?.[key] ?? {};
@@ -65,12 +66,14 @@ export function ConfigFieldInputs({
         // saved on this system is never a value here, whatever the field's
         // kind: the form holds the marker, shown as "Saved on this system".
         const marked = configValues[key] === SAVED_LOGIN;
-        const waits = marked && (waiting?.has(key) ?? false);
-        const saved = marked && !waits;
+        const waitsForLogin = waiting?.has(key) ?? false;
+        const waits = marked && waitsForLogin;
+        const checking = marked && waiting === null;
+        const saved = marked && !waits && !checking;
         // A saved login being changed, or one this system waits for, takes a
         // masked box whatever its field says (a field with no definition, one
-        // a driver update unmarked).
-        const kind = changing.has(key) || waits ? "password" : configFieldKind(schema, key);
+        // a driver update unmarked), typed in or not.
+        const kind = changing.has(key) || waitsForLogin ? "password" : configFieldKind(schema, key);
         // Build helpful placeholder from key name conventions
         const placeholder = isObjectField
           ? (defaultVal && typeof defaultVal === "object" && Object.keys(defaultVal).length > 0
@@ -109,7 +112,7 @@ export function ConfigFieldInputs({
               }}
             >
               <label
-                htmlFor={kind === "table" || saved ? undefined : fieldId}
+                htmlFor={kind === "table" || saved || checking ? undefined : fieldId}
                 style={{
                   display: "block",
                   fontSize: "var(--font-size-sm)",
@@ -137,7 +140,11 @@ export function ConfigFieldInputs({
                 </span>
               )}
             </div>
-            {saved ? (
+            {checking ? (
+              <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
+                Checking…
+              </div>
+            ) : saved ? (
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
                 <KeyRound size={14} aria-hidden style={{ color: "var(--text-muted)", flexShrink: 0 }} />
                 <span
@@ -1426,12 +1433,14 @@ export function EditDeviceDialog({
   }, []);
   // The marked settings this system has no login for: only the server knows
   // which marks have nothing saved behind them.
-  const [waiting, setWaiting] = useState<ReadonlySet<string>>(() => new Set());
+  // Unknown (null) until the server answers; a failed read falls back to
+  // treating every mark as saved.
+  const [waiting, setWaiting] = useState<ReadonlySet<string> | null>(null);
   useEffect(() => {
     api
       .getDevice(device.id)
       .then((info) => setWaiting(new Set(info.needs_login ?? [])))
-      .catch(() => {});
+      .catch(() => setWaiting(new Set()));
   }, [device.id]);
 
   const driverInfo = drivers.find((d) => d.id === selectedDriver);

@@ -22,7 +22,8 @@ import * as api from "../api/restClient";
 import type { DeviceNeedingLogin, LibraryProject, ProjectConfig } from "../api/types";
 import { parseApiError } from "../api/errors";
 import { showError, showInfo, showLastingWarning, showSuccess } from "../store/toastStore";
-import { needsLoginSentence } from "./devices/deviceLogins";
+import { needsLoginSentence, projectHoldsSavedLogin } from "./devices/deviceLogins";
+import { ExportProjectDialog, ImportLoginsDialog } from "./projectLoginDialogs";
 
 /** After a project came in from somewhere else: name the devices that wait
  *  for their login, until somebody dismisses it. */
@@ -155,13 +156,25 @@ export function ProjectView() {
 
   // --- Handlers ---
 
+  // An export of a project with device logins saved on this system asks
+  // whether to include them (sealed with a passphrase); one without exports
+  // straight away.
+  const [exportPrompt, setExportPrompt] = useState<
+    ((loginsPassphrase: string | undefined) => Promise<void>) | null
+  >(null);
+
   const handleExportCurrent = useCallback(async () => {
-    if (!useProjectStore.getState().project) return;
+    const project = useProjectStore.getState().project;
+    if (!project) return;
     if (useProjectStore.getState().dirty) {
       showError(
         "Save the project first. The export is built from the saved project, " +
           "so unsaved changes would be left out."
       );
+      return;
+    }
+    if (projectHoldsSavedLogin(project)) {
+      setExportPrompt(() => (passphrase: string | undefined) => api.exportCurrentProject(passphrase));
       return;
     }
     try {
@@ -170,6 +183,22 @@ export function ProjectView() {
       showError(parseApiError(e));
     }
   }, []);
+
+  // An import whose file holds sealed device logins asks for the passphrase
+  // before the project opens; resolved once it is entered or skipped.
+  const [loginsPrompt, setLoginsPrompt] = useState<{
+    libraryId: string;
+    sealedAt: string;
+    done: () => void;
+  } | null>(null);
+  const askForImportedLogins = useCallback(
+    (libraryId: string, sealed: { sealed_at: string } | undefined) =>
+      sealed
+        ? new Promise<void>((resolve) =>
+            setLoginsPrompt({ libraryId, sealedAt: sealed.sealed_at, done: resolve }))
+        : Promise.resolve(),
+    [],
+  );
 
   /** Bring in a .zip bundle: into the library, then open it as the room.
    *
@@ -182,6 +211,7 @@ export function ProjectView() {
     showInfo("Importing project...");
     try {
       const result = await api.importToLibrary(file);
+      await askForImportedLogins(result.project_id, result.sealed_logins);
       const entries = await api.listLibrary();
       setLibrary(entries);
       const entry = entries.find((l) => l.id === result.project_id);
@@ -207,7 +237,7 @@ export function ProjectView() {
     } finally {
       setBusy(false);
     }
-  }, [forceReloadProject]);
+  }, [forceReloadProject, askForImportedLogins]);
 
   const handleImportCurrent = useCallback(() => {
     const input = document.createElement("input");
@@ -323,6 +353,10 @@ export function ProjectView() {
   };
 
   const handleExportLib = async (id: string) => {
+    if (library.find((l) => l.id === id)?.has_saved_logins) {
+      setExportPrompt(() => (passphrase: string | undefined) => api.exportLibraryProject(id, passphrase));
+      return;
+    }
     try {
       await api.exportLibraryProject(id);
     } catch (e) {
@@ -341,6 +375,7 @@ export function ProjectView() {
       showInfo("Importing project...");
       try {
         const result = await api.importToLibrary(file);
+        await askForImportedLogins(result.project_id, result.sealed_logins);
         await refreshLibrary();
         // Show driver installation/warning info
         const msgs: string[] = [];
@@ -801,6 +836,21 @@ export function ProjectView() {
             </button>
           </div>
         </Dialog>
+      )}
+
+      {exportPrompt && (
+        <ExportProjectDialog onClose={() => setExportPrompt(null)} exportProject={exportPrompt} />
+      )}
+
+      {loginsPrompt && (
+        <ImportLoginsDialog
+          libraryId={loginsPrompt.libraryId}
+          sealedAt={loginsPrompt.sealedAt}
+          onDone={() => {
+            loginsPrompt.done();
+            setLoginsPrompt(null);
+          }}
+        />
       )}
 
       {showBlank && (

@@ -249,10 +249,18 @@ export async function duplicateLibraryProject(
   });
 }
 
-/** Download a bundle response to the user's disk, named by the server. */
-async function downloadBundle(path: string, fallbackName: string): Promise<void> {
-  const res = await fetch(`${BASE}${path}`);
-  if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+/** Download a bundle response to the user's disk, named by the server. With
+ *  a passphrase, the bundle also holds the device logins sealed with it: the
+ *  passphrase goes in a POST body, never in the URL. */
+async function downloadBundle(path: string, fallbackName: string, passphrase?: string): Promise<void> {
+  const res = passphrase === undefined
+    ? await fetch(`${BASE}${path}`)
+    : await fetch(`${BASE}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passphrase }),
+      });
+  if (!res.ok) throw new ApiError(res.status, await res.text());
   const disposition = res.headers.get("content-disposition") || "";
   const match = disposition.match(/filename="?([^"]+)"?/);
   const filename = match ? match[1] : fallbackName;
@@ -265,8 +273,8 @@ async function downloadBundle(path: string, fallbackName: string): Promise<void>
   URL.revokeObjectURL(url);
 }
 
-export async function exportLibraryProject(id: string): Promise<void> {
-  return downloadBundle(`/library/${id}/export`, `${id}.zip`);
+export async function exportLibraryProject(id: string, loginsPassphrase?: string): Promise<void> {
+  return downloadBundle(`/library/${id}/export`, `${id}.zip`, loginsPassphrase);
 }
 
 /**
@@ -276,8 +284,26 @@ export async function exportLibraryProject(id: string): Promise<void> {
  * to be a client-side JSON.stringify of the store, which quietly shipped a
  * project with none of its drivers, plugins or custom controls.
  */
-export async function exportCurrentProject(): Promise<void> {
-  return downloadBundle("/project/export", "project.zip");
+export async function exportCurrentProject(loginsPassphrase?: string): Promise<void> {
+  return downloadBundle("/project/export", "project.zip", loginsPassphrase);
+}
+
+/** Open the sealed device logins an import of library copy `id` brought
+ *  (its answer's `sealed_logins`) and keep them for that copy. A wrong
+ *  passphrase is an ApiError (422) the import's prompt shows. */
+export async function addImportedLogins(
+  id: string,
+  passphrase: string,
+): Promise<{ status: string; devices: number }> {
+  return request(`/library/${encodeURIComponent(id)}/logins`, {
+    method: "POST",
+    body: JSON.stringify({ passphrase }),
+  });
+}
+
+/** Leave out the sealed device logins an import of library copy `id` brought. */
+export async function skipImportedLogins(id: string): Promise<{ status: string }> {
+  return request(`/library/${encodeURIComponent(id)}/logins`, { method: "DELETE" });
 }
 
 export async function importToLibrary(file: File, id?: string): Promise<{
@@ -287,6 +313,9 @@ export async function importToLibrary(file: File, id?: string): Promise<{
   installed_plugins?: string[];
   missing_plugins?: { plugin_id: string; plugin_name: string }[];
   warnings?: string[];
+  /** The export holds device logins sealed with a passphrase, waiting for
+   *  addImportedLogins or skipImportedLogins. */
+  sealed_logins?: { sealed_at: string };
 }> {
   const formData = new FormData();
   formData.append("file", file);

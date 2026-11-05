@@ -44,7 +44,8 @@ def create_backup(
     """Create a pre-update backup of user data.
 
     Archives: projects/, driver_repo/, plugin_repo/, themes/, system.json,
-    cloud.json, panel_devices.json. Stores in:
+    cloud.json, panel_devices.json, device_logins.json (never its key).
+    Stores in:
     {data_dir}/backups/pre-update-v{version}-{timestamp}.zip
 
     When ``project_path`` points outside ``data_dir`` (set via
@@ -110,6 +111,13 @@ def create_backup(
             panel_devices = data_dir / "panel_devices.json"
             if panel_devices.exists():
                 zf.write(panel_devices, "panel_devices.json")
+
+            # The device login file, never its key: the copy opens only on the
+            # system whose key it was sealed with. Like panel_devices.json,
+            # nothing restores it automatically.
+            device_logins = data_dir / "device_logins.json"
+            if device_logins.exists():
+                zf.write(device_logins, "device_logins.json")
 
             # Back up the project file and its siblings when it lives outside
             # data_dir. Without this, OPENAVC_PROJECT users would lose project.avc,

@@ -1063,6 +1063,19 @@ def crash_copy_path(path: str | Path) -> Path:
     return Path(path).with_suffix(".avc.bak")
 
 
+def refresh_crash_copy(path: str | Path) -> None:
+    """Make the crash copy of ``path`` the file as it is now saved.
+
+    For a save that moved device logins out of the project: the copy taken
+    before that save is the file with the logins in it, and it would keep
+    them until the next save. The save has already landed, so the copy of
+    what it replaced has done its job."""
+    path = Path(path)
+    with _project_save_lock:
+        if path.exists() and crash_copy_path(path).exists():
+            shutil.copy2(path, crash_copy_path(path))
+
+
 def save_project(path: str | Path, project: ProjectConfig) -> None:
     """
     Save a ProjectConfig back to a JSON file atomically.

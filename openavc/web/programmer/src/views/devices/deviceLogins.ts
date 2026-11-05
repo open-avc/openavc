@@ -106,3 +106,19 @@ export function needsLoginSentence(devices: DeviceNeedingLogin[] | undefined): s
   }
   return `${devices.length} devices need their login entered: ${list}. Open each one in Devices to enter it.`;
 }
+
+/** Whether `project` marks any setting as a login saved on this system, in a
+ *  device's settings or its connection: an export of it could include one. */
+export function projectHoldsSavedLogin(
+  project: {
+    devices?: { config?: Record<string, unknown> }[];
+    connections?: Record<string, Record<string, unknown>>;
+  } | null | undefined,
+): boolean {
+  if (!project) return false;
+  const holders = [
+    ...(project.devices ?? []).map((d) => d.config ?? {}),
+    ...Object.values(project.connections ?? {}),
+  ];
+  return holders.some((h) => Object.values(h ?? {}).some((v) => v === SAVED_LOGIN));
+}

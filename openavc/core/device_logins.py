@@ -79,6 +79,15 @@ and the library copies is replaced by its saved login before the earlier
 version starts. A version that knows this file moves them out again on its
 first start.
 
+Copies that hold logins
+-----------------------
+A project backup holds the logins of its devices as a login file sealed with
+this system's key (``backup_copy``), never the key, so a backup copied off
+this system holds nothing readable. Restored here, it fills in each login this
+system no longer has, such as a device removed longer than ``REMOVED_KEEP``
+ago (``restore_copy``); this system's own logins win. An export holds them
+only when somebody asks, sealed with a passphrase (``core.login_bundle``).
+
 Filling them in
 ---------------
 ``fill_saved_logins`` runs where a device's resolved config is handed to its
@@ -217,8 +226,16 @@ class DeviceLogins:
     def _read(self) -> dict[_Key, _Entry]:
         where = f"The device login file {self.path}"
         try:
-            envelope = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
+            text = self.path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise LoginFileUnreadable(f"{where} cannot be read ({exc}). It is left as it is.") from exc
+        return self._open(text, where)
+
+    def _open(self, text: str, where: str) -> dict[_Key, _Entry]:
+        """The entries of a login file's text, opened with this system's key."""
+        try:
+            envelope = json.loads(text)
+        except ValueError as exc:
             raise LoginFileUnreadable(f"{where} cannot be read ({exc}). It is left as it is.") from exc
         if not isinstance(envelope, dict) or envelope.get("format") != _FORMAT:
             raise LoginFileUnreadable(f"{where} is not a device login file. It is left as it is.")
@@ -246,7 +263,7 @@ class DeviceLogins:
         for item in payload.get("devices", []) if isinstance(payload, dict) else []:
             entry = _entry_from(item)
             if entry is None:
-                log.warning("Skipped an unreadable entry in %s", self.path)
+                log.warning("Skipped an unreadable entry in %s", where)
                 continue
             key_triple, value = entry
             entries[key_triple] = value
@@ -395,13 +412,65 @@ class DeviceLogins:
             if changed:
                 self._commit(entries)
 
-    def _commit(self, entries: dict[_Key, _Entry]) -> None:
-        """Write ``entries`` to disk, then make them current."""
-        if self._unreadable is not None:
-            raise LoginFileUnreadable(self._unreadable)
+    # --- a project backup's copy -------------------------------------------------
+
+    def backup_copy(self, devices: Iterable[tuple[str, str]]) -> str | None:
+        """The running project's logins for ``devices`` (id, driver), as a
+        login file sealed with this system's key, for a project backup to
+        hold. The key itself never goes with it, so the copy opens on this
+        system only. None when none of them has a login saved or the login
+        file cannot be opened. Never makes a key."""
+        with self._lock:
+            self._load()
+            if self._unreadable is not None or not self.key_path.exists():
+                return None
+            entries: dict[_Key, _Entry] = {}
+            for device_id, driver in devices:
+                entry = self._entries.get((None, device_id, driver))
+                if entry is not None and entry.fields:
+                    entries[(None, device_id, driver)] = _Entry(dict(entry.fields), None)
+            if not entries:
+                return None
+            return self._envelope(entries, self._key())
+
+    def restore_copy(self, text: str, devices: Iterable[tuple[str, str]], *, where: str) -> int:
+        """A project backup's copy (``backup_copy``) restored on this system:
+        each of its logins for ``devices`` (id, driver) that this system has
+        nothing saved for is filed. This system's own logins always win. A
+        copy that does not open with this system's key, such as one made on
+        another system, files nothing. Returns how many settings were filed;
+        never raises."""
+        try:
+            with self._lock:
+                self._load()
+                if self._unreadable is not None:
+                    log.error("The device logins in %s were not restored: %s", where, self._unreadable)
+                    return 0
+                copy_entries = self._open(text, where)
+                wanted = set(devices)
+                found: list[FoundLogin] = []
+                filled = 0
+                for (library, device_id, driver), entry in sorted(copy_entries.items(), key=lambda i: _sort_key(i[0])):
+                    if library is not None or (device_id, driver) not in wanted or not entry.fields:
+                        continue
+                    current = self._entries.get((None, device_id, driver))
+                    have = set(current.fields) if current is not None else set()
+                    filled += len(set(entry.fields) - have)
+                    found.append(FoundLogin(device_id, driver, dict(entry.fields)))
+                if found:
+                    self.store(found, typed=False)
+                    self.verify()
+        except Exception as exc:  # the restore goes ahead; those devices ask for their login
+            log.warning("The device logins in %s were not restored (%s)", where, exc)
+            return 0
+        if filled:
+            log.info("Restored %d device login(s) this system did not have from %s", filled, where)
+        return filled
+
+    def _envelope(self, entries: dict[_Key, _Entry], key: bytes) -> str:
+        """``entries`` as the text of a login file sealed with ``key``."""
         from cryptography.fernet import Fernet
 
-        key = self._key()
         devices = []
         for triple in sorted(entries, key=_sort_key):
             library, device_id, driver = triple
@@ -417,7 +486,13 @@ class DeviceLogins:
             devices.append(item)
         sealed = Fernet(key).encrypt(json.dumps({"devices": devices}, sort_keys=True).encode("utf-8"))
         envelope = {"format": _FORMAT, "version": _FORMAT_VERSION, "sealed": sealed.decode("ascii")}
-        atomic_write_text(self.path, json.dumps(envelope, indent=2) + "\n", mode=_PRIVATE)
+        return json.dumps(envelope, indent=2) + "\n"
+
+    def _commit(self, entries: dict[_Key, _Entry]) -> None:
+        """Write ``entries`` to disk, then make them current."""
+        if self._unreadable is not None:
+            raise LoginFileUnreadable(self._unreadable)
+        atomic_write_text(self.path, self._envelope(entries, self._key()), mode=_PRIVATE)
         self._entries = entries
 
     def _key(self) -> bytes:
@@ -723,6 +798,29 @@ def marked_fields(config: dict[str, Any] | None) -> list[str]:
     if not isinstance(config, dict):
         return []
     return sorted(str(key) for key, value in config.items() if value == SAVED_LOGIN)
+
+
+def project_devices(project: Any) -> list[tuple[str, str]]:
+    """Every device in ``project`` (a ProjectConfig, or a project file read as
+    JSON) as (id, driver)."""
+    return [(row.device_id, row.driver) for row in _rows_of(project)]
+
+
+def saved_logins_of(project: Any, lookup: Callable[[str, str, str], str | None]) -> list[FoundLogin]:
+    """The saved logins behind the markers in ``project`` (a ProjectConfig, or
+    a project file read as JSON): for each device, each setting that holds
+    the marker in its config or its connection row and that
+    ``lookup(device id, driver, setting)`` has a login for."""
+    found: list[FoundLogin] = []
+    for row in _rows_of(project):
+        values: dict[str, str] = {}
+        for name in sorted(set(marked_fields(row.config)) | set(marked_fields(row.connection))):
+            value = lookup(row.device_id, row.driver, name)
+            if _usable(value):
+                values[name] = value
+        if values:
+            found.append(FoundLogin(row.device_id, row.driver, values))
+    return found
 
 
 def fill_saved_logins(record: dict[str, Any], logins: DeviceLogins) -> dict[str, Any]:

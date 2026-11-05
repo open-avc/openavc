@@ -21,7 +21,8 @@ from typing import Any
 from openavc import config
 from openavc.core import asset_tree, theme_tree
 from openavc.core.custom_ui import extract_from_zip, zip_entries
-from openavc.core.device_logins import device_logins, move_logins
+from openavc.core import login_bundle
+from openavc.core.device_logins import device_logins, move_logins, saved_logins_of
 from openavc.core.project_loader import (
     ISCConfig,
     ProjectConfig,
@@ -229,6 +230,77 @@ def _move_copy_logins(sid: str) -> None:
             )
     except Exception:  # the next start tries again
         log.exception("Could not move the device logins of imported library project '%s'", sid)
+
+
+def _library_login(sid: str):
+    """The saved login a device of library copy ``sid`` would get if the copy
+    were opened here: the running project's first, then the copy's own (as
+    ``device_logins.adopt_library`` and the rollback put-back give it)."""
+    logins = device_logins()
+
+    def lookup(device_id: str, driver: str, name: str) -> str | None:
+        return (logins.login(device_id, driver, name)
+                or logins.login(device_id, driver, name, library=sid))
+
+    return lookup
+
+
+class NoLoginsToInclude(ValueError):
+    """An export asked for device logins and the project has none saved here."""
+
+
+def _sealed_logins(data: dict[str, Any], lookup, passphrase: str) -> bytes:
+    """The bundle of ``data``'s saved logins sealed with ``passphrase``
+    (``core.login_bundle``). Raises NoLoginsToInclude when there are none."""
+    login_bundle.check_passphrase(passphrase)
+    found = saved_logins_of(data, lookup)
+    if not found:
+        raise NoLoginsToInclude(
+            "No device logins are saved on this system for this project. Export it without them."
+        )
+    return login_bundle.seal(found, passphrase)
+
+
+def has_saved_logins(data: dict[str, Any], lookup) -> bool:
+    """Whether ``data`` marks a login that ``lookup`` has saved, so an export
+    could include it."""
+    try:
+        return bool(saved_logins_of(data, lookup))
+    except Exception:
+        log.exception("Could not read the saved device logins")
+        return False
+
+
+def add_imported_logins(project_id: str, passphrase: str) -> int:
+    """Open the sealed logins an import of library copy ``project_id`` brought
+    and file them as that copy's own, for each device the copy has with the
+    same driver and a setting it marks. Opening the copy then gives each
+    device this system's login where it has one, and these for the rest.
+    Returns how many devices got one.
+
+    Raises FileNotFoundError when nothing is waiting for that copy (it was
+    skipped, expired or the server restarted), login_bundle.WrongPassphrase
+    when the passphrase does not open it."""
+    sid = sanitize_id(project_id)
+    raw = login_bundle.held(sid)
+    if raw is None:
+        raise FileNotFoundError(sid)
+    found = login_bundle.open_bundle(raw, passphrase)
+    data = _load_avc(_lib_dir() / sid / "project.avc")
+    bundled = {(f.device_id, f.driver): f.fields for f in found}
+    wanted = saved_logins_of(data, lambda d, drv, name: bundled.get((d, drv), {}).get(name))
+    logins = device_logins()
+    if wanted:
+        logins.store(wanted, library=sid, typed=False)
+        logins.verify()
+    login_bundle.release(sid)
+    log.info("Added the sealed device logins of %d device(s) to library project '%s'", len(wanted), sid)
+    return len(wanted)
+
+
+def skip_imported_logins(project_id: str) -> None:
+    """Forget the sealed logins an import of ``project_id`` brought."""
+    login_bundle.release(sanitize_id(project_id))
 
 
 def move_library_logins(logins=None) -> None:
@@ -547,7 +619,9 @@ def list_projects() -> list[dict[str, Any]]:
             continue
         try:
             data = _load_avc(avc_path)
-            projects.append(_project_meta(d.name, data, d / "scripts"))
+            meta = _project_meta(d.name, data, d / "scripts")
+            meta["has_saved_logins"] = has_saved_logins(data, _library_login(d.name))
+            projects.append(meta)
         except (OSError, ValueError, KeyError):  # File read, JSON parse, or data shape errors
             projects.append({
                 "id": d.name, "name": d.name, "description": "",
@@ -710,6 +784,7 @@ def delete_project(project_id: str) -> bool:
     if not project_dir.exists():
         return False
     shutil.rmtree(project_dir)
+    login_bundle.release(sid)
     try:
         device_logins().drop_library(sid)
     except Exception:  # the next start deletes them instead
@@ -963,7 +1038,9 @@ def _find_plugin_files(plugin_deps: list[dict]) -> list[tuple[str, Path]]:
     return files
 
 
-def _bundle_bytes(data: dict[str, Any], scripts: dict[str, str], project_dir: Path) -> bytes:
+def _bundle_bytes(
+    data: dict[str, Any], scripts: dict[str, str], project_dir: Path, sealed_logins: bytes | None = None,
+) -> bytes:
     """Build the project bundle: project.avc + everything it needs to run.
 
     One builder for both export doors -- the library's and the current
@@ -997,30 +1074,43 @@ def _bundle_bytes(data: dict[str, Any], scripts: dict[str, str], project_dir: Pa
             zf.writestr(archive_path, fpath.read_bytes())
         for archive_path, fpath in theme_files:
             zf.writestr(archive_path, fpath.read_bytes())
+        if sealed_logins is not None:
+            zf.writestr(login_bundle.BUNDLE_MEMBER, sealed_logins)
     return buf.getvalue()
 
 
-def export_project(project_id: str) -> tuple[bytes, str, str]:
+def export_project(project_id: str, logins_passphrase: str | None = None) -> tuple[bytes, str, str]:
     """Export a saved project as a .zip bundle.
 
+    With ``logins_passphrase``, the bundle also holds the device logins the
+    copy would get if opened here, sealed with it (``core.login_bundle``).
     Returns (content_bytes, filename, content_type).
     """
     data, scripts = get_project(project_id)
     sid = sanitize_id(project_id)
-    return _bundle_bytes(data, scripts, _lib_dir() / sid), f"{sid}.zip", "application/zip"
+    sealed = None
+    if logins_passphrase is not None:
+        sealed = _sealed_logins(data, _library_login(sid), logins_passphrase)
+    return _bundle_bytes(data, scripts, _lib_dir() / sid, sealed), f"{sid}.zip", "application/zip"
 
 
-def export_active_project(project_path: Path) -> tuple[bytes, str, str]:
+def export_active_project(
+    project_path: Path, logins_passphrase: str | None = None,
+) -> tuple[bytes, str, str]:
     """Export the project the room is running as the same .zip bundle.
 
     Reads what is on disk rather than what an editor is holding, so the caller
-    saves first -- see the export route.
+    saves first -- see the export route. With ``logins_passphrase``, the
+    bundle also holds the project's saved device logins, sealed with it.
     """
     data = _load_avc(project_path)
     scripts = _read_scripts_dir(project_path.parent / "scripts")
     sid = sanitize_id(data.get("project", {}).get("id") or "project")
+    sealed = None
+    if logins_passphrase is not None:
+        sealed = _sealed_logins(data, device_logins().login, logins_passphrase)
     return (
-        _bundle_bytes(data, scripts, project_path.parent),
+        _bundle_bytes(data, scripts, project_path.parent, sealed),
         f"{sid}.zip",
         "application/zip",
     )
@@ -1380,6 +1470,8 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
         installed_drivers = _install_bundled_drivers(zf)
         installed_plugins, unloadable_plugins = _install_bundled_plugins(zf)
 
+        sealed_logins, sealed_problem = _held_sealed_logins(zf, pid)
+
     # After the drivers, which say which of their settings are logins.
     _move_copy_logins(pid)
 
@@ -1408,8 +1500,11 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
                 f"this system. Check the Plugins page."
             )
 
+    if sealed_problem:
+        warnings.append(sealed_problem)
+
     log.info(f"Imported project '{pid}' from .zip bundle")
-    return {
+    result: dict[str, Any] = {
         "id": pid,
         "installed_drivers": installed_drivers,
         "installed_plugins": installed_plugins,
@@ -1417,3 +1512,27 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
         "missing_plugins": missing_plugins,
         "warnings": warnings,
     }
+    if sealed_logins is not None:
+        result["sealed_logins"] = sealed_logins
+    return result
+
+
+def _held_sealed_logins(zf: zipfile.ZipFile, pid: str) -> tuple[dict[str, str] | None, str | None]:
+    """The export's sealed device logins, held for library copy ``pid`` until
+    somebody enters the passphrase (``add_imported_logins``) or skips it.
+    Returns what the import's answer says about them, and a warning when the
+    file holds some this version cannot read."""
+    login_bundle.release(pid)
+    try:
+        info_entry = zf.getinfo(login_bundle.BUNDLE_MEMBER)
+    except KeyError:
+        return None, None
+    try:
+        if info_entry.file_size > 2 * 1024 * 1024:
+            raise login_bundle.BundleUnreadable("The sealed logins are larger than any export makes.")
+        raw = zf.read(info_entry)
+        info = login_bundle.read_info(raw)
+    except login_bundle.BundleUnreadable as exc:
+        return None, f"The device logins in this file were left out: {exc}"
+    login_bundle.hold(pid, raw)
+    return {"sealed_at": info.sealed_at}, None

@@ -16,6 +16,7 @@ from openavc.api.models import (
     LibraryReplaceRequest,
     LibrarySaveRequest,
     LibraryUpdateRequest,
+    LoginsPassphraseRequest,
     PanelUnlockRequest,
 )
 from openavc.core.command_params import file_command_check, missing_params_check
@@ -483,6 +484,37 @@ async def export_current_project():
     )
 
 
+def _zip_response(content: bytes, filename: str, content_type: str):
+    from fastapi.responses import Response
+
+    return Response(
+        content=content,
+        media_type=content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/project/export")
+async def export_current_project_with_logins(data: LoginsPassphraseRequest):
+    """The running project's .zip bundle with its saved device logins sealed
+    with the passphrase (core/login_bundle.py). Without logins, GET."""
+    import asyncio
+
+    from openavc.core.login_bundle import PassphraseTooShort
+    from openavc.core.project_library import NoLoginsToInclude, export_active_project
+
+    engine = _get_engine()
+    try:
+        content, filename, content_type = await asyncio.to_thread(
+            export_active_project, engine.project_path, data.passphrase
+        )
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="No project file to export")
+    except (PassphraseTooShort, NoLoginsToInclude) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return _zip_response(content, filename, content_type)
+
+
 # --- Project Library ---
 
 
@@ -613,6 +645,65 @@ async def export_library_project(project_id: str):
     )
 
 
+@router.post("/library/{project_id}/export")
+async def export_library_project_with_logins(project_id: str, data: LoginsPassphraseRequest):
+    """A saved project's .zip bundle with the device logins it would get if
+    opened here, sealed with the passphrase. Without logins, GET."""
+    import asyncio
+
+    from openavc.core.login_bundle import PassphraseTooShort
+    from openavc.core.project_library import NoLoginsToInclude, export_project
+
+    try:
+        content, filename, content_type = await asyncio.to_thread(
+            export_project, project_id, data.passphrase
+        )
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found in library")
+    except (PassphraseTooShort, NoLoginsToInclude) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return _zip_response(content, filename, content_type)
+
+
+@router.post("/library/{project_id}/logins")
+async def add_imported_logins(project_id: str, data: LoginsPassphraseRequest) -> dict[str, Any]:
+    """Open the sealed device logins an import of this library copy brought
+    (its answer's ``sealed_logins``) and file them as the copy's own.
+    Opening the copy then gives each device this system's login where it has
+    one, and these for the rest."""
+    import asyncio
+
+    from openavc.core.device_logins import LoginFileUnreadable
+    from openavc.core.login_bundle import WrongPassphrase
+    from openavc.core.project_library import add_imported_logins as _add
+
+    try:
+        added = await asyncio.to_thread(_add, project_id, data.passphrase)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail="No device logins from an import are waiting for this project. "
+                   "Import the file again to enter its passphrase.",
+        )
+    except WrongPassphrase as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except LoginFileUnreadable as e:
+        raise _api_error(
+            500, "The device logins could not be saved on this system. Check the server log.", e,
+        )
+    return {"status": "added", "devices": added}
+
+
+@router.delete("/library/{project_id}/logins")
+async def skip_imported_logins(project_id: str) -> dict[str, Any]:
+    """Leave out the sealed device logins an import of this library copy
+    brought: they are forgotten, and its devices ask for their login."""
+    from openavc.core.project_library import skip_imported_logins as _skip
+
+    _skip(project_id)
+    return {"status": "skipped"}
+
+
 @router.post("/library/import")
 async def import_library_project(request: Request) -> dict[str, Any]:
     """Upload a .avc or .zip file to the project library."""
@@ -661,6 +752,7 @@ async def import_library_project(request: Request) -> dict[str, Any]:
         "installed_plugins": result.get("installed_plugins", []),
         "missing_plugins": result.get("missing_plugins", []),
         "warnings": result.get("warnings", []),
+        **({"sealed_logins": result["sealed_logins"]} if result.get("sealed_logins") else {}),
     }
 
 

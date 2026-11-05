@@ -887,6 +887,9 @@ export interface LibraryProject {
   required_drivers: string[];
   created: string;
   modified: string;
+  /** Whether a device login saved on this system could go with an export of
+   *  this copy (sealed with a passphrase). */
+  has_saved_logins?: boolean;
 }
 
 export interface LibraryProjectDetail {

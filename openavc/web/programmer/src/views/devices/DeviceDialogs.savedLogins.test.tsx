@@ -225,6 +225,55 @@ describe("Edit Device on a device that waits for its login", () => {
 
     expect(sentConfig()).toMatchObject({ password: MARKER, api_key: MARKER });
   });
+
+  it("calls a login neither saved nor missing until the server has answered", async () => {
+    let answer: (value: unknown) => void = () => {};
+    vi.mocked(api.getDevice).mockReturnValue(new Promise((resolve) => { answer = resolve; }) as never);
+    openEdit();
+    await screen.findByLabelText("Mode");
+
+    expect(screen.getAllByText("Checking…")).toHaveLength(2);
+    expect(screen.queryByText("Saved on this system")).toBeNull();
+    expect(screen.queryByLabelText("Password")).toBeNull();
+
+    answer({ needs_login: ["password"] });
+    await waitFor(() => expect(screen.getByLabelText("Password")).toHaveValue(""));
+    expect(screen.queryByText("Checking…")).toBeNull();
+    expect(screen.getAllByText("Saved on this system")).toHaveLength(1);
+  });
+
+  it("treats every mark as saved when the server cannot be asked", async () => {
+    vi.mocked(api.getDevice).mockRejectedValue(new Error("offline"));
+    openEdit();
+
+    await waitFor(() => expect(screen.getAllByText("Saved on this system")).toHaveLength(2));
+    expect(screen.queryByText("Checking…")).toBeNull();
+  });
+
+  it("keeps a waiting login masked once typed in, whatever its field says", async () => {
+    // A field the driver does not mark secret, which this project marks as a
+    // saved login all the same (a driver update that unmarked it).
+    const plain = driver({
+      id: "acme_widget",
+      name: "Acme Widget",
+      transport: "tcp",
+      default_config: { port: 4352 },
+      config_schema: {
+        host: { type: "string", required: true, label: "IP Address" },
+        passcode: { type: "string", label: "Passcode" },
+      },
+    });
+    vi.mocked(api.listDrivers).mockResolvedValue([plain]);
+    vi.mocked(api.getDevice).mockResolvedValue({ needs_login: ["passcode"] } as never);
+    openEdit({ ...device, config: { passcode: MARKER } } as DeviceConfig, { host: "192.0.2.10" });
+
+    const box = await screen.findByLabelText("Passcode");
+    expect(box).toHaveAttribute("type", "password");
+    await userEvent.type(box, "4711");
+
+    expect(screen.getByLabelText("Passcode")).toHaveAttribute("type", "password");
+    expect(screen.getByLabelText("Passcode")).toHaveValue("4711");
+  });
 });
 
 describe("carrying a device's settings to another driver", () => {

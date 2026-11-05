@@ -9,6 +9,8 @@ Backups are ZIP files stored in {project_dir}/backups/ containing:
   - ui/                  (custom controls, folders intact)
   - themes/              (project custom themes)
   - state.json           (persisted variable state, if present)
+  - device_logins.json   (the logins of the project's devices, sealed with this
+                          system's key, never the key: core/device_logins.py)
 
 Backups are created at meaningful boundaries (project replacement, AI changes,
 cloud pushes, manual request, periodic timer) — NOT on every save.
@@ -43,6 +45,39 @@ MAX_BACKUPS = 15
 
 # The project file's name inside a backup ZIP, whatever it is called on disk.
 ARCHIVE_PROJECT = "project.avc"
+
+# The project's device logins inside a backup ZIP, sealed with this system's
+# key (core/device_logins.py backup_copy): restored on this system they fill in
+# what it no longer has; anywhere else they do not open.
+ARCHIVE_LOGINS = "device_logins.json"
+
+
+def _logins_copy(data: object) -> str | None:
+    """This system's saved logins for the devices in ``data`` (the project
+    file read as JSON), sealed for a backup; None when there are none or
+    they cannot be read. A backup is taken whatever happens here."""
+    try:
+        from openavc.core.device_logins import device_logins, project_devices
+
+        return device_logins().backup_copy(project_devices(data))
+    except Exception:
+        log.exception("Could not add the device logins to the backup; it is taken without them")
+        return None
+
+
+def _restore_logins(zf: zipfile.ZipFile, names: list[str], project_file: Path, where: str) -> None:
+    """A backup's sealed logins, filed for the devices of the project just
+    restored wherever this system has none saved. Never raises."""
+    if ARCHIVE_LOGINS not in names:
+        return
+    try:
+        from openavc.core.device_logins import device_logins, project_devices
+
+        data = json.loads(project_file.read_text(encoding="utf-8"))
+        text = zf.read(ARCHIVE_LOGINS).decode("utf-8")
+        device_logins().restore_copy(text, project_devices(data), where=where)
+    except Exception:
+        log.exception("Could not restore the device logins in %s", where)
 
 
 def _atomic_write_bytes(target: Path, data: bytes) -> None:
@@ -224,11 +259,13 @@ def create_backup(
 
     # Read project name from the file
     project_name = ""
+    data: object = None
     try:
         data = json.loads(project_file.read_text(encoding="utf-8"))
         project_name = data.get("project", {}).get("name", "")
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError, AttributeError):
         pass
+    logins = _logins_copy(data) if data is not None else None
 
     meta = {
         "reason": reason,
@@ -266,6 +303,8 @@ def create_backup(
             state_file = project_dir / "state.json"
             if state_file.is_file():
                 zf.write(state_file, "state.json")
+            if logins is not None:
+                zf.writestr(ARCHIVE_LOGINS, logins)
 
         # Reserve a unique name and place the finished ZIP atomically. The lock
         # makes the existence-check + rename a single critical section, so two
@@ -376,7 +415,8 @@ def restore_from_backup(backup_path: Path, project_file: Path) -> None:
     """Restore a project from a backup file into ``project_file``.
 
     ZIP backups: restores the project file, scripts/, assets/, ui/, themes/ and
-    state.json. Legacy .avc.bak: restores the project file only.
+    state.json, and files the device logins it holds wherever this system has
+    none saved for that device. Legacy .avc.bak: restores the project file only.
 
     Every write is atomic (temp + os.replace for files, staged rename swap for
     directories) and the whole restore runs under the shared project-save lock,
@@ -424,6 +464,10 @@ def restore_from_backup(backup_path: Path, project_file: Path) -> None:
                     _atomic_write_bytes(state_target, zf.read("state.json"))
                 else:
                     state_target.unlink(missing_ok=True)
+
+                # Device logins this system no longer has, such as those of a
+                # device removed long ago; its own always win.
+                _restore_logins(zf, names, project_file, f"backup {backup_path.name}")
 
             log.info(f"Restored from ZIP backup: {backup_path.name}")
 
