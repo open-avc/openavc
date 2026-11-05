@@ -372,7 +372,8 @@ async def test_restoring_an_old_backup_keeps_the_current_login(engine, data):
         assert _on_disk(engine.project_path)["connections"]["proj1"]["password"] == SAVED_LOGIN
         assert DeviceLogins(data).login("proj1", DRIVER, "password") == "Changed-Since"
         assert engine.devices.get_device_config("proj1")["config"]["password"] == "Changed-Since"
-        assert _backups(engine) == ["Before moving device logins out of the project"]
+        # The backup restored is still there; no second copy of it is taken.
+        assert _backups(engine) == []
     finally:
         await _stop(engine)
 

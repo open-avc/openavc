@@ -401,7 +401,8 @@ class Engine:
         # A login the project still holds in the clear (every login, on the
         # first start of a version that keeps them in this system's login
         # file) moves into that file before anything dials, and the project
-        # keeps the marker. Nobody saved the file this rewrites, so it is
+        # keeps the marker. This file may exist nowhere else (an update that
+        # took no backup of its own, an installer run by hand), so it is
         # backed up first; a move that cannot finish changes nothing.
         moved = self._move_logins(self.project, typed=False)
         if moved is not self.project and await self._back_up_before_moving_logins():
@@ -918,13 +919,12 @@ class Engine:
         # holds in the clear moves into this system's login file and the
         # marker takes its place (core/device_logins). A login somebody typed
         # replaces the saved one; one in a copy (a backup, the library, an
-        # import, a push) only fills a gap. A reload rewrites a file nobody
-        # saved, so it is backed up first.
+        # import, a push) only fills a gap. No backup is taken here, unlike at
+        # start: the copy that came in is still where it came from (the
+        # backup restored, the library, the cloud), and its logins are in the
+        # file, read back, before the marker is written.
         as_given = new_project
         new_project = self._move_logins(new_project, typed=origin is ProjectOrigin.EDIT)
-        if new_project is not as_given and not persist:
-            if not await self._back_up_before_moving_logins():
-                new_project = as_given
         # A file reload can insert host equipment too. Preserve that reference
         # on disk even when the caller did not request another project save.
         if persist or new_project != loaded_project:
