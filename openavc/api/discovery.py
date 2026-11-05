@@ -24,6 +24,7 @@ from openavc.drivers.registry import (
     get_driver_discovery_port,
     list_registered_drivers,
 )
+from openavc.drivers.spec import is_secret_setting
 
 log = get_logger(__name__)
 
@@ -470,7 +471,7 @@ def _scanned_mac_field(driver_id: str) -> str | None:
     cls = get_driver_class(driver_id)
     schema = (getattr(cls, "DRIVER_INFO", {}) or {}).get("config_schema") if cls else None
     field = schema.get(SCANNED_MAC_FIELD) if isinstance(schema, dict) else None
-    if not isinstance(field, dict) or field.get("secret"):
+    if not isinstance(field, dict) or is_secret_setting(SCANNED_MAC_FIELD, field):
         return None
     if field.get("type", "string") not in ("string", "text"):
         return None

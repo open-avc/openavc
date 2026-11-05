@@ -602,6 +602,10 @@ CASES: dict[str, Any] = {
     "config_learned_from_secret": _d(
         config_schema={"pin": {"type": "string", "secret": True, "learned_from": "power"}},
     ),
+    # The older spelling of secret: true is a secret too.
+    "config_learned_from_password_type": _d(
+        config_schema={"pin": {"type": "password", "learned_from": "power"}},
+    ),
     "config_learned_from_table": _d(
         config_schema={"map": {
             "type": "table", "learned_from": "power",

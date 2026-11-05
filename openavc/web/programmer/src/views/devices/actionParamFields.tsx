@@ -2,11 +2,12 @@ import type { ActionParam, DriverParamDef } from "../../api/types";
 import { ParamInput } from "../../components/shared/ParamInput";
 import { normalizeOptionList } from "../../components/shared/paramOptions";
 import { paramLabel } from "../../components/shared/paramLabel";
+import { isSecretSetting } from "../../components/shared/secretSetting";
 
 /** Default string value to seed a param field with. */
 export function defaultFor(def: ActionParam): string {
   // Never pre-fill a password/secret field — it must always start blank.
-  if (def.secret || def.type === "password") return "";
+  if (isSecretSetting(null, def)) return "";
   if (def.default !== undefined && def.default !== null) return String(def.default);
   if (def.type === "enum" && def.values && def.values.length > 0 && def.required) {
     // Seed the wire value of the first option (values may be {value, label}).

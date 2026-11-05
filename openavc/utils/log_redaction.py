@@ -43,8 +43,21 @@ password cannot blank unrelated log text.
 rather than unlocking one, and it is often a plain word ("admin"), so masking
 it in every line hid that word all over the log. It is still masked where the
 login goes over the wire (that device's TX/RX lines and its traffic view) and
-wherever a config is shown by field (:func:`redact_config`). A field a driver
-declares ``secret: true`` is a secret whatever it is called.
+wherever a config is shown by field (:func:`redact_config`).
+
+**What a secret is.** One definition, asked by every reader (the logs, the
+traffic recorder, problem reports, device audits, the login file, the space
+trimming, learned settings, the driver validator):
+
+  - a device's setting, by :func:`~openavc.drivers.spec.is_secret_setting`:
+    the connection ``password``, and any field the driver marks
+    ``secret: true`` or ``type: password``, whatever it is called. It lives in
+    the driver contract because the driver validator asks it too; the
+    Programmer mirrors it (``secretSetting.ts``);
+  - the project's own: :data:`PROJECT_SECRET_FIELDS`, the mesh key.
+
+The name rule (:func:`is_secret_key`) is the backstop for what nothing marks:
+a plugin's config, state, a device whose driver is not installed.
 
 A report that records one device's settings (the device audit's connection)
 asks :func:`secret_config_keys` which of them hold a credential, by name and
@@ -57,6 +70,8 @@ import logging
 import re
 from typing import Any, Iterable
 from urllib.parse import quote, quote_plus
+
+from openavc.drivers.spec import secret_settings
 
 # Config field names whose values are credentials. Matched case-insensitively:
 # exact names for ambiguous words (so a benign `user_label` isn't caught, nor a
@@ -238,20 +253,16 @@ def keep_masked_secrets(
 
 
 def _declared_secret(config_schema: dict[str, Any] | None) -> set[str]:
-    declared: set[str] = set()
-    if isinstance(config_schema, dict):
-        for field, spec in config_schema.items():
-            if isinstance(spec, dict) and spec.get("secret") is True:
-                declared.add(str(field))
-    return declared
+    return set(secret_settings(config_schema))
 
 
 def secret_config_keys(
     config: dict[str, Any], config_schema: dict[str, Any] | None = None,
 ) -> set[str]:
-    """The keys of ``config`` that hold a credential: declared ``secret:
-    true`` in the driver's ``config_schema``, or named like one
-    (:func:`is_secret_key`, so a username too). Top-level keys only."""
+    """The keys of ``config`` that hold a credential: a secret by the driver's
+    ``config_schema`` (:func:`~openavc.drivers.spec.is_secret_setting`), or
+    named like one (:func:`is_secret_key`, so a username too). Top-level keys
+    only."""
     declared = _declared_secret(config_schema)
     return {k for k in config if k in declared or is_secret_key(k)}
 
@@ -272,8 +283,9 @@ def collect_secret_values(
     """Every credential *value* in one device's resolved config, the
     usernames (:data:`IDENTITY_KEYS`) aside: :func:`collect_identity_values`.
 
-    Two sources, per the redaction decision: fields the driver explicitly
-    declares ``secret: true`` in its ``config_schema``, and fields whose name
+    Two sources, per the redaction decision: fields the driver's
+    ``config_schema`` marks secret
+    (:func:`~openavc.drivers.spec.is_secret_setting`), and fields whose name
     matches the conventional credential names above. A driver that marks a
     field secret gets it redacted even when the field is called something the
     name list would never guess (``site_code``, ``pin``).
@@ -301,7 +313,7 @@ def collect_identity_values(
     config_schema: dict[str, Any] | None = None,
 ) -> set[str]:
     """The usernames in one device's resolved config (:data:`IDENTITY_KEYS`,
-    unless the driver declares the field ``secret: true``)."""
+    unless the driver marks the field secret)."""
     if not isinstance(config, dict):
         return set()
     declared_secret = _declared_secret(config_schema)
@@ -316,6 +328,31 @@ def collect_identity_values(
             and str(key).lower() in IDENTITY_KEYS
             and str(key) not in declared_secret
         ):
+            values.add(value)
+    return values
+
+
+# The project's own secrets, outside any device, as (section, field): the key
+# the systems in a mesh prove themselves to each other with.
+PROJECT_SECRET_FIELDS: tuple[tuple[str, str], ...] = (("isc", "auth_key"),)
+
+
+def project_secret_values(project: Any) -> set[str]:
+    """The values of :data:`PROJECT_SECRET_FIELDS` in ``project`` (a loaded
+    project, or a project file read as JSON) that are set."""
+    values: set[str] = set()
+    if project is None:
+        return values
+    for section_name, field in PROJECT_SECRET_FIELDS:
+        if isinstance(project, dict):
+            section = project.get(section_name)
+        else:
+            section = getattr(project, section_name, None)
+        if isinstance(section, dict):
+            value = section.get(field)
+        else:
+            value = getattr(section, field, None)
+        if isinstance(value, str) and value:
             values.add(value)
     return values
 
@@ -458,6 +495,10 @@ class SecretRegistry:
     registered at runtime via ``redact_in_log`` (session tokens the device
     issued, which config cannot know and a reconnect must not drop).
 
+    Plus the project's own secrets (:data:`PROJECT_SECRET_FIELDS`), replaced
+    wholesale whenever the project is, and masked everywhere a device's are:
+    in every log line and in each device's own traffic.
+
     Compiled patterns are cached per device and for the union, and invalidated
     on every mutation.
     """
@@ -467,6 +508,7 @@ class SecretRegistry:
         self._runtime: dict[str, set[str]] = {}
         # Usernames: masked in the device's own traffic, not in every line.
         self._identity: dict[str, set[str]] = {}
+        self._project: set[str] = set()
         self._device_patterns: dict[str, re.Pattern[str] | None] = {}
         self._all_pattern: re.Pattern[str] | None = None
         self._all_dirty = True
@@ -481,6 +523,16 @@ class SecretRegistry:
             else:
                 store.pop(device_id, None)
         self._invalidate(device_id)
+
+    def set_project_secrets(self, values: Iterable[str]) -> None:
+        """Replace the project's own secrets (:func:`project_secret_values`)."""
+        kept = {v for v in values if isinstance(v, str) and len(v) >= MIN_SECRET_LEN}
+        if kept == self._project:
+            return
+        self._project = kept
+        # Every device's pattern carries them.
+        self._device_patterns.clear()
+        self._all_dirty = True
 
     def add_runtime_secret(self, device_id: str, value: str) -> None:
         if not isinstance(value, str) or len(value) < MIN_SECRET_LEN:
@@ -498,23 +550,25 @@ class SecretRegistry:
         self._config.clear()
         self._runtime.clear()
         self._identity.clear()
+        self._project.clear()
         self._device_patterns.clear()
         self._all_pattern = None
         self._all_dirty = True
 
     def secrets_for(self, device_id: str) -> set[str]:
-        """What to mask in this device's own traffic: its secrets and its
-        username."""
+        """What to mask in this device's own traffic: its secrets, its
+        username and the project's secrets."""
         return (
             self._config.get(device_id, set())
             | self._runtime.get(device_id, set())
             | self._identity.get(device_id, set())
+            | self._project
         )
 
     def all_secrets(self) -> set[str]:
-        """What to mask in every log line: every device's secrets, not the
-        usernames."""
-        values: set[str] = set()
+        """What to mask in every log line: every device's secrets and the
+        project's, not the usernames."""
+        values: set[str] = set(self._project)
         for group in (self._config, self._runtime):
             for entry in group.values():
                 values |= entry
@@ -539,7 +593,7 @@ class SecretRegistry:
 
     def has_secrets(self) -> bool:
         """Whether :meth:`redact_any` has anything to mask."""
-        return bool(self._config or self._runtime)
+        return bool(self._config or self._runtime or self._project)
 
     def _invalidate(self, device_id: str) -> None:
         self._device_patterns.pop(device_id, None)

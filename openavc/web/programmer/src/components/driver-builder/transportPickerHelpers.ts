@@ -1,6 +1,8 @@
 // React-free helpers for the transport config panel (TransportPicker) and
 // the driver export path.
 
+import { isSecretSetting } from "../shared/secretSetting";
+
 /**
  * Canonical delimiter form = real control characters — what YAML decoding
  * produces for every installed driver and what the inline-protocol editor
@@ -68,7 +70,7 @@ export function secretFieldsInConfig(
   if (!config) return [];
   const names = new Set<string>(SECRET_CONFIG_FIELDS);
   for (const [name, def] of Object.entries(schema ?? {})) {
-    if ((def as { secret?: boolean } | undefined)?.secret === true) names.add(name);
+    if (isSecretSetting(name, def)) names.add(name);
   }
   return [...names].filter(
     (field) => typeof config[field] === "string" && (config[field] as string).length > 0,

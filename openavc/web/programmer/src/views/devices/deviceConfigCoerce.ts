@@ -10,6 +10,7 @@
 // clear error instead of being silently stored as a string.
 
 import { CONNECTION_FIELDS } from "../../api/types.gen";
+import { isSecretSetting } from "../../components/shared/secretSetting";
 
 export type CoerceResult =
   | { ok: true; value: unknown }
@@ -18,13 +19,13 @@ export type CoerceResult =
 const SIMPLE_NUMBER = /^-?\d+(\.\d+)?$/;
 
 // A password/secret config field must never be pre-filled — render it blank so
-// a masked default (or stored value) can't be re-saved by accident.
+// a masked default (or stored value) can't be re-saved by accident. Which
+// fields are secret is the one rule in secretSetting.ts.
 export function isSecretConfigField(
   schema: Record<string, unknown> | undefined,
   key: string,
 ): boolean {
-  const f = schema?.[key] as { type?: string; secret?: boolean } | undefined;
-  return f?.type === "password" || f?.secret === true;
+  return isSecretSetting(key, schema?.[key]);
 }
 
 // The dialog form is a flat string map, so a driver's default_config is
@@ -93,14 +94,13 @@ export function configFieldKind(
 ): ConfigFieldKind {
   const f = (field ?? {}) as {
     type?: unknown;
-    secret?: unknown;
     values?: unknown;
   };
   const fieldType = String(f.type || "string");
   if (fieldType === "boolean") return "boolean";
   // Secret wins over every other widget: a dropdown or number input would
   // show the credential on screen.
-  if (fieldType === "password" || f.secret === true) return "password";
+  if (isSecretSetting(null, field)) return "password";
   // A table field is a repeatable typed-row list, edited on the device page by
   // ConfigTableEditor — the Add/Edit dialog just shows a pointer to it (the
   // dialog form is a flat string map that can't hold a row array).
@@ -307,8 +307,7 @@ export function trimsTypedValue(
   key: string,
   field: Record<string, unknown> | undefined,
 ): boolean {
-  if (key === "password") return false;
-  if (field && (field.type === "password" || field.secret === true)) return false;
+  if (isSecretSetting(key, field)) return false;
   if (CONNECTION_FIELDS.has(key)) return true;
   if (!field) return false;
   if (Array.isArray(field.values) && field.values.length > 0) return false;
@@ -350,7 +349,7 @@ export function buildConfigFromForm(
       continue;
     }
     const result = coerceConfigValue(
-      val, String(field?.type || ""), field?.secret === true, originals[key],
+      val, String(field?.type || ""), isSecretSetting(key, field), originals[key],
     );
     if (!result.ok) {
       return { ok: false, error: `${String(field?.label || key)}: ${result.error}` };

@@ -8,6 +8,7 @@ import type { DriverValidationIssue } from "../../api/driverClient";
 // registry (types.gen.ts).
 import { CHILD_RESERVED_PROPS, DISALLOWED_OPEN_PORTS } from "../../api/types";
 import { parseApiError } from "../../api/errors";
+import { isSecretSetting } from "../shared/secretSetting";
 
 // Re-exported for the Discovery editor, which shows the rule inline at
 // authoring time.
@@ -500,7 +501,7 @@ export function validateDriver(
   for (const [fieldName, rawDef] of Object.entries(draft.config_schema ?? {})) {
     if (!rawDef || typeof rawDef !== "object") continue;
     const fieldDef = rawDef as { type?: string; secret?: boolean };
-    if (fieldDef.secret === true) continue; // the platform warns about these
+    if (isSecretSetting(fieldName, fieldDef)) continue; // the platform warns about these
     const configDefault = (draft.default_config ?? {})[fieldName];
     if (configDefault === undefined || configDefault === null || configDefault === "") {
       continue;

@@ -59,6 +59,7 @@ from openavc.drivers.spec import (
     block_has_fixed_keys,
     is_file_command,
     is_multicast_group,
+    is_secret_setting,
     parse_version,
     platform_requirements,
 )
@@ -3305,7 +3306,7 @@ def validate_driver_warnings(driver_def: dict[str, Any]) -> list[str]:
         for field_name, field_def in config_schema.items():
             if not isinstance(field_def, dict):
                 continue
-            if field_def.get("secret") is not True:
+            if not is_secret_setting(field_name, field_def):
                 continue
             if has_value(field_def.get("default")) or has_value(
                 defaults.get(field_name)
@@ -3909,7 +3910,7 @@ def config_learned_from_errors(
     if not isinstance(learned_from, str) or not learned_from.strip():
         return [f"{where}: learned_from must name a state variable"]
     errors: list[str] = []
-    if field_def.get("secret") is True:
+    if is_secret_setting(field_name, field_def):
         errors.append(
             f"{where}: a secret field cannot be learned_from a state variable, "
             f"because the value would have to be shown as state first"

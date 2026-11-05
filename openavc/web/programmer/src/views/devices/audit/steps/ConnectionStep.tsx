@@ -21,6 +21,7 @@ import {
 import { currentRun, displayBytes, previewStageLabel } from "../auditHelpers";
 import { BackButton, ErrorLine } from "../auditParts";
 import { buttonStyle, headingStyle, hintStyle, labelStyle, panelStyle, spinStyle } from "../auditStyles";
+import { isSecretSetting } from "../../../../components/shared/secretSetting";
 
 /** The connection fields the audit sets itself: the driver connects to the
  *  audited address over the network, never a serial port or a bridge. */
@@ -169,7 +170,7 @@ export function ConnectionStep() {
         if (key in tableSpecs) continue;
         if (raw === "" && key !== "usb_serial") continue;
         const spec = schema[key] ?? {};
-        const result = coerceConfigValue(raw, String(spec.type || ""), spec.secret === true);
+        const result = coerceConfigValue(raw, String(spec.type || ""), isSecretSetting(key, spec));
         if (!result.ok) {
           setError(`${String(spec.label || key)}: ${result.error}`);
           return false;

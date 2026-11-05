@@ -6,10 +6,13 @@ from typing import Any
 
 from openavc.cloud.tools import apply_tool_edit
 from openavc.core.asset_references import asset_users
+from openavc.drivers.registry import get_driver_class
 from openavc.utils.log_redaction import (
     MIN_SECRET_LEN,
     is_secret_key,
+    project_secret_values,
     redact_text,
+    secret_config_keys,
 )
 from openavc.utils.logger import get_logger
 from openavc.utils.paths import safe_path_within
@@ -63,21 +66,25 @@ class SystemToolsMixin:
         """
         secrets: set[str] = set()
 
-        def harvest(mapping: Any) -> None:
+        def harvest(mapping: Any, schema: Any = None) -> None:
             if not isinstance(mapping, dict):
                 return
+            # Named like a credential, or a secret by the driver's own schema.
+            keys = secret_config_keys(mapping, schema if isinstance(schema, dict) else None)
             for key, value in mapping.items():
                 if (
                     isinstance(value, str)
                     and len(value) >= MIN_SECRET_LEN
-                    and _looks_secret(str(key))
+                    and (key in keys or _looks_secret(str(key)))
                 ):
                     secrets.add(value)
 
         engine = self._get_engine()
         if engine and engine.project:
             for device in engine.project.devices:
-                harvest(getattr(device, "config", None))
+                cls = get_driver_class(getattr(device, "driver", "") or "")
+                schema = cls.DRIVER_INFO.get("config_schema") if cls is not None else None
+                harvest(getattr(device, "config", None), schema)
             for conn in (engine.project.connections or {}).values():
                 harvest(conn)
             plugins = getattr(engine.project, "plugins", None) or {}
@@ -90,6 +97,11 @@ class SystemToolsMixin:
                     harvest(plugin_cfg.get("config"))
                 else:
                     harvest(getattr(plugin_cfg, "config", None))
+            # The project's own (the mesh key).
+            secrets |= {
+                value for value in project_secret_values(engine.project)
+                if len(value) >= MIN_SECRET_LEN
+            }
 
         try:
             from openavc.system_config import get_system_config

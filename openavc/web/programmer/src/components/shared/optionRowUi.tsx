@@ -20,6 +20,7 @@ import * as api from "../../api/restClient";
 import { parseApiError } from "../../api/errors";
 import type { DriverInfo } from "../../api/types";
 import { coerceConfigValue, configFieldKind } from "../../views/devices/deviceConfigCoerce";
+import { isSecretSetting } from "./secretSetting";
 
 /** How a status word reads on screen. An unknown one is shown as published
  *  rather than swallowed: a surface that hides a word it does not recognise is
@@ -158,7 +159,7 @@ export function SetupField({ device, field }: { device: string; field: string })
     // {} until then and every field looks like a string. The button below is
     // disabled for the same window; this is the guard for the Enter key.
     if (drivers === null) return;
-    const coerced = coerceConfigValue(text, fieldType, schema.secret === true);
+    const coerced = coerceConfigValue(text, fieldType, isSecretSetting(field, schema));
     if (!coerced.ok) {
       showError(`${label}: ${coerced.error}`);
       return;

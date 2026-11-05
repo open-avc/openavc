@@ -104,6 +104,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from openavc.drivers.registry import get_driver_class
+from openavc.drivers.spec import PASSWORD_FIELD, secret_settings
 from openavc.utils.fileio import atomic_write_text
 from openavc.utils.logger import get_logger
 
@@ -125,7 +126,7 @@ _READABLE_VERSIONS = (1, 2)
 REMOVED_KEEP = timedelta(days=90)
 
 #: The connection setting that holds a login whatever the driver says.
-CONNECTION_LOGIN = "password"
+CONNECTION_LOGIN = PASSWORD_FIELD
 
 _PRIVATE = stat.S_IRUSR | stat.S_IWUSR
 
@@ -466,17 +467,13 @@ def _entry_from(item: Any) -> tuple[_Key, _Entry] | None:
 
 def login_fields(driver_id: str) -> frozenset[str]:
     """The settings of a device on ``driver_id`` that hold a login: the
-    connection password, and each config field the driver declares
-    ``secret: true`` or ``type: password``. For a driver that is not installed,
-    the password only: its other settings move once it is."""
-    names = {CONNECTION_LOGIN}
+    connection password, and each config field that is a secret by the one
+    rule (``drivers/spec.is_secret_setting``: ``secret: true`` or
+    ``type: password``). For a driver that is not installed, the password
+    only: its other settings move once it is."""
     cls = get_driver_class(driver_id)
     schema = cls.DRIVER_INFO.get("config_schema") if cls is not None else None
-    if isinstance(schema, dict):
-        for name, field in schema.items():
-            if isinstance(field, dict) and (field.get("secret") is True or field.get("type") == "password"):
-                names.add(str(name))
-    return frozenset(names)
+    return frozenset({CONNECTION_LOGIN}) | secret_settings(schema)
 
 
 @dataclass

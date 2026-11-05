@@ -23,6 +23,7 @@ import { validateParam } from "./paramValidation";
 import { VariableKeyPicker } from "./VariableKeyPicker";
 import { BooleanOptions } from "./BooleanOptions";
 import { FileParamInput } from "./FileParamInput";
+import { isSecretSetting } from "./secretSetting";
 
 /** The widget for a single command/action parameter — the part that varies by
  *  the param's declared type. One shared control so every authoring surface
@@ -432,7 +433,7 @@ export function ParamInput({
     widget = (
       <input
         type={
-          def.secret || type === "password"
+          isSecretSetting(null, def)
             ? "password"
             : isNumber
               ? "number"

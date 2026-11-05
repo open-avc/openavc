@@ -49,6 +49,7 @@ import copy
 from typing import Any
 
 from openavc.core.device_config import apply_config_delta
+from openavc.drivers.spec import is_secret_setting
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -127,8 +128,7 @@ def learned_fields(driver: Any) -> dict[str, str]:
         source = field_def.get("learned_from")
         # Never a login: a learned value is written straight into the project,
         # and a login belongs in this system's login file (core/device_logins).
-        secret = field_def.get("secret") is True or field_def.get("type") == "password"
-        if isinstance(source, str) and source.strip() and not secret:
+        if isinstance(source, str) and source.strip() and not is_secret_setting(name, field_def):
             fields[name] = source.strip()
     return fields
 

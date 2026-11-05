@@ -7,6 +7,7 @@ import { validateSettingValue } from "../driver-builder/deviceSettingsHelpers";
 import { Modal } from "./Modal";
 import { normalizeOptionList } from "./paramOptions";
 import { BooleanOptions } from "./BooleanOptions";
+import { isSecretSetting } from "./secretSetting";
 
 /** Generate a non-clashing default value for a unique device setting. */
 function generateUniqueDefault(
@@ -42,7 +43,7 @@ export function DeviceSettingsSetupDialog({
     for (const key of setupKeys) {
       const def = deviceSettings[key];
       // Never pre-fill a password/secret setting — it must start blank.
-      if (def?.secret || def?.type === "password") {
+      if (isSecretSetting(key, def)) {
         initial[key] = "";
         continue;
       }
@@ -231,7 +232,7 @@ export function DeviceSettingsSetupDialog({
                   value={values[key] ?? ""}
                   onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.value }))}
                   type={
-                    def?.secret || fieldType === "password"
+                    isSecretSetting(key, def)
                       ? "password"
                       : fieldType === "integer" || fieldType === "number"
                         ? "number"

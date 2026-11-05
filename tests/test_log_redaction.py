@@ -38,6 +38,7 @@ from openavc.utils.log_redaction import (
     keep_masked_secrets,
     mask_secret_fields,
     mask_secrets_by_name,
+    project_secret_values,
     redact_config,
     redact_text,
     secret_config_keys,
@@ -195,6 +196,14 @@ def test_a_declared_secret_field_is_collected_whatever_it_is_called():
     config = {"site_code": "9931-ALPHA", "host": "10.0.0.5"}
     schema = {"site_code": {"type": "string", "secret": True}}
     assert collect_secret_values(config, schema) == {"9931-ALPHA"}
+
+
+def test_a_field_typed_password_is_collected_whatever_it_is_called():
+    """`type: password` is the older spelling of `secret: true`: the same rule."""
+    config = {"admin_code": "7731-BRAVO", "host": "10.0.0.5"}
+    schema = {"admin_code": {"type": "password", "label": "Admin Code"}}
+    assert collect_secret_values(config, schema) == {"7731-BRAVO"}
+    assert secret_config_keys(config, schema) == {"admin_code"}
 
 
 def test_conventional_names_are_collected_without_a_schema():
@@ -447,6 +456,64 @@ def test_reading_the_buffer_does_not_rewrite_the_stored_entry(clean_registry):
     clean_registry.add_runtime_secret("acme_1", "a91f-77c2-de10")
     buffer.get_recent(10)
     assert buffer._entries[0].message == "[acme_1] RX: TOKEN a91f-77c2-de10"
+
+
+# --------------------------------------------------------------------------
+# The project's own secrets (the mesh key)
+# --------------------------------------------------------------------------
+
+
+def test_the_mesh_key_is_read_from_a_loaded_project_or_its_file():
+    from openavc.core.project_loader import ISCConfig
+
+    loaded = type("Project", (), {"isc": ISCConfig(auth_key="mesh-key-4417")})()
+    assert project_secret_values(loaded) == {"mesh-key-4417"}
+    assert project_secret_values({"isc": {"auth_key": "mesh-key-4417"}}) == {"mesh-key-4417"}
+    assert project_secret_values({"isc": {"auth_key": ""}}) == set()
+    assert project_secret_values({}) == set()
+    assert project_secret_values(None) == set()
+
+
+def test_the_mesh_key_is_masked_in_every_log_line_and_every_devices_traffic(clean_registry):
+    clean_registry.set_project_secrets({"mesh-key-4417"})
+    assert clean_registry.redact_any("joined with mesh-key-4417") == "joined with ***"
+    assert clean_registry.redact_for("acme_1", "TX: KEY mesh-key-4417") == "TX: KEY ***"
+    assert "mesh-key-4417" in clean_registry.secrets_for("acme_1")
+    assert clean_registry.has_secrets() is True
+
+
+def test_a_changed_mesh_key_stops_masking_the_old_one(clean_registry):
+    clean_registry.set_config_secrets("acme_1", {"hunter22"})
+    clean_registry.set_project_secrets({"mesh-key-4417"})
+    # Cache both patterns, then change the key.
+    clean_registry.redact_any("x")
+    clean_registry.redact_for("acme_1", "x")
+    clean_registry.set_project_secrets({"mesh-key-9902"})
+    assert clean_registry.redact_any("mesh-key-4417 mesh-key-9902") == "mesh-key-4417 ***"
+    assert clean_registry.redact_for("acme_1", "mesh-key-4417 mesh-key-9902") == "mesh-key-4417 ***"
+    # The device's own secret is untouched by the change.
+    assert clean_registry.redact_for("acme_1", "PASS hunter22") == "PASS ***"
+    clean_registry.set_project_secrets(set())
+    assert clean_registry.has_secrets() is True
+    assert clean_registry.redact_any("mesh-key-9902") == "mesh-key-9902"
+
+
+def test_a_trivially_short_mesh_key_masks_nothing(clean_registry):
+    clean_registry.set_project_secrets({"abc"})
+    assert clean_registry.has_secrets() is False
+
+
+def test_the_mesh_key_is_masked_in_a_line_already_in_the_buffer(clean_registry):
+    buffer = _buffer_with("[acme_1] peer said mesh-key-4417")
+    clean_registry.set_project_secrets({"mesh-key-4417"})
+    assert buffer.get_recent(10)[0]["message"] == "[acme_1] peer said ***"
+
+
+def test_clearing_the_registry_clears_the_mesh_key(clean_registry):
+    clean_registry.set_project_secrets({"mesh-key-4417"})
+    clean_registry.clear()
+    assert clean_registry.has_secrets() is False
+    assert clean_registry.secrets_for("acme_1") == set()
 
 
 # --------------------------------------------------------------------------

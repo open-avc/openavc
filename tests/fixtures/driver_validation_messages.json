@@ -363,6 +363,9 @@
  "config_learned_from_empty": [
   "Config field 'model': learned_from must name a state variable"
  ],
+ "config_learned_from_password_type": [
+  "Config field 'pin': a secret field cannot be learned_from a state variable, because the value would have to be shown as state first"
+ ],
  "config_learned_from_secret": [
   "Config field 'pin': a secret field cannot be learned_from a state variable, because the value would have to be shown as state first"
  ],

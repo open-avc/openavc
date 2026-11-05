@@ -152,6 +152,27 @@ def test_no_secret_and_nothing_of_another_device_survives_in_any_file(engine):
             assert value not in text, f"{value!r} of the other device is in {name}"
 
 
+def test_the_projects_mesh_key_is_masked_in_every_file(engine):
+    """The mesh key is the project's, not the device's, and still never leaves."""
+    mesh_key = "mesh-key-4417-hall"
+    registry = get_secret_registry()
+    registry.set_project_secrets({mesh_key})
+    try:
+        record_traffic("hall_widget", "tx", f"JOIN {mesh_key}\r".encode(), channel="tcp")
+        get_log_buffer().append(LogEntry(
+            time.time(), "INFO", "drivers.acme", "device",
+            f"[hall_widget] peer key {mesh_key}", device="hall_widget",
+        ))
+        engine.state.set("device.hall_widget.note", f"key {mesh_key}")
+        _, files = _build(engine)
+        for name, text in files.items():
+            assert mesh_key not in text, f"the mesh key survived in {name}"
+            assert mesh_key.encode().hex() not in text, f"the mesh key survived as hex in {name}"
+        assert "peer key" in files["log.txt"]
+    finally:
+        registry.set_project_secrets(set())
+
+
 def test_state_and_both_sides_of_history_are_masked(engine):
     report, _ = _build(engine)
     # A registered token the driver also wrote to state, and a value under a

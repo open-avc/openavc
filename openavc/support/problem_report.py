@@ -90,6 +90,7 @@ from openavc.audit.report import (
 from openavc.core.device_config import connection_of, resolve_device_config
 from openavc.core.device_traffic import RING_ENTRIES, get_traffic_recorder, serialize_entry
 from openavc.drivers.registry import get_driver_class
+from openavc.drivers.spec import is_secret_setting
 from openavc.utils.log_buffer import get_log_buffer
 from openavc.utils.log_redaction import (
     REDACTED,
@@ -250,10 +251,7 @@ def _context(raw: dict[str, Any] | None, commands: dict[str, Any]) -> tuple[dict
         masked: dict[str, Any] = {}
         for key, value in params.items():
             spec = defs.get(key) if isinstance(defs, dict) else None
-            secret = (
-                (isinstance(spec, dict) and (spec.get("type") == "password" or spec.get("secret")))
-                or is_secret_key(key)
-            )
+            secret = is_secret_setting(key, spec) or is_secret_key(key)
             if secret and value not in (None, ""):
                 if isinstance(value, str):
                     secrets.add(value)

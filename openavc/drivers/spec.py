@@ -156,6 +156,46 @@ CONNECTION_FIELDS: frozenset[str] = frozenset({
     "bridge", "bridge_port", "usb_serial",
 })
 
+# The connection field that holds a login. ``username`` is a connection field
+# too and is not a secret: it names an account rather than unlocking one.
+PASSWORD_FIELD = "password"
+
+
+def is_secret_setting(name: object, definition: object) -> bool:
+    """Whether a setting holds a secret: THE rule every reader asks.
+
+    A secret is the connection ``password``, whatever its definition says, or
+    any field whose definition says ``secret: true`` (a config field, a
+    command or action parameter, a device setting) or ``type: password``.
+    ``type: password`` is not one of the types a field declares
+    (``CONFIG_FIELD_TYPES``): it is an older spelling of ``secret: true`` that
+    drivers still carry, so it keeps meaning the same thing. ``secret`` counts
+    only when it is a real ``true``.
+
+    ``name`` is the field's key, or None where only the definition is at hand.
+    The platform adds the secrets that are not a driver's, such as the
+    project's mesh key (``utils/log_redaction.py``), and the Programmer
+    mirrors this rule (``secretSetting.ts``).
+    """
+    if name == PASSWORD_FIELD:
+        return True
+    if not isinstance(definition, dict):
+        return False
+    return definition.get("secret") is True or definition.get("type") == "password"
+
+
+def secret_settings(schema: object) -> frozenset[str]:
+    """The fields of a ``config_schema`` (or a parameter map) that hold a
+    secret by :func:`is_secret_setting`. The connection password is a secret
+    whether or not the schema describes it, so a caller that means it adds
+    :data:`PASSWORD_FIELD` itself."""
+    if not isinstance(schema, dict):
+        return frozenset()
+    return frozenset(
+        str(name) for name, definition in schema.items()
+        if is_secret_setting(name, definition)
+    )
+
 # --- transports with extra constraints ---------------------------------------
 
 # Transports the auth: login-handshake block supports (it swaps the frame

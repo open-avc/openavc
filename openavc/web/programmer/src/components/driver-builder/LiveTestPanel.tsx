@@ -29,6 +29,7 @@ import type {
 import { commandShapeMismatch } from "./liveTestHelpers";
 import { valueText } from "../shared/booleanWords";
 import { BUILTIN_CONFIG_KEYS } from "./configSchemaHelpers";
+import { isSecretSetting } from "../shared/secretSetting";
 
 // Re-pause cadence while devices stay paused. The server expires a pause
 // after its TTL (device_manager.PAUSE_TTL, 10 min) so an abandoned pause
@@ -262,7 +263,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
       .map(([key, def]) => ({
         key,
         label: def.label ?? key,
-        secret: !!def.secret,
+        secret: isSecretSetting(key, def),
         type: def.type ?? "string",
       }));
   }, [draft.config_schema]);

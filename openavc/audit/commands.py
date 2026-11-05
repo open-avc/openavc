@@ -107,7 +107,7 @@ from openavc.drivers.child_ids import coerce_child_local_id
 from openavc.drivers.command_files import CommandFile, DeviceFile
 from openavc.drivers.compiled_protocol import coerce_bool_token, is_bool_token
 from openavc.drivers.param_labels import param_label
-from openavc.drivers.spec import file_param_names
+from openavc.drivers.spec import file_param_names, is_secret_setting
 from openavc.utils.boolean_words import value_text
 from openavc.utils.log_redaction import is_secret_key
 from openavc.utils.logger import get_logger
@@ -756,9 +756,7 @@ class CommandPass:
         # traffic included.
         secret_names = {
             k for k, pdef in (entry.get("params") or {}).items()
-            if isinstance(pdef, dict) and (
-                pdef.get("secret") or pdef.get("type") == "password" or is_secret_key(k)
-            )
+            if isinstance(pdef, dict) and (is_secret_setting(k, pdef) or is_secret_key(k))
         }
         secret = {str(params[k]) for k in secret_names if params.get(k) not in (None, "")}
         if secret:

@@ -3579,6 +3579,28 @@
   },
   "transport": "tcp"
  },
+ "config_learned_from_password_type": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "config_schema": {
+   "pin": {
+    "learned_from": "power",
+    "type": "password"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "config_learned_from_secret": {
   "commands": {
    "noop": {

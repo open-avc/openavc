@@ -58,6 +58,7 @@ from openavc.core.ws_hub import WSHub
 from openavc.discovery import network_scanner
 from openavc.ui.action_devices import annotate_action_devices
 from openavc.ui.matrix_model import resolve_ui
+from openavc.utils.log_redaction import get_secret_registry, project_secret_values
 from openavc.utils.logger import get_logger
 from openavc.version import __version__
 
@@ -1204,12 +1205,19 @@ class Engine:
         return [m.model_dump(mode="json") for m in self.project.monitors]
 
     def _apply_project_settings(self) -> None:
-        """Push the project's `settings` block onto the runtime that reads it.
+        """Push the project's `settings` block onto the runtime that reads it,
+        and its own secrets (the mesh key) onto the log redaction.
 
         Called wherever `self.project` is replaced -- load, apply, and the
         rollback -- so a save or a cloud push takes effect without a restart,
         and a rollback puts the previous value back with everything else.
         """
+        try:
+            # Registered whether the mesh runs or not: the key is in the
+            # project either way.
+            get_secret_registry().set_project_secrets(project_secret_values(self.project))
+        except Exception:  # never block a project on the log redaction
+            log.debug("Could not register the project's secrets for log redaction", exc_info=True)
         try:
             settings = getattr(self.project, "settings", None)
             devices = getattr(settings, "devices", None)

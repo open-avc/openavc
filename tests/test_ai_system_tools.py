@@ -115,6 +115,48 @@ async def test_get_logs_redacts_plugin_config_secrets(monkeypatch):
     assert not any("tok-9f8e7d6c" in m for m in messages)
 
 
+async def test_get_logs_redacts_the_projects_mesh_key(monkeypatch):
+    from openavc.core.project_loader import ISCConfig
+
+    project = SimpleNamespace(
+        devices=[], connections={}, plugins={},
+        isc=ISCConfig(enabled=False, auth_key="mesh-key-4417"),
+    )
+    _install_buffer(monkeypatch, [_entry("peer joined with mesh-key-4417")])
+
+    result = await _Handler(SimpleNamespace(project=project))._get_logs({"count": 10})
+    assert [e["message"] for e in result] == ["peer joined with ***"]
+
+
+async def test_get_logs_redacts_a_setting_the_driver_marks_secret(monkeypatch):
+    """A secret by the driver's own schema, under a name the name rule would miss."""
+    from openavc.drivers import registry
+    from openavc.drivers.base import BaseDriver
+
+    class _AcmeCoded(BaseDriver):
+        DRIVER_INFO = {
+            "id": "acme_coded_logs", "name": "Acme Coded", "transport": "tcp",
+            "config_schema": {
+                "host": {"type": "string"},
+                "site_code": {"type": "string", "secret": True},
+                "admin_code": {"type": "password"},
+            },
+            "state_variables": {}, "commands": {},
+        }
+
+    monkeypatch.setattr(registry, "_DRIVER_REGISTRY", dict(registry._DRIVER_REGISTRY))
+    registry.register_driver(_AcmeCoded)
+    device = SimpleNamespace(
+        driver="acme_coded_logs",
+        config={"host": "10.0.0.4", "site_code": "9931-ALPHA", "admin_code": "7731-BRAVO"},
+    )
+    project = SimpleNamespace(devices=[device], connections={}, plugins={})
+    _install_buffer(monkeypatch, [_entry("TX: SITE 9931-ALPHA ADMIN 7731-BRAVO", level="DEBUG")])
+
+    result = await _Handler(SimpleNamespace(project=project))._get_logs({"count": 10})
+    assert [e["message"] for e in result] == ["TX: SITE *** ADMIN ***"]
+
+
 async def test_get_logs_redaction_respects_word_boundaries(monkeypatch):
     # An SNMP community of "public" is a real secret, but plain substring
     # redaction mangled unrelated words that merely contain it (republic,

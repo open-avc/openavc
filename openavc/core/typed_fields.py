@@ -17,7 +17,8 @@ What is trimmed, surrounding whitespace only:
   string), unless it is a secret or offers a list of values to pick from.
 
 Never trimmed: a password, any ``secret: true`` or ``type: password`` field (a
-space can be part of one), a multi-line ``text`` field, a table, a picked
+space can be part of one; the one rule is ``drivers/spec.is_secret_setting``),
+a multi-line ``text`` field, a table, a picked
 value, and anything that is not a string. A device whose driver is not
 installed has no schema to read, so only its connection fields are trimmed.
 IDs are never touched here: a device's ID is named by its bindings, macros
@@ -46,17 +47,13 @@ from __future__ import annotations
 from typing import Any
 
 from openavc.drivers.registry import get_driver_class
-from openavc.drivers.spec import CONNECTION_FIELDS
+from openavc.drivers.spec import CONNECTION_FIELDS, PASSWORD_FIELD, is_secret_setting
 
 #: Connection fields trimmed whatever the driver's schema says of them.
-TRIMMED_CONNECTION_FIELDS: frozenset[str] = CONNECTION_FIELDS - {"password"}
+TRIMMED_CONNECTION_FIELDS: frozenset[str] = CONNECTION_FIELDS - {PASSWORD_FIELD}
 
 #: The schema types a person types a single value into.
 TRIMMED_SCHEMA_TYPES: frozenset[str] = frozenset({"string", "integer", "number", "float"})
-
-
-def _is_secret(field: dict[str, Any]) -> bool:
-    return field.get("type") == "password" or field.get("secret") is True
 
 
 def trims_value(key: str, field: Any) -> bool:
@@ -65,9 +62,7 @@ def trims_value(key: str, field: Any) -> bool:
     ``field`` is the driver's ``config_schema`` entry for ``key``, or None when
     the schema does not describe it.
     """
-    if key == "password":
-        return False
-    if isinstance(field, dict) and _is_secret(field):
+    if is_secret_setting(key, field):
         return False
     if key in TRIMMED_CONNECTION_FIELDS:
         return True

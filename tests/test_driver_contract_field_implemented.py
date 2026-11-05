@@ -209,6 +209,11 @@ RUNTIME_BLIND_SPOTS = {
         "(`sdef.get(\"regex\") or sdef.get(\"pattern\")`). deviceSettingEntry "
         "declares only three distinctive fields (state_key, unique, write) "
         "and that function names none of them.",
+    "configSchemaEntry.secret":
+        "Read by drivers/spec.py is_secret_setting, the one rule every "
+        "runtime reader asks (utils/log_redaction, core/device_logins, "
+        "core/typed_fields, core/learned_config, the validator). spec.py is "
+        "the registry and is left out of this search.",
 }
 
 # Empty since 2026-08-25. configSchemaEntry.secret sat here because the file
