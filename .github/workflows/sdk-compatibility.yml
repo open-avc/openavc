@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   sdk:
-    uses: open-avc/openavc-sdk/.github/workflows/compatibility.yml@ceb2e38ed785f609a32e1e8c9a2db4241704b633
+    uses: open-avc/openavc-sdk/.github/workflows/compatibility.yml@bfd0275185ef7a74f2d83f0123e1a6c1f5a3db85
     with:
       core-ref: ${{ github.sha }}
       sdk-ref: ${{ inputs.sdk-ref || 'main' }}
