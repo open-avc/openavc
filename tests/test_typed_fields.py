@@ -291,15 +291,14 @@ async def test_the_ai_device_tools_store_the_clean_address(camera_engine):
     assert result == {"status": "updated", "device_id": "cam1"}
     assert _saved(engine)[1]["host"] == "192.0.2.50"
 
+    # The AI tools take no login (tests/test_ai_device_logins.py), so the
+    # password kept as typed is the PATCH and PUT doors' case above.
     result = await handler._add_device({
-        "id": "cam3", "driver": "acme_trim_camera",
-        "config": {"host": "192.0.2.51 ", "password": " p "},
+        "id": "cam3", "driver": "acme_trim_camera", "config": {"host": "192.0.2.51 "},
     })
     assert result == {"status": "created", "id": "cam3"}
     saved = load_project(engine.project_path).connections["cam3"]
     assert saved["host"] == "192.0.2.51"
-    assert saved["password"] == SAVED_LOGIN
-    assert engine.device_logins.login("cam3", "acme_trim_camera", "password") == " p "
 
 
 # --- the message names what was dialed ---

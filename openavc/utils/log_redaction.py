@@ -143,7 +143,10 @@ def _named_secret(key: Any) -> bool:
     return is_secret_key(key) and str(key).lower() not in IDENTITY_KEYS
 
 
-def _mask_url_password(text: str) -> str:
+def mask_url_password(text: str) -> str:
+    """``text`` with the password of every URL written
+    ``scheme://user:password@host`` shown as :data:`REDACTED`; the username and
+    the rest of the address stay."""
     return _URL_PASSWORD.sub(lambda m: m.group("head") + REDACTED, text)
 
 
@@ -172,7 +175,7 @@ def mask_secrets_by_name(value: Any, _secret: bool = False) -> Any:
     if _secret and value != "" and isinstance(value, (str, int, float)):
         return REDACTED
     if isinstance(value, str):
-        return _mask_url_password(value)
+        return mask_url_password(value)
     return value
 
 
@@ -245,7 +248,7 @@ def keep_masked_secrets(
     )
     if not masked_url:
         return incoming, unresolved
-    if isinstance(stored, str) and _mask_url_password(stored) == incoming:
+    if isinstance(stored, str) and mask_url_password(stored) == incoming:
         return stored, unresolved
     # The address changed around a masked password: the saved one cannot be
     # known to belong to the new address.

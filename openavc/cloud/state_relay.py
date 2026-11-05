@@ -35,6 +35,7 @@ import time
 from typing import Any, TYPE_CHECKING
 
 from openavc.cloud.protocol import STATE_BATCH, build_state_batch_payload
+from openavc.utils.log_redaction import mask_url_password
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -81,6 +82,17 @@ def is_cloud_excluded_key(key: str) -> bool:
     exclusion can't drift between the two paths.
     """
     return key.startswith("system.cloud.") or key.startswith("isc.")
+
+
+def cloud_state_value(value: Any) -> Any:
+    """A state value as it may leave this system for the cloud: the password
+    of any address written ``scheme://user:password@host`` shown as ``***``.
+
+    A camera driver's "Login in Stream Address" writes such an address into
+    state so a panel on this system can play the stream. The AI read tools
+    answer through this; every other value is returned as it is.
+    """
+    return mask_url_password(value) if isinstance(value, str) else value
 
 
 class StateRelay:

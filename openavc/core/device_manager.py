@@ -52,7 +52,7 @@ from openavc.drivers.child_ids import (
 )
 from openavc.drivers.registry import get_driver_class, is_driver_registered
 from openavc.core.device_config import DeviceConnection, bridge_first, connection_of
-from openavc.core.device_logins import marked_fields
+from openavc.core.device_logins import SAVED_LOGIN, login_fields, marked_fields
 from openavc.core.event_bus import EventBus, detach_emit_chain
 from openavc.core.installed_equipment import driver_label, missing_driver_reason
 from openavc.core.state_store import StateStore
@@ -370,6 +370,13 @@ def _readback_confirms(key: str, sdef: Any, expected: Any, actual: Any) -> bool:
 # flows to the cloud AI (cloud/tools/device_tools.py::_get_device_info): a
 # missing driver must not turn a simple get_device_info into a credential dump.
 _redact_config = redact_config
+
+
+def _orphan_config(config: dict[str, Any]) -> dict[str, Any]:
+    """An orphaned device's config with every credential masked by name, and
+    each login saved on this system shown as the marker rather than masked."""
+    masked = _redact_config(config)
+    return {k: (SAVED_LOGIN if config.get(k) == SAVED_LOGIN else v) for k, v in masked.items()}
 
 
 class DeviceManager:
@@ -1373,8 +1380,9 @@ class DeviceManager:
                 # Redact credentials: this is the only get_device_info branch
                 # that returns raw connection config, and it reaches the cloud
                 # AI. A missing driver must not leak the device's password /
-                # API key (see _redact_config).
-                "config": _redact_config(config.get("config", {})),
+                # API key (see _redact_config). A login saved on this system
+                # reads as the marker, which is what the project holds.
+                "config": _orphan_config(config.get("config", {})),
             }
 
         driver = self._devices.get(device_id)
@@ -1429,7 +1437,11 @@ class DeviceManager:
         Redirected, its host is this computer's loopback address and its port
         the simulator's, so a link built from them opens the simulator, or
         OpenAVC itself on 8080, instead of the equipment's page."""
-        config = driver.config or {}
+        # The driver holds its logins filled in, and a link's URL is shown on
+        # the device page and sent to the cloud AI, so a placeholder naming a
+        # login is left as written.
+        logins = login_fields(str(self._device_configs.get(device_id, {}).get("driver", "")))
+        config = {k: v for k, v in (driver.config or {}).items() if k not in logins}
         real = self.real_connection(device_id) if self.real_connection is not None else None
         if not real:
             return config

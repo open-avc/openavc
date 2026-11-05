@@ -4,7 +4,9 @@ from typing import Any
 
 import httpx
 
+from openavc.cloud.state_relay import cloud_state_value
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
+from openavc.core.device_logins import SAVED_LOGIN, login_fields, login_settings_in, marked_fields
 from openavc.core.device_manager import DeviceNotFoundError
 from openavc.core.event_references import dead_listeners, project_script_sources
 from openavc.core.required_config import (
@@ -14,7 +16,14 @@ from openavc.core.required_config import (
 )
 from openavc.core.state_store import is_flat_primitive
 from openavc.utils.paths import is_safe_script_filename, safe_path_within
-from openavc.drivers.registry import is_driver_registered, list_registered_drivers, register_driver
+from openavc.drivers.param_labels import param_label
+from openavc.drivers.registry import (
+    get_driver_class,
+    is_driver_registered,
+    list_registered_drivers,
+    register_driver,
+)
+from openavc.drivers.spec import is_secret_setting
 from openavc.utils.outbound import internet_client
 
 
@@ -39,6 +48,91 @@ def _refuse_missing_required(driver_id: str, merged: dict) -> None:
             "error": required_sentence([label for _key, label in missing]),
             "missing_config": [key for key, _label in missing],
         })
+
+
+# --- device logins ------------------------------------------------------------
+#
+# A device login (the connection password, and every setting its driver marks
+# secret) is saved on this system only, in the login file, and is entered on
+# the device's page in the Programmer. These tools never take one: whatever
+# they are sent ends up in the cloud chat history and is sent to the model on
+# every later turn, and a value read back masked (``***``) or as the marker
+# would otherwise be saved as the login itself. A login the driver requires is
+# left waiting instead (the marker over nothing), which the device page asks
+# for under Needs login and the driver refuses to dial without.
+
+
+def _setting_labels(driver_id: str, keys: list[str]) -> list[str]:
+    """Each setting by the name the device page shows it under."""
+    cls = get_driver_class(driver_id)
+    schema = (cls.DRIVER_INFO.get("config_schema") if cls is not None else None) or {}
+    return [param_label(key, schema.get(key)) for key in keys]
+
+
+def _joined(labels: list[str]) -> str:
+    if len(labels) == 1:
+        return labels[0]
+    return f"{', '.join(labels[:-1])} and {labels[-1]}"
+
+
+def _login_refusal(labels: list[str], *, adding: bool = False, under_edit: bool = True) -> str:
+    """The answer to a login sent to a device tool."""
+    one = len(labels) == 1
+    what = f"{_joined(labels)} {'is a login' if one else 'are logins'}."
+    it = "it" if one else "them"
+    where = "on the device's page in the Programmer"
+    if adding:
+        return f"{what} Add the device without {it}, then enter {it} {where}, under Edit. Nothing was added."
+    return f"{what} Enter {it} {where}{', under Edit' if under_edit else ''}. Nothing was changed."
+
+
+def _refuse_logins(drivers: list[str], keys: list[str], *, adding: bool) -> None:
+    """Refuse ``keys`` (sent in a device's config) that hold a login on any of
+    ``drivers`` (the one the device ends up on first), in any form: a value,
+    ``***``, the marker, or null."""
+    found = {k for d in drivers for k in login_settings_in(d, keys)}
+    logins = [k for k in keys if k in found]
+    if logins:
+        raise ToolEditError({
+            "error": _login_refusal(_setting_labels(drivers[0], logins), adding=adding),
+            "login_settings": logins,
+        })
+
+
+def _wait_for_required_logins(
+    driver_id: str, protocol_config: dict, connection: dict,
+) -> None:
+    """Leave each login ``driver_id`` requires and nothing fills waiting:
+    the marker goes into that empty field (the connection row for the
+    password), so the device is saved and asks for it under Needs login."""
+    from openavc.core.project_migration import CONNECTION_FIELDS
+
+    logins = login_fields(driver_id)
+    for key, _label in missing_for_driver(
+        driver_id, merged_device_config(driver_id, protocol_config, connection),
+    ):
+        if key in logins:
+            (connection if key in CONNECTION_FIELDS else protocol_config)[key] = SAVED_LOGIN
+
+
+def _needs_login(engine: Any, device_id: str) -> dict[str, Any]:
+    """What to tell the person when the device waits for a login after an
+    edit (the device list's Needs login, as ``Engine.logins_needed`` reads
+    it): the settings by name, and where they are entered. Empty otherwise."""
+    project = getattr(engine, "project", None)
+    device = next((d for d in getattr(project, "devices", None) or [] if d.id == device_id), None)
+    if device is None or not device.enabled or not is_driver_registered(device.driver):
+        return {}
+    waiting = marked_fields(engine.resolved_device_config(device).get("config"))
+    if not waiting:
+        return {}
+    return {
+        "needs_login": waiting,
+        "needs_login_note": (
+            f"Needs login: enter {_joined(_setting_labels(device.driver, waiting))} on this "
+            "device's page in the Programmer. It does not connect until then."
+        ),
+    }
 
 
 def _dead_listener_warnings(engine: Any, script_id: str, source: str) -> list[str]:
@@ -77,6 +171,9 @@ class DeviceToolsMixin:
                 **info,
                 "driver_info": {k: v for k, v in driver_info.items() if k != "commands"},
             }
+        # The device's state goes as the state read tools send it.
+        if isinstance(info.get("state"), dict):
+            info = {**info, "state": {k: cloud_state_value(v) for k, v in info["state"].items()}}
         return info
 
     async def _update_device(self, input: dict) -> Any:
@@ -127,6 +224,10 @@ class DeviceToolsMixin:
             if "config" in input:
                 from openavc.core.project_migration import CONNECTION_FIELDS
                 raw_config = input.get("config") or {}
+                _refuse_logins(
+                    [input.get("driver", existing.driver), existing.driver],
+                    [str(k) for k in raw_config], adding=False,
+                )
                 protocol_config: dict = dict(existing.config)
                 conn_overrides = dict(project.connections.get(device_id, {}))
                 for key, value in raw_config.items():
@@ -143,15 +244,19 @@ class DeviceToolsMixin:
             else:
                 new_config = existing.config
 
-            # The same refusal as the Edit Device dialog and the REST door,
-            # asked only when the settings or the driver change.
+            # A login the driver requires is left waiting for the device page;
+            # any other required field left blank gets the same refusal as the
+            # Edit Device dialog and the REST door. Asked only when the
+            # settings or the driver change.
             if "config" in input or "driver" in input:
                 driver_id = input.get("driver", existing.driver)
+                new_config = dict(new_config)
+                connection = dict(project.connections.get(device_id, {}))
+                _wait_for_required_logins(driver_id, new_config, connection)
+                if connection:
+                    project.connections[device_id] = connection
                 _refuse_missing_required(
-                    driver_id,
-                    merged_device_config(
-                        driver_id, new_config, project.connections.get(device_id, {}),
-                    ),
+                    driver_id, merged_device_config(driver_id, new_config, connection),
                 )
 
             # Re-validate the existing record's full dump instead of building a
@@ -179,7 +284,7 @@ class DeviceToolsMixin:
         err = await apply_tool_edit(engine, mutate)
         if err:
             return err
-        return {"status": "updated", "device_id": device_id}
+        return {"status": "updated", "device_id": device_id, **_needs_login(engine, device_id)}
 
     async def _delete_device(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -242,7 +347,11 @@ class DeviceToolsMixin:
         from openavc.core.project_migration import CONNECTION_FIELDS
 
         # Split config into connection fields and protocol fields
-        raw_config = input.get("config", {})
+        raw_config = input.get("config") or {}
+        try:
+            _refuse_logins([driver_id], [str(k) for k in raw_config], adding=True)
+        except ToolEditError as refused:
+            return refused.result
         protocol_config = {}
         conn_overrides = {}
         for key, value in raw_config.items():
@@ -264,9 +373,11 @@ class DeviceToolsMixin:
         def mutate(project):
             if any(d.id == device_id for d in project.devices):
                 raise ToolEditError({"error": f"Device '{device_id}' already exists"})
+            _wait_for_required_logins(driver_id, protocol_config, conn_overrides)
             _refuse_missing_required(
                 driver_id, merged_device_config(driver_id, protocol_config, conn_overrides),
             )
+            new_device.config = protocol_config
             project.devices.append(new_device)
             if conn_overrides:
                 project.connections[device_id] = conn_overrides
@@ -275,7 +386,7 @@ class DeviceToolsMixin:
         if err:
             return err
 
-        return {"status": "created", "id": device_id}
+        return {"status": "created", "id": device_id, **_needs_login(engine, device_id)}
 
     async def _add_device_group(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -426,6 +537,15 @@ class DeviceToolsMixin:
         # state store. Shared definition, see state_store.
         if not is_flat_primitive(value):
             return {"error": "Setting value must be a string, number, boolean, or null"}
+
+        driver = engine.devices.get_driver(device_id)
+        declared = (driver.DRIVER_INFO.get("device_settings") or {}) if driver is not None else {}
+        if is_secret_setting(setting_key, declared.get(setting_key)):
+            definition = declared.get(setting_key)
+            return {
+                "error": _login_refusal([param_label(setting_key, definition)], under_edit=False),
+                "login_settings": [setting_key],
+            }
 
         try:
             await engine.devices.set_device_setting(device_id, setting_key, value)

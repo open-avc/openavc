@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from openavc.cloud.state_relay import cloud_state_value, is_cloud_excluded_key
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
 from openavc.core.command_params import file_command_check, missing_params_check
 from openavc.core.ui_events import resolve_press
@@ -1919,11 +1920,17 @@ class UIToolsMixin:
         # sees all event-loop-wide activity during the await, so drop changes
         # from sources the action can't have caused (system metrics, other
         # tools, ISC peers, discovery) — otherwise they're misattributed to it.
+        # The answer goes to the cloud, so it keeps to what the state read
+        # tools may send (state_relay: the excluded keys, a URL's password).
         state_changes = []
         def on_change(key, old_val, new_val, source):
-            if source in _SIMULATE_IGNORED_SOURCES:
+            if source in _SIMULATE_IGNORED_SOURCES or is_cloud_excluded_key(key):
                 return
-            state_changes.append({"key": key, "old_value": old_val, "new_value": new_val})
+            state_changes.append({
+                "key": key,
+                "old_value": cloud_state_value(old_val),
+                "new_value": cloud_state_value(new_val),
+            })
 
         # A real press on a toggle button is resolved BY THE PANEL -- it compares
         # the bound key against toggle_value in the browser and sends press or

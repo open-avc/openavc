@@ -115,6 +115,7 @@ from typing import Any, Callable, Iterable
 from openavc.drivers.registry import get_driver_class
 from openavc.drivers.spec import PASSWORD_FIELD, secret_settings
 from openavc.utils.fileio import atomic_write_text
+from openavc.utils.log_redaction import IDENTITY_KEYS, is_secret_key
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -549,6 +550,22 @@ def login_fields(driver_id: str) -> frozenset[str]:
     cls = get_driver_class(driver_id)
     schema = cls.DRIVER_INFO.get("config_schema") if cls is not None else None
     return frozenset({CONNECTION_LOGIN}) | secret_settings(schema)
+
+
+def login_settings_in(driver_id: str, keys: Iterable[Any]) -> list[str]:
+    """Which of ``keys`` (setting names of a device on ``driver_id``) hold a
+    login, in the order given: each one in ``login_fields``, and, for a driver
+    that is not installed, any setting named like a credential
+    (``log_redaction.is_secret_key``), a username aside, since nothing else can
+    say which of that device's settings are logins."""
+    fields = login_fields(driver_id)
+    installed = get_driver_class(driver_id) is not None
+    return [
+        str(key) for key in keys
+        if str(key) in fields or (
+            not installed and is_secret_key(key) and str(key).lower() not in IDENTITY_KEYS
+        )
+    ]
 
 
 @dataclass

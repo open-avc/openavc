@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from openavc.cloud.state_relay import is_cloud_excluded_key
+from openavc.cloud.state_relay import cloud_state_value, is_cloud_excluded_key
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
 from openavc.core.device_config import connection_of, resolve_device_config
 from openavc.utils.logger import get_logger
@@ -90,11 +90,12 @@ class ProjectToolsMixin:
     # Results from the state read tools ship to the cloud and persist in AI
     # conversation history, so they apply the same exclusion the state relay
     # does: cloud-internal (system.cloud.*) and ISC peer (isc.*) state never
-    # leaves the box.
+    # leaves the box. A value goes as cloud_state_value words it, so a stream
+    # address holding a camera's login leaves without the password.
 
     async def _get_project_state(self, input: dict) -> Any:
         return {
-            k: v for k, v in self._agent.state.snapshot().items()
+            k: cloud_state_value(v) for k, v in self._agent.state.snapshot().items()
             if not is_cloud_excluded_key(k)
         }
 
@@ -106,7 +107,7 @@ class ProjectToolsMixin:
                          f"isc.* state is never sent to the cloud)"
             }
         value = self._agent.state.get(key)
-        return {"key": key, "value": value}
+        return {"key": key, "value": cloud_state_value(value)}
 
     async def _get_state_history(self, input: dict) -> Any:
         try:
@@ -114,7 +115,12 @@ class ProjectToolsMixin:
         except (TypeError, ValueError):
             return {"error": "count must be an integer"}
         return [
-            entry for entry in self._agent.state.get_history(count)
+            {
+                **entry,
+                "old_value": cloud_state_value(entry.get("old_value")),
+                "new_value": cloud_state_value(entry.get("new_value")),
+            }
+            for entry in self._agent.state.get_history(count)
             if not is_cloud_excluded_key(entry["key"])
         ]
 

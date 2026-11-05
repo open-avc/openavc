@@ -328,19 +328,19 @@ async def test_ai_update_device_rename_is_not_refused(camera_engine):
 async def test_ai_add_device_refuses_a_blank_required_field(camera_engine):
     _client, engine = camera_engine
     handler = AIToolHandler(MagicMock(), engine.devices, MagicMock())
+    # The required password is never refused: the assistant takes no login,
+    # so it is left waiting for the device page (tests/test_ai_device_logins.py).
     result = await handler._add_device(
-        {"id": "cam2", "driver": "acme_camera", "config": {"host": "10.0.0.51", "password": "pw"}},
+        {"id": "cam2", "driver": "acme_camera", "config": {"host": "10.0.0.51"}},
     )
     assert result == {"error": "Model is required.", "missing_config": ["model"]}
     assert all(d.id != "cam2" for d in load_project(engine.project_path).devices)
 
     result = await handler._add_device(
-        {
-            "id": "cam2", "driver": "acme_camera",
-            "config": {"host": "10.0.0.51", "password": "pw", "model": "w20"},
-        },
+        {"id": "cam2", "driver": "acme_camera", "config": {"host": "10.0.0.51", "model": "w20"}},
     )
-    assert result == {"status": "created", "id": "cam2"}
+    assert result["status"] == "created" and result["id"] == "cam2"
+    assert result["needs_login"] == ["password"]
 
 
 async def test_a_whole_project_save_never_refuses(camera_engine):
