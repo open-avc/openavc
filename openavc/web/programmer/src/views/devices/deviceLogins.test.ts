@@ -23,7 +23,15 @@ vi.mock("../../store/projectStore", () => ({
   syncDeviceFromServer: mocks.syncDeviceFromServer,
 }));
 
-import { driverLoginDefaults, needsLoginSentence, saveDeviceLogins } from "./deviceLogins";
+import {
+  driverLoginDefaults,
+  holdsTypedLogin,
+  keepSavedLogins,
+  needsLoginSentence,
+  SAVED_LOGIN,
+  saveDeviceLogins,
+  withoutSavedLogins,
+} from "./deviceLogins";
 
 describe("saving a device's login", () => {
   beforeEach(() => {
@@ -89,5 +97,50 @@ describe("what a restore says about the devices that wait", () => {
     expect(needsLoginSentence(seven)).toBe(
       "7 devices need their login entered: A, B, C, D, E and 2 more. Open each one in Devices to enter it.",
     );
+  });
+});
+
+describe("the marker in a form", () => {
+  it("is the server's marker", () => {
+    expect(SAVED_LOGIN).toBe(MARKER);
+  });
+
+  it("goes back for a saved login left blank after Change, and only for one", () => {
+    const stored = { host: "192.0.2.10", password: MARKER, api_key: MARKER, community: "" };
+    const form = { host: "192.0.2.10", password: "", api_key: "New-Key-1", community: "" };
+    expect(keepSavedLogins(form, stored)).toEqual({
+      host: "192.0.2.10",
+      password: MARKER,
+      api_key: "New-Key-1",
+      community: "",
+    });
+  });
+
+  it("goes back when the field was left out of the form altogether", () => {
+    expect(keepSavedLogins({ host: "192.0.2.10" }, { password: MARKER })).toEqual({
+      host: "192.0.2.10",
+      password: MARKER,
+    });
+  });
+
+  it("is left out of a copy, whose logins are saved under the device it came from", () => {
+    expect(withoutSavedLogins({ host: "192.0.2.10", password: MARKER, mode: "eco" })).toEqual({
+      host: "192.0.2.10",
+      mode: "eco",
+    });
+  });
+});
+
+describe("whether a config holds a login somebody typed", () => {
+  const schema = { api_key: { type: "string", secret: true }, mode: { type: "string" } };
+
+  it("is true for a secret with a value, the password by its name alone", () => {
+    expect(holdsTypedLogin({ api_key: "Key-1" }, schema)).toBe(true);
+    expect(holdsTypedLogin({ password: "Hunter2-Acme" }, {})).toBe(true);
+  });
+
+  it("is false for the marker, an empty box and a setting that is not a secret", () => {
+    expect(holdsTypedLogin({ api_key: MARKER, password: MARKER }, schema)).toBe(false);
+    expect(holdsTypedLogin({ api_key: "", mode: "eco" }, schema)).toBe(false);
   });
 });

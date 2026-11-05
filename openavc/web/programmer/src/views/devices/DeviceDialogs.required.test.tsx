@@ -9,6 +9,7 @@ import userEvent from "@testing-library/user-event";
 
 vi.mock("../../api/restClient", () => ({
   listDrivers: vi.fn(),
+  getDevice: vi.fn(() => Promise.resolve({})),
   updateDevice: vi.fn(),
 }));
 vi.mock("../../api/systemClient", () => ({

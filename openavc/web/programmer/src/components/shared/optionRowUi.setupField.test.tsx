@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   state: { project: { devices: [] as Array<Record<string, unknown>> } },
   load: vi.fn(async () => true),
   syncDeviceConfig: vi.fn(async () => {}),
+  syncDeviceFromServer: vi.fn(async () => {}),
   updateDevice: vi.fn(async () => ({})),
   listDrivers: vi.fn(),
   showError: vi.fn(),
@@ -30,6 +31,7 @@ vi.mock("../../store/projectStore", () => ({
     { getState: () => ({ ...mocks.state, load: mocks.load }) },
   ),
   syncDeviceConfig: mocks.syncDeviceConfig,
+  syncDeviceFromServer: mocks.syncDeviceFromServer,
 }));
 
 vi.mock("../../store/toastStore", () => ({
@@ -54,6 +56,7 @@ const DRIVERS = [
     name: "Acme Widget",
     config_schema: {
       port: { label: "Stream port", type: "integer" },
+      stream_key: { label: "Stream key", type: "string", secret: true, default: "acme-factory-key" },
     },
   },
 ];
@@ -73,6 +76,7 @@ beforeEach(() => {
   };
   mocks.load.mockClear();
   mocks.syncDeviceConfig.mockClear();
+  mocks.syncDeviceFromServer.mockClear();
   mocks.updateDevice.mockClear();
   mocks.showError.mockClear();
   mocks.showSuccess.mockClear();
@@ -146,5 +150,45 @@ describe("SetupField — re-syncing the project after the save", () => {
     const [deviceId, config] = mocks.syncDeviceConfig.mock.calls[0];
     expect(deviceId).toBe(DEVICE);
     expect(config.port).toBe(8554);
+  });
+});
+
+describe("SetupField — a login", () => {
+  const MARKER = "<saved on this system>";
+
+  beforeEach(() => {
+    mocks.state.project = {
+      devices: [{ id: DEVICE, driver: "acme_widget", config: { host: "10.0.0.5", stream_key: MARKER } }],
+    };
+  });
+
+  it("is never shown: an empty masked box that says a login is saved", async () => {
+    render(<SetupField device={DEVICE} field="stream_key" />);
+    const box = await screen.findByLabelText("Stream key");
+    expect(box).toHaveAttribute("type", "password");
+    expect(box).toHaveValue("");
+    expect(box).toHaveAttribute("placeholder", "Saved on this system");
+    expect(screen.queryByDisplayValue(MARKER)).toBeNull();
+    // The driver's default is not offered as a hint either.
+    expect(screen.queryByPlaceholderText("acme-factory-key")).toBeNull();
+  });
+
+  it("saves one typed and re-reads the device from the server, never mirroring the value", async () => {
+    render(<SetupField device={DEVICE} field="stream_key" />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeEnabled());
+    await userEvent.type(screen.getByLabelText("Stream key"), "New-Key-1");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mocks.syncDeviceFromServer).toHaveBeenCalledWith(DEVICE));
+    expect(mocks.syncDeviceConfig).not.toHaveBeenCalled();
+    expect(mocks.updateDevice.mock.calls[0][1].config).toEqual({ host: "10.0.0.5", stream_key: "New-Key-1" });
+    expect(screen.getByLabelText("Stream key")).toHaveValue("");
+  });
+
+  it("changes nothing when the box is left empty", async () => {
+    render(<SetupField device={DEVICE} field="stream_key" />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(mocks.updateDevice).not.toHaveBeenCalled();
   });
 });

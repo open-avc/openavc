@@ -300,6 +300,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
  * would clobber them, so mirror just the persisted config into the in-memory
  * project instead — the stale ETag is covered by the server's 409 guard on
  * the next full-project save.
+ *
+ * Never after a login was saved: the config it mirrors is the one this tab
+ * sent, typed login and all. syncDeviceFromServer mirrors the server's copy,
+ * which holds the "saved on this system" marker instead.
  */
 export async function syncDeviceConfig(
   deviceId: string,

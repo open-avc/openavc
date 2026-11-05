@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useId } from "react";
-import { useProjectStore } from "../../store/projectStore";
+import { KeyRound } from "lucide-react";
+import { useProjectStore, syncDeviceFromServer } from "../../store/projectStore";
 import * as api from "../../api/restClient";
 import { getSerialPorts, type SerialPortInfo } from "../../api/systemClient";
 import type { DeviceConfig, DriverInfo } from "../../api/types";
@@ -9,6 +10,7 @@ import { normalizeOptionList } from "../../components/shared/paramOptions";
 import { buildConfigFromForm, configFieldKind, splitConnectionFields, CONNECTION_FIELDS, SERIAL_PICKER_FIELDS, IR_PICKER_FIELDS, prefillConfigValues, withConfigValue, type ConnectionMode } from "./deviceConfigCoerce";
 import { parseApiError } from "../../api/errors";
 import { booleanWord } from "../../components/shared/booleanWords";
+import { holdsTypedLogin, keepSavedLogins, SAVED_LOGIN, withoutSavedLogins } from "./deviceLogins";
 
 // --- Typed Config Fields ---
 
@@ -19,11 +21,16 @@ export function ConfigFieldInputs({
   driverInfo,
   configValues,
   setConfigValues,
+  waiting,
 }: {
   configKeys: string[];
   driverInfo: DriverInfo | undefined;
   configValues: Record<string, string>;
   setConfigValues: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  /** Settings the project marks saved on this system that this system has
+   *  no login for (the device info's `needs_login`): an empty box to enter
+   *  one, never "Saved on this system". */
+  waiting?: ReadonlySet<string>;
 }) {
   const schemaFor = (key: string) =>
     (driverInfo?.config_schema as Record<string, Record<string, unknown>>)?.[key] ?? {};
@@ -37,6 +44,9 @@ export function ConfigFieldInputs({
   // Each label names its field: a screen reader reads it, and a click on it
   // focuses the input.
   const idPrefix = useId();
+  // The saved logins somebody chose to Change: their box is empty, and left
+  // empty it keeps the saved login (keepSavedLogins).
+  const [changing, setChanging] = useState<ReadonlySet<string>>(() => new Set());
 
   const renderKey = (key: string) => {
         const schema = schemaFor(key);
@@ -51,8 +61,16 @@ export function ConfigFieldInputs({
         const defaultVal = schema.default;
         const isObjectField = fieldType === "object" || fieldType === "json";
         // Widget choice lives in configFieldKind so secret fields reliably
-        // mask and the dialogs can't drift from the coercion rules.
-        const kind = configFieldKind(schema);
+        // mask and the dialogs can't drift from the coercion rules. A login
+        // saved on this system is never a value here, whatever the field's
+        // kind: the form holds the marker, shown as "Saved on this system".
+        const marked = configValues[key] === SAVED_LOGIN;
+        const waits = marked && (waiting?.has(key) ?? false);
+        const saved = marked && !waits;
+        // A saved login being changed, or one this system waits for, takes a
+        // masked box whatever its field says (a field with no definition, one
+        // a driver update unmarked).
+        const kind = changing.has(key) || waits ? "password" : configFieldKind(schema, key);
         // Build helpful placeholder from key name conventions
         const placeholder = isObjectField
           ? (defaultVal && typeof defaultVal === "object" && Object.keys(defaultVal).length > 0
@@ -91,7 +109,7 @@ export function ConfigFieldInputs({
               }}
             >
               <label
-                htmlFor={kind === "table" ? undefined : fieldId}
+                htmlFor={kind === "table" || saved ? undefined : fieldId}
                 style={{
                   display: "block",
                   fontSize: "var(--font-size-sm)",
@@ -119,7 +137,34 @@ export function ConfigFieldInputs({
                 </span>
               )}
             </div>
-            {kind === "boolean" ? (
+            {saved ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
+                <KeyRound size={14} aria-hidden style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+                <span
+                  id={`${fieldId}-saved`}
+                  style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}
+                >
+                  Saved on this system
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Change ${label}`}
+                  aria-describedby={[`${fieldId}-saved`, describedBy].filter(Boolean).join(" ")}
+                  onClick={() => {
+                    setChanging((c) => new Set(c).add(key));
+                    setConfigValues((v) => ({ ...v, [key]: "" }));
+                  }}
+                  style={{
+                    padding: "2px var(--space-sm)",
+                    borderRadius: "var(--border-radius)",
+                    background: "var(--bg-hover)",
+                    fontSize: "var(--font-size-sm)",
+                  }}
+                >
+                  Change
+                </button>
+              </div>
+            ) : kind === "boolean" ? (
               <button
                 type="button"
                 id={fieldId}
@@ -150,11 +195,12 @@ export function ConfigFieldInputs({
                 {...labelled}
                 type="password"
                 autoComplete="new-password"
-                value={configValues[key] ?? ""}
+                autoFocus={changing.has(key)}
+                value={waits ? "" : configValues[key] ?? ""}
                 onChange={(e) =>
                   setConfigValues((v) => ({ ...v, [key]: e.target.value }))
                 }
-                placeholder={placeholder}
+                placeholder={changing.has(key) ? "Leave blank to keep the saved one" : placeholder}
                 style={{ width: "100%" }}
               />
             ) : kind === "select" ? (
@@ -425,8 +471,10 @@ export function carryOnDriverChange(
   newInfo: DriverInfo | undefined,
 ): Record<string, string> {
   let next = prefillConfigValues(newInfo?.default_config, newInfo?.config_schema);
+  // A login saved on this system is filed under the driver it was saved for,
+  // so another driver's form starts without it and asks for it again.
   const keep = (key: string) => {
-    if ((form[key] ?? "").trim() !== "") next[key] = form[key];
+    if ((form[key] ?? "").trim() !== "" && form[key] !== SAVED_LOGIN) next[key] = form[key];
   };
   const newSchema = (newInfo?.config_schema ?? {}) as Record<string, unknown>;
   const newIr = driverIrCapable(newInfo);
@@ -978,7 +1026,9 @@ export function AddDeviceDialog({
     if (!prefill) return {};
     // Merge device.config with connection table overrides (host, port, etc.)
     const conn = useProjectStore.getState().project?.connections?.[prefill.id] ?? {};
-    return { ...prefill.config, ...conn };
+    // The source's logins are saved under the source, so the copy asks for
+    // its own.
+    return withoutSavedLogins({ ...prefill.config, ...conn });
   });
   const [configValues, setConfigValues] = useState<Record<string, string>>(() => {
     const vals: Record<string, string> = {};
@@ -1063,6 +1113,14 @@ export function AddDeviceDialog({
         : {}),
     });
 
+    // A login typed here is saved into this system's login file by the save,
+    // and the project keeps the marker. Re-read the device from the server
+    // once the save lands, so this tab holds the marker too: a login left in
+    // the store would go back with every later project save.
+    const forgetTypedLogin = holdsTypedLogin(config, schema)
+      ? () => syncDeviceFromServer(deviceId)
+      : async () => {};
+
     // Show setup dialog if driver has setup settings
     if (hasSetupSettings) {
       setIsAdding(true);
@@ -1077,9 +1135,10 @@ export function AddDeviceDialog({
         setIsAdding(false);
         return;
       }
+      await forgetTypedLogin();
       setSetupDeviceId(deviceId);
     } else {
-      save();
+      void save().then(forgetTypedLogin);
       onClose();
     }
   };
@@ -1365,6 +1424,15 @@ export function EditDeviceDialog({
   useEffect(() => {
     api.listDrivers().then(setDrivers).catch(console.error);
   }, []);
+  // The marked settings this system has no login for: only the server knows
+  // which marks have nothing saved behind them.
+  const [waiting, setWaiting] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => {
+    api
+      .getDevice(device.id)
+      .then((info) => setWaiting(new Set(info.needs_login ?? [])))
+      .catch(() => {});
+  }, [device.id]);
 
   const driverInfo = drivers.find((d) => d.id === selectedDriver);
   const [connMode, setConnMode] = useConnectionMode(configValues, driverInfo);
@@ -1415,9 +1483,14 @@ export function EditDeviceDialog({
     setError("");
     try {
       const schema = (driverInfo?.config_schema ?? {}) as Record<string, Record<string, unknown>>;
+      // A saved login left blank after Change is kept. Its marker goes back,
+      // which the server reads as "keep the saved one", never as a login.
+      const formValues = selectedDriver === device.driver
+        ? keepSavedLogins(configValues, stored.values)
+        : configValues;
       const built = driverInfo?.manufacturer_installed
         ? { ok: true as const, config: {} as Record<string, unknown> }
-        : buildConfigFromForm(configValues, schema, configOriginals, {
+        : buildConfigFromForm(formValues, schema, configOriginals, {
         defaults: driverInfo?.default_config,
         connection: requiredConnection(driverInfo, connMode),
         ir: driverIrCapable(driverInfo),
@@ -1603,10 +1676,12 @@ export function EditDeviceDialog({
             )}
             {visibleConfigKeys.length > 0 && (
               <ConfigFieldInputs
+                key={selectedDriver}
                 configKeys={visibleConfigKeys}
                 driverInfo={driverInfo}
                 configValues={configValues}
                 setConfigValues={setConfigValues}
+                waiting={selectedDriver === device.driver ? waiting : undefined}
               />
             )}
           </div>

@@ -13,7 +13,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { useProjectStore, syncDeviceConfig } from "../../store/projectStore";
+import { useProjectStore, syncDeviceConfig, syncDeviceFromServer } from "../../store/projectStore";
 import { showError, showSuccess } from "../../store/toastStore";
 import type { OptionRow } from "./paramOptions";
 import * as api from "../../api/restClient";
@@ -21,6 +21,7 @@ import { parseApiError } from "../../api/errors";
 import type { DriverInfo } from "../../api/types";
 import { coerceConfigValue, configFieldKind } from "../../views/devices/deviceConfigCoerce";
 import { isSecretSetting } from "./secretSetting";
+import { SAVED_LOGIN } from "../../views/devices/deviceLogins";
 
 /** How a status word reads on screen. An unknown one is shown as published
  *  rather than swallowed: a surface that hides a word it does not recognise is
@@ -139,18 +140,21 @@ export function SetupField({ device, field }: { device: string; field: string })
     return all[field] ?? {};
   }, [drivers, entry?.driver, field]);
 
+  const current = (entry?.config ?? {})[field];
+  // A login is never shown: its box starts empty, and a saved one says so.
+  const secret = isSecretSetting(field, schema) || current === SAVED_LOGIN;
+
   // Seed from what the device already has, so a number that is wrong is on
   // screen to be corrected rather than replaced by an empty box.
   useEffect(() => {
-    const current = (entry?.config ?? {})[field];
-    setText(current == null ? "" : String(current));
-  }, [entry?.config, field]);
+    setText(current == null || secret ? "" : String(current));
+  }, [current, secret]);
 
   if (!entry) return null;
 
   const label = String(schema.label || field);
   const help = String(schema.help || schema.description || "");
-  const kind = configFieldKind(schema);
+  const kind = secret ? "password" : configFieldKind(schema, field);
   const fieldType = String(schema.type || "string");
 
   const save = async () => {
@@ -159,7 +163,9 @@ export function SetupField({ device, field }: { device: string; field: string })
     // {} until then and every field looks like a string. The button below is
     // disabled for the same window; this is the guard for the Enter key.
     if (drivers === null) return;
-    const coerced = coerceConfigValue(text, fieldType, isSecretSetting(field, schema));
+    // An empty login box changes nothing: the saved login stays.
+    if (secret && text === "") return;
+    const coerced = coerceConfigValue(text, fieldType, secret);
     if (!coerced.ok) {
       showError(`${label}: ${coerced.error}`);
       return;
@@ -174,8 +180,14 @@ export function SetupField({ device, field }: { device: string; field: string })
       // Not load(): that endpoint bumps the project revision, and load() is a
       // no-op while the store is dirty, which leaves the UI Builder holding a
       // stale ETag and 409ing its own next save. syncDeviceConfig mirrors the
-      // change instead when there are unsaved edits.
-      await syncDeviceConfig(device, config);
+      // change instead when there are unsaved edits. A login is read back
+      // from the server instead, which keeps the marker and never the value.
+      if (secret) {
+        await syncDeviceFromServer(device);
+        setText("");
+      } else {
+        await syncDeviceConfig(device, config);
+      }
       showSuccess(`${label} saved.`);
     } catch (e) {
       showError(`Could not save ${label}. ${parseApiError(e)}`);
@@ -190,12 +202,18 @@ export function SetupField({ device, field }: { device: string; field: string })
       <div style={{ display: "flex", gap: 4 }}>
         <input
           value={text}
-          type={kind === "number" ? "number" : "text"}
+          type={kind === "password" ? "password" : kind === "number" ? "number" : "text"}
+          autoComplete={secret ? "new-password" : undefined}
+          aria-label={label}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") void save();
           }}
-          placeholder={schema.default != null ? String(schema.default) : ""}
+          placeholder={
+            secret
+              ? current === SAVED_LOGIN ? "Saved on this system" : ""
+              : schema.default != null ? String(schema.default) : ""
+          }
           style={{ flex: 1, minWidth: 0 }}
         />
         <button

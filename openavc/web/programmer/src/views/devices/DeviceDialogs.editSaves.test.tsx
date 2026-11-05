@@ -10,6 +10,7 @@ import userEvent from "@testing-library/user-event";
 
 vi.mock("../../api/restClient", () => ({
   listDrivers: vi.fn(),
+  getDevice: vi.fn(() => Promise.resolve({})),
   updateDevice: vi.fn(() => Promise.resolve({ status: "updated", device_id: "x" })),
 }));
 vi.mock("../../api/systemClient", () => ({

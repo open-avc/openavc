@@ -89,8 +89,12 @@ export type ConfigFieldKind =
   | "table"
   | "plain";
 
+// `key` is the field's name where it is known: the connection `password` is a
+// secret by its name alone, so a device whose driver is not installed (no
+// schema to ask) still gets a masked input for it.
 export function configFieldKind(
   field: Record<string, unknown> | undefined,
+  key: string | null = null,
 ): ConfigFieldKind {
   const f = (field ?? {}) as {
     type?: unknown;
@@ -100,7 +104,7 @@ export function configFieldKind(
   if (fieldType === "boolean") return "boolean";
   // Secret wins over every other widget: a dropdown or number input would
   // show the credential on screen.
-  if (isSecretSetting(null, field)) return "password";
+  if (isSecretSetting(key, field)) return "password";
   // A table field is a repeatable typed-row list, edited on the device page by
   // ConfigTableEditor — the Add/Edit dialog just shows a pointer to it (the
   // dialog form is a flat string map that can't hold a row array).

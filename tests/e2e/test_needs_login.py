@@ -154,6 +154,34 @@ def test_a_login_entered_on_the_device_page_connects_it(server_factory, widget, 
     assert TYPED not in (handle.data_dir / "device_logins.json").read_text(encoding="utf-8")
 
 
+def test_edit_device_asks_for_a_login_this_system_waits_for(server_factory, widget, page: Page):
+    """Edit on the same device never says the login is saved: its Password is
+    an empty box, and a login saved there connects the device."""
+    port, accepted = widget
+    handle = _server(server_factory, port)
+    _open_device(page, handle.base_url)
+    expect(page.get_by_test_id("needs-login-banner")).to_be_visible(timeout=EXPECT_TIMEOUT)
+
+    page.get_by_role("button", name="Edit", exact=True).click()
+    dialog = page.get_by_role("dialog", name="Edit Device")
+    box = dialog.get_by_label("Password", exact=True)
+    expect(box).to_be_visible(timeout=EXPECT_TIMEOUT)
+    expect(dialog.get_by_role("button", name="Change Password")).to_have_count(0)
+    expect(box).to_have_value("")
+    expect(dialog.get_by_text("Saved on this system")).to_have_count(0)
+    box.fill(TYPED)
+    dialog.get_by_role("button", name="Save Changes").click()
+    expect(dialog).to_have_count(0, timeout=EXPECT_TIMEOUT)
+
+    deadline = time.monotonic() + 10
+    while not accepted and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert accepted, "the device was not dialed after its login was saved in Edit"
+    project_text = handle.project_path.read_text(encoding="utf-8")
+    assert TYPED not in project_text
+    assert json.loads(project_text)["connections"]["widget"]["password"] == MARKER
+
+
 def test_a_restored_backup_names_the_devices_that_need_their_login(server_factory, widget, page: Page):
     port, _ = widget
     handle = _server(server_factory, port)

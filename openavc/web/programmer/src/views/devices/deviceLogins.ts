@@ -1,17 +1,66 @@
-// Entering a device's login: the one save every form that takes a login uses.
+// Device logins in the Programmer. The browser never receives a saved login:
+// the project holds the "saved on this system" marker in its place, and a
+// form shows that marker as "Saved on this system" with Change, never as a
+// value.
 //
 // A login goes through the device's own settings save (PATCH
 // /api/devices/{id}), which moves it into this system's login file and leaves
-// the "saved on this system" marker in the project, then adds the device again
-// with it. The body is built from the server's copy of the device, markers and
+// the marker in the project, then adds the device again with it. The Edit
+// Device dialog sends it with the rest of its form; saveDeviceLogins below
+// sends only logins, built from the server's copy of the device, markers and
 // all (the server never mistakes a marker for a new login), so nothing else
-// the device has is changed by a stale or unsaved copy in this tab. Afterwards
-// the store is re-synced from the server, so it holds the marker and never the
-// value typed.
+// the device has is changed by a stale or unsaved copy in this tab. Either
+// way the store is re-read from the server afterwards, so it holds the marker
+// and never the value typed.
 
 import * as api from "../../api/restClient";
 import type { DeviceNeedingLogin } from "../../api/types";
+import { isSecretSetting } from "../../components/shared/secretSetting";
 import { syncDeviceFromServer } from "../../store/projectStore";
+
+/** What the project holds in a setting whose login is saved on this system,
+ *  in place of the login. The server never sends the login itself, and never
+ *  mistakes this for a new one: sent back, it keeps the saved login. Mirrors
+ *  SAVED_LOGIN in openavc/core/device_logins.py
+ *  (tests/test_saved_login_marker_parity.py). */
+export const SAVED_LOGIN = "<saved on this system>";
+
+/** The Edit Device form ready to save: a setting whose saved login was left
+ *  blank after Change keeps the saved login (the marker goes back), so an
+ *  empty box never removes one. `stored` is the form the dialog opened with.
+ *  Only for the driver the logins were saved for: another driver's form has
+ *  none. */
+export function keepSavedLogins(
+  values: Record<string, string>,
+  stored: Record<string, string>,
+): Record<string, string> {
+  const kept = { ...values };
+  for (const [key, value] of Object.entries(stored)) {
+    if (value === SAVED_LOGIN && (kept[key] ?? "") === "") kept[key] = SAVED_LOGIN;
+  }
+  return kept;
+}
+
+/** A form with every saved login left out, for a form whose device has none
+ *  of them: a duplicate, whose logins are saved under the device it was
+ *  copied from, or another driver. */
+export function withoutSavedLogins<T>(values: Record<string, T>): Record<string, T> {
+  return Object.fromEntries(Object.entries(values).filter(([, v]) => v !== SAVED_LOGIN));
+}
+
+/** Whether `config` holds a login somebody typed: a secret setting with a
+ *  value that is not the marker. A store that saved one re-syncs from the
+ *  server afterwards (syncDeviceFromServer), so it keeps the marker instead. */
+export function holdsTypedLogin(
+  config: Record<string, unknown>,
+  schema: Record<string, unknown> | undefined,
+): boolean {
+  return Object.entries(config).some(
+    ([key, value]) =>
+      isSecretSetting(key, schema?.[key]) &&
+      typeof value === "string" && value !== "" && value !== SAVED_LOGIN,
+  );
+}
 
 /** Save `logins` (setting name to value) for one device. */
 export async function saveDeviceLogins(
