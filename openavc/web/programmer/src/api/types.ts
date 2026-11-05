@@ -724,6 +724,17 @@ export interface DeviceInfo {
   actions?: DeviceAction[];
   driver_info: Record<string, unknown>;
   config?: Record<string, unknown>;
+  /** The settings whose login the project marks saved on this system and
+   *  this system does not have: the device waits for them ("Needs login").
+   *  Names only, never a value. */
+  needs_login?: string[];
+}
+
+/** A device that waits for its login to be entered, as the doors that bring a
+ *  project in (a backup restored, a library copy opened, an import) name it. */
+export interface DeviceNeedingLogin {
+  id: string;
+  name: string;
 }
 
 // --- Child Entities ---

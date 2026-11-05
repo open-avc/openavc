@@ -425,10 +425,12 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
         # writer landed a save or the caller's token is simply from an earlier
         # run of the server.
         raise HTTPException(status_code=409, detail=str(e))
-    return JSONResponse(
-        content={"status": "saved"},
-        headers={"ETag": f'"{new_revision}"'},
-    )
+    content: dict[str, Any] = {"status": "saved"}
+    if mode == "import":
+        # A project from somewhere else: the devices whose login this system
+        # does not have, for the import's result to name.
+        content["needs_login"] = engine.logins_needed()
+    return JSONResponse(content=content, headers={"ETag": f'"{new_revision}"'})
 
 
 @router.get("/project/validate-drivers")
@@ -705,7 +707,11 @@ async def open_from_library(data: LibraryOpenRequest) -> dict[str, Any]:
     from openavc.api.routes.drivers import announce_drivers_changed
     await announce_drivers_changed()
 
-    return {"status": "created", "project_name": data.project_name}
+    return {
+        "status": "created",
+        "project_name": data.project_name,
+        "needs_login": engine.logins_needed(),
+    }
 
 
 @router.post("/project/create-blank")
@@ -841,4 +847,4 @@ async def restore_backup(filename: str) -> dict[str, Any]:
     # Re-apply the restored state.json to the store + restart the persister, so
     # the restore takes effect immediately and isn't written back over.
     engine.reload_persisted_state()
-    return {"status": "restored", "filename": filename}
+    return {"status": "restored", "filename": filename, "needs_login": engine.logins_needed()}

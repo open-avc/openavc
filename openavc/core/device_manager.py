@@ -52,6 +52,7 @@ from openavc.drivers.child_ids import (
 )
 from openavc.drivers.registry import get_driver_class, is_driver_registered
 from openavc.core.device_config import DeviceConnection, bridge_first, connection_of
+from openavc.core.device_logins import marked_fields
 from openavc.core.event_bus import EventBus, detach_emit_chain
 from openavc.core.installed_equipment import driver_label, missing_driver_reason
 from openavc.core.state_store import StateStore
@@ -1416,6 +1417,10 @@ class DeviceManager:
                 detected_web_ui_url=self._detected_web_ui_urls.get(device_id),
             ),
             "driver_info": driver.DRIVER_INFO,
+            # The settings whose login is marked saved on this system and is
+            # not: the ones the device page asks for under "Needs login".
+            # Names only, never a value.
+            "needs_login": marked_fields(driver.config),
         }
 
     def _link_config(self, device_id: str, driver: BaseDriver) -> dict[str, Any]:

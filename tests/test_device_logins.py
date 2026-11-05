@@ -299,7 +299,10 @@ async def test_a_marked_setting_is_refused_before_anything_is_built():
 def test_login_missing_is_not_retried_and_says_what_to_do():
     assert cf.is_permanent_fault(cf.LOGIN_MISSING)
     message = cf.default_fault_message(cf.LOGIN_MISSING)
-    assert message == "No login for this device is saved on this system. Enter it under Edit."
+    assert message == (
+        "No login for this device is saved on this system. "
+        "Enter it on the device's page in the Programmer."
+    )
 
 
 def test_the_marker_is_never_registered_as_a_secret():

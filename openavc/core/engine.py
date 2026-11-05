@@ -26,7 +26,7 @@ from typing import Any
 from openavc import config, runtime_flags
 from openavc.core.client_origin import reload_origin
 from openavc.core.device_config import bridge_first, resolve_device_config
-from openavc.core.device_logins import fill_saved_logins, move_logins
+from openavc.core.device_logins import fill_saved_logins, marked_fields, move_logins
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
 from openavc.core.help_requests import HelpRequests
@@ -56,6 +56,7 @@ from openavc.core.typed_fields import trim_device_settings
 from openavc.core.ui_events import UIEventRuntime
 from openavc.core.ws_hub import WSHub
 from openavc.discovery import network_scanner
+from openavc.drivers.registry import is_driver_registered
 from openavc.ui.action_devices import annotate_action_devices
 from openavc.ui.matrix_model import resolve_ui
 from openavc.utils.log_redaction import get_secret_registry, project_secret_values
@@ -1259,6 +1260,24 @@ class Engine:
         if installed is not None:
             return installed
         return fill_saved_logins(resolve_device_config(device, self.project), self.device_logins)
+
+    def logins_needed(self) -> list[dict[str, str]]:
+        """The devices that wait for somebody to enter a login, in project
+        order, as id and name: each enabled device on an installed driver
+        whose project marks a login as saved on this system that this system
+        does not have (``core.device_logins``), the setting its driver refuses
+        to dial with ``login_missing``. Read from the project and the login
+        file, so it is right as soon as a project is applied, before any
+        device has tried to connect."""
+        if self.project is None:
+            return []
+        needed = []
+        for device in self.project.devices:
+            if not device.enabled or not is_driver_registered(device.driver):
+                continue
+            if marked_fields(self.resolved_device_config(device).get("config")):
+                needed.append({"id": device.id, "name": device.name or device.id})
+        return needed
 
     def _move_logins(self, project: ProjectConfig, *, typed: bool) -> ProjectConfig:
         """``project`` with each login it holds in the clear moved into this

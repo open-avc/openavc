@@ -44,3 +44,9 @@ export function showInfo(message: string): void {
 export function showSuccess(message: string): void {
   useToastStore.getState().addToast(message, "success", 3000);
 }
+
+/** A warning that stays until it is dismissed: something the reader has to
+ *  go and do, such as a list of devices to open. */
+export function showLastingWarning(message: string): void {
+  useToastStore.getState().addToast(message, "warning", 0);
+}

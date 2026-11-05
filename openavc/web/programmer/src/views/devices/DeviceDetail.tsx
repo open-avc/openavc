@@ -51,6 +51,7 @@ import { ApiError, parseApiError } from "../../api/errors";
 import { useConnectionTestResult } from "./useConnectionTestResult";
 import { driverLabel } from "../../components/shared/driverLabel";
 import { DriverUpdateLine } from "./DriverUpdateLine";
+import { NeedsLoginBanner } from "./NeedsLoginBanner";
 import { ProblemReportDialog, ReportLink } from "./ProblemReportDialog";
 import type { ProblemReportContext } from "../../api/problemReportClient";
 import { reportableCommandFailure } from "./problemReport";
@@ -159,9 +160,12 @@ export function DeviceDetail({
   const webUiUrl = liveState[`device.${deviceId}.web_ui_url`];
   const [testResult, setTestResult] = useConnectionTestResult(deviceId, connected);
   const runtimeEnabled = liveState[`device.${deviceId}.enabled`] === true;
+  // And when it starts or stops waiting for a login: which settings wait is
+  // in the device info, and a login saved anywhere changes it.
+  const waitsForLogin = liveState[`device.${deviceId}.offline_reason`] === "login_missing";
   useEffect(() => {
     refetchDeviceInfo();
-  }, [refetchDeviceInfo, connected, webUiUrl, runtimeEnabled]);
+  }, [refetchDeviceInfo, connected, webUiUrl, runtimeEnabled, waitsForLogin]);
 
   const deviceConfig = project?.devices.find((d) => d.id === deviceId);
   const isEnabled = deviceConfig?.enabled !== false;
@@ -800,8 +804,23 @@ export function DeviceDetail({
         />
       )}
 
+      {/* Needs login: the device waits for a login this system does not have.
+          The box to enter it takes the Offline banner's place; saving it
+          adds the device again, so there is nothing to retry. */}
+      {!connected && isEnabled && !orphaned && !paused && !restarting && !asleep &&
+        offlineReason === "login_missing" && (deviceInfo?.needs_login?.length ?? 0) > 0 && (
+        <NeedsLoginBanner
+          key={deviceId}
+          deviceId={deviceId}
+          fields={deviceInfo?.needs_login ?? []}
+          driverInfo={deviceInfo?.driver_info}
+          onSaved={refetchDeviceInfo}
+        />
+      )}
+
       {/* Offline reason banner — actionable cause from device.<id>.offline_detail */}
-      {!connected && isEnabled && !orphaned && !paused && !restarting && !asleep && offlineDetail && (
+      {!connected && isEnabled && !orphaned && !paused && !restarting && !asleep && offlineDetail &&
+        offlineReason !== "login_missing" && (
         <OfflineBanner
           installed={installed}
           detail={offlineDetail}

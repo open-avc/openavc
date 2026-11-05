@@ -1,4 +1,5 @@
 import type {
+  DeviceNeedingLogin,
   ProjectConfig,
   LibraryProject,
   LibraryProjectDetail,
@@ -111,7 +112,7 @@ export async function saveProject(
   project: ProjectConfig,
   etag?: string,
   mode: "edit" | "import" = "edit",
-): Promise<{ status: string; etag?: string }> {
+): Promise<{ status: string; etag?: string; needs_login?: DeviceNeedingLogin[] }> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (etag) headers["If-Match"] = etag;
 
@@ -142,7 +143,10 @@ export async function saveProject(
 
   const result = await res.json();
   const newEtag = res.headers.get("etag") ?? undefined;
-  return { status: result.status, etag: newEtag };
+  // An import also names the devices that wait for their login.
+  return Array.isArray(result.needs_login)
+    ? { status: result.status, etag: newEtag, needs_login: result.needs_login }
+    : { status: result.status, etag: newEtag };
 }
 
 export async function reloadProject(): Promise<{ status: string }> {
@@ -181,7 +185,7 @@ export async function createBackup(
 
 export async function restoreBackup(
   filename: string
-): Promise<{ status: string; filename: string }> {
+): Promise<{ status: string; filename: string; needs_login?: DeviceNeedingLogin[] }> {
   return request(`/backups/${encodeURIComponent(filename)}/restore`, { method: "POST" });
 }
 
@@ -302,7 +306,7 @@ export async function openFromLibrary(
   libraryId: string,
   projectName: string,
   projectId?: string
-): Promise<{ status: string; project_name: string }> {
+): Promise<{ status: string; project_name: string; needs_login?: DeviceNeedingLogin[] }> {
   return request("/project/open-from-library", {
     method: "POST",
     body: JSON.stringify({

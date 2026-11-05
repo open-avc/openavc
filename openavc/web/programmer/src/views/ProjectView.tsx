@@ -19,9 +19,17 @@ import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
 import { importParsedProject } from "./projectImport";
 import * as api from "../api/restClient";
-import type { LibraryProject, ProjectConfig } from "../api/types";
+import type { DeviceNeedingLogin, LibraryProject, ProjectConfig } from "../api/types";
 import { parseApiError } from "../api/errors";
-import { showError, showInfo, showSuccess } from "../store/toastStore";
+import { showError, showInfo, showLastingWarning, showSuccess } from "../store/toastStore";
+import { needsLoginSentence } from "./devices/deviceLogins";
+
+/** After a project came in from somewhere else: name the devices that wait
+ *  for their login, until somebody dismisses it. */
+function announceNeedsLogin(devices: DeviceNeedingLogin[] | undefined): void {
+  const sentence = needsLoginSentence(devices);
+  if (sentence) showLastingWarning(sentence);
+}
 
 /** The id the server will file a project under.
  *
@@ -177,7 +185,7 @@ export function ProjectView() {
       const entries = await api.listLibrary();
       setLibrary(entries);
       const entry = entries.find((l) => l.id === result.project_id);
-      await api.openFromLibrary(
+      const opened = await api.openFromLibrary(
         result.project_id,
         entry?.name || result.project_id,
         result.project_id
@@ -193,6 +201,7 @@ export function ProjectView() {
       }
       if (result.warnings?.length) msgs.push(...result.warnings);
       showSuccess(["Project imported.", ...msgs].join(" "));
+      announceNeedsLogin(opened.needs_login);
     } catch (e) {
       showError(parseApiError(e));
     } finally {
@@ -220,7 +229,7 @@ export function ProjectView() {
       }
       // Validate through the server before adopting into the store — see
       // importParsedProject. A wrong/corrupt file can't reach the live store.
-      await importParsedProject(parsed, {
+      const imported = await importParsedProject(parsed, {
         getEtag: () => useProjectStore.getState().etag ?? undefined,
         saveProject: (project, etag) => api.saveProject(project, etag, "import"),
         reloadProject: api.reloadProject,
@@ -229,6 +238,7 @@ export function ProjectView() {
         errorMessage: parseApiError,
         onError: showError,
       });
+      if (imported) announceNeedsLogin(imported.needsLogin);
     };
     input.click();
   }, [forceReloadProject, importBundle]);
@@ -273,9 +283,10 @@ export function ProjectView() {
     if (!showOpen || !openName.trim()) return;
     setBusy(true);
     try {
-      await api.openFromLibrary(showOpen, openName.trim(), openId.trim() || undefined);
+      const opened = await api.openFromLibrary(showOpen, openName.trim(), openId.trim() || undefined);
       setShowOpen(null);
       await forceReloadProject();
+      announceNeedsLogin(opened.needs_login);
     } catch (e) {
       showError(parseApiError(e));
     } finally {
@@ -359,9 +370,10 @@ export function ProjectView() {
     setBusy(true);
     setRestoring(backup.filename);
     try {
-      await api.restoreBackup(backup.filename);
+      const restored = await api.restoreBackup(backup.filename);
       await forceReloadProject();
       showSuccess(`Restored from ${backupLabel(backup)}.`);
+      announceNeedsLogin(restored.needs_login);
     } catch (e) {
       showError(parseApiError(e));
     } finally {

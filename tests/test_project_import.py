@@ -76,6 +76,7 @@ SCENARIOS = [
     "m308_validation_failure_never_adopts",
     "m308_conflict_message",
     "m308_passes_etag_to_save",
+    "names_devices_needing_login",
 ]
 
 

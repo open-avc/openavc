@@ -46,6 +46,7 @@ def client(project_dir: Path):
     engine.persister = None
     engine.reload_project = AsyncMock()
     engine.reload_persisted_state = MagicMock()
+    engine.logins_needed = MagicMock(return_value=[])
     rest.set_engine(engine)
     yield TestClient(app)
     rest.set_engine(None)
@@ -69,7 +70,7 @@ def test_create_response_restores(client: TestClient):
     restored = client.post(f"/api/backups/{filename}/restore")
 
     assert restored.status_code == 200, restored.json()
-    assert restored.json() == {"status": "restored", "filename": filename}
+    assert restored.json() == {"status": "restored", "filename": filename, "needs_login": []}
 
 
 def test_listed_name_restores(client: TestClient):
@@ -109,6 +110,7 @@ def test_the_doors_serve_a_project_file_with_its_own_name(tmp_path: Path):
     engine.persister = None
     engine.reload_project = AsyncMock()
     engine.reload_persisted_state = MagicMock()
+    engine.logins_needed = MagicMock(return_value=[])
     rest.set_engine(engine)
     try:
         client = TestClient(app)

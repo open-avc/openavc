@@ -123,8 +123,8 @@ _DEFAULT_MESSAGES = {
     # holds the "saved on this system" marker where a login goes, and this
     # system has no saved login for that device and driver.
     LOGIN_MISSING: (
-        "No login for this device is saved on this system. Enter it "
-        "under Edit."
+        "No login for this device is saved on this system. Enter it on "
+        "the device's page in the Programmer."
     ),
     TRANSPORT_DISCONNECTED: (
         "The connection to the device dropped. OpenAVC is retrying "

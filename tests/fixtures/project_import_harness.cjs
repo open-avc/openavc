@@ -45,8 +45,22 @@ async function main() {
     const { deps, calls } = makeDeps({});
     const ok = await H.importParsedProject({ id: "p" }, deps);
     results.m308_success_adopts = {
-      pass: ok === true && eq(calls, ["save", "reload", "forceReload"]),
+      pass: ok !== false && eq(ok.needsLogin, []) && eq(calls, ["save", "reload", "forceReload"]),
       detail: calls,
+    };
+  }
+
+  // The import's answer names the devices that wait for their login; the
+  // result hands them back for the page to show.
+  {
+    const waiting = [{ id: "proj1", name: "Projector" }];
+    const { deps } = makeDeps({
+      saveProject: async () => ({ status: "saved", needs_login: waiting }),
+    });
+    const ok = await H.importParsedProject({ id: "p" }, deps);
+    results.names_devices_needing_login = {
+      pass: ok !== false && eq(ok.needsLogin, waiting),
+      detail: ok,
     };
   }
 
@@ -90,7 +104,7 @@ async function main() {
       saveProject: async (_p, etag) => { sentEtag = etag; return { status: "saved" }; },
     });
     const ok = await H.importParsedProject({ id: "p" }, deps);
-    results.m308_passes_etag_to_save = { pass: ok === true && sentEtag === '"7"', detail: { sentEtag } };
+    results.m308_passes_etag_to_save = { pass: ok !== false && sentEtag === '"7"', detail: { sentEtag } };
   }
 
   process.stdout.write(JSON.stringify(results));

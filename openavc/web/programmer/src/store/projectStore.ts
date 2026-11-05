@@ -336,6 +336,18 @@ export async function syncDeviceConfig(
  * meets the server's 409 guard.
  */
 export async function syncAfterSetupAction(deviceId: string): Promise<void> {
+  await syncDeviceFromServer(deviceId);
+}
+
+/**
+ * Re-sync the store with the server's copy of one device after this tab wrote
+ * its settings on the server: a refetch when the store is clean, else that
+ * device's persisted config and connection mirrored in, as
+ * syncAfterSetupAction describes. What lands in the store is what the server
+ * saved, so a login entered goes back as the "saved on this system" marker,
+ * never as the value typed.
+ */
+export async function syncDeviceFromServer(deviceId: string): Promise<void> {
   const store = useProjectStore.getState();
   if (!store.dirty && !store.saving) {
     await store.load();

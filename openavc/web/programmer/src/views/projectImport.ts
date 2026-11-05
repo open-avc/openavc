@@ -5,7 +5,7 @@
 // the live store ONLY once the server has accepted it — so a malformed import
 // can never be set on the store and crash dependent views. The old handler set
 // the raw parsed object on the store before any validation.
-import type { ProjectConfig } from "../api/types";
+import type { DeviceNeedingLogin, ProjectConfig } from "../api/types";
 
 export interface ImportProjectDeps {
   /** ETag of the current project, for the save's optimistic-concurrency check. */
@@ -25,19 +25,21 @@ export interface ImportProjectDeps {
 
 /**
  * Persist a parsed project through the server and adopt it into the store only
- * on success. Returns true when the import was accepted and adopted, false when
- * the server rejected it (in which case the store is left untouched and an error
- * message has been surfaced).
+ * on success. Returns what the import's answer named when it was accepted and
+ * adopted (the devices that wait for their login), false when the server
+ * rejected it (in which case the store is left untouched and an error message
+ * has been surfaced).
  */
 export async function importParsedProject(
   parsed: ProjectConfig,
   deps: ImportProjectDeps,
-): Promise<boolean> {
+): Promise<false | { needsLogin: DeviceNeedingLogin[] }> {
   try {
-    await deps.saveProject(parsed, deps.getEtag());
+    const saved = await deps.saveProject(parsed, deps.getEtag());
     await deps.reloadProject();
     await deps.forceReload();
-    return true;
+    const needsLogin = (saved as { needs_login?: unknown } | undefined)?.needs_login;
+    return { needsLogin: Array.isArray(needsLogin) ? (needsLogin as DeviceNeedingLogin[]) : [] };
   } catch (e) {
     deps.onError(
       deps.isConflict(e)

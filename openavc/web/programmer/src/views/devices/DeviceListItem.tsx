@@ -37,6 +37,11 @@ export function DeviceListItem({
   const asleep = useConnectionStore(
     (s) => s.liveState[`device.${deviceId}.asleep`] === true
   );
+  // Waiting for a login this system does not have: said here too, so after a
+  // restore the devices to open are the ones that say so.
+  const needsLogin = useConnectionStore(
+    (s) => s.liveState[`device.${deviceId}.offline_reason`] === "login_missing"
+  );
 
   return (
     <button
@@ -82,6 +87,11 @@ export function DeviceListItem({
           <span style={{ minWidth: 0, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {driverLabel(driver)}{orphaned ? " (not installed)" : ""}
           </span>
+          {needsLogin && !connected && enabled && !orphaned && (
+            <span style={{ color: "var(--color-warning, #f59e0b)", whiteSpace: "nowrap" }}>
+              Needs login
+            </span>
+          )}
           {groupNames && groupNames.length > 0 && groupNames.map((gn) => (
             <span key={gn} style={{
               fontSize: 9, padding: "0 4px", borderRadius: 3,
