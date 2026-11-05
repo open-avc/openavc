@@ -43,6 +43,11 @@ const primaryStyle: React.CSSProperties = {
   color: "var(--text-on-accent)",
 };
 
+/** A button's look, dimmed while it cannot be pressed. */
+function looks(style: React.CSSProperties, disabled: boolean): React.CSSProperties {
+  return disabled ? { ...style, opacity: 0.5, cursor: "not-allowed" } : style;
+}
+
 /** Why a passphrase pair cannot seal yet, or null when it can. */
 export function passphraseProblem(passphrase: string, again: string): string | null {
   if (passphrase.normalize("NFC").length < MIN_PASSPHRASE) {
@@ -145,7 +150,11 @@ export function ExportProjectDialog({
       )}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
         <button onClick={onClose} style={btnStyle}>Cancel</button>
-        <button onClick={() => void submit()} style={primaryStyle} disabled={busy || problem !== null}>
+        <button
+          onClick={() => void submit()}
+          style={looks(primaryStyle, busy || problem !== null)}
+          disabled={busy || problem !== null}
+        >
           {busy ? "Exporting..." : "Export"}
         </button>
       </div>
@@ -225,8 +234,12 @@ export function ImportLoginsDialog({
         <p role="alert" style={{ ...noteStyle, color: "var(--color-error)" }}>{error}</p>
       )}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)" }}>
-        <button onClick={() => void skip()} style={btnStyle} disabled={busy}>Skip</button>
-        <button onClick={() => void bringIn()} style={primaryStyle} disabled={busy || passphrase === ""}>
+        <button onClick={() => void skip()} style={looks(btnStyle, busy)} disabled={busy}>Skip</button>
+        <button
+          onClick={() => void bringIn()}
+          style={looks(primaryStyle, busy || passphrase === "")}
+          disabled={busy || passphrase === ""}
+        >
           {busy ? "Bringing them in..." : "Bring them in"}
         </button>
       </div>
