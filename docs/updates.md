@@ -164,6 +164,12 @@ When an update is rolled back, its entry in Update History changes to **reverted
 
 From the Updates view, scroll to the **Rollback** section and click **Rollback to vX.Y.Z**. This restores the previous application code and restarts the server. Your projects, drivers, and configuration are preserved as they are — manual rollback does not rewind your project data.
 
+### Rolling back to a version older than v0.40.0
+
+From v0.40.0, the logins a project uses (device passwords, plugin logins and the Inter-System key) are kept on the system rather than in the project file, which holds "saved on this system" in their place. **Rollback** in the Updates view, and the automatic rollback, write every saved login back into the project files before the older version starts, so its devices still sign in.
+
+Installing an older version by hand over this one, by running an older installer, does not. That version finds "saved on this system" where each password was, and a device with a login cannot sign in until its login is entered again. Roll back from the Updates view instead.
+
 ### Rolling back to a version older than v0.29.0
 
 v0.29.0 changed how the admin password is stored, from the password itself to a hash of it. Rolling back to v0.28.0 or earlier works normally, but that older version cannot read the new form, so the Programmer sign-in will reject the password. Everything else, including the room panel, is unaffected.
