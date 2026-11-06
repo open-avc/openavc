@@ -93,6 +93,13 @@ DEFAULT_CAPABILITIES = [
     # PluginAPI.viewer_access, where a viewer on the LAN is answered without
     # the capability being consulted at all.
     "tunnel_video",
+    # This system keeps its logins in its own login file and its project holds
+    # the saved-login marker in their place (core/device_logins.SAVED_LOGIN).
+    # A pushed project carrying the marker keeps the login saved here; it is
+    # never taken as a password. An older version would write the marker over
+    # its real password, so the cloud sends a project holding the marker only
+    # to a system that announces this. Nothing on this side is gated by it.
+    "saved_logins",
 ]
 
 # Downstream messages that require a specific capability before the agent will
