@@ -205,6 +205,7 @@ SCENARIOS = [
     "a_macro_named_like_an_object_built_in_is_an_ordinary_macro",
     "embedded_panel_posts_only_to_its_own_origin",
     "list_key_pattern_is_literal_apart_from_the_star",
+    "rich_text_escapes_markup_before_adding_its_own",
     "q139_a_matrix_preset_and_lock_name_the_control_they_came_from",
     # The Programmer's session reaches the embedded panel's requests and socket.
     "bridge_sends_the_programmer_session_as_a_bearer_token",

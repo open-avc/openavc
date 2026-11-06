@@ -3736,6 +3736,23 @@ const tests = {
         }
     },
 
+    // Rich text is written into innerHTML, from a label's text or a state
+    // value. Markup in it is escaped before the bold and italic tags go in,
+    // so the only elements it can make are those two.
+    rich_text_escapes_markup_before_adding_its_own() {
+        const app = mkApp();
+        const host = document.createElement('div');
+        host.innerHTML = app._formatRichText(
+            '<img src=x onerror="alert(1)"> <script>bad()</script> **loud** and *soft* &amp;');
+        assert(!host.querySelector('img, script'), `no element from the text, got ${host.innerHTML}`);
+        const tags = [...host.querySelectorAll('*')].map(n => n.tagName).join(',');
+        assert(tags === 'STRONG,EM', `only the formatting tags, got ${tags}`);
+        assert(host.textContent.startsWith('<img src=x onerror="alert(1)"> <script>bad()</script> '),
+            `the markup shows as text, got ${host.textContent}`);
+        assert(host.textContent.endsWith('loud and soft &amp;'),
+            `an entity in the text is shown as typed, got ${host.textContent}`);
+    },
+
     // A list's key pattern is a glob: `*` is the only wildcard. Anything else
     // in it was handed to the regex engine as-is, so a bracket threw and broke
     // the list, and parentheses became a capture that took the item's value.
