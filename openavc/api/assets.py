@@ -18,9 +18,14 @@ from fastapi.responses import FileResponse
 
 from openavc.api.auth import require_programmer_auth
 from openavc.core.asset_references import asset_users
-# The file types an asset may be live with the tree's other rules, because an
-# import and a backup restore ask them too.
-from openavc.core.asset_tree import ALLOWED_EXTENSIONS, AUDIO_EXTENSIONS
+# The file types an asset may be, and the SVG check, live with the tree's other
+# rules, because an import and a backup restore ask them too.
+from openavc.core.asset_tree import (
+    ALLOWED_EXTENSIONS,
+    AUDIO_EXTENSIONS,
+    is_asset_type,
+    svg_problem,
+)
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -61,23 +66,6 @@ def _max_size_for(ext: str) -> int:
     if ext in AUDIO_EXTENSIONS:
         return MAX_AUDIO_SIZE
     return MAX_IMAGE_SIZE
-
-# SVG sanitization: reject SVGs containing dangerous elements or attributes
-SVG_DANGEROUS_PATTERNS = [
-    re.compile(r"<script[\s>]", re.IGNORECASE),
-    re.compile(r"on\w+\s*=", re.IGNORECASE),
-    re.compile(r"javascript:", re.IGNORECASE),
-    re.compile(r"<foreignObject[\s>]", re.IGNORECASE),
-    re.compile(r"<iframe[\s>]", re.IGNORECASE),
-    re.compile(r"@import", re.IGNORECASE),
-    re.compile(r"<animate[^>]*attributeName\s*=\s*[\"']href", re.IGNORECASE),
-    re.compile(r"data:text/html", re.IGNORECASE),
-    re.compile(r"<style[\s>]", re.IGNORECASE),
-    re.compile(r"<base[\s>]", re.IGNORECASE),
-    re.compile(r"<embed[\s>]", re.IGNORECASE),
-    re.compile(r"<object[\s>]", re.IGNORECASE),
-    re.compile(r"xlink:href\s*=\s*[\"'](?!#)", re.IGNORECASE),
-]
 
 
 def set_engine(engine) -> None:
@@ -210,25 +198,10 @@ def _sanitize_filename(raw: str) -> str:
 
 
 def _validate_svg(content: bytes) -> None:
-    """Check SVG content for dangerous patterns and well-formedness."""
-    # First verify it's valid XML (catches billion-laughs, entity expansion, etc.)
-    try:
-        import defusedxml.ElementTree as ET
-        ET.fromstring(content)
-    except Exception:
-        raise HTTPException(
-            status_code=400,
-            detail="SVG is not valid XML.",
-        )
-
-    # Then check for dangerous patterns in the raw text
-    text = content.decode("utf-8", errors="replace")
-    for pattern in SVG_DANGEROUS_PATTERNS:
-        if pattern.search(text):
-            raise HTTPException(
-                status_code=400,
-                detail="SVG contains potentially unsafe content (scripts, styles, or event handlers).",
-            )
+    """Refuse an SVG that is not well-formed or carries script (core/asset_tree.py)."""
+    problem = svg_problem(content)
+    if problem:
+        raise HTTPException(status_code=400, detail=problem)
 
 
 def _get_total_size(assets_dir: Path) -> int:
@@ -248,6 +221,12 @@ async def serve_asset(project_id: str, filename: str):
     endpoint below honors the id the same way; the mutating ``upload``/
     ``delete`` endpoints act only on the active project and reject any other id,
     so library templates aren't mutated through this surface.)
+
+    Only a file of a type an asset may be is served, the same types the listing
+    shows: anything else in the folder (one copied in by hand, or brought by an
+    import before imports checked the type) answers 404, so a page or a script
+    there is never served from this address. The type is read from the file
+    the path resolves to, so a link named like an image does not pass.
     """
     assets_dir = _assets_dir_for(project_id)
     # Prevent directory traversal
@@ -256,7 +235,7 @@ async def serve_asset(project_id: str, filename: str):
         safe_path.relative_to(assets_dir.resolve())
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid path")
-    if not safe_path.exists() or not safe_path.is_file():
+    if not safe_path.exists() or not safe_path.is_file() or not is_asset_type(safe_path.name):
         raise HTTPException(status_code=404, detail="Asset not found")
 
     return FileResponse(

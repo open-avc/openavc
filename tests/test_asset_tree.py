@@ -128,6 +128,32 @@ def test_extract_takes_only_the_types_the_upload_takes(tmp_path: Path):
     assert sorted(written) == ["chime.m4a", "logo.png", "rooms/PLAN.JPG"]
 
 
+SAFE_SVG = b'<svg xmlns="http://www.w3.org/2000/svg"><circle cx="5" cy="5" r="4"/></svg>'
+
+
+def test_extract_gives_an_svg_the_check_the_upload_gives_it(tmp_path: Path):
+    # Opened at its own URL, an SVG runs its script on this server's address.
+    zf = _zip({
+        "assets/logo.svg": SAFE_SVG,
+        "assets/rooms/scripted.svg": b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
+        "assets/handler.SVG": b'<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>',
+        "assets/broken.svg": b"<svg",
+    })
+
+    written = asset_tree.extract_from_zip(zf, tmp_path / "assets")
+
+    assert written == ["logo.svg"]
+    assert (tmp_path / "assets" / "logo.svg").read_bytes() == SAFE_SVG
+
+
+def test_svg_problem_answers_in_the_upload_s_words():
+    assert asset_tree.svg_problem(SAFE_SVG) is None
+    assert asset_tree.svg_problem(b"<svg") == "SVG is not valid XML."
+    assert asset_tree.svg_problem(
+        b'<svg xmlns="http://www.w3.org/2000/svg"><style>a{}</style></svg>'
+    ) == "SVG contains potentially unsafe content (scripts, styles, or event handlers)."
+
+
 def test_no_type_the_upload_ever_took_is_refused_on_the_way_back_in():
     # Nothing has been taken off the upload's list, so a restore or an import
     # never refuses a file that some release let somebody upload. If a type

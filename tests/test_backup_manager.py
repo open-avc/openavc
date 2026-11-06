@@ -576,6 +576,21 @@ class TestRestoreTakesOnlyWhatTheProjectCouldHold:
         )
         assert assets == ["bg.jpg", "chime.MP3", "logo.png"]
 
+    def test_an_svg_the_upload_would_refuse_stays_out_of_assets(self, project_dir: Path):
+        safe = b'<svg xmlns="http://www.w3.org/2000/svg"><circle r="4"/></svg>'
+        backup_path = create_backup(project_dir / "project.avc", "Manual backup")
+        with zipfile.ZipFile(backup_path, "a") as zf:
+            zf.writestr("assets/plan.svg", safe)
+            zf.writestr(
+                "assets/scripted.svg",
+                b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
+            )
+
+        restore_from_backup(backup_path, project_dir / "project.avc")
+
+        assert (project_dir / "assets" / "plan.svg").read_bytes() == safe
+        assert not (project_dir / "assets" / "scripted.svg").exists()
+
 
 # ---------------------------------------------------------------------------
 # A project file with its own name

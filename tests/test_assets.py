@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from openavc.core.engine import Engine
 from openavc.main import app
 from openavc.api import rest, assets as assets_api
+from tests import gates
 
 
 TEST_PROJECT = {
@@ -406,3 +407,48 @@ async def test_a_file_deleted_while_the_folder_is_read_is_left_out(client, monke
         files={"file": ("new.png", io.BytesIO(_make_png()), "image/png")},
     )
     assert resp.status_code == 200
+
+
+# --- what the open route serves ---------------------------------------------
+#
+# The route needs no credential and answers from this server's own address,
+# so a page or a script in the folder would run there. It serves the types the
+# listing shows and nothing else, whatever put the file in the folder.
+
+
+async def test_the_open_route_serves_no_file_that_is_not_an_image_or_sound(client):
+    assets_dir = assets_api._assets_dir_for("default")
+    (assets_dir / "page.html").write_bytes(b"<html><script></script></html>")
+    (assets_dir / "run.js").write_bytes(b"alert(1)")
+    (assets_dir / "logo.png").write_bytes(_make_png(120))
+
+    assert client.get("/api/projects/default/assets/page.html").status_code == 404
+    assert client.get("/api/projects/default/assets/run.js").status_code == 404
+    assert client.get("/api/projects/default/assets/logo.png").status_code == 200
+
+
+@gates.skipif_missing(gates.SYMLINKS, gates.symlink_reason())
+async def test_the_open_route_reads_the_type_of_the_file_a_link_reaches(client):
+    assets_dir = assets_api._assets_dir_for("default")
+    (assets_dir / "page.html").write_bytes(b"<html></html>")
+    (assets_dir / "picture.png").symlink_to(assets_dir / "page.html")
+
+    assert client.get("/api/projects/default/assets/picture.png").status_code == 404
+
+
+async def test_an_upload_refuses_a_scripted_svg_in_the_same_words(client):
+    evil_svg = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+    resp = client.post(
+        "/api/projects/default/assets",
+        files={"file": ("evil.svg", io.BytesIO(evil_svg), "image/svg+xml")},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == (
+        "SVG contains potentially unsafe content (scripts, styles, or event handlers)."
+    )
+    resp = client.post(
+        "/api/projects/default/assets",
+        files={"file": ("broken.svg", io.BytesIO(b"<svg"), "image/svg+xml")},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "SVG is not valid XML."
