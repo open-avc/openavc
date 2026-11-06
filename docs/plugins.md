@@ -196,6 +196,7 @@ Plugins are tracked in the project file just like drivers. When you export a pro
 - Bundled plugins are installed automatically
 - Plugins not bundled show as "Missing" with an option to install from the community repository
 - Platform-incompatible plugins show a warning (e.g., "Plugin 'Stream Deck' is not compatible with Linux ARM64")
+- A plugin's logins stay on the system they were entered on. An export carries them only when **Include logins** is ticked, sealed with a passphrase; imported without them, each plugin shows "Not saved on this system" in its settings until the login is entered again
 
 ---
 
