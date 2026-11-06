@@ -146,9 +146,8 @@
     "BUTTON (unnamed)",
     "INPUT placeholder: e.g. projector1.* or *.power_off",
     "BUTTON (unnamed)",
-    "INPUT placeholder: Shared auth key (required)",
-    "BUTTON Show",
-    "BUTTON Save",
+    "INPUT Shared auth key",
+    "BUTTON Save Shared auth key",
     "CLICKABLE Disabled"
   ],
   "Log": [

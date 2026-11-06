@@ -267,7 +267,7 @@ async def test_an_export_with_logins_of_a_project_with_none_saved_is_refused(eng
     answer = await client.post("/api/project/export", json={"passphrase": PASSPHRASE})
 
     assert answer.status_code == 422
-    assert "No device logins are saved on this system for this project" in answer.json()["detail"]
+    assert "No logins are saved on this system for this project" in answer.json()["detail"]
 
 
 async def test_a_library_copy_exports_the_login_it_would_get_if_opened_here(engine, client, data):

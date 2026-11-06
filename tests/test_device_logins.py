@@ -363,8 +363,8 @@ def test_the_engine_sweep_dates_a_device_that_left_the_project(engine):
     engine.device_logins.save("gone1", "acme_widget_login", {"password": "Old-Pass"})
     engine._sweep_device_logins()
     entries = engine.device_logins._entries
-    assert entries[(None, "proj1", "acme_widget_login")].removed_at is None
-    assert entries[(None, "gone1", "acme_widget_login")].removed_at is not None
+    assert entries[(None, "device", "proj1", "acme_widget_login")].removed_at is None
+    assert entries[(None, "device", "gone1", "acme_widget_login")].removed_at is not None
 
 
 def test_the_store_is_one_per_data_folder(tmp_path):

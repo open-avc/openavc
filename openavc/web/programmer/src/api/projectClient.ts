@@ -1,5 +1,6 @@
 import type {
   DeviceNeedingLogin,
+  PluginNeedingLogin,
   ProjectConfig,
   LibraryProject,
   LibraryProjectDetail,
@@ -112,7 +113,7 @@ export async function saveProject(
   project: ProjectConfig,
   etag?: string,
   mode: "edit" | "import" = "edit",
-): Promise<{ status: string; etag?: string; needs_login?: DeviceNeedingLogin[] }> {
+): Promise<{ status: string; etag?: string; needs_login?: DeviceNeedingLogin[]; plugins_need_login?: PluginNeedingLogin[] }> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (etag) headers["If-Match"] = etag;
 
@@ -185,7 +186,7 @@ export async function createBackup(
 
 export async function restoreBackup(
   filename: string
-): Promise<{ status: string; filename: string; needs_login?: DeviceNeedingLogin[] }> {
+): Promise<{ status: string; filename: string; needs_login?: DeviceNeedingLogin[]; plugins_need_login?: PluginNeedingLogin[] }> {
   return request(`/backups/${encodeURIComponent(filename)}/restore`, { method: "POST" });
 }
 
@@ -335,7 +336,7 @@ export async function openFromLibrary(
   libraryId: string,
   projectName: string,
   projectId?: string
-): Promise<{ status: string; project_name: string; needs_login?: DeviceNeedingLogin[] }> {
+): Promise<{ status: string; project_name: string; needs_login?: DeviceNeedingLogin[]; plugins_need_login?: PluginNeedingLogin[] }> {
   return request("/project/open-from-library", {
     method: "POST",
     body: JSON.stringify({

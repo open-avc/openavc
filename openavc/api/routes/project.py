@@ -431,6 +431,7 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
         # A project from somewhere else: the devices whose login this system
         # does not have, for the import's result to name.
         content["needs_login"] = engine.logins_needed()
+        content["plugins_need_login"] = engine.plugin_logins_needed()
     return JSONResponse(content=content, headers={"ETag": f'"{new_revision}"'})
 
 
@@ -682,14 +683,14 @@ async def add_imported_logins(project_id: str, data: LoginsPassphraseRequest) ->
     except FileNotFoundError:
         raise HTTPException(
             status_code=404,
-            detail="No device logins from an import are waiting for this project. "
+            detail="No logins from an import are waiting for this project. "
                    "Import the file again to enter its passphrase.",
         )
     except WrongPassphrase as e:
         raise HTTPException(status_code=422, detail=str(e))
     except LoginFileUnreadable as e:
         raise _api_error(
-            500, "The device logins could not be saved on this system. Check the server log.", e,
+            500, "The logins could not be saved on this system. Check the server log.", e,
         )
     return {"status": "added", "devices": added}
 
@@ -803,6 +804,7 @@ async def open_from_library(data: LibraryOpenRequest) -> dict[str, Any]:
         "status": "created",
         "project_name": data.project_name,
         "needs_login": engine.logins_needed(),
+        "plugins_need_login": engine.plugin_logins_needed(),
     }
 
 
@@ -939,4 +941,9 @@ async def restore_backup(filename: str) -> dict[str, Any]:
     # Re-apply the restored state.json to the store + restart the persister, so
     # the restore takes effect immediately and isn't written back over.
     engine.reload_persisted_state()
-    return {"status": "restored", "filename": filename, "needs_login": engine.logins_needed()}
+    return {
+        "status": "restored",
+        "filename": filename,
+        "needs_login": engine.logins_needed(),
+        "plugins_need_login": engine.plugin_logins_needed(),
+    }

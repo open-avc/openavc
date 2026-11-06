@@ -22,7 +22,14 @@ from openavc import config
 from openavc.core import asset_tree, theme_tree
 from openavc.core.custom_ui import extract_from_zip, zip_entries
 from openavc.core import login_bundle
-from openavc.core.device_logins import device_logins, move_logins, saved_logins_of
+from openavc.core.device_logins import (
+    FoundView,
+    StoreView,
+    device_logins,
+    in_project,
+    move_logins,
+    saved_logins_of,
+)
 from openavc.core.project_loader import (
     ISCConfig,
     ProjectConfig,
@@ -191,13 +198,9 @@ def _file_library_logins(sid: str, data: dict[str, Any]) -> dict[str, Any]:
     the running project's saved logins filed under ``sid``, and any login it
     still holds in the clear moved there too. On a failure the copy is
     written as it is, and opening it finds the running project's logins."""
-    devices = [
-        (d.get("id"), d.get("driver")) for d in data.get("devices") or []
-        if isinstance(d, dict) and isinstance(d.get("id"), str) and isinstance(d.get("driver"), str)
-    ]
     logins = device_logins()
     try:
-        logins.file_library(sid, devices)
+        logins.file_library(sid, in_project(data))
     except Exception:
         log.exception("Could not file the saved device logins under library project '%s'", sid)
         return data
@@ -232,40 +235,34 @@ def _move_copy_logins(sid: str) -> None:
         log.exception("Could not move the device logins of imported library project '%s'", sid)
 
 
-def _library_login(sid: str):
-    """The saved login a device of library copy ``sid`` would get if the copy
-    were opened here: the running project's first, then the copy's own (as
-    ``device_logins.adopt_library`` and the rollback put-back give it)."""
-    logins = device_logins()
-
-    def lookup(device_id: str, driver: str, name: str) -> str | None:
-        return (logins.login(device_id, driver, name)
-                or logins.login(device_id, driver, name, library=sid))
-
-    return lookup
+def _library_login(sid: str) -> StoreView:
+    """The saved logins library copy ``sid`` would get if it were opened
+    here: the running project's first, then the copy's own (as
+    ``device_logins.adopt_library`` and the rollback put-back give them)."""
+    return StoreView(device_logins(), None, sid)
 
 
 class NoLoginsToInclude(ValueError):
     """An export asked for device logins and the project has none saved here."""
 
 
-def _sealed_logins(data: dict[str, Any], lookup, passphrase: str) -> bytes:
+def _sealed_logins(data: dict[str, Any], view, passphrase: str) -> bytes:
     """The bundle of ``data``'s saved logins sealed with ``passphrase``
     (``core.login_bundle``). Raises NoLoginsToInclude when there are none."""
     login_bundle.check_passphrase(passphrase)
-    found = saved_logins_of(data, lookup)
+    found = saved_logins_of(data, view)
     if not found:
         raise NoLoginsToInclude(
-            "No device logins are saved on this system for this project. Export it without them."
+            "No logins are saved on this system for this project. Export it without them."
         )
     return login_bundle.seal(found, passphrase)
 
 
-def has_saved_logins(data: dict[str, Any], lookup) -> bool:
+def has_saved_logins(data: dict[str, Any], view) -> bool:
     """Whether ``data`` marks a login that ``lookup`` has saved, so an export
     could include it."""
     try:
-        return bool(saved_logins_of(data, lookup))
+        return bool(saved_logins_of(data, view))
     except Exception:
         log.exception("Could not read the saved device logins")
         return False
@@ -287,8 +284,7 @@ def add_imported_logins(project_id: str, passphrase: str) -> int:
         raise FileNotFoundError(sid)
     found = login_bundle.open_bundle(raw, passphrase)
     data = _load_avc(_lib_dir() / sid / "project.avc")
-    bundled = {(f.device_id, f.driver): f.fields for f in found}
-    wanted = saved_logins_of(data, lambda d, drv, name: bundled.get((d, drv), {}).get(name))
+    wanted = saved_logins_of(data, FoundView(found))
     logins = device_logins()
     if wanted:
         logins.store(wanted, library=sid, typed=False)
@@ -920,7 +916,7 @@ def open_from_library(
     # The copy's own saved logins, for each device the running project has
     # none saved for (this system's current login always wins).
     try:
-        device_logins().adopt_library(sanitize_id(project_id), [(d.id, d.driver) for d in project.devices])
+        device_logins().adopt_library(sanitize_id(project_id), in_project(project))
     except Exception:  # those devices then ask for their login
         log.exception("Could not bring in the saved device logins of library project '%s'", project_id)
     save_project(project_path, project)
@@ -1108,7 +1104,7 @@ def export_active_project(
     sid = sanitize_id(data.get("project", {}).get("id") or "project")
     sealed = None
     if logins_passphrase is not None:
-        sealed = _sealed_logins(data, device_logins().login, logins_passphrase)
+        sealed = _sealed_logins(data, StoreView(device_logins()), logins_passphrase)
     return (
         _bundle_bytes(data, scripts, project_path.parent, sealed),
         f"{sid}.zip",
@@ -1533,6 +1529,6 @@ def _held_sealed_logins(zf: zipfile.ZipFile, pid: str) -> tuple[dict[str, str] |
         raw = zf.read(info_entry)
         info = login_bundle.read_info(raw)
     except login_bundle.BundleUnreadable as exc:
-        return None, f"The device logins in this file were left out: {exc}"
+        return None, f"The logins in this file were left out: {exc}"
     login_bundle.hold(pid, raw)
     return {"sealed_at": info.sealed_at}, None

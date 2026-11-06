@@ -70,7 +70,9 @@ def test_create_response_restores(client: TestClient):
     restored = client.post(f"/api/backups/{filename}/restore")
 
     assert restored.status_code == 200, restored.json()
-    assert restored.json() == {"status": "restored", "filename": filename, "needs_login": []}
+    assert restored.json() == {
+        "status": "restored", "filename": filename, "needs_login": [], "plugins_need_login": [],
+    }
 
 
 def test_listed_name_restores(client: TestClient):

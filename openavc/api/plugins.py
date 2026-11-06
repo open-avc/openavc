@@ -288,7 +288,16 @@ async def get_plugin_config(plugin_id: str) -> dict[str, Any]:
     if entry is None:
         raise HTTPException(status_code=404, detail=f"Plugin '{plugin_id}' not in project")
 
-    return {"plugin_id": plugin_id, "config": entry.config}
+    from openavc.core.device_logins import plugin_logins_waiting
+
+    # A login the project marks as saved on this system holds the marker here,
+    # never the login (core/device_logins). needs_login names the ones this
+    # system does not have, which the form asks for instead.
+    return {
+        "plugin_id": plugin_id,
+        "config": entry.config,
+        "needs_login": plugin_logins_waiting(plugin_id, entry.config, engine.device_logins),
+    }
 
 
 @router.put("/plugins/{plugin_id}/config")

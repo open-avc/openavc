@@ -161,6 +161,8 @@ EXPECTED_CONTROL = {
     ("POST", "/api/drivers/upload"),
     ("POST", "/api/drivers/upload-bundle"),
     ("POST", "/api/isc/broadcast"),
+    # A new mesh key, saved into the login file through a project save.
+    ("PUT", "/api/isc/auth-key"),
     ("POST", "/api/isc/command"),
     ("POST", "/api/isc/send"),
     ("POST", "/api/python-drivers"),

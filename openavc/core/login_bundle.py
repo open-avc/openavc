@@ -26,7 +26,11 @@ The key is scrypt over the passphrase (Unicode NFC, UTF-8) with that salt and
 those parameters, 32 bytes, used as a Fernet key (AES-128-CBC with an
 HMAC-SHA256 tag, as the login file). The sealed payload is
 ``{"sealed_at": ..., "devices": [{"device": id, "driver": driver, "fields":
-{setting: login}}]}``. A wrong passphrase and a damaged file fail the same
+{setting: login}}], "plugins": [{"plugin": id, "item": item, "fields": ...}],
+"project": [{"section": "isc", "fields": {"auth_key": key}}]}``: the
+project's device logins, its plugins' and its mesh key, owned as in the login
+file. ``plugins`` and ``project`` joined version 1 before any release carried
+it. A wrong passphrase and a damaged file fail the same
 tag check, so both read as a passphrase that does not open it. The parameters
 travel in the file so a later version can raise them and still open this one;
 a reader refuses parameters above ``_MAX_SCRYPT_MEMORY`` so a crafted file
@@ -62,7 +66,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
-from openavc.core.device_logins import FoundLogin
+from openavc.core.device_logins import KIND_ORDER, PAYLOAD_LISTS, FoundLogin, owner_fields, owner_from
 
 #: The bundle's name inside an export zip.
 BUNDLE_MEMBER = "device_logins.sealed.json"
@@ -159,11 +163,12 @@ def seal_with_key(
     from cryptography.fernet import Fernet
 
     sealed_at = (now or datetime.now(timezone.utc)).replace(microsecond=0).isoformat()
-    devices = [
-        {"device": f.device_id, "driver": f.driver, "fields": dict(sorted(f.fields.items()))}
-        for f in sorted(found, key=lambda f: (f.device_id, f.driver))
-    ]
-    payload = json.dumps({"sealed_at": sealed_at, "devices": devices}, sort_keys=True).encode("utf-8")
+    lists: dict[str, list[dict[str, Any]]] = {"devices": []}
+    for f in sorted(found, key=lambda f: (KIND_ORDER.get(f.kind, 9), f.name, f.qualifier)):
+        lists.setdefault(PAYLOAD_LISTS[f.kind], []).append(
+            {**owner_fields(*f.owner), "fields": dict(sorted(f.fields.items()))}
+        )
+    payload = json.dumps({"sealed_at": sealed_at, **lists}, sort_keys=True).encode("utf-8")
     bundle = {
         "format": _FORMAT,
         "version": _VERSION,
@@ -234,15 +239,17 @@ def open_bundle(raw: bytes, passphrase: str) -> list[FoundLogin]:
     except (InvalidToken, ValueError, UnicodeEncodeError) as exc:
         raise WrongPassphrase("That passphrase does not open these logins.") from exc
     found: list[FoundLogin] = []
-    for item in payload.get("devices", []) if isinstance(payload, dict) else []:
-        if not isinstance(item, dict):
-            continue
-        device_id, driver, fields = item.get("device"), item.get("driver"), item.get("fields")
-        if not (isinstance(device_id, str) and isinstance(driver, str) and isinstance(fields, dict)):
-            continue
-        kept = {str(k): v for k, v in fields.items() if isinstance(v, str) and v}
-        if kept:
-            found.append(FoundLogin(device_id, driver, kept))
+    for kind, listed in PAYLOAD_LISTS.items():
+        items = payload.get(listed) if isinstance(payload, dict) else None
+        for item in items if isinstance(items, list) else []:
+            if not isinstance(item, dict):
+                continue
+            owner, fields = owner_from(item, kind), item.get("fields")
+            if owner is None or not isinstance(fields, dict):
+                continue
+            kept = {str(k): v for k, v in fields.items() if isinstance(v, str) and v}
+            if kept:
+                found.append(FoundLogin(owner[1], owner[2], kept, kind))
     return found
 
 

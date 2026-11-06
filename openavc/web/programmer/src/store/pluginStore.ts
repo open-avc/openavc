@@ -48,7 +48,8 @@ interface PluginStore {
   setSelectedId: (id: string | null) => void;
   enablePlugin: (pluginId: string) => Promise<void>;
   disablePlugin: (pluginId: string) => Promise<void>;
-  updateConfig: (pluginId: string, config: Record<string, unknown>) => Promise<void>;
+  /** Resolves false when the config was not saved (the reason is shown). */
+  updateConfig: (pluginId: string, config: Record<string, unknown>) => Promise<boolean>;
   activatePlugin: (pluginId: string) => Promise<void>;
   removeConfig: (pluginId: string) => Promise<void>;
   updatePluginStatus: (pluginId: string, status: string) => void;
@@ -149,10 +150,12 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
       shownConfigProblems.set(pluginId, problems);
       await get().load();
       await syncProjectStore();
+      return true;
     } catch (e) {
       const detail = parseApiError(e);
       set({ error: detail });
       showError(`Couldn't save settings for plugin "${pluginId}": ${detail}`);
+      return false;
     }
   },
 

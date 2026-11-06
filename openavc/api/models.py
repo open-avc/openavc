@@ -334,6 +334,10 @@ class PanelClaimRequest(BaseModel):
 # --- ISC ---
 
 
+class ISCAuthKeyRequest(BaseModel):
+    auth_key: str
+
+
 class ISCSendRequest(BaseModel):
     instance_id: str
     event: str

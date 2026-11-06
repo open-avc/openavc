@@ -57,7 +57,7 @@ export function passphraseProblem(passphrase: string, again: string): string | n
   return null;
 }
 
-/** Export, for a project with device logins saved on this system: include
+/** Export, for a project with logins saved on this system: include
  *  them sealed with a passphrase, or leave them out. `exportProject` is
  *  given the passphrase, or undefined for an export without logins. */
 export function ExportProjectDialog({
@@ -104,7 +104,7 @@ export function ExportProjectDialog({
             setError(null);
           }}
         />
-        <span style={{ fontSize: "var(--font-size-sm)" }}>Include device logins</span>
+        <span style={{ fontSize: "var(--font-size-sm)" }}>Include logins</span>
       </label>
       {include && (
         <>
@@ -169,7 +169,7 @@ export function sealedDay(sealedAt: string): string {
   return when.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
-/** An import whose file holds sealed device logins: the passphrase brings
+/** An import whose file holds sealed logins: the passphrase brings
  *  them in for library copy `libraryId`, Skip leaves them out. `onDone` is
  *  called once either has happened. */
 export function ImportLoginsDialog({
@@ -209,9 +209,9 @@ export function ImportLoginsDialog({
   };
 
   return (
-    <Dialog title="Device Logins" onClose={() => void skip()}>
+    <Dialog title="Logins" onClose={() => void skip()}>
       <p style={noteStyle}>
-        This export includes device logins, sealed on {sealedDay(sealedAt)}. Enter its passphrase
+        This export includes logins, sealed on {sealedDay(sealedAt)}. Enter its passphrase
         to bring them in, or skip.
       </p>
       <label htmlFor={`${id}-passphrase`} style={labelStyle}>Passphrase</label>

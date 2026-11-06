@@ -14,7 +14,7 @@
 // and never the value typed.
 
 import * as api from "../../api/restClient";
-import type { DeviceNeedingLogin } from "../../api/types";
+import type { DeviceNeedingLogin, PluginNeedingLogin } from "../../api/types";
 import { isSecretSetting } from "../../components/shared/secretSetting";
 import { syncDeviceFromServer } from "../../store/projectStore";
 
@@ -94,17 +94,33 @@ export function driverLoginDefaults(
 
 const NAMES_SHOWN = 5;
 
-/** What a restore, an open or an import says about the devices that wait for
- *  their login, or "" when none do. */
-export function needsLoginSentence(devices: DeviceNeedingLogin[] | undefined): string {
-  if (!devices || devices.length === 0) return "";
-  const names = devices.slice(0, NAMES_SHOWN).map((d) => d.name || d.id);
-  const more = devices.length - names.length;
+function counted(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** What a restore, an open or an import says about the devices and plugins
+ *  that wait for their login, or "" when none do. */
+export function needsLoginSentence(
+  devices: DeviceNeedingLogin[] | undefined,
+  plugins: PluginNeedingLogin[] | undefined = [],
+): string {
+  const waiting = [...(devices ?? []), ...(plugins ?? [])];
+  if (waiting.length === 0) return "";
+  const names = waiting.slice(0, NAMES_SHOWN).map((d) => d.name || d.id);
+  const more = waiting.length - names.length;
   const list = more > 0 ? `${names.join(", ")} and ${more} more` : names.join(", ");
-  if (devices.length === 1) {
-    return `1 device needs its login entered: ${list}. Open it in Devices to enter it.`;
+  const deviceCount = devices?.length ?? 0;
+  const pluginCount = plugins?.length ?? 0;
+  if (deviceCount && pluginCount) {
+    const who = `${counted(deviceCount, "device", "devices")} and ${counted(pluginCount, "plugin", "plugins")}`;
+    return `${who} need their login entered: ${list}. Open each one in Devices or Plugins to enter it.`;
   }
-  return `${devices.length} devices need their login entered: ${list}. Open each one in Devices to enter it.`;
+  const where = deviceCount ? "Devices" : "Plugins";
+  const kind = deviceCount ? ["device", "devices"] : ["plugin", "plugins"];
+  if (waiting.length === 1) {
+    return `1 ${kind[0]} needs its login entered: ${list}. Open it in ${where} to enter it.`;
+  }
+  return `${waiting.length} ${kind[1]} need their login entered: ${list}. Open each one in ${where} to enter it.`;
 }
 
 /** Whether `project` marks any setting as a login saved on this system, in a

@@ -312,6 +312,23 @@ An `httpx` client given a `transport=` ignores the `verify`, `cert`, `limits`, `
 
 ---
 
+## Keeping a Login Out of the Project
+
+Declare every setting that holds a password, an API key or a token, and OpenAVC keeps it on the system instead of in the project file. The project then holds `<saved on this system>` in its place, so a backup, an export, a template and every copy the cloud keeps carry no login.
+
+- **A settings field:** mark it `"secret": True` in `CONFIG_SCHEMA`, at the top level or inside a `group`. A field named `password` counts without the mark.
+- **A list the plugin keeps in its config** (cameras, displays): declare it in `CONFIG_SECRETS`, keyed by the list's config key, with the key that holds each item's id and the item fields that hold a login. Add `"generated": True` when the plugin makes those values itself, so nobody is asked for one.
+
+```python
+CONFIG_SECRETS = {
+    "streams": {"id": "stream_id", "fields": ["password"]},
+}
+```
+
+`api.config` holds each saved login, and `api.save_config()` moves each one back to the system, so a plugin reads and saves its config as it always did. A login that is not saved on this system is handed to the plugin as an empty value, never as the placeholder. A `mapping_list` row cannot hold a login, since its rows have no id to keep one under. An older OpenAVC ignores both declarations and keeps the values in the project.
+
+A plugin that answers HTTP requests with its own config answers with `<saved on this system>` in place of a login, and reads that value sent back as "keep the saved one".
+
 ## When a Plugin Can't Start
 
 When `start()` can't go on because of something the integrator can put right (an API key not entered, a device not connected, a library not installed), raise `PluginRefusal` with a sentence that says what to do:

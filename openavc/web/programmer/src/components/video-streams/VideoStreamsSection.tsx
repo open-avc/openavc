@@ -10,6 +10,12 @@ import { parseStateOptionRows } from "../shared/paramOptions";
 import { byGroup, chipStyle, groupHeadingStyle, OptionRowCard } from "../shared/optionRowUi";
 import * as streamsApi from "../../api/streamsClient";
 import type { Stream, ProbeResult } from "../../api/streamsClient";
+import { SAVED_LOGIN } from "../../views/devices/deviceLogins";
+import {
+  KEEP_SAVED_PLACEHOLDER,
+  PASSWORD_MANAGER_IGNORE,
+  SavedOnThisSystem,
+} from "../shared/SavedLoginField";
 
 // Stream add/edit/delete persists into the project's plugin config server-side,
 // outside the project store's save path. Re-sync the project store afterward so
@@ -163,7 +169,13 @@ function StreamForm({
   const [streamIdTouched, setStreamIdTouched] = useState(!!stream);
   const [rtspUrl, setRtspUrl] = useState(stream?.rtsp_url ?? "");
   const [username, setUsername] = useState(stream?.username ?? "");
-  const [password, setPassword] = useState(stream?.password ?? "");
+  // The server never sends a saved password: it sends the marker, shown as
+  // "Saved on this system" with Change. Changed and left blank, or not
+  // changed at all, the marker goes back and the saved password is kept.
+  const hasSavedPassword = stream?.password === SAVED_LOGIN;
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [password, setPassword] = useState(hasSavedPassword ? "" : stream?.password ?? "");
+  const passwordToSend = hasSavedPassword && password === "" ? SAVED_LOGIN : password;
   const [transcode, setTranscode] = useState(stream?.transcode ?? "auto");
   const [hwAccel, setHwAccel] = useState(stream?.hardware_accel ?? "auto");
   const [probing, setProbing] = useState(false);
@@ -178,7 +190,12 @@ function StreamForm({
     setProbeResult(null);
     let result: ProbeResult;
     try {
-      result = await streamsApi.probeStream({ rtsp_url: rtspUrl, username, password });
+      result = await streamsApi.probeStream({
+        rtsp_url: rtspUrl,
+        username,
+        password: passwordToSend,
+        ...(stream ? { stream_id: stream.stream_id } : {}),
+      });
     } catch (err) {
       result = { success: false, message: streamsApi.errorMessage(err) };
     }
@@ -209,7 +226,7 @@ function StreamForm({
         stream_id: effectiveId,
         rtsp_url: rtspUrl.trim(),
         username,
-        password,
+        password: passwordToSend,
         codec_hint: await resolveCodecHint(),
         transcode,
         hardware_accel: hwAccel,
@@ -243,7 +260,7 @@ function StreamForm({
         </Field>
         <Field
           label="Source URL"
-          hint="RTSP, SRT, RTMP or an HLS playlist. The OpenAVC server connects to this address, so it has to be reachable from the server rather than from the panel."
+          hint="RTSP, SRT, RTMP or an HLS playlist. The OpenAVC server connects to this address, so it has to be reachable from the server rather than from the panel. A login written into the address moves into Username and Password when you save."
         >
           <input
             style={inputStyle}
@@ -257,7 +274,23 @@ function StreamForm({
             <input style={inputStyle} value={username} onChange={(e) => setUsername(e.target.value)} />
           </Field>
           <Field label="Password">
-            <input style={inputStyle} type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            {hasSavedPassword && !changingPassword ? (
+              <div style={{ minHeight: 28, display: "flex", alignItems: "center" }}>
+                <SavedOnThisSystem label="Password" onChange={() => setChangingPassword(true)} />
+              </div>
+            ) : (
+              <input
+                style={inputStyle}
+                type="password"
+                autoComplete="new-password"
+                {...PASSWORD_MANAGER_IGNORE}
+                aria-label="Password"
+                autoFocus={changingPassword}
+                placeholder={hasSavedPassword ? KEEP_SAVED_PLACEHOLDER : undefined}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            )}
           </Field>
         </div>
 

@@ -17,8 +17,9 @@ from fastapi import APIRouter, HTTPException
 from openavc.api._engine import _get_engine
 from openavc.api.errors import api_error as _api_error
 from openavc.api.models import (
-    ISCBroadcastRequest, ISCCommandRequest, ISCSendRequest,
+    ISCAuthKeyRequest, ISCBroadcastRequest, ISCCommandRequest, ISCSendRequest,
 )
+from openavc.core.device_logins import SAVED_LOGIN, isc_key, saved_isc_key
 from openavc.core.isc import ISCRemoteError
 
 router = APIRouter(route_class=ProgrammerRoute)
@@ -80,8 +81,53 @@ async def isc_status() -> dict[str, Any]:
     """
     engine = _get_engine()
     if engine.isc is None:
-        return {"status": "disabled", "enabled": False, **_why_isc_is_off(engine)}
-    return engine.isc.get_status()
+        return {
+            "status": "disabled", "enabled": False, **_why_isc_is_off(engine),
+            "auth_key": _auth_key_state(engine),
+        }
+    return {**engine.isc.get_status(), "auth_key": _auth_key_state(engine)}
+
+
+def _auth_key_state(engine) -> str:
+    """Where the project's mesh key is, for the ISC page: ``saved`` (on this
+    system, shown on request), ``needs_login`` (the project marks one this
+    system does not have, as after a restore onto another system) or
+    ``none``. The key itself is never in this answer."""
+    key = isc_key(engine.project) if engine.project is not None else None
+    if key == SAVED_LOGIN:
+        return "saved" if saved_isc_key(engine.project, engine.device_logins) else "needs_login"
+    return "saved" if isinstance(key, str) and key else "none"
+
+
+@router.get("/isc/auth-key")
+async def isc_auth_key() -> dict[str, Any]:
+    """The mesh key, for the ISC page's Show, so it can be typed on the next
+    system. Asked for only when somebody presses Show; the project and every
+    copy of it hold the marker instead (core/device_logins)."""
+    engine = _get_engine()
+    if engine.project is None:
+        raise HTTPException(status_code=503, detail="No project is loaded.")
+    return {"auth_key": saved_isc_key(engine.project, engine.device_logins)}
+
+
+@router.put("/isc/auth-key")
+async def set_isc_auth_key(data: ISCAuthKeyRequest) -> dict[str, Any]:
+    """Save a new mesh key. It goes into this system's login file through the
+    project save, the project keeps the marker, and the mesh reloads with it."""
+    engine = _get_engine()
+    if engine.project is None:
+        raise HTTPException(status_code=503, detail="No project is loaded.")
+    key = data.auth_key
+    if not key.strip():
+        raise HTTPException(status_code=400, detail="Enter the new key.")
+    if key == SAVED_LOGIN:
+        raise HTTPException(status_code=400, detail="Enter the new key itself.")
+
+    def mutate(project) -> None:
+        project.isc.auth_key = key
+
+    await engine.apply_project_edit(mutate)
+    return {"status": "saved"}
 
 
 @router.get("/isc/instances")

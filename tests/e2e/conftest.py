@@ -318,6 +318,7 @@ def server_factory(tmp_path: Path, _install_test_driver):
         drivers: dict[str, str] | None = None,
         hold_bind: bool = True,
         system_json: dict[str, Any] | None = None,
+        plugins: dict[str, dict[str, str]] | None = None,
     ) -> _ServerHandle:
         gen = _start_server(
             tmp_path / f"srv-{uuid.uuid4().hex[:8]}",
@@ -329,6 +330,7 @@ def server_factory(tmp_path: Path, _install_test_driver):
             drivers=drivers,
             hold_bind=hold_bind,
             system_json=system_json,
+            plugins=plugins,
         )
         handle = next(gen)
         handles.append(handle)
@@ -357,6 +359,7 @@ def _start_server(
     drivers: dict[str, str] | None = None,
     hold_bind: bool = True,
     system_json: dict[str, Any] | None = None,
+    plugins: dict[str, dict[str, str]] | None = None,
 ):
     """Boot one server. ``bind`` is loopback unless a test needs the instance
     to see the browser as a device on the network (a loopback peer is the
@@ -371,7 +374,9 @@ def _start_server(
     ``OPENAVC_BIND``, which locks Settings > Network > Accept connections
     from; ``hold_bind=False`` leaves the variable out so the choice comes from
     ``system.json``, which ``system_json`` writes before the server boots.
-    ``bind`` is then only where the harness reaches the server."""
+    ``bind`` is then only where the harness reaches the server. ``plugins``
+    maps a plugin folder name to its files (name to source), written into the
+    server's ``plugin_repo/`` before it boots."""
     lost = ""
     for attempt in range(_PORT_ATTEMPTS):
         # A start that lost its port may have run its engine first, and the
@@ -390,6 +395,7 @@ def _start_server(
                 drivers=drivers,
                 hold_bind=hold_bind,
                 system_json=system_json,
+                plugins=plugins,
             )
             break
         except _PortLost as exc:
@@ -424,6 +430,7 @@ def _launch(
     drivers: dict[str, str] | None,
     hold_bind: bool = True,
     system_json: dict[str, Any] | None = None,
+    plugins: dict[str, dict[str, str]] | None = None,
 ):
     """One start of one server in ``root``. Returns its handle and open log;
     raises ``_PortLost`` or ``RuntimeError`` with the log tail, having stopped
@@ -460,6 +467,11 @@ def _launch(
 
     if system_json is not None:
         (data_dir / "system.json").write_text(json.dumps(system_json), encoding="utf-8")
+    for folder, files in (plugins or {}).items():
+        plugin_dir = data_dir / "plugin_repo" / folder
+        plugin_dir.mkdir(parents=True, exist_ok=True)
+        for name, source in files.items():
+            (plugin_dir / name).write_text(source, encoding="utf-8")
 
     control_file = root / "control.json"
     control_file.write_text(

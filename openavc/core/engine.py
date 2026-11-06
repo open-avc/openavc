@@ -26,7 +26,20 @@ from typing import Any
 from openavc import config, runtime_flags
 from openavc.core.client_origin import reload_origin
 from openavc.core.device_config import bridge_first, resolve_device_config
-from openavc.core.device_logins import fill_saved_logins, marked_fields, move_logins
+from openavc.core.device_logins import (
+    DEVICE,
+    SAVED_LOGIN,
+    StoreView,
+    fill_saved_logins,
+    filled_plugin_config,
+    in_project,
+    marked_fields,
+    move_logins,
+    move_plugin_logins,
+    plugin_logins_waiting,
+    saved_isc_key,
+    saved_logins_of,
+)
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
 from openavc.core.help_requests import HelpRequests
@@ -153,8 +166,17 @@ class Engine:
             self.state, self.events, self.macros, self.devices,
             cloud_agent_provider=lambda: self.cloud_agent,
         )
+        # A plugin is handed its config with the logins saved on this system
+        # filled in, and "" for one this system does not have, never the marker.
+        self.plugin_loader.set_config_filler(
+            lambda plugin_id, plugin_config: filled_plugin_config(
+                plugin_id, plugin_config, self.device_logins,
+            )
+        )
         self.persister: StatePersister | None = None
         self.isc = None  # ISCManager, initialized in start() if enabled
+        # Whether this start backed up the project before moving its logins.
+        self._logins_backed_up_at_start = False
         self.cloud_agent = None  # CloudAgent, initialized in start() if enabled
         self.update_manager = None  # UpdateManager, initialized in start()
         self.mdns_advertiser = None  # MDNSAdvertiser, initialized in start() if enabled
@@ -406,10 +428,14 @@ class Engine:
         # file) moves into that file before anything dials, and the project
         # keeps the marker. This file may exist nowhere else (an update that
         # took no backup of its own, an installer run by hand), so it is
-        # backed up first; a move that cannot finish changes nothing.
+        # backed up first; a move that cannot finish changes nothing. A
+        # plugin's logins move later in this start, once the plugins are
+        # loaded and can say which settings hold one (_move_logins_at_start).
+        self._logins_backed_up_at_start = False
         moved = self._move_logins(self.project, typed=False)
         logins_moved = moved is not self.project and await self._back_up_before_moving_logins()
         if logins_moved:
+            self._logins_backed_up_at_start = True
             self.project = moved
         # Exports and backups read the saved project. Materialize a newly
         # inserted host reference before any hardware or programming starts.
@@ -417,15 +443,6 @@ class Engine:
             await save_project_async(self.project_path, self.project)
             if logins_moved:
                 await asyncio.to_thread(refresh_crash_copy, self.project_path)
-        # The Project Library's copies, the same way, each under its own id.
-        # Inline, like the other start-up moves above: it reads one small file
-        # per saved project.
-        try:
-            from openavc.core.project_library import move_library_logins
-
-            move_library_logins(self.device_logins)
-        except Exception:  # never block startup on the library
-            log.exception("Could not move the device logins out of the Project Library")
         # Whatever that had to do to get a project, say so. Published from the
         # record on disk rather than from this boot, so a notice nobody has
         # dismissed survives the restart that would otherwise bury it.
@@ -498,6 +515,10 @@ class Engine:
         try:
             self.plugin_loader.set_save_config_fn(self._save_plugin_config)
             self.plugin_loader.scan_plugins()
+            # The plugins now say which of their settings are logins: those
+            # move before any plugin starts, and the Project Library's copies
+            # with every login they still hold.
+            await self._move_logins_at_start()
             if self.project.plugins:
                 plugins_dict = {
                     pid: pc.model_dump() if hasattr(pc, "model_dump") else pc
@@ -1222,12 +1243,7 @@ class Engine:
         rollback -- so a save or a cloud push takes effect without a restart,
         and a rollback puts the previous value back with everything else.
         """
-        try:
-            # Registered whether the mesh runs or not: the key is in the
-            # project either way.
-            get_secret_registry().set_project_secrets(project_secret_values(self.project))
-        except Exception:  # never block a project on the log redaction
-            log.debug("Could not register the project's secrets for log redaction", exc_info=True)
+        self._register_project_secrets()
         try:
             settings = getattr(self.project, "settings", None)
             devices = getattr(settings, "devices", None)
@@ -1239,6 +1255,26 @@ class Engine:
             # interval; falling back to system.json is the pre-existing
             # behaviour and is always safe.
             self.devices.project_reconnect_interval = None
+
+    def _register_project_secrets(self) -> None:
+        """Hand the log redaction the project's own secrets: the mesh key and
+        every plugin login, from the login file where the project holds the
+        marker, as the project holds them where it does not (a move that could
+        not finish). Registered whether the mesh or the plugin runs or not."""
+        try:
+            values = {
+                v for v in project_secret_values(self.project) if v != SAVED_LOGIN
+            }
+            if self.project is not None:
+                key = saved_isc_key(self.project, self.device_logins)
+                if key:
+                    values.add(key)
+                for found in saved_logins_of(self.project, StoreView(self.device_logins)):
+                    if found.kind != DEVICE:
+                        values |= set(found.fields.values())
+            get_secret_registry().set_project_secrets(values)
+        except Exception:  # never block a project on the log redaction
+            log.debug("Could not register the project's secrets for log redaction", exc_info=True)
 
     def _record_push_ports(self) -> None:
         """Write the ports this project's devices push to, for the Linux host
@@ -1288,6 +1324,27 @@ class Engine:
                 needed.append({"id": device.id, "name": device.name or device.id})
         return needed
 
+    def plugin_logins_needed(self) -> list[dict[str, str]]:
+        """The plugins that wait for somebody to enter a login, in project
+        order, as id and name: each enabled, installed plugin whose config
+        marks a login it declares as saved on this system that this system
+        does not have (``core.device_logins.plugin_logins_waiting``). A login
+        the plugin makes itself (Present's display keys) never waits: it is
+        made again."""
+        if self.project is None:
+            return []
+        from openavc.core.plugin_loader import _PLUGIN_CLASS_REGISTRY
+
+        needed = []
+        for plugin_id, entry in self.project.plugins.items():
+            plugin_class = _PLUGIN_CLASS_REGISTRY.get(plugin_id)
+            if not entry.enabled or plugin_class is None:
+                continue
+            if plugin_logins_waiting(plugin_id, entry.config, self.device_logins):
+                info = getattr(plugin_class, "PLUGIN_INFO", None) or {}
+                needed.append({"id": plugin_id, "name": str(info.get("name") or plugin_id)})
+        return needed
+
     def _move_logins(self, project: ProjectConfig, *, typed: bool) -> ProjectConfig:
         """``project`` with each login it holds in the clear moved into this
         system's login file (``core.device_logins.move_logins``): the same
@@ -1299,6 +1356,28 @@ class Engine:
         except Exception:  # a move that fails leaves every login where it was
             log.exception("Could not move the device logins out of the project")
             return project
+
+    async def _move_logins_at_start(self) -> None:
+        """The second half of the first-start move, run once the plugins are
+        loaded: each plugin login the project still holds in the clear moves
+        into the login file, then every Project Library copy's logins (inline:
+        one small file per saved project). The project is backed up first
+        unless this start already did, before the device logins moved: that
+        backup is the file as it was, these logins and all."""
+        moved = self._move_logins(self.project, typed=False)
+        if moved is not self.project:
+            if self._logins_backed_up_at_start or await self._back_up_before_moving_logins():
+                self._logins_backed_up_at_start = True
+                self.project = moved
+                await save_project_async(self.project_path, self.project)
+                await asyncio.to_thread(refresh_crash_copy, self.project_path)
+                self._register_project_secrets()
+        try:
+            from openavc.core.project_library import move_library_logins
+
+            move_library_logins(self.device_logins)
+        except Exception:  # never block startup on the library
+            log.exception("Could not move the logins out of the Project Library")
 
     async def _back_up_before_moving_logins(self) -> bool:
         """Back up the project file before the move rewrites it. False when
@@ -1315,13 +1394,13 @@ class Engine:
         return True
 
     def _sweep_device_logins(self) -> None:
-        """Date the saved logins of devices that left the project, and delete
-        those gone 90 days (``DeviceLogins.sweep``). Never fatal: a sweep that
+        """Date the saved logins of devices, plugin items and plugins that left
+        the project, and delete those gone 90 days (``DeviceLogins.sweep``). Never fatal: a sweep that
         cannot write leaves the dates as they were, and the logins in place."""
         if self.project is None:
             return
         try:
-            self.device_logins.sweep((d.id, d.driver) for d in self.project.devices)
+            self.device_logins.sweep(in_project(self.project))
         except Exception:
             log.exception("Could not update the saved device logins")
 
@@ -1489,13 +1568,12 @@ class Engine:
             new_enabled = entry.enabled if hasattr(entry, "enabled") else entry.get("enabled", False)
 
             was_running = self.plugin_loader.is_running(plugin_id)
-            old_config = self.plugin_loader.get_running_config(plugin_id) if was_running else {}
 
             if was_running and not new_enabled:
                 await self.plugin_loader.stop_plugin(plugin_id)
             elif not was_running and new_enabled:
                 await self.plugin_loader.start_plugin(plugin_id, new_config)
-            elif was_running and new_config != old_config:
+            elif was_running and self.plugin_loader.config_differs(plugin_id, new_config):
                 # Same path as every other config write (REST, cloud AI):
                 # try the plugin's on_config_changed hot-apply hook first,
                 # fall back to a restart.
@@ -1620,6 +1698,12 @@ class Engine:
         if not self.project or plugin_id not in self.project.plugins:
             return
         previous = self.project.plugins[plugin_id].config
+        # The plugin saves the config it runs with, its logins filled in. Each
+        # moves into the login file here, since this persist never passes
+        # _apply_project_locked: one the plugin changed (a regenerated key, a
+        # password typed into its own page) replaces the saved one, and the
+        # project keeps the marker.
+        config = move_plugin_logins(plugin_id, config, self.device_logins, current=previous)
 
         def mutate(project) -> None:
             if plugin_id in project.plugins:
@@ -1648,6 +1732,8 @@ class Engine:
             except Exception as e:
                 log.error(f"Failed to save plugin config for '{plugin_id}': {e}")
                 raise
+        # A login the plugin made or changed is masked in the log from now on.
+        self._register_project_secrets()
 
     # --- UI Event Handling ---
 
@@ -2202,7 +2288,7 @@ class Engine:
                 events=self.events,
                 devices=self.devices,
                 shared_state_patterns=self.project.isc.shared_state,
-                auth_key=self.project.isc.auth_key,
+                auth_key=saved_isc_key(self.project, self.device_logins),
                 instance_id=instance_id,
                 instance_name=instance_name,
                 http_port=config.HTTP_PORT,
@@ -2231,7 +2317,7 @@ class Engine:
             # Hot-reload config
             await self.isc.reload(
                 shared_state_patterns=self.project.isc.shared_state,
-                auth_key=self.project.isc.auth_key,
+                auth_key=saved_isc_key(self.project, self.device_logins),
                 manual_peers=self.project.isc.peers,
                 allowed_remote_commands=self.project.isc.allowed_remote_commands,
             )

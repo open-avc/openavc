@@ -114,7 +114,7 @@ def _export(page: Page, tmp_path: Path, name: str, passphrase: str | None) -> di
     page.get_by_role("button", name="Export", exact=True).first.click(timeout=EXPECT_TIMEOUT)
     dialog = page.get_by_role("dialog", name="Export Project")
     expect(dialog).to_be_visible(timeout=EXPECT_TIMEOUT)
-    include = dialog.get_by_role("checkbox", name="Include device logins")
+    include = dialog.get_by_role("checkbox", name="Include logins")
     expect(include).not_to_be_checked()
     if passphrase is not None:
         include.check()
@@ -164,9 +164,9 @@ def test_an_export_carries_logins_only_sealed_and_the_import_asks_for_them(
     target = _fresh(server_factory)
     _program(page, target.base_url)
     _import(page, tmp_path / "sealed.zip")
-    prompt = page.get_by_role("dialog", name="Device Logins")
+    prompt = page.get_by_role("dialog", name="Logins")
     expect(prompt).to_be_visible(timeout=EXPECT_TIMEOUT)
-    expect(prompt).to_contain_text("This export includes device logins, sealed on")
+    expect(prompt).to_contain_text("This export includes logins, sealed on")
     prompt.get_by_label("Passphrase", exact=True).fill("Green harbour 42")
     prompt.get_by_role("button", name="Bring them in", exact=True).click()
     expect(prompt.get_by_role("alert")).to_have_text(
@@ -194,7 +194,7 @@ def test_a_skipped_passphrase_opens_the_project_on_needs_login(server_factory, p
     target = _fresh(server_factory)
     _program(page, target.base_url)
     _import(page, tmp_path / "sealed.zip")
-    prompt = page.get_by_role("dialog", name="Device Logins")
+    prompt = page.get_by_role("dialog", name="Logins")
     expect(prompt).to_be_visible(timeout=EXPECT_TIMEOUT)
     prompt.get_by_role("button", name="Skip", exact=True).click()
 

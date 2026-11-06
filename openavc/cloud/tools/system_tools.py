@@ -6,9 +6,11 @@ from typing import Any
 
 from openavc.cloud.tools import apply_tool_edit
 from openavc.core.asset_references import asset_users
+from openavc.core.device_logins import SAVED_LOGIN
 from openavc.drivers.registry import get_driver_class
 from openavc.utils.log_redaction import (
     MIN_SECRET_LEN,
+    get_secret_registry,
     is_secret_key,
     project_secret_values,
     redact_text,
@@ -102,6 +104,12 @@ class SystemToolsMixin:
                 value for value in project_secret_values(engine.project)
                 if len(value) >= MIN_SECRET_LEN
             }
+        # What the project holds as the marker, saved on this system instead:
+        # the device logins, the plugin logins and the mesh key the engine
+        # registered from the login file (Engine._register_project_secrets).
+        # The marker itself is no secret, and masked it would read as one.
+        secrets |= get_secret_registry().all_secrets()
+        secrets.discard(SAVED_LOGIN)
 
         try:
             from openavc.system_config import get_system_config

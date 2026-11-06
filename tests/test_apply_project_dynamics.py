@@ -173,7 +173,9 @@ def _representative_project() -> dict:
             {"id": "night_mode", "file": "night_mode.py", "enabled": False},
         ],
         "isc": {"enabled": False, "shared_state": ["var.volume"],
-                "peers": ["192.0.2.60:8080"], "auth_key": "k",
+                # A running system's project holds the mesh key's marker: the
+                # key itself is in the login file (core/device_logins).
+                "peers": ["192.0.2.60:8080"], "auth_key": "<saved on this system>",
                 "allowed_remote_commands": ["disp1.*"]},
     }
 

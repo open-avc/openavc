@@ -336,6 +336,9 @@ def _mock_plugin_loader(known=(), running=(), configs=None) -> MagicMock:
     loader.get_known_plugin_ids.return_value = set(known)
     loader.is_running.side_effect = lambda pid: pid in running_set
     loader.get_running_config.side_effect = lambda pid: configs.get(pid, {})
+    # The loader compares a project config, its logins filled in, with the
+    # running one; these configs hold no login, so as they are.
+    loader.config_differs.side_effect = lambda pid, config: config != configs.get(pid, {})
     loader.start_plugin = AsyncMock()
     loader.stop_plugin = AsyncMock()
     loader.restart_or_apply = AsyncMock(return_value="restarted")

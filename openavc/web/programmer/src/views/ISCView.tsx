@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { getTunnelPrefix } from "../api/restClient";
+import { getIscAuthKey, saveIscAuthKey, type IscKeyState } from "../api/iscClient";
+import { parseApiError } from "../api/errors";
+import { SavedLoginField, type SavedLoginState } from "../components/shared/SavedLoginField";
+import { copyToClipboard } from "../components/shared/clipboard";
+import { showError } from "../store/toastStore";
+import { SAVED_LOGIN } from "./devices/deviceLogins";
 import {
   AlertTriangle,
   Network,
@@ -10,7 +16,6 @@ import {
   Send,
   RefreshCw,
   Shield,
-  Eye,
   Terminal,
 } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
@@ -31,6 +36,9 @@ interface ISCStatus {
   connected_count?: number;
   shared_patterns?: string[];
   auth_key_set?: boolean;
+  /** Where the mesh key stands on this system. The key itself is never in
+   *  the status: Show asks for it (`GET /api/isc/auth-key`). */
+  auth_key?: IscKeyState;
   /** False when other systems cannot connect in: Settings > Network > Accept
    *  connections from is this computer only, or its adapter is missing.
    *  `accepts_peers_note` is then the sentence to show. */
@@ -62,15 +70,63 @@ export function ISCView() {
   const [newPeer, setNewPeer] = useState("");
   const [peerError, setPeerError] = useState("");
   const [newCommand, setNewCommand] = useState("");
-  const [authKey, setAuthKey] = useState("");
-  const [authVisible, setAuthVisible] = useState(false);
+  // The mesh key. The project holds the "saved on this system" marker, never
+  // the key, and the page holds the key only while somebody has pressed Show.
+  const storedKey = isc?.auth_key ?? "";
+  const [serverKeyState, setServerKeyState] = useState<IscKeyState | null>(null);
+  const [keyStateAnswered, setKeyStateAnswered] = useState(false);
+  const [shownKey, setShownKey] = useState<string | null>(null);
+  const [showing, setShowing] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const keyState: SavedLoginState =
+    serverKeyState ??
+    (storedKey === "" ? "none" : storedKey !== SAVED_LOGIN || keyStateAnswered ? "saved" : "checking");
 
-  // Load ISC config from project
-  useEffect(() => {
-    if (isc) {
-      setAuthKey(isc.auth_key ?? "");
+  const applyKeyState = useCallback((statusRes: unknown) => {
+    const answer = (statusRes as { auth_key?: unknown } | null | undefined)?.auth_key;
+    if (answer === "saved" || answer === "needs_login" || answer === "none") setServerKeyState(answer);
+    setKeyStateAnswered(true);
+  }, []);
+
+  const readKeyState = useCallback(async () => {
+    try {
+      const res = await fetch(`${getTunnelPrefix()}/api/isc/status`).then((r) => r.json());
+      applyKeyState(res);
+    } catch (err) {
+      console.warn("ISC status fetch failed:", err);
     }
-  }, [isc?.auth_key]);
+  }, [applyKeyState]);
+
+  // Read once whether ISC runs or not: the key is set before the mesh is
+  // switched on, and after a restore it may not be saved here.
+  useEffect(() => {
+    void readKeyState();
+  }, [readKeyState, storedKey]);
+
+  useEffect(() => {
+    if (keyState !== "saved") setShownKey(null);
+  }, [keyState]);
+
+  const handleShowKey = useCallback(async () => {
+    setShowing(true);
+    try {
+      const key = await getIscAuthKey();
+      // Gone since the page last asked: say what is there now instead.
+      if (key === "") await readKeyState();
+      else setShownKey(key);
+    } catch (e) {
+      showError(parseApiError(e));
+    } finally {
+      setShowing(false);
+    }
+  }, [readKeyState]);
+
+  const handleSaveKey = useCallback(async (value: string) => {
+    await saveIscAuthKey(value);
+    setShownKey(null);
+    await readKeyState();
+    await useProjectStore.getState().load?.();
+  }, [readKeyState]);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -80,6 +136,7 @@ export function ISCView() {
         fetch(`${prefix}/api/isc/instances`).then((r) => r.json()),
       ]);
       setStatus(statusRes);
+      applyKeyState(statusRes);
       // The server answers {"instances": [...]}.
       setPeers(Array.isArray(peersRes?.instances) ? peersRes.instances : []);
     } catch (err) {
@@ -87,7 +144,7 @@ export function ISCView() {
       setStatus({ enabled: false });
       setPeers([]);
     }
-  }, []);
+  }, [applyKeyState]);
 
   // Only poll when ISC is enabled in the project
   useEffect(() => {
@@ -204,13 +261,6 @@ export function ISCView() {
     [isc, allowedCommands, update]
   );
 
-  const handleSaveAuthKey = useCallback(() => {
-    if (!isc) return;
-    update({
-      isc: { ...isc, auth_key: authKey },
-    });
-    useProjectStore.getState().debouncedSave();
-  }, [isc, authKey, update]);
 
   const connectedCount = peers.filter((p) => p.connected).length;
   const iscEnabled = liveState["system.isc.enabled"] === true;
@@ -523,36 +573,46 @@ export function ISCView() {
               Shared secret key required for ISC connections.
               All instances must use the same key to communicate.
             </div>
-            {!authKey && (
+            {keyState === "none" && (
               <div style={{ fontSize: "var(--font-size-sm)", color: "var(--color-warning, #f59e0b)", marginBottom: "var(--space-sm)", lineHeight: 1.5 }}>
                 No auth key set. ISC will reject all incoming connections until a key is configured.
               </div>
             )}
 
-            <div style={{ display: "flex", gap: "var(--space-xs)", alignItems: "center" }}>
-              <input
-                type={authVisible ? "text" : "password"}
-                style={{ ...fieldInput, flex: 1 }}
-                value={authKey}
-                onChange={(e) => setAuthKey(e.target.value)}
-                placeholder="Shared auth key (required)"
-                autoComplete="new-password"
-              />
-              <button
-                onClick={() => setAuthVisible(!authVisible)}
-                style={iconBtn}
-                title={authVisible ? "Hide" : "Show"}
-              >
-                <Eye size={14} />
-              </button>
-              <button
-                onClick={handleSaveAuthKey}
-                style={btnSmall}
-                disabled={authKey === (isc?.auth_key ?? "")}
-              >
-                Save
-              </button>
-            </div>
+            <SavedLoginField
+              label="Shared auth key"
+              state={keyState}
+              onSave={handleSaveKey}
+              placeholder="Shared auth key (required)"
+              savedActions={
+                <button type="button" onClick={handleShowKey} disabled={showing} style={textBtn}>
+                  {showing ? "Showing..." : "Show"}
+                </button>
+              }
+              savedView={
+                shownKey !== null ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
+                    <code aria-label="Shared auth key" style={{ ...codeStyle, wordBreak: "break-all" }}>
+                      {shownKey}
+                    </code>
+                    <button
+                      type="button"
+                      style={textBtn}
+                      onClick={async () => {
+                        if (!(await copyToClipboard(shownKey))) return;
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 1500);
+                      }}
+                    >
+                      {copied ? "Copied" : "Copy"}
+                    </button>
+                    <button type="button" style={textBtn} onClick={() => setShownKey(null)}>
+                      Hide
+                    </button>
+                  </div>
+                ) : undefined
+              }
+            />
           </div>
         </div>
       </div>
@@ -663,6 +723,15 @@ const btnSmall: React.CSSProperties = {
   borderRadius: "var(--border-radius)",
   background: "var(--accent-bg)",
   color: "#fff",
+  fontSize: "var(--font-size-sm)",
+  border: "none",
+  cursor: "pointer",
+};
+
+const textBtn: React.CSSProperties = {
+  padding: "2px var(--space-sm)",
+  borderRadius: "var(--border-radius)",
+  background: "var(--bg-hover)",
   fontSize: "var(--font-size-sm)",
   border: "none",
   cursor: "pointer",

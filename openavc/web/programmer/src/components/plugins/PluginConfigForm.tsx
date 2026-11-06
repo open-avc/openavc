@@ -4,22 +4,86 @@
  * Shared by the plugin detail page (PluginsView) and plugin surface views
  * (PluginExtensions), so a control surface's settings are editable from the
  * same view its layout is edited in.
+ *
+ * A login (a field `isSecretSetting` calls a secret, at the top level or in a
+ * group) never shows a value: the server sends the "saved on this system"
+ * marker in its place, shown as "Saved on this system" with Change. With
+ * `onSaveLogin` it is a SavedLoginField that saves on its own button, so the
+ * form's own saving-as-you-type never carries part of a password and `values`
+ * only ever holds the marker for it.
  */
 import { useState } from "react";
 import { VariableKeyPicker } from "../shared/VariableKeyPicker";
 import { InlineColorPicker } from "../shared/InlineColorPicker";
 import { MacroRefPicker, DeviceRefPicker, CommandRefPicker } from "../shared/RefPickers";
 import { SearchableSelect } from "../shared/SearchableSelect";
+import { isSecretSetting } from "../shared/secretSetting";
+import {
+  PASSWORD_MANAGER_IGNORE,
+  SavedLoginField,
+  type SavedLoginState,
+} from "../shared/SavedLoginField";
+import { SAVED_LOGIN } from "../../views/devices/deviceLogins";
 import type { SchemaField } from "../../api/types";
+
+/** Saves one login field at once: its path (["password"], or
+ *  ["connection", "api_key"] for a field in a group) and the value typed.
+ *  Resolves false when it was not saved. */
+export type SaveLoginHandler = (path: string[], value: string) => Promise<boolean | void>;
+
+/** Where a plugin's login field stands: `needsLogin` is the server's list of
+ *  the logins the project marks saved that this system does not have, as
+ *  dotted paths ("password", "connection.api_key"). */
+export function pluginLoginState(
+  value: unknown,
+  path: string[],
+  needsLogin: readonly string[] | undefined,
+): SavedLoginState {
+  if (needsLogin?.includes(path.join("."))) return "needs_login";
+  return typeof value === "string" && value !== "" ? "saved" : "none";
+}
+
+/** `config` with `value` at `path`, groups copied on the way down. */
+export function withConfigValueAt(
+  config: Record<string, unknown>,
+  path: string[],
+  value: unknown,
+): Record<string, unknown> {
+  const [head, ...rest] = path;
+  if (head === undefined) return config;
+  if (rest.length === 0) return { ...config, [head]: value };
+  const inner = config[head];
+  const group = inner && typeof inner === "object" && !Array.isArray(inner)
+    ? (inner as Record<string, unknown>)
+    : {};
+  return { ...config, [head]: withConfigValueAt(group, rest, value) };
+}
+
+/** The value at `path` in `config`, or undefined. */
+export function configValueAt(config: Record<string, unknown>, path: string[]): unknown {
+  let at: unknown = config;
+  for (const key of path) {
+    if (!at || typeof at !== "object" || Array.isArray(at)) return undefined;
+    at = (at as Record<string, unknown>)[key];
+  }
+  return at;
+}
 
 export function SchemaFormRenderer({
   schema,
   values,
   onChange,
+  needsLogin,
+  onSaveLogin,
+  path = [],
 }: {
   schema: Record<string, SchemaField>;
   values: Record<string, unknown>;
   onChange: (key: string, value: unknown) => void;
+  needsLogin?: readonly string[];
+  onSaveLogin?: SaveLoginHandler;
+  /** The group this renderer draws, for a login's path. */
+  path?: string[];
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-lg)" }}>
@@ -40,6 +104,9 @@ export function SchemaFormRenderer({
               fieldKey={key}
               values={values}
               onChange={onChange}
+              needsLogin={needsLogin}
+              onSaveLogin={onSaveLogin}
+              path={[...path, key]}
             />
           );
         }
@@ -51,6 +118,20 @@ export function SchemaFormRenderer({
               field={field}
               items={(values[key] as Record<string, unknown>[]) ?? []}
               onChange={(v) => onChange(key, v)}
+            />
+          );
+        }
+
+        if (isSecretSetting(key, field)) {
+          return (
+            <SchemaLoginField
+              key={key}
+              field={field}
+              fieldKey={key}
+              value={values[key]}
+              onChange={(v) => onChange(key, v)}
+              state={pluginLoginState(values[key], [...path, key], needsLogin)}
+              onSave={onSaveLogin ? (v) => onSaveLogin([...path, key], v) : undefined}
             />
           );
         }
@@ -73,11 +154,17 @@ function SchemaFieldGroup({
   fieldKey,
   values,
   onChange,
+  needsLogin,
+  onSaveLogin,
+  path,
 }: {
   field: SchemaField;
   fieldKey: string;
   values: Record<string, unknown>;
   onChange: (key: string, value: unknown) => void;
+  needsLogin?: readonly string[];
+  onSaveLogin?: SaveLoginHandler;
+  path: string[];
 }) {
   const [collapsed, setCollapsed] = useState(field.collapsed ?? false);
   const groupValues = (values[fieldKey] as Record<string, unknown>) ?? {};
@@ -117,6 +204,9 @@ function SchemaFieldGroup({
             onChange={(k, v) => {
               onChange(fieldKey, { ...groupValues, [k]: v });
             }}
+            needsLogin={needsLogin}
+            onSaveLogin={onSaveLogin}
+            path={path}
           />
         </div>
       )}
@@ -392,6 +482,76 @@ function SchemaFieldMappingList({
           + Add
         </button>
       </div>
+    </div>
+  );
+}
+
+function FieldLabel({ field }: { field: SchemaField }) {
+  return (
+    <label
+      style={{
+        display: "block",
+        fontSize: "var(--font-size-sm)",
+        fontWeight: 500,
+        marginBottom: "var(--space-xs)",
+        color: "var(--text-secondary)",
+      }}
+    >
+      {field.label}
+      {field.required && <span style={{ color: "var(--color-error)", marginLeft: 2 }}>*</span>}
+    </label>
+  );
+}
+
+/** A login field. With `onSave`, "Saved on this system" with Change and a box
+ *  that saves on its own button. Without one (a surface view's settings), a
+ *  masked box that never shows the saved one: left alone it keeps it. */
+function SchemaLoginField({
+  field,
+  fieldKey,
+  value,
+  onChange,
+  state,
+  onSave,
+}: {
+  field: SchemaField;
+  fieldKey: string;
+  value: unknown;
+  onChange: (value: unknown) => void;
+  state: SavedLoginState;
+  onSave?: (value: string) => Promise<boolean | void>;
+}) {
+  const label = field.label || fieldKey;
+  return (
+    <div>
+      <FieldLabel field={field} />
+      {onSave ? (
+        <SavedLoginField label={label} state={state} onSave={onSave} placeholder={field.placeholder} />
+      ) : (
+        <input
+          type="password"
+          autoComplete="new-password"
+          {...PASSWORD_MANAGER_IGNORE}
+          aria-label={label}
+          value={value === SAVED_LOGIN || typeof value !== "string" ? "" : value}
+          placeholder={value === SAVED_LOGIN ? "Saved on this system" : field.placeholder}
+          onChange={(e) => onChange(e.target.value)}
+          style={{
+            width: "100%",
+            padding: "var(--space-sm) var(--space-md)",
+            borderRadius: "var(--border-radius)",
+            border: "1px solid var(--border-color)",
+            background: "var(--bg-surface)",
+            color: "var(--text-primary)",
+            fontSize: "var(--font-size-base)",
+          }}
+        />
+      )}
+      {field.description && (
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
+          {field.description}
+        </div>
+      )}
     </div>
   );
 }

@@ -19,16 +19,19 @@ import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
 import { importParsedProject } from "./projectImport";
 import * as api from "../api/restClient";
-import type { DeviceNeedingLogin, LibraryProject, ProjectConfig } from "../api/types";
+import type { DeviceNeedingLogin, LibraryProject, PluginNeedingLogin, ProjectConfig } from "../api/types";
 import { parseApiError } from "../api/errors";
 import { showError, showInfo, showLastingWarning, showSuccess } from "../store/toastStore";
 import { needsLoginSentence, projectHoldsSavedLogin } from "./devices/deviceLogins";
 import { ExportProjectDialog, ImportLoginsDialog } from "./projectLoginDialogs";
 
-/** After a project came in from somewhere else: name the devices that wait
- *  for their login, until somebody dismisses it. */
-function announceNeedsLogin(devices: DeviceNeedingLogin[] | undefined): void {
-  const sentence = needsLoginSentence(devices);
+/** After a project came in from somewhere else: name the devices and plugins
+ *  that wait for their login, until somebody dismisses it. */
+function announceNeedsLogin(
+  devices: DeviceNeedingLogin[] | undefined,
+  plugins?: PluginNeedingLogin[],
+): void {
+  const sentence = needsLoginSentence(devices, plugins);
   if (sentence) showLastingWarning(sentence);
 }
 
@@ -231,7 +234,7 @@ export function ProjectView() {
       }
       if (result.warnings?.length) msgs.push(...result.warnings);
       showSuccess(["Project imported.", ...msgs].join(" "));
-      announceNeedsLogin(opened.needs_login);
+      announceNeedsLogin(opened.needs_login, opened.plugins_need_login);
     } catch (e) {
       showError(parseApiError(e));
     } finally {
@@ -268,7 +271,7 @@ export function ProjectView() {
         errorMessage: parseApiError,
         onError: showError,
       });
-      if (imported) announceNeedsLogin(imported.needsLogin);
+      if (imported) announceNeedsLogin(imported.needsLogin, imported.pluginsNeedLogin);
     };
     input.click();
   }, [forceReloadProject, importBundle]);
@@ -316,7 +319,7 @@ export function ProjectView() {
       const opened = await api.openFromLibrary(showOpen, openName.trim(), openId.trim() || undefined);
       setShowOpen(null);
       await forceReloadProject();
-      announceNeedsLogin(opened.needs_login);
+      announceNeedsLogin(opened.needs_login, opened.plugins_need_login);
     } catch (e) {
       showError(parseApiError(e));
     } finally {
@@ -408,7 +411,7 @@ export function ProjectView() {
       const restored = await api.restoreBackup(backup.filename);
       await forceReloadProject();
       showSuccess(`Restored from ${backupLabel(backup)}.`);
-      announceNeedsLogin(restored.needs_login);
+      announceNeedsLogin(restored.needs_login, restored.plugins_need_login);
     } catch (e) {
       showError(parseApiError(e));
     } finally {

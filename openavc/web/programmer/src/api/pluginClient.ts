@@ -19,7 +19,14 @@ export async function disablePlugin(pluginId: string): Promise<{ status: string;
   return request(`/plugins/${pluginId}/disable`, { method: "POST" });
 }
 
-export async function getPluginConfig(pluginId: string): Promise<{ plugin_id: string; config: Record<string, unknown> }> {
+export async function getPluginConfig(pluginId: string): Promise<{
+  plugin_id: string;
+  config: Record<string, unknown>;
+  /** The logins the config marks saved on this system that this system does
+   *  not have, as dotted paths ("password", "connection.api_key",
+   *  "streams[cam1].password"). Names only, never a value. */
+  needs_login?: string[];
+}> {
   return request(`/plugins/${pluginId}/config`);
 }
 

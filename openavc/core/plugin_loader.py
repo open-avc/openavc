@@ -504,6 +504,10 @@ class PluginLoader:
         self._log_tasks: set[asyncio.Task] = set()
         # Config save callback
         self._save_config_fn = None
+        # What a plugin is handed: its config with the logins saved on this
+        # system filled in (core/device_logins.filled_plugin_config). None
+        # hands the config as it is (tests, the plugin test harness).
+        self._config_filler = None
         # Router mount/unmount hooks (set by main.py, which owns the app).
         # Called when a plugin that registered an APIRouter starts/stops.
         self._mount_router_fn = None
@@ -554,6 +558,32 @@ class PluginLoader:
     def set_save_config_fn(self, fn):
         """Set the callback for saving plugin config to the project file."""
         self._save_config_fn = fn
+
+    def set_config_filler(self, fn):
+        """Set ``fn(plugin_id, config) -> config``, which turns a config as the
+        project holds it (a login saved on this system as the marker) into
+        the one the plugin is handed. Every config enters a plugin through
+        ``_start_plugin_locked`` or ``apply_config``, which both ask it, so no
+        caller can hand a plugin the marker."""
+        self._config_filler = fn
+
+    def filled_config(self, plugin_id: str, config: dict | None) -> dict:
+        """``config`` as ``plugin_id`` would be handed it."""
+        config = config or {}
+        if self._config_filler is None:
+            return config
+        try:
+            return self._config_filler(plugin_id, config)
+        except Exception:  # a plugin starts without its logins rather than not at all
+            log.exception(f"Could not fill in the saved logins for plugin '{plugin_id}'")
+            return config
+
+    def config_differs(self, plugin_id: str, config: dict | None) -> bool:
+        """Whether ``config`` (as the project holds it) would hand the running
+        plugin anything other than what it runs with: the comparison a
+        reconcile makes, filled against filled, so a marker standing for the
+        login the plugin already has is no change."""
+        return self.filled_config(plugin_id, config) != self.get_running_config(plugin_id)
 
     def set_router_hooks(self, mount_fn, unmount_fn, mount_guest_fn=None, unmount_guest_fn=None):
         """Set callbacks that mount/unmount a plugin's registered HTTP routers.
@@ -779,6 +809,22 @@ class PluginLoader:
         if schema is not None and not isinstance(schema, dict):
             return False, "CONFIG_SCHEMA must be a dict"
 
+        # The logins it declares (core/plugin_secrets). A malformed
+        # CONFIG_SECRETS is refused: started anyway, its logins would stay in
+        # the project, which is what declaring them was meant to stop.
+        from openavc.core import plugin_secrets
+
+        problem = plugin_secrets.config_secrets_problem(
+            getattr(plugin_class, "CONFIG_SECRETS", None), schema,
+        )
+        if problem:
+            return False, problem
+        for where in plugin_secrets.unsupported_row_secrets(schema):
+            log.warning(
+                f"Plugin '{info['id']}': {where} is marked secret, but a mapping_list row "
+                f"has no id to save a login under, so it stays in the project"
+            )
+
         # MACRO_ACTIONS validation
         macro_actions = getattr(plugin_class, "MACRO_ACTIONS", None)
         if macro_actions is not None:
@@ -912,6 +958,8 @@ class PluginLoader:
     async def _start_plugin_locked(
         self, plugin_id: str, config: dict | None = None
     ) -> bool:
+        if config is not None:
+            config = self.filled_config(plugin_id, config)
         if plugin_id in self._instances:
             # Already running. Don't silently drop a differing config — restart
             # to apply it (config-update relies on the new config taking
@@ -1258,6 +1306,7 @@ class PluginLoader:
         hook = getattr(instance, "on_config_changed", None) if instance else None
         if instance is None or api is None or not callable(hook):
             return False
+        new_config = self.filled_config(plugin_id, new_config)
         try:
             api._update_config(new_config)
             handled = await asyncio.wait_for(

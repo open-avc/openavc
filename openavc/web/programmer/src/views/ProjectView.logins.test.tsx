@@ -91,7 +91,7 @@ beforeEach(() => {
 async function exportBoxOpened() {
   const box = await screen.findByRole("dialog", { name: "Export Project" });
   await waitFor(() =>
-    expect(within(box).getByRole("checkbox", { name: "Include device logins" })).toHaveFocus());
+    expect(within(box).getByRole("checkbox", { name: "Include logins" })).toHaveFocus());
   return box;
 }
 
@@ -119,7 +119,7 @@ describe("Export with device logins", () => {
 
   it("asks first, and leaves the logins out unless ticked", async () => {
     await openExport();
-    expect(screen.getByRole("checkbox", { name: "Include device logins" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Include logins" })).not.toBeChecked();
     expect(screen.queryByLabelText("Passphrase")).toBeNull();
 
     await userEvent.click(exportIn());
@@ -130,7 +130,7 @@ describe("Export with device logins", () => {
 
   it("seals them with the passphrase typed twice", async () => {
     await openExport();
-    await userEvent.click(screen.getByRole("checkbox", { name: "Include device logins" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include logins" }));
     expect(screen.getByText(/Anyone with this file and the passphrase can read these logins/)).toBeInTheDocument();
     const exportButton = exportIn();
     expect(exportButton).toBeDisabled();
@@ -145,7 +145,7 @@ describe("Export with device logins", () => {
 
   it("says when the two passphrases differ, and will not export", async () => {
     await openExport();
-    await userEvent.click(screen.getByRole("checkbox", { name: "Include device logins" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include logins" }));
     await userEvent.type(screen.getByLabelText("Passphrase"), PASSPHRASE);
     await userEvent.type(screen.getByLabelText("Passphrase again"), "Blue harbour 24");
 
@@ -155,15 +155,15 @@ describe("Export with device logins", () => {
 
   it("keeps the box open with the server's sentence when the export is refused", async () => {
     api.exportCurrentProject.mockRejectedValueOnce(
-      new ApiError(422, JSON.stringify({ detail: "No device logins are saved on this system for this project. Export it without them." })),
+      new ApiError(422, JSON.stringify({ detail: "No logins are saved on this system for this project. Export it without them." })),
     );
     await openExport();
-    await userEvent.click(screen.getByRole("checkbox", { name: "Include device logins" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include logins" }));
     await userEvent.type(screen.getByLabelText("Passphrase"), PASSPHRASE);
     await userEvent.type(screen.getByLabelText("Passphrase again"), PASSPHRASE);
     await userEvent.click(exportIn());
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("No device logins are saved on this system");
+    expect(await screen.findByRole("alert")).toHaveTextContent("No logins are saved on this system");
     expect(screen.getByRole("dialog", { name: "Export Project" })).toBeInTheDocument();
   });
 
@@ -178,7 +178,7 @@ describe("Export with device logins", () => {
     // The row menu's Export, beside the toolbar's.
     await userEvent.click(screen.getAllByRole("button", { name: "Export" }).at(-1)!);
     await exportBoxOpened();
-    await userEvent.click(screen.getByRole("checkbox", { name: "Include device logins" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Include logins" }));
     await userEvent.type(screen.getByLabelText("Passphrase"), PASSPHRASE);
     await userEvent.type(screen.getByLabelText("Passphrase again"), PASSPHRASE);
     await userEvent.click(exportIn());
@@ -238,8 +238,8 @@ describe("Import of an export with device logins", () => {
     api.addImportedLogins.mockResolvedValue({ status: "added", devices: 1 });
     await chooseImport(zip());
 
-    const prompt = await screen.findByRole("dialog", { name: "Device Logins" });
-    expect(prompt).toHaveTextContent(/This export includes device logins, sealed on .*2026\. Enter its passphrase to bring them in, or skip\./);
+    const prompt = await screen.findByRole("dialog", { name: "Logins" });
+    expect(prompt).toHaveTextContent(/This export includes logins, sealed on .*2026\. Enter its passphrase to bring them in, or skip\./);
     expect(api.openFromLibrary).not.toHaveBeenCalled();
 
     await userEvent.type(screen.getByLabelText("Passphrase"), PASSPHRASE);
@@ -247,7 +247,7 @@ describe("Import of an export with device logins", () => {
 
     expect(api.addImportedLogins).toHaveBeenCalledWith("hall", PASSPHRASE);
     await waitFor(() => expect(api.openFromLibrary).toHaveBeenCalledWith("hall", "Hall", "hall"));
-    expect(screen.queryByRole("dialog", { name: "Device Logins" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Logins" })).toBeNull();
   });
 
   it("says a wrong passphrase and lets it be tried again", async () => {
@@ -255,7 +255,7 @@ describe("Import of an export with device logins", () => {
       .mockRejectedValueOnce(new ApiError(422, JSON.stringify({ detail: "That passphrase does not open these logins." })))
       .mockResolvedValueOnce({ status: "added", devices: 1 });
     await chooseImport(zip());
-    await screen.findByRole("dialog", { name: "Device Logins" });
+    await screen.findByRole("dialog", { name: "Logins" });
 
     await userEvent.type(screen.getByLabelText("Passphrase"), "Green harbour 42");
     await userEvent.click(screen.getByRole("button", { name: "Bring them in" }));
@@ -273,7 +273,7 @@ describe("Import of an export with device logins", () => {
       status: "created", project_name: "Hall", needs_login: [{ id: "proj1", name: "Projector" }],
     });
     await chooseImport(zip());
-    await screen.findByRole("dialog", { name: "Device Logins" });
+    await screen.findByRole("dialog", { name: "Logins" });
 
     await userEvent.click(screen.getByRole("button", { name: "Skip" }));
 
@@ -288,6 +288,6 @@ describe("Import of an export with device logins", () => {
     await chooseImport(zip());
 
     await waitFor(() => expect(api.openFromLibrary).toHaveBeenCalled());
-    expect(screen.queryByRole("dialog", { name: "Device Logins" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Logins" })).toBeNull();
   });
 });

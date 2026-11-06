@@ -33,10 +33,12 @@ vi.mock("../store/projectStore", () => ({
 
 const showSuccess = vi.fn();
 const showError = vi.fn();
+const showLastingWarning = vi.fn();
 vi.mock("../store/toastStore", () => ({
   showError: (m: string) => showError(m),
   showInfo: vi.fn(),
   showSuccess: (m: string) => showSuccess(m),
+  showLastingWarning: (m: string) => showLastingWarning(m),
 }));
 
 vi.mock("../components/assets/AssetBrowser", () => ({ AssetBrowser: () => null }));
@@ -146,6 +148,22 @@ describe("restoring a backup", () => {
     // up without leaving the view: once on mount, once after the restore.
     expect(listBackups).toHaveBeenCalledTimes(2);
     expect(showError).not.toHaveBeenCalled();
+  });
+
+  it("names the devices and plugins whose login this system does not have", async () => {
+    restoreBackup.mockImplementation(async () => ({
+      status: "restored",
+      needs_login: [{ id: "hall", name: "Hall Display" }],
+      plugins_need_login: [{ id: "mqtt", name: "MQTT Bridge" }],
+    }));
+
+    const dialog = await openRestoreDialog();
+    await userEvent.click(dialog.getByRole("button", { name: "Restore" }));
+
+    await waitFor(() => expect(showLastingWarning).toHaveBeenCalledWith(
+      "1 device and 1 plugin need their login entered: Hall Display, MQTT Bridge. "
+        + "Open each one in Devices or Plugins to enter it.",
+    ));
   });
 
   it("leaves the row usable again when the restore is refused", async () => {

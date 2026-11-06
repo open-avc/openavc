@@ -9,8 +9,9 @@ Backups are ZIP files stored in {project_dir}/backups/ containing:
   - ui/                  (custom controls, folders intact)
   - themes/              (project custom themes)
   - state.json           (persisted variable state, if present)
-  - device_logins.json   (the logins of the project's devices, sealed with this
-                          system's key, never the key: core/device_logins.py)
+  - device_logins.json   (the project's logins: its devices', its plugins' and
+                          its mesh key, sealed with this system's key, never
+                          the key: core/device_logins.py)
 
 Backups are created at meaningful boundaries (project replacement, AI changes,
 cloud pushes, manual request, periodic timer) — NOT on every save.
@@ -46,36 +47,37 @@ MAX_BACKUPS = 15
 # The project file's name inside a backup ZIP, whatever it is called on disk.
 ARCHIVE_PROJECT = "project.avc"
 
-# The project's device logins inside a backup ZIP, sealed with this system's
-# key (core/device_logins.py backup_copy): restored on this system they fill in
-# what it no longer has; anywhere else they do not open.
+# The project's logins inside a backup ZIP (its devices', its plugins' and its
+# mesh key), sealed with this system's key (core/device_logins.py
+# backup_copy): restored on this system they fill in what it no longer has;
+# anywhere else they do not open.
 ARCHIVE_LOGINS = "device_logins.json"
 
 
 def _logins_copy(data: object) -> str | None:
-    """This system's saved logins for the devices in ``data`` (the project
-    file read as JSON), sealed for a backup; None when there are none or
-    they cannot be read. A backup is taken whatever happens here."""
+    """This system's saved logins for what ``data`` (the project file read as
+    JSON) holds, sealed for a backup; None when there are none or they cannot
+    be read. A backup is taken whatever happens here."""
     try:
-        from openavc.core.device_logins import device_logins, project_devices
+        from openavc.core.device_logins import device_logins, in_project
 
-        return device_logins().backup_copy(project_devices(data))
+        return device_logins().backup_copy(in_project(data))
     except Exception:
         log.exception("Could not add the device logins to the backup; it is taken without them")
         return None
 
 
 def _restore_logins(zf: zipfile.ZipFile, names: list[str], project_file: Path, where: str) -> None:
-    """A backup's sealed logins, filed for the devices of the project just
-    restored wherever this system has none saved. Never raises."""
+    """A backup's sealed logins, filed for what the project just restored
+    holds wherever this system has none saved. Never raises."""
     if ARCHIVE_LOGINS not in names:
         return
     try:
-        from openavc.core.device_logins import device_logins, project_devices
+        from openavc.core.device_logins import device_logins, in_project
 
         data = json.loads(project_file.read_text(encoding="utf-8"))
         text = zf.read(ARCHIVE_LOGINS).decode("utf-8")
-        device_logins().restore_copy(text, project_devices(data), where=where)
+        device_logins().restore_copy(text, in_project(data), where=where)
     except Exception:
         log.exception("Could not restore the device logins in %s", where)
 

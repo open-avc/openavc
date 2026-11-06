@@ -98,6 +98,24 @@ reports, the AI's project summary, the connection test) keep seeing the
 marker. A marked field with no saved login keeps the marker, and
 ``BaseDriver.connect`` refuses to dial while one is left (``login_missing``),
 so a device is never sent the marker, or an empty password, as its login.
+
+Plugins and the project's own secret
+------------------------------------
+The file also holds the logins plugins declare (``core.plugin_secrets``: a
+schema field marked ``secret: true`` and the list items of
+``CONFIG_SECRETS``, such as each Video Panel stream's password), filed under
+the plugin and the item, and the project's mesh key (``isc.auth_key``). They
+move, are kept for ``REMOVED_KEEP`` once gone from the project, travel in a
+backup or a sealed export, and are put back before a rollback exactly as a
+device's are. Filled in, they differ in one way: a plugin is handed ``""``
+for a marked login this system does not have, never the marker, since a
+plugin has no refusal to dial and would take the marker as the value
+(``filled_plugin_config``); the mesh key the same (``saved_isc_key``).
+
+Every entry has an owner, (kind, name, qualifier): a device is
+(``DEVICE``, its id, its driver); a plugin's own settings
+(``PLUGIN``, its id, ``""``) and a list item (``PLUGIN``, its id,
+``streams[stream_id=cam1]``); the mesh key (``PROJECT``, ``isc``, ``""``).
 """
 
 from __future__ import annotations
@@ -112,6 +130,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+from openavc.core import plugin_secrets
 from openavc.drivers.registry import get_driver_class
 from openavc.drivers.spec import PASSWORD_FIELD, secret_settings
 from openavc.utils.fileio import atomic_write_text
@@ -129,6 +148,9 @@ LOGINS_FILENAME = "device_logins.json"
 KEY_FILENAME = "device_logins.key"
 
 _FORMAT = "openavc-device-logins"
+# Format 2's ``plugins`` and ``project`` lists joined it before any release
+# carried the file, so they need no number of their own; a reader from before
+# them, which only a development build is, drops them on its next write.
 _FORMAT_VERSION = 2
 _READABLE_VERSIONS = (1, 2)
 
@@ -140,8 +162,24 @@ CONNECTION_LOGIN = PASSWORD_FIELD
 
 _PRIVATE = stat.S_IRUSR | stat.S_IWUSR
 
-#: An entry's key: (library id or None for the running project, device id, driver).
-_Key = tuple[str | None, str, str]
+#: Whose login an entry is (module docstring).
+DEVICE, PLUGIN, PROJECT = "device", "plugin", "project"
+Owner = tuple[str, str, str]
+
+#: The project's mesh key: its owner and the setting it is in.
+ISC_OWNER: Owner = (PROJECT, "isc", "")
+ISC_FIELD = "auth_key"
+
+#: An entry's key: (library id or None for the running project, *owner).
+_Key = tuple[str | None, str, str, str]
+
+
+def device_owner(device_id: str, driver: str) -> Owner:
+    return (DEVICE, device_id, driver)
+
+
+def plugin_owner(plugin_id: str, item: str = "") -> Owner:
+    return (PLUGIN, plugin_id, item)
 
 
 class LoginFileUnreadable(RuntimeError):
@@ -157,20 +195,46 @@ class _Entry:
 
 @dataclass(frozen=True)
 class FoundLogin:
-    """The logins one device in a project holds: setting name to value."""
+    """The logins one owner in a project holds: setting name to value. For a
+    device, ``name`` is its id and ``qualifier`` its driver; for a plugin, its
+    id and the item (``""`` for its own settings); for the mesh key, ``isc``
+    and ``""``."""
 
-    device_id: str
-    driver: str
+    name: str
+    qualifier: str
     fields: dict[str, str]
+    kind: str = DEVICE
+
+    @property
+    def owner(self) -> Owner:
+        return (self.kind, self.name, self.qualifier)
 
 
 def _usable(value: Any) -> bool:
     return isinstance(value, str) and value != "" and value != SAVED_LOGIN
 
 
-def _sort_key(key: _Key) -> tuple[int, str, str, str]:
-    library, device_id, driver = key
-    return (0 if library is None else 1, library or "", device_id, driver)
+KIND_ORDER = {DEVICE: 0, PLUGIN: 1, PROJECT: 2}
+
+
+def _sort_key(key: _Key) -> tuple[int, str, int, str, str]:
+    library, kind, name, qualifier = key
+    return (0 if library is None else 1, library or "", KIND_ORDER.get(kind, 9), name, qualifier)
+
+
+Presence = Callable[[Owner], bool] | Iterable[Any]
+
+
+def _presence(owners: Presence) -> Callable[[Owner], bool]:
+    """``owners`` as a test: a callable already is one; otherwise a set of
+    owners, where a bare (device id, driver) pair is a device."""
+    if callable(owners):
+        return owners
+    wanted: set[Owner] = set()
+    for owner in owners:
+        owner = tuple(owner)
+        wanted.add((DEVICE, owner[0], owner[1]) if len(owner) == 2 else owner)  # type: ignore[arg-type]
+    return wanted.__contains__
 
 
 class DeviceLogins:
@@ -199,17 +263,30 @@ class DeviceLogins:
 
         ``library`` names a Project Library copy's logins; None is the running
         project's."""
+        return self.secret(device_owner(device_id, driver), field, library=library)
+
+    def secret(self, owner: Owner, field: str, *, library: str | None = None) -> str | None:
+        """The saved value of ``field`` for ``owner`` (any kind), or None."""
         self._load()
-        entry = self._entries.get((library, device_id, driver))
+        entry = self._entries.get((library, *owner))
         if entry is None:
             return None
         value = entry.fields.get(field)
         return value if _usable(value) else None
 
+    def plugin_items(self, plugin_id: str, *, library: str | None = None) -> dict[str, dict[str, str]]:
+        """Every login saved for ``plugin_id``, by item: field to value."""
+        self._load()
+        return {
+            qualifier: dict(entry.fields)
+            for (lib, kind, name, qualifier), entry in self._entries.items()
+            if lib == library and kind == PLUGIN and name == plugin_id and entry.fields
+        }
+
     def libraries(self) -> set[str]:
         """The library ids that have logins filed."""
         self._load()
-        return {library for library, _, _ in self._entries if library is not None}
+        return {key[0] for key in self._entries if key[0] is not None}
 
     def _load(self) -> None:
         with self._lock:
@@ -261,13 +338,15 @@ class DeviceLogins:
                 f"{where} does not open with the key file {self.key_path}. It is left as it is."
             ) from exc
         entries: dict[_Key, _Entry] = {}
-        for item in payload.get("devices", []) if isinstance(payload, dict) else []:
-            entry = _entry_from(item)
-            if entry is None:
-                log.warning("Skipped an unreadable entry in %s", where)
-                continue
-            key_triple, value = entry
-            entries[key_triple] = value
+        for kind, listed in (PAYLOAD_LISTS.items() if isinstance(payload, dict) else ()):
+            items = payload.get(listed)
+            for item in items if isinstance(items, list) else []:
+                entry = _entry_from(item, kind)
+                if entry is None:
+                    log.warning("Skipped an unreadable entry in %s", where)
+                    continue
+                key, value = entry
+                entries[key] = value
         return entries
 
     def verify(self) -> None:
@@ -315,7 +394,7 @@ class DeviceLogins:
             entries = dict(self._entries)
             changed = False
             for login in found:
-                key = (library, login.device_id, login.driver)
+                key = (library, *login.owner)
                 current = entries.get(key)
                 saved = dict(current.fields) if current else {}
                 for name, value in login.fields.items():
@@ -327,31 +406,33 @@ class DeviceLogins:
             if changed:
                 self._commit(entries)
 
-    def adopt_library(self, library: str, devices: Iterable[tuple[str, str]]) -> None:
-        """A library copy is being opened: file its own logins for ``devices``
-        (id, driver) as the running project's, where the running project has
-        nothing saved for that setting. The running project's always win."""
+    def adopt_library(self, library: str, owners: Presence) -> None:
+        """A library copy is being opened: file its own logins for ``owners``
+        (the copy's devices, plugin items and mesh key; ``in_project``) as the
+        running project's, where the running project has nothing saved for
+        that setting. The running project's always win."""
+        present = _presence(owners)
         with self._lock:
             self._load()
-            found = []
-            for device_id, driver in devices:
-                entry = self._entries.get((library, device_id, driver))
-                if entry is not None and entry.fields:
-                    found.append(FoundLogin(device_id, driver, dict(entry.fields)))
+            found = [
+                FoundLogin(key[2], key[3], dict(entry.fields), key[1])
+                for key, entry in sorted(self._entries.items(), key=lambda i: _sort_key(i[0]))
+                if key[0] == library and entry.fields and present(key[1:])
+            ]
             if found:
                 self.store(found, library=None, typed=False)
 
-    def file_library(self, library: str, devices: Iterable[tuple[str, str]]) -> None:
+    def file_library(self, library: str, owners: Presence) -> None:
         """The running project is being saved to the library as ``library``:
-        its logins for ``devices`` (id, driver) become that copy's, replacing
-        whatever the copy had."""
+        its logins for ``owners`` become that copy's, replacing whatever the
+        copy had."""
+        present = _presence(owners)
         with self._lock:
             self._load()
             entries = {k: v for k, v in self._entries.items() if k[0] != library}
-            for device_id, driver in devices:
-                entry = self._entries.get((None, device_id, driver))
-                if entry is not None and entry.fields:
-                    entries[(library, device_id, driver)] = _Entry(dict(entry.fields), None)
+            for key, entry in self._entries.items():
+                if key[0] is None and entry.fields and present(key[1:]):
+                    entries[(library, *key[1:])] = _Entry(dict(entry.fields), None)
             if entries != self._entries:
                 self._commit(entries)
 
@@ -360,9 +441,9 @@ class DeviceLogins:
         with self._lock:
             self._load()
             entries = {k: v for k, v in self._entries.items() if k[0] != target}
-            for (library, device_id, driver), entry in self._entries.items():
-                if library == source:
-                    entries[(target, device_id, driver)] = entry
+            for key, entry in self._entries.items():
+                if key[0] == source:
+                    entries[(target, *key[1:])] = entry
             if entries != self._entries:
                 self._commit(entries)
 
@@ -376,30 +457,30 @@ class DeviceLogins:
             if entries != self._entries:
                 self._commit(entries)
 
-    def sweep(self, present: Iterable[tuple[str, str]], now: datetime | None = None) -> None:
+    def sweep(self, present: Presence, now: datetime | None = None) -> None:
         """Bring each running-project entry's removal date in line with the
         project. Library copies' logins are not touched.
 
-        ``present`` is every (device id, driver) in the project. An entry not
+        ``present`` says which owners the project has (``in_project``; a set
+        of (device id, driver) pairs is a project's devices). An entry not
         among them is dated removed now, unless it already was; one dated
         ``REMOVED_KEEP`` ago or more is deleted; one among them is current.
         Writes only when something changed, and never over a file it cannot
         open.
         """
+        is_present = _presence(present)
         with self._lock:
             self._load()
             if self._unreadable is not None or not self._entries:
                 return
             now = now or datetime.now(timezone.utc)
-            present = set(present)
             entries: dict[_Key, _Entry] = {}
             changed = False
             for key, entry in self._entries.items():
-                library, device_id, driver = key
-                if library is not None:
+                if key[0] is not None:
                     entries[key] = entry
                     continue
-                if (device_id, driver) in present:
+                if is_present(key[1:]):
                     if entry.removed_at is not None:
                         entry = _Entry(entry.fields, None)
                         changed = True
@@ -415,32 +496,34 @@ class DeviceLogins:
 
     # --- a project backup's copy -------------------------------------------------
 
-    def backup_copy(self, devices: Iterable[tuple[str, str]]) -> str | None:
-        """The running project's logins for ``devices`` (id, driver), as a
+    def backup_copy(self, owners: Presence) -> str | None:
+        """The running project's logins for ``owners`` (``in_project``), as a
         login file sealed with this system's key, for a project backup to
         hold. The key itself never goes with it, so the copy opens on this
         system only. None when none of them has a login saved or the login
         file cannot be opened. Never makes a key."""
+        present = _presence(owners)
         with self._lock:
             self._load()
             if self._unreadable is not None or not self.key_path.exists():
                 return None
-            entries: dict[_Key, _Entry] = {}
-            for device_id, driver in devices:
-                entry = self._entries.get((None, device_id, driver))
-                if entry is not None and entry.fields:
-                    entries[(None, device_id, driver)] = _Entry(dict(entry.fields), None)
+            entries: dict[_Key, _Entry] = {
+                key: _Entry(dict(entry.fields), None)
+                for key, entry in self._entries.items()
+                if key[0] is None and entry.fields and present(key[1:])
+            }
             if not entries:
                 return None
             return self._envelope(entries, self._key())
 
-    def restore_copy(self, text: str, devices: Iterable[tuple[str, str]], *, where: str) -> int:
+    def restore_copy(self, text: str, owners: Presence, *, where: str) -> int:
         """A project backup's copy (``backup_copy``) restored on this system:
-        each of its logins for ``devices`` (id, driver) that this system has
-        nothing saved for is filed. This system's own logins always win. A
-        copy that does not open with this system's key, such as one made on
-        another system, files nothing. Returns how many settings were filed;
-        never raises."""
+        each of its logins for ``owners`` (``in_project`` of the restored
+        project) that this system has nothing saved for is filed. This
+        system's own logins always win. A copy that does not open with this
+        system's key, such as one made on another system, files nothing.
+        Returns how many settings were filed; never raises."""
+        present = _presence(owners)
         try:
             with self._lock:
                 self._load()
@@ -448,16 +531,15 @@ class DeviceLogins:
                     log.error("The device logins in %s were not restored: %s", where, self._unreadable)
                     return 0
                 copy_entries = self._open(text, where)
-                wanted = set(devices)
                 found: list[FoundLogin] = []
                 filled = 0
-                for (library, device_id, driver), entry in sorted(copy_entries.items(), key=lambda i: _sort_key(i[0])):
-                    if library is not None or (device_id, driver) not in wanted or not entry.fields:
+                for key, entry in sorted(copy_entries.items(), key=lambda i: _sort_key(i[0])):
+                    if key[0] is not None or not present(key[1:]) or not entry.fields:
                         continue
-                    current = self._entries.get((None, device_id, driver))
+                    current = self._entries.get(key)
                     have = set(current.fields) if current is not None else set()
                     filled += len(set(entry.fields) - have)
-                    found.append(FoundLogin(device_id, driver, dict(entry.fields)))
+                    found.append(FoundLogin(key[2], key[3], dict(entry.fields), key[1]))
                 if found:
                     self.store(found, typed=False)
                     self.verify()
@@ -472,20 +554,19 @@ class DeviceLogins:
         """``entries`` as the text of a login file sealed with ``key``."""
         from cryptography.fernet import Fernet
 
-        devices = []
-        for triple in sorted(entries, key=_sort_key):
-            library, device_id, driver = triple
-            entry = entries[triple]
+        payload: dict[str, list[dict[str, Any]]] = {"devices": []}
+        for entry_key in sorted(entries, key=_sort_key):
+            library, kind, name, qualifier = entry_key
+            entry = entries[entry_key]
             item: dict[str, Any] = {
-                "device": device_id,
-                "driver": driver,
+                **owner_fields(kind, name, qualifier),
                 "fields": dict(sorted(entry.fields.items())),
                 "removed_at": entry.removed_at.isoformat() if entry.removed_at else None,
             }
             if library is not None:
                 item["library"] = library
-            devices.append(item)
-        sealed = Fernet(key).encrypt(json.dumps({"devices": devices}, sort_keys=True).encode("utf-8"))
+            payload.setdefault(PAYLOAD_LISTS[kind], []).append(item)
+        sealed = Fernet(key).encrypt(json.dumps(payload, sort_keys=True).encode("utf-8"))
         envelope = {"format": _FORMAT, "version": _FORMAT_VERSION, "sealed": sealed.decode("ascii")}
         return json.dumps(envelope, indent=2) + "\n"
 
@@ -515,12 +596,36 @@ class DeviceLogins:
         return key
 
 
-def _entry_from(item: Any) -> tuple[_Key, _Entry] | None:
+#: Each kind's list in the login file's payload, and the names its owner is
+#: written under there and in a sealed export.
+PAYLOAD_LISTS = {DEVICE: "devices", PLUGIN: "plugins", PROJECT: "project"}
+_OWNER_NAMES = {DEVICE: ("device", "driver"), PLUGIN: ("plugin", "item"), PROJECT: ("section", None)}
+
+
+def owner_fields(kind: str, name: str, qualifier: str) -> dict[str, str]:
+    name_key, qualifier_key = _OWNER_NAMES[kind]
+    return {name_key: name, **({qualifier_key: qualifier} if qualifier_key else {})}
+
+
+def owner_from(item: dict[str, Any], kind: str) -> Owner | None:
+    """The owner a payload item names (``owner_fields``), or None."""
+    name_key, qualifier_key = _OWNER_NAMES[kind]
+    name = item.get(name_key)
+    qualifier = item.get(qualifier_key, "") if qualifier_key else ""
+    if not (isinstance(name, str) and name and isinstance(qualifier, str)):
+        return None
+    if kind == DEVICE and not qualifier:
+        return None
+    return (kind, name, qualifier)
+
+
+def _entry_from(item: Any, kind: str = DEVICE) -> tuple[_Key, _Entry] | None:
     if not isinstance(item, dict):
         return None
-    device_id, driver, fields = item.get("device"), item.get("driver"), item.get("fields")
+    owner = owner_from(item, kind)
+    fields = item.get("fields")
     library = item.get("library")
-    if not (isinstance(device_id, str) and isinstance(driver, str) and isinstance(fields, dict)):
+    if owner is None or not isinstance(fields, dict):
         return None
     if library is not None and not isinstance(library, str):
         return None
@@ -535,7 +640,7 @@ def _entry_from(item: Any) -> tuple[_Key, _Entry] | None:
             removed_at = None
         if removed_at is not None and removed_at.tzinfo is None:
             removed_at = removed_at.replace(tzinfo=timezone.utc)
-    return (library, device_id, driver), _Entry(kept, removed_at)
+    return (library, *owner), _Entry(kept, removed_at)
 
 
 # --- which settings hold a login -------------------------------------------------------
@@ -608,10 +713,55 @@ def _rows_of(project: Any) -> list[_Row]:
     return rows
 
 
+def plugin_configs(project: Any) -> list[tuple[str, dict[str, Any]]]:
+    """Every plugin in ``project`` (a ProjectConfig, or a project file read as
+    JSON) with its config, in project order."""
+    plugins = project.get("plugins") if isinstance(project, dict) else getattr(project, "plugins", None)
+    if not isinstance(plugins, dict):
+        return []
+    found: list[tuple[str, dict[str, Any]]] = []
+    for plugin_id, entry in plugins.items():
+        config = entry.get("config") if isinstance(entry, dict) else getattr(entry, "config", None)
+        if isinstance(plugin_id, str) and isinstance(config, dict):
+            found.append((plugin_id, config))
+    return found
+
+
+def _set_plugin_config(project: Any, plugin_id: str, config: dict[str, Any]) -> None:
+    entry = project["plugins"][plugin_id] if isinstance(project, dict) else project.plugins[plugin_id]
+    if isinstance(entry, dict):
+        entry["config"] = config
+    else:
+        entry.config = config
+
+
+def isc_key(project: Any) -> Any:
+    """``project``'s mesh key as it holds it (the key, the marker, or empty)."""
+    isc = project.get("isc") if isinstance(project, dict) else getattr(project, "isc", None)
+    return isc.get(ISC_FIELD) if isinstance(isc, dict) else getattr(isc, ISC_FIELD, None)
+
+
+def _set_isc_key(project: Any, value: str) -> None:
+    isc = project.get("isc") if isinstance(project, dict) else project.isc
+    if isinstance(isc, dict):
+        isc[ISC_FIELD] = value
+    else:
+        isc.auth_key = value
+
+
+def find_plugin_logins(plugin_id: str, config: Any) -> list[FoundLogin]:
+    """The logins the installed plugin ``plugin_id`` declares that ``config``
+    holds in the clear (``core.plugin_secrets``). None for a plugin that is
+    not installed: nothing can say which of its settings are logins."""
+    found = plugin_secrets.find(config, plugin_secrets.declared_for(plugin_id))
+    return [FoundLogin(plugin_id, item, fields, PLUGIN) for item, fields in sorted(found.items())]
+
+
 def find_logins(project: Any, *, skip: Callable[[str], bool] | None = None) -> list[FoundLogin]:
-    """The logins ``project`` holds in the clear, device by device. The value
-    for a setting is the one the device dials: its connection row's over its
-    config's. ``skip`` leaves out a device by id."""
+    """The logins ``project`` holds in the clear: device by device, then each
+    plugin's, then the mesh key. A device's value for a setting is the one it
+    dials: its connection row's over its config's. ``skip`` leaves out a
+    device by id."""
     found: list[FoundLogin] = []
     for row in _rows_of(project):
         if skip is not None and skip(row.device_id):
@@ -625,13 +775,34 @@ def find_logins(project: Any, *, skip: Callable[[str], bool] | None = None) -> l
                     break
         if values:
             found.append(FoundLogin(row.device_id, row.driver, values))
+    for plugin_id, config in plugin_configs(project):
+        found.extend(find_plugin_logins(plugin_id, config))
+    key = isc_key(project)
+    if _usable(key):
+        found.append(FoundLogin(ISC_OWNER[1], ISC_OWNER[2], {ISC_FIELD: key}, PROJECT))
     return found
 
 
 def _marked_copy(project: Any, found: list[FoundLogin]) -> Any:
     """A copy of ``project`` with the marker in every place a login in
     ``found`` was held in the clear."""
-    wanted = {(f.device_id, f.driver): set(f.fields) for f in found}
+    marked = _marked_devices(project, [f for f in found if f.kind == DEVICE])
+    by_plugin: dict[str, dict[str, dict[str, str]]] = {}
+    for f in found:
+        if f.kind == PLUGIN:
+            by_plugin.setdefault(f.name, {})[f.qualifier] = f.fields
+    for plugin_id, config in plugin_configs(marked):
+        if plugin_id in by_plugin:
+            _set_plugin_config(marked, plugin_id, plugin_secrets.marked(config, by_plugin[plugin_id]))
+    if any(f.kind == PROJECT for f in found) and _usable(isc_key(marked)):
+        _set_isc_key(marked, SAVED_LOGIN)
+    return marked
+
+
+def _marked_devices(project: Any, found: list[FoundLogin]) -> Any:
+    """A copy of ``project`` with the marker in each device setting ``found``
+    names."""
+    wanted = {(f.name, f.qualifier): set(f.fields) for f in found}
 
     def mark(holder: dict[str, Any] | None, names: set[str]) -> dict[str, Any] | None:
         if holder is None or not any(_usable(holder.get(n)) for n in names):
@@ -691,43 +862,150 @@ def move_logins(
     if not found:
         return project
     where = f"library copy '{library}'" if library is not None else "the project"
+    if not _stored(found, logins, typed=typed, library=library, where=where):
+        return project
+    return _marked_copy(project, found)
+
+
+def _stored(
+    found: list[FoundLogin], logins: DeviceLogins, *, typed: bool, library: str | None, where: str,
+) -> bool:
+    """File ``found``, read the file back and check each one is there. False
+    (and the reason logged) on any failure, when nothing may be marked."""
     try:
         logins.store(found, library=library, typed=typed)
         logins.verify()
         for login in found:
             for name in login.fields:
-                if logins.login(login.device_id, login.driver, name, library=library) is None:
-                    raise LoginFileUnreadable(f"The login file has no {name} for {login.device_id}.")
+                if logins.secret(login.owner, name, library=library) is None:
+                    raise LoginFileUnreadable(f"The login file has no {name} for {login.name}.")
     except Exception as exc:  # leave every login where it is, whatever failed
         log.error(
-            "Device logins in %s stay in it for now: they could not be saved on this system (%s)",
+            "Logins in %s stay in it for now: they could not be saved on this system (%s)",
             where, exc,
         )
-        return project
+        return False
     log.info(
-        "Moved %d device login(s) out of %s into this system's login file",
+        "Moved %d login(s) out of %s into this system's login file",
         sum(len(f.fields) for f in found), where,
     )
-    return _marked_copy(project, found)
+    return True
+
+
+def move_plugin_logins(
+    plugin_id: str,
+    config: dict[str, Any],
+    logins: DeviceLogins,
+    *,
+    current: dict[str, Any] | None = None,
+    typed: bool = True,
+) -> dict[str, Any]:
+    """One plugin's ``config`` with each login it declares moved into the
+    running project's logins and the marker left in its place: the config a
+    plugin saves itself (``api.save_config``), which reaches the project
+    without passing ``move_logins``. ``config`` itself when nothing moved or
+    the move could not finish.
+
+    ``current`` is the config the project holds now. A login it marks that
+    this system has nothing behind was handed to the plugin as ``""``
+    (``filled_plugin_config``); handed back still empty, it keeps the marker,
+    so saving something else does not turn "needs entering here" into "not
+    set"."""
+    found = find_plugin_logins(plugin_id, config)
+    out = config
+    if found:
+        if not _stored(found, logins, typed=typed, library=None, where=f"plugin '{plugin_id}'"):
+            return config
+        out = plugin_secrets.marked(config, {f.qualifier: f.fields for f in found})
+    if current is None:
+        return out
+    secrets = plugin_secrets.declared_for(plugin_id)
+    still_waiting = [
+        (item, field) for item, field, _ in plugin_secrets.places(out, secrets)
+        if plugin_secrets.get_field(plugin_secrets.holder_of(out, item), field) == ""
+        and plugin_secrets.get_field(plugin_secrets.holder_of(current, item), field) == SAVED_LOGIN
+        and logins.secret(plugin_owner(plugin_id, item), field) is None
+    ]
+    if not still_waiting:
+        return out
+    out = copy.deepcopy(out)
+    for item, field in still_waiting:
+        plugin_secrets.set_field(plugin_secrets.holder_of(out, item), field, SAVED_LOGIN)
+    return out
 
 
 # --- putting them back -------------------------------------------------------------
 
 
-def put_back(project: dict[str, Any], lookup: Callable[[str, str, str], str | None]) -> dict[str, Any] | None:
-    """A copy of ``project`` (read as JSON) with each marker replaced by
-    ``lookup(device id, driver, setting)``; None when nothing changed. A marker
-    with no saved login stays."""
+class StoreView:
+    """The saved logins a project gets from this system: ``libraries`` in
+    order (None, the running project's, by default), the first that has a
+    setting winning, as opening a library copy gives them."""
+
+    def __init__(self, logins: DeviceLogins, *libraries: str | None) -> None:
+        self._logins = logins
+        self._libraries = libraries or (None,)
+
+    def secret(self, owner: Owner, field: str) -> str | None:
+        for library in self._libraries:
+            value = self._logins.secret(owner, field, library=library)
+            if value is not None:
+                return value
+        return None
+
+    def plugin_items(self, plugin_id: str) -> dict[str, dict[str, str]]:
+        merged: dict[str, dict[str, str]] = {}
+        for library in reversed(self._libraries):
+            for item, fields in self._logins.plugin_items(plugin_id, library=library).items():
+                merged.setdefault(item, {}).update(fields)
+        return merged
+
+
+class FoundView:
+    """The logins in ``found`` (a sealed export's, say), looked up as a
+    ``StoreView`` is."""
+
+    def __init__(self, found: Iterable[FoundLogin]) -> None:
+        self._fields: dict[Owner, dict[str, str]] = {}
+        for f in found:
+            self._fields.setdefault(f.owner, {}).update(f.fields)
+
+    def secret(self, owner: Owner, field: str) -> str | None:
+        value = self._fields.get(owner, {}).get(field)
+        return value if _usable(value) else None
+
+    def plugin_items(self, plugin_id: str) -> dict[str, dict[str, str]]:
+        return {
+            owner[2]: dict(fields) for owner, fields in self._fields.items()
+            if owner[0] == PLUGIN and owner[1] == plugin_id
+        }
+
+
+def put_back(project: dict[str, Any], view: StoreView | FoundView) -> dict[str, Any] | None:
+    """A copy of ``project`` (read as JSON) with each marker replaced by its
+    saved login in ``view``: every device's, every plugin's and the mesh
+    key's; None when nothing changed. A marker with no saved login stays."""
     marked = copy.deepcopy(project)
-    connections = marked.get("connections") if isinstance(marked.get("connections"), dict) else {}
     changed = False
+    for found in saved_logins_of(marked, view):
+        if found.kind == DEVICE:
+            continue
+        changed = True
+        if found.kind == PROJECT:
+            _set_isc_key(marked, found.fields[ISC_FIELD])
+            continue
+        config = dict(plugin_configs(marked))[found.name]
+        holder = plugin_secrets.holder_of(config, found.qualifier)
+        for field, value in found.fields.items():
+            plugin_secrets.set_field(holder, field, value)
+    connections = marked.get("connections") if isinstance(marked.get("connections"), dict) else {}
 
     def restore(holder: Any, device_id: str, driver: str) -> None:
         nonlocal changed
         if not isinstance(holder, dict):
             return
         for name in marked_fields(holder):
-            value = lookup(device_id, driver, name)
+            value = view.secret(device_owner(device_id, driver), name)
             if value is not None:
                 holder[name] = value
                 changed = True
@@ -743,17 +1021,17 @@ def put_back(project: dict[str, Any], lookup: Callable[[str, str, str], str | No
     return marked if changed else None
 
 
-def _put_back_file(path: Path, lookup: Callable[[str, str, str], str | None]) -> None:
+def _put_back_file(path: Path, view: StoreView) -> None:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return
     if not isinstance(raw, dict):
         return
-    restored = put_back(raw, lookup)
+    restored = put_back(raw, view)
     if restored is not None:
         atomic_write_text(path, json.dumps(restored, indent=4, ensure_ascii=False))
-        log.warning("Put the saved device logins back into %s for the earlier version", path)
+        log.warning("Put the saved logins back into %s for the earlier version", path)
 
 
 def put_back_for_rollback(
@@ -785,13 +1063,8 @@ def put_back_for_rollback(
             for avc in sorted(library_dir.glob("*/project.avc")) if library_dir.is_dir() else []:
                 if avc.parent.name.startswith("."):
                     continue
-
-                def copy_login(device_id: str, driver: str, name: str, sid: str = avc.parent.name) -> str | None:
-                    return (logins.login(device_id, driver, name)
-                            or logins.login(device_id, driver, name, library=sid))
-
                 try:
-                    _put_back_file(avc, copy_login)
+                    _put_back_file(avc, StoreView(logins, None, avc.parent.name))
                 except OSError:
                     log.exception("Could not put the device logins back into %s", avc)
     except Exception:
@@ -800,7 +1073,7 @@ def put_back_for_rollback(
     with _project_save_lock:
         try:
             if logins is not None and project_path is not None and Path(project_path).exists():
-                _put_back_file(Path(project_path), logins.login)
+                _put_back_file(Path(project_path), StoreView(logins))
         except Exception:
             log.exception("Device logins could not be put back into the project before the rollback")
         if then is not None:
@@ -823,21 +1096,87 @@ def project_devices(project: Any) -> list[tuple[str, str]]:
     return [(row.device_id, row.driver) for row in _rows_of(project)]
 
 
-def saved_logins_of(project: Any, lookup: Callable[[str, str, str], str | None]) -> list[FoundLogin]:
+def in_project(project: Any) -> Callable[[Owner], bool]:
+    """Whether an owner is in ``project`` (a ProjectConfig, or a project file
+    read as JSON): a device by id and driver, a plugin's own settings while
+    the plugin is in it, a plugin's list item while its config holds that
+    item, and the mesh key always. Read from the project alone, so it is
+    right for a plugin that is not installed."""
+    devices = {device_owner(d, drv) for d, drv in project_devices(project)}
+    configs = dict(plugin_configs(project))
+
+    def present(owner: Owner) -> bool:
+        kind, name, qualifier = owner
+        if kind == DEVICE:
+            return owner in devices
+        if kind == PLUGIN:
+            return name in configs and plugin_secrets.holder_of(configs[name], qualifier) is not None
+        return owner == ISC_OWNER
+
+    return present
+
+
+def saved_logins_of(project: Any, view: StoreView | FoundView) -> list[FoundLogin]:
     """The saved logins behind the markers in ``project`` (a ProjectConfig, or
-    a project file read as JSON): for each device, each setting that holds
-    the marker in its config or its connection row and that
-    ``lookup(device id, driver, setting)`` has a login for."""
+    a project file read as JSON) that ``view`` has: each device setting that
+    holds the marker in its config or its connection row, each plugin login
+    that holds it where ``view`` filed one, and the mesh key."""
     found: list[FoundLogin] = []
     for row in _rows_of(project):
         values: dict[str, str] = {}
         for name in sorted(set(marked_fields(row.config)) | set(marked_fields(row.connection))):
-            value = lookup(row.device_id, row.driver, name)
+            value = view.secret(device_owner(row.device_id, row.driver), name)
             if _usable(value):
                 values[name] = value
         if values:
             found.append(FoundLogin(row.device_id, row.driver, values))
+    for plugin_id, config in plugin_configs(project):
+        items = view.plugin_items(plugin_id)
+        by_item: dict[str, dict[str, str]] = {}
+        for item, field in plugin_secrets.marked_places(config, sorted(items.items())):
+            value = view.secret(plugin_owner(plugin_id, item), field)
+            if _usable(value):
+                by_item.setdefault(item, {})[field] = value
+        found.extend(FoundLogin(plugin_id, item, fields, PLUGIN) for item, fields in by_item.items())
+    if isc_key(project) == SAVED_LOGIN:
+        value = view.secret(ISC_OWNER, ISC_FIELD)
+        if _usable(value):
+            found.append(FoundLogin(ISC_OWNER[1], ISC_OWNER[2], {ISC_FIELD: value}, PROJECT))
     return found
+
+
+def filled_plugin_config(plugin_id: str, config: Any, logins: DeviceLogins) -> Any:
+    """``config`` as the plugin ``plugin_id`` is handed it: each marker
+    replaced by the running project's saved login, and ``""`` for any marker
+    this system has nothing behind. Never the marker: a plugin has no refusal
+    to dial, as a device does, and would use the marker itself as the value
+    (a Present display key anyone could type), where ``""`` reads as not set
+    (Present then makes a new key). Returned as it is when nothing is marked."""
+    return plugin_secrets.fill(config, logins.plugin_items(plugin_id).items())
+
+
+def plugin_logins_waiting(plugin_id: str, config: Any, logins: DeviceLogins) -> list[str]:
+    """The logins the installed plugin ``plugin_id`` declares that ``config``
+    marks as saved and this system does not have, the ones the plugin makes
+    itself aside: somebody has to enter them here. As the Programmer names
+    them (``plugin_secrets.display_path``)."""
+    secrets = plugin_secrets.declared_for(plugin_id)
+    return [
+        plugin_secrets.display_path(item, field)
+        for item, field in plugin_secrets.waiting(
+            config, secrets, lambda item, field: logins.secret(plugin_owner(plugin_id, item), field),
+        )
+    ]
+
+
+def saved_isc_key(project: Any, logins: DeviceLogins) -> str:
+    """The mesh key ``project`` runs with: its saved key when it holds the
+    marker (``""`` when this system has none: the mesh then refuses every
+    connection, as with no key at all), else the key as it holds it."""
+    key = isc_key(project)
+    if key == SAVED_LOGIN:
+        return logins.secret(ISC_OWNER, ISC_FIELD) or ""
+    return key if isinstance(key, str) else ""
 
 
 def fill_saved_logins(record: dict[str, Any], logins: DeviceLogins) -> dict[str, Any]:

@@ -9,6 +9,9 @@ export interface Stream {
   name: string;
   rtsp_url: string;
   username: string;
+  /** The "saved on this system" marker when the stream has a password, ""
+   *  when it has none: never the password itself. Sent back, the marker
+   *  keeps the saved one. */
   password: string;
   codec_hint: string;
   transcode: string; // auto | always | never
@@ -68,7 +71,9 @@ export function deleteStream(streamId: string): Promise<{ status: string; stream
 export function probeStream(data: {
   rtsp_url: string;
   username?: string;
+  /** The marker tests with the saved password of `stream_id`'s stream. */
   password?: string;
+  stream_id?: string;
 }): Promise<ProbeResult> {
   return request<ProbeResult>(`${EXT}/streams/probe`, {
     method: "POST",

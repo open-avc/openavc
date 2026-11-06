@@ -10,7 +10,7 @@ import { parseApiError } from "../api/errors";
 import { InlineError } from "../components/shared/InlineError";
 import type { PluginInfo } from "../api/types";
 import { SurfaceConfigurator } from "../components/plugins/SurfaceConfigurator";
-import { SchemaFormRenderer } from "../components/plugins/PluginConfigForm";
+import { SchemaFormRenderer, configValueAt, withConfigValueAt } from "../components/plugins/PluginConfigForm";
 import { PresentManagementPanel } from "../components/present/PresentManagementPanel";
 import { CollapsibleSection } from "../components/driver-builder/CollapsibleSection";
 import { BrowsePlugins } from "../components/plugins/BrowsePlugins";
@@ -322,6 +322,11 @@ function PluginDetail({
   const pluginViewExts = usePluginStore((s) => s.extensions.views);
   const navigateTo = useNavigationStore((s) => s.navigateTo);
   const [configValues, setConfigValues] = useState<Record<string, unknown>>({});
+  // The config as of the last change, for a login's Save, which sends it at
+  // once with every other edit the pending autosave would have sent.
+  const configRef = useRef<Record<string, unknown>>({});
+  // The logins the config marks saved that this system does not have.
+  const [needsLogin, setNeedsLogin] = useState<string[]>([]);
   const [detailInfo, setDetailInfo] = useState<PluginInfo | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmUninstall, setConfirmUninstall] = useState(false);
@@ -364,15 +369,46 @@ function PluginDetail({
     if (plugin.status !== "missing" && plugin.status !== "incompatible") {
       api
         .getPluginConfig(plugin.plugin_id)
-        .then((r) => setConfigValues(r.config))
+        .then((r) => {
+          configRef.current = r.config;
+          setConfigValues(r.config);
+          setNeedsLogin(r.needs_login ?? []);
+        })
         .catch(console.error);
     }
   }, [plugin.plugin_id, plugin.status]);
+
+  // A login field saves on its own button, never with the autosave: its
+  // value goes out once, here, and the form then takes the server's copy of
+  // that field, which is the marker, never what was typed.
+  const handleSaveLogin = useCallback(
+    async (path: string[], value: string) => {
+      clearTimeout(saveTimer.current);
+      setSaving(true);
+      const ok = await updateConfig(plugin.plugin_id, withConfigValueAt(configRef.current, path, value));
+      setSaving(false);
+      if (!ok) return false;
+      try {
+        const r = await api.getPluginConfig(plugin.plugin_id);
+        setConfigValues((prev) => {
+          const next = withConfigValueAt(prev, path, configValueAt(r.config, path));
+          configRef.current = next;
+          return next;
+        });
+        setNeedsLogin(r.needs_login ?? []);
+      } catch (e) {
+        console.error("Failed to refresh config:", e);
+      }
+      return true;
+    },
+    [plugin.plugin_id, updateConfig]
+  );
 
   const handleConfigChange = useCallback(
     (key: string, value: unknown) => {
       setConfigValues((prev) => {
         const next = { ...prev, [key]: value };
+        configRef.current = next;
         clearTimeout(saveTimer.current);
         saveTimer.current = setTimeout(async () => {
           setSaving(true);
@@ -731,6 +767,7 @@ function PluginDetail({
                 pluginId={plugin.plugin_id}
                 config={configValues}
                 onConfigChange={(newConfig) => {
+                  configRef.current = newConfig;
                   setConfigValues(newConfig);
                   clearTimeout(saveTimer.current);
                   saveTimer.current = setTimeout(async () => {
@@ -742,7 +779,9 @@ function PluginDetail({
                 onRequestConfigRefresh={async () => {
                   try {
                     const r = await api.getPluginConfig(plugin.plugin_id);
+                    configRef.current = r.config;
                     setConfigValues(r.config);
+                    setNeedsLogin(r.needs_login ?? []);
                   } catch (e) {
                     console.error("Failed to refresh config:", e);
                   }
@@ -780,6 +819,8 @@ function PluginDetail({
             schema={detailInfo.config_schema}
             values={configValues}
             onChange={handleConfigChange}
+            needsLogin={needsLogin}
+            onSaveLogin={handleSaveLogin}
           />
         </div>
       )}

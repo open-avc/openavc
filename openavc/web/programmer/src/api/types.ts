@@ -737,6 +737,13 @@ export interface DeviceNeedingLogin {
   name: string;
 }
 
+/** A plugin that waits for a login to be entered in its settings, as the same
+ *  doors name it beside the devices (`plugins_need_login`). */
+export interface PluginNeedingLogin {
+  id: string;
+  name: string;
+}
+
 // --- Child Entities ---
 //
 // Mirrors the runtime shape returned by /api/devices/{id}/children. The

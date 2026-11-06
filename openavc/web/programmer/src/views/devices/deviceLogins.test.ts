@@ -100,6 +100,40 @@ describe("what a restore says about the devices that wait", () => {
   });
 });
 
+describe("what a restore says about the plugins that wait", () => {
+  const bridge = { id: "mqtt", name: "MQTT Bridge" };
+
+  it("names a plugin alone, and sends the reader to Plugins", () => {
+    expect(needsLoginSentence([], [bridge])).toBe(
+      "1 plugin needs its login entered: MQTT Bridge. Open it in Plugins to enter it.",
+    );
+    expect(needsLoginSentence(undefined, [bridge, { id: "dante", name: "Dante" }])).toBe(
+      "2 plugins need their login entered: MQTT Bridge, Dante. Open each one in Plugins to enter it.",
+    );
+  });
+
+  it("names devices and plugins together, devices first", () => {
+    expect(needsLoginSentence(
+      [{ id: "a", name: "Hall Display" }, { id: "b", name: "Rack Power" }], [bridge],
+    )).toBe(
+      "2 devices and 1 plugin need their login entered: Hall Display, Rack Power, MQTT Bridge. "
+        + "Open each one in Devices or Plugins to enter it.",
+    );
+    expect(needsLoginSentence([{ id: "a", name: "Hall Display" }], [bridge])).toBe(
+      "1 device and 1 plugin need their login entered: Hall Display, MQTT Bridge. "
+        + "Open each one in Devices or Plugins to enter it.",
+    );
+  });
+
+  it("counts the rest past five across both", () => {
+    const six = ["A", "B", "C", "D", "E", "F"].map((n) => ({ id: n.toLowerCase(), name: n }));
+    expect(needsLoginSentence(six, [bridge])).toBe(
+      "6 devices and 1 plugin need their login entered: A, B, C, D, E and 2 more. "
+        + "Open each one in Devices or Plugins to enter it.",
+    );
+  });
+});
+
 describe("the marker in a form", () => {
   it("is the server's marker", () => {
     expect(SAVED_LOGIN).toBe(MARKER);
