@@ -11,17 +11,26 @@ This test feeds a crafted zip to ``_install_bundled_plugins`` and asserts the
 traversal members are skipped (nothing written outside the repo) while a
 legitimate plugin still installs.
 
-The sibling extraction paths (seed/import scripts + assets, bundled drivers)
-already reduce each member to ``Path(name).name`` (a basename), so they can't
-escape; this test covers the one site that used a full relative path.
+The flat siblings, an import's bundled drivers and scripts, take the last
+part of each member's path as the file name. That alone does not keep a file
+in its folder on Windows: the last part of ``drivers/D:x.py`` is ``D:x.py``,
+a path on drive D:. Both ask ``utils.paths.plain_file_in``, which refuses a
+name with a colon on every platform, so the tests below fail on any OS
+without it.
 """
 
 from __future__ import annotations
 
 import io
+import json
+import logging
 import zipfile
+from unittest.mock import patch
+
+import pytest
 
 from openavc.core import project_library
+from openavc.utils.paths import plain_file_in
 
 
 def _make_zip(members: dict[str, bytes]) -> zipfile.ZipFile:
@@ -65,3 +74,64 @@ def test_install_bundled_plugins_blocks_zip_slip(tmp_path, monkeypatch):
     # outside the repo, and none above it.
     strays = [p for p in tmp_path.rglob("escape*.py")]
     assert strays == [], f"files escaped containment: {strays}"
+
+
+# A colon names a drive (``D:x.py``) or an alternate data stream (``x.py:s``)
+# on Windows. Both members below would leave the folder there, and neither is
+# a file name a real bundle carries, so they are refused on every platform.
+OFF_THE_DRIVE = ("D:escape_sim.py", "x_sim.py:stream")
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["", ".", "..", "a/b.py", "a\\b.py", "D:x.py", "C:", "x.py:stream", "x\x00.py"],
+)
+def test_plain_file_in_refuses_a_name_that_is_not_one_file(tmp_path, name):
+    assert plain_file_in(tmp_path, name) is None
+
+
+@pytest.mark.parametrize("name", ["acme_widget.py", "acme widget.py", "acme..widget.avcdriver"])
+def test_plain_file_in_keeps_a_plain_name_in_its_folder(tmp_path, name):
+    assert plain_file_in(tmp_path, name) == (tmp_path / name).resolve()
+
+
+def test_install_bundled_drivers_skips_a_member_named_for_another_drive(
+    tmp_path, monkeypatch, caplog
+):
+    driver_repo = tmp_path / "driver_repo"
+    monkeypatch.setattr(project_library, "_DRIVER_REPO_DIR", driver_repo)
+    members = {f"drivers/{name}": b"ESCAPE = 1" for name in OFF_THE_DRIVE}
+    members["drivers/acme_widget_sim.py"] = b"OK = 1"  # a companion: written, never imported
+    zf = _make_zip(members)
+
+    with caplog.at_level(logging.WARNING, logger=project_library.log.name):
+        project_library._install_bundled_drivers(zf)
+
+    assert (driver_repo / "acme_widget_sim.py").read_bytes() == b"OK = 1"
+    assert sorted(p.name for p in driver_repo.iterdir()) == ["acme_widget_sim.py"]
+    for name in OFF_THE_DRIVE:
+        assert repr(f"drivers/{name}") in caplog.text
+
+
+def test_project_import_skips_a_script_named_for_another_drive(tmp_path, monkeypatch):
+    from openavc.core.project_library import create_blank_project
+
+    monkeypatch.setattr(project_library, "_DRIVER_REPO_DIR", tmp_path / "driver_repo")
+    monkeypatch.setattr(project_library, "_PLUGIN_REPO_DIR", tmp_path / "plugin_repo")
+
+    lib = tmp_path / "saved_projects"
+    lib.mkdir()
+    avc = json.dumps(create_blank_project("drive_room", "drive_room").model_dump(mode="json"))
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("project.avc", avc)
+        zf.writestr("scripts/main.py", b"OK = 1")
+        for name in ("D:escape.py", "x.py:escape.py"):
+            zf.writestr(f"scripts/{name}", b"ESCAPE = 1")
+
+    with patch("openavc.core.project_library.config") as mock_config:
+        mock_config.SAVED_PROJECTS_DIR = lib
+        project_library.import_project(buf.getvalue(), "drive_room.zip")
+
+    scripts = lib / "drive_room" / "scripts"
+    assert sorted(p.name for p in scripts.iterdir()) == ["main.py"]

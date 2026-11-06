@@ -46,7 +46,7 @@ from openavc.system_config import (
 )
 from openavc.utils.fileio import atomic_write_text as _atomic_write_text
 from openavc.utils.logger import get_logger
-from openavc.utils.paths import files_below, safe_path_within
+from openavc.utils.paths import files_below, plain_file_in, safe_path_within
 from openavc.drivers.registry import is_driver_registered, register_driver
 
 log = get_logger(__name__)
@@ -1250,7 +1250,10 @@ def _install_bundled_drivers(zf: zipfile.ZipFile) -> list[str]:
         if not fname or fname.startswith("_"):
             continue
 
-        dest = driver_repo / fname
+        dest = plain_file_in(driver_repo, fname)
+        if dest is None:
+            log.warning("Skipping bundled driver with an unsafe file name: %r", name)
+            continue
         if dest.exists():
             continue  # Don't overwrite existing drivers
 
@@ -1442,11 +1445,12 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
 
             for name in zf.namelist():
                 if name.startswith("scripts/") and name.endswith(".py"):
-                    script_name = Path(name).name
-                    if "/" not in script_name and "\\" not in script_name:
-                        dest = project_dir / "scripts"
-                        dest.mkdir(exist_ok=True)
-                        (dest / script_name).write_bytes(zf.read(name))
+                    target = plain_file_in(project_dir / "scripts", Path(name).name)
+                    if target is None:
+                        log.warning("Skipping script with an unsafe file name: %r", name)
+                        continue
+                    target.parent.mkdir(exist_ok=True)
+                    target.write_bytes(zf.read(name))
 
             # Extract bundled assets, folders intact (see core/asset_tree.py).
             asset_tree.extract_from_zip(zf, project_dir / "assets")

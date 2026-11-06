@@ -75,7 +75,7 @@ def remove_python_companions(main_path: Path) -> list[str]:
 def _check_driver_id(driver_id: str) -> None:
     """Refuse a driver ID that could not be a file name in driver_repo/."""
     import re
-    if not re.match(r'^[a-zA-Z0-9_-]+$', driver_id):
+    if not re.fullmatch(r'[a-zA-Z0-9_-]+', driver_id):
         raise HTTPException(status_code=400, detail="Invalid driver ID: only alphanumeric, underscore, and hyphen allowed")
 
 

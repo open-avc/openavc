@@ -244,3 +244,30 @@ def test_the_copy_named_for_its_id_loads_and_lists(driver_repo):
 
     listed = [d for d in list_python_drivers([driver_repo]) if d["id"] == "acme_widget"]
     assert [d["filename"] for d in listed] == ["acme_widget.py"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad_id",
+    ["..", "../acme_widget", "sub/acme_widget", "sub\\acme_widget", "D:acme_widget",
+     "acme.widget", "acme_widget\n"],
+)
+async def test_an_id_that_is_not_a_plain_name_is_refused_by_every_door(
+    driver_repo, tmp_path, bad_id
+):
+    """A Python driver's id becomes a file name in driver_repo/, so only
+    letters, digits, ``_`` and ``-`` reach the disk; a driver sitting just
+    outside the repo is neither read nor touched."""
+    outside = tmp_path / "acme_widget.py"
+    outside.write_text(_source("outside"), encoding="utf-8")
+
+    for door in (
+        lambda: get_python_driver_source(bad_id),
+        lambda: save_python_driver_source(bad_id, {"source": _source("edited")}),
+        lambda: export_python_driver_bundle(bad_id),
+        lambda: delete_python_driver(bad_id),
+    ):
+        with pytest.raises(HTTPException) as refused:
+            await door()
+        assert refused.value.status_code == 400
+    assert "MARK = 'outside'" in outside.read_text(encoding="utf-8")

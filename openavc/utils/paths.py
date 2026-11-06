@@ -41,6 +41,26 @@ def safe_path_within(base: Path, candidate: str) -> Path | None:
     return resolved
 
 
+def plain_file_in(base: Path, name: str) -> Path | None:
+    """``base / name`` resolved, when ``name`` is one plain file name that
+    lands directly in ``base`` on every platform; ``None`` otherwise.
+
+    For a name that arrives from outside and is meant to be a single file in
+    ``base``, such as the last part of an archive member's path. Taking
+    ``Path(member).name`` is not enough on Windows: for ``drivers/D:x.py``
+    that is ``D:x.py``, and ``base / "D:x.py"`` is a path on drive D:, outside
+    ``base``. So the name may hold no separator of either platform, no colon
+    (a drive or a stream) and no NUL, may not be ``.`` or ``..``, and must
+    still resolve to a file directly inside ``base``.
+    """
+    if not name or name in (".", "..") or any(c in name for c in "/\\:\x00"):
+        return None
+    target = safe_path_within(base, name)
+    if target is None or target.parent != base.resolve():
+        return None
+    return target
+
+
 def passes_through_link(base: Path, relpath: str) -> bool:
     """True when ``relpath`` reaches a link on its way down from ``base``.
 
