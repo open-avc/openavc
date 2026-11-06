@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 
 from openavc.api.auth import require_programmer_auth
 from openavc.api.errors import api_error as _api_error
+from openavc.api.routes.devices import sanitize_device_name
 from openavc.core.required_config import (
     merged_device_config,
     missing_for_driver,
@@ -533,10 +534,9 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
             detail=f"Device '{device_id}' is already in the project",
         )
 
-    name = req.name or _discovered_device_name(discovered, req.driver_id)
-    # Sanitize: strip HTML, collapse whitespace, limit length
-    name = re.sub(r"<[^>]+>", "", name)
-    name = " ".join(name.split())[:128]
+    name = sanitize_device_name(
+        req.name or _discovered_device_name(discovered, req.driver_id)
+    )
 
     # Layer the device's config so it lands in the project pre-filled,
     # not just at runtime:

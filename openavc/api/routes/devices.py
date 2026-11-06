@@ -1,6 +1,5 @@
 """Device CRUD, commands, settings, and connection REST API endpoints."""
 
-import re
 from typing import Any
 
 from openavc.api.host_policy import ProgrammerRoute
@@ -56,11 +55,42 @@ log = get_logger(__name__)
 _MAX_NAME_LEN = 128
 
 
-def _sanitize_device_name(name: str) -> str:
-    """Strip HTML tags, collapse whitespace, enforce length limit."""
-    name = re.sub(r"<[^>]+>", "", name)
-    name = " ".join(name.split())
-    return name[:_MAX_NAME_LEN]
+def strip_markup(text: str) -> str:
+    """Remove every ``<...>`` run: a ``<`` with at least one character and a
+    ``>`` after it goes, through the first such ``>``.
+
+    The same answer as ``re.sub(r"<[^>]+>", "", text)``, in one pass. That
+    pattern scans to the end of the text from every ``<`` with no ``>`` after
+    it, so a name of 200,000 ``<`` held the event loop for ten seconds. The
+    linear pattern that looks like a drop-in, ``<[^<>]+>``, is not one: it
+    lets a tag split by another rejoin (``<im<x>g ...>`` leaves ``<img ...>``).
+    """
+    kept: list[str] = []
+    start = 0
+    while True:
+        lt = text.find("<", start)
+        if lt == -1:
+            break
+        gt = text.find(">", lt + 1)
+        if gt == -1:
+            # No ">" after this "<", so none after any later "<" either.
+            break
+        if gt == lt + 1:
+            # "<>" encloses nothing and stays; carry on after its "<".
+            kept.append(text[start:lt + 1])
+            start = lt + 1
+            continue
+        kept.append(text[start:lt])
+        start = gt + 1
+    kept.append(text[start:])
+    return "".join(kept)
+
+
+def sanitize_device_name(name: str) -> str:
+    """A device name as stored: markup removed, whitespace collapsed, at most
+    128 characters. Both doors that take a name from a request use it: a
+    rename here and an add from a discovery scan."""
+    return " ".join(strip_markup(name).split())[:_MAX_NAME_LEN]
 
 
 # --- Devices ---
@@ -253,7 +283,7 @@ async def update_device(device_id: str, body: DeviceUpdateRequest) -> dict[str, 
     if policy.manifest and body.driver == policy.driver_id and not policy.owns(device_id):
         if body.config or body.child_entities is not None:
             raise HTTPException(status_code=422, detail="Product hardware uses its manufacturer connection. Select it without connection overrides.")
-        name = _sanitize_device_name(body.name) if body.name is not None else None
+        name = sanitize_device_name(body.name) if body.name is not None else None
         if name is not None and not name:
             raise HTTPException(status_code=422, detail="Device name cannot be blank")
         await engine.reassign_installed_equipment(device_id, name=name, enabled=body.enabled)
@@ -275,7 +305,7 @@ async def update_device(device_id: str, body: DeviceUpdateRequest) -> dict[str, 
 
         # Build updated config — split connection fields into connections table
         existing = project.devices[device_idx]
-        new_name = _sanitize_device_name(body.name) if body.name is not None else existing.name
+        new_name = sanitize_device_name(body.name) if body.name is not None else existing.name
         if not new_name:
             raise HTTPException(status_code=422, detail="Device name cannot be blank")
         new_driver = body.driver if body.driver is not None else existing.driver
