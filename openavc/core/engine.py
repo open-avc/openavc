@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import hmac
 import json
 import secrets
@@ -1725,7 +1726,22 @@ class Engine:
             # by the reconciler) — awaiting it would deadlock. The plugin's
             # live config is already current; only the persist is deferred.
             mutate(self.project)
-            self.schedule_bookkeeping_change(mutate, on_error=on_error)
+
+            def persist_current(project) -> None:
+                # Runs after the reconcile, by which time another save of this
+                # plugin may have landed (its own save_config, the settings
+                # form, the assistant). Writing ``config`` as captured above
+                # would put the older one back over it, so the config the
+                # plugin runs with when this runs is the one written.
+                if plugin_id not in project.plugins or not self.plugin_loader.is_running(plugin_id):
+                    return
+                running = copy.deepcopy(self.plugin_loader.get_running_config(plugin_id))
+                project.plugins[plugin_id].config = move_plugin_logins(
+                    plugin_id, running, self.device_logins,
+                    current=project.plugins[plugin_id].config,
+                )
+
+            self.schedule_bookkeeping_change(persist_current, on_error=on_error)
         else:
             try:
                 await self.persist_bookkeeping_change(mutate, on_error=on_error)

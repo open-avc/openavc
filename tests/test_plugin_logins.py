@@ -676,3 +676,25 @@ async def test_the_assistants_log_hides_a_plugin_login_saved_here(engine, data):
     secrets = tools._collect_secret_values()
     assert {"Bridge-Pass-1", "Feed-Pass-L", "Mesh-Key-123"} <= secrets
     assert SAVED_LOGIN not in secrets
+
+
+async def test_a_save_made_after_a_reconcile_outlives_the_one_made_during_it(engine, data):
+    # The plugin makes a key at start, inside the reconcile, so that save is
+    # persisted after the reconcile. A save the plugin makes as soon as the
+    # reload returns lands first; the earlier one must not be written over it.
+    marked = _config(screens=[{"id": "wall", "screen_key": SAVED_LOGIN}])
+    _write(engine.project_path, _project(marked))
+    await engine.reload_project()
+
+    api = engine.plugin_loader._apis[PLUGIN_ID]
+    config = api.config
+    config["host"] = "192.0.2.99"
+    await api.save_config(config)
+    if engine._bookkeeping_task is not None:
+        await engine._bookkeeping_task
+
+    assert _plugin_on_disk(engine)["host"] == "192.0.2.99"
+    assert engine.project.plugins[PLUGIN_ID].config["host"] == "192.0.2.99"
+    # The key made at start is kept, as a saved login.
+    assert _plugin_on_disk(engine)["screens"][0]["screen_key"] == SAVED_LOGIN
+    assert DeviceLogins(data).secret(plugin_owner(PLUGIN_ID, WALL), "screen_key") == "made-wall-key"
