@@ -253,6 +253,9 @@ async def test_a_plain_handler_can_start_timers_owned_by_its_script(
     """)
     await events.emit("custom.arm", {})
     await _wait_for(lambda: state.get("var.later") is True)
+    # The callback's write reaches the loop a moment before its timer task
+    # finishes and forgets the timer, so wait for that before counting.
+    await _wait_for(lambda: list(script_api._timer_owners.values()).count(cfg["id"]) == 1)
     # The 30 s one is the script's, so a reload of that script cancels it.
     assert script_api.cancel_script_timers(cfg["id"]) == 1
 
@@ -460,11 +463,12 @@ async def test_a_run_going_when_its_script_reloads_finishes(
 
         @on_event("custom.long")
         def long(event):
+            state.set("var.started", True)
             gate.release.wait(5)
             state.set("var.finished", True)
     """)
     emit = asyncio.ensure_future(events.emit("custom.long", {}))
-    await asyncio.sleep(0.05)
+    await _wait_for(lambda: state.get("var.started") is True)
     assert engine.reload_script(cfg)["status"] == "reloaded"
     gate.release.set()
     await emit
