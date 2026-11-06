@@ -185,6 +185,25 @@ async def test_install_missing_reports_uncatalogued_failures(running_app):
     assert "catalog" in body["failed"][0]["error"].lower()
 
 
+async def test_install_missing_keeps_an_unexpected_failures_text_in_the_log(running_app, caplog):
+    """A failure the install did not word for the reader (anything but an
+    HTTPException) answers a fixed sentence; its text goes to the server log."""
+    with patch(
+        "openavc.api.routes.drivers.install_community_driver",
+        new=AsyncMock(side_effect=OSError("[Errno 13] Permission denied: '/home/acme/driver_repo'")),
+    ), caplog.at_level("ERROR", logger="openavc.api.routes.devices"):
+        resp = running_app.post(
+            "/api/devices/install-missing",
+            json={"driver_ids": ["samsung_mdc_test"]},
+        )
+    assert resp.status_code == 200
+    failed = resp.json()["failed"]
+    assert [f["driver_id"] for f in failed] == ["samsung_mdc_test"]
+    assert "/home/acme/driver_repo" not in failed[0]["error"]
+    assert "server log" in failed[0]["error"]
+    assert "/home/acme/driver_repo" in caplog.text
+
+
 async def test_install_missing_empty_batch_returns_empty_lists(running_app):
     """An empty driver_ids list short-circuits without hitting the catalog."""
     resp = running_app.post(

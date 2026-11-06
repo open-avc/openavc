@@ -136,7 +136,7 @@ def test_the_pool_drops_an_idle_connection_well_before_the_simulator_does(monkey
     assert limits.max_keepalive_connections == 20
 
 
-# -- a failure with no text ------------------------------------------------
+# -- a failed request ----------------------------------------------------
 
 
 class _Failing:
@@ -148,20 +148,37 @@ class _Failing:
 
 
 @pytest.mark.parametrize(
-    ("exc", "reason"),
+    ("exc", "logged", "answered"),
     [
-        (httpx.ReadTimeout(""), "no answer within 30 s"),
-        (httpx.ReadError(""), "ReadError"),
-        (httpx.RemoteProtocolError("Server disconnected"), "Server disconnected"),
+        (httpx.ReadTimeout(""), "ReadTimeout", "The simulator did not answer within 30 s"),
+        (httpx.ReadError(""), "ReadError", "The connection to the simulator failed"),
+        (
+            httpx.RemoteProtocolError("Server disconnected"),
+            "RemoteProtocolError: Server disconnected",
+            "The connection to the simulator failed",
+        ),
     ],
 )
-def test_a_failed_request_says_why_even_when_the_error_has_no_text(
-    client, monkeypatch, caplog, exc, reason,
+def test_a_failed_request_is_logged_with_its_cause_and_answered_in_our_words(
+    client, monkeypatch, caplog, exc, logged, answered,
 ):
     monkeypatch.setattr(simulator_proxy, "_get_client", lambda: _Failing(exc))
     with caplog.at_level("WARNING", logger="openavc.api.simulator_proxy"):
         response = client.get("/simulator/api/devices")
 
     assert response.status_code == 502
-    assert response.text == f"Simulator UI unreachable: {reason}"
-    assert f"Simulator UI proxy failed for /api/devices: {reason}" in caplog.text
+    assert response.text == f"{answered}. Reload this page to try again."
+    assert f"Simulator UI proxy failed for /api/devices: {logged}" in caplog.text
+
+
+def test_the_open_shell_never_answers_with_the_errors_text(client, monkeypatch, caplog):
+    """The shell is served without a credential, so whatever httpx says about
+    the hop stays in the log."""
+    exc = httpx.RemoteProtocolError("peer said /home/acme/private while closing")
+    monkeypatch.setattr(simulator_proxy, "_get_client", lambda: _Failing(exc))
+    with caplog.at_level("WARNING", logger="openavc.api.simulator_proxy"):
+        response = client.get("/simulator/index.html")
+
+    assert response.status_code == 502
+    assert "/home/acme/private" not in response.text
+    assert "/home/acme/private" in caplog.text

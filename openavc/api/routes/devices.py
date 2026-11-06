@@ -209,8 +209,14 @@ async def install_missing_drivers(body: InstallMissingDriversRequest) -> dict[st
             _record_activated(result.get("activated_devices") or [])
         except HTTPException as e:
             failed.append({"driver_id": driver_id, "error": str(e.detail)})
-        except Exception as e:
-            failed.append({"driver_id": driver_id, "error": str(e)})
+        except Exception:
+            # Every failure the install words for the reader is an
+            # HTTPException; anything else was not, so its text stays here.
+            log.exception(f"Installing missing driver '{driver_id}' failed")
+            failed.append({
+                "driver_id": driver_id,
+                "error": "Install failed (see server log)",
+            })
 
     # install_community_driver already retries orphans on each call; one
     # final sweep catches any orphan whose driver was registered out of

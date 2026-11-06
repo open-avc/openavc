@@ -218,14 +218,16 @@ async def _forward(path: str, request: Request) -> Response:
         # rather than as a server error.
         return Response(content=_UNAVAILABLE, status_code=503, media_type="text/plain")
     except httpx.HTTPError as e:
-        # A timeout and a dropped connection both carry no text.
-        why = str(e) or (
-            f"no answer within {TIMEOUT_S:g} s"
-            if isinstance(e, httpx.TimeoutException)
-            else type(e).__name__
-        )
-        log.warning(f"Simulator UI proxy failed for /{path}: {why}")
-        return Response(content=f"Simulator UI unreachable: {why}", status_code=502,
+        # The shell answers without a credential, so the error's own text goes
+        # to the log and the browser gets a sentence written here. A timeout
+        # and a dropped connection often carry no text, hence the type name.
+        cause = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+        log.warning(f"Simulator UI proxy failed for /{path}: {cause}")
+        if isinstance(e, httpx.TimeoutException):
+            why = f"The simulator did not answer within {TIMEOUT_S:g} s"
+        else:
+            why = "The connection to the simulator failed"
+        return Response(content=f"{why}. Reload this page to try again.", status_code=502,
                         media_type="text/plain")
 
     passthrough = {
