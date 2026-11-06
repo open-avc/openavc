@@ -50,7 +50,7 @@ def content(raw, zipped):
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("project.avc", raw)
-        archive.writestr("assets/label.txt", b"project asset")
+        archive.writestr("assets/label.png", b"project asset")
     return buffer.getvalue(), "hall.zip"
 
 
@@ -73,7 +73,7 @@ def test_replacement_unit_uses_its_own_hardware_and_preserves_programming(worksp
     assert resolved["config"]["integration"] == "acme_amplifier"
     assert b"unit-b" not in target.read_bytes()
     if zipped:
-        assert (target.parent / "assets/label.txt").read_bytes() == b"project asset"
+        assert (target.parent / "assets/label.png").read_bytes() == b"project asset"
 
 
 def test_ordinary_controller_opens_reference_for_normal_reassignment(workspace):

@@ -13,8 +13,17 @@ survived an export, and then quietly did not exist in the next backup.
 So the tree gets one home, the way ``ui/`` has one in :mod:`custom_ui`. The
 two are deliberately not the same module: a custom control is *code* and its
 tree is rule-bound (file types, caps, depth), while an asset is an opaque
-blob whose only rules are the ones any archive needs — stay inside the
-directory, and don't drag in the noise a design tool leaves behind.
+blob whose rules are the ones any archive needs — stay inside the directory,
+and don't drag in the noise a design tool leaves behind — plus its file type.
+
+**The file type is the upload's** (:data:`ALLOWED_EXTENSIONS`, images and
+sounds), asked by every door that brings a tree in from outside: an import,
+a backup restore and a starter seed all extract through
+:func:`extract_from_zip`. They used to check names only, so an imported
+project could carry an ``.html`` page that the open asset route then served,
+with no credential, from this server's own address. The list has only ever
+grown (images from the first release, sounds added later), so no file a
+release let somebody upload is refused on its way back in.
 
 Direction of the fix: every path becomes recursive.
 The reverse (flatten everywhere) was available and rejected — flattening is
@@ -27,9 +36,24 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
+from openavc.utils.logger import get_logger
 from openavc.utils.paths import files_below, safe_path_within
 
+log = get_logger(__name__)
+
 ASSETS_DIR_NAME = "assets"
+
+#: The file types an asset may be: what the upload takes
+#: (``POST /api/projects/{id}/assets``), the listing shows, and an import,
+#: restore or seed brings in. Compared lower-cased.
+IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico"})
+AUDIO_EXTENSIONS = frozenset({".mp3", ".wav", ".ogg", ".m4a"})
+ALLOWED_EXTENSIONS = IMAGE_EXTENSIONS | AUDIO_EXTENSIONS
+
+
+def is_asset_type(relpath: str) -> bool:
+    """True when the file's extension is one an asset may have."""
+    return Path(relpath).suffix.lower() in ALLOWED_EXTENSIONS
 
 
 def _rejected(relpath: str) -> bool:
@@ -74,7 +98,8 @@ def extract_from_zip(
     doesn't like: an export from another machine is allowed to carry junk, and
     refusing the whole project over one stray entry would be maddening.
     Skipping is also what makes a crafted archive harmless, since nothing
-    outside the tree is ever written.
+    outside the tree is ever written. A file of a type an asset may not be
+    (:func:`is_asset_type`) is skipped the same way, with a warning.
     """
     written: list[str] = []
     marker = f"{prefix}/"
@@ -83,6 +108,9 @@ def extract_from_zip(
             continue
         relpath = name[len(marker):].replace("\\", "/").strip("/")
         if not relpath or _rejected(relpath):
+            continue
+        if not is_asset_type(relpath):
+            log.warning("Skipping an asset that is not an image or sound: %r", name)
             continue
         target = safe_path_within(dest_dir, relpath)
         if target is None:

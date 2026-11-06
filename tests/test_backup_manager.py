@@ -538,6 +538,46 @@ class TestNestedAssets:
 
 
 # ---------------------------------------------------------------------------
+# What a restore lets in from outside the backups it wrote itself. The restore
+# route takes any .zip inside the project folder, so its archive is not always
+# one create_backup made.
+# ---------------------------------------------------------------------------
+
+class TestRestoreTakesOnlyWhatTheProjectCouldHold:
+    def test_a_script_named_for_another_drive_stays_out(self, project_dir: Path):
+        # The last part of scripts/D:x.py is D:x.py, a path on drive D: on
+        # Windows, and x.py:stream is a hidden stream of x.py there. Both are
+        # refused on every platform, so this fails on any OS without the rule.
+        backup_path = create_backup(project_dir / "project.avc", "Manual backup")
+        with zipfile.ZipFile(backup_path, "a") as zf:
+            zf.writestr("scripts/D:escape.py", b"ESCAPE = 1")
+            zf.writestr("scripts/x.py:stream", b"ESCAPE = 1")
+
+        restore_from_backup(backup_path, project_dir / "project.avc")
+
+        scripts = sorted(p.name for p in (project_dir / "scripts").iterdir())
+        assert scripts == ["shutdown.py", "startup.py"]
+
+    def test_a_file_that_is_not_an_image_or_sound_stays_out_of_assets(self, project_dir: Path):
+        # The asset upload takes images and sounds only. A page in assets/
+        # would be served by the open asset route from this server's own
+        # address, and a .zip there is something this restore route would take.
+        backup_path = create_backup(project_dir / "project.avc", "Manual backup")
+        with zipfile.ZipFile(backup_path, "a") as zf:
+            zf.writestr("assets/page.html", b"<html></html>")
+            zf.writestr("assets/rooms/old_backup.zip", b"PK")
+            zf.writestr("assets/chime.MP3", b"ID3")
+
+        restore_from_backup(backup_path, project_dir / "project.avc")
+
+        assets = sorted(
+            p.relative_to(project_dir / "assets").as_posix()
+            for p in (project_dir / "assets").rglob("*") if p.is_file()
+        )
+        assert assets == ["bg.jpg", "chime.MP3", "logo.png"]
+
+
+# ---------------------------------------------------------------------------
 # A project file with its own name
 # ---------------------------------------------------------------------------
 

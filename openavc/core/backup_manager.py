@@ -38,6 +38,7 @@ from pathlib import Path
 from openavc.core import asset_tree, theme_tree
 from openavc.core.custom_ui import extract_from_zip, zip_entries
 from openavc.utils.logger import get_logger
+from openavc.utils.paths import plain_file_in
 from openavc.version import __version__
 
 log = get_logger(__name__)
@@ -133,17 +134,24 @@ def _restore_subdir(
     """Extract the ZIP entries under ``prefix`` into a fresh staging dir, then
     atomically swap it in for ``target_dir``. The old content is only removed
     once the new content is fully on disk — no unlink-then-extract window where a
-    crash leaves the directory half-cleared (old gone, new missing)."""
+    crash leaves the directory half-cleared (old gone, new missing).
+
+    Each entry is placed by the last part of its path, which must be one plain
+    file name (``plain_file_in``): on Windows the last part of
+    ``scripts/D:x.py`` is ``D:x.py``, a path on drive D:. An entry that is not
+    is skipped with a warning, and the rest of the restore goes ahead."""
     staging = target_dir.with_name(target_dir.name + ".restore-new")
     if staging.exists():
         shutil.rmtree(staging, ignore_errors=True)
     staging.mkdir(parents=True, exist_ok=True)
     for name in names:
         if name.startswith(prefix) and name != prefix:
-            fname = Path(name).name
-            if fname:
-                with zf.open(name) as src:
-                    (staging / fname).write_bytes(src.read())
+            target = plain_file_in(staging, Path(name).name)
+            if target is None:
+                log.warning("Skipping backup entry with an unsafe file name: %r", name)
+                continue
+            with zf.open(name) as src:
+                target.write_bytes(src.read())
     _swap_dir(staging, target_dir)
 
 

@@ -1045,6 +1045,70 @@ class TestNestedAssetsSurviveEveryPath:
         assert (assets / "logo.png").read_bytes() == b"top level"
 
 
+class TestAnArchiveBringsInOnlyWhatTheProjectCouldHold:
+    """An import, a starter seed and a starter's bundled-driver refresh read a
+    file name and a file type from an archive. Each takes the same name rule
+    (``plain_file_in``) and the same asset types as the doors a person uses.
+    A colon is refused on every platform, so these fail on any OS without it.
+    """
+
+    def test_bundle_import_leaves_out_an_asset_the_upload_would_refuse(self, tmp_lib):
+        files = {
+            "project.avc": _valid_avc("typed"),
+            "assets/logo.png": b"image",
+            "assets/page.html": b"<html></html>",
+            "assets/old_backup.zip": b"PK",
+        }
+        import_project(_zip_bytes(files), "typed.zip")
+
+        assets = tmp_lib / "typed" / "assets"
+        assert sorted(p.name for p in assets.iterdir()) == ["logo.png"]
+
+    def test_template_seed_leaves_out_a_script_named_for_another_drive(self, tmp_lib, tmp_path):
+        bundle = tmp_path / "starter.zip"
+        bundle.write_bytes(_zip_bytes({
+            "project.avc": _valid_avc("starter"),
+            "scripts/main.py": "OK = 1",
+            "scripts/D:escape.py": "ESCAPE = 1",
+        }))
+
+        plib._seed_zip_to_library(bundle, "starter", tmp_lib)
+
+        scripts = tmp_lib / "starter" / "scripts"
+        assert sorted(p.name for p in scripts.iterdir()) == ["main.py"]
+
+    def test_a_superseded_starter_driver_named_for_another_drive_is_not_touched(
+        self, tmp_path, monkeypatch,
+    ):
+        # On Windows driver_repo / "D:x.py" is a file on drive D:, which the
+        # byte match would then delete. A POSIX file of that name stands in.
+        repo = tmp_path / "driver_repo"
+        repo.mkdir()
+        monkeypatch.setattr(plib, "_DRIVER_REPO_DIR", repo)
+        (repo / "D:x.py").write_bytes(b"X = 1")
+        old_bundle = tmp_path / "old.zip"
+        old_bundle.write_bytes(_zip_bytes({"drivers/D:x.py": "X = 1"}))
+
+        assert plib._drop_superseded_bundled_drivers(old_bundle) == []
+        assert (repo / "D:x.py").read_bytes() == b"X = 1"
+
+    def test_a_starter_driver_named_for_another_drive_is_not_reinstalled(
+        self, tmp_path, monkeypatch,
+    ):
+        repo = tmp_path / "driver_repo"
+        repo.mkdir()
+        monkeypatch.setattr(plib, "_DRIVER_REPO_DIR", repo)
+        new_bundle = tmp_path / "new.zip"
+        new_bundle.write_bytes(_zip_bytes({
+            "drivers/D:x.py": "X = 1",
+            "drivers/acme_widget.py": "OK = 1",
+        }))
+
+        plib._reinstall_bundled_drivers(new_bundle, ["D:x.py", "acme_widget.py"])
+
+        assert sorted(p.name for p in repo.iterdir()) == ["acme_widget.py"]
+
+
 class TestReplaceInLibrary:
     """Saving a room you saved earlier.
 

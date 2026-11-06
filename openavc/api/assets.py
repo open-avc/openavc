@@ -18,6 +18,9 @@ from fastapi.responses import FileResponse
 
 from openavc.api.auth import require_programmer_auth
 from openavc.core.asset_references import asset_users
+# The file types an asset may be live with the tree's other rules, because an
+# import and a backup restore ask them too.
+from openavc.core.asset_tree import ALLOWED_EXTENSIONS, AUDIO_EXTENSIONS
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -27,10 +30,6 @@ router = APIRouter(route_class=ProgrammerRoute, prefix="/api", dependencies=[Dep
 open_router = APIRouter(route_class=RenderRoute, prefix="/api")
 
 _engine = None
-
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico"}
-AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".m4a"}
-ALLOWED_EXTENSIONS = IMAGE_EXTENSIONS | AUDIO_EXTENSIONS
 
 IMAGE_MIME_TYPES = {
     "image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml",

@@ -411,11 +411,12 @@ def _seed_zip_to_library(zip_path: Path, project_id: str, lib: Path) -> None:
         # Extract scripts
         for name in zf.namelist():
             if name.startswith("scripts/") and name.endswith(".py"):
-                script_name = Path(name).name
-                if script_name:
-                    dest = project_dir / "scripts"
-                    dest.mkdir(exist_ok=True)
-                    (dest / script_name).write_bytes(zf.read(name))
+                target = plain_file_in(project_dir / "scripts", Path(name).name)
+                if target is None:
+                    log.warning("Skipping script with an unsafe file name: %r", name)
+                    continue
+                target.parent.mkdir(exist_ok=True)
+                target.write_bytes(zf.read(name))
 
         # Extract assets, folders intact — the rules are core/asset_tree.py's,
         # the same ones backup restore and bundle import write under.
@@ -456,7 +457,10 @@ def _drop_superseded_bundled_drivers(old_bundle: Path) -> list[str]:
                 fname = Path(name).name
                 if not fname or fname.startswith("_"):
                     continue
-                existing = _DRIVER_REPO_DIR / fname
+                existing = plain_file_in(_DRIVER_REPO_DIR, fname)
+                if existing is None:
+                    log.warning("Skipping bundled driver with an unsafe file name: %r", name)
+                    continue
                 if existing.is_file() and existing.read_bytes() == zf.read(name):
                     existing.unlink()
                     removed.append(fname)
@@ -480,8 +484,8 @@ def _reinstall_bundled_drivers(new_bundle: Path, names: list[str]) -> None:
             members = {Path(n).name: n for n in zf.namelist() if n.startswith("drivers/")}
             for fname in names:
                 member = members.get(fname)
-                dest = _DRIVER_REPO_DIR / fname
-                if member is None or dest.exists():
+                dest = plain_file_in(_DRIVER_REPO_DIR, fname)
+                if member is None or dest is None or dest.exists():
                     continue
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_bytes(zf.read(member))

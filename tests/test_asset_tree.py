@@ -109,6 +109,35 @@ def test_extract_skips_a_traversal_member(tmp_path: Path):
     assert not (tmp_path / "escaped.png").exists()
 
 
+def test_extract_takes_only_the_types_the_upload_takes(tmp_path: Path):
+    # An import, a restore and a seed all come through here. A page or a
+    # script in assets/ would be served by the open asset route from this
+    # server's own address; the upload never let one in.
+    zf = _zip({
+        "assets/logo.png": b"image",
+        "assets/rooms/PLAN.JPG": b"image, upper case",
+        "assets/chime.m4a": b"sound",
+        "assets/page.html": b"<html></html>",
+        "assets/rooms/run.js": b"alert(1)",
+        "assets/backup.zip": b"PK",
+        "assets/README": b"no extension",
+    })
+
+    written = asset_tree.extract_from_zip(zf, tmp_path / "assets")
+
+    assert sorted(written) == ["chime.m4a", "logo.png", "rooms/PLAN.JPG"]
+
+
+def test_no_type_the_upload_ever_took_is_refused_on_the_way_back_in():
+    # Nothing has been taken off the upload's list, so a restore or an import
+    # never refuses a file that some release let somebody upload. If a type
+    # leaves the list, a project that holds one loses it on its next restore:
+    # that is a decision, not a cleanup.
+    first_release = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico"}
+    sounds = {".mp3", ".wav", ".ogg", ".m4a"}
+    assert asset_tree.ALLOWED_EXTENSIONS >= first_release | sounds
+
+
 def test_extract_skips_a_dotfile_and_a_dot_folder(tmp_path: Path):
     zf = _zip({
         "assets/.DS_Store": b"junk",

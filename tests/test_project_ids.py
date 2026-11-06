@@ -46,7 +46,7 @@ def content(device_id="local", *, builtin=False, zipped=False):
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("project.avc", raw)
-        archive.writestr("assets/imported.txt", b"imported asset")
+        archive.writestr("assets/imported.png", b"imported asset")
     return buffer.getvalue(), "hall.zip"
 
 
@@ -82,7 +82,7 @@ def test_library_open_preserves_project_ids_connections_and_programming(host, zi
     save_project(path, reopened)
     assert [d.id for d in load_project(path).devices] == [d.id for d in reopened.devices]
     if zipped:
-        assert (path.parent / "assets/imported.txt").read_bytes() == b"imported asset"
+        assert (path.parent / "assets/imported.png").read_bytes() == b"imported asset"
 
 
 @pytest.mark.parametrize("zipped", [False, True])

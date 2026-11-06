@@ -39,7 +39,7 @@ def backup(target, zipped, forbidden=False):
         path = target.parent / "restored.zip"
         with zipfile.ZipFile(path, "w") as archive:
             archive.writestr("project.avc", raw)
-            archive.writestr("assets/from-backup.txt", b"restored asset")
+            archive.writestr("assets/from-backup.png", b"restored asset")
     else:
         path = target.parent / "restored.avc.bak"
         path.write_bytes(raw)
