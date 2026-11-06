@@ -3251,6 +3251,12 @@ class BaseDriver(ABC):
                 source_ip=str(self.config.get("host", "") or ""),
                 callback=self._counting_push(self._handle_push_datagram),
                 name=self.device_id,
+                # Connected to the simulator: every simulated device sends
+                # from 127.0.0.1, so its packets are told apart by the port
+                # its simulator sends from (udp_listener's docstring).
+                source_port=(
+                    self.udp_redirect[1] if self.udp_redirect is not None else None
+                ),
             )
         except OSError as e:
             hint = (

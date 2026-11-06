@@ -487,6 +487,16 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             isinstance(push, dict) and push.get("type") == "http_listener"
         )
         self._http_push_callbacks: list[str] = []
+        # Listener push emission: when the driver declares
+        # `push: {type: udp_listener}`, the `notifications:` templates go as
+        # one datagram each to the listener port its config names, on this
+        # computer (where the platform is), from this device's own port
+        # number (BaseSimulator.send_to_listener), and NOT to the control
+        # link: a real device set to send its changes to an address sends
+        # them only there.
+        self._push_udp_listener = self._resolve_push_udp_listener(
+            driver_def, config
+        )
 
         logger.info(
             "Auto-gen simulator for %s: %d command handlers, %d query handlers, %d state responses",
@@ -725,6 +735,35 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 push.get("path"),
             )
         return good
+
+    @staticmethod
+    def _resolve_push_udp_listener(
+        driver_def: dict, config: dict | None
+    ) -> int | None:
+        """Resolve a `push: {type: udp_listener}` block to the port the
+        device sends its packets to, or None. `{config_field}` templates
+        resolve against default_config overlaid with the instance config --
+        the same fields the real driver listens on."""
+        push = driver_def.get("push")
+        if not isinstance(push, dict) or push.get("type") != "udp_listener":
+            return None
+        merged = dict(driver_def.get("default_config") or {})
+        merged.update(config or {})
+        raw = push.get("port")
+        if isinstance(raw, str) and "{" in raw:
+            raw = safe_substitute(raw, merged)
+        try:
+            port = int(str(raw).strip())
+        except (TypeError, ValueError):
+            port = 0
+        if not (0 < port < 65536):
+            logger.warning(
+                "push block did not resolve to a UDP listener port "
+                "(port=%r) — simulator will not send notifications",
+                push.get("port"),
+            )
+            return None
+        return port
 
     def _resolve_push_tcp_listener(self, driver_def: dict) -> dict | None:
         """Resolve a `push: {type: tcp_listener}` block for dial-out emission.
@@ -3114,6 +3153,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             or self.sse_paths
             or self._push_tcp
             or self._push_http
+            or self._push_udp_listener
             or not (self._is_http or self._is_osc)
         )
 
@@ -3124,7 +3164,8 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         ``notifications:`` template on a state change, or a script handler's
         ``notify(text)``. The channel is the driver's declared push shape
         (multicast group, SSE stream, dial-back subscribers, webhook
-        callbacks); a driver with none pushes on the control link — every
+        callbacks, the UDP listener port); a driver with none pushes on the
+        control link — every
         connected TCP client, or the last UDP peer that spoke to the device
         (the peer a real UDP server answers, and the only one it knows).
         """
@@ -3160,6 +3201,11 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                     url, msg,
                     headers={"Content-Type": self._callback_content_type(msg)},
                 ))
+        elif self._push_udp_listener:
+            # One datagram per notification to the port the device is set to
+            # send to; nobody registers, so it goes whether or not the
+            # platform is listening, as on the device.
+            self.send_to_listener(data, self._push_udp_listener)
         elif self._is_udp and not self._is_osc:
             # Connectionless: the device can only push to a peer it has
             # heard from, so the last sender is the subscriber.

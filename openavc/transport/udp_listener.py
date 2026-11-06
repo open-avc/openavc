@@ -25,6 +25,15 @@ the network sends to the same port, so listeners are shared:
   claims is dropped. A loopback-host subscription (the simulator redirect
   points devices at 127.0.0.1) accepts loopback plus every local interface
   address, since a local sender may leave through a real interface.
+- A device connected to the **simulator** is told apart by **source port**
+  as well. Every simulated device sends from 127.0.0.1, so the address
+  cannot separate two of them on one port; each simulator sends from its own
+  device port instead, and the driver names that port when it subscribes
+  (``source_port``). Such a subscription takes only what arrives from its own
+  port, and a datagram it claims goes to it alone, never to an address-only
+  subscription that would also match loopback (a real program on this
+  computer). Without ``source_port`` nothing changes: a real device, or a
+  real program here, is matched by address only, whatever port it sends from.
 - Each datagram is delivered whole, as one ``bytes`` object: a datagram is
   already one message, so there is no framing here. The driver splits it on
   its delimiter (``BaseDriver._handle_push_datagram``) or decodes it itself.
@@ -67,10 +76,14 @@ class UdpListenerSubscription:
         source_ips: set[str],
         callback: Callable[[bytes, tuple[str, int]], Any],
         name: str,
+        source_port: int | None = None,
     ) -> None:
         self._listener = listener
         # The exact source addresses this subscription accepts.
         self._source_ips = source_ips
+        # Set only for a device connected to the simulator: the port its
+        # simulator sends from (see the module docstring).
+        self.source_port = source_port
         self._callback = callback
         self.name = name
         self._closed = False
@@ -130,12 +143,28 @@ class _PortListener:
         self._sock = sock
         log.debug("UDP push listener opened on port %d", self.port)
 
+    def recipients(self, addr: tuple[str, int]) -> list[UdpListenerSubscription]:
+        """The subscriptions one datagram from ``addr`` goes to.
+
+        A simulated device's subscription (``source_port`` set) that matches
+        both the address and the port claims the datagram alone. Otherwise it
+        goes to every address-only subscription that matches; a simulated
+        device never takes a datagram from a port that is not its own.
+        """
+        src_ip, src_port = str(addr[0]), addr[1]
+        live = [
+            sub for sub in self.subscriptions
+            if not sub._closed and sub.matches_source(src_ip)
+        ]
+        claimed = [sub for sub in live if sub.source_port == src_port]
+        if claimed:
+            return claimed
+        return [sub for sub in live if sub.source_port is None]
+
     def deliver(self, data: bytes, addr: tuple[str, int]) -> None:
         src_ip = str(addr[0])
         delivered = False
-        for sub in list(self.subscriptions):
-            if sub._closed or not sub.matches_source(src_ip):
-                continue
+        for sub in self.recipients(addr):
             delivered = True
             record_traffic(
                 sub.name, RX, data, channel="udp_listener",
@@ -210,9 +239,18 @@ class _Registry:
         source_ip: str,
         callback: Callable[[bytes, tuple[str, int]], Any],
         name: str,
+        source_port: int | None = None,
     ) -> UdpListenerSubscription:
         if isinstance(port, bool) or not isinstance(port, int) or not (0 < port < 65536):
             raise ValueError(f"UDP push listener port must be 1-65535, not {port!r}")
+        if source_port is not None and (
+            isinstance(source_port, bool)
+            or not isinstance(source_port, int)
+            or not (0 < source_port < 65536)
+        ):
+            raise ValueError(
+                f"UDP push source port must be 1-65535, not {source_port!r}"
+            )
         async with self._lock:
             listener = self._listeners.get(port)
             if listener is None or listener.transport is None:
@@ -221,7 +259,9 @@ class _Registry:
                 self._listeners[port] = listener
 
             source_ips = await resolve_source_ips(source_ip, name)
-            sub = UdpListenerSubscription(listener, source_ips, callback, name)
+            sub = UdpListenerSubscription(
+                listener, source_ips, callback, name, source_port
+            )
             listener.subscriptions.append(sub)
             return sub
 
@@ -255,8 +295,13 @@ async def subscribe(
     source_ip: str,
     callback: Callable[[bytes, tuple[str, int]], Any],
     name: str,
+    source_port: int | None = None,
 ) -> UdpListenerSubscription:
     """Listen on UDP ``port`` and deliver the datagrams ``source_ip`` sends.
+
+    ``source_port`` is for a device connected to the simulator only: the
+    port its simulator sends from, which then has to match as well (see the
+    module docstring). Leave it out for a real device.
 
     Returns a handle; ``await handle.close()`` detaches it (the shared socket
     is closed when the last subscriber leaves). Raises ``OSError`` when the
@@ -264,7 +309,7 @@ async def subscribe(
     callback receives ``(data, (src_ip, src_port))``, one datagram a call,
     and may be sync or async.
     """
-    return await _registry.subscribe(port, source_ip, callback, name)
+    return await _registry.subscribe(port, source_ip, callback, name, source_port)
 
 
 async def close_all() -> None:

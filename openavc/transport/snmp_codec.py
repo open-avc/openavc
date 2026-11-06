@@ -20,6 +20,10 @@ Two parsing surfaces, deliberately:
     when it is about to be written back, and a refused SET must reach the user
     as the agent's own reason rather than as silence.
 
+Traps (a v2c notification an agent sends unasked, to UDP 162 by convention)
+have both halves at the bottom: `build_snmp_trap` for a simulator, and
+`parse_snmp_trap` for a driver reading what its `udp_listener` push hands it.
+
 References:
   - RFC 1157 (SNMP v1), RFC 3416 (SNMP v2c PDUs), ITU-T X.690 (BER)
 """
@@ -746,6 +750,27 @@ def decode_typed_value(
     return "opaque", raw.hex(), offset + length
 
 
+def _decode_varbind_list(data: bytes, offset: int) -> list[SnmpVarBind]:
+    """Decode the varbind list that ends every v2c PDU, starting at
+    ``offset`` (its SEQUENCE tag). An absent or cut-short list yields what
+    was readable."""
+    varbinds: list[SnmpVarBind] = []
+    if offset < len(data) and data[offset] == ASN1_SEQUENCE:
+        offset += 1
+        list_len, offset = ber_decode_length(data, offset)
+        end = offset + list_len
+        while offset < end and offset < len(data):
+            if data[offset] != ASN1_SEQUENCE:
+                break
+            offset += 1
+            _vb_len, offset = ber_decode_length(data, offset)
+            oid, offset = ber_decode_oid(data, offset)
+            type_name, value, offset = decode_typed_value(data, offset)
+            if oid:
+                varbinds.append(SnmpVarBind(oid, type_name, value))
+    return varbinds
+
+
 def parse_snmp_message(data: bytes) -> SnmpMessage | None:
     """Parse an SNMP response PDU into a typed message.
 
@@ -772,20 +797,7 @@ def parse_snmp_message(data: bytes) -> SnmpMessage | None:
         error_status, offset = ber_decode_integer(data, offset)
         error_index, offset = ber_decode_integer(data, offset)
 
-        varbinds: list[SnmpVarBind] = []
-        if offset < len(data) and data[offset] == ASN1_SEQUENCE:
-            offset += 1
-            list_len, offset = ber_decode_length(data, offset)
-            end = offset + list_len
-            while offset < end and offset < len(data):
-                if data[offset] != ASN1_SEQUENCE:
-                    break
-                offset += 1
-                _vb_len, offset = ber_decode_length(data, offset)
-                oid, offset = ber_decode_oid(data, offset)
-                type_name, value, offset = decode_typed_value(data, offset)
-                if oid:
-                    varbinds.append(SnmpVarBind(oid, type_name, value))
+        varbinds = _decode_varbind_list(data, offset)
 
         return SnmpMessage(
             request_id=request_id,
@@ -881,20 +893,7 @@ def parse_snmp_request(data: bytes) -> SnmpRequest | None:
         _error_status, offset = ber_decode_integer(data, offset)
         _error_index, offset = ber_decode_integer(data, offset)
 
-        varbinds: list[SnmpVarBind] = []
-        if offset < len(data) and data[offset] == ASN1_SEQUENCE:
-            offset += 1
-            list_len, offset = ber_decode_length(data, offset)
-            end = offset + list_len
-            while offset < end and offset < len(data):
-                if data[offset] != ASN1_SEQUENCE:
-                    break
-                offset += 1
-                _vb_len, offset = ber_decode_length(data, offset)
-                oid, offset = ber_decode_oid(data, offset)
-                type_name, value, offset = decode_typed_value(data, offset)
-                if oid:
-                    varbinds.append(SnmpVarBind(oid, type_name, value))
+        varbinds = _decode_varbind_list(data, offset)
 
         return SnmpRequest(
             pdu_type=pdu_type,
@@ -941,3 +940,126 @@ def build_snmp_response(
         ber_encode_string(community),
         pdu,
     ])
+
+
+# --- Notifications (traps) ---------------------------------------------------
+# An agent sends a v2c trap unasked, to a manager address and port set on the
+# agent (162 by convention), and expects no answer. RFC 3416 §4.2.6: the PDU
+# is shaped like a request, and its first two varbinds are always
+# sysUpTime.0 (when it happened, in hundredths of a second since the agent
+# started) and snmpTrapOID.0 (which notification it is); the rest are the
+# notification's own objects.
+
+SNMP_TRAP_V2 = 0xA7
+SYS_UP_TIME_OID = "1.3.6.1.2.1.1.3.0"
+SNMP_TRAP_OID_OID = "1.3.6.1.6.3.1.1.4.1.0"
+
+
+@dataclass(frozen=True)
+class SnmpTrap:
+    """A parsed SNMP v2c trap."""
+
+    community: str
+    request_id: int
+    #: sysUpTime.0 when the agent sent it, in hundredths of a second.
+    uptime: int | None
+    #: snmpTrapOID.0: which notification this is.
+    trap_oid: str | None
+    #: The notification's own objects, after the two standard ones.
+    varbinds: tuple[SnmpVarBind, ...]
+
+    def value(self, oid: str) -> int | str | None:
+        """The value one of the notification's objects carries, or None."""
+        for vb in self.varbinds:
+            if vb.oid == oid:
+                return vb.value
+        return None
+
+
+def build_snmp_trap(
+    community: str,
+    request_id: int,
+    uptime: int,
+    trap_oid: str,
+    varbinds: list[tuple[str, str, int | str | bytes | None]] | None = None,
+) -> bytes:
+    """Build an SNMP v2c trap (SNMPv2-Trap-PDU, tag 0xA7).
+
+    ``uptime`` is sysUpTime.0 in hundredths of a second, ``trap_oid`` the
+    notification's OID, ``varbinds`` its own (oid, type_name, value) triples.
+    The two standard varbinds go first, as RFC 3416 requires.
+    """
+    bindings: list[tuple[str, str, int | str | bytes | None]] = [
+        (SYS_UP_TIME_OID, "timeticks", uptime),
+        (SNMP_TRAP_OID_OID, "oid", trap_oid),
+        *(varbinds or []),
+    ]
+    encoded = [
+        ber_encode_sequence([
+            ber_encode_oid(oid),
+            encode_typed_value(type_name, value),
+        ])
+        for oid, type_name, value in bindings
+    ]
+    pdu = ber_encode_tagged(SNMP_TRAP_V2, [
+        ber_encode_integer(request_id),
+        ber_encode_integer(0),   # error-status, always 0 in a trap
+        ber_encode_integer(0),   # error-index
+        ber_encode_sequence(encoded),
+    ])
+    return ber_encode_sequence([
+        ber_encode_integer(SNMP_VERSION_2C),
+        ber_encode_string(community),
+        pdu,
+    ])
+
+
+def parse_snmp_trap(data: bytes) -> SnmpTrap | None:
+    """Parse an SNMP v2c trap.
+
+    Returns None for anything else: a v1 trap (another PDU shape), a
+    response, a truncated datagram. The community comes back for the caller
+    to check; this does not decide which communities are accepted.
+    """
+    try:
+        offset = 0
+        if offset >= len(data) or data[offset] != ASN1_SEQUENCE:
+            return None
+        offset += 1
+        _msg_len, offset = ber_decode_length(data, offset)
+
+        version, offset = ber_decode_integer(data, offset)
+        if version != SNMP_VERSION_2C:
+            return None
+        community, offset = ber_decode_string(data, offset)
+
+        if offset >= len(data) or data[offset] != SNMP_TRAP_V2:
+            return None
+        offset += 1
+        _pdu_len, offset = ber_decode_length(data, offset)
+
+        request_id, offset = ber_decode_integer(data, offset)
+        _error_status, offset = ber_decode_integer(data, offset)
+        _error_index, offset = ber_decode_integer(data, offset)
+
+        uptime: int | None = None
+        trap_oid: str | None = None
+        rest: list[SnmpVarBind] = []
+        for vb in _decode_varbind_list(data, offset):
+            if vb.oid == SYS_UP_TIME_OID and uptime is None:
+                uptime = vb.value if isinstance(vb.value, int) else None
+            elif vb.oid == SNMP_TRAP_OID_OID and trap_oid is None:
+                trap_oid = vb.value if isinstance(vb.value, str) else None
+            else:
+                rest.append(vb)
+
+        return SnmpTrap(
+            community=community,
+            request_id=request_id,
+            uptime=uptime,
+            trap_oid=trap_oid,
+            varbinds=tuple(rest),
+        )
+    except (ValueError, IndexError, KeyError):
+        log.debug("Failed to parse SNMP trap", exc_info=True)
+        return None

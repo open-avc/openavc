@@ -24,17 +24,37 @@ simulator is a driver whose error handling has never run.
 
 Runs on the shared datagram server, so latency, jitter, drops and the
 injected error modes apply here exactly as they do to the other UDP bases.
+
+A device that also sends traps (its driver declares
+`push: {type: udp_listener}`) sends one with `send_trap()` wherever the
+simulated event happens, here when an outlet is switched:
+
+        def write_oid(self, oid, type_name, value):
+            status = super().write_oid(oid, type_name, value)
+            if status == 0 and oid.startswith("1.3.6.1.4.1.99999.2.1.3."):
+                self.send_trap(
+                    "1.3.6.1.4.1.99999.0.1",
+                    [(oid, "integer", value)],
+                    port=int(self.config.get("trap_port", 162)),
+                )
+            return status
+
+It goes to the platform's listener port from this agent's own socket, the
+way `BaseSimulator.send_to_listener` sends any packet.
 """
 
 from __future__ import annotations
 
 import logging
+import time
 
 from openavc.simulator.base import BaseSimulator
 from openavc.simulator.datagram_server import DatagramServerMixin
 from openavc.transport.snmp_codec import (
     ERROR_STATUS_NAMES,
+    SYS_UP_TIME_OID,
     build_snmp_response,
+    build_snmp_trap,
     oid_sort_key,
     parse_snmp_request,
 )
@@ -59,6 +79,8 @@ class SNMPSimulator(DatagramServerMixin, BaseSimulator):
     #: Community strings. A SET is accepted only under WRITE_COMMUNITY.
     READ_COMMUNITY = "public"
     WRITE_COMMUNITY = "private"
+    #: The community a trap is sent under.
+    TRAP_COMMUNITY = "public"
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -68,6 +90,8 @@ class SNMPSimulator(DatagramServerMixin, BaseSimulator):
         self.oids: dict[str, tuple] = {
             oid: tuple(entry) for oid, entry in self.OIDS.items()
         }
+        self._started_at = time.monotonic()
+        self._trap_request_id = 0
 
     # ── The MIB ──
 
@@ -186,6 +210,40 @@ class SNMPSimulator(DatagramServerMixin, BaseSimulator):
             error_status=error_status,
             error_index=error_index,
         )
+
+    # ── Traps ──
+
+    def uptime_ticks(self) -> int:
+        """sysUpTime in hundredths of a second: the MIB's own sysUpTime.0
+        when it holds a number, else the time since this agent started."""
+        found = self.read_oid(SYS_UP_TIME_OID)
+        if found is not None and isinstance(found[1], int):
+            return found[1]
+        return int((time.monotonic() - self._started_at) * 100)
+
+    def send_trap(
+        self,
+        trap_oid: str,
+        varbinds: list[tuple[str, str, object]] | None = None,
+        port: int = 162,
+    ) -> bool:
+        """Send one v2c trap to the platform's listener port.
+
+        ``trap_oid`` names the notification, ``varbinds`` are its own
+        (oid, type_name, value) triples (sysUpTime.0 and snmpTrapOID.0 are
+        added first). ``port`` is where the device is set to send traps:
+        read it from the driver's setting in ``self.config``. Returns whether
+        it was sent (nothing goes while the device is not responding).
+        """
+        self._trap_request_id = (self._trap_request_id + 1) % 0x7FFFFFFF
+        packet = build_snmp_trap(
+            self.TRAP_COMMUNITY,
+            self._trap_request_id,
+            self.uptime_ticks(),
+            trap_oid,
+            list(varbinds or []),
+        )
+        return self.send_to_listener(packet, port)
 
     # ── Lifecycle ──
 

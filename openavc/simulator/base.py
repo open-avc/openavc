@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import socket
 import time
 from abc import ABC, abstractmethod
 from typing import Any, Callable
@@ -370,6 +371,53 @@ class BaseSimulator(ABC):
 
     def clear_protocol_log(self) -> None:
         self._protocol_log.clear()
+
+    # ── Packets to the platform's UDP listener ──
+
+    def send_to_listener(self, data: bytes, port: int) -> bool:
+        """Send one packet to the platform's UDP listener port.
+
+        For a device whose driver declares ``push: {type: udp_listener}``: on
+        site it is set to send each change to the controller's address and a
+        port. In simulation the platform runs on this computer, so the packet
+        goes to 127.0.0.1 on ``port`` (the driver's listener port setting).
+
+        It leaves from this device's own port number, because that is how the
+        platform tells simulated devices apart (all of them send from
+        127.0.0.1). A datagram simulator sends from its own socket; any other
+        opens a UDP socket on the same number for the one send (UDP and TCP
+        numbers are separate). Nothing is sent while the device is not
+        responding, or before it has started. Returns whether it was sent.
+        """
+        if self._silenced or not self.port:
+            return False
+        try:
+            target_port = int(port)
+        except (TypeError, ValueError):
+            target_port = 0
+        if not (0 < target_port < 65536):
+            logger.warning(
+                "%s: UDP listener port %r is not a port; nothing sent",
+                self.name, port,
+            )
+            return False
+        target = ("127.0.0.1", target_port)
+        try:
+            udp = getattr(self, "_udp_transport", None)
+            if udp is not None:
+                udp.sendto(data, target)
+            else:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                    sock.bind(("127.0.0.1", self.port))
+                    sock.sendto(data, target)
+        except OSError as e:
+            logger.warning(
+                "%s: could not send to the UDP listener on port %d from "
+                "port %d: %s", self.name, target_port, self.port, e,
+            )
+            return False
+        self.log_protocol("out", data)
+        return True
 
     # ── Change Listeners ──
 
