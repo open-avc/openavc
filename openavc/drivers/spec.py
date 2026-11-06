@@ -290,6 +290,7 @@ PUSH_TYPE_KEYS: dict[str, frozenset[str]] = {
         "type", "port", "frame_parser", "register", "unregister",
     }),
     "http_listener": frozenset({"type"}),
+    "udp_listener": frozenset({"type", "port"}),
 }
 
 # The keys each push type requires (beyond "type" itself). Ordered — the
@@ -299,6 +300,7 @@ PUSH_TYPE_REQUIRED_KEYS: dict[str, tuple[str, ...]] = {
     "sse": ("path",),
     "tcp_listener": ("port",),
     "http_listener": (),
+    "udp_listener": ("port",),
 }
 
 # The keys a push.session block accepts (sse only): how the device names the
@@ -456,6 +458,13 @@ def is_multicast_group(value: str) -> bool:
 #   since_values  per-value floors for an enum whose members did not all
 #               land together, e.g. {"table": "0.23.0"} on a config field's
 #               type. Applies on top of the node's own `since`.
+#   yaml_since_values  per-value floors that bind a YAML driver only, for a
+#               value an older release's YAML loader refuses (the whole
+#               driver fails to load) while its Python loader ignores it
+#               (the driver runs without the feature). A Python driver
+#               using the value raises no floor: the Python schema renders
+#               it as an enhancement. Prove both halves on the older release
+#               before choosing it over since_values.
 #   since_with  per-context floors, a tuple of {keys, version}: this field
 #               needs that version when the entry ALSO carries those sibling
 #               keys. For a field that grew a second form later than the
@@ -2058,13 +2067,16 @@ DEFS = {
     },
     'pushBlock': {
         'type': 'object',
-        'doc': "Device-initiated push notifications arriving on a channel the platform opens (not the established control connection). type: multicast joins the device's notification group; incoming datagrams feed the driver's responses rules (split on the driver delimiter first) and are accepted only from the device's own address. type: sse holds GET path(s) open on the driver's own HTTP session with Accept: text/event-stream; each event's data block feeds the responses rules whole (pair with json: true rules for JSON payloads). An sse stream the device treats as a session it names (a Content-Location header, an opening event) declares a session block: the platform reads the id, runs the register command(s) against it ({push_session} substitutes the id into their paths and bodies) on every (re)open, reopens the stream when the device sends the close event, and runs unregister on a graceful disconnect. type: tcp_listener opens a local TCP port the device dials back to after a registration command carrying {listener_port} tells it where; frames are parsed by the declared frame_parser, split on the driver delimiter, and accepted only from the device's own address. In every shape the subscription starts before on_connect (and any register command) runs, and stops on disconnect; a dropped SSE stream reconnects with exponential backoff. type: http_listener accepts the device's own HTTP POSTs (webhooks) on a callback path the platform assigns per device — send the URL to the device from an on_connect registration command, where the token {push_callback_url} substitutes it into command bodies, paths, and headers; request bodies feed the responses rules whole and are accepted only from the device's own address.",
+        'doc': "Device-initiated push notifications arriving on a channel the platform opens (not the established control connection). type: multicast joins the device's notification group; incoming datagrams feed the driver's responses rules (split on the driver delimiter first) and are accepted only from the device's own address. type: sse holds GET path(s) open on the driver's own HTTP session with Accept: text/event-stream; each event's data block feeds the responses rules whole (pair with json: true rules for JSON payloads). An sse stream the device treats as a session it names (a Content-Location header, an opening event) declares a session block: the platform reads the id, runs the register command(s) against it ({push_session} substitutes the id into their paths and bodies) on every (re)open, reopens the stream when the device sends the close event, and runs unregister on a graceful disconnect. type: tcp_listener opens a local TCP port the device dials back to after a registration command carrying {listener_port} tells it where; frames are parsed by the declared frame_parser, split on the driver delimiter, and accepted only from the device's own address. In every shape the subscription starts before on_connect (and any register command) runs, and stops on disconnect; a dropped SSE stream reconnects with exponential backoff. type: http_listener accepts the device's own HTTP POSTs (webhooks) on a callback path the platform assigns per device — send the URL to the device from an on_connect registration command, where the token {push_callback_url} substitutes it into command bodies, paths, and headers; request bodies feed the responses rules whole and are accepted only from the device's own address. type: udp_listener opens a local UDP port the device sends packets to, at an address and port set on the device itself (an SNMP agent's trap destination): the port is shared by every device that sends to it, each datagram feeds the responses rules (split on the driver delimiter first) and is accepted only from the device's own address.",
         'since': '0.23.0',
         'fields': {
             'type': {
                 'type': 'string',
                 'enum': tuple(PUSH_TYPE_KEYS),
-                'doc': 'Push channel kind. multicast = UDP group listen; sse = Server-Sent Events stream on the HTTP transport; tcp_listener = local port the device dials back to; http_listener = the device POSTs to a callback URL OpenAVC assigns (no other keys; use {push_callback_url} in the registration command).',
+                'doc': 'Push channel kind. multicast = UDP group listen; sse = Server-Sent Events stream on the HTTP transport; tcp_listener = local port the device dials back to; http_listener = the device POSTs to a callback URL OpenAVC assigns (no other keys; use {push_callback_url} in the registration command); udp_listener = local UDP port the device sends packets to (set on the device; nothing registers).',
+                # A release before it refuses a YAML driver that names it and
+                # runs a Python one without it (v0.34.0, v0.36.0, v0.39.0).
+                'yaml_since_values': {'udp_listener': '0.40.0'},
             },
             'group': {
                 'type': ['string'],
@@ -2072,7 +2084,7 @@ DEFS = {
             },
             'port': {
                 'type': ['integer', 'string'],
-                'doc': 'multicast: UDP port (1-65535) as an integer literal, or a {config_field} template string. tcp_listener: local inbound TCP port (0-65535, 0 = OS-assigned) or a {config_field} template.',
+                'doc': 'multicast: UDP port (1-65535) as an integer literal, or a {config_field} template string. tcp_listener: local inbound TCP port (0-65535, 0 = OS-assigned) or a {config_field} template. udp_listener: local inbound UDP port (1-65535), the one the device is set to send to, or a {config_field} template.',
             },
             'path': {
                 'type': ['string', 'array'],
@@ -3256,7 +3268,7 @@ def block_has_fixed_keys(node: dict) -> bool:
     return True
 
 
-def node_doc(node: dict, values: object = None) -> str | None:
+def node_doc(node: dict, values: object = None, tier: str = "yaml") -> str | None:
     """A registry node's documentation, its platform floor appended.
 
     The floor is written once as ``since`` and rendered from there into
@@ -3270,6 +3282,9 @@ def node_doc(node: dict, values: object = None) -> str | None:
     surface being generated does not offer -- the YAML schema telling a
     `.avcdriver` author what version "snmp" needs, when a YAML driver
     cannot declare it at all.
+
+    ``tier`` is the surface ("yaml" or "python"): a ``yaml_since_values``
+    entry is a floor in the YAML one and an enhancement in the Python one.
     """
     parts = [node["doc"]] if node.get("doc") else []
     if node.get("since"):
@@ -3279,6 +3294,17 @@ def node_doc(node: dict, values: object = None) -> str | None:
         if published is not None and value not in published:
             continue
         parts.append(f'Value "{value}" requires platform {version}.')
+    for value, version in sorted((node.get("yaml_since_values") or {}).items()):
+        if published is not None and value not in published:
+            continue
+        if tier == "python":
+            parts.append(
+                f'Value "{value}" takes effect on platform {version}; an older '
+                f"platform ignores it and still runs a Python driver, so it "
+                f"does not raise min_platform_version."
+            )
+        else:
+            parts.append(f'Value "{value}" requires platform {version}.')
     for gate in node.get("since_with") or ():
         named = ", ".join(f'"{k}"' for k in gate["keys"])
         parts.append(f"Alongside {named}, requires platform {gate['version']}.")
@@ -3346,7 +3372,9 @@ def _fits(node: dict, value: object) -> bool:
     return True
 
 
-def platform_requirements(driver_def: object) -> list[tuple[str, str]]:
+def platform_requirements(
+    driver_def: object, tier: str = "yaml"
+) -> list[tuple[str, str]]:
     """Platform-version floors this definition's own fields impose.
 
     Returns ``(location, version)`` pairs — ``("commands.set_input.query_for",
@@ -3359,6 +3387,9 @@ def platform_requirements(driver_def: object) -> list[tuple[str, str]]:
     that reaches for a platform API in code, or builds part of its
     DRIVER_INFO at runtime, can need a newer platform than this can see —
     the result is a floor, never a ceiling.
+
+    ``tier`` is the driver's format, "yaml" (a ``.avcdriver``) or "python"
+    (a DRIVER_INFO): ``yaml_since_values`` floors count for YAML only.
     """
     found: dict[str, tuple[int, ...]] = {}
     text: dict[str, str] = {}
@@ -3386,6 +3417,9 @@ def platform_requirements(driver_def: object) -> list[tuple[str, str]]:
         since_values = node.get("since_values")
         if since_values and isinstance(value, str) and value in since_values:
             record(f"{loc}: {value}", since_values[value])
+        yaml_values = node.get("yaml_since_values") if tier == "yaml" else None
+        if yaml_values and isinstance(value, str) and value in yaml_values:
+            record(f"{loc}: {value}", yaml_values[value])
         if isinstance(value, list):
             item = node.get("items")
             for index, entry in enumerate(value):
@@ -3425,9 +3459,9 @@ def platform_requirements(driver_def: object) -> list[tuple[str, str]]:
     return ordered
 
 
-def required_platform_version(driver_def: object) -> str | None:
+def required_platform_version(driver_def: object, tier: str = "yaml") -> str | None:
     """The highest platform floor in a definition, or None if it has none."""
-    requirements = platform_requirements(driver_def)
+    requirements = platform_requirements(driver_def, tier)
     return requirements[0][1] if requirements else None
 
 

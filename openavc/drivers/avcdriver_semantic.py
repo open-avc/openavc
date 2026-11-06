@@ -981,7 +981,10 @@ def _requirement_summary(
 
 
 def platform_version_errors(
-    driver_def: dict[str, Any], *, require_declaration: bool = False
+    driver_def: dict[str, Any],
+    *,
+    require_declaration: bool = False,
+    tier: str = "yaml",
 ) -> list[str]:
     """Check ``min_platform_version`` against the fields the driver uses.
 
@@ -997,10 +1000,13 @@ def platform_version_errors(
     driver has no install gate to satisfy and is being written against the
     platform it is sitting on. On for publishing, where the field is what
     stops the driver reaching someone running an older release.
+
+    ``tier`` is the driver's format ("yaml" or "python"); a few floors bind
+    one format only (``spec.platform_requirements``).
     """
     if not isinstance(driver_def, dict):
         return []
-    requirements = platform_requirements(driver_def)
+    requirements = platform_requirements(driver_def, tier)
     if not requirements:
         return []
     floor = requirements[0][1]
@@ -1839,7 +1845,8 @@ def validate_driver_definition(
     # command tells it where ({listener_port} substitution); http_listener
     # accepts device POSTs on a platform-assigned callback path (no keys of
     # its own — the URL is built at runtime and substitutes into commands as
-    # {push_callback_url}).
+    # {push_callback_url}); udp_listener opens a local UDP port the device
+    # was set to send packets to.
     errors.ctx = "push"
     push_def = driver_def.get("push")
     if push_def is not None:
@@ -1859,7 +1866,7 @@ def validate_driver_definition(
             if ptype not in _push_known_keys:
                 errors.append(
                     "push: missing or unknown 'type' "
-                    "(supported: multicast, sse, tcp_listener, http_listener)"
+                    f"(supported: {', '.join(_push_known_keys)})"
                 )
             known_keys = _push_known_keys.get(
                 ptype,
@@ -1906,6 +1913,25 @@ def validate_driver_definition(
                             f"{{config_field}} template"
                         )
 
+                pport = push_def.get("port")
+                if pport is None:
+                    errors.append("push: missing 'port'")
+                elif isinstance(pport, str) and "{" in pport:
+                    _push_template_ok("port", pport)
+                elif (
+                    isinstance(pport, bool)
+                    or not isinstance(pport, int)
+                    or not (0 < pport < 65536)
+                ):
+                    errors.append(
+                        "push: port must be an integer 1-65535 or a "
+                        "{config_field} template"
+                    )
+
+            elif ptype == "udp_listener":
+                # The local UDP port the device was set to send to. Never 0:
+                # a person types this port into the device, so it has to be
+                # one they can know.
                 pport = push_def.get("port")
                 if pport is None:
                     errors.append("push: missing 'port'")

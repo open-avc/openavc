@@ -800,7 +800,7 @@
   "push: unknown key(s): banana (known keys for type 'multicast': group, port, type)"
  ],
  "push_unknown_type": [
-  "push: missing or unknown 'type' (supported: multicast, sse, tcp_listener, http_listener)"
+  "push: missing or unknown 'type' (supported: multicast, sse, tcp_listener, http_listener, udp_listener)"
  ],
  "query_entry_page_size_below_two": [
   "polling.queries[0]: page_size must be a whole number, 2 or more (how many children one reply covers)"

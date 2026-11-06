@@ -114,6 +114,7 @@ export const PUSH_KEYS_BY_TYPE: Readonly<Record<string, ReadonlySet<string>>> = 
   sse: new Set(["idle_timeout", "path", "register", "session", "type", "unregister"]),
   tcp_listener: new Set(["frame_parser", "port", "register", "type", "unregister"]),
   http_listener: new Set(["type"]),
+  udp_listener: new Set(["port", "type"]),
 };
 
 /**
@@ -1486,7 +1487,12 @@ export interface DriverPushRegisterEntry {
  * device from an on_connect registration command, where the token
  * {push_callback_url} substitutes it into command bodies, paths, and headers;
  * request bodies feed the responses rules whole and are accepted only from the
- * device's own address. Requires platform 0.23.0.
+ * device's own address. type: udp_listener opens a local UDP port the device
+ * sends packets to, at an address and port set on the device itself (an SNMP
+ * agent's trap destination): the port is shared by every device that sends to
+ * it, each datagram feeds the responses rules (split on the driver delimiter
+ * first) and is accepted only from the device's own address. Requires platform
+ * 0.23.0.
  */
 export interface DriverPushDef {
   /**
@@ -1494,7 +1500,9 @@ export interface DriverPushDef {
    * stream on the HTTP transport; tcp_listener = local port the device dials
    * back to; http_listener = the device POSTs to a callback URL OpenAVC
    * assigns (no other keys; use {push_callback_url} in the registration
-   * command).
+   * command); udp_listener = local UDP port the device sends packets to (set
+   * on the device; nothing registers). Value "udp_listener" requires platform
+   * 0.40.0.
    */
   type?: string;
   /**
@@ -1507,7 +1515,9 @@ export interface DriverPushDef {
   /**
    * multicast: UDP port (1-65535) as an integer literal, or a {config_field}
    * template string. tcp_listener: local inbound TCP port (0-65535, 0 = OS-
-   * assigned) or a {config_field} template.
+   * assigned) or a {config_field} template. udp_listener: local inbound UDP
+   * port (1-65535), the one the device is set to send to, or a {config_field}
+   * template.
    */
   port?: number | string;
   /**

@@ -78,7 +78,8 @@ _HANDLED_KEYS = frozenset(
         # Platform floors are rendered into the description (spec.node_doc)
         # rather than emitted as keywords of their own — JSON Schema has no
         # way to say "reading this field needs a newer platform".
-        "since", "since_values", "since_with", "enhancement_since",
+        "since", "since_values", "yaml_since_values", "since_with",
+        "enhancement_since",
     }
 )
 
@@ -104,7 +105,7 @@ def _node_to_schema(node: dict[str, Any], tier: str) -> Any:
         if tier == "python" and "python_enum" in node:
             enum = node["python_enum"]
         out["enum"] = list(enum)
-    doc = spec.node_doc(node, enum)
+    doc = spec.node_doc(node, enum, tier)
     if doc:
         out["description"] = doc
     if "required" in node:

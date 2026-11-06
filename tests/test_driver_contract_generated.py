@@ -45,8 +45,9 @@ def test_committed_artifact_matches_registry(rel_path: str) -> None:
 def test_python_variant_differs_only_in_the_python_tier() -> None:
     """The Python-driver schema is the YAML schema plus exactly the
     Python-tier widenings: the Python-only transports, kind:"setup" actions,
-    the Python-only param types ("file"), and the platform floors that belong
-    to a Python-only value."""
+    the Python-only param types ("file"), the platform floors that belong
+    to a Python-only value, and a YAML-only floor (``yaml_since_values``),
+    which the Python schema states as an enhancement."""
     yaml_schema = build_schema("yaml")
     python_schema = build_schema("python")
 
@@ -61,6 +62,10 @@ def test_python_variant_differs_only_in_the_python_tier() -> None:
     ptype["enum"] = ptype["enum"] + list(spec.PYTHON_ONLY_PARAM_TYPES)
     ptype["description"] = spec.node_doc(
         spec.DEFS["paramEntry"]["fields"]["type"], ptype["enum"],
+    )
+    push_type = yaml_schema["$defs"]["pushBlock"]["properties"]["type"]
+    push_type["description"] = spec.node_doc(
+        spec.DEFS["pushBlock"]["fields"]["type"], push_type["enum"], "python",
     )
     yaml_schema["$id"] = python_schema["$id"]
     yaml_schema["title"] = python_schema["title"]

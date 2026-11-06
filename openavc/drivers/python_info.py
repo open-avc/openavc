@@ -256,7 +256,7 @@ def python_driver_info_issues(
     # actually uses. Decidable from the dict alone — a block this driver
     # builds at runtime is simply invisible here, which understates the floor
     # and never invents one.
-    issues.extend(platform_version_errors(info))
+    issues.extend(platform_version_errors(info, tier="python"))
 
     # And the routing declaration, from the same shared rule the YAML half
     # runs. It names child types, properties and commands this driver

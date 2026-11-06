@@ -59,7 +59,9 @@ interface PushEditorProps {
  * notification group; `type: sse` holds an event-stream request open on
  * the driver's HTTP session; `type: tcp_listener` opens a local port the
  * device dials back to after a registration command; `type: http_listener`
- * accepts the device's own HTTP POSTs on a platform-assigned callback URL).
+ * accepts the device's own HTTP POSTs on a platform-assigned callback URL;
+ * `type: udp_listener` opens a local UDP port the device was set to send
+ * packets to).
  * Frames arriving on the channel feed the same `responses` rules as the
  * control connection, so state updates land instantly instead of waiting
  * for the next poll.
@@ -107,6 +109,8 @@ export function PushEditor({ draft, onUpdate }: PushEditorProps) {
       onUpdate({ push: { type: "tcp_listener", port: 0 } });
     } else if (next === "http_listener") {
       onUpdate({ push: { type: "http_listener" } });
+    } else if (next === "udp_listener") {
+      onUpdate({ push: { type: "udp_listener", port: "" } });
     } else {
       onUpdate({ push: { type: "multicast", group: "", port: 17000 } });
     }
@@ -281,7 +285,9 @@ export function PushEditor({ draft, onUpdate }: PushEditorProps) {
         request open on the device&apos;s HTTP API; TCP Listener opens a local
         port that the device dials back to after a registration command tells
         it where; HTTP Listener accepts the device&apos;s own HTTP POSTs
-        (webhooks) on a callback URL OpenAVC assigns. Every frame or event
+        (webhooks) on a callback URL OpenAVC assigns; UDP Listener opens a
+        local port that the device sends packets to, at an address and port
+        set on the device itself. Every frame or event
         that arrives feeds the driver&apos;s
         response rules, so state updates land instantly, without waiting for
         the next poll. Values can reference config fields, which lets one
@@ -329,6 +335,9 @@ export function PushEditor({ draft, onUpdate }: PushEditorProps) {
               <option value="http_listener">
                 HTTP Listener (device posts to OpenAVC)
               </option>
+              <option value="udp_listener">
+                UDP Listener (device sends packets to a port)
+              </option>
             </select>
             <div style={helpStyle}>
               {type === "sse"
@@ -337,7 +346,9 @@ export function PushEditor({ draft, onUpdate }: PushEditorProps) {
                   ? "OpenAVC listens on a local TCP port; a registration command tells the device where to connect, and the device pushes framed notifications to that port."
                   : type === "http_listener"
                     ? "OpenAVC accepts the device's HTTP POSTs on a callback URL it assigns per device. Nothing to configure here. The registration command tells the device where to post."
-                    : "The device sends state-change frames to a multicast group address OpenAVC joins."}
+                    : type === "udp_listener"
+                      ? "OpenAVC listens on a UDP port, and the device sends a packet there each time something changes. The address and port are set on the device itself. Several devices can send to one port; each packet goes to the device it came from."
+                      : "The device sends state-change frames to a multicast group address OpenAVC joins."}
             </div>
           </div>
 
@@ -528,6 +539,31 @@ export function PushEditor({ draft, onUpdate }: PushEditorProps) {
                 </div>
               </div>
             </>
+          )}
+
+          {type === "udp_listener" && (
+            <div>
+              <label style={labelStyle}>Listener Port</label>
+              <input
+                value={push?.port === undefined ? "" : String(push.port)}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  update({
+                    port: /^\d+$/.test(raw.trim())
+                      ? parseInt(raw.trim(), 10)
+                      : raw,
+                  });
+                }}
+                placeholder="162 or {config_field}"
+                style={{ width: "100%", fontFamily: "var(--font-mono)" }}
+              />
+              <div style={helpStyle}>
+                UDP port OpenAVC listens on (1–65535): the port the device is
+                set to send to. A <code>{"{config_field}"}</code> template lets
+                each installation choose it. Packets feed the response rules,
+                split on the driver&apos;s delimiter.
+              </div>
+            </div>
           )}
 
           {type === "tcp_listener" && (

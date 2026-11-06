@@ -839,7 +839,7 @@ export function DriverEditor({
 
             <CollapsibleSection
               title="Push Notifications"
-              subtitle="Optional. Device-initiated updates on a separate multicast channel. Frames feed the same response rules as the control connection."
+              subtitle="Optional. Device-initiated updates on a separate channel OpenAVC opens. Frames feed the same response rules as the control connection."
               meta={pushEnabled ? "enabled" : "disabled"}
               defaultOpen={pushEnabled}
               helpHref={DOCS.push}

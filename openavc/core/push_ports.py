@@ -2,8 +2,10 @@
 
 Some drivers have the device send its changes to a port OpenAVC listens on,
 rather than to the main HTTP port: ``push: tcp_listener`` opens a TCP port the
-device dials back to (a camera reporting its position), and ``push: multicast``
-joins a UDP group the device sends to (a mixer's level meters). On Linux,
+device dials back to (a camera reporting its position), ``push: multicast``
+joins a UDP group the device sends to (a mixer's level meters), and
+``push: udp_listener`` opens a UDP port the device sends packets to (an SNMP
+agent's traps). On Linux,
 ``installer/firewall-sync.sh`` opens the instance's own listeners and the ports
 plugins declare (``core/plugin_ports.py``) in ufw or firewalld, and nothing
 else; with a host firewall on, these pushes were dropped. Polling still worked,
@@ -62,6 +64,8 @@ def push_listen_port(driver_info: dict[str, Any], config: dict[str, Any]) -> tup
         return None
     if ptype == "tcp_listener":
         return port, "tcp"
+    if ptype == "udp_listener":
+        return port, "udp"
     if ptype == "multicast":
         from openavc.drivers.base import resolve_push_value
         from openavc.transport.multicast_listener import is_multicast_group

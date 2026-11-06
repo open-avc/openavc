@@ -227,6 +227,7 @@ def _annotated_nodes(node, seen=frozenset()):
     if node.get("enhancement_since"):
         yield node["enhancement_since"]
     yield from (node.get("since_values") or {}).values()
+    yield from (node.get("yaml_since_values") or {}).values()
     if "ref" in node and node["ref"] not in seen:
         yield from _annotated_nodes(spec.DEFS[node["ref"]], seen | {node["ref"]})
     for sub in (node.get("fields") or {}).values():
@@ -311,6 +312,18 @@ def test_no_field_is_both_a_floor_and_an_enhancement():
         if node.get("since") and node.get("enhancement_since")
     ]
     assert not both, f"a field carries both since and enhancement_since: {both}"
+
+
+def test_no_value_has_a_floor_for_every_driver_and_one_for_yaml_only():
+    """A value either needs the release in every format or in YAML only."""
+    both = [
+        value
+        for field in spec.FIELDS.values()
+        for node in _walk_nodes(field)
+        for value in set(node.get("since_values") or {})
+        & set(node.get("yaml_since_values") or {})
+    ]
+    assert not both, f"values in both since_values and yaml_since_values: {both}"
 
 
 # --- the shipped corpus ------------------------------------------------------

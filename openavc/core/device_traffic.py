@@ -34,7 +34,8 @@ somebody is watching) and a device audit (every byte, for the report).
 
 Channels name the path an entry took: the transport (``tcp``, ``serial``,
 ``udp``, ``osc``, ``snmp``, ``http``, ``ssh``, ``mqtt``), a push channel
-(``sse``, ``multicast``, ``tcp_listener``, ``http_listener``), or ``driver``
+(``sse``, ``multicast``, ``tcp_listener``, ``http_listener``,
+``udp_listener``), or ``driver``
 for a driver that owns its connection and reports its own traffic
 (``BaseDriver.record_traffic``). Transports keep their DEBUG ``TX``/``RX`` log
 lines; this is the in-app record.

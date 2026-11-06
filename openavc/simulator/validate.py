@@ -1573,12 +1573,14 @@ def _check_notifications(
         return
 
     # A driver with a push channel emits its notifications there instead of
-    # the control connection — multicast, tcp_listener (dial-back) and
-    # http_listener (webhooks) are valid on any transport; SSE needs HTTP
-    # (the subscription rides the control session).
+    # the control connection — multicast, tcp_listener (dial-back),
+    # http_listener (webhooks) and udp_listener (packets to a port set on the
+    # device) are valid on any transport; SSE needs HTTP (the subscription
+    # rides the control session).
     push_def = driver_def.get("push")
     has_push_channel = isinstance(push_def, dict) and (
-        push_def.get("type") in ("multicast", "tcp_listener", "http_listener")
+        push_def.get("type")
+        in ("multicast", "tcp_listener", "http_listener", "udp_listener")
         or (push_def.get("type") == "sse" and transport == "http")
     )
     # TCP/serial push to every connected client; a UDP device pushes to the

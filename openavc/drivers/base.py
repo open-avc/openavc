@@ -957,7 +957,8 @@ class BaseDriver(ABC):
         self._health_failures = 0
         # Push-notification subscription (DRIVER_INFO["push"] — a multicast
         # group membership, an inbound TCP dial-back listener, a list of SSE
-        # event-stream handles, or an HTTP push-listener registration).
+        # event-stream handles, an HTTP push-listener registration, or a
+        # shared inbound UDP port).
         # Started by connect() once the session
         # is up — before any on_connect arming commands run — and stopped on
         # both disconnect paths. None when the driver declares no push block
@@ -3110,8 +3111,9 @@ class BaseDriver(ABC):
     async def _start_push(self) -> None:
         """Subscribe to the driver's declared push channel, if any.
 
-        ``multicast``, ``sse``, ``tcp_listener`` and ``http_listener`` all
-        exist today. Never raises: a device whose push channel can't be
+        ``multicast``, ``sse``, ``tcp_listener``, ``http_listener`` and
+        ``udp_listener`` all exist today. Never raises: a device whose push
+        channel can't be
         opened still connects and polls — the gap is logged so the user can
         see why changes aren't instant.
         """
@@ -3127,6 +3129,8 @@ class BaseDriver(ABC):
             await self._start_push_tcp_listener(push_def)
         elif ptype == "http_listener":
             await self._start_push_http_listener(push_def)
+        elif ptype == "udp_listener":
+            await self._start_push_udp_listener(push_def)
         else:
             # The loader rejects unknown/unsupported types for catalog
             # drivers; this is the runtime backstop for hand-installed files.
@@ -3220,6 +3224,44 @@ class BaseDriver(ABC):
         self.config["listener_port"] = sub.port
 
         await self._run_push_register(push_def)
+
+    async def _start_push_udp_listener(self, push_def: dict[str, Any]) -> None:
+        """Open the shared UDP port the device sends its packets to.
+
+        The device is set (on the device, by whoever installs it) to send to
+        this computer's address and the port the push block names; nothing
+        registers. Each datagram from the device's own address arrives at
+        :meth:`_handle_push_datagram`, which a YAML driver's response rules
+        read and a Python driver overrides to decode a binary packet.
+        """
+        from openavc.transport import udp_listener
+
+        raw_port = self._resolve_push_value(push_def.get("port"))
+        port = push_port(push_def, self.config)
+        if port is None or not (0 < port < 65536):
+            log.warning(
+                f"[{self.device_id}] push: cannot listen — port {raw_port!r} "
+                f"did not resolve to a UDP port 1-65535 (check the device's "
+                f"notification settings fields)"
+            )
+            return
+        try:
+            self._push_subscription = await udp_listener.subscribe(
+                port=port,
+                source_ip=str(self.config.get("host", "") or ""),
+                callback=self._counting_push(self._handle_push_datagram),
+                name=self.device_id,
+            )
+        except OSError as e:
+            hint = (
+                "a port below 1024 needs permission to listen on"
+                if isinstance(e, PermissionError)
+                else "is another program using it?"
+            )
+            log.warning(
+                f"[{self.device_id}] push: could not listen on UDP port "
+                f"{port}: {e} ({hint}). Changes show at the next poll."
+            )
 
     def _push_register_entries(self, push_def: dict[str, Any]) -> list[dict[str, Any]]:
         """Normalize ``push.register`` to a list of entry dicts.
