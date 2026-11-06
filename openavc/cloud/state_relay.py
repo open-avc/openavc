@@ -25,6 +25,10 @@ Large flushes (above ``state_batch_pace_threshold`` keys, default 2000)
 sleep ``state_batch_pace_delay`` seconds (default 50 ms) between chunks so
 a 40k-key snapshot does not dump 80+ WebSocket frames into a single
 event-loop tick.
+
+Every value leaves through :func:`cloud_state_value`, the snapshot and each
+change alike, so an address that carries a login reaches the cloud with its
+password shown as ``***``. The state on this system keeps the whole address.
 """
 
 from __future__ import annotations
@@ -89,10 +93,15 @@ def cloud_state_value(value: Any) -> Any:
     of any address written ``scheme://user:password@host`` shown as ``***``.
 
     A camera driver's "Login in Stream Address" writes such an address into
-    state so a panel on this system can play the stream. The AI read tools
-    answer through this; every other value is returned as it is.
+    state so a panel on this system can play the stream. The relay, the alert
+    monitor and the AI read tools all send state through this; every other
+    value is returned as it is. A string without an ``@`` cannot hold such an
+    address, so it skips the pattern: a snapshot can be tens of thousands of
+    values.
     """
-    return mask_url_password(value) if isinstance(value, str) else value
+    if isinstance(value, str) and "@" in value:
+        return mask_url_password(value)
+    return value
 
 
 class StateRelay:
@@ -238,7 +247,7 @@ class StateRelay:
                 continue
             changes.append({
                 "key": key,
-                "value": value,
+                "value": cloud_state_value(value),
                 "ts": self._format_ts(now),
             })
 
@@ -271,7 +280,7 @@ class StateRelay:
 
         entry: dict[str, Any] = {
             "key": key,
-            "value": new_value,
+            "value": cloud_state_value(new_value),
             "ts": time.time(),
         }
 

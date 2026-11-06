@@ -1585,3 +1585,49 @@ def test_compare_numbers_by_the_monitor_rule():
     assert _compare("1e3", ">", 5) is True
     # The threshold is read by the same rule: a word is not a limit.
     assert _compare(10, "<", "inf") is False
+
+
+# --- An address that carries a login ---
+
+
+async def _flush_pending(monitor, agent):
+    await asyncio.sleep(0)
+    async with monitor._pending_lock:
+        batch = monitor._pending_sends[:]
+        monitor._pending_sends.clear()
+    for msg_type, payload in batch:
+        await agent.send_message(msg_type, payload)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("rule_type", ["pattern", "threshold"])
+async def test_an_alert_on_an_address_hides_its_password(rule_type):
+    """An alert quotes the value that tripped it, in its message and its
+    detail. When that value is an address carrying a login (a camera's "Login
+    in Stream Address"), the cloud gets it with the password shown as ***, as
+    the state relay sends it."""
+    agent = MockAgent()
+    state = MockStateStore()
+    monitor = AlertMonitor(agent, state, MockEventBus())
+    await monitor.start()
+    monitor._on_rules_update_sync("cloud.alert_rules_update", {
+        "rules": [_make_rule(
+            name="Stream moved",
+            rule_type=rule_type,
+            condition={
+                "key": "device.cam1.preview_url",
+                "operator": "contains",
+                "value": "192.0.2.40",
+            },
+        )]
+    })
+
+    state.set("device.cam1.preview_url", "rtsp://admin:Acme%40pw1@192.0.2.40:554/stream1")
+    await _flush_pending(monitor, agent)
+
+    [(msg_type, payload)] = alerts(agent)
+    assert msg_type == "alert"
+    assert payload["detail"]["value"] == "rtsp://admin:***@192.0.2.40:554/stream1"
+    assert "rtsp://admin:***@192.0.2.40:554/stream1" in payload["message"]
+    assert "Acme" not in repr(payload)
+    await monitor.stop()

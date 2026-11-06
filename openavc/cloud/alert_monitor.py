@@ -21,6 +21,7 @@ from openavc.cloud.protocol import (
     build_active_alerts_payload, build_alert_payload,
     build_alert_resolved_payload, build_monitors_payload,
 )
+from openavc.cloud.state_relay import cloud_state_value
 from openavc.core.monitors import as_number, compile_alert_rules, monitor_reading
 from openavc.utils.logger import get_logger
 from openavc.utils.regex_safety import regex_safety_error
@@ -366,6 +367,7 @@ class AlertMonitor:
         alert_key = f"rule:{rule['id']}:{key}"
         alert_id = str(uuid.uuid4())
         self._active_alerts[alert_key] = alert_id
+        value = cloud_state_value(value)
         return build_alert_payload(
             alert_id=alert_id,
             rule_id=rule["id"],
@@ -425,6 +427,7 @@ class AlertMonitor:
         alert_key = f"rule:{rule['id']}:{key}"
         alert_id = str(uuid.uuid4())
         self._active_alerts[alert_key] = alert_id
+        value = cloud_state_value(value)
         held = f" for {duration:g}s" if duration else ""
         return build_alert_payload(
             alert_id=alert_id,
@@ -756,8 +759,10 @@ def _reads_as(rule: dict, value: Any) -> str:
     the verdict.
 
     A rule pushed from the portal has no declaration behind it and renders
-    exactly as it always did. ``detail["value"]`` stays the raw reading either
-    way: that is data for the cloud, not a sentence for a person.
+    exactly as it always did. ``detail["value"]`` stays the reading unformatted
+    either way: that is data for the cloud, not a sentence for a person. Both
+    carry the value as the cloud may see it (``cloud_state_value``): an address
+    holding a login has its password shown as ``***``.
     """
     display = rule.get("display")
     if not isinstance(display, dict):

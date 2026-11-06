@@ -773,3 +773,74 @@ class TestFlushLoopResilience:
             timeout=2,
         )
         assert len(calls) >= 2
+
+
+# ---------------------------------------------------------------------------
+# An address that carries a login
+# ---------------------------------------------------------------------------
+
+
+_STREAM_WITH_LOGIN = "rtsp://admin:Acme%40pw1@192.0.2.40:554/stream1"
+_STREAM_MASKED = "rtsp://admin:***@192.0.2.40:554/stream1"
+
+
+class TestAddressLogins:
+    """A camera's "Login in Stream Address" writes the login into a state
+    value so a panel on this system can play the stream. The cloud gets that
+    value with the password shown as ``***``, in the snapshot and in every
+    change; this system's own state keeps the whole address, and a value with
+    no login in it goes out exactly as it is."""
+
+    @pytest.mark.asyncio
+    async def test_the_snapshot_hides_the_password(self):
+        state = StateStore()
+        state.set_event_bus(EventBus())
+        state.set("device.cam1.preview_url", _STREAM_WITH_LOGIN, source="seed")
+        state.set("var.no_login", "http://192.0.2.40/axis-cgi/jpg/image.cgi", source="seed")
+        state.set("var.name_only", "rtsp://viewer@192.0.2.40/stream1", source="seed")
+        state.set("var.email", "help@example.com", source="seed")
+        state.set("var.count", 5, source="seed")
+        state.set("var.empty", None, source="seed")
+        agent = _RecordingAgent(config={
+            "state_batch_interval": 60,
+            "state_batch_interval_child": 60,
+            "state_batch_interval_low": 60,
+        })
+        relay = StateRelay(agent, state)
+
+        await relay.start()
+        try:
+            sent = {
+                change["key"]: change["value"]
+                for _t, payload, _ts in agent.sent
+                for change in payload["changes"]
+            }
+            assert sent["device.cam1.preview_url"] == _STREAM_MASKED
+            assert sent["var.no_login"] == "http://192.0.2.40/axis-cgi/jpg/image.cgi"
+            assert sent["var.name_only"] == "rtsp://viewer@192.0.2.40/stream1"
+            assert sent["var.email"] == "help@example.com"
+            assert sent["var.count"] == 5
+            assert sent["var.empty"] is None
+            assert state.get("device.cam1.preview_url") == _STREAM_WITH_LOGIN
+        finally:
+            await relay.stop()
+
+    def test_a_change_hides_the_password(self):
+        relay = StateRelay(_RecordingAgent(), StateStore())
+        relay._on_state_change(
+            "device.cam1.snapshot_url", None,
+            "http://admin:Acme%3Apw2@192.0.2.40/snapshot.jpg", "drv",
+        )
+        relay._on_state_change("device.cam1.power", "off", "on", "drv")
+        sent = {e["key"]: e["value"] for e in relay._batches["top"]}
+        assert sent == {
+            "device.cam1.snapshot_url": "http://admin:***@192.0.2.40/snapshot.jpg",
+            "device.cam1.power": "on",
+        }
+
+    def test_a_deleted_address_is_still_a_deletion(self):
+        relay = StateRelay(_RecordingAgent(), StateStore())
+        relay._on_state_change("device.cam1.preview_url", _STREAM_WITH_LOGIN, None, "drv")
+        entry = relay._batches["top"][0]
+        assert entry["value"] is None
+        assert entry.get("deleted") is True

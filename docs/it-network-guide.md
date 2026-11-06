@@ -591,8 +591,8 @@ When cloud is enabled, the agent streams a small amount of telemetry automatical
 | Data | Frequency | Content |
 |------|-----------|---------|
 | Heartbeat | Every 30 seconds | CPU %, memory %, disk %, uptime, device count, connected device count, error count, WebSocket client count, temperature (if a sensor is available) |
-| State changes | Batched (2 s for active device state; slower tiers for lower-priority keys) | Device, variable, system, UI, and plugin state key-value changes (e.g., `device.projector1.power: "on"`). Internal cloud/ISC keys are excluded. |
-| Alerts | As they occur (throttled) | Alert ID, severity, category, and message, plus the rule and device that fired it and the state key/value that tripped the threshold |
+| State changes | Batched (2 s for active device state; slower tiers for lower-priority keys) | Device, variable, system, UI, and plugin state key-value changes (e.g., `device.projector1.power: "on"`). Internal cloud/ISC keys are excluded. An address that carries a login, such as a camera stream address with **Login in Stream Address** turned on, is sent with its password shown as `***`. |
+| Alerts | As they occur (throttled) | Alert ID, severity, category, and message, plus the rule and device that fired it and the state key/value that tripped the threshold (an address's password shown as `***`, as above) |
 
 This automatic telemetry is runtime state and metrics only. It never contains the project file, device connection settings, or any credential.
 
