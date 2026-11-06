@@ -135,3 +135,30 @@ def test_project_import_skips_a_script_named_for_another_drive(tmp_path, monkeyp
 
     scripts = lib / "drive_room" / "scripts"
     assert sorted(p.name for p in scripts.iterdir()) == ["main.py"]
+
+
+def test_a_driver_is_read_from_a_probe_whose_name_is_never_the_arrival_name(monkeypatch):
+    """A driver's declared id is read, before anything is installed, from a
+    copy in a temporary folder. The copy is named ``driver.py`` whatever the
+    file arrived as: an upload or a bundle member named ``D:x.py`` would
+    otherwise write that copy to drive D: on Windows."""
+    from openavc.drivers import python_info
+    from openavc.drivers.driver_loader import declared_driver_info
+
+    read_from = []
+    real = python_info.extract_python_driver_info_full
+
+    def recording(path):
+        read_from.append(path)
+        return real(path)
+
+    monkeypatch.setattr(python_info, "extract_python_driver_info_full", recording)
+    source = (
+        b"from openavc.drivers.base import BaseDriver\n\n\n"
+        b"class AcmeWidget(BaseDriver):\n"
+        b"    DRIVER_INFO = {'id': 'acme_widget', 'name': 'Acme Widget'}\n"
+    )
+    info = declared_driver_info("D:escape.py", source)
+
+    assert info.get("id") == "acme_widget"
+    assert [p.name for p in read_from] == ["driver.py"]

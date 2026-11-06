@@ -71,7 +71,10 @@ def declared_driver_info(filename: str, content: bytes) -> dict[str, Any]:
         from openavc.drivers.python_info import ExtractError, extract_python_driver_info_full
 
         with tempfile.TemporaryDirectory() as tmp:
-            probe = Path(tmp) / Path(filename).name
+            # A fixed name, never the one the file arrived with: on Windows
+            # the last part of an uploaded or bundled ``D:x.py`` names drive
+            # D:, and the probe would be written there instead of in ``tmp``.
+            probe = Path(tmp) / "driver.py"
             try:
                 probe.write_bytes(content)
                 info, _opaque = extract_python_driver_info_full(probe)
