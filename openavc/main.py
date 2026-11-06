@@ -28,6 +28,17 @@ if len(sys.argv) > 1 and sys.argv[1] in ("--version", "-V"):
     print(_v)
     sys.exit(0)
 
+# Going back to an earlier version where the app has no Rollback (Docker: the
+# image tag changed back by hand). An earlier version reads every login from
+# the project file, which since the login file holds "saved on this system" in
+# their place; this writes each saved login back into the project and the
+# Project Library copies, as Rollback does, and exits without starting the
+# server. Run with OpenAVC stopped: a running server would move the logins
+# straight back out on its next save.
+if len(sys.argv) > 1 and sys.argv[1] == "--put-back-logins":
+    from openavc.cli_put_back import main as _put_back_main
+    sys.exit(_put_back_main())
+
 # CA trust store for stdlib `ssl` in the frozen macOS app. A PyInstaller .app has
 # no OpenSSL-readable CA bundle, and macOS keeps its roots in the Keychain rather
 # than in files OpenSSL reads, so `ssl.create_default_context()` fails every

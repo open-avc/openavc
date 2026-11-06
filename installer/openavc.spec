@@ -87,6 +87,7 @@ hiddenimports = [
     'openavc.config',
     'openavc.system_config',
     'openavc.version',
+    'openavc.cli_put_back',
     'openavc.core.engine',
     'openavc.core.state_store',
     'openavc.core.event_bus',

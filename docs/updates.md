@@ -170,6 +170,17 @@ From v0.40.0, the logins a project uses (device passwords, plugin logins and the
 
 Installing an older version by hand over this one, by running an older installer, does not. That version finds "saved on this system" where each password was, and a device with a login cannot sign in until its login is entered again. Roll back from the Updates view instead.
 
+Docker has no Rollback: going back means changing the image tag. Put the logins back into the project first, with OpenAVC stopped, then change the tag:
+
+```bash
+docker compose stop
+docker compose run --rm openavc --put-back-logins
+# change the image tag in docker-compose.yml to the earlier version, then:
+docker compose up -d
+```
+
+`--put-back-logins` says how many logins it wrote back. It refuses while OpenAVC is still running, because a running server would move them out again.
+
 ### Rolling back to a version older than v0.29.0
 
 v0.29.0 changed how the admin password is stored, from the password itself to a hash of it. Rolling back to v0.28.0 or earlier works normally, but that older version cannot read the new form, so the Programmer sign-in will reject the password. Everything else, including the room panel, is unaffected.
