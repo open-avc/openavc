@@ -637,7 +637,7 @@ While the listener is up, the addresses OpenAVC shows people — the Panel Acces
 Platform notes:
 
 - **Windows:** works as-is when port 80 is free (IIS or other web servers may own it).
-- **Linux (service installs):** binding port 80 as a non-root service needs `CAP_NET_BIND_SERVICE`. Fresh installs and new Raspberry Pi images grant it in the service unit. Existing installs need one line added under `[Service]` in `/etc/systemd/system/openavc.service`: extend `AmbientCapabilities` to `CAP_NET_RAW CAP_NET_BIND_SERVICE`, then `systemctl daemon-reload && systemctl restart openavc`.
+- **Linux (service installs):** binding port 80 as a non-root service needs `CAP_NET_BIND_SERVICE`. The service unit grants it on fresh installs and Raspberry Pi images, and an existing install picks it up with its next in-app update, which brings the service unit up to date.
 - **Docker:** with the single-room compose file (host networking), an image from version 0.40.0 opens port 80 the way a Linux service install does, unless the container drops its capabilities. With an older image, a container that drops them, or bridge networking, front it with a reverse proxy instead.
 
 ## Health Check
