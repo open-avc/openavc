@@ -427,6 +427,25 @@ async def test_the_open_route_serves_no_file_that_is_not_an_image_or_sound(clien
     assert client.get("/api/projects/default/assets/logo.png").status_code == 200
 
 
+async def test_a_scripted_svg_already_in_the_folder_is_served_unable_to_run_its_script(client):
+    # A file the upload would refuse can still be on disk: an import from a
+    # release that did not check SVGs put it there, or it was copied in by
+    # hand. Nothing re-checks a file already in the folder, so the answer
+    # itself tells a browser that opens the URL to run no script and to treat
+    # the document as coming from no origin. An <img> or a CSS background
+    # ignores the header, so the panel draws the picture as before.
+    assets_dir = assets_api._assets_dir_for("default")
+    (assets_dir / "evil.svg").write_bytes(
+        b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+    )
+    (assets_dir / "logo.png").write_bytes(_make_png(120))
+
+    for name in ("evil.svg", "logo.png"):
+        resp = client.get(f"/api/projects/default/assets/{name}")
+        assert resp.status_code == 200, name
+        assert resp.headers["content-security-policy"] == "sandbox", name
+
+
 @gates.skipif_missing(gates.SYMLINKS, gates.symlink_reason())
 async def test_the_open_route_reads_the_type_of_the_file_a_link_reaches(client):
     assets_dir = assets_api._assets_dir_for("default")

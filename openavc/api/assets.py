@@ -227,6 +227,14 @@ async def serve_asset(project_id: str, filename: str):
     import before imports checked the type) answers 404, so a page or a script
     there is never served from this address. The type is read from the file
     the path resolves to, so a link named like an image does not pass.
+
+    Every answer carries ``Content-Security-Policy: sandbox``. The upload and
+    an import refuse an SVG that carries script, but nothing re-checks a file
+    already in the folder (one an import brought before imports checked SVGs,
+    or one copied in by hand). The header makes a browser that opens the URL
+    itself run no script and treat the document as from no origin; an
+    ``<img>`` or a CSS background ignores it, which is how the panel and the
+    Programmer draw an asset.
     """
     assets_dir = _assets_dir_for(project_id)
     # Prevent directory traversal
@@ -240,7 +248,10 @@ async def serve_asset(project_id: str, filename: str):
 
     return FileResponse(
         safe_path,
-        headers={"Cache-Control": "public, max-age=3600"},
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "Content-Security-Policy": "sandbox",
+        },
     )
 
 
