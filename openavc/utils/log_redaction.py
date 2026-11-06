@@ -255,6 +255,54 @@ def keep_masked_secrets(
     return incoming, [_path]
 
 
+def typed_secrets(
+    incoming: Any, stored: Any, _path: str = "", _secret: bool = False,
+) -> list[str]:
+    """The places (``streams[1].password``) where ``incoming`` carries a
+    credential that ``stored`` does not: a field named like one whose value
+    changed, or a URL whose ``user:password@`` password changed.
+
+    For a caller that takes no login typed into a conversation. A value sent
+    back as :data:`REDACTED`, the saved-login marker, an empty value and the
+    stored value unchanged are not typed logins; the walk matches list entries
+    the way :func:`keep_masked_secrets` does.
+    """
+    found: list[str] = []
+    if isinstance(incoming, dict):
+        saved = stored if isinstance(stored, dict) else {}
+        for key, item in incoming.items():
+            found += typed_secrets(
+                item, saved.get(key), f"{_path}.{key}" if _path else str(key),
+                _secret or _named_secret(key),
+            )
+        return found
+    if isinstance(incoming, list):
+        saved_list = stored if isinstance(stored, list) else []
+        for index, item in enumerate(incoming):
+            found += typed_secrets(
+                item, _matching_item(item, saved_list, index), f"{_path}[{index}]", _secret,
+            )
+        return found
+    if isinstance(incoming, bool) or incoming is None or incoming == stored:
+        return found
+    if _secret and isinstance(incoming, (str, int, float)):
+        from openavc.core.device_logins import SAVED_LOGIN
+
+        if incoming not in ("", REDACTED, SAVED_LOGIN):
+            found.append(_path)
+        return found
+    if isinstance(incoming, str):
+        before = {
+            m.group("password") for m in _URL_PASSWORD.finditer(stored)
+        } if isinstance(stored, str) else set()
+        if any(
+            m.group("password") not in (REDACTED, *before)
+            for m in _URL_PASSWORD.finditer(incoming)
+        ):
+            found.append(_path)
+    return found
+
+
 def _declared_secret(config_schema: dict[str, Any] | None) -> set[str]:
     return set(secret_settings(config_schema))
 

@@ -2821,7 +2821,7 @@ async def test_a_config_sent_back_with_masks_keeps_the_saved_passwords(
         edited["broker"] = "10.0.0.10"
         edited["streams"].reverse()  # a reorder still finds each stream's own
         edited["streams"].append({
-            "stream_id": "foyer", "username": "", "password": "new-foyer-pass",
+            "stream_id": "foyer", "username": "", "password": "",
             "rtsp_url": "rtsp://10.0.0.23/live",
         })
         msg = _make_tool_call_msg("update_plugin_config", {
@@ -2838,7 +2838,7 @@ async def test_a_config_sent_back_with_masks_keeps_the_saved_passwords(
     by_id = {s["stream_id"]: s for s in saved["streams"]}
     assert by_id["lobby"]["password"] == "lobby-pass-1"
     assert by_id["lobby"]["rtsp_url"] == "rtsp://viewer:lobby-pass-1@10.0.0.21/live"
-    assert by_id["foyer"]["password"] == "new-foyer-pass"
+    assert by_id["foyer"]["password"] == ""
     assert "***" not in repr(saved)
     # The plugin was handed the real values too, not the masks.
     applied = mock_engine.plugin_loader.restart_or_apply.call_args[0][1]
@@ -2878,6 +2878,117 @@ async def test_a_mask_with_nothing_saved_behind_it_is_refused(
     assert mock_engine.project.plugins["acme_bridge"].config == _ACME_SAVED
     mock_engine.plugin_loader.restart_or_apply.assert_not_awaited()
     mock_engine.apply_project_edit.assert_not_awaited()
+
+
+async def _send_plugin_config(handler, mock_agent, mock_engine, edit, plugin_class=None):
+    """update_plugin_config with the masked copy, changed by ``edit``."""
+    import copy
+
+    from openavc.core.plugin_loader import _PLUGIN_CLASS_REGISTRY
+    from openavc.core.project_loader import PluginConfig
+    from openavc.utils.log_redaction import mask_secrets_by_name
+
+    mock_engine.project.plugins = {
+        "acme_bridge": PluginConfig(enabled=True, config=copy.deepcopy(_ACME_SAVED)),
+    }
+    mock_engine.plugin_loader = _plugin_loader_mock()
+    edited = mask_secrets_by_name(copy.deepcopy(_ACME_SAVED))
+    edit(edited)
+    registry = {"acme_bridge": plugin_class} if plugin_class else {}
+    with patch.dict(_PLUGIN_CLASS_REGISTRY, registry), \
+         patch.object(handler, "_get_engine", return_value=mock_engine):
+        msg = _make_tool_call_msg("update_plugin_config", {
+            "plugin_id": "acme_bridge", "config": edited,
+        })
+        await handler.handle(msg)
+        await _drain()
+    return _get_result_payload(mock_agent)
+
+
+def _nothing_changed(mock_engine):
+    assert mock_engine.project.plugins["acme_bridge"].config == _ACME_SAVED
+    mock_engine.plugin_loader.restart_or_apply.assert_not_awaited()
+    mock_engine.apply_project_edit.assert_not_awaited()
+
+
+class _AcmeBridgeWithSchema:
+    CONFIG_SCHEMA = {
+        "broker": {"type": "string", "label": "Broker"},
+        "password": {"type": "string", "label": "Broker Password", "secret": True},
+        "connection": {"type": "group", "label": "Connection", "fields": {
+            "api_key": {"type": "string", "label": "API Key", "secret": True},
+            "verify_tls": {"type": "boolean"},
+        }},
+    }
+    CONFIG_SECRETS = {"streams": {"id": "stream_id", "fields": ["password"]}}
+
+
+@pytest.mark.asyncio
+async def test_a_plugin_login_typed_into_the_conversation_is_refused(
+    handler, mock_agent, mock_engine
+):
+    """As the device tools do: the person enters a login in the plugin's
+    settings, never through the chat. Nothing is written."""
+    def edit(config):
+        config["password"] = "typed-in-chat"
+
+    payload = await _send_plugin_config(
+        handler, mock_agent, mock_engine, edit, _AcmeBridgeWithSchema
+    )
+    assert payload["success"] is False
+    assert payload["error"] == (
+        "Broker Password is a login. Enter it in this plugin's settings in the "
+        "Programmer. Nothing was changed."
+    )
+    _nothing_changed(mock_engine)
+
+
+@pytest.mark.asyncio
+async def test_every_kind_of_plugin_login_is_refused(handler, mock_agent, mock_engine):
+    def edit(config):
+        config["connection"]["api_key"] = "ak-typed"
+        config["streams"][1]["password"] = "stage-typed"
+        config["streams"][0]["rtsp_url"] = "rtsp://viewer:lobby-typed@10.0.0.21/live"
+
+    payload = await _send_plugin_config(
+        handler, mock_agent, mock_engine, edit, _AcmeBridgeWithSchema
+    )
+    assert payload["success"] is False
+    assert payload["error"].startswith(
+        "API Key, streams[stage].password and streams[lobby].rtsp_url are logins. "
+        "Enter them in this plugin's settings in the Programmer."
+    ), payload["error"]
+    _nothing_changed(mock_engine)
+
+
+@pytest.mark.asyncio
+async def test_a_plugin_nothing_declares_is_held_to_the_name_rule(
+    handler, mock_agent, mock_engine
+):
+    def edit(config):
+        config["password"] = "typed-in-chat"
+
+    payload = await _send_plugin_config(handler, mock_agent, mock_engine, edit)
+    assert payload["success"] is False
+    assert payload["error"].startswith("password is a login."), payload["error"]
+    _nothing_changed(mock_engine)
+
+
+@pytest.mark.asyncio
+async def test_a_saved_login_sent_back_is_kept(handler, mock_agent, mock_engine):
+    """*** or the saved-login placeholder sent back keeps the saved one; the
+    other settings change."""
+    def edit(config):
+        config["broker"] = "10.0.0.10"
+        config["connection"]["api_key"] = "<saved on this system>"
+
+    payload = await _send_plugin_config(
+        handler, mock_agent, mock_engine, edit, _AcmeBridgeWithSchema
+    )
+    assert payload["success"] is True, payload
+    saved = mock_engine.project.plugins["acme_bridge"].config
+    assert saved["broker"] == "10.0.0.10"
+    assert saved["password"] == "hunter2-broker"
 
 
 @pytest.mark.asyncio

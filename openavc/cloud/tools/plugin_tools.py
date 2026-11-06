@@ -8,14 +8,23 @@ card still shows the plugin's text as it stands.
 
 For the same reason a plugin's passwords and keys never go into an answer: a
 config comes back with them as ``***`` (``mask_secrets_by_name``, by field
-name, since a plugin's schema has no way to mark a field secret), and a config
-sent back with ``***`` still in a field keeps the saved value there.
+name, at any depth), and a config sent back with ``***`` still in a field keeps
+the saved value there. Nor is one taken from the conversation:
+``update_plugin_config`` refuses a login typed into the config (a field the
+plugin declares as one, a field named like one, a password in an address), as
+the device tools do, and sends the person to the plugin's settings. ``***`` or
+the saved-login marker sent back keeps the saved one.
 """
 
+import re
 from typing import Any
 
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
-from openavc.utils.log_redaction import keep_masked_secrets, mask_secrets_by_name
+from openavc.utils.log_redaction import (
+    keep_masked_secrets,
+    mask_secrets_by_name,
+    typed_secrets,
+)
 
 # Said with a config that had something masked, so the next write sends it back.
 MASKED_NOTE = (
@@ -28,6 +37,74 @@ def _masked(config: Any) -> dict[str, Any]:
     """The config as an answer may carry it, and the note when it hid something."""
     shown = mask_secrets_by_name(config)
     return {"config": shown, **({"masked": MASKED_NOTE} if shown != config else {})}
+
+
+def _typed_logins(plugin_id: str, incoming: Any, stored: Any) -> list[str]:
+    """The settings in ``incoming`` that carry a login ``stored`` does not:
+    each one the plugin declares (``core/plugin_secrets``) and each one named
+    like a credential or holding an address's password, as the person reads
+    its name."""
+    from openavc.core import plugin_secrets
+    from openavc.core.device_logins import SAVED_LOGIN
+    from openavc.core.plugin_loader import _PLUGIN_CLASS_REGISTRY
+    from openavc.drivers.param_labels import param_label
+
+    schema = getattr(_PLUGIN_CLASS_REGISTRY.get(plugin_id), "CONFIG_SCHEMA", None) or {}
+
+    def label(path: str) -> str:
+        node: Any = {"fields": schema}
+        for part in path.split("."):
+            fields = node.get("fields") if isinstance(node, dict) else None
+            node = fields.get(part) if isinstance(fields, dict) else None
+            if node is None:
+                return path
+        return param_label(path.rsplit(".", 1)[-1], node)
+
+    names: list[str] = []
+    declared = plugin_secrets.declared_for(plugin_id)
+    for item, field, _generated in plugin_secrets.places(incoming, declared):
+        new = plugin_secrets.get_field(plugin_secrets.holder_of(incoming, item), field)
+        old = plugin_secrets.get_field(plugin_secrets.holder_of(stored, item), field)
+        if (
+            isinstance(new, (str, int, float)) and not isinstance(new, bool)
+            and new not in ("", "***", SAVED_LOGIN) and new != old
+        ):
+            names.append(label(field) if not item else plugin_secrets.display_path(item, field))
+    id_keys = {decl.key: decl.id_key for decl in declared.lists}
+
+    def place(path: str) -> str:
+        """``streams[1].password`` as ``streams[lobby].password`` when the entry
+        has an id, the name the declared half uses for the same place."""
+        match = re.match(r"^(?P<list>[^.\[]+)\[(?P<index>\d+)\](?P<rest>.*)$", path)
+        if match is None:
+            return label(path)
+        entries = incoming.get(match["list"]) if isinstance(incoming, dict) else None
+        index = int(match["index"])
+        entry = entries[index] if isinstance(entries, list) and index < len(entries) else None
+        if isinstance(entry, dict):
+            keys = [id_keys.get(match["list"]), "id"] + [k for k in entry if str(k).endswith("_id")]
+            for key in keys:
+                value = entry.get(key) if key else None
+                if isinstance(value, (str, int)) and not isinstance(value, bool) and value != "":
+                    return f"{match['list']}[{value}]{match['rest']}"
+        return path
+
+    for path in typed_secrets(incoming, stored):
+        name = place(path)
+        if name not in names:
+            names.append(name)
+    return names
+
+
+def _login_refusal(names: list[str]) -> str:
+    """The answer to a login sent to a plugin tool."""
+    one = len(names) == 1
+    what = names[0] if one else f"{', '.join(names[:-1])} and {names[-1]}"
+    return (
+        f"{what} {'is a login' if one else 'are logins'}. Enter "
+        f"{'it' if one else 'them'} in this plugin's settings in the Programmer. "
+        "Nothing was changed."
+    )
 
 
 def _as_sentence(text: str) -> str:
@@ -289,6 +366,12 @@ class PluginToolsMixin:
 
         if plugin_id not in engine.project.plugins:
             return {"error": f"Plugin '{plugin_id}' not in project"}
+
+        # A login typed into the conversation is not taken: the person enters
+        # it in the plugin's settings, where it never passes through the chat.
+        typed = _typed_logins(plugin_id, new_config, engine.project.plugins[plugin_id].config)
+        if typed:
+            return {"error": _login_refusal(typed), "login_settings": typed}
 
         # The config the AI read had its passwords as ***; one sent back
         # unchanged means keep the saved value, never "the password is ***".
