@@ -387,6 +387,15 @@ Both compose files mount the host's `/etc/localtime`, so the container's clock, 
 
 Without either, the container runs on UTC, and a schedule set for 10 PM fires at 10 PM UTC. On Docker Desktop, if the mount is refused, use `TZ`.
 
+### A device that sends to a UDP port
+
+Some devices send each change as a UDP packet to a port set on the device, such as SNMP traps to port 162. OpenAVC listens on the port in that device's settings, and Docker changes what it can open:
+
+- **Host networking (the single-room compose file):** from version 0.40.0 the image can listen on a port below 1024, the way a Linux service install can. Two cases cannot: an older image, and a container that drops its capabilities (`cap_drop` in the compose file, or a hardened platform that removes them); the server then starts as usual and only the low port is out of reach. The device still works at poll speed, and the log says the port could not be opened. Where the device lets you choose its destination port, set it to 1024 or above and enter the same port in the device's settings in OpenAVC. Otherwise, let programs on the host use the lower port: `sudo sysctl -w net.ipv4.ip_unprivileged_port_start=162`, kept after a reboot by putting `net.ipv4.ip_unprivileged_port_start=162` in a file in `/etc/sysctl.d/`. That setting applies to every program on the host, not only OpenAVC.
+- **Bridge networking (the multi-room compose file):** any port works inside the container, but it has to be published with its protocol, the same number on both sides: `"162:162/udp"`. A host port goes to one container only, so give each room's devices a port of their own, for example `"1162:1162/udp"` for the second room with 1162 in its devices' settings. Packets keep the sending device's address through a published port, which is how OpenAVC knows which device sent each one.
+
+With host networking, also open the port in the host's firewall, as for any other port ([Host firewall: handled for you](#host-firewall-handled-for-you) covers what Docker leaves to you).
+
 ### Docker Desktop on Windows or Mac
 
 Docker Desktop runs the Linux container inside a WSL2 (Windows) or HyperKit (Mac) virtual machine that does not share the host's LAN, so device discovery cannot work even with `network_mode: host`. If you need discovery on Windows or Mac, use the native installer instead. Docker Desktop is fine for evaluating the software or for IP-only deployments where you'll add devices manually.
@@ -629,7 +638,7 @@ Platform notes:
 
 - **Windows:** works as-is when port 80 is free (IIS or other web servers may own it).
 - **Linux (service installs):** binding port 80 as a non-root service needs `CAP_NET_BIND_SERVICE`. Fresh installs and new Raspberry Pi images grant it in the service unit. Existing installs need one line added under `[Service]` in `/etc/systemd/system/openavc.service`: extend `AmbientCapabilities` to `CAP_NET_RAW CAP_NET_BIND_SERVICE`, then `systemctl daemon-reload && systemctl restart openavc`.
-- **Docker:** the container runs as an unprivileged user, so port 80 stays unavailable inside it; if you want short URLs on a Docker deployment, front it with a reverse proxy instead.
+- **Docker:** with the single-room compose file (host networking), an image from version 0.40.0 opens port 80 the way a Linux service install does, unless the container drops its capabilities. With an older image, a container that drops them, or bridge networking, front it with a reverse proxy instead.
 
 ## Health Check
 

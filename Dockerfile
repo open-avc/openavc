@@ -52,6 +52,19 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
     && setcap cap_net_raw+ep /usr/bin/ping \
     && rm -rf /var/lib/apt/lists/*
 
+# Ports below 1024 for the server, as the Linux service unit grants them
+# (CAP_NET_BIND_SERVICE): a device that sends to a fixed low port, such as SNMP
+# traps to UDP 162, and Short URLs on 80. Under host networking the container
+# has the host's floor of 1024, so without this the unprivileged user can open
+# neither. The capability goes on a COPY of the interpreter, never on python
+# itself: a program carrying a file capability cannot start in a container
+# that drops it (cap_drop: ALL fails with "exec: operation not permitted"), so
+# docker-start.sh tries the copy and falls back to plain python.
+RUN cp "$(readlink -f "$(command -v python3)")" /usr/local/bin/python3-openavc \
+    && setcap cap_net_bind_service+ep /usr/local/bin/python3-openavc
+COPY installer/docker-start.sh /usr/local/bin/openavc-start
+RUN chmod 755 /usr/local/bin/openavc-start
+
 # Create non-root user
 RUN groupadd -r openavc && useradd -r -g openavc -d /app -s /usr/sbin/nologin openavc
 
@@ -124,4 +137,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import ssl,urllib.request; urllib.request.urlopen('http://localhost:8080/api/health', context=ssl._create_unverified_context())"
 
-ENTRYPOINT ["python", "-m", "openavc.main"]
+ENTRYPOINT ["/usr/local/bin/openavc-start"]

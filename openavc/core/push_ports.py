@@ -37,7 +37,6 @@ it listens on.
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
@@ -152,6 +151,9 @@ def record(data_dir: Path, entries: list[dict]) -> None:
     A port the last run did not record is open only after the next service
     start on a Linux install with a host firewall on, so the log says so then,
     rather than leaving a person to wonder why the pushes have not arrived.
+    In Docker the helper never runs (the container does not manage the host's
+    firewall), so the log says what to do on the host instead; an install
+    with neither (Windows, macOS, a source checkout) says nothing.
     """
     path = Path(data_dir) / PORTS_FILENAME
     previous = read(data_dir)
@@ -161,13 +163,43 @@ def record(data_dir: Path, entries: list[dict]) -> None:
         return
     before = {(e.get("port"), e.get("protocol")) for e in previous if isinstance(e, dict)}
     new = [e for e in entries if (e["port"], e["protocol"]) not in before]
-    if new and sys.platform.startswith("linux"):
+    if not new:
+        return
+    note = _firewall_note(new)
+    if note:
         log.info(
             "Devices send updates to "
             + ("port " if len(new) == 1 else "ports ")
             + ", ".join(f"{e['port']}/{e['protocol']}" for e in new)
-            + ". If this computer has a host firewall on (ufw or firewalld), "
-            "OpenAVC opens "
-            + ("it" if len(new) == 1 else "them")
-            + " the next time its service starts."
+            + ". "
+            + note
         )
+
+
+def _deployment_type() -> str:
+    from openavc.updater.platform import detect_deployment_type
+
+    try:
+        return detect_deployment_type().value
+    except Exception:  # never fatal: the record is written either way
+        return "unknown"
+
+
+def _firewall_note(new: list[dict]) -> str | None:
+    """What a person has to know about the host firewall for the new ports,
+    on this install, or None where nothing applies."""
+    it = "it" if len(new) == 1 else "them"
+    first = f"{new[0]['port']}:{new[0]['port']}/{new[0]['protocol']}"
+    kind = _deployment_type()
+    if kind == "linux_package":
+        return (
+            "If this computer has a host firewall on (ufw or firewalld), "
+            f"OpenAVC opens {it} the next time its service starts."
+        )
+    if kind == "docker":
+        return (
+            f"In Docker, open {it} in the host's firewall yourself, and with "
+            f"bridge networking publish {it} with the protocol, for example "
+            f'"{first}".'
+        )
+    return None

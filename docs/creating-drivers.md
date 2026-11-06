@@ -1935,7 +1935,7 @@ push:
 - `type` — `udp_listener`.
 - `port` — the local UDP port OpenAVC listens on (1–65535), as a literal or a `{config_field}` template. It has to be the port the device is set to send to, so give it a `config_schema` field when the device lets the installer choose. Devices sending to the same port share one listener; each packet goes to the device it came from, matched by source address.
 - Nothing registers: the person installing the device sets its destination to the OpenAVC server's address and this port, in the device's own setup (say so in `help.setup`). Keep the poll: it reads the device's state when it connects and after anything the device did not send.
-- A port below 1024 (SNMP traps use 162) needs permission to listen on. Where the server lacks it, the log says it could not listen and the device works at poll speed.
+- A port below 1024 (SNMP traps use 162) needs permission to listen on. The Windows, macOS, Linux service and Raspberry Pi installs have it, and so does the Docker image from 0.40.0 unless the container drops its capabilities; a source checkout run as an ordinary user on Linux does not ([Deployment](deployment.md#a-device-that-sends-to-a-udp-port) has the Docker settings). Where the server lacks it, the log says it could not listen and the device works at poll speed.
 - OpenAVC takes the port for itself: if another program on the server already listens on it (an SNMP trap daemon on 162, say), the listener cannot open, the log says so, and the device works at poll speed.
 - Needs platform 0.40.0 in a YAML driver: an older release refuses to load a `.avcdriver` that names it. A Python driver that declares it still runs on an older release, without the push.
 

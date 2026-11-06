@@ -23,6 +23,10 @@ services:
       # Enabling HTTPS in Settings? Publish the TLS port too (one unique
       # host port per room), e.g.:
       # - "8444:8443"
+      # A device that sends its changes to a UDP port (SNMP traps, say)?
+      # Publish that port with its protocol, the same number on both
+      # sides, one port per room, e.g.:
+      # - "162:162/udp"
     volumes:
       - room-101-data:/data
       # This computer's time zone, so schedules fire at local time (Linux).

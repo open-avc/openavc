@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import logging
 import socket
-import sys
 from types import SimpleNamespace
 from typing import Any
 
@@ -187,7 +186,7 @@ def test_an_empty_set_is_written_so_the_helper_closes_the_port(tmp_path):
 
 
 def test_a_new_port_is_announced_on_linux_and_only_once(tmp_path, monkeypatch, caplog):
-    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(push_ports, "_deployment_type", lambda: "linux_package")
     entries = _collect(_device("cam1", "acme_dialback_cam", "Camera 1"))
     with caplog.at_level(logging.INFO, logger="openavc.core.push_ports"):
         push_ports.record(tmp_path, entries)
@@ -201,7 +200,7 @@ def test_a_new_port_is_announced_on_linux_and_only_once(tmp_path, monkeypatch, c
 
 
 def test_two_new_ports_are_named_together(tmp_path, monkeypatch, caplog):
-    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(push_ports, "_deployment_type", lambda: "linux_package")
     entries = _collect(_device("cam1", "acme_dialback_cam"), _device("mix1", "acme_push_mixer"))
     with caplog.at_level(logging.INFO, logger="openavc.core.push_ports"):
         push_ports.record(tmp_path, entries)
@@ -213,11 +212,25 @@ def test_two_new_ports_are_named_together(tmp_path, monkeypatch, caplog):
     ]
 
 
-def test_nothing_is_announced_off_linux(tmp_path, monkeypatch, caplog):
-    monkeypatch.setattr(sys, "platform", "win32")
+@pytest.mark.parametrize("kind", ["windows_installer", "macos_app", "git_dev", "android_appliance", "unknown"])
+def test_nothing_is_announced_where_no_helper_runs(tmp_path, monkeypatch, caplog, kind):
+    monkeypatch.setattr(push_ports, "_deployment_type", lambda: kind)
     with caplog.at_level(logging.INFO, logger="openavc.core.push_ports"):
         push_ports.record(tmp_path, _collect(_device("cam1", "acme_dialback_cam")))
     assert not [r for r in caplog.records if r.name == "openavc.core.push_ports"]
+
+
+def test_docker_is_told_to_open_the_port_on_the_host(tmp_path, monkeypatch, caplog):
+    """The firewall helper is a host service; a container never runs it."""
+    monkeypatch.setattr(push_ports, "_deployment_type", lambda: "docker")
+    with caplog.at_level(logging.INFO, logger="openavc.core.push_ports"):
+        push_ports.record(tmp_path, _collect(_device("cam1", "acme_dialback_cam")))
+    said = [r.getMessage() for r in caplog.records if r.name == "openavc.core.push_ports"]
+    assert said == [
+        "Devices send updates to port 31004/tcp. In Docker, open it in the host's "
+        "firewall yourself, and with bridge networking publish it with the "
+        'protocol, for example "31004:31004/tcp".'
+    ]
 
 
 # --- when the server writes it ---

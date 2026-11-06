@@ -7,3 +7,7 @@
 # no-op unless the icon set actually changed.
 openavc/web/panel/icons.svg                                        text eol=lf
 openavc/web/programmer/src/components/ui-builder/spriteIconNames.ts text eol=lf
+
+# Copied into the Docker image and run by /bin/sh: a Windows checkout that
+# gave it CRLF endings would build an image whose server never starts.
+installer/docker-start.sh text eol=lf
