@@ -26,7 +26,10 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Callable, TYPE_CHECKING
 
-from openavc.core import script_api
+from openavc.core import script_api, script_runs
+# Defined beside the runner; importable from here, where they always were.
+from openavc.core.script_runs import HandlerTimedOut
+from openavc.core.script_runs import run_within_handler_limit as run_within_handler_limit
 from openavc.utils.log_buffer import USER_SCRIPT_NAMESPACE
 from openavc.utils.logger import get_logger
 from openavc.utils.paths import safe_path_within
@@ -51,34 +54,6 @@ _EVENT_ARITY_PROBE = object()
 # tasks without bound. Propagated through the task hops via contextvars so the
 # chain — not just one synchronous call stack — is what gets capped.
 _state_handler_depth: ContextVar[int] = ContextVar("openavc_state_handler_depth", default=0)
-
-
-class HandlerTimedOut(Exception):
-    """A script's async body ran past ``ScriptEngine.HANDLER_TIMEOUT``.
-
-    Its own type because the limit is not the only ``TimeoutError`` a handler
-    meets: a device command it sent that got no answer, or one it raised
-    itself, is the handler's own failure and is recorded with its text and
-    traceback like any other. Only the engine's limit reads "timed out after".
-    """
-
-
-async def run_within_handler_limit(awaitable: Any, limit: float) -> None:
-    """Await a script's coroutine under the handler limit, raising
-    :class:`HandlerTimedOut` only when that limit is what stopped it."""
-    try:
-        async with asyncio.timeout(limit) as scope:
-            await awaitable
-    except TimeoutError:
-        if scope.expired():
-            raise HandlerTimedOut() from None
-        raise
-    # The limit cancelled the body and something inside it caught the
-    # cancellation and returned, so asyncio raised nothing. An awaited macro
-    # does exactly that (it ends as "cancelled"), and without this a macro cut
-    # off halfway left no error against the script that ran it.
-    if scope.expired():
-        raise HandlerTimedOut()
 
 
 def describe_parameters(fn: Callable) -> dict[str, Any]:
@@ -193,9 +168,14 @@ class ScriptEngine:
 
         There is nothing to inject into sys.modules any more: `openavc` is a
         real package and serves these names itself. All that is left is binding
-        the proxies to live objects, which is what makes them usable.
+        the proxies to live objects, which is what makes them usable, and
+        naming the loop a call from another thread is handed to.
         """
         script_api.configure(self.devices, self.state, self.events, self.macro_engine)
+        try:
+            script_runs.bind_loop(asyncio.get_running_loop())
+        except RuntimeError:
+            pass  # no loop yet (a sync caller); the first run binds it
         log.info("Script API wired")
 
     def load_scripts(self, scripts: list[dict[str, Any]]) -> int:
@@ -306,7 +286,8 @@ class ScriptEngine:
 
     # Timeout for script top-level execution (seconds)
     SCRIPT_LOAD_TIMEOUT = 10
-    # Timeout for async event/state handlers (seconds)
+    # Time limit for one run of a handler, timer callback or called function
+    # (seconds), plain def and async def alike
     HANDLER_TIMEOUT = 30
     # Max depth of a state-change -> async @on_state_change -> state-change
     # cascade before further async handlers in the chain are dropped. Bounds a
@@ -419,6 +400,9 @@ class ScriptEngine:
         done = threading.Event()
 
         def _runner() -> None:
+            # The loop is blocked on done.wait() below, so this thread's
+            # script-API calls must run here rather than be handed to it.
+            script_runs.mark_load_thread()
             try:
                 exec(code, module.__dict__)
             except script_api.ScriptLoadAbandoned:
@@ -574,6 +558,7 @@ class ScriptEngine:
         self._loaded_modules.clear()
         self._handler_names.clear()
         self._runtime_errors.clear()
+        script_runs.close_all()
 
         # Cancel all dynamic timers
         timer_count = script_api.cancel_all_timers()
@@ -606,6 +591,7 @@ class ScriptEngine:
         # running.
         self._runtime_errors.pop(script_id, None)
 
+        script_runs.close_script(script_id)
         timer_count = script_api.cancel_script_timers(script_id)
         if count or timer_count:
             log.info(
@@ -701,8 +687,9 @@ class ScriptEngine:
         shows it beside every other script failure, while the glass reads
         ``COULD_NOT_FINISH`` (or the sentence a ``PanelMessage`` carries).
 
-        Timeout and inline-sync behaviour deliberately match
-        ``_wrap_event_handler``: an emit already awaits its handlers, so
+        Runs the way a handler does (``_wrap_event_handler``): a plain ``def``
+        on the script's worker thread, an ``async def`` on the loop, both
+        under ``HANDLER_TIMEOUT``. An emit already awaits its handlers, so
         nothing here waits on a press for longer than the event path did.
         """
         params = params or {}
@@ -734,12 +721,9 @@ class ScriptEngine:
 
         with script_api.current_script_context(script_id):
             try:
-                result = fn(**params)
-                if asyncio.iscoroutine(result):
-                    await run_within_handler_limit(result, self.HANDLER_TIMEOUT)
-                # A plain `def` has already run inline by this point, for the
-                # same reason a sync handler does: the state/devices/events
-                # proxies must run on the loop thread.
+                await script_runs.run_script_code(
+                    script_id, fn, (), params, self.HANDLER_TIMEOUT,
+                )
             except script_api.PanelMessage as exc:
                 # The author refusing in the room's words, on purpose: not a
                 # script error, so nothing for the Scripts view to mark.
@@ -753,6 +737,12 @@ class ScriptEngine:
                 )
                 log.error(msg)
                 await self._emit_script_error(script_id, name, f"script.call.{name}", msg, "")
+                raise ScriptCallError(COULD_NOT_FINISH) from exc
+            except script_runs.ScriptRunRefused as exc:
+                log.error(f"Script '{script_id}' function '{name}': {exc}")
+                await self._emit_script_error(
+                    script_id, name, f"script.call.{name}", str(exc), "",
+                )
                 raise ScriptCallError(COULD_NOT_FINISH) from exc
             except Exception as exc:  # Catch-all: isolates user script errors from engine
                 log.exception(f"Error in script '{script_id}' function '{name}'")
@@ -843,23 +833,28 @@ class ScriptEngine:
 
         Handlers take a single ``Event`` argument. Anything that cannot
         accept one was already refused at import time by
-        ``_check_event_handler_signatures``.
+        ``_check_event_handler_signatures``. A plain ``def`` runs on the
+        script's worker thread (``script_runs``), so a blocking line in it
+        holds up this script and nothing else; the emit still waits for it,
+        the way it waits for an ``async def``.
         """
         async def wrapped(event: str, payload: dict[str, Any]) -> None:
             with script_api.current_script_context(script_id):
                 try:
                     from openavc.core.script_api import Event
-                    result = handler(Event(event, payload))
-                    if asyncio.iscoroutine(result):
-                        await run_within_handler_limit(result, self.HANDLER_TIMEOUT)
-                    # A synchronous handler has, by this point, already run to
-                    # completion inline on the event loop. It is NOT offloaded
-                    # to a worker thread: the state/devices/events proxies it
-                    # calls must run on the loop thread (scheduling state
-                    # events, async listeners, device I/O), so threading it
-                    # would silently break that propagation. The cost is that a
-                    # blocking sync handler stalls the loop — keep sync handlers
-                    # quick and use an async handler with `await` for slow work.
+                    await script_runs.run_script_code(
+                        script_id, handler, (Event(event, payload),), None,
+                        self.HANDLER_TIMEOUT,
+                    )
+                except script_runs.ScriptRunRefused as exc:
+                    handler_name = getattr(handler, "__name__", "anonymous")
+                    log.error(
+                        f"Script '{script_id}' handler '{handler_name}' for "
+                        f"'{event}': {exc}"
+                    )
+                    await self._emit_script_error(
+                        script_id, handler_name, event, str(exc), ""
+                    )
                 except HandlerTimedOut:
                     handler_name = getattr(handler, "__name__", "anonymous")
                     msg = (
@@ -893,30 +888,30 @@ class ScriptEngine:
         StateStore listeners receive (key, old_value, new_value, source).
         User handlers receive (key, old_value, new_value) — source is omitted
         for simplicity.
+
+        On the loop, every handler runs as its own task after ``state.set``
+        returns: an ``async def`` on the loop, a plain ``def`` on the script's
+        worker thread, both under ``HANDLER_TIMEOUT``. Because each is a task,
+        the state-change cascade depth bounds a plain handler's feedback loop
+        the same way it bounds an async one's.
         """
 
         def wrapped(key: str, old_value: Any, new_value: Any, source: str) -> None:
             try:
-                with script_api.current_script_context(script_id):
-                    result = handler(key, old_value, new_value)
-            except Exception as exc:  # Catch-all: isolates a sync handler's error
-                log.exception(
-                    f"Error in script '{script_id}' state handler for '{key}'"
-                )
-                self._schedule_state_error(
-                    script_id, handler, key, str(exc), traceback.format_exc()
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                # Written from a thread with no loop (a sync caller, a plugin's
+                # own thread): run it right here, as before there was a runner.
+                self._run_state_handler_here(
+                    handler, script_id, key, old_value, new_value
                 )
                 return
 
-            if not asyncio.iscoroutine(result):
-                return
-
-            # Async handler. Bound the state-change cascade so a toggling value
-            # (which evades StateStore's unchanged-value short-circuit) can't
-            # spawn fire-and-forget tasks without limit.
+            # Bound the state-change cascade so a toggling value (which evades
+            # StateStore's unchanged-value short-circuit) can't spawn tasks
+            # without limit.
             depth = _state_handler_depth.get()
             if depth >= self.MAX_STATE_HANDLER_DEPTH:
-                result.close()  # never awaited — avoid the "coroutine" warning
                 handler_name = getattr(handler, "__name__", "anonymous")
                 msg = (
                     f"Script '{script_id}' state handler '{handler_name}' dropped "
@@ -928,44 +923,73 @@ class ScriptEngine:
                 self._schedule_state_error(script_id, handler, key, msg, "")
                 return
 
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                result.close()  # no loop (sync test) — nothing to run it on
-                return
-            loop.create_task(
-                self._run_state_coro(result, depth + 1, script_id, handler, key)
-            )
+            loop.create_task(self._run_state_handler(
+                handler, (key, old_value, new_value), depth + 1, script_id, key,
+            ))
 
         wrapped.__name__ = getattr(handler, "__name__", "anonymous")
         wrapped.__qualname__ = f"{script_id}.{wrapped.__name__}"
         return wrapped
 
-    async def _run_state_coro(
+    def _run_state_handler_here(
         self,
-        coro: Any,
+        handler: Callable,
+        script_id: str,
+        key: str,
+        old_value: Any,
+        new_value: Any,
+    ) -> None:
+        """Run a state handler on the calling thread, which has no loop.
+
+        A plain ``def`` runs to completion here; an ``async def`` has nothing
+        to run on and is closed unrun.
+        """
+        try:
+            with script_api.current_script_context(script_id):
+                result = handler(key, old_value, new_value)
+        except Exception as exc:  # Catch-all: isolates a sync handler's error
+            log.exception(
+                f"Error in script '{script_id}' state handler for '{key}'"
+            )
+            self._schedule_state_error(
+                script_id, handler, key, str(exc), traceback.format_exc()
+            )
+            return
+        if asyncio.iscoroutine(result):
+            result.close()  # never awaited — avoid the "coroutine" warning
+
+    async def _run_state_handler(
+        self,
+        handler: Callable,
+        args: tuple,
         depth: int,
         script_id: str,
-        handler: Callable,
         key: str,
     ) -> None:
-        """Run an async @on_state_change body under a timeout, surfacing errors.
+        """Run one @on_state_change handler under the limit, surfacing errors.
 
         ``depth`` is published in a contextvar so it propagates through the
-        fire-and-forget task hops a state-change cascade creates — that's what
-        lets ``MAX_STATE_HANDLER_DEPTH`` cap the whole chain and not just one
-        synchronous call stack. A timeout or exception in the coroutine
-        body is re-emitted as ``script.error``, honouring the documented
-        guarantee that handler errors surface (the previous fire-and-forget
-        ``create_task`` swallowed them and applied no timeout).
+        task hops (and the worker thread's hand-offs) a state-change cascade
+        creates — that's what lets ``MAX_STATE_HANDLER_DEPTH`` cap the whole
+        chain and not just one call stack. A timeout or exception is
+        re-emitted as ``script.error``, honouring the documented guarantee
+        that handler errors surface.
         """
         depth_token = _state_handler_depth.set(depth)
         handler_name = getattr(handler, "__name__", "anonymous")
         try:
             with script_api.current_script_context(script_id):
-                await run_within_handler_limit(coro, self.HANDLER_TIMEOUT)
+                await script_runs.run_script_code(
+                    script_id, handler, args, None, self.HANDLER_TIMEOUT,
+                )
         except asyncio.CancelledError:
             raise
+        except script_runs.ScriptRunRefused as exc:
+            log.error(
+                f"Script '{script_id}' state handler '{handler_name}' for "
+                f"'{key}': {exc}"
+            )
+            await self._emit_state_error_async(script_id, handler_name, key, str(exc), "")
         except HandlerTimedOut:
             msg = (
                 f"Script '{script_id}' state handler '{handler_name}' timed out "

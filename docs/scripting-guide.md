@@ -44,11 +44,15 @@ If a handler cannot accept that single argument, the script is refused when it l
 
 #### Synchronous vs. asynchronous handlers
 
-A handler can be a plain `def` (synchronous) or an `async def`. Prefer `async def` for anything that talks to a device, waits, or does real work — async handlers run as independent tasks, so a slow one never holds up other events or state changes, and they are stopped after 30 seconds.
+A handler can be a plain `def` or an `async def`. Use `async def` for anything that talks to a device or waits: `await devices.send(...)` and `await delay(...)` work only there. A plain `def` suits a quick reaction, and code that calls something slow that cannot be awaited, such as a library that fetches from a web service.
 
-A synchronous handler runs **inline on the control loop**: nothing else (device commands, the touch panel, other handlers) runs until it returns. Keep sync handlers to quick, in-memory work like `state.set(...)` or `log.info(...)`. Never call `time.sleep()`, a blocking network request, or any long loop in a sync handler — it will freeze the whole system until it finishes. If you need to wait, use an async handler with `await delay(seconds)`.
+A plain `def` handler runs on its script's own thread, so a blocking line in it (`time.sleep()`, a slow request) delays only that script's next plain handler. Device commands, the touch panels and other scripts keep running. A script's plain handlers run one at a time, in the order things happened, and each call one makes, such as `state.set()`, takes effect before its next line. A plain `def` cannot `await`: to send a device command from one, use `after(0, devices.send, "projector_main", "power_on")` or `macros.start(...)`.
 
-The same rules apply to `after()`/`every()` timer callbacks: an async callback is stopped after 30 seconds, a sync callback runs inline and must stay quick. Either way, a callback that fails or times out raises a `script.error` event rather than failing silently.
+An `async def` handler runs alongside the rest of the system, between its `await`s, so it must never block. A blocking call there freezes everything until it returns, and the time limit cannot interrupt it. Wait with `await delay(seconds)`, and put blocking calls in a plain `def`.
+
+Each run of a handler gets 30 seconds. An async handler still running then is stopped. A plain one cannot be stopped mid-line: it is reported as timed out, and its next call into OpenAVC is refused, which ends it. Code that never calls in again runs on until it finishes. While three runs of one script are stuck like that, its plain handlers are refused until the script is reloaded or the server restarts.
+
+The same rules apply to `after()`/`every()` timer callbacks and to functions a control calls. A handler or callback that fails or times out raises a `script.error` event rather than failing silently.
 
 ```python
 # Fine: quick, synchronous reaction
@@ -56,7 +60,15 @@ The same rules apply to `after()`/`every()` timer callbacks: an async callback i
 def on_room_active(key, old, new):
     state.set("var.status_text", "Active" if new else "Idle")
 
-# Do this for anything slow — async, with await
+# A plain def may call something that blocks
+import urllib.request
+
+@on_event("ui.press.refresh_weather")
+def refresh_weather(event):
+    reply = urllib.request.urlopen("https://weather.example/today", timeout=10)
+    state.set("var.weather", reply.read().decode()[:100])
+
+# Do this for anything that talks to a device or waits: async, with await
 @on_event("ui.press.start")
 async def on_start(event):
     await devices.send("projector_main", "power_on")
@@ -177,7 +189,7 @@ A few practical consequences:
 
 - `state.get(key)` at the start of your handler returns `new_value` (or possibly an even newer value, if more changes have happened since your handler was scheduled).
 - Multiple matching handlers run concurrently. Don't depend on a specific order between sibling `@on_state_change` handlers.
-- An `async` handler is scheduled as an independent task, so a long-running one doesn't block other state changes. A synchronous (`def`) handler runs inline — keep it quick (see [Synchronous vs. asynchronous handlers](#synchronous-vs-asynchronous-handlers) above).
+- Every handler runs as its own task after the change, so a long-running one does not hold up other state changes. One script's plain `def` handlers see the changes one at a time, in order (see [Synchronous vs. asynchronous handlers](#synchronous-vs-asynchronous-handlers) above).
 - If one state change leads your handler to set another, which triggers another handler, and so on, the system caps that cascade depth as a safety net against accidental feedback loops (for example a handler that toggles the very value it reacts to). Keep reactions acyclic.
 - `@on_state_change("device.x.power")` and `@on_event("state.changed.device.x.power")` have effectively the same timing — both fire as async tasks after the change. Prefer `@on_state_change` for clearer intent.
 
@@ -588,12 +600,12 @@ async def stop_polling(event):
 
 ## Tips
 
-- **Use `async def` for any handler that talks to a device or waits**, with `await` on the command or delay. A plain `def` handler runs inline and must stay quick.
+- **Use `async def` for any handler that talks to a device or waits**, with `await` on the command or delay. A plain `def` handler runs on its script's own thread: it may block, up to the 30-second limit, but cannot `await`.
 - **Script errors**: if a handler throws an unhandled exception, the error is logged, a `script.error` event is sent to the Programmer's WebSocket connections (never a panel's) with `script_id`, `handler`, `event`, `error`, and `traceback` fields, and the script's row in the Scripts list says how many times it has failed since it last loaded. Open the script and the editor marks the line that raised. The system continues running: one broken handler does not take down the server, and the mark stays until you reload the script, so a failure overnight is still there in the morning.
 - **Error handling**: wrap device commands in `try`/`except` if the device might be offline.
 - **Hot reload**: click **Save & Reload Script** in the Code view to reload a script without restarting the server.
 - **No sandbox**: scripts run in the server process with full Python access. This is intentional. The programmer IS the system administrator (same trust model as Crestron SIMPL# or Q-SYS Lua).
-- **Do not block the event loop**: use `await delay()` instead of `time.sleep()`. A blocking call freezes the entire system.
+- **Never block inside an `async def`**: use `await delay()` instead of `time.sleep()`. A blocking call there freezes the entire system. Blocking calls belong in a plain `def`.
 - **Nothing at the top level should loop.** Code outside a handler runs once, when the script loads, and it gets 10 seconds. Past that the load is abandoned and the script does not run. Work that repeats belongs in `every()`. A loop that calls into the platform is stopped at its next call, so fixing the script and clicking Run clears it; a loop that calls nothing at all cannot be stopped and keeps a core busy until the server restarts, which is slow enough to make healthy devices look like they are dropping offline. The Scripts list says which one you have.
 - **Params are dicts**: `devices.send()` takes an optional dictionary as its third argument, not keyword arguments. Write `devices.send("proj", "set_input", {"input": "hdmi1"})`, not `devices.send("proj", "set_input", input="hdmi1")`.
 

@@ -16,11 +16,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import functools
+import inspect
 import threading
 import traceback
 from contextvars import ContextVar
 from typing import Any, Callable, TYPE_CHECKING
 
+from openavc.core import script_runs
 from openavc.core.condition_eval import eval_operator
 from openavc.core.isc import ISCRemoteError
 from openavc.utils.logger import get_logger
@@ -82,7 +84,8 @@ def release_load_thread(thread: threading.Thread) -> None:
 
 
 def _stop_if_abandoned() -> None:
-    """Unwind the calling thread if its load was abandoned."""
+    """Unwind the calling thread if its load, or its run, was abandoned."""
+    script_runs.stop_if_abandoned()
     if not _abandoned_load_threads:
         return
     script_id = _abandoned_load_threads.get(threading.current_thread())
@@ -95,14 +98,29 @@ def _stop_if_abandoned() -> None:
 
 
 def _leashed(fn: Callable) -> Callable:
-    """Check the leash before a script-facing call reaches the platform."""
+    """The door every synchronous script-facing call goes through.
+
+    Checks the leash, then runs the call on the event loop: right here when
+    this already is the loop's thread, handed over and waited for when it is
+    not (a plain ``def`` handler's worker, a thread the script started).
+    """
 
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         _stop_if_abandoned()
+        loop = script_runs.hand_off_loop()
+        if loop is not None:
+            return script_runs.call_on_loop(loop, fn, args, kwargs)
         return fn(*args, **kwargs)
 
     return wrapper
+
+
+#: How a coroutine proxy is named to the script author, by the class it is on.
+_PROXY_NAMES = {
+    "_DeviceProxy": "devices", "_EventProxy": "events",
+    "_MacroProxy": "macros", "_ISCProxy": "isc",
+}
 
 
 def _leashed_async(fn: Callable) -> Callable:
@@ -111,11 +129,28 @@ def _leashed_async(fn: Callable) -> Callable:
     Wrapping an ``async def`` in a plain function would make
     ``iscoroutinefunction`` false for it, and a proxy method handed to
     ``after()`` as a callback is dispatched on exactly that test.
+
+    A coroutine cannot be handed to the loop and waited for the way a plain
+    call is, so one being run anywhere but the loop (``asyncio.run`` inside a
+    plain ``def``) is refused with what to write instead, rather than left to
+    drive the device manager from a second event loop.
     """
+    owner = fn.__qualname__.split(".")[0]
+    if owner in _PROXY_NAMES:
+        shown = f"{_PROXY_NAMES[owner]}.{fn.__name__}"
+        instead = f"From a plain def, schedule it with after(0, {shown}, ...) instead."
+    else:  # delay()
+        shown = fn.__name__
+        instead = "A plain def can wait with time.sleep() instead."
 
     @functools.wraps(fn)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         _stop_if_abandoned()
+        if script_runs.hand_off_loop() is not None:
+            raise RuntimeError(
+                f"{shown}() has to be awaited inside an async def handler or "
+                f"function. {instead}"
+            )
         return await fn(*args, **kwargs)
 
     return wrapper
@@ -459,7 +494,7 @@ class _PluginProxy:
         # Only called if normal attribute lookup fails — _methods etc. are
         # on the instance dict so they hit before this.
         try:
-            return self._methods[name]
+            method = self._methods[name]
         except KeyError:
             available = sorted(self._methods)
             hint = (
@@ -470,6 +505,11 @@ class _PluginProxy:
             raise AttributeError(
                 f"Plugin '{self._plugin_id}' has no script method '{name}'.{hint}"
             )
+        # A plain method runs on the loop like every other script-facing call:
+        # plugin code reaches the state store and the bus, which assume it.
+        if inspect.iscoroutinefunction(method):
+            return method
+        return _leashed(method)
 
     def __setattr__(self, name: str, value: Any) -> None:
         raise AttributeError(
@@ -584,8 +624,9 @@ def _forget_timer(timer_id: str) -> None:
 def _register_timer(timer_id: str, coro_factory: Callable[[], Any]) -> None:
     """Schedule a timer now if a loop is running, else defer it to load-drain.
 
-    Handlers run on the event loop thread, so their ``after``/``every`` calls
-    schedule immediately and are attributed to the current script. Top-level
+    A handler's ``after``/``every`` call reaches here on the event loop thread
+    (a plain ``def``'s is handed over by ``_leashed``), so it schedules
+    immediately and is attributed to the current script. Top-level
     ``after``/``every`` calls run in the load worker thread (no running loop),
     so they're parked in ``_pending_timers`` for ``materialize_pending_timers``
     to schedule on the loop after the script finishes importing.
@@ -652,26 +693,28 @@ async def _run_timer_callback(
     timer_id: str, kind: str, callback: Callable, args: tuple,
 ) -> None:
     """Run one timer callback with the same protections event handlers get:
-    async bodies are bounded by the handler timeout, and any failure is
-    re-emitted as ``script.error`` instead of vanishing into the log.
+    it is bounded by the handler timeout, a plain ``def`` runs on its script's
+    worker thread rather than on the loop, and any failure is re-emitted as
+    ``script.error`` instead of vanishing into the log.
 
-    Synchronous callbacks run inline on the event loop — same documented
-    constraint as sync event handlers (the state/devices/events proxies
-    assume the loop thread, so thread offload would break them). Keep timer
-    callbacks short or make them async.
+    Runs under the owning script's id, so a timer the callback starts belongs
+    to that script too and goes with it on a reload.
     """
-    from openavc.core.script_engine import (
-        HandlerTimedOut, ScriptEngine, run_within_handler_limit,
-    )
+    from openavc.core.script_engine import ScriptEngine
 
     handler_name = getattr(callback, "__name__", "anonymous")
+    owner = _timer_owners.get(timer_id)
     try:
-        result = callback(*args)
-        if asyncio.iscoroutine(result):
-            await run_within_handler_limit(result, ScriptEngine.HANDLER_TIMEOUT)
+        with current_script_context(owner):
+            await script_runs.run_script_code(
+                owner, callback, args, None, ScriptEngine.HANDLER_TIMEOUT,
+            )
     except asyncio.CancelledError:
         raise
-    except HandlerTimedOut:
+    except script_runs.ScriptRunRefused as exc:
+        _log.error(f"{kind}() callback '{handler_name}' (timer {timer_id}): {exc}")
+        await _emit_timer_error(timer_id, handler_name, str(exc), "")
+    except script_runs.HandlerTimedOut:
         msg = (
             f"{kind}() callback '{handler_name}' timed out after "
             f"{ScriptEngine.HANDLER_TIMEOUT}s (timer {timer_id})"
