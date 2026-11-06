@@ -383,14 +383,22 @@ def _write_through(
 def _member_relpath(name: str, prefix: str) -> Path | None:
     """Relative path of a zip member below ``prefix``, or None if unsafe.
 
-    Archives are self-written, but never extract a traversal/absolute name.
+    Archives are self-written, but a member is placed only where its name
+    says on every platform. Besides an absolute name and ``..``, a name
+    holding a colon, a backslash or a NUL is refused wherever the rollback
+    runs: on Windows ``D:x.py`` joined to a folder is a path on drive D:, a
+    backslash is a separator the ``..`` check would not see on POSIX, and a
+    colon deeper in makes a hidden stream. The writers OpenAVC puts files in
+    a project with never use one. A file somebody copied into a project by
+    hand on Linux or macOS under such a name is skipped with the warning
+    below, and stays in the tree the rollback keeps aside.
     """
     rel = name[len(prefix):]
     if not rel:
         return None
     p = Path(rel)
-    if p.is_absolute() or ".." in p.parts:
-        log.warning("Skipping unsafe backup member: %s", name)
+    if p.is_absolute() or ".." in p.parts or any(c in rel for c in ":\\\x00"):
+        log.warning("Skipping unsafe backup member: %r", name)
         return None
     return p
 
@@ -544,7 +552,10 @@ def _put_links_back(
         for info in members:
             if info.filename != prefix and not info.filename.startswith(f"{prefix}/"):
                 continue
-            below = Path(info.filename[len(prefix):].lstrip("/"))
+            member = _member_relpath(info.filename, "projects/")
+            if member is None:
+                continue
+            below = member.relative_to(rel_path)
             if _unrecorded_link(live, rel_path / below, links):
                 log.warning("Not restoring %s through a link the backup did not record", info.filename)
                 continue
