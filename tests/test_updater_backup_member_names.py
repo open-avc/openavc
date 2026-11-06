@@ -3,9 +3,11 @@
 The updater writes these archives itself, so a strange member name means
 something else wrote the data folder. A rollback still places a member only
 where its name says on every platform: on Windows ``D:x.py`` joined to a
-folder is a path on drive D:, ``a\\..\\..\\x`` climbs out, and ``x.py:s`` is a
-hidden stream, so a name holding a colon, a backslash or a NUL is skipped
-wherever the rollback runs. OpenAVC never names a project file that way.
+folder is a path on drive D:, ``/x.py`` is the root of the current drive,
+``a\\..\\..\\x`` climbs out, and ``x.py:s`` is a hidden stream. So a name
+with a drive or a root as either platform reads it, or holding a colon, a
+backslash or a NUL, is skipped wherever the rollback runs. OpenAVC never
+names a project file that way.
 """
 
 import os
@@ -27,6 +29,7 @@ UNSAFE = [
     "projects/default/n\x00ul.py",
     "projects/../x.py",
     "projects//etc/x.py",
+    "projects///server/share/x.py",
 ]
 
 

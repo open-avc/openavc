@@ -24,7 +24,7 @@ import shutil
 import zipfile
 import zlib
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from openavc.utils.paths import files_below, is_link
 
@@ -384,11 +384,12 @@ def _member_relpath(name: str, prefix: str) -> Path | None:
     """Relative path of a zip member below ``prefix``, or None if unsafe.
 
     Archives are self-written, but a member is placed only where its name
-    says on every platform. Besides an absolute name and ``..``, a name
-    holding a colon, a backslash or a NUL is refused wherever the rollback
-    runs: on Windows ``D:x.py`` joined to a folder is a path on drive D:, a
-    backslash is a separator the ``..`` check would not see on POSIX, and a
-    colon deeper in makes a hidden stream. The writers OpenAVC puts files in
+    says on every platform. A name with a drive or a root as either platform
+    reads it, a ``..``, or a colon, a backslash or a NUL is refused wherever
+    the rollback runs: on Windows ``/etc/x.py`` is not absolute but joins to
+    the root of the current drive, ``D:x.py`` joined to a folder is a path on
+    drive D:, a backslash is a separator the ``..`` check would not see on
+    POSIX, and a colon deeper in makes a hidden stream. The writers OpenAVC puts files in
     a project with never use one. A file somebody copied into a project by
     hand on Linux or macOS under such a name is skipped with the warning
     below, and stays in the tree the rollback keeps aside.
@@ -397,7 +398,8 @@ def _member_relpath(name: str, prefix: str) -> Path | None:
     if not rel:
         return None
     p = Path(rel)
-    if p.is_absolute() or ".." in p.parts or any(c in rel for c in ":\\\x00"):
+    rooted = PurePosixPath(rel).anchor or PureWindowsPath(rel).anchor
+    if rooted or ".." in p.parts or any(c in rel for c in ":\\\x00"):
         log.warning("Skipping unsafe backup member: %r", name)
         return None
     return p
