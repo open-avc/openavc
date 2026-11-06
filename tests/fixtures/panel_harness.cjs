@@ -3753,6 +3753,24 @@ const tests = {
             `an entity in the text is shown as typed, got ${host.textContent}`);
     },
 
+    // The other direction. Any page can frame /panel with ?preview=1 and is
+    // then the panel's parent, so the source check alone let it hand the
+    // panel a definition to draw.
+    editor_messages_from_another_origin_are_ignored() {
+        const app = mkApp();
+        app._setupEditModeListener();
+        const ui = project({ elements: [] }).ui;
+        const post = (origin) => window.dispatchEvent(new window.MessageEvent('message', {
+            data: { type: 'openavc:editor-project', project: { ui }, pageId: 'main' },
+            origin,
+            source: window.parent,
+        }));
+        post('https://somewhere.example');
+        assert(!app.uiDef, 'a page on another origin cannot hand the panel a definition');
+        post(window.location.origin);
+        assert(app.uiDef === ui, "the Programmer on the panel's own origin still can");
+    },
+
     // A list's key pattern is a glob: `*` is the only wildcard. Anything else
     // in it was handed to the regex engine as-is, so a bracket threw and broke
     // the list, and parentheses became a capture that took the item's value.

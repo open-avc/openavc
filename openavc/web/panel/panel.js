@@ -588,8 +588,11 @@ class PanelApp {
 
     _setupEditModeListener() {
         window.addEventListener('message', (event) => {
-            // Only accept messages from the parent programmer window
+            // Only accept messages from the parent programmer window, which is
+            // on this panel's own origin. Any page can frame /panel?preview=1,
+            // and is then the parent too.
             if (event.source !== window.parent) return;
+            if (event.origin !== window.location.origin) return;
             const msg = event.data;
             if (!msg || typeof msg !== 'object') return;
             switch (msg.type) {

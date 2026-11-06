@@ -134,6 +134,8 @@ export function Canvas({
     console.log("[canvas] iframe loaded, posting editor-init");
     // Resolved, not raw: the canvas IS the panel, and the panel reads a matrix
     // as two finished lists rather than expanding a generator itself (D6).
+    // Every message to the frame names this origin, which the panel is served
+    // from: if the frame were ever on another page, the project stays here.
     void resolveProjectMatrices(p).then((resolved) =>
       iframe.contentWindow?.postMessage(
         {
@@ -145,7 +147,7 @@ export function Canvas({
           demoState: sampleState(),
           uiFilesVersion,
         },
-        "*",
+        window.location.origin,
       ),
     );
     setIframeReady(true);
@@ -172,7 +174,7 @@ export function Canvas({
             demoState: sampleState(),
             uiFilesVersion,
           },
-          "*",
+          window.location.origin,
         );
       });
     }, 50);
@@ -185,7 +187,7 @@ export function Canvas({
   const beginTextEdit = useCallback((elementId: string) => {
     iframeRef.current?.contentWindow?.postMessage(
       { type: "openavc:editor-edit-text", elementId },
-      "*",
+      window.location.origin,
     );
   }, []);
 
@@ -520,7 +522,7 @@ export function Canvas({
   const postPlacements = useCallback((payload: Record<string, Placement>) => {
     iframeRef.current?.contentWindow?.postMessage(
       { type: "openavc:editor-placements", placements: payload },
-      "*",
+      window.location.origin,
     );
   }, []);
 
@@ -1098,7 +1100,7 @@ export function Canvas({
     vminRef.current = previewVmin;
     iframeRef.current?.contentWindow?.postMessage(
       { type: "openavc:editor-page", pageId: page.id, vmin: previewVmin },
-      "*",
+      window.location.origin,
     );
   }, [previewVmin, page.id]);
 
