@@ -3665,6 +3665,109 @@ const tests = {
         app.handleMessage({ type: 'macro.completed', macro_id: 'system_on' });
     },
 
+    // A macro's id is whatever its author called it. Kept in plain objects, a
+    // macro named `__proto__` wrote its progress onto every object in the
+    // panel, and one named `constructor` read as running before it ever ran.
+    a_macro_named_like_an_object_built_in_is_an_ordinary_macro() {
+        const proto = window.Object.prototype;
+        const touched = ['running', 'description', 'step_index', 'total_steps'];
+        try {
+            const app = mkApp();
+            app.ws = { readyState: 1, send() {} };
+            // A panel that connects mid-run hears progress before any start.
+            app.handleMessage({
+                type: 'macro.progress', macro_id: '__proto__', step_index: 0, total_steps: 2,
+                description: 'Warming up',
+            });
+            app.handleMessage({ type: 'macro.started', macro_id: '__proto__', total_steps: 2 });
+            app.handleMessage({
+                type: 'macro.progress', macro_id: '__proto__', step_index: 1, total_steps: 2,
+                description: 'Lowering the screen',
+            });
+            for (const name of touched) {
+                assert(!Object.prototype.hasOwnProperty.call(proto, name),
+                    `a macro called __proto__ left "${name}" on every object`);
+            }
+            app.handleMessage({ type: 'macro.completed', macro_id: '__proto__' });
+
+            const proj = project({
+                elements: [{
+                    id: 'btn_ctor', type: 'button', label: 'Start',
+                    bindings: { do: { press: [{ action: 'macro', macro: 'constructor' }] } },
+                }],
+                placements: { btn_ctor: { x: 5, y: 5, w: 20, h: 10 } },
+            });
+            renderProject(app, proj);
+            const btn = app.elementMap['btn_ctor'].el;
+            app._updateMacroBusyState('constructor');
+            assert(!btn.classList.contains('macro-busy'), 'a macro called constructor is idle until it runs');
+            app.handleMessage({ type: 'macro.started', macro_id: 'constructor', total_steps: 1 });
+            assert(btn.classList.contains('macro-busy'), 'and busy while it runs');
+            app.handleMessage({ type: 'macro.completed', macro_id: 'constructor' });
+            assert(!btn.classList.contains('macro-busy'), 'and idle again once it ends');
+        } finally {
+            for (const name of touched) delete proto[name];
+        }
+    },
+
+    // The panel only ever talks to a Programmer on its own origin. Any page can
+    // frame /panel with ?preview=1; a '*' target handed that page the editor
+    // messages too.
+    embedded_panel_posts_only_to_its_own_origin() {
+        const previousUrl = window.location.href;
+        const ownParent = Object.getOwnPropertyDescriptor(window, 'parent');
+        const posted = [];
+        Object.defineProperty(window, 'parent', {
+            value: { postMessage: (msg, target) => posted.push({ msg, target }) },
+            configurable: true,
+        });
+        window.history.replaceState({}, '', '/panel/?preview=1');
+        try {
+            const app = mkApp();
+            assert(app.embedded, 'a Programmer preview is embedded');
+            app._postToParent({ type: 'openavc:element-error', elementId: 'x', message: 'Broken' });
+            assert(posted.length === 1, `one message to the parent, got ${posted.length}`);
+            assert(posted[0].target === window.location.origin,
+                `addressed to "${window.location.origin}", got "${posted[0].target}"`);
+        } finally {
+            window.history.replaceState({}, '', previousUrl);
+            if (ownParent) Object.defineProperty(window, 'parent', ownParent);
+            else delete window.parent;
+        }
+    },
+
+    // A list's key pattern is a glob: `*` is the only wildcard. Anything else
+    // in it was handed to the regex engine as-is, so a bracket threw and broke
+    // the list, and parentheses became a capture that took the item's value.
+    list_key_pattern_is_literal_apart_from_the_star() {
+        const app = mkApp();
+        const rendered = [];
+        const list = (pattern) => ({
+            binding: { key_pattern: pattern },
+            _list: { renderItems: (items) => rendered.push(items), staticItems: [{ label: 'None', value: '' }] },
+        });
+        app.state = {
+            'var.zone(a).one': 'First',
+            'var.zonea.two': 'Second',
+            'var.room[1].three': 'Third',
+        };
+
+        app.evaluateListItems(list('var.zone(a).*'));
+        let items = rendered.pop();
+        assert(items.length === 1 && items[0].label === 'First' && items[0].value === 'one',
+            `parentheses match themselves, got ${JSON.stringify(items)}`);
+
+        app.evaluateListItems(list('var.room[1].*'));
+        items = rendered.pop();
+        assert(items.length === 1 && items[0].label === 'Third' && items[0].value === 'three',
+            `a bracket matches itself, got ${JSON.stringify(items)}`);
+
+        app.evaluateListItems(list('var.hall[*'));
+        items = rendered.pop();
+        assert(items.length === 1 && items[0].label === 'None',
+            `an unmatched bracket falls back to the list's own items, got ${JSON.stringify(items)}`);
+    },
+
     // The same count, one surface over: a button lit while its macro runs went
     // dark on the first ending run even though another was still going.
     q139_a_button_stays_busy_while_a_second_run_is_still_going() {

@@ -202,6 +202,9 @@ SCENARIOS = [
     "q139_a_button_stays_busy_while_a_second_run_is_still_going",
     "macro_progress_keeps_its_step_through_a_wait",
     "macro_progress_never_counts_to_zero",
+    "a_macro_named_like_an_object_built_in_is_an_ordinary_macro",
+    "embedded_panel_posts_only_to_its_own_origin",
+    "list_key_pattern_is_literal_apart_from_the_star",
     "q139_a_matrix_preset_and_lock_name_the_control_they_came_from",
     # The Programmer's session reaches the embedded panel's requests and socket.
     "bridge_sends_the_programmer_session_as_a_bearer_token",

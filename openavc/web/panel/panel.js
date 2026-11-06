@@ -330,9 +330,12 @@ class PanelApp {
         this.pageHistory = [];       // Stack of previously-visited regular pages (newest on top) for $back
         this._previewPageId = null;  // Page the builder's preview last asked for (see _showPageAsRuntimeWould)
         this._navigatingBack = false; // Skip history push when navigateToPage is recursing for $back
-        this._runningMacros = {};    // macro_id -> { description, step_index, total_steps }
-        this._startedMacros = {};    // macro_id -> { at, reported, running } for macros THIS panel started
-        this._macroRuns = {};        // macro_id -> how many runs of it are in flight (see _endMacroRun)
+        // Keyed by macro id, which is whatever the author named it. No
+        // prototype, so an id like `constructor` reads as not running and
+        // `__proto__` is an ordinary key rather than Object.prototype.
+        this._runningMacros = Object.create(null);    // macro_id -> { description, step_index, total_steps }
+        this._startedMacros = Object.create(null);    // macro_id -> { at, reported, running } for macros THIS panel started
+        this._macroRuns = Object.create(null);        // macro_id -> how many runs of it are in flight (see _endMacroRun)
         this.reconnectDelay = 1000;
         this.maxReconnectDelay = 30000; // matches the backoff cap used in onclose
         this.reconnectAttempts = 0;
@@ -574,8 +577,12 @@ class PanelApp {
     }
 
     _postToParent(msg) {
+        // Only to a parent on this panel's own origin. The Programmer always is
+        // (through the cloud too, where the difference is a path), and any page
+        // can frame the panel with ?preview=1, so '*' would hand that page the
+        // editor messages: text, element errors, file names.
         if (this.embedded) {
-            try { window.parent.postMessage(msg, '*'); } catch (_) { /* ignore */ }
+            try { window.parent.postMessage(msg, window.location.origin); } catch (_) { /* ignore */ }
         }
     }
 
@@ -3475,8 +3482,11 @@ class PanelApp {
         const keyPattern = binding.key_pattern || '';
 
         if (keyPattern) {
-            // Collect items from state matching pattern (glob with *)
-            const regex = new RegExp('^' + keyPattern.replace(/\./g, '\\.').replace(/\*/g, '(.+)') + '$');
+            // Collect items from state matching pattern (glob with *). Every
+            // other character is literal: escaped first, so a bracket or a
+            // plus in the pattern neither throws nor matches as a regex.
+            const escaped = keyPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp('^' + escaped.replace(/\\\*/g, '(.+)') + '$');
             const items = [];
             for (const [key, val] of Object.entries(this.state)) {
                 const match = key.match(regex);
