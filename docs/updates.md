@@ -35,6 +35,8 @@ On Windows, the downloaded installer's digital signature is checked before it ru
 
 Do not close the browser or power off the system during this process. After the restart, the Programmer IDE reconnects automatically and shows a confirmation toast.
 
+On Windows, the OpenAVC icon by the clock closes while the installer runs and comes back when the update is done. If the icon had been quit before the update, it stays closed. This holds for an update onto v0.40.0 or later. After a rollback to an earlier version, the icon comes back at the next sign-in, or from Start menu > **OpenAVC Tray**.
+
 ### If an update cannot be installed right now
 
 On Linux, the Raspberry Pi image and appliance hardware, an update is applied by a privileged step that runs just before the server starts. Part of that step downloads the new version's Python dependencies, which needs internet access at that moment. If it cannot get them, or the Python environment cannot be rebuilt, the system is put back exactly as it was and keeps running the version it was on.

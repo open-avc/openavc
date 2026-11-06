@@ -119,7 +119,7 @@ Name: "{commonstartup}\OpenAVC Tray"; Filename: "{app}\openavc-tray.exe"; Compon
 ; previous one, then start it (mandatory)
 Filename: "{app}\install-service.bat"; Parameters: """{app}"" ""{commonappdata}\OpenAVC"""; Flags: runhidden waituntilterminated; StatusMsg: "Installing OpenAVC service..."; BeforeInstall: RememberServiceEnvironment; AfterInstall: KeepAdministratorEnvironment
 Filename: "{app}\start-service.bat"; Parameters: """{app}"""; Flags: runhidden waituntilterminated; StatusMsg: "Starting OpenAVC service..."
-; Launch tray app
+; Launch tray app (a silent install that stopped it starts it again: StartTray below)
 Filename: "{app}\openavc-tray.exe"; Flags: nowait postinstall skipifsilent; Components: tray; Description: "Launch OpenAVC system tray"
 ; Open Programmer IDE in browser
 Filename: "http://localhost:8080/programmer"; Flags: shellexec nowait postinstall skipifsilent; Description: "Open Programmer IDE in browser"
@@ -131,6 +131,10 @@ Filename: "{app}\uninstall-service.bat"; Parameters: """{app}"""; Flags: runhidd
 Filename: "taskkill.exe"; Parameters: "/F /IM openavc-tray.exe"; Flags: runhidden; RunOnceId: "KillTray"; Components: tray
 
 [Code]
+// Whether PrepareToInstall stopped a running tray (StartTray below).
+var
+  TrayWasRunning: Boolean;
+
 // Stop the NSSM service and kill processes BEFORE file copy.
 // Without this, openavc-server.exe is locked and Inno Setup silently
 // skips it during /VERYSILENT upgrades — the update "succeeds" but
@@ -146,7 +150,107 @@ begin
   if FileExists(NssmPath) then
     Exec(NssmPath, 'stop OpenAVC', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec('taskkill.exe', '/F /IM openavc-server.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  // taskkill answers 0 when it stopped one and 128 when none was running.
   Exec('taskkill.exe', '/F /IM openavc-tray.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  TrayWasRunning := (ResultCode = 0);
+end;
+
+// The tray after a silent install.
+//
+// An update runs this installer silently, from a scheduled task, as SYSTEM.
+// PrepareToInstall stops the tray so its files can be replaced; the [Run]
+// entry that starts it again is skipped when silent, and a program started
+// as SYSTEM would not appear on anyone's desktop anyway. So a silent install
+// that stopped a tray starts it again through a task for the Users group:
+// run on demand, the task starts the tray in the session of each person
+// signed in, and the tray's own mutex keeps it to one per session. The task
+// is deleted straight away, which leaves the tray running. With nobody signed
+// in it starts nothing, and the Startup entry brings the tray back at the
+// next sign-in. A tray someone had quit stays quit.
+const
+  TrayTaskName = 'OpenAVC Tray';
+
+// S as XML text in plain ASCII. schtasks reads a task file that has no XML
+// declaration as UTF-8 and refuses one that declares another encoding, while
+// SaveStringToFile writes the system code page, so anything outside ASCII in
+// the install folder's name goes in as a character reference.
+function XmlText(const S: String): String;
+var
+  I, Code: Integer;
+begin
+  Result := '';
+  I := 1;
+  while I <= Length(S) do
+  begin
+    Code := Ord(S[I]);
+    // A character beyond U+FFFF is two UTF-16 units and one XML reference.
+    if (Code >= $D800) and (Code <= $DBFF) and (I < Length(S)) then
+    begin
+      I := I + 1;
+      Code := $10000 + (Code - $D800) * $400 + (Ord(S[I]) - $DC00);
+    end;
+    if (Code > 126) or (Code = 34) or (Code = 38) or (Code = 60) or (Code = 62) then
+      Result := Result + '&#' + IntToStr(Code) + ';'
+    else
+      Result := Result + S[I];
+    I := I + 1;
+  end;
+end;
+
+// The task names the Users group by its SID, since the group's name is
+// translated. It runs the tray with the person's own rights, and is never
+// held back or stopped on battery or for running long, as a task otherwise is.
+function TrayTaskXml(const TrayPath: String): String;
+begin
+  Result :=
+    '<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">' + #13#10 +
+    '  <RegistrationInfo>' + #13#10 +
+    '    <Author>OpenAVC</Author>' + #13#10 +
+    '  </RegistrationInfo>' + #13#10 +
+    '  <Settings>' + #13#10 +
+    '    <MultipleInstancesPolicy>Parallel</MultipleInstancesPolicy>' + #13#10 +
+    '    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>' + #13#10 +
+    '    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>' + #13#10 +
+    '    <AllowHardTerminate>false</AllowHardTerminate>' + #13#10 +
+    '    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>' + #13#10 +
+    '    <Priority>5</Priority>' + #13#10 +
+    '    <Enabled>true</Enabled>' + #13#10 +
+    '  </Settings>' + #13#10 +
+    '  <Principals>' + #13#10 +
+    '    <Principal id="Users">' + #13#10 +
+    '      <GroupId>S-1-5-32-545</GroupId>' + #13#10 +
+    '      <RunLevel>LeastPrivilege</RunLevel>' + #13#10 +
+    '    </Principal>' + #13#10 +
+    '  </Principals>' + #13#10 +
+    '  <Actions Context="Users">' + #13#10 +
+    '    <Exec>' + #13#10 +
+    '      <Command>' + XmlText(TrayPath) + '</Command>' + #13#10 +
+    '      <WorkingDirectory>' + XmlText(ExtractFileDir(TrayPath)) + '</WorkingDirectory>' + #13#10 +
+    '    </Exec>' + #13#10 +
+    '  </Actions>' + #13#10 +
+    '</Task>' + #13#10;
+end;
+
+procedure StartTray(const TrayPath: String);
+var
+  TaskFile, SchTasks: String;
+  ResultCode: Integer;
+begin
+  if not FileExists(TrayPath) then
+    Exit;
+  TaskFile := ExpandConstant('{tmp}\tray-task.xml');
+  if not SaveStringToFile(TaskFile, TrayTaskXml(TrayPath), False) then
+    Exit;
+  SchTasks := ExpandConstant('{sys}\schtasks.exe');
+  // Nothing here can fail the install: it has already succeeded.
+  if Exec(SchTasks, '/create /f /tn "' + TrayTaskName + '" /xml "' + TaskFile + '"',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
+  begin
+    Exec(SchTasks, '/run /tn "' + TrayTaskName + '"',
+      '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec(SchTasks, '/delete /f /tn "' + TrayTaskName + '"',
+      '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
 end;
 
 // The firewall's own rule store: one string value per rule, shaped
@@ -466,6 +570,9 @@ begin
     SeedDefaultProject();
     CacheInstallerForRollback();
   end;
+  // An install with its wizard showing starts the tray from [Run] instead.
+  if (CurStep = ssDone) and WizardSilent() and TrayWasRunning then
+    StartTray(ExpandConstant('{app}\openavc-tray.exe'));
 end;
 
 procedure RemoveAppDirLeftovers();
