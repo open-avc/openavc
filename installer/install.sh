@@ -194,9 +194,33 @@ install_python() {
 
 ensure_python() {
     if find_python; then
+        ensure_venv_module
         return 0
     fi
     install_python
+}
+
+# A server can have Python without its venv module: Ubuntu Server and cloud
+# images ship python3 but not python3-venv, and Debian splits it out the same
+# way. find_python only checks the version, so without this the install got as
+# far as extracting the release and then failed creating the environment.
+ensure_venv_module() {
+    if "$PYTHON_BIN" -c "import ensurepip, venv" &>/dev/null; then
+        return 0
+    fi
+    local ver
+    ver=$("$PYTHON_BIN" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+    case "$PKG_MANAGER" in
+        apt)
+            info "Installing the Python ${ver} venv module..."
+            apt-get update -qq
+            apt-get install -y -qq "python${ver}-venv" || apt-get install -y -qq python3-venv
+            ;;
+    esac
+    if ! "$PYTHON_BIN" -c "import ensurepip, venv" &>/dev/null; then
+        fatal "Python ${ver} cannot create a virtual environment. Install its venv package (on Debian/Ubuntu: sudo apt-get install python${ver}-venv) and re-run this script."
+    fi
+    ok "Python venv module ready"
 }
 
 # Ensure ca-certificates + tar are present even when Python is already
