@@ -2490,7 +2490,7 @@ DEFS = {
                     'MAC address. Not on a connection field, a secret or a '
                     'table.'
                 ),
-                'since': '0.37.0',
+                'enhancement_since': '0.37.0',
             },
         },
         'extra': False,

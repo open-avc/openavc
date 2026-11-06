@@ -606,7 +606,10 @@ config_schema:
 - Not on a `secret` field, a `table`, or a field saved with the device's
   connection (`host`, `port`, `username`, `password`, `base_url`, `ssl`, the
   serial line settings, `bridge`, `bridge_port`, `usb_serial`): the driver is
-  refused. Requires platform 0.37.0.
+  refused.
+- Takes effect on platform 0.37.0 and does not raise `min_platform_version`:
+  an older platform ignores `learned_from`, and the field keeps the value the
+  integrator picked.
 
 A Python driver declares it the same way in `DRIVER_INFO["config_schema"]` and
 needs no code: it only has to publish the state variable.
@@ -2174,7 +2177,7 @@ A `min_platform_version` lower than a field the driver uses is an error, and the
 
 CI in the community-driver repo enforces the same rules across the whole catalog before any driver enters the index, and additionally requires a `min_platform_version` on any driver that uses a field with a floor.
 
-Some fields only make a driver better, and their description says "Takes effect on platform 0.38.0" instead of "Requires". They don't raise `min_platform_version`: an older platform ignores the field (it logs a warning naming the key it doesn't know) and runs the rest of the driver, so the driver stays installable there and gets the improvement once the platform is updated. Write the driver so it is correct without the field. `then_query:` and a command's `read_back:` are two: the driver still polls the values they read.
+Some fields only make a driver better, and their description says "Takes effect on platform 0.38.0" instead of "Requires". They don't raise `min_platform_version`: an older platform ignores the field (it logs a warning naming the key it doesn't know) and runs the rest of the driver, so the driver stays installable there and gets the improvement once the platform is updated. Write the driver so it is correct without the field. `then_query:` and a command's `read_back:` are two: the driver still polls the values they read. A config field's `learned_from:` is another: the driver reads the reported value while it is connected, so on an older platform only the saved setting stays as the integrator picked it.
 
 #### Protocol Declaration
 
