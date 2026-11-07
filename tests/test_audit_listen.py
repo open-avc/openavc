@@ -321,7 +321,8 @@ async def test_a_value_the_driver_writes_before_the_device_answers_is_not_report
     anything, is the driver's: "set by the driver", never "reported", and
     the timeline, the listen step and the summary count it the same way.
     The order decides, not the timestamps, which a coarse clock makes equal."""
-    from openavc.audit.report import build_report, suggested_confidence
+    from openavc.audit.confidence import suggested_confidence
+    from openavc.audit.report import build_report
 
     if clock == "coarse":
         stuck = _StuckClock()
@@ -366,7 +367,7 @@ async def test_a_value_the_driver_writes_before_the_device_answers_is_not_report
 
 
 def test_the_counts_say_what_the_listen_step_says():
-    from openavc.audit.report import suggested_confidence
+    from openavc.audit.confidence import suggested_confidence
 
     def section(*variables):
         attempt = {"connected_at": 1.0, "traffic": {"received": 5, "sent": 5},

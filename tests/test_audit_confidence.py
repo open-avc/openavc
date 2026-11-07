@@ -16,13 +16,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from openavc.audit.report import (
-    TEST_REPORT_URL_MAX,
-    _driver_limits,
-    _signal_text,
-    driver_test_report,
-    suggested_confidence,
-)
+from openavc.audit.confidence import TEST_REPORT_URL_MAX, driver_test_report, suggested_confidence
+from openavc.audit.report import _driver_limits, _signal_text
 
 
 def _section(**over):

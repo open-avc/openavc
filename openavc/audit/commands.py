@@ -1590,6 +1590,14 @@ def trial_sentence(trial: dict[str, Any]) -> str:
     return "; ".join(parts) + "."
 
 
+def trial_outcome(trial: dict[str, Any]) -> str:
+    """One command's outcome as a sentence that stands on its own: the
+    summary its record keeps, else :func:`trial_sentence`, capitalized. The
+    summary's command rows and the driver test report both say it so."""
+    text = trial.get("summary") or trial_sentence(trial)
+    return text[:1].upper() + text[1:]
+
+
 def _later_refusal_text(later: dict[str, Any]) -> str:
     """A refusal of a request the driver sent on its own inside a command's
     window, said apart from the command."""

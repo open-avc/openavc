@@ -23,8 +23,8 @@ import pytest
 from openavc.audit.driver_choice import DriverChoice
 from openavc.audit.listen import DONE, start_listen
 from openavc.audit.passes import DriverRun, set_connection
+from openavc.audit.confidence import TEST_REPORT_URL_MAX, driver_test_report, suggested_confidence
 from openavc.audit.report import (
-    TEST_REPORT_URL_MAX,
     Redactor,
     _attempt_sentence,
     _driver_limits,
@@ -34,8 +34,6 @@ from openavc.audit.report import (
     render_summary,
     render_timeline,
     report_zip,
-    suggested_confidence,
-    driver_test_report,
 )
 from openavc.audit.session import AuditOptions, AuditSession, AuditTarget
 from openavc.core.device_traffic import get_traffic_recorder
