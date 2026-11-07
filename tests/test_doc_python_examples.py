@@ -191,7 +191,10 @@ def _self_assigned_attrs(cls: type) -> set[str]:
 @lru_cache(maxsize=1)
 def _driver_surface() -> frozenset[str]:
     cls = driver_base.BaseDriver
-    return frozenset(set(dir(cls)) | _self_assigned_attrs(cls))
+    # Every class in the MRO: BaseDriver's mixins set attributes of their own
+    # (self._children, self._push_subscription).
+    assigned = set().union(*(_self_assigned_attrs(c) for c in cls.__mro__))
+    return frozenset(set(dir(cls)) | assigned)
 
 
 @lru_cache(maxsize=1)
