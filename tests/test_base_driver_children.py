@@ -1007,3 +1007,450 @@ def test_a_driver_that_declares_a_reserved_prop_keeps_its_own_definition():
     assert schema["offline_reason"]["label"] == "Why This Port Is Down"
     # ...and the ones it did not declare still arrive.
     assert schema["offline_detail"]["type"] == "string"
+
+
+# ---------------------------------------------------------------------------
+# What the child-entity runtime does at its edges: the defaults an undeclared
+# id_format falls back to, what a refused registration leaves behind, how the
+# parent's reachability treats a child that already carries a code, and what
+# each door reports. Pinned result by result, so a restructuring that changes
+# any of them fails here.
+# ---------------------------------------------------------------------------
+
+import asyncio  # noqa: E402
+import copy  # noqa: E402
+import logging  # noqa: E402
+import re  # noqa: E402
+
+from openavc.core.connection_fault import (  # noqa: E402
+    CHILD_NOT_RESPONDING,
+    CHILD_PARENT_OFFLINE,
+)
+
+
+def _driver_with_types(child_types: dict[str, Any]) -> BaseDriver:
+    class _Typed(BaseDriver):
+        DRIVER_INFO = {
+            "id": "acme_widget",
+            "name": "Acme Widget",
+            "transport": "tcp",
+            "state_variables": {},
+            "commands": {},
+            "child_entity_types": child_types,
+        }
+
+        async def send_command(self, command: str, params: Any = None) -> Any:
+            return None
+
+    return _Typed("w1", {}, StateStore(), EventBus())
+
+
+def _observed(drv: BaseDriver) -> list[tuple[str, dict[str, Any]]]:
+    seen: list[tuple[str, dict[str, Any]]] = []
+    drv.contract_observer = lambda kind, detail: seen.append((kind, detail))
+    return seen
+
+
+def test_integer_ids_start_at_one_and_have_no_ceiling_when_undeclared():
+    drv = _driver_with_types({"zone": {"id_format": {"type": "integer"}}})
+    with pytest.raises(ValueError, match=re.escape("Child zone local_id 0 < min 1")):
+        drv.register_child("zone", 0)
+    drv.register_child("zone", 1)
+    drv.register_child("zone", 1_000_000)
+    assert drv.list_children("zone") == [1, 1_000_000]
+    assert drv.state.has("device.w1.zone.1000000.online")
+
+
+def test_an_undeclared_id_format_is_an_unpadded_integer():
+    drv = _driver_with_types({"zone": {}})
+    drv.register_child("zone", 7)
+    assert drv.format_child_id("zone", 7) == "7"
+    with pytest.raises(TypeError, match=re.escape("Child zone local_id must be int, got str: '7'")):
+        drv.register_child("zone", "7")
+
+
+def test_string_ids_are_capped_at_128_characters_when_undeclared():
+    drv = _make_dsp()
+    drv.register_child("component", "a" * 128)
+    with pytest.raises(ValueError, match=re.escape("exceeds id_format.max_length 128")):
+        drv.register_child("component", "b" * 129)
+
+
+def test_the_string_id_checks_run_type_then_characters_then_length():
+    drv = _make_dsp()
+    with pytest.raises(TypeError, match=re.escape(
+        "Child named_control local_id must be str (id_format.type is 'string'), got int: 5"
+    )):
+        drv.register_child("named_control", 5)
+    with pytest.raises(ValueError, match=re.escape(
+        "Child named_control local_id 'a b' is not a valid string id "
+        "(allowed characters: letters, digits, '_', '-')"
+    )):
+        drv.register_child("named_control", "a b")
+    with pytest.raises(ValueError, match=re.escape(
+        f"Child named_control local_id {'c' * 65!r} exceeds id_format.max_length 64"
+    )):
+        drv.register_child("named_control", "c" * 65)
+
+
+def test_an_unsupported_id_kind_is_refused_before_the_id_is_looked_at():
+    drv = _driver_with_types({"slot": {"id_format": {"type": "uuid"}}})
+    with pytest.raises(ValueError, match=re.escape(
+        "Child type 'slot' id_format.type 'uuid' not supported "
+        "(only 'integer' and 'string' are supported)"
+    )):
+        drv.register_child("slot", 1)
+    assert drv.list_children("slot") == []
+
+
+def test_integer_range_messages():
+    drv = _make_driver()
+    with pytest.raises(ValueError, match=re.escape("Child encoder local_id 763 > max 762")):
+        drv.register_child("encoder", 763)
+    with pytest.raises(TypeError, match=re.escape("Child encoder local_id must be int, got bool: True")):
+        drv.register_child("encoder", True)
+
+
+def test_a_per_child_schema_must_be_a_dict_of_var_defs():
+    drv = _make_dsp()
+    with pytest.raises(TypeError, match=re.escape("Child component schema must be a dict, got list")):
+        drv.register_child("component", "Blk", schema=["gain"])  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match=re.escape(
+        "Child component schema property 'gain' must map to a var-def dict, got str"
+    )):
+        drv.register_child("component", "Blk", schema={"gain": "number"})  # type: ignore[dict-item]
+    with pytest.raises(ValueError, match=re.escape(
+        "Child type 'named_control' is not declared `dynamic: true`; a per-child "
+        "schema is only allowed for dynamic child types"
+    )):
+        drv.register_child("named_control", "x", schema={})
+    assert drv.list_children("component") == []
+
+
+def test_an_undeclared_initial_state_prop_is_refused_with_the_whole_sentence():
+    drv = _make_dsp()
+    with pytest.raises(ValueError, match="^" + re.escape(
+        "Child component initial_state property 'nonexistent' not declared in "
+        "child_entity_types['component'].state_variables (or this child's dynamic schema)"
+    ) + "$"):
+        drv.register_child(
+            "component", "Blk", schema={"gain": {"type": "number"}},
+            initial_state={"nonexistent": 1},
+        )
+    drv2 = _make_driver()
+    with pytest.raises(ValueError, match="^" + re.escape(
+        "Child encoder initial_state property 'bogus' not declared in "
+        "child_entity_types['encoder'].state_variables"
+    ) + "$"):
+        drv2.register_child("encoder", 1, initial_state={"bogus": 1})
+
+
+def test_an_undeclared_child_prop_write_is_refused_with_the_whole_sentence():
+    drv = _make_driver()
+    drv.register_child("encoder", 1)
+    with pytest.raises(ValueError, match="^" + re.escape(
+        "Child encoder property 'bogus' not declared in "
+        "child_entity_types['encoder'].state_variables"
+    ) + "$"):
+        drv.set_child_state("encoder", 1, "bogus", 1)
+    dsp = _make_dsp()
+    dsp.register_child("component", "Blk", schema={"gain": {"type": "number"}})
+    with pytest.raises(ValueError, match="^" + re.escape(
+        "Child component property 'mute' not declared in "
+        "child_entity_types['component'].state_variables (or this child's dynamic schema)"
+    ) + "$"):
+        dsp.set_child_state_batch("component", "Blk", {"gain": 1.0, "mute": True})
+    assert dsp.state.get("device.dsp1.component.Blk.gain") is None
+
+
+def test_a_refused_registration_leaves_no_schema_behind():
+    drv = _make_dsp()
+    with pytest.raises(ValueError):
+        drv.register_child(
+            "component", "Blk", schema={"gain": {"type": "number"}},
+            initial_state={"nonexistent": 1},
+        )
+    drv.register_child("component", "Blk")
+    assert "gain" not in drv.get_child_schema("component", "Blk")
+
+
+def test_a_refused_registration_keeps_the_other_children_of_its_type():
+    drv = _make_driver()
+    drv.register_child("encoder", 1)
+    with pytest.raises(ValueError):
+        drv.register_child("encoder", 2, initial_state={"bogus": 1})
+    assert drv.list_children("encoder") == [1]
+    assert drv.state.get("device.ctrl1.encoder.001.online") is True
+    assert not drv.state.has("device.ctrl1.encoder.002.online")
+    drv.register_child("encoder", 2)
+    assert drv.list_children("encoder") == [1, 2]
+
+
+def test_a_refused_registration_of_the_only_child_forgets_the_type():
+    drv = _make_driver()
+    with pytest.raises(ValueError):
+        drv.register_child("encoder", 2, initial_state={"bogus": 1})
+    assert drv._children == {}
+
+
+def test_a_refused_registration_still_uses_up_an_epoch():
+    drv = _make_driver()
+    drv.register_child("encoder", 1)
+    with pytest.raises(ValueError):
+        drv.register_child("encoder", 2, initial_state={"bogus": 1})
+    drv.register_child("encoder", 3)
+    assert drv._children["encoder"] == {1: 1, 3: 3}
+
+
+def test_deregister_forgets_the_dynamic_schema():
+    drv = _make_dsp()
+    drv.register_child("component", "Blk", schema={"gain": {"type": "number"}})
+    drv.deregister_child("component", "Blk")
+    drv.register_child("component", "Blk")
+    assert "gain" not in drv.get_child_schema("component", "Blk")
+    assert drv._children == {"component": {"Blk": 2}}
+
+
+def test_register_seeds_every_prop_in_schema_order_in_one_batch():
+    drv = _make_driver(child_entities={"encoder": {"005": {"label": "Lobby TX"}}})
+    batches: list[dict[str, Any]] = []
+    original = drv.state.set_batch
+
+    def recording(updates: dict[str, Any], source: str = "") -> None:
+        batches.append(dict(updates))
+        original(updates, source=source)
+
+    drv.state.set_batch = recording  # type: ignore[method-assign]
+    drv.register_child("encoder", 5, initial_state={"ip": "10.0.0.5", "offline_reason": ""})
+    assert batches == [{
+        "device.ctrl1.encoder.005.name": None,
+        "device.ctrl1.encoder.005.ip": "10.0.0.5",
+        "device.ctrl1.encoder.005.signal_present": None,
+        "device.ctrl1.encoder.005.audio_source": None,
+        "device.ctrl1.encoder.005.lan_mode": None,
+        "device.ctrl1.encoder.005.online": True,
+        "device.ctrl1.encoder.005.label": "Lobby TX",
+        "device.ctrl1.encoder.005.offline_reason": None,
+        "device.ctrl1.encoder.005.offline_detail": None,
+    }]
+
+
+def test_the_parent_going_offline_leaves_a_driver_claimed_code_alone():
+    drv = _make_driver()
+    drv.register_child("encoder", 1)
+    drv.register_child("encoder", 2)
+    drv.set_child_state_batch(
+        "encoder", 2, drv.child_fault(CHILD_NOT_RESPONDING, "Encoder 2 is wedged"),
+    )
+    drv.set_state("connected", False)
+    assert drv.state.get("device.ctrl1.encoder.001.online") is False
+    assert drv.state.get("device.ctrl1.encoder.001.offline_reason") == CHILD_PARENT_OFFLINE
+    assert drv.state.get("device.ctrl1.encoder.002.offline_reason") == CHILD_NOT_RESPONDING
+    assert drv.state.get("device.ctrl1.encoder.002.offline_detail") == "Encoder 2 is wedged"
+    drv.set_state("connected", True)
+    assert drv.state.get("device.ctrl1.encoder.001.online") is True
+    assert drv.state.get("device.ctrl1.encoder.001.offline_reason") is None
+    assert drv.state.get("device.ctrl1.encoder.002.offline_reason") == CHILD_NOT_RESPONDING
+    assert drv.state.get("device.ctrl1.encoder.002.online") is False
+
+
+def test_the_parent_drop_is_one_batch_across_types_in_registration_order():
+    drv = _make_driver()
+    drv.register_child("encoder", 1)
+    drv.register_child("decoder", 4)
+    drv.register_child("encoder", 2)
+    batches: list[list[str]] = []
+    original = drv.state.set_batch
+
+    def recording(updates: dict[str, Any], source: str = "") -> None:
+        batches.append(list(updates))
+        original(updates, source=source)
+
+    drv.state.set_batch = recording  # type: ignore[method-assign]
+    drv.set_state("connected", False)
+    drv.set_state("connected", False)
+    assert batches == [[
+        f"device.ctrl1.{key}.{prop}"
+        for key in ("encoder.001", "encoder.002", "decoder.4")
+        for prop in ("online", "offline_reason", "offline_detail")
+    ]]
+
+
+def test_a_child_whose_id_no_longer_fits_its_type_is_skipped_when_the_parent_drops():
+    drv = _make_driver()
+    drv.register_child("encoder", 5)
+    drv.register_child("decoder", 30)
+    info = copy.deepcopy(drv.DRIVER_INFO)
+    info["child_entity_types"]["decoder"]["id_format"]["max"] = 10
+    drv.DRIVER_INFO = info
+    drv.set_state("connected", False)
+    assert drv.state.get("device.ctrl1.encoder.005.offline_reason") == CHILD_PARENT_OFFLINE
+    assert drv.state.get("device.ctrl1.decoder.30.online") is True
+
+
+def test_presence_mode_of_an_undeclared_type_reads_assumed():
+    drv = _make_driver()
+    assert drv._child_presence_mode("nope") == "assumed"
+    assert drv._child_presence_mode("encoder") == "assumed"
+
+
+def test_get_child_state_of_an_unregistered_child_is_empty_even_with_keys_in_the_store():
+    drv = _make_driver()
+    drv.state.set("device.ctrl1.encoder.007.name", "Orphan")
+    assert drv.get_child_state("encoder", 7) == {}
+
+
+def test_each_door_reports_an_unregistered_child_in_its_own_words(caplog):
+    drv = _make_driver()
+    seen = _observed(drv)
+    with caplog.at_level(logging.WARNING, logger="openavc.drivers.base"):
+        drv.set_child_state("encoder", 9, "name", "x")
+        drv.set_child_state_batch("encoder", 9, {"name": "x", "ip": "y"})
+        drv.set_children_state_batch([("encoder", 9, {"name": "x", "ip": "y"})])
+    assert [r.getMessage() for r in caplog.records if r.name == "openavc.drivers.base"] == [
+        "[ctrl1] set_child_state for unregistered child encoder/9 (prop 'name') "
+        "skipped — call register_child first",
+        "[ctrl1] set_child_state_batch for unregistered child encoder/9 skipped — "
+        "call register_child first",
+        "[ctrl1] set_children_state_batch entry for unregistered child encoder/9 "
+        "skipped — call register_child first",
+    ]
+    assert seen == [
+        ("child_unregistered", {"child_type": "encoder", "local_id": 9, "props": ["name"]}),
+        ("child_unregistered", {"child_type": "encoder", "local_id": 9, "props": ["ip", "name"]}),
+        ("child_unregistered", {"child_type": "encoder", "local_id": 9, "props": ["ip", "name"]}),
+    ]
+
+
+def test_the_schema_collision_warning_says_what_happened(caplog):
+    drv = _make_dsp()
+    drv.register_child("component", "Gain", schema={"gain": {"type": "number"}})
+    with caplog.at_level(logging.WARNING, logger="openavc.drivers.base"):
+        drv.register_child("component", "Gain", schema={"gain": {"type": "number"}})
+        drv.register_child("component", "Gain")
+        drv.register_child("component", "Gain", schema={"mute": {"type": "boolean"}})
+    assert [r.getMessage() for r in caplog.records if r.name == "openavc.drivers.base"] == [
+        "[dsp1] register_child('component', 'Gain') ignored: id already registered "
+        "with a different schema — likely an id collision after sanitization, or a "
+        "schema change without deregister_child() first",
+    ]
+
+
+def test_a_child_write_of_the_wrong_type_is_reported_under_the_child_key():
+    drv = _make_driver()
+    drv.register_child("encoder", 5)
+    seen = _observed(drv)
+    drv.set_child_state("encoder", 5, "lan_mode", "two")
+    assert len(seen) == 1
+    kind, detail = seen[0]
+    assert kind == "type_mismatch"
+    assert {k: detail[k] for k in ("state", "declared", "value")} == {
+        "state": "encoder.005.lan_mode", "declared": "integer", "value": "two",
+    }
+    assert detail["problem"]
+    assert drv.state.get("device.ctrl1.encoder.005.lan_mode") == "two"
+
+
+def test_a_batch_writes_no_type_check():
+    drv = _make_driver()
+    drv.register_child("encoder", 5)
+    seen = _observed(drv)
+    drv.set_child_state_batch("encoder", 5, {"lan_mode": "two"})
+    drv.set_children_state_batch([("encoder", 5, {"lan_mode": "three"})])
+    assert seen == []
+    assert drv.state.get("device.ctrl1.encoder.005.lan_mode") == "three"
+
+
+async def test_poll_children_pauses_between_batches_and_not_after_the_last(monkeypatch):
+    drv = _make_driver()
+    for eid in range(1, 11):
+        drv.register_child("encoder", eid)
+    pauses: list[float] = []
+
+    async def fake_sleep(delay: float, *args: Any, **kwargs: Any) -> None:
+        pauses.append(delay)
+
+    async def fetch(batch_ids: list[int]) -> dict[int, dict[str, Any]]:
+        return {eid: {"name": str(eid)} for eid in batch_ids}
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    await drv.poll_children("encoder", fetch, batch_size=3, inter_batch_delay=0.25)
+    assert pauses == [0.25, 0.25, 0.25]
+    pauses.clear()
+    await drv.poll_children("encoder", fetch, batch_size=3, inter_batch_delay=0)
+    assert pauses == []
+    pauses.clear()
+    await drv.poll_children("encoder", fetch, batch_size=50, inter_batch_delay=0.25)
+    assert pauses == []
+
+
+async def test_poll_children_applies_the_whole_poll_in_one_batch_and_drops_reregistered():
+    drv = _make_driver()
+    for eid in range(1, 5):
+        drv.register_child("encoder", eid)
+    applied: list[list[tuple[str, int, dict[str, Any]]]] = []
+    original = drv.set_children_state_batch
+
+    def recording(updates: list[tuple[str, int, dict[str, Any]]]) -> None:
+        applied.append(list(updates))
+        original(updates)
+
+    drv.set_children_state_batch = recording  # type: ignore[method-assign]
+
+    async def fetch(batch_ids: list[int]) -> dict[int, dict[str, Any]]:
+        if 1 in batch_ids:
+            drv.deregister_child("encoder", 2)
+            drv.register_child("encoder", 2)
+        return {eid: {"name": f"E{eid}"} for eid in batch_ids}
+
+    await drv.poll_children("encoder", fetch, batch_size=2, inter_batch_delay=0)
+    assert applied == [[
+        ("encoder", 1, {"name": "E1"}),
+        ("encoder", 3, {"name": "E3"}),
+        ("encoder", 4, {"name": "E4"}),
+    ]]
+    assert drv.state.get("device.ctrl1.encoder.002.name") is None
+
+
+async def test_poll_children_applies_nothing_when_every_result_is_stale():
+    drv = _make_driver()
+    drv.register_child("encoder", 1)
+    calls: list[Any] = []
+    drv.set_children_state_batch = calls.append  # type: ignore[method-assign]
+
+    async def fetch(batch_ids: list[int]) -> dict[int, dict[str, Any]]:
+        return {99: {"name": "ghost"}}
+
+    await drv.poll_children("encoder", fetch)
+    assert calls == []
+
+
+def test_children_state_batch_validates_every_live_entry_before_writing_any():
+    drv = _make_driver()
+    drv.register_child("encoder", 1)
+    drv.register_child("encoder", 2)
+    with pytest.raises(ValueError, match="'bogus'"):
+        drv.set_children_state_batch([
+            ("encoder", 1, {"name": "ok"}),
+            ("encoder", 77, {"bogus": 1}),
+            ("encoder", 2, {"bogus": 1}),
+        ])
+    assert drv.state.get("device.ctrl1.encoder.001.name") is None
+
+
+def test_children_state_batch_of_only_unregistered_entries_writes_nothing():
+    drv = _make_driver()
+    calls: list[Any] = []
+    original = drv.state.set_batch
+    drv.state.set_batch = lambda u, source="": (calls.append(u), original(u, source=source))  # type: ignore[method-assign]
+    drv.set_children_state_batch([("encoder", 5, {"name": "x"})])
+    assert calls == []
+
+
+def test_the_parent_drop_leaves_a_code_alone_even_beside_online_true():
+    drv = _make_driver()
+    drv.register_child("encoder", 1)
+    drv.set_child_state("encoder", 1, "offline_reason", "service_fault")
+    drv.set_state("connected", False)
+    assert drv.state.get("device.ctrl1.encoder.001.offline_reason") == "service_fault"
+    assert drv.state.get("device.ctrl1.encoder.001.online") is True
