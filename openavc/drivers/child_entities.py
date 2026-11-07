@@ -642,10 +642,11 @@ class ChildEntities:
         Silent no-op if the child isn't registered (so drivers can call this
         eagerly during reconciliation without first checking).
         """
-        if not self.is_child_registered(child_type, local_id):
+        bucket = self._children.get(child_type)
+        if bucket is None or local_id not in bucket:
             return
 
-        prefix_dot = self._child_state_prefix(child_type, local_id) + "."
+        prefix_dot =self._child_state_prefix(child_type, local_id) + "."
         # Snapshot before mutating; iterating the live store while deleting
         # would be unsafe. The snapshot is cheap (dict copy) at the scale
         # we expect per child (~10-30 keys).

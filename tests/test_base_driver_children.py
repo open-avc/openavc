@@ -1454,3 +1454,10 @@ def test_the_parent_drop_leaves_a_code_alone_even_beside_online_true():
     drv.set_state("connected", False)
     assert drv.state.get("device.ctrl1.encoder.001.offline_reason") == "service_fault"
     assert drv.state.get("device.ctrl1.encoder.001.online") is True
+
+
+def test_deregister_under_a_type_with_no_children_is_a_noop_for_any_id():
+    drv = _make_driver()
+    drv.deregister_child("encoder", [1])  # type: ignore[arg-type]
+    drv.deregister_child("nope", {"a": 1})  # type: ignore[arg-type]
+    assert drv._children == {}
