@@ -107,8 +107,10 @@ def _some(names: list[str]) -> str:
 
 def _in_words(names: list[str]) -> str:
     """``a``, ``a and b``, ``a, b and c``; past five, as :func:`_some`."""
-    if len(names) > 5 or len(names) == 1:
+    if len(names) > 5:
         return _some(names)
+    if len(names) == 1:
+        return f"{names[0]}"
     return ", ".join(names[:-1]) + " and " + names[-1]
 
 

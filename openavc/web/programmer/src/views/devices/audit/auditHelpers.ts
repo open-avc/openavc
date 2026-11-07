@@ -1075,7 +1075,7 @@ export function movingText(m: AuditMovedValue): string {
 
 /** How many of the commands the person did not answer Yes to were confirmed
  *  by the device itself: every value the command sets read back, or a status
- *  query's value came back (report.py `_command_confirmed`). Without it, a
+ *  query's value came back (confidence.py `_command_confirmed`). Without it, a
  *  "could not tell" sits beside a suggested Full support unexplained. */
 function readBackNote(trials: AuditCommandTrial[]): string {
   const unsure = trials.filter((t) => t.answer && t.answer.answer !== "yes");

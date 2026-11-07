@@ -201,6 +201,18 @@ CONFIDENCE_CASES = {
                  "Cmd 0, Cmd 1, Cmd 2, Cmd 3 and Cmd 4 set, so only a Yes can confirm them."),
          SETTING_BACK],
     ),
+    "the one command with no sets is named whatever its label is": (
+        _section(commands=_trials(
+            *({"label": f"C{i}", "effects": [{"outcome": "different"}]} for i in range(5)),
+            {"label": 7},
+        )),
+        None,
+        [*GOOD_START,
+         (False, "0 of 6 commands tried were confirmed. Not confirmed: C0, C1, C2, C3, C4 and "
+                 f"more. {COUNTS_AS} This driver does not say which value 7 sets, so only a Yes "
+                 "can confirm it."),
+         SETTING_BACK],
+    ),
     "two with no sets among others not confirmed": (
         _section(commands=_trials(
             {"label": "Mute", "answer": None},
@@ -596,6 +608,8 @@ SIGNAL_CASES = [
     (_sig(None, source="weird"), "weird"),
     (_sig(None), "A signal"),
     (_sig({"kind": "new_thing"}, source="new_thing:x"), "new_thing:x"),
+    (_sig({"kind": ["mdns"]}, source="mdns:_x._tcp"), "mDNS announcement on _x._tcp"),
+    (_sig({"kind": 0}, source="port_open:23"), "Port 23 is open"),
 ]
 
 

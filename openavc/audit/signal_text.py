@@ -53,7 +53,8 @@ def signal_text(sig: dict[str, Any], names: dict[str, Any] | None = None) -> str
     """``sig`` as an evidence line says it. ``names`` is the verdict's
     ``drivers``, for naming the driver whose probe supplied a manufacturer."""
     data = (sig.get("evidence") or {}).get("data") or {}
-    say = _BY_KIND.get(data.get("kind"))
+    kind = data.get("kind")
+    say = _BY_KIND.get(kind) if isinstance(kind, str) else None
     if say is not None:
         return say(data, names)
     return _from_source(str(sig.get("source") or ""))
