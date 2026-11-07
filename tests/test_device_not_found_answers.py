@@ -190,6 +190,21 @@ async def test_an_undeclared_setting_key_names_the_setting_not_the_device(core):
         assert isinstance(caught.value, DeviceSettingValueError)
 
 
+def _bare_not_found_raises(path: Path) -> list[str]:
+    """Each ``raise ValueError(...)`` in ``path`` whose message says "not found"."""
+    source = path.read_text(encoding="utf-8")
+    found = []
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Raise) or not isinstance(node.exc, ast.Call):
+            continue
+        if getattr(node.exc.func, "id", "") != "ValueError" or not node.exc.args:
+            continue
+        text = ast.get_source_segment(source, node.exc.args[0]) or ""
+        if "not found" in text:
+            found.append(f"{path.name} line {node.lineno}: {text}")
+    return found
+
+
 def test_no_bare_value_error_in_the_device_manager_still_claims_a_device_is_missing():
     """The guard the two symptom fixes did not have.
 
@@ -198,18 +213,11 @@ def test_no_bare_value_error_in_the_device_manager_still_claims_a_device_is_miss
     whichever door happens to call that method, silently and for good.
     """
     assert device_manager_module in _DEVICE_MANAGER_MODULES
-    offenders = []
-    for module in _DEVICE_MANAGER_MODULES:
-        path = Path(module.__file__)
-        source = path.read_text(encoding="utf-8")
-        for node in ast.walk(ast.parse(source)):
-            if not isinstance(node, ast.Raise) or not isinstance(node.exc, ast.Call):
-                continue
-            if getattr(node.exc.func, "id", "") != "ValueError" or not node.exc.args:
-                continue
-            text = ast.get_source_segment(source, node.exc.args[0]) or ""
-            if "not found" in text:
-                offenders.append(f"{path.name} line {node.lineno}: {text}")
+    offenders = [
+        offender
+        for module in _DEVICE_MANAGER_MODULES
+        for offender in _bare_not_found_raises(Path(module.__file__))
+    ]
     assert offenders == [], (
         "raise DeviceNotFoundError for these, or the door above answers "
         "'not found' about a device that is present: " + "; ".join(offenders)
