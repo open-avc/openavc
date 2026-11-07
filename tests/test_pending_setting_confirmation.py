@@ -19,8 +19,9 @@ from typing import Any
 
 import pytest
 
-from openavc.core import device_manager
-from openavc.core.device_manager import DeviceManager, _readback_confirms
+from openavc.core import device_manager, pending_settings
+from openavc.core.device_manager import DeviceManager
+from openavc.core.pending_settings import _readback_confirms
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.drivers.base import BaseDriver
@@ -82,8 +83,8 @@ class _ReadBackDriver(BaseDriver):
 @pytest.fixture
 def dm(monkeypatch):
     """A manager whose confirmation window is short enough for a test."""
-    monkeypatch.setattr(device_manager, "_CONFIRM_UNPOLLED_WINDOW", 0.05)
-    monkeypatch.setattr(device_manager, "_CONFIRM_POLL_STEP", 0.01)
+    monkeypatch.setattr(pending_settings, "_CONFIRM_UNPOLLED_WINDOW", 0.05)
+    monkeypatch.setattr(pending_settings, "_CONFIRM_POLL_STEP", 0.01)
     state = StateStore()
     events = EventBus()
     state.set_event_bus(events)
@@ -288,8 +289,8 @@ def test_window_is_two_poll_cycles_for_a_polled_device(dm):
     # Two cycles plus slack: the poll in flight when the write went out is
     # still carrying the old value.
     assert dm._confirm_window(_Cfg()) == 70.0
-    assert dm._confirm_window(_NoPoll()) == device_manager._CONFIRM_UNPOLLED_WINDOW
-    assert dm._confirm_window(_Junk()) == device_manager._CONFIRM_UNPOLLED_WINDOW
+    assert dm._confirm_window(_NoPoll()) == pending_settings._CONFIRM_UNPOLLED_WINDOW
+    assert dm._confirm_window(_Junk()) == pending_settings._CONFIRM_UNPOLLED_WINDOW
 
 
 def test_window_is_capped():
@@ -297,7 +298,7 @@ def test_window_is_capped():
         device_manager.DeviceManager._confirm_window(
             None, type("D", (), {"config": {"poll_interval": 100000}})()
         )
-        == device_manager._CONFIRM_MAX_WINDOW
+        == pending_settings._CONFIRM_MAX_WINDOW
     )
 
 

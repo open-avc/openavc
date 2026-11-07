@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from openavc.core import device_manager
+from openavc.core import pending_settings
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
@@ -190,7 +190,7 @@ async def test_pending_apply_coerces_uncoerced_values(core, monkeypatch):
     hand-edited file. _apply_pending_settings must coerce against the schema
     before the value reaches the driver (set_device_setting itself doesn't),
     not push the raw string through."""
-    monkeypatch.setattr(device_manager, "_CONFIRM_UNPOLLED_WINDOW", 0.05)
+    monkeypatch.setattr(pending_settings, "_CONFIRM_UNPOLLED_WINDOW", 0.05)
     state, events = core
     dm = DeviceManager(state, events)
     driver = _SettingsDriver("dev4", {}, state, events)

@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from openavc.core import device_manager
+from openavc.core import pending_settings
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
@@ -322,8 +322,8 @@ class _SimulatedDevice(FakeTransport):
 
 @pytest.fixture
 def dm(monkeypatch):
-    monkeypatch.setattr(device_manager, "_CONFIRM_UNPOLLED_WINDOW", 0.05)
-    monkeypatch.setattr(device_manager, "_CONFIRM_POLL_STEP", 0.01)
+    monkeypatch.setattr(pending_settings, "_CONFIRM_UNPOLLED_WINDOW", 0.05)
+    monkeypatch.setattr(pending_settings, "_CONFIRM_POLL_STEP", 0.01)
     state = StateStore()
     events = EventBus()
     state.set_event_bus(events)

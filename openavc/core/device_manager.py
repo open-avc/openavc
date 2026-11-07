@@ -21,6 +21,7 @@ from openavc.core.connection_fault import (
 )
 from openavc.core.device_away import DeviceAwayMixin
 from openavc.core.device_reconnect import DeviceReconnectMixin, _log_task_exception
+from openavc.core.pending_settings import PendingSettingsMixin
 from openavc.drivers.avcdriver_semantic import undeclared_child_type_reason
 from openavc.drivers.base import (
     CommandParamError,
@@ -178,54 +179,6 @@ PAUSED_FOR_LIVE_TEST = "live_test"
 PAUSED_FOR_AUDIT = "audit"
 
 
-# --- Confirming a pending device setting actually landed -------------------
-# A queued write used to be cleared the moment ``set_device_setting`` returned
-# without raising, which on a datagram transport (or a socket being redirected
-# under it) means nothing at all: the write vanished, the log said "Applied",
-# and the value was gone. So a write whose value the device reports back is
-# held in the queue until the read-back agrees.
-#
-# The window is two poll cycles plus slack. Two, not one, because the poll in
-# flight when the write went out is still carrying the OLD value, and its reply
-# lands after ours — one cycle would call a good write a loss. A device that
-# isn't polled has only its own reply to the write, which arrives in
-# milliseconds; the short window covers that and nothing else can arrive later.
-_CONFIRM_UNPOLLED_WINDOW = 5.0
-_CONFIRM_SLACK = 10.0
-# A ceiling so an exotic poll cadence can't park a watcher for an hour. Above
-# it the platform stops waiting and falls back to what it can see at the
-# deadline, which for an un-refreshed key is "never reported" -> cleared.
-_CONFIRM_MAX_WINDOW = 600.0
-# How often the watcher re-reads state. Short, so a device that echoes the
-# write confirms in a blink rather than sitting "pending" on the device card.
-_CONFIRM_POLL_STEP = 0.25
-
-
-def _readback_confirms(key: str, sdef: Any, expected: Any, actual: Any) -> bool:
-    """Does a device's reported value agree with the setting we wrote?
-
-    ``None`` is the platform's "declared, never reported" (see
-    ``BaseDriver._init_state_variables``) and is never a confirmation.
-
-    Otherwise the device is allowed to report the same value in its own form —
-    ``"70"`` for ``70``, ``"on"`` for ``True``, an enum's label for its wire
-    value — so the read-back is put through the setting's own declared schema,
-    the same coercion the write went through. A value that schema refuses
-    (out of range, not in ``values``) falls back to a plain text comparison
-    rather than counting as a mismatch on a technicality.
-    """
-    if actual is None:
-        return False
-    if actual == expected:
-        return True
-    try:
-        if validate_device_setting_value(key, sdef, actual) == expected:
-            return True
-    except Exception:
-        pass
-    return str(actual).strip().lower() == str(expected).strip().lower()
-
-
 # Masking a device config for a caller uses the same credential-field names as
 # masking a credential out of the device log — see openavc/utils/log_redaction.py,
 # which owns both. Re-exported here because get_device_info's orphaned-device
@@ -242,7 +195,7 @@ def _orphan_config(config: dict[str, Any]) -> dict[str, Any]:
     return {k: (SAVED_LOGIN if config.get(k) == SAVED_LOGIN else v) for k, v in masked.items()}
 
 
-class DeviceManager(DeviceAwayMixin, DeviceReconnectMixin):
+class DeviceManager(DeviceAwayMixin, DeviceReconnectMixin, PendingSettingsMixin):
     """Manages all device driver instances."""
 
     def __init__(self, state: StateStore, events: EventBus):
@@ -274,10 +227,7 @@ class DeviceManager(DeviceAwayMixin, DeviceReconnectMixin):
         # In-flight web-UI probes, keyed by device id — holds a task reference
         # (so it isn't GC'd) and dedupes the add-time and connect-time triggers.
         self._web_ui_probe_tasks: dict[str, asyncio.Task] = {}
-        # In-flight pending-setting confirmations, keyed by device id — the
-        # watcher that decides whether a queued write actually landed before
-        # the queue is cleared (see _confirm_pending_settings).
-        self._pending_confirm_tasks: dict[str, asyncio.Task] = {}
+        self._init_pending()
         self._init_away()
         # Set by SimulationManager while a simulated bench is running: given a
         # device id, returns its driver id when that device has no simulator
@@ -682,9 +632,7 @@ class DeviceManager(DeviceAwayMixin, DeviceReconnectMixin):
             probe.cancel()
         # Nothing left to confirm a queued write against — the driver, its
         # state keys and the queue itself all go with the device.
-        confirm = self._pending_confirm_tasks.pop(device_id, None)
-        if confirm is not None:
-            confirm.cancel()
+        self._cancel_pending_confirm(device_id)
 
         # Clear all state keys for this device
         device_keys = self.state.get_namespace(f"device.{device_id}.")
@@ -1436,23 +1384,7 @@ class DeviceManager(DeviceAwayMixin, DeviceReconnectMixin):
         driver = self._devices.get(device_id)
         if driver is None:
             raise DeviceNotFoundError(f"Device '{device_id}' not found")
-        sdef = driver.DRIVER_INFO.get("device_settings", {}).get(key)
-        state_key = sdef.get("state_key", key) if isinstance(sdef, dict) else key
-        if state_key not in driver.DRIVER_INFO.get("state_variables", {}):
-            return False, None
-        window = self._confirm_window(driver)
-        deadline = time.monotonic() + (window if timeout is None else min(window, timeout))
-        while True:
-            actual = driver.get_state(state_key)
-            if _readback_confirms(key, sdef, expected, actual):
-                return True, actual
-            if (
-                time.monotonic() >= deadline
-                or self._devices.get(device_id) is not driver
-                or not driver.get_state("connected")
-            ):
-                return False, actual
-            await asyncio.sleep(_CONFIRM_POLL_STEP)
+        return await self._wait_for_readback(device_id, key, expected, timeout)
 
     def get_driver(self, device_id: str) -> BaseDriver | None:
         """Return the live driver instance for a device, or ``None`` if the
@@ -1577,9 +1509,7 @@ class DeviceManager(DeviceAwayMixin, DeviceReconnectMixin):
         # Same for read-back watchers: a setting still unconfirmed at shutdown
         # stays queued and is re-sent on the next start, which is the answer
         # this whole mechanism exists to give.
-        for task in list(self._pending_confirm_tasks.values()):
-            task.cancel()
-        self._pending_confirm_tasks.clear()
+        self._cancel_all_pending_confirms()
 
         # Mark every device as an intentional disconnect BEFORE closing it.
         # driver.disconnect() closes the transport, whose drop callback emits
@@ -1602,300 +1532,18 @@ class DeviceManager(DeviceAwayMixin, DeviceReconnectMixin):
             except Exception:
                 log.exception(f"Error disconnecting '{device_id}'")
 
-    # --- Pending Settings ---
-
-    async def _apply_pending_settings(self, device_id: str) -> None:
-        """Apply any pending device settings after a successful connect.
-
-        A send that doesn't raise is not proof the device got it — on UDP, or
-        on a socket being redirected under the driver, nothing raises and
-        nothing arrives. So a setting whose value the device reports back (its
-        ``state_key`` names a declared state variable) is NOT cleared here: it
-        is handed to :meth:`_confirm_pending_settings`, which clears it once
-        the read-back agrees and leaves it queued for the next connect when it
-        doesn't. A setting with no read-back is cleared on send as before —
-        there is nothing to check it against, and holding it forever would
-        re-write it on every reconnect.
-        """
-        config = self._device_configs.get(device_id, {})
-        pending = config.get("pending_settings", {})
-        if not pending:
-            return
-
-        driver = self._devices.get(device_id)
-        if driver is None:
-            return
-
-        defs = driver.DRIVER_INFO.get("device_settings", {})
-        state_vars = driver.DRIVER_INFO.get("state_variables", {})
-        applied_keys: list[str] = []
-        # The value as it sat in the QUEUE, before this pass coerced it — that
-        # is what _clear_applied_pending compares against to tell "the entry I
-        # took" from "an entry queued since".
-        queued_values: dict[str, Any] = {}
-        awaiting: dict[str, tuple[str, Any]] = {}
-        for key, value in pending.items():
-            queued = value
-            try:
-                # Coerce against the schema before the value reaches the driver.
-                # store_pending_settings coerces at intake, but a value can
-                # enter the queue by a path that bypasses it (a project reload of
-                # a hand-edited file), and set_device_setting doesn't validate.
-                if key in defs:
-                    value = validate_device_setting_value(key, defs[key], value)
-                self._require_control_target(device_id)
-                await driver.set_device_setting(key, value)
-                queued_values[key] = queued
-                sdef = defs.get(key)
-                state_key = (
-                    sdef.get("state_key", key) if isinstance(sdef, dict) else key
-                )
-                if state_key in state_vars:
-                    awaiting[key] = (state_key, value)
-                    log.info(
-                        f"[{device_id}] Sent pending setting '{key}' = {value!r} "
-                        f"— holding it until the device reports it back"
-                    )
-                else:
-                    applied_keys.append(key)
-                    log.info(f"[{device_id}] Applied pending setting '{key}' = {value!r}")
-            except Exception as e:
-                log.warning(f"[{device_id}] Failed to apply pending setting '{key}': {e}")
-                # Surface the failure beyond the server log — the key stays
-                # queued and is retried on the next connect, but silently
-                # retrying forever hid real problems (a firmware that
-                # rejects the value, a bad queued write).
-                try:
-                    await self.events.emit(
-                        f"device.error.{device_id}",
-                        {
-                            "device_id": device_id,
-                            "error": f"Pending setting '{key}' failed to apply: {e}",
-                            "source": "pending_settings",
-                        },
-                    )
-                except Exception:
-                    log.exception(f"[{device_id}] Failed to emit device.error")
-
-        if applied_keys:
-            await self._clear_applied_pending(device_id, applied_keys, queued_values)
-        if awaiting:
-            self._schedule_pending_confirm(device_id, awaiting, queued_values)
-
-    async def _clear_applied_pending(
-        self, device_id: str, applied_keys: list[str], queued_values: dict[str, Any]
-    ) -> None:
-        """Drop applied keys from the queue and have the engine persist it.
-
-        Only drops a key whose queued entry is still the one this pass took: a
-        confirmation can land a poll cycle after the write, and something can
-        queue a NEWER value for the same setting in between. Clearing that one
-        would throw away a write nobody has made yet. A key absent from
-        ``queued_values`` carries no such opinion and is dropped as-is.
-        """
-        config = self._device_configs.get(device_id)
-        if config is None:
-            return
-        pending = config.get("pending_settings")
-        if not isinstance(pending, dict):
-            return
-
-        cleared = [
-            key for key in applied_keys
-            if key in pending
-            and pending[key] == queued_values.get(key, pending.get(key))
-        ]
-        if not cleared:
-            return
-        for key in cleared:
-            pending.pop(key, None)
-
-        # If all pending settings were applied, remove the dict entirely
-        if not pending:
-            config.pop("pending_settings", None)
-
-        # Notify the engine to persist the change
-        await self.events.emit(
-            "device.pending_settings_applied",
-            {"device_id": device_id, "applied": cleared, "remaining": dict(pending)},
-        )
-
-    @staticmethod
-    def _device_is_reporting(driver: BaseDriver) -> bool:
-        """Has this device reported any declared reading at all?
-
-        The question the read-back check has to answer when a written
-        setting's own state variable is still ``None``: is this a device that
-        doesn't report that particular value, or a device that isn't
-        answering? Both look identical from the one key. A device that has
-        reported nothing has said nothing, and silence is not agreement --
-        which is exactly the shape the write vanished in.
-
-        ``connected`` is excluded: the platform writes it, the device doesn't.
-        """
-        for prop in driver.DRIVER_INFO.get("state_variables", {}):
-            if prop == "connected":
-                continue
-            if driver.get_state(prop) is not None:
-                return True
-        return False
-
-    def _confirm_window(self, driver: BaseDriver) -> float:
-        """Seconds to wait for a written setting to read back. See the
-        ``_CONFIRM_*`` constants for why it is two poll cycles."""
-        try:
-            interval = float((getattr(driver, "config", None) or {}).get("poll_interval", 0) or 0)
-        except (TypeError, ValueError):
-            interval = 0.0
-        if interval <= 0:
-            return _CONFIRM_UNPOLLED_WINDOW
-        return min(interval * 2 + _CONFIRM_SLACK, _CONFIRM_MAX_WINDOW)
-
-    def _schedule_pending_confirm(
-        self,
-        device_id: str,
-        awaiting: dict[str, tuple[str, Any]],
-        queued_values: dict[str, Any],
-    ) -> None:
-        """Start (or replace) the read-back watcher for a device."""
-        prior = self._pending_confirm_tasks.pop(device_id, None)
-        if prior is not None:
-            prior.cancel()
-        task = asyncio.create_task(
-            self._confirm_pending_settings(device_id, awaiting, queued_values)
-        )
-        self._pending_confirm_tasks[device_id] = task
-
-        def _forget(finished: asyncio.Task, d: str = device_id) -> None:
-            if self._pending_confirm_tasks.get(d) is finished:
-                self._pending_confirm_tasks.pop(d, None)
-
-        task.add_done_callback(_forget)
-        task.add_done_callback(_log_task_exception)
-
-    async def _confirm_pending_settings(
-        self,
-        device_id: str,
-        awaiting: dict[str, tuple[str, Any]],
-        queued_values: dict[str, Any],
-    ) -> None:
-        """Wait for each written setting to read back, then clear or keep it.
-
-        Three outcomes per key, at the end of the window:
-
-        * the device reports the value we wrote — cleared, the write landed;
-        * the device reports something else — the write did not take. The key
-          stays queued (so the next connect re-sends it) and a
-          ``device.error.<id>`` says so. This is the case that used to be
-          logged as "Applied" and silently lost;
-        * the device never reports that value, *and is reporting others* —
-          nothing to check against, so it is cleared exactly as an
-          unread-back setting is. One real driver declares 28 settings its
-          hardware never reads back; holding those forever would re-write
-          them on every reconnect. A device that has reported **nothing** is
-          a different case and falls under the previous one: silence is not
-          agreement, and that is the shape the write vanished in.
-
-        A device that drops mid-window leaves everything queued: the reconnect
-        applies it again, and the disconnect is already on the card.
-        """
-        driver = self._devices.get(device_id)
-        if driver is None:
-            return
-        defs = driver.DRIVER_INFO.get("device_settings", {})
-        outstanding = dict(awaiting)
-        confirmed: list[str] = []
-        deadline = time.monotonic() + self._confirm_window(driver)
-
-        while True:
-            for key, (state_key, expected) in list(outstanding.items()):
-                if _readback_confirms(
-                    key, defs.get(key), expected, driver.get_state(state_key)
-                ):
-                    confirmed.append(key)
-                    outstanding.pop(key, None)
-            if not outstanding or time.monotonic() >= deadline:
-                break
-            if self._devices.get(device_id) is not driver or not driver.get_state(
-                "connected"
-            ):
-                # Gone or dropped — leave the rest queued for the reconnect.
-                outstanding.clear()
-                break
-            await asyncio.sleep(_CONFIRM_POLL_STEP)
-
-        reporting = self._device_is_reporting(driver)
-        unreported: list[str] = []
-        for key, (state_key, expected) in outstanding.items():
-            actual = driver.get_state(state_key)
-            if actual is None and reporting:
-                unreported.append(key)
-                log.info(
-                    f"[{device_id}] Pending setting '{key}' = {expected!r} sent; "
-                    f"the device never reports '{state_key}', so there is "
-                    f"nothing to confirm it against"
-                )
-                continue
-            if actual is None:
-                detail = (
-                    f"Pending setting '{key}' was sent but the device has "
-                    f"reported nothing back, so there is no way to tell "
-                    f"whether {expected!r} landed. It stays queued and will "
-                    f"be sent again on the next connection."
-                )
-            else:
-                detail = (
-                    f"Pending setting '{key}' was sent but the device still "
-                    f"reports {actual!r} instead of {expected!r}. It stays "
-                    f"queued and will be sent again on the next connection."
-                )
-            log.warning(f"[{device_id}] {detail}")
-            try:
-                await self.events.emit(
-                    f"device.error.{device_id}",
-                    {
-                        "device_id": device_id,
-                        "error": detail,
-                        "source": "pending_settings",
-                    },
-                )
-            except Exception:
-                log.exception(f"[{device_id}] Failed to emit device.error")
-
-        settled = confirmed + unreported
-        if settled:
-            await self._clear_applied_pending(device_id, settled, queued_values)
-
     async def store_pending_settings(
         self, device_id: str, settings: dict[str, Any]
     ) -> None:
         """Store pending settings for a device (will be applied on next connect).
 
-        Validated at intake when the driver is available: a typo'd key or an
-        out-of-range value used to sit in the queue and fail on every
-        reconnect with only a warn log. Orphaned devices (driver not
-        installed) store as-is — there's no schema to check against yet.
+        Validated against the driver's schema when it is installed; an
+        orphaned device stores them as given (core/pending_settings.py).
         """
         config = self._device_configs.get(device_id)
         if config is None:
             raise DeviceNotFoundError(f"Device '{device_id}' not found")
-
-        driver = self._devices.get(device_id)
-        if driver is not None:
-            defs = driver.DRIVER_INFO.get("device_settings", {})
-            validated: dict[str, Any] = {}
-            for key, value in settings.items():
-                if key not in defs:
-                    raise UnknownDeviceSettingError(
-                        f"Unknown device setting '{key}' for device '{device_id}'"
-                    )
-                validated[key] = validate_device_setting_value(key, defs[key], value)
-            settings = validated
-
-        if "pending_settings" not in config:
-            config["pending_settings"] = {}
-        config["pending_settings"].update(settings)
-        log.info(f"[{device_id}] Stored {len(settings)} pending setting(s)")
+        self._queue_pending(device_id, config, settings)
 
     # --- Reconnection ---
 
