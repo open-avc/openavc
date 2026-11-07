@@ -29,12 +29,8 @@ from typing import Any
 
 from openavc.core.connection_fault import (
     AUTH_FAILED,
-    CHILD_DRIVER_FAULT_CODES,
-    CHILD_NOT_FITTED,
-    CHILD_PARENT_OFFLINE,
     INVALID_CONFIG,
     LOGIN_MISSING,
-    NO_FAULT_CLAIMED,
     NO_RESPONSE,
     TRANSPORT_DISCONNECTED,
     ConnectionFault,
@@ -42,17 +38,27 @@ from openavc.core.connection_fault import (
     bridge_port_missing,
     bridge_port_missing_message,
     classify_connection_fault,
-    default_child_fault_message,
     default_fault_message,
     no_address_message,
-    normalize_child_fault_claim,
     typed_fault_from_exc,
 )
 from openavc.core.condition_eval import _coerce_bool
 from openavc.core.device_logins import SAVED_LOGIN, marked_fields
 from openavc.core.device_traffic import record_traffic
 from openavc.core.event_bus import EventBus, detach_emit_chain
+from openavc.drivers.child_entities import ChildEntities
 from openavc.drivers.compiled_protocol import state_var_default
+# What a contract observer can be told lives in its own module; these names
+# stay importable from here, the path drivers use.
+from openavc.drivers.contract_events import (  # noqa: F401
+    CHILD_UNREGISTERED,
+    COERCION_FAILURE,
+    CONTRACT_EVENTS,
+    TYPE_MISMATCH,
+    UNDECLARED_STATE,
+    UNKNOWN_COMMAND,
+    UNMATCHED_RESPONSE,
+)
 # The runtime gate for command params and setting values lives in its own
 # module; these names stay importable from here, the path drivers use.
 from openavc.drivers.param_validation import (  # noqa: F401
@@ -63,12 +69,7 @@ from openavc.drivers.param_validation import (  # noqa: F401
     normalize_and_validate_command_params,
     validate_device_setting_value,
 )
-from openavc.drivers.spec import (
-    CHILD_PRESENCE_MODES,
-    CHILD_RESERVED_PROP_SCHEMA,
-    CHILD_RESERVED_PROPS,
-    SILENCE_CHECK_TRANSPORTS,
-)
+from openavc.drivers.spec import SILENCE_CHECK_TRANSPORTS
 from openavc.core.state_store import StateStore, is_flat_primitive
 from openavc.transport.frame_parsers import FrameParser
 from openavc.transport.http_client import capture_driver_clients, capture_driver_websockets
@@ -119,21 +120,6 @@ capture_driver_websockets()
 # so a driver whose code writes something its DRIVER_INFO never declared fails
 # the suite the author is already running instead of shipping silently.
 STRICT_DRIVER_STATE_ENV = "OPENAVC_STRICT_DRIVER_STATE"
-
-# What a contract observer (BaseDriver.contract_observer) can be told. Each is
-# something the runtime already notices and then keeps to itself: a debug
-# line, a warning once per key, a value stored as it came.
-UNMATCHED_RESPONSE = "unmatched_response"   # a reply no response rule matched
-UNDECLARED_STATE = "undeclared_state"       # a write to an undeclared variable
-TYPE_MISMATCH = "type_mismatch"             # a value not of its declared type
-COERCION_FAILURE = "coercion_failure"       # a reply that would not convert
-UNKNOWN_COMMAND = "unknown_command"         # a command the driver does not have
-CHILD_UNREGISTERED = "child_unregistered"   # state for a child never registered
-CONTRACT_EVENTS: tuple[str, ...] = (
-    UNMATCHED_RESPONSE, UNDECLARED_STATE, TYPE_MISMATCH, COERCION_FAILURE,
-    UNKNOWN_COMMAND, CHILD_UNREGISTERED,
-)
-
 
 def strict_driver_state() -> bool:
     """True when the platform should hard-fail on a driver contract violation
@@ -291,16 +277,6 @@ def _type_problem(declared: str, value: Any, var_def: dict[str, Any]) -> str:
         if str(value) not in [str(v) for v in var_def["values"]]:
             return "not one of the declared values"
     return ""
-
-
-# String child local IDs are embedded directly in a flat state key
-# (device.<id>.<type>.<local_id>.<prop>) and matched by fnmatch glob
-# subscriptions, so they're restricted to this charset — no dots (the key
-# separator), whitespace, or glob metacharacters. A driver that keys children
-# by a device-native name (a Q-SYS Code Name, an MQTT topic leaf) must
-# sanitize to this set and keep the original in the child's `label`.
-_CHILD_STRING_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
-_CHILD_STRING_ID_MAX_LEN = 128
 
 
 def _ssh_option_list(value: object) -> list[str]:
@@ -475,7 +451,7 @@ class _PollWatch:
     parse_pending: tuple[Any, int, int, int | None] | None = None
 
 
-class BaseDriver(ABC):
+class BaseDriver(ChildEntities, ABC):
     """Abstract base class for all device drivers."""
 
     # Subclasses MUST override this with their metadata dict
@@ -656,34 +632,11 @@ class BaseDriver(ABC):
         # next one builds anything, so it can only close what it built.
         self._connect_attempt: object | None = None
         self._connect_lock = asyncio.Lock()
-        # Registered child entities: {child_type: {local_id: register_epoch}}.
-        # The inner mapping is a dict (not a set) so it preserves insertion
-        # order, which makes list_children() output stable for tests and IDE
-        # displays. The value is a monotonic registration epoch (always
-        # truthy) used by poll_children to detect a child that was
-        # deregistered+re-registered mid-poll (its state was reset) so a stale
-        # write doesn't clobber the reset (ABA guard).
-        self._children: dict[str, dict[int | str, int]] = {}
-        self._child_register_seq = 0
-        # Per-child dynamic state-variable schemas, for child types declared
-        # `dynamic: true`. {(child_type, local_id): {prop: var_def}}. Populated
-        # at register_child when a `schema=` is supplied, and consulted by
-        # _effective_child_schema so a dynamic type's controls can be discovered
-        # at runtime (e.g. a Q-SYS component's controls, an MQTT topic's fields)
-        # instead of declared statically up-front. Empty for static child types.
-        self._child_schemas: dict[
-            tuple[str, int | str], dict[str, dict[str, Any]]
-        ] = {}
+        # The registered child entities (drivers/child_entities.py).
+        self._init_child_entities()
         # Set by the platform only for the duration of a run_setup_action call;
         # backs request_config_update / request_reconnect. None at all other times.
         self._setup_context: Any = None
-        # Project-side child metadata: {child_type: {local_id_padded: {label, config}}}.
-        # Populated by DeviceManager.add_device after construction (via
-        # set_project_child_entities) so existing driver subclasses with a
-        # fixed __init__ signature don't need to change. register_child
-        # consults this to seed the per-child `label` state key without
-        # the driver having to plumb the project schema itself.
-        self._project_child_entities: dict[str, dict[str, dict[str, Any]]] = {}
         # State keys this driver wrote without declaring them. Used to warn
         # once per key instead of once per poll — a driver that writes an
         # undeclared key writes it every cycle, and a per-poll warning is a
@@ -778,17 +731,6 @@ class BaseDriver(ABC):
             channel="driver", meta=meta,
         )
 
-    def set_project_child_entities(
-        self, child_entities: dict[str, dict[str, dict[str, Any]]] | None,
-    ) -> None:
-        """Set the project-side child metadata for this driver instance.
-
-        Called by DeviceManager from the project's DeviceConfig.child_entities
-        after construction. Keeps the BaseDriver __init__ signature stable
-        for existing driver subclasses that define their own __init__.
-        """
-        self._project_child_entities = dict(child_entities or {})
-
     @property
     def connected(self) -> bool:
         """True only if both driver and transport report connected.
@@ -874,6 +816,52 @@ class BaseDriver(ABC):
             self.set_state(prop_name, self._default_for_var_def(prop_info))
         # Always set a connected state
         self.set_state("connected", False)
+
+    @staticmethod
+    def _default_for_var_def(var_def: dict[str, Any]) -> Any:
+        """What a declared state variable holds before the device has spoken —
+        per-device and per-child seeding both come through here, and the answer
+        is always ``None``.
+
+        The key is created; the value is not invented. Those are two different
+        facts and the store already keeps them apart: ``has()`` says the driver
+        declares this reading, ``get()`` returning ``None`` says nobody has
+        reported it. A binding picker, the IDE's live-state list and a
+        ``$device.…`` reference all read the first; every consumer that judges a
+        reading reads the second.
+
+        It used to seed a *typed* value — a numeric at its declared ``min``, an
+        enum at its first value, a string at ``""`` — and downstream nothing
+        could tell that from a reading. A projector that had never been reached
+        published ``lamp_hours = 0`` against a true 450 and ``power = "off"``
+        for a projector that might be on; the relay shipped both to the cloud as
+        fresh readings, and a monitor declaring ``normal_min`` above zero fired
+        on the invented one.
+
+        ``None`` is not a new convention invented here — it is the one the rest
+        of the platform already documents and was being denied its input:
+
+        * ``core/monitors.py`` — ``None`` is ``NO_VALUE``, drawn "--", never 0.
+        * ``cloud/alert_monitor.py`` — a ``None`` reading matches no threshold
+          and is "neither in the set nor out of it", so nothing fires on it.
+        * ``core/condition_eval.py`` — ``None`` is "no decision", so
+          ``power != "on"`` cannot fire a shutdown for a device that simply has
+          not polled yet.
+        * ``configurable.py``'s ``count_from_state`` — ``None`` means "not
+          reported yet", and the roster waits rather than building 0 children.
+
+        ``var_def`` is unused and stays in the signature deliberately: it is
+        what a caller has in hand, and taking it away would say the answer might
+        one day depend on the declaration again. It must not. A driver that
+        wants a value on a child at registration passes ``initial_state``.
+
+        The old rule still exists as ``compiled_protocol.state_var_default`` and
+        is still the right answer for the two consumers that must produce a
+        value rather than report one — the auto-generated simulator seeding the
+        wire values it will serve, and the validator working out what a variable
+        would hold.
+        """
+        return None
 
     # --- Connection lifecycle (concrete with auto-transport) ---
 
@@ -4148,818 +4136,3 @@ class BaseDriver(ABC):
             f"device.{self.device_id}.{property_name}",
             source=f"device.{self.device_id}",
         )
-
-    # --- Child entities ---
-    #
-    # A "child entity" is a sub-unit owned by this device: an encoder/decoder
-    # on a video matrix controller, a zone on a DSP, a video wall slot on
-    # a presentation switcher, etc. Drivers declare child types in
-    # DRIVER_INFO["child_entity_types"] and register live instances via
-    # register_child(). State for each child lives under the convention
-    #
-    #     device.<parent_id>.<child_type>.<local_id_padded>.<property>
-    #
-    # so existing fnmatch subscribers and the IDE can address children
-    # without driver authors inventing their own key shapes. The platform
-    # always injects a boolean `online` key per registered child so that
-    # listeners can distinguish "configured but offline" from "not configured".
-
-    # State keys the platform always provides for every registered child, in
-    # addition to whatever the driver declares in
-    # child_entity_types[<type>].state_variables. All four are driver-managed
-    # — the platform seeds them and then has one opinion, about reachability,
-    # because that is the one thing about a sub-unit it can see for itself:
-    #
-    #   online          presence, seeded from the roster's presence mode (in
-    #                   service on an `assumed` roster, not_fitted on a
-    #                   `reported` one) and forced down while the parent device
-    #                   is unreachable (_children_follow_parent)
-    #   label           the user-set friendly name, sourced from the project
-    #                   file on registration and writable through the IDE/REST
-    #   offline_reason  a stable code from the child fault taxonomy that
-    #                   automation can match on, or None for nothing claimed —
-    #                   the same value the device pair uses, and the only one
-    #                   these keys ever hold for it (connection_fault's
-    #                   NO_FAULT_CLAIMED, folded in at every write door)
-    #   offline_detail  the sentence a person reads on the device page
-    #
-    # The last two are the child-level pair of device.<id>.offline_reason /
-    # offline_detail, and exist because one boolean cannot tell an endpoint
-    # somebody carried out of the rack from one sitting right there with a
-    # wedged service — remedies that are nothing alike.
-    #
-    # The names are the contract, so they live in drivers/spec.py (which
-    # avcdriver_semantic.py can see and openavc-drivers vendors); this is the
-    # runtime's handle on them. It USED to be a second list beside two
-    # hardcoded setdefault calls in _effective_child_schema, read nowhere —
-    # dead code claiming to be the rule. It is now what that method injects
-    # from, so there is one list and it is this one.
-    _CHILD_RESERVED_PROPS: tuple[str, ...] = CHILD_RESERVED_PROPS
-
-    # The definition each reserved prop gets when the driver has not declared
-    # it itself. A driver that DOES declare one keeps its own (its label, help
-    # and cloud_priority), which is how a driver adds wording without taking
-    # the key over. Lives in spec.py because the child_set: compiler needs the
-    # same types -- see CHILD_RESERVED_PROP_SCHEMA there.
-    _CHILD_RESERVED_PROP_SCHEMA: dict[str, dict[str, Any]] = (
-        CHILD_RESERVED_PROP_SCHEMA
-    )
-
-    def _child_presence_mode(self, child_type: str) -> str:
-        """Who owns this roster's ``online`` — ``"assumed"`` or ``"reported"``.
-
-        ``instances.presence`` on the child type, defaulting to ``assumed``.
-        See ``drivers/spec.CHILD_PRESENCE_MODES`` for why the same
-        ``count: N`` syntax needs an author to say which kind of roster it is.
-        An unknown value reads as the default rather than raising: the schema
-        already refuses one at authoring time, and a roster is not worth taking
-        a device offline over at runtime.
-        """
-        try:
-            inst = self._child_type_def(child_type).get("instances")
-        except ValueError:
-            return "assumed"
-        mode = inst.get("presence") if isinstance(inst, dict) else None
-        return mode if mode in CHILD_PRESENCE_MODES else "assumed"
-
-    def _child_unknown_presence(self, child_type: str) -> dict[str, Any]:
-        """The three presence keys a child of this type carries before anything
-        is known about it — at registration, and again when its parent comes
-        back and the driver has not yet had a chance to say.
-
-        On an ``assumed`` roster that is "in service, nothing claimed": the ids
-        are real hardware and the device being reachable is the whole of the
-        question. On a ``reported`` roster it is ``not_fitted``: the ids are
-        slots, and a slot is empty until the device says something is in it.
-        """
-        if self._child_presence_mode(child_type) == "reported":
-            return {
-                "online": False,
-                "offline_reason": CHILD_NOT_FITTED,
-                "offline_detail": default_child_fault_message(CHILD_NOT_FITTED),
-            }
-        return {
-            "online": True,
-            "offline_reason": NO_FAULT_CLAIMED,
-            "offline_detail": NO_FAULT_CLAIMED,
-        }
-
-    @staticmethod
-    def _child_parent_offline_presence() -> dict[str, Any]:
-        """The three presence keys for a child whose parent is unreachable."""
-        return {
-            "online": False,
-            "offline_reason": CHILD_PARENT_OFFLINE,
-            "offline_detail": default_child_fault_message(CHILD_PARENT_OFFLINE),
-        }
-
-    def _children_follow_parent(self, connected: bool) -> None:
-        """Carry every registered child with the parent's reachability.
-
-        Called from :meth:`set_state` / :meth:`set_states` whenever
-        ``connected`` is written, which is every lifecycle path there is.
-
-        The rule, both directions, is that the platform only ever undoes what
-        it did:
-
-        * **Going offline** — a child that was in service with nothing claimed
-          reads ``online: false`` with ``parent_offline``. A child already
-          carrying a code keeps it: the driver's ``not_responding`` is more
-          specific than ours and stays true while the parent is away, and a
-          ``not_fitted`` slot does not become a fault because a cable came out
-          of the mixer.
-        * **Coming back** — exactly the children carrying ``parent_offline``
-          return to :meth:`_child_unknown_presence`; nothing else is touched.
-          The driver's next poll corrects anything that changed while it was
-          away, which is the only source that can.
-
-        The children stay REGISTERED throughout. Deregistering them would take
-        the panel's bindings with them, which is the failure this exists to
-        avoid — a fader bound to ``input.1.level`` must survive the cable being
-        pulled and go quiet, not point at a key that no longer exists.
-
-        Idempotent by construction: a second write of the same value finds
-        nothing left to change, so no transition tracking is needed.
-        """
-        updates: dict[str, Any] = {}
-        for child_type, bucket in self._children.items():
-            for local_id in bucket:
-                try:
-                    prefix = self._child_state_prefix(child_type, local_id)
-                except (TypeError, ValueError):
-                    continue
-                reason = self.state.get(f"{prefix}.offline_reason")
-                if connected:
-                    if reason != CHILD_PARENT_OFFLINE:
-                        continue
-                    new = self._child_unknown_presence(child_type)
-                else:
-                    if reason or self.state.get(f"{prefix}.online") is False:
-                        continue
-                    new = self._child_parent_offline_presence()
-                for prop, value in new.items():
-                    updates[f"{prefix}.{prop}"] = value
-        if updates:
-            self.state.set_batch(updates, source=f"device.{self.device_id}")
-
-    def _child_type_def(self, child_type: str) -> dict[str, Any]:
-        """Return the DRIVER_INFO child_entity_types[<type>] definition.
-
-        Raises ValueError if the driver didn't declare this child type.
-        """
-        types = self.DRIVER_INFO.get("child_entity_types", {})
-        if child_type not in types:
-            raise ValueError(
-                f"Driver {self.DRIVER_INFO.get('id', '?')} did not declare "
-                f"child_entity_types[{child_type!r}]"
-            )
-        return types[child_type]
-
-    def _effective_child_schema(
-        self, child_type: str, local_id: int | str | None = None,
-    ) -> dict[str, dict[str, Any]]:
-        """Schema for one child instance's state variables, with the
-        platform-managed `online` and `label` keys injected if the driver
-        didn't already declare them.
-
-        For a child type declared ``dynamic: true``, a per-child schema
-        supplied at ``register_child(schema=...)`` takes precedence when
-        ``local_id`` is given; otherwise the type-level ``state_variables``
-        (which may be empty for a dynamic type) is used.
-        """
-        type_def = self._child_type_def(child_type)
-        declared: dict[str, dict[str, Any]] | None = None
-        if type_def.get("dynamic") and local_id is not None:
-            declared = self._child_schemas.get((child_type, local_id))
-        if declared is None:
-            declared = dict(type_def.get("state_variables", {}))
-        else:
-            declared = dict(declared)
-        for prop in self._CHILD_RESERVED_PROPS:
-            declared.setdefault(
-                prop, dict(self._CHILD_RESERVED_PROP_SCHEMA[prop])
-            )
-        return declared
-
-    def _format_child_id(self, child_type: str, local_id: int | str) -> str:
-        """Validate ``local_id`` against the declared id_format and return
-        its string form.
-
-        Two id kinds are supported:
-          * ``integer`` (default) — zero-padded to ``id_format.pad_width``;
-            must lie inside [id_format.min (default 1), id_format.max
-            (optional, unbounded)].
-          * ``string`` — used verbatim; must be non-empty, match
-            ``[A-Za-z0-9_-]`` only (so it's safe in a flat state key and in
-            glob subscriptions), and be at most ``id_format.max_length``
-            (default 128) characters. For devices that key children by a
-            native name (Q-SYS Code Name, MQTT topic), sanitize to this set
-            and keep the original in the child's ``label``.
-        """
-        type_def = self._child_type_def(child_type)
-        id_format = type_def.get("id_format", {})
-        id_kind = id_format.get("type", "integer")
-
-        if id_kind == "string":
-            if not isinstance(local_id, str):
-                raise TypeError(
-                    f"Child {child_type} local_id must be str (id_format.type "
-                    f"is 'string'), got {type(local_id).__name__}: {local_id!r}"
-                )
-            if not _CHILD_STRING_ID_RE.match(local_id):
-                raise ValueError(
-                    f"Child {child_type} local_id {local_id!r} is not a valid "
-                    f"string id (allowed characters: letters, digits, '_', '-')"
-                )
-            max_len = id_format.get("max_length", _CHILD_STRING_ID_MAX_LEN)
-            if max_len and len(local_id) > max_len:
-                raise ValueError(
-                    f"Child {child_type} local_id {local_id!r} exceeds "
-                    f"id_format.max_length {max_len}"
-                )
-            return local_id
-
-        if id_kind != "integer":
-            raise ValueError(
-                f"Child type {child_type!r} id_format.type {id_kind!r} not "
-                f"supported (only 'integer' and 'string' are supported)"
-            )
-        # bool is a subclass of int in Python; reject it so that
-        # register_child("encoder", True) doesn't silently land at ID 1.
-        if not isinstance(local_id, int) or isinstance(local_id, bool):
-            raise TypeError(
-                f"Child {child_type} local_id must be int, got "
-                f"{type(local_id).__name__}: {local_id!r}"
-            )
-        min_id = id_format.get("min", 1)
-        max_id = id_format.get("max")
-        if local_id < min_id:
-            raise ValueError(
-                f"Child {child_type} local_id {local_id} < min {min_id}"
-            )
-        if max_id is not None and local_id > max_id:
-            raise ValueError(
-                f"Child {child_type} local_id {local_id} > max {max_id}"
-            )
-        pad = id_format.get("pad_width", 0)
-        return f"{local_id:0{pad}d}" if pad else str(local_id)
-
-    def _child_state_key(
-        self, child_type: str, local_id: int | str, prop: str,
-    ) -> str:
-        padded = self._format_child_id(child_type, local_id)
-        return f"device.{self.device_id}.{child_type}.{padded}.{prop}"
-
-    def _child_state_prefix(self, child_type: str, local_id: int | str) -> str:
-        padded = self._format_child_id(child_type, local_id)
-        return f"device.{self.device_id}.{child_type}.{padded}"
-
-    def _validate_child_prop(
-        self, child_type: str, local_id: int | str, prop: str,
-    ) -> None:
-        schema = self._effective_child_schema(child_type, local_id)
-        if prop not in schema:
-            raise ValueError(
-                f"Child {child_type} property {prop!r} not declared in "
-                f"child_entity_types[{child_type!r}].state_variables"
-                + (" (or this child's dynamic schema)"
-                   if self._child_type_def(child_type).get("dynamic") else "")
-            )
-
-    @staticmethod
-    def _default_for_var_def(var_def: dict[str, Any]) -> Any:
-        """What a declared state variable holds before the device has spoken —
-        per-device and per-child seeding both come through here, and the answer
-        is always ``None``.
-
-        The key is created; the value is not invented. Those are two different
-        facts and the store already keeps them apart: ``has()`` says the driver
-        declares this reading, ``get()`` returning ``None`` says nobody has
-        reported it. A binding picker, the IDE's live-state list and a
-        ``$device.…`` reference all read the first; every consumer that judges a
-        reading reads the second.
-
-        It used to seed a *typed* value — a numeric at its declared ``min``, an
-        enum at its first value, a string at ``""`` — and downstream nothing
-        could tell that from a reading. A projector that had never been reached
-        published ``lamp_hours = 0`` against a true 450 and ``power = "off"``
-        for a projector that might be on; the relay shipped both to the cloud as
-        fresh readings, and a monitor declaring ``normal_min`` above zero fired
-        on the invented one.
-
-        ``None`` is not a new convention invented here — it is the one the rest
-        of the platform already documents and was being denied its input:
-
-        * ``core/monitors.py`` — ``None`` is ``NO_VALUE``, drawn "--", never 0.
-        * ``cloud/alert_monitor.py`` — a ``None`` reading matches no threshold
-          and is "neither in the set nor out of it", so nothing fires on it.
-        * ``core/condition_eval.py`` — ``None`` is "no decision", so
-          ``power != "on"`` cannot fire a shutdown for a device that simply has
-          not polled yet.
-        * ``configurable.py``'s ``count_from_state`` — ``None`` means "not
-          reported yet", and the roster waits rather than building 0 children.
-
-        ``var_def`` is unused and stays in the signature deliberately: it is
-        what a caller has in hand, and taking it away would say the answer might
-        one day depend on the declaration again. It must not. A driver that
-        wants a value on a child at registration passes ``initial_state``.
-
-        The old rule still exists as ``compiled_protocol.state_var_default`` and
-        is still the right answer for the two consumers that must produce a
-        value rather than report one — the auto-generated simulator seeding the
-        wire values it will serve, and the validator working out what a variable
-        would hold.
-        """
-        return None
-
-    def register_child(
-        self,
-        child_type: str,
-        local_id: int | str,
-        initial_state: dict[str, Any] | None = None,
-        schema: dict[str, dict[str, Any]] | None = None,
-    ) -> None:
-        """Tell the platform a child entity exists. Creates its state keys
-        in one atomic batch.
-
-        Subsequent calls with the same (child_type, local_id) are a silent
-        no-op so drivers can call this opportunistically from a poll loop
-        without re-initializing state. To overwrite a child's state, use
-        ``set_child_state`` / ``set_child_state_batch`` instead; to change a
-        dynamic child's schema, ``deregister_child`` then register again.
-
-        ``initial_state`` overrides per-prop defaults. The platform-managed
-        ``online`` / ``offline_reason`` / ``offline_detail`` keys default to
-        the type's :meth:`_child_unknown_presence` — in service on an
-        ``assumed`` roster, ``not_fitted`` on a ``reported`` one. Unknown props
-        in ``initial_state`` raise ValueError.
-
-        ``schema`` supplies a per-child state-variable map for child types
-        declared ``dynamic: true`` — used when the child's controls are
-        discovered at runtime (a Q-SYS component's controls, an MQTT topic's
-        fields) rather than declared statically. Each value is a var-def dict
-        (``{"type": "number"|"boolean"|"integer"|"string"|"enum", "label":
-        ..., ...}``), the same shape as a static ``state_variables`` entry.
-        Passing ``schema`` for a non-dynamic type raises ValueError.
-        """
-        self._format_child_id(child_type, local_id)   # validates id range
-
-        type_def = self._child_type_def(child_type)
-        if schema is not None:
-            if not type_def.get("dynamic"):
-                raise ValueError(
-                    f"Child type {child_type!r} is not declared "
-                    f"`dynamic: true`; a per-child schema is only allowed for "
-                    f"dynamic child types"
-                )
-            if not isinstance(schema, dict):
-                raise TypeError(
-                    f"Child {child_type} schema must be a dict, got "
-                    f"{type(schema).__name__}"
-                )
-            for prop, var_def in schema.items():
-                if not isinstance(var_def, dict):
-                    raise TypeError(
-                        f"Child {child_type} schema property {prop!r} must map "
-                        f"to a var-def dict, got {type(var_def).__name__}"
-                    )
-
-        bucket = self._children.setdefault(child_type, {})
-        if local_id in bucket:
-            # Idempotent — already registered. But a DIFFERENT per-child
-            # schema arriving under the same id is the signature of a
-            # sanitized-id collision (two device-native names mapping to one
-            # local id) or a schema change without deregister_child() — both
-            # otherwise invisible (the second child just never appears).
-            if schema is not None and dict(schema) != self._child_schemas.get(
-                (child_type, local_id)
-            ):
-                log.warning(
-                    f"[{self.device_id}] register_child({child_type!r}, "
-                    f"{local_id!r}) ignored: id already registered with a "
-                    f"different schema — likely an id collision after "
-                    f"sanitization, or a schema change without "
-                    f"deregister_child() first"
-                )
-            return
-        # Stamp a fresh registration epoch. A deregister+re-register (which
-        # resets the child's state) bumps it, so poll_children can tell a
-        # re-registered child from the one it snapshotted (ABA guard).
-        self._child_register_seq += 1
-        bucket[local_id] = self._child_register_seq
-
-        # Store the per-child dynamic schema before computing the effective
-        # schema so validation + defaults below use the discovered controls.
-        if schema is not None:
-            self._child_schemas[(child_type, local_id)] = dict(schema)
-
-        eff_schema = self._effective_child_schema(child_type, local_id)
-        overrides = dict(initial_state or {})
-
-        # Reject unknown props up-front so the driver sees the error before
-        # we touch the state store.
-        for prop in overrides:
-            if prop not in eff_schema:
-                # Roll back the registration record (and any stored schema) so
-                # a retry can succeed after the driver fixes the call.
-                del bucket[local_id]
-                if not bucket:
-                    del self._children[child_type]
-                self._child_schemas.pop((child_type, local_id), None)
-                raise ValueError(
-                    f"Child {child_type} initial_state property {prop!r} "
-                    f"not declared in child_entity_types[{child_type!r}]"
-                    f".state_variables"
-                    + (" (or this child's dynamic schema)"
-                       if type_def.get("dynamic") else "")
-                )
-
-        # Project-side label: if the project file has a ChildEntityConfig
-        # entry for this (type, padded_id), use its `label` as the default
-        # so listeners see the user's name immediately, not "" then a
-        # delayed update once the IDE re-pushes it.
-        padded = self._format_child_id(child_type, local_id)
-        project_entry = self._project_child_entities.get(child_type, {}).get(padded)
-        project_label = project_entry.get("label", "") if project_entry else ""
-
-        # Every reserved prop needs an explicit arm. Without one they fall
-        # through to _default_for_var_def, which records "declared, never
-        # reported" — right for a reading off the hardware, wrong for these
-        # four, which are the platform's own statements about the child rather
-        # than readings from it. `online` unknown would leave the dot on every
-        # Child Entities row, the `N down` count and the device banner unable to
-        # say anything, and the two fault keys have to say "nothing claimed" on
-        # a `reported` roster rather than leave `not_fitted` unwritten. They ARE
-        # the semantics here: a child claims no fault until one, is called what
-        # the project calls it, and starts at whatever its roster says "nothing
-        # known yet" looks like — in service on an `assumed` roster,
-        # `not_fitted` on a `reported` one. (The fault keys' arm and the
-        # fallthrough now agree on an `assumed` roster — both are None. The arm
-        # stays because it is the statement, not the coincidence: None here
-        # means "no code claimed", which is a different fact from
-        # _default_for_var_def's "declared, nobody has reported it".) It used to be
-        # online: True unconditionally, which is how seven empty AT-LINK
-        # extension slots came to draw seven green dots.
-        presence = self._child_unknown_presence(child_type)
-        if overrides.get("online") is True and "offline_reason" not in overrides:
-            # A driver saying "this slot IS populated" clears the roster's
-            # default claim with it. Otherwise a `reported` roster would hold
-            # online: True beside not_fitted, which is a contradiction the
-            # store has no way to resolve and every reader would resolve
-            # differently.
-            presence = {
-                "online": True,
-                "offline_reason": NO_FAULT_CLAIMED,
-                "offline_detail": NO_FAULT_CLAIMED,
-            }
-        updates: dict[str, Any] = {}
-        for prop, var_def in eff_schema.items():
-            if prop in presence:
-                value = overrides.get(prop, presence[prop])
-            elif prop == "label":
-                value = overrides.get("label", project_label)
-            elif prop in overrides:
-                value = overrides[prop]
-            else:
-                value = self._default_for_var_def(var_def)
-            updates[self._child_state_key(child_type, local_id, prop)] = (
-                normalize_child_fault_claim(prop, value)
-            )
-
-        self.state.set_batch(updates, source=f"device.{self.device_id}")
-
-    def deregister_child(self, child_type: str, local_id: int | str) -> None:
-        """Remove a child entity and delete all of its state keys.
-
-        Silent no-op if the child isn't registered (so drivers can call this
-        eagerly during reconciliation without first checking).
-        """
-        bucket = self._children.get(child_type)
-        if bucket is None or local_id not in bucket:
-            return
-
-        prefix_dot = self._child_state_prefix(child_type, local_id) + "."
-        # Snapshot before mutating; iterating the live store while deleting
-        # would be unsafe. The snapshot is cheap (dict copy) at the scale
-        # we expect per child (~10-30 keys).
-        keys_to_delete = [
-            k for k in self.state.snapshot().keys() if k.startswith(prefix_dot)
-        ]
-        for k in keys_to_delete:
-            self.state.delete(k, source=f"device.{self.device_id}")
-
-        del bucket[local_id]
-        if not bucket:
-            del self._children[child_type]
-        # Drop any per-child dynamic schema so a later re-register can supply
-        # a fresh one (e.g. after the device's topology changed).
-        self._child_schemas.pop((child_type, local_id), None)
-
-    def list_children(self, child_type: str) -> list[int | str]:
-        """Local IDs of currently-registered children of ``child_type``,
-        in insertion order. Returns an empty list if none are registered or
-        the type is unknown to the platform tracker.
-        """
-        bucket = self._children.get(child_type)
-        if bucket is None:
-            return []
-        return list(bucket.keys())
-
-    def set_child_state(
-        self, child_type: str, local_id: int | str, prop: str, value: Any
-    ) -> None:
-        """Set one state key on a child entity, validated against its
-        declared (or, for dynamic types, per-child) schema.
-
-        Raises ValueError if ``prop`` is not in the child's effective schema
-        (the synthetic ``online`` / ``label`` keys are always allowed).
-        Writes to an unregistered child are skipped with a warning — they
-        used to create orphan state keys visible in Live State and binding
-        pickers but absent from the children listing.
-        """
-        if not self.is_child_registered(child_type, local_id):
-            log.warning(
-                f"[{self.device_id}] set_child_state for unregistered child "
-                f"{child_type}/{local_id} (prop {prop!r}) skipped — call "
-                f"register_child first"
-            )
-            self._observe(
-                CHILD_UNREGISTERED, child_type=child_type, local_id=local_id, props=[prop],
-            )
-            return
-        self._validate_child_prop(child_type, local_id, prop)
-        schema = self._effective_child_schema(child_type, local_id)
-        self._warn_on_type_mismatch(
-            f"{child_type}.{self._format_child_id(child_type, local_id)}.{prop}",
-            value,
-            schema[prop],
-        )
-        self.state.set(
-            self._child_state_key(child_type, local_id, prop),
-            normalize_child_fault_claim(prop, value),
-            source=f"device.{self.device_id}",
-        )
-
-    @staticmethod
-    def child_fault(code: str = "", message: str = "") -> dict[str, Any]:
-        """The three reserved keys that say what shape a child is in.
-
-        Returns a fragment to merge into whatever a driver is already writing
-        for that child, rather than writing anything itself. That is
-        deliberate: presence usually arrives in the same poll reply as
-        everything else about the child, and a driver that has built one batch
-        should not have to break it in two (and make a panel flicker through a
-        half-applied state) to say why an endpoint is down.
-
-            self.set_children_state_batch([
-                (ctype, mac, {**common, **self.child_fault()}),          # fine
-                (ctype, mac, {**common, **self.child_fault(              # down
-                    CHILD_NOT_RESPONDING)}),
-            ])
-
-        Called with no code it means "in service, nothing claimed" and clears
-        both fault keys to ``None`` — the same value the device-level pair
-        clears to, and the same one registration seeds, so a child that has
-        recovered and a child that was never in trouble compare equal to a
-        trigger. Clearing matters as much as setting, because a fault
-        nothing ever clears makes one transient failure look permanent for as
-        long as the device stays up.
-
-        ``online`` is False whenever a code is set. That coupling is the point:
-        it is the one glanceable signal, so a wedged endpoint has to read as
-        not-in-service rather than as green with an explanation in a column
-        somebody has to know to read. Which KIND of trouble is the reason's
-        job, not the boolean's.
-
-        An unrecognised code is refused rather than written. It would otherwise
-        reach a panel as a bare token with no sentence behind it, and a typo in
-        a driver would be indistinguishable from a code the frontend has not
-        learned yet. ``parent_offline`` is refused too, though it is a real
-        code: it is the platform's statement about a connection the driver no
-        longer has (see _children_follow_parent), and a driver claiming it
-        would only be overwritten on the next reconnect.
-        """
-        if not code:
-            return {
-                "online": True,
-                "offline_reason": NO_FAULT_CLAIMED,
-                "offline_detail": NO_FAULT_CLAIMED,
-            }
-        if code not in CHILD_DRIVER_FAULT_CODES:
-            raise ValueError(
-                f"{code!r} is not a child fault code a driver may assert "
-                f"(expected one of "
-                f"{', '.join(sorted(CHILD_DRIVER_FAULT_CODES))})"
-            )
-        return {
-            "online": False,
-            "offline_reason": code,
-            "offline_detail": message or default_child_fault_message(code),
-        }
-
-    def set_child_state_batch(
-        self, child_type: str, local_id: int | str, updates: dict[str, Any]
-    ) -> None:
-        """Atomically set several state keys on one child entity.
-
-        Validates every prop in ``updates`` before any write, so a single
-        bad prop causes the entire batch to abort. Unregistered children are
-        skipped with a warning (see set_child_state).
-        """
-        if not self.is_child_registered(child_type, local_id):
-            log.warning(
-                f"[{self.device_id}] set_child_state_batch for unregistered "
-                f"child {child_type}/{local_id} skipped — call register_child "
-                f"first"
-            )
-            self._observe(
-                CHILD_UNREGISTERED, child_type=child_type, local_id=local_id,
-                props=sorted(updates),
-            )
-            return
-        for prop in updates:
-            self._validate_child_prop(child_type, local_id, prop)
-        namespaced = {
-            self._child_state_key(child_type, local_id, prop):
-                normalize_child_fault_claim(prop, v)
-            for prop, v in updates.items()
-        }
-        self.state.set_batch(namespaced, source=f"device.{self.device_id}")
-
-    def set_children_state_batch(
-        self, updates: list[tuple[str, int | str, dict[str, Any]]]
-    ) -> None:
-        """Atomically set state keys across many children in one transaction.
-
-        Each entry is ``(child_type, local_id, {prop: value, ...})``. Listeners
-        and the cloud relay see the complete delta, not a half-applied state.
-        Use this for poll responses that touch dozens or hundreds of children
-        at once. Entries for unregistered children are skipped with a warning
-        (see set_child_state); the rest of the batch still applies.
-        """
-        live: list[tuple[str, int | str, dict[str, Any]]] = []
-        for child_type, local_id, child_updates in updates:
-            if not self.is_child_registered(child_type, local_id):
-                log.warning(
-                    f"[{self.device_id}] set_children_state_batch entry for "
-                    f"unregistered child {child_type}/{local_id} skipped — "
-                    f"call register_child first"
-                )
-                self._observe(
-                    CHILD_UNREGISTERED, child_type=child_type, local_id=local_id,
-                    props=sorted(child_updates),
-                )
-                continue
-            live.append((child_type, local_id, child_updates))
-        for child_type, local_id, child_updates in live:
-            for prop in child_updates:
-                self._validate_child_prop(child_type, local_id, prop)
-        namespaced: dict[str, Any] = {}
-        for child_type, local_id, child_updates in live:
-            for prop, value in child_updates.items():
-                namespaced[self._child_state_key(child_type, local_id, prop)] = (
-                    normalize_child_fault_claim(prop, value)
-                )
-        if namespaced:
-            self.state.set_batch(namespaced, source=f"device.{self.device_id}")
-
-    def get_child_entity_types(self) -> dict[str, dict[str, Any]]:
-        """Return the driver's declared child entity types as
-        ``{type_name: definition}``, with each definition's
-        ``state_variables`` replaced by the *effective* schema (the
-        platform-managed ``online`` and ``label`` keys injected if the
-        driver didn't already declare them).
-
-        Returns ``{}`` if the driver doesn't declare ``child_entity_types``.
-        Used by the REST API and IDE to expose the per-type schema to
-        clients without leaking driver-private helpers.
-
-        For a ``dynamic: true`` type, ``state_variables`` here is the
-        type-level schema (often just the platform-managed ``online`` /
-        ``label``); each child's discovered controls are exposed per-instance
-        via :meth:`get_child_schema` and the children listing, since they vary
-        from one child to the next.
-        """
-        raw = self.DRIVER_INFO.get("child_entity_types", {})
-        result: dict[str, dict[str, Any]] = {}
-        for ctype, definition in raw.items():
-            merged_def = dict(definition)
-            merged_def["state_variables"] = self._effective_child_schema(ctype)
-            result[ctype] = merged_def
-        return result
-
-    def get_child_schema(
-        self, child_type: str, local_id: int | str,
-    ) -> dict[str, dict[str, Any]]:
-        """Effective per-child state-variable schema (with ``online`` /
-        ``label`` injected). For a ``dynamic: true`` type this reflects the
-        schema supplied at ``register_child(schema=...)``; for a static type
-        it's the declared type schema. Used by the REST API to render
-        heterogeneous (dynamic) children, where each instance has its own
-        control set.
-        """
-        return self._effective_child_schema(child_type, local_id)
-
-    def is_child_type_dynamic(self, child_type: str) -> bool:
-        """True if ``child_type`` is declared ``dynamic: true`` (its children
-        carry per-instance schemas). False for unknown or static types.
-        """
-        return bool(
-            self.DRIVER_INFO.get("child_entity_types", {})
-            .get(child_type, {})
-            .get("dynamic")
-        )
-
-    def format_child_id(self, child_type: str, local_id: int | str) -> str:
-        """Validate ``local_id`` against the declared id_format and return
-        its padded string form. Public wrapper around the internal helper.
-        """
-        return self._format_child_id(child_type, local_id)
-
-    def is_child_registered(self, child_type: str, local_id: int | str) -> bool:
-        """True if ``register_child(child_type, local_id)`` has been called
-        and ``deregister_child`` hasn't been called since.
-        """
-        return local_id in self._children.get(child_type, {})
-
-    def get_child_state(
-        self, child_type: str, local_id: int | str,
-    ) -> dict[str, Any]:
-        """Return the live state for one registered child as
-        ``{property: value}``. Returns an empty dict if the child isn't
-        currently registered.
-        """
-        if not self.is_child_registered(child_type, local_id):
-            return {}
-        return self.state.get_namespace(
-            self._child_state_prefix(child_type, local_id)
-        )
-
-    async def refresh_children(self) -> Any:
-        """Re-discover child entities from the device.
-
-        Default implementation raises ``NotImplementedError``. Drivers that
-        can re-poll their controller's child list override this to reconcile
-        ``register_child`` / ``deregister_child`` calls against the latest
-        device state. Called from the REST API
-        ``POST /api/devices/{id}/children/refresh`` endpoint.
-        """
-        raise NotImplementedError(
-            f"Driver {self.DRIVER_INFO.get('id', '?')} does not implement "
-            f"refresh_children"
-        )
-
-    async def poll_children(
-        self,
-        child_type: str,
-        fetch: Callable[[list[int]], Awaitable[dict[int, dict[str, Any]]]],
-        batch_size: int = 50,
-        inter_batch_delay: float = 0.1,
-    ) -> None:
-        """Paginated polling helper.
-
-        Splits the currently-registered ``child_type`` IDs into batches of
-        ``batch_size``, awaits ``fetch(batch_ids)`` for each (pausing
-        ``inter_batch_delay`` seconds between batches so polls don't saturate
-        slow controllers), then applies the whole poll's results in ONE atomic
-        ``set_children_state_batch``. Applying per-poll rather than per-batch
-        means a subscriber never observes a half-applied multi-batch snapshot
-        (some children on this poll's values, the rest still on the last
-        poll's). The coalescing delay is bounded by the fetch time and is
-        negligible against typical poll intervals.
-
-        ``fetch`` returns ``{local_id: {prop: value, ...}}``. A result for a
-        child that isn't registered, or that was deregistered (or
-        deregistered+re-registered, which resets its state) since the poll
-        started, is dropped — so a concurrent ``refresh_children`` can't have
-        its reset clobbered by a stale write (ABA guard).
-        """
-        ids = self.list_children(child_type)
-        if not ids:
-            return
-        # Snapshot each child's registration epoch at poll start. A child whose
-        # live epoch later differs (re-registered) or is gone (deregistered) is
-        # dropped at apply time.
-        start_bucket = self._children.get(child_type, {})
-        epochs = {lid: start_bucket.get(lid) for lid in ids}
-
-        collected: list[tuple[int, dict[str, Any]]] = []
-        last_start = (len(ids) - 1) // max(batch_size, 1) * max(batch_size, 1)
-        for i in range(0, len(ids), batch_size):
-            batch_ids = ids[i:i + batch_size]
-            results = await fetch(batch_ids)
-            collected.extend(results.items())
-            if i != last_start and inter_batch_delay > 0:
-                await asyncio.sleep(inter_batch_delay)
-
-        live = self._children.get(child_type, {})
-        updates: list[tuple[str, int, dict[str, Any]]] = []
-        for lid, props in collected:
-            expected = epochs.get(lid)
-            # Keep only children that were in the start snapshot AND whose
-            # registration epoch hasn't changed since (drops ghosts, removed,
-            # and re-registered children).
-            if expected is not None and live.get(lid) == expected:
-                updates.append((child_type, lid, props))
-        if updates:
-            self.set_children_state_batch(updates)
