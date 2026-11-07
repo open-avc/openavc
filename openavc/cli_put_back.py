@@ -43,6 +43,10 @@ def _markers_in(path: Path) -> int:
         return 0
 
 
+def _logins(count: int) -> str:
+    return f"{count} login" if count == 1 else f"{count} logins"
+
+
 def main() -> int:
     if _server_answers(HTTP_PORT):
         print(
@@ -62,13 +66,17 @@ def main() -> int:
         print("No login here is saved on the system. Nothing to put back.")
         return 0
     if left:
-        print(
-            f"Put back {before - left} of {before} logins. {left} have nothing saved on this "
-            "system and still say saved on this system: enter them again after going back."
+        rest = (
+            "1 has nothing saved on this system and still says saved on this system: "
+            "enter it again after going back."
+            if left == 1 else
+            f"{left} have nothing saved on this system and still say saved on this system: "
+            "enter them again after going back."
         )
+        print(f"Put back {before - left} of {_logins(before)}. {rest}")
         return 1 if left == before else 0
     print(
-        f"Put back {before} logins into the project files. Start the earlier version now; "
+        f"Put back {_logins(before)} into the project files. Start the earlier version now; "
         "on Docker, change the image tag back, then docker compose up -d."
     )
     return 0

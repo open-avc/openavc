@@ -105,4 +105,6 @@ def test_a_login_nothing_saved_stands_for_is_named(tmp_path):
 
     assert done.returncode == 0, done.stdout + done.stderr
     assert "Put back 1 of 2 logins" in done.stdout
-    assert "enter them again" in done.stdout
+    assert "1 has nothing saved on this system and still says saved" in done.stdout
+    assert "enter it again" in done.stdout
+
