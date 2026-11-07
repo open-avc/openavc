@@ -2392,7 +2392,9 @@ class BaseDriver(ABC):
         back, once the device has answered anything on it: nothing goes out
         to answer until that state changes."""
         counts = self._io_counts()
-        if self._held and counts is not None and counts[2] > 0:
+        if not self._held or counts is None:
+            return
+        if counts[2] > 0:
             await self._announce_held()
 
     async def _probe_once(self, probe: _ProbeWatch) -> bool:
