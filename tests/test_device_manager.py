@@ -1066,11 +1066,12 @@ async def test_shutdown_does_not_start_reconnect_loops(dm, core, acme_sim):
     await asyncio.sleep(0.2)
 
     assert dm._reconnect_tasks == {}
-    # Match the coroutine's own qualified name: a substring search over
-    # str(coro) also matches this test function's name.
+    # Match the coroutine's own qualified name, whichever class of the manager
+    # defines the loop: a substring search over str(coro) also matches this
+    # test function's name.
     live = [
         task for task in asyncio.all_tasks()
-        if getattr(task.get_coro(), "__qualname__", "") == "DeviceManager._reconnect_loop"
+        if getattr(task.get_coro(), "__qualname__", "").endswith("._reconnect_loop")
     ]
     assert live == []
 

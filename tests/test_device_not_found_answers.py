@@ -26,6 +26,7 @@ platform's error contract, not any product's.
 from __future__ import annotations
 
 import ast
+import sys
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -46,6 +47,17 @@ from openavc.drivers.base import (
 from openavc.main import app
 
 _MISSING = "no_such_device"
+
+# Every module DeviceManager's methods are written in, read from the class
+# itself so a part split out later is scanned too: a raise in any of them
+# reaches the same doors.
+_DEVICE_MANAGER_MODULES = tuple(
+    {
+        sys.modules[cls.__module__]
+        for cls in DeviceManager.__mro__
+        if cls.__module__.startswith("openavc.")
+    }
+)
 
 
 class _AcmeDriver(BaseDriver):
@@ -185,16 +197,19 @@ def test_no_bare_value_error_in_the_device_manager_still_claims_a_device_is_miss
     ``raise ValueError(f"Device '{did}' not found")`` restores the bug at
     whichever door happens to call that method, silently and for good.
     """
-    source = Path(device_manager_module.__file__).read_text(encoding="utf-8")
+    assert device_manager_module in _DEVICE_MANAGER_MODULES
     offenders = []
-    for node in ast.walk(ast.parse(source)):
-        if not isinstance(node, ast.Raise) or not isinstance(node.exc, ast.Call):
-            continue
-        if getattr(node.exc.func, "id", "") != "ValueError" or not node.exc.args:
-            continue
-        text = ast.get_source_segment(source, node.exc.args[0]) or ""
-        if "not found" in text:
-            offenders.append(f"line {node.lineno}: {text}")
+    for module in _DEVICE_MANAGER_MODULES:
+        path = Path(module.__file__)
+        source = path.read_text(encoding="utf-8")
+        for node in ast.walk(ast.parse(source)):
+            if not isinstance(node, ast.Raise) or not isinstance(node.exc, ast.Call):
+                continue
+            if getattr(node.exc.func, "id", "") != "ValueError" or not node.exc.args:
+                continue
+            text = ast.get_source_segment(source, node.exc.args[0]) or ""
+            if "not found" in text:
+                offenders.append(f"{path.name} line {node.lineno}: {text}")
     assert offenders == [], (
         "raise DeviceNotFoundError for these, or the door above answers "
         "'not found' about a device that is present: " + "; ".join(offenders)
