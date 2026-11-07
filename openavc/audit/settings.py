@@ -39,15 +39,11 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from openavc.audit.commands import (
-    QUERY_WINDOW_SECONDS,
-    command_catalog,
-    error_sentence,
-    same_value,
-)
-from openavc.audit.observe import command_sent_nothing
+from openavc.audit.command_catalog import command_catalog
+from openavc.audit.commands import QUERY_WINDOW_SECONDS, error_sentence
+from openavc.audit.effects import same_value
+from openavc.audit.observe import command_sent_nothing, recorded
 from openavc.audit.session import AuditError
-from openavc.core.state_store import is_flat_primitive
 from openavc.drivers.base import validate_device_setting_value
 from openavc.utils.boolean_words import value_text
 from openavc.utils.logger import get_logger
@@ -84,10 +80,6 @@ NOT_CONNECTED_YET = "Connect the driver first, on the Connect and listen step."
 
 # Parts of a setting's declaration the wizard's value field has no use for.
 _NOT_FOR_THE_FIELD = frozenset({"write", "label", "help", "state_key", "setup"})
-
-
-def _shown(value: Any) -> Any:
-    return value if is_flat_primitive(value) else repr(value)
 
 
 def _value_text(value: Any) -> str:
@@ -131,8 +123,8 @@ class SettingTrial:
             "number": self.number,
             "key": self.key,
             "label": self.label,
-            "original": _shown(self.original),
-            "value": _shown(self.value),
+            "original": recorded(self.original),
+            "value": recorded(self.value),
             "started_at": self.started_at,
             "status": self.status,
             "write": dict(self.write),
@@ -209,7 +201,7 @@ class SettingsPass:
                     k: v for k, v in sdef.items() if k not in _NOT_FOR_THE_FIELD
                 },
                 "state_key": state_key,
-                "value": _shown(current),
+                "value": recorded(current),
                 "can_write": not reason,
                 "reason": reason,
             })
@@ -333,7 +325,7 @@ class SettingsPass:
             raise
         half.update({
             "confirmed": confirmed,
-            "value": _shown(actual),
+            "value": recorded(actual),
             "after": round(time.time() - started, 1),
             "unchanged": confirmed and held and state_key not in sandbox.written_after(mark),
         })

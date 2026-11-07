@@ -350,7 +350,7 @@ def _result_lines(section: dict[str, Any]) -> list[tuple[Any, str]]:
 def _command_lines(section: dict[str, Any]) -> list[tuple[bool, str]]:
     """A command that raised or that the person said did not (or only partly)
     happen did not work; a confirmed one did; any other says nothing."""
-    from openavc.audit.commands import trial_outcome
+    from openavc.audit.command_text import trial_outcome
 
     lines: list[tuple[bool, str]] = []
     for trial in (section.get("commands") or {}).get("trials") or []:

@@ -720,7 +720,7 @@ def test_the_report_says_what_the_driver_read_and_what_was_not_run():
 
 
 def test_the_timeline_names_a_probe_by_its_driver_and_the_words_read_plainly():
-    from openavc.audit.commands import ANSWERS
+    from openavc.audit.command_text import ANSWERS
     from openavc.audit.report import render_timeline
 
     text = render_timeline({

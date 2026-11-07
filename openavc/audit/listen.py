@@ -46,13 +46,13 @@ from openavc.audit.observe import (
     REPLY_WINDOW_SECONDS,
     ContractEvent,
     is_platform_key,
+    recorded,
     replies_to_nobody,
 )
 from openavc.audit.sandbox import DriverSandbox, audit_device_id
 from openavc.audit.session import AuditError
 from openavc.core.connection_fault import is_permanent_fault
 from openavc.core.device_traffic import RX, TX, TrafficEntry, serialize_entry
-from openavc.core.state_store import is_flat_primitive
 from openavc.utils.boolean_words import value_text
 from openavc.utils.logger import get_logger
 
@@ -88,12 +88,6 @@ FRONT_PANEL_TEXT = {
     "did_not": "The person changed something on the device, and OpenAVC did not show it.",
     "could_not_try": "The person could not change anything on the device to try it.",
 }
-
-
-def _shown(value: Any) -> Any:
-    """A state value as a record keeps it: as is when the store could hold
-    it, else its repr."""
-    return value if is_flat_primitive(value) else repr(value)
 
 
 def next_step(code: str) -> str:
@@ -515,8 +509,8 @@ class ListenPass:
         if len(self.changes) < CHANGES_KEPT:
             self.changes.append({
                 "t": now, "key": prop,
-                "old": _shown(old),
-                "new": _shown(new),
+                "old": recorded(old),
+                "new": recorded(new),
             })
         if (
             old is not None and new is not None and not is_platform_key(prop)
@@ -657,7 +651,7 @@ class ListenPass:
                 "name": name,
                 "label": spec.get("label") or name,
                 "type": spec.get("type", "string"),
-                "value": _shown(value),
+                "value": recorded(value),
                 "reported": self.from_device(name),
                 "set_by_driver": name in self.first_reported and not self.from_device(name),
                 "first_reported_at": self.first_reported.get(name),
@@ -677,7 +671,7 @@ class ListenPass:
                 rest = key[len(prefix):]
                 local_id, _, prop = rest.partition(".")
                 if prop:
-                    children.setdefault(ctype, {}).setdefault(local_id, {})[prop] = _shown(value)
+                    children.setdefault(ctype, {}).setdefault(local_id, {})[prop] = recorded(value)
         settings = []
         for key, spec in (info.get("device_settings") or {}).items():
             spec = spec if isinstance(spec, dict) else {}
@@ -687,7 +681,7 @@ class ListenPass:
                 "key": key,
                 "label": spec.get("label") or key,
                 "state_key": state_key or "",
-                "value": _shown(value),
+                "value": recorded(value),
                 "populated": bool(state_key) and value is not None,
             })
         return {

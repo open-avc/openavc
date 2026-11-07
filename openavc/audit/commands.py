@@ -11,16 +11,9 @@ person did not press Send for, except the status queries they ask to run
 together and, as a setting is written, the status query that reads its value
 first (``audit/settings.py``).
 
-**The command list** is the live driver's own (``DRIVER_INFO["commands"]`` on
-the instance, so commands a Python driver builds once connected are there
-too), in the order the driver declares them, with what the driver says about
-each: its label, help and parameters; whether it is a **status query**
-(``query_for``, the variable its reply reports, or a command the driver's
-polling runs by name); what it says it changes (``sets``); whether it works
-with the device offline (``available_offline``); how long it takes the
-device away (``restarts_device_for``). A command the driver puts on a device
-page (a quick action, or a command action) is **suggested**, one to try
-first, unless it asks for a confirmation or restarts the device.
+**The command list** is the live driver's own declaration, read by
+``audit/command_catalog.py`` (which commands are status queries, which are
+suggested, the confirmation each asks for).
 
 A command refused before anything was sent (its parameters, the driver's own
 check) closes its window at once: there is nothing on the device to watch
@@ -47,13 +40,11 @@ every declared value has come back. In the window the audit keeps
 every byte both ways, every status value that changed, and every sign that
 the device refused it: an error the driver raised or published
 (``device.error``), a ``last_error`` it wrote, a reply no response rule
-matched. Then, per ``driver-roadmap`` "An acknowledgement is not an
-application", it checks the command's declared effect against what the
-device reports once the window closes: each ``sets`` entry is confirmed, still
-different, unchanged, or never reported (and "it already had that value"
-says the audit cannot tell). A status query's ``query_for`` value is read the
-same way. A command the driver said succeeded while no byte left for the
-device is flagged (``command_sent_nothing``): the gate nothing else catches.
+matched. Once the window closes, the command's declared effect and a status
+query's answer are judged against what the device reports then
+(``audit/effects.py``). A command the driver said succeeded while no byte left
+for the device is flagged (``command_sent_nothing``): the gate nothing else
+catches.
 
 **A command that restarts the device** (``restarts_device_for``) is watched
 for its declared window and ``RESTART_MARGIN_SECONDS`` more, ending
@@ -66,10 +57,8 @@ server, so a secret one never goes back to the browser). Every command
 records how long after the previous one it was sent, which is how a device
 that refuses a command for a few seconds after a related one shows up.
 
-The driver's own confirmation text for a command (the command's ``confirm``,
-else an ``actions`` entry's) is part of the command list, for the wizard to
-show first. The server sends the command either way: asking is the wizard's,
-as on the device page.
+A command that asks for a confirmation is sent either way: asking is the
+wizard's, as on the device page.
 
 **"Did it happen?"** Then the person says what they saw on the device
 itself (``yes``, ``no``, ``partly``, ``cant_tell``) with an optional note. It
@@ -77,12 +66,8 @@ is their answer, kept beside what the device reported, never merged into it:
 a display that said "input hdmi2" while the screen stayed black is exactly
 the disagreement a report exists to show.
 
-**What changed** (:func:`changed_values`): every status value that reads
-differently now from before the first command or setting the audit sent,
-with what it was and the command whose window saw it move. A command cannot
-be undone in general, so the wizard lists these for the person to put back
-themselves if they need to; the settings the audit wrote it puts back on its
-own (``audit/settings.py``).
+**What changed**, per command and over the run, is ``audit/changes.py``; what
+a command did, in words, is ``audit/command_text.py``.
 
 Every command sent is kept for the report (:meth:`CommandPass.report_record`):
 what was asked, what the driver's ``send_command`` returned or raised, the
@@ -93,30 +78,30 @@ window showed.
 from __future__ import annotations
 
 import asyncio
-import re
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from openavc.audit.observe import REPLY_WINDOW_SECONDS, command_sent_nothing, is_platform_key
+from openavc.audit.changes import changed_values, current_values, moved_values
+from openavc.audit.command_catalog import command_catalog
+from openavc.audit.command_text import ANSWERS, params_text, trial_sentence
+from openavc.audit.effects import (
+    Readout,
+    declared_effects,
+    judged_effects,
+    query_answer,
+    same_value,
+)
+from openavc.audit.observe import REPLY_WINDOW_SECONDS, command_sent_nothing, recorded
 from openavc.audit.session import AuditError
 from openavc.core.device_traffic import RX, TX, serialize_entry
-from openavc.core.state_store import is_flat_primitive
-from openavc.drivers.base import missing_required_params
-from openavc.drivers.child_ids import coerce_child_local_id
 from openavc.drivers.command_files import CommandFile, DeviceFile
-from openavc.drivers.compiled_protocol import coerce_bool_token, is_bool_token
-from openavc.drivers.param_labels import param_label
-from openavc.drivers.spec import file_param_names, is_secret_setting
-from openavc.utils.boolean_words import value_text
+from openavc.drivers.spec import is_secret_setting
 from openavc.utils.log_redaction import is_secret_key
-from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from openavc.audit.passes import DriverRun
     from openavc.audit.session import AuditSession
-
-log = get_logger(__name__)
 
 # How long a command is watched after it returns.
 WINDOW_SECONDS = 10.0
@@ -144,8 +129,6 @@ LIVE_CHANGES = 20
 # command was sent was already moving (a meter, a clock): its changes in the
 # command's window are shown apart from what the command moved.
 ALREADY_MOVING_SECONDS = 60.0
-# The values a command moved that its sentence names; the rest are counted.
-MOVED_IN_SENTENCE = 3
 
 SENDING = "sending"
 WATCHING = "watching"
@@ -154,7 +137,6 @@ DONE = "done"
 NOT_CONNECTED_YET = "Connect the driver first, on the Connect and listen step."
 BUSY = "Wait for {label} to finish before sending another command."
 BATCH_BUSY = "Wait for the status queries to finish before sending another command."
-NO_SUCH_COMMAND = "{driver} has no command named {name}."
 NO_QUERIES = "{driver} has no status queries that can run without a value."
 NOT_WATCHING = "No command is being watched."
 WATCH_CAP = "A command is watched for {span} at most."
@@ -164,22 +146,6 @@ NO_SUCH_TRIAL = "There is no command number {number} to send again."
 FILE_NOT_AGAIN = "Choose the file again and send {label} from the list."
 NO_TRIAL_TO_ANSWER = "There is no command number {number} to answer for."
 NOT_SENT_YET = "Wait for {label} to be sent before saying what the device did."
-
-# The person's answers to "Did it happen?", in words for the timeline.
-ANSWERS = {
-    "yes": "The person said the device did it.",
-    "no": "The person said the device did not do it.",
-    "partly": "The person said the device partly did it.",
-    "cant_tell": "The person said they could not tell.",
-}
-
-_PARAM_REF = re.compile(r"\{([^{}]+)\}")
-
-
-def _shown(value: Any) -> Any:
-    """A value as a record keeps it: as is when it is a flat primitive, else
-    its repr (a driver's ``send_command`` may return anything)."""
-    return value if is_flat_primitive(value) else repr(value)
 
 
 def error_sentence(exc: BaseException) -> str:
@@ -194,184 +160,6 @@ def error_sentence(exc: BaseException) -> str:
     if isinstance(exc, (ConnectionError, TimeoutError)):
         return friendly_error(exc, device="The device")
     return str(exc) or type(exc).__name__
-
-
-def _polled_command_names(driver: Any) -> set[str]:
-    """The commands a YAML driver's polling runs by name (its status queries)."""
-    definition = getattr(driver, "_definition", None) or {}
-    queries = (definition.get("polling") or {}).get("queries") or []
-    commands = (getattr(driver, "DRIVER_INFO", {}) or {}).get("commands") or {}
-    names = set()
-    for query in queries:
-        text = query.get("send") if isinstance(query, dict) else query
-        if isinstance(text, str) and text in commands:
-            names.add(text)
-    return names
-
-
-def _command_actions(driver: Any) -> tuple[dict[str, str], set[str]]:
-    """What the driver's command actions say about its commands: the
-    confirmation each asks for before it runs (the driver's own words, or a
-    plain one for ``confirm: true``), and the commands the driver puts on a
-    device page (its quick actions and command actions)."""
-    from openavc.drivers.actions import resolve_device_actions
-
-    info = getattr(driver, "DRIVER_INFO", {}) or {}
-    config = getattr(driver, "config", None)
-    confirms: dict[str, str] = {}
-    promoted: set[str] = set()
-    for action in resolve_device_actions(info, config if isinstance(config, dict) else None):
-        name = action.get("command")
-        if action.get("kind") != "command" or not isinstance(name, str):
-            continue
-        promoted.add(name)
-        confirm = action.get("confirm")
-        if not confirm:
-            continue
-        confirms.setdefault(
-            name,
-            confirm if isinstance(confirm, str)
-            else f"The driver asks for a confirmation before {action.get('label') or name} runs.",
-        )
-    return confirms, promoted
-
-
-def _confirm_text(cdef: dict[str, Any], name: str) -> str:
-    """The command's own ``confirm``: its sentence, a plain one for
-    ``confirm: true``, or "" for none."""
-    confirm = cdef.get("confirm")
-    if isinstance(confirm, str) and confirm:
-        return confirm
-    if confirm is True:
-        return f"The driver asks for a confirmation before {cdef.get('label') or name} runs."
-    return ""
-
-
-def command_catalog(driver: Any) -> list[dict[str, Any]]:
-    """The driver's commands, in its own order, with what it says about each."""
-    info = getattr(driver, "DRIVER_INFO", {}) or {}
-    commands = info.get("commands") or {}
-    if not isinstance(commands, dict):
-        return []
-    polled = _polled_command_names(driver)
-    confirms, promoted = _command_actions(driver)
-    out = []
-    for name, cdef in commands.items():
-        cdef = cdef if isinstance(cdef, dict) else {}
-        params = cdef.get("params") if isinstance(cdef.get("params"), dict) else {}
-        query_for = cdef.get("query_for") if isinstance(cdef.get("query_for"), str) else ""
-        try:
-            restarts = int(cdef.get("restarts_device_for") or 0)
-        except (TypeError, ValueError):
-            restarts = 0
-        out.append({
-            "name": name,
-            "label": str(cdef.get("label") or name),
-            "help": str(cdef.get("help") or ""),
-            "params": params,
-            "query": bool(query_for) or name in polled,
-            "query_for": query_for,
-            "polled": name in polled,
-            "sets": dict(cdef["sets"]) if isinstance(cdef.get("sets"), dict) else {},
-            "available_offline": bool(cdef.get("available_offline")),
-            "restarts_device_for": restarts,
-            "needs_input": bool(missing_required_params(params, {})),
-            # A command that takes or hands back a file: sent with the file
-            # chosen in the wizard, never by "Run all status queries".
-            "takes_file": bool(file_param_names(cdef)),
-            "returns_file": cdef.get("returns_file") is True,
-            "confirm": _confirm_text(cdef, name) or confirms.get(name, ""),
-            # One to try first: on a device page, and nothing to warn about.
-            "suggested": (
-                name in promoted and name not in confirms and not restarts
-                and not _confirm_text(cdef, name)
-            ),
-        })
-    return out
-
-
-def same_value(expected: Any, actual: Any) -> bool:
-    """Does a reported value say what a command's declared effect says?
-
-    The device may say it its own way (``"on"`` or ``1`` for ``true``, ``"40"``
-    for ``40``, another case), so a flag is read as a flag, a number as a
-    number, and anything else as text.
-    """
-    if actual is None:
-        return False
-    if actual == expected:
-        return True
-    if isinstance(expected, bool) or isinstance(actual, bool):
-        if is_bool_token(expected) and is_bool_token(actual):
-            return coerce_bool_token(expected) == coerce_bool_token(actual)
-        return False
-    try:
-        return float(expected) == float(actual)
-    except (TypeError, ValueError):
-        pass
-    return str(expected).strip().lower() == str(actual).strip().lower()
-
-
-def declared_effects(
-    entry: dict[str, Any], params: dict[str, Any], driver: Any,
-) -> list[dict[str, Any]]:
-    """The state a command says it sets (``sets``), as keys of the device's
-    state, each with the value it should now read (``has_value`` false when
-    it names a parameter nobody gave).
-
-    On a command with exactly one ``child_id`` parameter, a key the child
-    type declares means that child's variable (the child's own name wins, as
-    in the contract); anything else is the device's own.
-    """
-    sets = entry.get("sets") or {}
-    if not isinstance(sets, dict) or not sets:
-        return []
-    child = _addressed_child(entry, params, driver)
-    out = []
-    for key, value in sets.items():
-        state_key = f"{child[0]}.{child[1]}.{key}" if child and key in child[2] else key
-        ref = _PARAM_REF.fullmatch(value) if isinstance(value, str) else None
-        if ref:
-            given = params.get(ref.group(1))
-            has_value = given not in (None, "")
-            expected = given if has_value else None
-        else:
-            has_value, expected = True, value
-        out.append({
-            "state": key, "state_key": state_key, "expected": _shown(expected),
-            "has_value": has_value,
-        })
-    return out
-
-
-def _addressed_child(
-    entry: dict[str, Any], params: dict[str, Any], driver: Any,
-) -> tuple[str, str, set[str]] | None:
-    """(child type, its id as state keys spell it, its variables) for a
-    command with exactly one ``child_id`` parameter that was given a value.
-
-    The value arrives as the form sent it ("1"); it is coerced to the kind
-    the child type declares before it is padded, as every door that takes a
-    child id does."""
-    pdefs = entry.get("params") or {}
-    child_params = [
-        n for n, p in pdefs.items() if isinstance(p, dict) and p.get("type") == "child_id"
-    ]
-    if len(child_params) != 1:
-        return None
-    name = child_params[0]
-    ctype = pdefs[name].get("child_type")
-    types = (getattr(driver, "DRIVER_INFO", {}) or {}).get("child_entity_types") or {}
-    local = params.get(name)
-    if not isinstance(ctype, str) or ctype not in types or local in (None, ""):
-        return None
-    typed = coerce_child_local_id(types[ctype], local)
-    try:
-        padded = str(driver.format_child_id(ctype, local if typed is None else typed))
-    except Exception:
-        padded = str(local)
-    variables = set((types[ctype] or {}).get("state_variables") or {})
-    return ctype, padded, variables
 
 
 @dataclass
@@ -459,8 +247,6 @@ class CommandTrial:
     # The file it handed back: {"id", "name", "size"} (the id is the download's).
     returned_file: dict[str, Any] | None = None
 
-    def window_end(self) -> float:
-        return self.finished_at or time.time()
 
     def mark(self, observer: Any, into: dict[str, int]) -> None:
         into["traffic"] = len(observer.traffic)
@@ -480,7 +266,7 @@ class CommandTrial:
             "command": self.command,
             "label": self.label,
             "params": {
-                k: "***" if k in self.secret_params else _shown(v)
+                k: "***" if k in self.secret_params else recorded(v)
                 for k, v in self.params.items()
             },
             "attempt": self.attempt,
@@ -561,6 +347,10 @@ class CommandPass:
             raise AuditError(NOT_CONNECTED_YET)
         return listen
 
+    def _attempt(self, trial: CommandTrial) -> Any:
+        """The connect-and-listen attempt whose connection carried ``trial``."""
+        return self.run.listens[trial.connect_attempt] if self.run.listens else None
+
     def _driver(self) -> Any:
         listen = self.run.listen
         driver = listen.sandbox.driver if listen is not None else None
@@ -587,7 +377,7 @@ class CommandPass:
         }
         listen = self.run.listen
         state = listen.sandbox.device_state() if listen is not None and listen.sandbox.started else {}
-        return {key: _shown(state.get(key)) for key in sorted(keys)}
+        return {key: recorded(state.get(key)) for key in sorted(keys)}
 
     def _driver_name(self) -> str:
         return self.run.choice.identity.get("name") or self.run.choice.driver_id
@@ -807,7 +597,7 @@ class CommandPass:
         worked."""
         if not trial.declared.get("sets"):
             return 0.0
-        attempt = self.run.listens[trial.connect_attempt] if self.run.listens else None
+        attempt = self._attempt(trial)
         poll = float(getattr(attempt, "poll_interval", 0.0) or 0.0)
         if poll <= 0:
             return 0.0
@@ -842,7 +632,7 @@ class CommandPass:
                 return
             trial.changes.append({
                 "t": time.time(), "key": key[len(prefix):] if key.startswith(prefix) else key,
-                "old": _shown(old), "new": _shown(new),
+                "old": recorded(old), "new": recorded(new),
             })
 
         def on_error(_event: str, payload: Any = None) -> None:
@@ -901,7 +691,7 @@ class CommandPass:
                     sandbox.device_id, trial.command, trial.params or None,
                     files_allowed=trial.file_command,
                 )
-                trial.result = _shown(result)
+                trial.result = recorded(result)
                 if isinstance(result, DeviceFile) and trial.keep_file is not None:
                     trial.returned_file = trial.keep_file(result)
             except asyncio.CancelledError:
@@ -959,7 +749,7 @@ class CommandPass:
             # when, a rewrite of the same text included.
             own_key = f"device.{sandbox.device_id}.last_error"
             trial.error_writes = [
-                {"t": t, "error": _shown(value), "position": position}
+                {"t": t, "error": recorded(value), "position": position}
                 for t, key, value, position in error_writes[errors_from:] if key == own_key
             ]
             self._unwatch(sandbox, handles)
@@ -969,7 +759,7 @@ class CommandPass:
         if trial.status == DONE:
             return
         trial.finished_at = time.time()
-        attempt = self.run.listens[trial.connect_attempt] if self.run.listens else None
+        attempt = self._attempt(trial)
         if attempt is not None:
             trial.mark(attempt.sandbox.observer, trial.end_marks)
         trial.status = DONE
@@ -990,101 +780,31 @@ class CommandPass:
     def _conclude(self, trial: CommandTrial) -> None:
         """What the window showed: the declared effect against what the
         device reports now, a status query's answer, the signs of a refusal,
-        whether anything was sent, and how a restart went."""
-        attempt = self.run.listens[trial.connect_attempt] if self.run.listens else None
-        if attempt is None:
-            state: dict[str, Any] = {}
-        elif attempt.sandbox.started:
-            state = attempt.sandbox.device_state()
-        else:
-            state = _final_values(attempt.status_table())
+        whether anything was sent, and how a drop or a restart went."""
+        attempt = self._attempt(trial)
         traffic = self._window_traffic(trial)
-        changed = {c["key"] for c in trial.changes}
-        driver = self._driver()
-        info = getattr(driver, "DRIVER_INFO", None) or {}
-        entry = {**trial.declared, "params": self._params_of(trial.command)}
-
         if not trial.error:
-            for effect in declared_effects(entry, trial.params, driver):
-                key = effect["state_key"]
-                now, before = state.get(key), trial.before.get(key)
-                if not effect["has_value"]:
-                    outcome = "no_value"
-                elif same_value(effect["expected"], now):
-                    outcome = "already" if (
-                        key not in changed and same_value(effect["expected"], before)
-                    ) else "confirmed"
-                elif now is None:
-                    outcome = "not_reported"
-                elif key in changed:
-                    outcome = "different"
-                else:
-                    outcome = "unchanged"
-                trial.effects.append({
-                    **effect, "label": state_label(info, key), "value": _shown(now),
-                    "outcome": outcome,
-                })
-
-        query_for = trial.declared.get("query_for")
-        if query_for and not trial.error:
-            child = _addressed_child(entry, trial.params, driver)
-            key = (
-                f"{child[0]}.{child[1]}.{query_for}"
-                if child and query_for in child[2] else query_for
+            readout = Readout(
+                state=current_values(attempt) if attempt is not None else {},
+                changed={c["key"] for c in trial.changes},
+                driver=self._driver(),
             )
-            answered = any(e.direction == RX for e in traffic)
-            value = state.get(key)
-            trial.query = {
-                "state": query_for, "state_key": key, "label": state_label(info, key),
-                "value": _shown(value),
-                "changed": key in changed,
-                "outcome": "no_reply" if not answered
-                else ("reported" if value is not None else "not_reported"),
-            }
-
-        events = []
-        if attempt is not None:
-            events = [
-                e for e in trial.events_in(attempt.sandbox.observer)
-                if e.kind == "unmatched_response"
-            ]
+            entry = {**trial.declared, "params": self._params_of(trial.command)}
+            trial.effects.extend(judged_effects(entry, trial, readout))
+            if trial.declared.get("query_for"):
+                answered = any(e.direction == RX for e in traffic)
+                trial.query = query_answer(entry, trial, readout, answered)
         trial.refusals.update(self._refusals(trial, traffic))
-        trial.refusals.update({
-            "unmatched": len(events),
-            "unmatched_examples": [str(e.detail.get("text", ""))[:200] for e in events[:5]],
-        })
-
+        trial.refusals.update(_unmatched_replies(trial, attempt))
         if not trial.error and attempt is not None:
-            if not attempt.sandbox.observer.frames():
-                trial.sent_nothing = None  # its traffic is not captured at all
-            else:
-                trial.sent_nothing = command_sent_nothing(
-                    trial.traffic_in(attempt.sandbox.observer), trial.sent_at,
-                    trial.returned_at or trial.sent_at, started_inclusive=True,
-                )
-
-        declared = trial.declared.get("restarts_device_for")
-        went = trial.went_away_at
-        back = trial.back_at
-        if went and not declared:
+            trial.sent_nothing = _sent_nothing(trial, attempt)
+        if trial.went_away_at and not trial.declared.get("restarts_device_for"):
             # The connection dropped while it was watched: say so, every time,
             # rather than letting the values a reconnect rewrites read as the
             # command's.
-            trial.drops = [
-                {
-                    "after": round(gone - trial.sent_at, 1),
-                    "back_after": round(again - gone, 1) if again else None,
-                }
-                for gone, again in trial.gone_and_back
-            ]
-        if declared and not trial.error:
-            trial.restart = {
-                "declared_seconds": declared,
-                "went_away_after": round(went - trial.sent_at, 1) if went else None,
-                "back_after": round(back - trial.sent_at, 1) if back else None,
-                "away_for": round(back - went, 1) if went and back else None,
-                "within_declared": (back - trial.sent_at) <= declared if back else None,
-            }
+            trial.drops = _drops(trial)
+        if trial.declared.get("restarts_device_for") and not trial.error:
+            trial.restart = _restart(trial)
 
     def _refusals(self, trial: CommandTrial, traffic: list[Any]) -> dict[str, Any]:
         """Which signs of a refusal (an error the driver published, a
@@ -1103,7 +823,7 @@ class CommandPass:
         # the order things happened in whatever the clock says.
         start = trial.marks.get("traffic", 0)
         returned_at = trial.marks.get("returned", start)
-        attempt = self.run.listens[trial.connect_attempt] if self.run.listens else None
+        attempt = self._attempt(trial)
         window = trial.traffic_in(attempt.sandbox.observer) if attempt is not None else []
         placed = [
             (start + i, e) for i, e in enumerate(window)
@@ -1189,7 +909,7 @@ class CommandPass:
         command's own message went out: the last one sent before the call
         returned, else the first after it (a command queued behind a poll goes
         out after polling messages already on the way). 0 when none did."""
-        attempt = self.run.listens[trial.connect_attempt] if self.run.listens else None
+        attempt = self._attempt(trial)
         if attempt is None:
             return 0
         start = trial.marks.get("traffic", 0)
@@ -1204,7 +924,7 @@ class CommandPass:
         return next((i for i, e in enumerate(traffic) if e is own), 0)
 
     def _window_traffic(self, trial: CommandTrial) -> list[Any]:
-        attempt = self.run.listens[trial.connect_attempt] if self.run.listens else None
+        attempt = self._attempt(trial)
         if attempt is None:
             return []
         return [e for e in trial.traffic_in(attempt.sandbox.observer) if not e.chunk]
@@ -1316,20 +1036,57 @@ class CommandPass:
         self.session.publish({"type": "audit.commands", "run": self.run.index, "commands": update})
 
 
-def state_label(info: dict[str, Any], key: str) -> str:
-    """A status value's name as a person reads it: the driver's label, and a
-    child's with its type and id ("Channel 01 Mute")."""
-    spec = (info.get("state_variables") or {}).get(key)
-    if isinstance(spec, dict):
-        return str(spec.get("label") or key)
-    ctype, _, rest = key.partition(".")
-    local_id, _, prop = rest.partition(".")
-    cdef = (info.get("child_entity_types") or {}).get(ctype) if prop else None
-    if not isinstance(cdef, dict):
-        return key
-    pspec = (cdef.get("state_variables") or {}).get(prop)
-    plabel = pspec.get("label") if isinstance(pspec, dict) else None
-    return f"{cdef.get('label') or ctype} {local_id} {plabel or prop}"
+def _unmatched_replies(trial: CommandTrial, attempt: Any) -> dict[str, Any]:
+    """The replies in the window no response rule matched: how many, and the
+    first few as they read."""
+    events = []
+    if attempt is not None:
+        events = [
+            e for e in trial.events_in(attempt.sandbox.observer)
+            if e.kind == "unmatched_response"
+        ]
+    return {
+        "unmatched": len(events),
+        "unmatched_examples": [str(e.detail.get("text", ""))[:200] for e in events[:5]],
+    }
+
+
+def _sent_nothing(trial: CommandTrial, attempt: Any) -> bool | None:
+    """Did no byte leave for the device while the driver's call ran? None
+    when the driver's traffic is not captured at all."""
+    observer = attempt.sandbox.observer
+    if not observer.frames():
+        return None
+    return command_sent_nothing(
+        trial.traffic_in(observer), trial.sent_at,
+        trial.returned_at or trial.sent_at, started_inclusive=True,
+    )
+
+
+def _drops(trial: CommandTrial) -> list[dict[str, Any]]:
+    """Each drop in the window, seconds after the send, and how long the
+    driver took to come back (None when it had not)."""
+    return [
+        {
+            "after": round(gone - trial.sent_at, 1),
+            "back_after": round(again - gone, 1) if again else None,
+        }
+        for gone, again in trial.gone_and_back
+    ]
+
+
+def _restart(trial: CommandTrial) -> dict[str, Any]:
+    """How a declared restart went: when the device went and came back,
+    timed from the send, and whether that was inside the declared window."""
+    declared = trial.declared["restarts_device_for"]
+    went, back = trial.went_away_at, trial.back_at
+    return {
+        "declared_seconds": declared,
+        "went_away_after": round(went - trial.sent_at, 1) if went else None,
+        "back_after": round(back - trial.sent_at, 1) if back else None,
+        "away_for": round(back - went, 1) if went and back else None,
+        "within_declared": (back - trial.sent_at) <= declared if back else None,
+    }
 
 
 def live_traffic(traffic: list[Any], own: int) -> tuple[list[Any], list[dict[str, int]]]:
@@ -1351,118 +1108,6 @@ def live_traffic(traffic: list[Any], own: int) -> tuple[list[Any], list[dict[str
     return shown, gaps
 
 
-def moved_values(
-    changes: list[dict[str, Any]], already_moving: list[str], info: dict[str, Any],
-) -> list[dict[str, Any]]:
-    """Each status value a command's window saw change, once, in the order it
-    first moved: what it read before the first change and after the last,
-    how many times it changed, and whether it was already changing before
-    the command was sent (``already_moving``)."""
-    moving = set(already_moving)
-    out: dict[str, dict[str, Any]] = {}
-    for change in changes:
-        key = change["key"]
-        if is_platform_key(key):
-            continue
-        item = out.get(key)
-        if item is None:
-            out[key] = {
-                "key": key, "label": state_label(info, key), "first": change["old"],
-                "last": change["new"], "times": 1, "already_moving": key in moving,
-            }
-        else:
-            item["last"] = change["new"]
-            item["times"] += 1
-    for item in out.values():
-        # It ended where it began (a reconnect re-reading it, a pulse): not
-        # something the command left changed.
-        item["went_back"] = item["first"] == item["last"] and type(item["first"]) is type(item["last"])
-    return list(out.values())
-
-
-def changed_values(run: Any) -> list[dict[str, Any]]:
-    """Status values that read differently now from before the audit sent
-    its first command or setting in this run, each ``{"key", "label",
-    "before", "now", "by", "on_its_own"}``. ``by`` is the command whose
-    window saw the value move last (``{"number", "label"}``), or null when it
-    moved while nothing was being watched (at the device itself, say).
-    ``on_its_own`` is true for a value that was already changing when that
-    command, or any other, was sent, or that changed while nothing was being watched after
-    it (a meter, a clock), or only then: the audit did not leave it that way. A value the device has stopped reporting is
-    left out: there is nothing to compare.
-    """
-    firsts: list[tuple[float, dict[str, Any]]] = []
-    commands = getattr(run, "commands", None)
-    settings = getattr(run, "settings", None)
-    if commands is not None:
-        firsts += [(t.sent_at, t.before) for t in commands.trials]
-    if settings is not None:
-        firsts += [(t.started_at, t.before) for t in settings.trials]
-    listen = getattr(run, "listen", None)
-    if not firsts or listen is None:
-        return []
-    baseline = min(firsts, key=lambda pair: pair[0])[1]
-    if listen.sandbox.started:
-        now = listen.sandbox.device_state()
-    else:
-        now = _final_values(listen.status_table())
-    info = getattr(listen.sandbox.driver, "DRIVER_INFO", None) or {}
-    if not info:
-        from openavc.drivers.registry import get_driver_class
-
-        info = getattr(get_driver_class(run.choice.driver_id), "DRIVER_INFO", {}) or {}
-    moved_by: dict[str, dict[str, Any]] = {}
-    sent_at: dict[str, float] = {}
-    moving_then: dict[str, bool] = {}
-    for trial in commands.trials if commands is not None else []:
-        for change in trial.changes:
-            moved_by[change["key"]] = {"number": trial.number, "label": trial.label}
-            sent_at[change["key"]] = trial.sent_at
-            moving_then[change["key"]] = change["key"] in trial.already_moving
-    # A value any command found already changing when it went out moves on
-    # its own (a meter), even when the last window that saw it move did not
-    # catch it moving first.
-    moves_anyway = {
-        key for trial in (commands.trials if commands is not None else [])
-        for key in trial.already_moving
-    }
-    unwatched = getattr(run, "unwatched", None) or {}
-    out = []
-    for key in sorted(now):
-        value = now[key]
-        if is_platform_key(key) or value is None:
-            continue
-        before = baseline.get(key)
-        if before == value and type(before) is type(value):
-            continue
-        # Changing without the audit: it was already changing when the last
-        # command that moved it was sent, or it changed unwatched after that
-        # command (or it moved only unwatched).
-        latest = unwatched.get(key)
-        on_its_own = moving_then.get(key, False) or key in moves_anyway or (
-            bool(latest) and latest[-1] > sent_at.get(key, 0.0)
-        )
-        out.append({
-            "key": key,
-            "label": state_label(info, key),
-            "before": _shown(before),
-            "now": _shown(value),
-            "by": moved_by.get(key),
-            "on_its_own": on_its_own,
-        })
-    return out
-
-
-def _final_values(table: dict[str, Any]) -> dict[str, Any]:
-    """A kept status table's values, as device state keys."""
-    out = {v["name"]: v["value"] for v in table.get("variables", []) if v.get("reported")}
-    for ctype, by_id in (table.get("children") or {}).items():
-        for local_id, props in by_id.items():
-            for prop, value in props.items():
-                out[f"{ctype}.{local_id}.{prop}"] = value
-    return out
-
-
 def _duration(seconds: float) -> str:
     """"2 minutes", "40 seconds", "1 minute"."""
     if seconds >= 60 and seconds % 60 == 0:
@@ -1470,160 +1115,6 @@ def _duration(seconds: float) -> str:
         return f"{minutes} minute{'' if minutes == 1 else 's'}"
     whole = round(seconds)
     return f"{whole} second{'' if whole == 1 else 's'}"
-
-
-def _value_text(value: Any) -> str:
-    return value_text(value)
-
-
-EFFECT_TEXT = {
-    "confirmed": "{state} is now {expected}, as the driver says it should be",
-    "already": "{state} was already {expected}, so the audit cannot tell whether this command set it",
-    "different": "{state} changed to {value}, not {expected}",
-    "unchanged": "{state} is still {value}, not {expected}",
-    "not_reported": "the device has not reported {state}",
-    "no_value": "{state} was not checked: it depends on a value this command was not given",
-}
-
-
-def effect_sentence(effect: dict[str, Any]) -> str:
-    return EFFECT_TEXT[effect["outcome"]].format(
-        state=effect.get("label") or effect["state"], expected=_value_text(effect["expected"]),
-        value=_value_text(effect.get("value")),
-    )
-
-
-def _drops_text(drops: list[dict[str, Any]]) -> str:
-    """Each drop in a command's window, the later ones timed from the
-    reconnect before them (a device rebooting can reset that one too)."""
-    texts = []
-    for i, drop in enumerate(drops):
-        if i == 0:
-            head = f"the connection dropped {drop['after']} s after it was sent"
-        else:
-            prev = drops[i - 1]
-            since = max(round(drop["after"] - prev["after"] - (prev["back_after"] or 0), 1), 0.0)
-            head = f"it dropped again {since} s after that"
-        tail = (
-            f" and the driver reconnected {drop['back_after']} s later"
-            if drop["back_after"] is not None
-            else " and had not come back when the audit stopped watching"
-        )
-        texts.append(head + tail)
-    return "; ".join(texts)
-
-
-def trial_sentence(trial: dict[str, Any]) -> str:
-    """What one command did, as the timeline, the wizard and the summary say
-    it. Takes the trial as its record holds it (``report.json`` included)."""
-    if trial.get("error"):
-        return f"not accepted: {trial['error']}"
-    parts = []
-    refusals = trial.get("refusals") or {}
-    if refusals.get("device_errors") or refusals.get("last_error"):
-        said = refusals.get("last_error") or ""
-        parts.append(f"the device refused it{': ' + str(said) if said else ''}")
-    if trial.get("sent_nothing"):
-        parts.append("the driver said it succeeded, but nothing was sent")
-    parts.extend(effect_sentence(e) for e in trial.get("effects") or [])
-    if trial.get("query"):
-        q = trial["query"]
-        name = q.get("label") or q["state"]
-        parts.append(
-            f"it reported {name} as {_value_text(q['value'])}" if q["outcome"] == "reported"
-            else "nothing came back" if q["outcome"] == "no_reply"
-            else f"a reply came, but {name} was not reported"
-        )
-    # What else it moved, less what was already changing and what the
-    # declared effect or the query already said.
-    said = {e.get("state_key") for e in trial.get("effects") or []}
-    if trial.get("query"):
-        said.add(trial["query"].get("state_key"))
-    moved = [
-        m for m in trial.get("moved") or []
-        if not m.get("already_moving") and not m.get("went_back") and m.get("key") not in said
-    ]
-    if moved:
-        texts = [
-            f"{m['label']} went from {_reads(m['first'])} to {_reads(m['last'])}"
-            for m in moved[:MOVED_IN_SENTENCE]
-        ]
-        more = len(moved) - MOVED_IN_SENTENCE
-        if more > 0:
-            texts.append(f"{more} more {'value' if more == 1 else 'values'} changed")
-        parts.append(", ".join(texts))
-    if trial.get("drops"):
-        parts.append(_drops_text(trial["drops"]))
-    if trial.get("restart"):
-        r = trial["restart"]
-        if r["back_after"] is not None:
-            parts.append(
-                f"the device came back {r['back_after']} s after the command "
-                f"(the driver says up to {r['declared_seconds']} s)"
-            )
-        elif r["went_away_after"] is not None:
-            parts.append("the device went away and had not come back when the audit stopped watching")
-        else:
-            parts.append("the connection stayed up")
-    for later in refusals.get("later") or []:
-        parts.append(_later_refusal_text(later))
-    if refusals.get("unmatched"):
-        n = refusals["unmatched"]
-        parts.append(
-            f"{n} {'reply' if n == 1 else 'replies'} while it was watched matched none of "
-            "the driver's rules"
-        )
-    if not parts:
-        received = (trial.get("traffic") or {}).get("received", 0)
-        every = trial.get("moved") or []
-        what = (
-            "only values that were already changing moved"
-            if any(m.get("already_moving") for m in every)
-            else "values changed and went back to where they were"
-            if any(m.get("went_back") for m in every)
-            else "no status value changed"
-        )
-        parts.append(
-            f"{what}; the device sent {received} {'reply' if received == 1 else 'replies'}"
-            if received else f"{what}, and nothing came back"
-        )
-    return "; ".join(parts) + "."
-
-
-def trial_outcome(trial: dict[str, Any]) -> str:
-    """One command's outcome as a sentence that stands on its own: the
-    summary its record keeps, else :func:`trial_sentence`, capitalized. The
-    summary's command rows and the driver test report both say it so."""
-    text = trial.get("summary") or trial_sentence(trial)
-    return text[:1].upper() + text[1:]
-
-
-def _later_refusal_text(later: dict[str, Any]) -> str:
-    """A refusal of a request the driver sent on its own inside a command's
-    window, said apart from the command."""
-    count = later.get("count", 1)
-    when = (
-        f"{count} times, the first {later['after']} s later" if count > 1
-        else f"{later['after']} s later"
-    )
-    request = f" ({later['request']})" if later.get("request") else ""
-    said = f": {later['error']}" if later.get("error") else ""
-    return f"the device refused a request the driver sent on its own {when}{request}{said}"
-
-
-def _reads(value: Any) -> str:
-    """A value as a sentence says it ("not reported" for none)."""
-    return "not reported" if value is None else _value_text(value)
-
-
-def params_text(params: dict[str, Any], defs: Any = None) -> str:
-    """A command's parameters as a line reads them, each named as its field
-    is (``param_labels.param_label``): " (Level 40, Input ID hdmi1)". The
-    wizard's ``paramsText`` writes the same line."""
-    if not params:
-        return ""
-    defs = defs if isinstance(defs, dict) else {}
-    return " (" + ", ".join(f"{param_label(k, defs.get(k))} {value_text(v)}" for k, v in params.items()) + ")"
 
 
 def commands_for(session: "AuditSession", run: "DriverRun", **timings: Any) -> CommandPass:

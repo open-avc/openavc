@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from openavc.audit.commands import command_catalog
+from openavc.audit.command_catalog import command_catalog
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.drivers.actions import resolve_device_actions

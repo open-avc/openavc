@@ -1565,7 +1565,7 @@ def _changed_lines(changed: list[dict[str, Any]]) -> list[str]:
 def _command_label(trial: dict[str, Any], param_defs: dict[Any, Any]) -> str:
     """The command as its row names it: number, label, the values it was
     sent with, and when it was a repeat."""
-    from openavc.audit.commands import params_text
+    from openavc.audit.command_text import params_text
 
     label = f"{trial.get('number')}. {trial.get('label')}"
     label += params_text(trial.get("params") or {}, param_defs.get(trial.get("command")))
@@ -1579,7 +1579,7 @@ def _command_label(trial: dict[str, Any], param_defs: dict[Any, Any]) -> str:
 
 def _command_outcome(trial: dict[str, Any]) -> str:
     """What the command did, and what the person said about it."""
-    from openavc.audit.commands import ANSWERS, trial_outcome
+    from openavc.audit.command_text import ANSWERS, trial_outcome
 
     said = trial.get("answer") or {}
     outcome = trial_outcome(trial)

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from openavc.audit.commands import params_text, trial_outcome, trial_sentence
+from openavc.audit.command_text import params_text, trial_outcome, trial_sentence
 
 
 def _moved(key, label, first, last, **flags):

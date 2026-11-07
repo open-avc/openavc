@@ -46,6 +46,7 @@ from openavc.core.device_traffic import (
     get_traffic_recorder,
     serialize_entry,
 )
+from openavc.core.state_store import is_flat_primitive
 from openavc.utils.log_redaction import get_secret_registry
 
 # Payload bytes an audit keeps (raw chunks included).
@@ -203,6 +204,13 @@ PLATFORM_KEYS = frozenset({
 # child's ``online`` stays the driver's: a roster with ``presence: reported``
 # writes it from the device.
 CHILD_PLATFORM_KEYS = frozenset({"label", "offline_reason", "offline_detail"})
+
+
+def recorded(value: Any) -> Any:
+    """A value as an audit record keeps it: as is when the state store could
+    hold it (a flat primitive), else its repr (a driver's ``send_command`` may
+    return anything)."""
+    return value if is_flat_primitive(value) else repr(value)
 
 
 def is_platform_key(key: str) -> bool:

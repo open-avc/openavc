@@ -13,14 +13,10 @@ from __future__ import annotations
 from collections import deque
 from types import SimpleNamespace as NS
 
-from openavc.audit.commands import (
-    CommandPass,
-    CommandTrial,
-    changed_values,
-    command_catalog,
-    declared_effects,
-    moved_values,
-)
+from openavc.audit.changes import changed_values, moved_values
+from openavc.audit.command_catalog import command_catalog
+from openavc.audit.commands import CommandPass, CommandTrial
+from openavc.audit.effects import declared_effects
 from openavc.core.device_traffic import RX, TX
 
 INFO = {
@@ -111,6 +107,7 @@ def test_the_command_list_reads_each_declaration():
     assert catalog["action_confirm"]["confirm"] == (
         "The driver asks for a confirmation before Go runs."
     )
+    assert not catalog["action_confirm"]["suggested"]
     assert catalog["reboot"]["confirm"] == "Really restart?"
     assert catalog["guarded"]["confirm"] == "Sure?"
     assert not catalog["guarded"]["suggested"]
@@ -258,7 +255,9 @@ def test_drops_and_a_restart_are_timed_from_the_send():
     assert dropped.drops == [{"after": 10.0, "back_after": 8.3}, {"after": 30.0, "back_after": None}]
     assert dropped.restart is None
     on_time = _trial("reboot", went_away_at=101.04, back_at=105.0)
+    on_time.gone_and_back = [[101.04, 105.0]]
     _pass({})._conclude(on_time)
+    # A drop the command declares is its restart, never a drop.
     assert on_time.drops == []
     assert on_time.restart == {
         "declared_seconds": 5, "went_away_after": 1.0, "back_after": 5.0, "away_for": 4.0,
@@ -273,6 +272,21 @@ def test_drops_and_a_restart_are_timed_from_the_send():
         "declared_seconds": 5, "went_away_after": None, "back_after": None, "away_for": None,
         "within_declared": None,
     }
+
+
+def test_a_window_is_read_on_the_connection_that_carried_it():
+    commands = _pass({"power": True})
+    later = _pass({}).run.listens[0]
+    commands.run.listens.append(later)
+    commands.run.listen = later
+    trial = _trial("power_on")
+    commands._conclude(trial)
+    assert trial.effects[0]["outcome"] == "confirmed"
+
+
+def test_a_value_no_state_could_hold_is_kept_as_its_repr():
+    trial = _trial("set_volume", {"level": {"db": -10}, "on": True})
+    assert trial.to_dict()["params"] == {"level": "{'db': -10}", "on": True}
 
 
 def test_a_window_closed_after_the_driver_stopped_reads_the_kept_table():

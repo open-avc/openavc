@@ -27,14 +27,10 @@ from openavc.api.models import (
     AuditStartRequest,
 )
 from openavc.api.routes import audit as routes
-from openavc.audit.commands import (
-    DONE,
-    changed_values,
-    commands_for,
-    moved_values,
-    same_value,
-    trial_sentence,
-)
+from openavc.audit.changes import changed_values, moved_values
+from openavc.audit.command_text import trial_sentence
+from openavc.audit.commands import DONE, commands_for
+from openavc.audit.effects import same_value
 from openavc.audit.driver_choice import DriverChoice
 from openavc.audit.listen import DONE as LISTEN_DONE
 from openavc.audit.listen import start_listen
@@ -194,7 +190,7 @@ async def _connected(port: int):
 
 
 def test_the_command_list_is_the_drivers_own(driver):
-    from openavc.audit.commands import command_catalog
+    from openavc.audit.command_catalog import command_catalog
 
     catalog = {c["name"]: c for c in command_catalog(_DRIVER_REGISTRY["acme_commands"])}
     assert list(catalog) == [
@@ -458,7 +454,7 @@ def test_a_childs_declared_effect_is_read_from_the_childs_padded_key():
     its padded id (channel.01). Seen on the bench: an amplifier's Unmute read
     "the device has not reported Channel 1 Mute; Channel 01 Mute went from
     true to false", because the read-back watched channel.1.mute."""
-    from openavc.audit.commands import declared_effects
+    from openavc.audit.effects import declared_effects
     from openavc.core.event_bus import EventBus
     from openavc.core.state_store import StateStore
     from openavc.drivers.base import BaseDriver
@@ -647,7 +643,7 @@ async def test_every_drop_in_the_window_is_said(driver):
 
 
 def test_the_drops_sentence():
-    from openavc.audit.commands import _drops_text
+    from openavc.audit.command_text import _drops_text
 
     assert _drops_text([{"after": 41.9, "back_after": 8.3}]) == (
         "the connection dropped 41.9 s after it was sent and the driver reconnected 8.3 s later"
@@ -765,7 +761,7 @@ async def test_what_a_command_moved_is_told_from_what_moves_anyway():
     """A level meter moves before, during and after a Mute: the command's own
     change is what its sentence and "what changed" name, and the meter is
     shown apart, as changing without the audit."""
-    from openavc.audit.commands import moved_values, state_label
+    from openavc.audit.changes import moved_values, state_label
 
     _DRIVER_REGISTRY["acme_meter"] = create_configurable_driver_class(METER_DRIVER)
     server, port = await _metering_device()
