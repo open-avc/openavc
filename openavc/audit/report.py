@@ -1350,39 +1350,22 @@ def _probe_owner(probe_id: Any) -> str:
 def render_timeline(report: dict[str, Any]) -> str:
     """``timeline.txt``: the session's events, the check's exchanges and the
     driver's traffic, in order."""
-    rows: list[tuple[float, str, str]] = []
-    for entry in report.get("timeline", []):
-        rows.append((entry.get("t") or 0.0, entry.get("kind", ""), entry.get("text", "")))
-    for probe in report.get("footprint", {}).get("probes", []):
-        proto = "TCP" if probe.get("kind") == "tcp" else "UDP"
-        outcome = "matched" if probe.get("matched") else (probe.get("miss") or "no match")
-        if probe.get("miss") == "login_prompt":
-            exchange = "not sent, the port asked for a login"
-        elif probe.get("from_greeting"):
-            exchange = f"the port's greeting {_quote(probe.get('reply'))}, no connection of its own"
-        else:
-            exchange = f"sent {_quote(probe.get('sent'))}, reply {_quote(probe.get('reply'))}"
-        text = (
-            f"{_probe_owner(probe.get('probe_id'))} {proto} port {probe.get('port')}: "
-            f"{exchange}{', ' + probe['error'] if probe.get('error') else ''} ({outcome})"
-        )
-        rows.append((probe.get("started_at") or 0.0, "probe", text))
-    drivers = report.get("drivers", [])
-    for section in drivers:
-        label = f"[{section.get('driver', {}).get('name')}] " if len(drivers) > 1 else ""
-        for attempt in section.get("attempts", []):
-            for entry in attempt.get("traffic", {}).get("entries", []):
-                if entry.get("chunk"):
-                    continue
-                rows.append((
-                    entry.get("t") or 0.0,
-                    f"{entry.get('direction')} {entry.get('channel')}",
-                    label + _traffic_text(entry),
-                ))
+    rows: list[tuple[float, str, str]] = [
+        (entry.get("t") or 0.0, entry.get("kind", ""), entry.get("text", ""))
+        for entry in report.get("timeline", [])
+    ]
+    rows += [_probe_row(probe) for probe in report.get("footprint", {}).get("probes", [])]
+    rows += _traffic_rows(report.get("drivers", []))
     rows.sort(key=lambda row: row[0])
+    width = max((len(kind) for _, kind, _ in rows), default=4)
+    lines = [f"{_clock(t)}  {kind.ljust(width)}  {text}" for t, kind, text in rows]
+    return "\n".join(_timeline_header(report) + lines) + "\n"
+
+
+def _timeline_header(report: dict[str, Any]) -> list[str]:
     target = report.get("target", {})
     started = report.get("session", {}).get("started_at")
-    header = [
+    return [
         f"OpenAVC device audit of {target.get('address')} ({target.get('ip') or 'unresolved'})",
         f"Started {datetime.fromtimestamp(started).isoformat(timespec='seconds') if started else '?'}"
         f" ({utc_offset(started)}), OpenAVC {report.get('generator', {}).get('openavc_version')}",
@@ -1391,9 +1374,41 @@ def render_timeline(report: dict[str, Any]) -> str:
         "every byte, and the raw receive chunks before framing.",
         "",
     ]
-    width = max((len(kind) for _, kind, _ in rows), default=4)
-    lines = [f"{_clock(t)}  {kind.ljust(width)}  {text}" for t, kind, text in rows]
-    return "\n".join(header + lines) + "\n"
+
+
+def _probe_row(probe: dict[str, Any]) -> tuple[float, str, str]:
+    """One identification check the network check sent, as a timeline row."""
+    proto = "TCP" if probe.get("kind") == "tcp" else "UDP"
+    outcome = "matched" if probe.get("matched") else (probe.get("miss") or "no match")
+    text = (
+        f"{_probe_owner(probe.get('probe_id'))} {proto} port {probe.get('port')}: "
+        f"{_probe_exchange(probe)}{', ' + probe['error'] if probe.get('error') else ''} ({outcome})"
+    )
+    return (probe.get("started_at") or 0.0, "probe", text)
+
+
+def _probe_exchange(probe: dict[str, Any]) -> str:
+    if probe.get("miss") == "login_prompt":
+        return "not sent, the port asked for a login"
+    if probe.get("from_greeting"):
+        return f"the port's greeting {_quote(probe.get('reply'))}, no connection of its own"
+    return f"sent {_quote(probe.get('sent'))}, reply {_quote(probe.get('reply'))}"
+
+
+def _traffic_rows(drivers: list[dict[str, Any]]) -> list[tuple[float, str, str]]:
+    """Each driver's traffic as it handled it, each line named for the driver
+    when more than one ran. The raw receive chunks are in report.json only."""
+    rows = []
+    for section in drivers:
+        label = f"[{section.get('driver', {}).get('name')}] " if len(drivers) > 1 else ""
+        rows += [
+            (entry.get("t") or 0.0, f"{entry.get('direction')} {entry.get('channel')}",
+             label + _traffic_text(entry))
+            for attempt in section.get("attempts", [])
+            for entry in attempt.get("traffic", {}).get("entries", [])
+            if not entry.get("chunk")
+        ]
+    return rows
 
 
 _CSS = """
@@ -1981,158 +1996,243 @@ def _status_rows(table: dict[str, Any]) -> list[str]:
 
 def _render_driver(section: dict[str, Any]) -> list[str]:
     """One driver's test, for summary.html."""
-    from openavc.audit.listen import transport_name
-    from openavc.audit.observe import CONTRACT_TEXT
+    return [
+        *_driver_header(section),
+        *_driver_attempts(section.get("attempts", [])),
+        *_render_commands(section.get("commands")),
+        *_render_settings(section.get("settings")),
+        *_render_outages(section.get("outages")),
+        *_render_confidence(section),
+    ]
 
+
+def _driver_header(section: dict[str, Any]) -> list[str]:
+    """The driver, its files, the device as entered and as the driver read it,
+    and the connection it used."""
     d = section.get("driver", {})
-    parts = [f"<h2>Driver test: {_e(d.get('name'))} {_e(d.get('version'))}</h2><table>"]
-    parts.append(_row("Driver", (
-        f"<code>{_e(d.get('id'))}</code>, {_e(_FORMAT_TEXT.get(d.get('format'), d.get('format')))}, "
-        f"{_e(_SOURCE_TEXT.get(d.get('source'), d.get('source')))}"
-    )))
-    for f in d.get("files", []):
-        if f.get("matches_catalog") is True:
-            note = "matches the catalog's"
-        elif f.get("matches_catalog") is False:
-            note = f"differs from the catalog's ({f.get('catalog_sha256')})"
-        else:
-            note = "not in the catalog"
-        where = f"; in this file as {f['in_report']}" if f.get("in_report") else ""
-        parts.append(_row(f.get("name", ""), _e(f"SHA-256 {f.get('sha256')}, {note}{where}")))
+    return [
+        f"<h2>Driver test: {_e(d.get('name'))} {_e(d.get('version'))}</h2><table>",
+        _row("Driver", (
+            f"<code>{_e(d.get('id'))}</code>, {_e(_FORMAT_TEXT.get(d.get('format'), d.get('format')))}, "
+            f"{_e(_SOURCE_TEXT.get(d.get('source'), d.get('source')))}"
+        )),
+        *(_driver_file_row(f) for f in d.get("files", [])),
+        *_entered_rows(section),
+        _row("Network check", _e(_AGREEMENT_TEXT.get(section.get("verdict_agreement"), ""))),
+        *_connection_rows(section.get("connection") or {}),
+        "</table>",
+    ]
+
+
+def _driver_file_row(f: dict[str, Any]) -> str:
+    if f.get("matches_catalog") is True:
+        note = "matches the catalog's"
+    elif f.get("matches_catalog") is False:
+        note = f"differs from the catalog's ({f.get('catalog_sha256')})"
+    else:
+        note = "not in the catalog"
+    where = f"; in this file as {f['in_report']}" if f.get("in_report") else ""
+    return _row(f.get("name", ""), _e(f"SHA-256 {f.get('sha256')}, {note}{where}"))
+
+
+_LISTED_TEXT = {True: "the driver lists this model", False: "the driver does not list this model"}
+
+
+def _entered_rows(section: dict[str, Any]) -> list[str]:
+    """The device as the person entered it, then as the driver read it."""
     entered = section.get("entered") or {}
+    rows = []
     said = " ".join(str(v) for v in (entered.get("manufacturer"), entered.get("model")) if v)
     if said:
         listing = (section.get("model_listing") or {}).get("listed")
-        listed = {True: "the driver lists this model", False: "the driver does not list this model"}
-        parts.append(_row("Device, as entered", _e(
+        rows.append(_row("Device, as entered", _e(
             said + (f", firmware {entered['firmware']}" if entered.get("firmware") else "")
-            + (f" ({listed[listing]})" if listing in listed else "")
+            + (f" ({_LISTED_TEXT[listing]})" if listing in _LISTED_TEXT else "")
         )))
     for key, what, read in _driver_read_identity(section):
         typed = entered.get(key)
         differs = typed and not _same_name(typed, read)
-        parts.append(_row(f"{what}, as the driver read it", _e(
+        rows.append(_row(f"{what}, as the driver read it", _e(
             read + (f" (not the {what.lower()} entered, {typed})" if differs else "")
         )))
-    parts.append(_row("Network check", _e(
-        _AGREEMENT_TEXT.get(section.get("verdict_agreement"), "")
-    )))
-    connection = section.get("connection") or {}
-    if connection:
-        config = ", ".join(f"{k}={v}" for k, v in (connection.get("config") or {}).items())
-        parts.append(_row("Connection", _e(
-            f"{transport_name(str(connection.get('transport') or ''))}: {config}"
-            + (f" (from {connection['saved_from']}'s saved settings)"
-               if connection.get("saved_from") else "")
-        )))
-    parts.append("</table>")
+    return rows
 
-    attempts = section.get("attempts", [])
+
+def _connection_rows(connection: dict[str, Any]) -> list[str]:
+    from openavc.audit.listen import transport_name
+
+    if not connection:
+        return []
+    config = ", ".join(f"{k}={v}" for k, v in (connection.get("config") or {}).items())
+    return [_row("Connection", _e(
+        f"{transport_name(str(connection.get('transport') or ''))}: {config}"
+        + (f" (from {connection['saved_from']}'s saved settings)"
+           if connection.get("saved_from") else "")
+    ))]
+
+
+def _driver_attempts(attempts: list[dict[str, Any]]) -> list[str]:
+    """Each connect-and-listen: its sentence, its table, and what it found."""
     if not attempts:
-        parts.append("<p>The audit did not connect this driver.</p>")
+        return ["<p>The audit did not connect this driver.</p>"]
+    parts: list[str] = []
     for number, attempt in enumerate(attempts, 1):
         heading = "Connect and listen" + (f", attempt {number}" if len(attempts) > 1 else "")
         parts.append(f"<h3>{heading}</h3><p>{_e(_attempt_sentence(attempt))}</p><table>")
-        started = attempt.get("started_at")
-        parts.append(_row("First bytes sent", _e(_seconds_after(attempt.get("first_tx_at"), started))))
-        parts.append(_row("First reply", _e(_seconds_after(attempt.get("first_rx_at"), started))))
-        if attempt.get("poll_interval"):
-            parts.append(_row("Polls every", _e(f"{attempt['poll_interval']} seconds")))
-        if attempt.get("liveness_every"):
-            parts.append(_row("Liveness check", _e(
-                f"every {attempt['liveness_every']} seconds, apart from the polls: how the driver "
-                "notices a device that stopped answering"
-            )))
-        elif attempt.get("silence_polls"):
-            polls = attempt["silence_polls"]
-            parts.append(_row("Silence check", _e(
-                f"{polls} polls in a row with no reply take the device offline: how the driver "
-                "notices a device that stopped answering"
-            )))
-        for label, drops, again in (
-            ("Dropped while listening", attempt.get("drops", 0), attempt.get("reconnects", 0)),
-            ("Dropped after listening", attempt.get("later_drops", 0),
-             attempt.get("later_reconnects", 0)),
-        ):
-            if drops or again:
-                parts.append(_row(label, _e(
-                    f"{drops} {'time' if drops == 1 else 'times'}, reconnected {again} "
-                    f"{'time' if again == 1 else 'times'}"
-                )))
-        traffic = attempt.get("traffic") or {}
-        if traffic.get("not_captured"):
-            traffic_text = "not captured: this driver manages its own connection"
-        else:
-            traffic_text = (
-                f"{traffic.get('count', 0)} entries ({traffic.get('sent', 0)} sent, "
-                f"{traffic.get('received', 0)} received, {traffic.get('bytes', 0)} bytes); "
-                "every one is in timeline.txt and report.json"
-            )
-            if traffic.get("truncated_at"):
-                traffic_text += "; stopped keeping traffic at the size limit"
-        parts.append(_row("Traffic", _e(traffic_text)))
-        unprompted = (attempt.get("unprompted_replies") or {}).get("count", 0)
-        if unprompted:
-            parts.append(_row("Unprompted replies", _e(
-                f"{unprompted} arrived with no request in the "
-                f"{attempt['unprompted_replies'].get('window_seconds')} seconds before them. "
-                "The device may announce changes on its own; a driver that takes one as the "
-                "answer to its next request misreads the replies after it."
-            )))
-        front = attempt.get("front_panel")
-        if front:
-            answer = {
-                "showed": "OpenAVC showed the change",
-                "could_not_try": "not tried: nothing could be changed on the device",
-            }.get(front.get("answer"), "OpenAVC did not show the change")
-            parts.append(_row("Front-panel check", _e(
-                answer + (f" ({front['note']})" if front.get("note") else "")
-            )))
-        elif attempt.get("connected_at"):
-            parts.append(_row("Front-panel check", "not run"))
+        parts += _attempt_timing_rows(attempt) + _attempt_drop_rows(attempt)
+        parts.append(_row("Traffic", _e(_traffic_summary(attempt.get("traffic") or {}))))
+        parts += _unprompted_rows(attempt) + _front_panel_rows(attempt)
         parts.append("</table>")
-
-        table = attempt.get("status_table") or {}
-        rows = _status_rows(table)
-        if rows:
-            parts.append("<h3>Status values</h3><table>" + "".join(rows) + "</table>")
-        children = table.get("children") or {}
-        if children:
-            names = table.get("child_labels") or {}
-            counts = ", ".join(
-                f"{len(ids)} {(names.get(ctype) or {}).get('one' if len(ids) == 1 else 'many') or ctype}"
-                for ctype, ids in children.items()
-            )
-            parts.append(f"<p>Found: {_e(counts)} (values in report.json).</p>")
-        settings = table.get("settings") or []
-        if settings:
-            parts.append("<h3>Device settings</h3><table>")
-            for setting in settings:
-                value = setting.get("value")
-                parts.append(_row(setting.get("label") or setting.get("key"), _e(
-                    _value_text(value) if setting.get("populated") else "not read back"
-                )))
-            parts.append("</table>")
-        counts = (attempt.get("contract") or {}).get("counts") or {}
-        if counts:
-            items = []
-            events = (attempt.get("contract") or {}).get("events") or []
-            for kind, count in counts.items():
-                example = next((e.get("detail") for e in events if e.get("kind") == kind), None)
-                shown = ""
-                if isinstance(example, dict):
-                    shown = example.get("text") or example.get("state") or \
-                        example.get("command") or example.get("address") or ""
-                items.append(
-                    f"<li>{_e(CONTRACT_TEXT.get(kind, kind))}: {count}"
-                    f"{' (first: <code>' + _e(str(shown)[:200]) + '</code>)' if shown else ''}</li>"
-                )
-            parts.append("<h3>What the driver could not handle</h3><ul>" + "".join(items) + "</ul>")
-    parts.extend(_render_commands(section.get("commands")))
-    parts.extend(_render_settings(section.get("settings")))
-    parts.extend(_render_outages(section.get("outages")))
-    parts.extend(_render_confidence(section))
+        parts += _attempt_findings(attempt)
     return parts
+
+
+def _attempt_timing_rows(attempt: dict[str, Any]) -> list[str]:
+    """When the first bytes went and came back, and how the driver keeps watch."""
+    started = attempt.get("started_at")
+    rows = [
+        _row("First bytes sent", _e(_seconds_after(attempt.get("first_tx_at"), started))),
+        _row("First reply", _e(_seconds_after(attempt.get("first_rx_at"), started))),
+    ]
+    if attempt.get("poll_interval"):
+        rows.append(_row("Polls every", _e(f"{attempt['poll_interval']} seconds")))
+    if attempt.get("liveness_every"):
+        rows.append(_row("Liveness check", _e(
+            f"every {attempt['liveness_every']} seconds, apart from the polls: how the driver "
+            "notices a device that stopped answering"
+        )))
+    elif attempt.get("silence_polls"):
+        rows.append(_row("Silence check", _e(
+            f"{attempt['silence_polls']} polls in a row with no reply take the device offline: "
+            "how the driver notices a device that stopped answering"
+        )))
+    return rows
+
+
+def _times(count: Any) -> str:
+    return "time" if count == 1 else "times"
+
+
+def _attempt_drop_rows(attempt: dict[str, Any]) -> list[str]:
+    rows = []
+    for label, drops, again in (
+        ("Dropped while listening", attempt.get("drops", 0), attempt.get("reconnects", 0)),
+        ("Dropped after listening", attempt.get("later_drops", 0),
+         attempt.get("later_reconnects", 0)),
+    ):
+        if drops or again:
+            rows.append(_row(label, _e(
+                f"{drops} {_times(drops)}, reconnected {again} {_times(again)}"
+            )))
+    return rows
+
+
+def _traffic_summary(traffic: dict[str, Any]) -> str:
+    if traffic.get("not_captured"):
+        return "not captured: this driver manages its own connection"
+    text = (
+        f"{traffic.get('count', 0)} entries ({traffic.get('sent', 0)} sent, "
+        f"{traffic.get('received', 0)} received, {traffic.get('bytes', 0)} bytes); "
+        "every one is in timeline.txt and report.json"
+    )
+    if traffic.get("truncated_at"):
+        text += "; stopped keeping traffic at the size limit"
+    return text
+
+
+def _unprompted_rows(attempt: dict[str, Any]) -> list[str]:
+    unprompted = (attempt.get("unprompted_replies") or {}).get("count", 0)
+    if not unprompted:
+        return []
+    return [_row("Unprompted replies", _e(
+        f"{unprompted} arrived with no request in the "
+        f"{attempt['unprompted_replies'].get('window_seconds')} seconds before them. "
+        "The device may announce changes on its own; a driver that takes one as the "
+        "answer to its next request misreads the replies after it."
+    ))]
+
+
+_FRONT_PANEL_TEXT = {
+    "showed": "OpenAVC showed the change",
+    "could_not_try": "not tried: nothing could be changed on the device",
+}
+
+
+def _front_panel_rows(attempt: dict[str, Any]) -> list[str]:
+    front = attempt.get("front_panel")
+    if front:
+        answer = _FRONT_PANEL_TEXT.get(front.get("answer"), "OpenAVC did not show the change")
+        return [_row("Front-panel check", _e(
+            answer + (f" ({front['note']})" if front.get("note") else "")
+        ))]
+    if attempt.get("connected_at"):
+        return [_row("Front-panel check", "not run")]
+    return []
+
+
+def _attempt_findings(attempt: dict[str, Any]) -> list[str]:
+    """The status values, the channels and zones found, the device settings
+    read, and what the driver could not handle."""
+    table = attempt.get("status_table") or {}
+    rows = _status_rows(table)
+    parts = ["<h3>Status values</h3><table>" + "".join(rows) + "</table>"] if rows else []
+    return (
+        parts + _children_found(table) + _device_settings_read(table)
+        + _contract_problems(attempt.get("contract") or {})
+    )
+
+
+def _children_found(table: dict[str, Any]) -> list[str]:
+    children = table.get("children") or {}
+    if not children:
+        return []
+    names = table.get("child_labels") or {}
+    counts = ", ".join(
+        f"{len(ids)} {(names.get(ctype) or {}).get('one' if len(ids) == 1 else 'many') or ctype}"
+        for ctype, ids in children.items()
+    )
+    return [f"<p>Found: {_e(counts)} (values in report.json).</p>"]
+
+
+def _device_settings_read(table: dict[str, Any]) -> list[str]:
+    settings = table.get("settings") or []
+    if not settings:
+        return []
+    rows = [
+        _row(setting.get("label") or setting.get("key"), _e(
+            _value_text(setting.get("value")) if setting.get("populated") else "not read back"
+        ))
+        for setting in settings
+    ]
+    return ["<h3>Device settings</h3><table>", *rows, "</table>"]
+
+
+def _contract_problems(contract: dict[str, Any]) -> list[str]:
+    """Each kind of thing the driver could not handle, how often, and the first."""
+    from openavc.audit.observe import CONTRACT_TEXT
+
+    counts = contract.get("counts") or {}
+    if not counts:
+        return []
+    events = contract.get("events") or []
+    items = []
+    for kind, count in counts.items():
+        shown = _first_example(kind, events)
+        items.append(
+            f"<li>{_e(CONTRACT_TEXT.get(kind, kind))}: {count}"
+            f"{' (first: <code>' + _e(str(shown)[:200]) + '</code>)' if shown else ''}</li>"
+        )
+    return ["<h3>What the driver could not handle</h3><ul>" + "".join(items) + "</ul>"]
+
+
+def _first_example(kind: str, events: list[dict[str, Any]]) -> Any:
+    example = next((e.get("detail") for e in events if e.get("kind") == kind), None)
+    if not isinstance(example, dict):
+        return ""
+    return (
+        example.get("text") or example.get("state")
+        or example.get("command") or example.get("address") or ""
+    )
 
 
 _SIGNAL_PREFIXES = {
@@ -2339,73 +2439,111 @@ def _trial_outcome(trial: dict[str, Any]) -> str:
 
 def _render_commands(commands: dict[str, Any] | None) -> list[str]:
     """The commands sent, and what they changed, for summary.html."""
-    from openavc.audit.commands import ANSWERS, params_text
-
     if not commands or not commands.get("trials"):
         return []
-    changed = commands.get("changed") or []
-    parts = ["<h3>Commands sent</h3><table>"]
-    # Each value named as its field is, from the command list the report keeps.
-    param_defs = {
+    param_defs = _param_defs(commands)
+    rows = [
+        _row(_command_label(trial, param_defs), _e(_command_outcome(trial)))
+        for trial in commands["trials"]
+    ]
+    return [
+        "<h3>Commands sent</h3><table>", *rows, "</table>",
+        *_changed_lines(commands.get("changed") or []),
+    ]
+
+
+def _param_defs(commands: dict[str, Any]) -> dict[Any, Any]:
+    """Each command's parameters, from the command list the report keeps, so
+    each value is named as its field is."""
+    return {
         c.get("name"): c.get("params") for c in commands.get("catalog") or [] if isinstance(c, dict)
     }
-    for trial in commands["trials"]:
-        params = trial.get("params") or {}
-        label = f"{trial.get('number')}. {trial.get('label')}"
-        label += params_text(params, param_defs.get(trial.get("command")))
-        if trial.get("batch"):
-            label += ", with the status queries"
-        before = trial.get("since_previous")
-        if trial.get("attempt", 1) > 1 and before:
-            label += f", again {before['seconds']:.1f} s after {before['label']}"
-        said = trial.get("answer") or {}
-        outcome = _trial_outcome(trial)
-        if said.get("answer"):
-            outcome += " " + ANSWERS[said["answer"]]
-            if said.get("note"):
-                outcome += f" ({said['note']})"
-        parts.append(_row(label, _e(outcome)))
-    parts.append("</table>")
-    # A value with no reading before the first command is something the audit
-    # learned, not something it left changed: there is nothing to set back to.
-    moving = [item for item in changed if item.get("on_its_own")]
-    first = [
-        item for item in changed if not item.get("on_its_own") and item.get("before") is None
+
+
+def _changed_lines(changed: list[dict[str, Any]]) -> list[str]:
+    """What the commands left changed, what they were first to report, and
+    what changed on its own. A value with no reading before the first command
+    is something the audit learned, not something it left changed: there is
+    nothing to set back to."""
+    by_audit = [item for item in changed if not item.get("on_its_own")]
+    return [
+        *_left_changed([item for item in by_audit if item.get("before") is not None]),
+        *_first_reported([item for item in by_audit if item.get("before") is None]),
+        *_changing_on_its_own([item for item in changed if item.get("on_its_own")]),
     ]
-    left = [
-        item for item in changed if not item.get("on_its_own") and item.get("before") is not None
+
+
+def _command_label(trial: dict[str, Any], param_defs: dict[Any, Any]) -> str:
+    """The command as its row names it: number, label, the values it was
+    sent with, and when it was a repeat."""
+    from openavc.audit.commands import params_text
+
+    label = f"{trial.get('number')}. {trial.get('label')}"
+    label += params_text(trial.get("params") or {}, param_defs.get(trial.get("command")))
+    if trial.get("batch"):
+        label += ", with the status queries"
+    before = trial.get("since_previous")
+    if trial.get("attempt", 1) > 1 and before:
+        label += f", again {before['seconds']:.1f} s after {before['label']}"
+    return label
+
+
+def _command_outcome(trial: dict[str, Any]) -> str:
+    """What the command did, and what the person said about it."""
+    from openavc.audit.commands import ANSWERS
+
+    said = trial.get("answer") or {}
+    outcome = _trial_outcome(trial)
+    if said.get("answer"):
+        outcome += " " + ANSWERS[said["answer"]]
+        if said.get("note"):
+            outcome += f" ({said['note']})"
+    return outcome
+
+
+def _after_command(by: dict[str, Any] | None) -> str:
+    return f" (after {by['number']}. {by['label']})" if by else ""
+
+
+def _left_changed(left: list[dict[str, Any]]) -> list[str]:
+    """Each value the audit's commands moved from an earlier reading."""
+    if not left:
+        return []
+    rows = [
+        _row(str(item.get("label") or item.get("key")), _e(
+            f"{_value_text(item.get('before'))} before, {_value_text(item.get('now'))} now"
+            + _after_command(item.get("by"))
+        ))
+        for item in left
     ]
-    if left:
-        parts.append("<h3>What the audit changed</h3><table>")
-        for item in left:
-            by = item.get("by")
-            parts.append(_row(str(item.get("label") or item.get("key")), _e(
-                f"{_value_text(item.get('before'))} before, {_value_text(item.get('now'))} now"
-                + (f" (after {by['number']}. {by['label']})" if by else "")
-            )))
-        parts.append("</table>")
-    if first:
-        # Said once per command they followed (a Meters On reports a dozen).
-        groups: dict[Any, tuple[dict[str, Any] | None, list[str]]] = {}
-        for item in first:
-            by = item.get("by")
-            groups.setdefault((by or {}).get("number"), (by, []))[1].append(
-                f"{item.get('label') or item.get('key')}: {_value_text(item.get('now'))}"
-            )
-        texts = [
-            ", ".join(values) + (f" (after {by['number']}. {by['label']})" if by else "")
-            for by, values in groups.values()
-        ]
-        parts.append("<p>" + _e(
-            "First reported during the audit, with no earlier reading to compare: "
-            + "; ".join(texts) + "."
-        ) + "</p>")
-    if moving:
-        parts.append("<p>" + _e(
-            "Also different now, but changing without the audit: "
-            + ", ".join(str(item.get("label") or item.get("key")) for item in moving) + "."
-        ) + "</p>")
-    return parts
+    return ["<h3>What the audit changed</h3><table>", *rows, "</table>"]
+
+
+def _first_reported(first: list[dict[str, Any]]) -> list[str]:
+    """The values first reported during the audit, said once per command
+    they followed (a Meters On reports a dozen)."""
+    if not first:
+        return []
+    groups: dict[Any, tuple[dict[str, Any] | None, list[str]]] = {}
+    for item in first:
+        by = item.get("by")
+        groups.setdefault((by or {}).get("number"), (by, []))[1].append(
+            f"{item.get('label') or item.get('key')}: {_value_text(item.get('now'))}"
+        )
+    texts = [", ".join(values) + _after_command(by) for by, values in groups.values()]
+    return ["<p>" + _e(
+        "First reported during the audit, with no earlier reading to compare: "
+        + "; ".join(texts) + "."
+    ) + "</p>"]
+
+
+def _changing_on_its_own(moving: list[dict[str, Any]]) -> list[str]:
+    if not moving:
+        return []
+    return ["<p>" + _e(
+        "Also different now, but changing without the audit: "
+        + ", ".join(str(item.get("label") or item.get("key")) for item in moving) + "."
+    ) + "</p>"]
 
 
 def _value_text(value: Any) -> str:
