@@ -162,6 +162,33 @@ def test_the_wake_command_goes_out_and_opens_the_waking_window(book_path):
     assert state.get("device.widget.offline_detail").startswith("Waking up.")
 
 
+_STATUS_KEYS = {"restarting", "asleep", "wake_command", "offline_reason", "offline_detail"}
+
+
+def _status_changes_since(state: StateStore, since: int) -> list[str]:
+    changes = state.get_history(count=1000, prefix="device.widget.")[since:]
+    return [c["key"].rsplit(".", 1)[1] for c in changes if c["key"].rsplit(".", 1)[1] in _STATUS_KEYS]
+
+
+def test_the_sleep_writes_change_the_sleep_keys_before_restarting(book_path):
+    # A state_change trigger on each of these keys fires in the order the
+    # batch lists them, so the order is part of what a project sees.
+    dm, driver, state = _manager()
+    asyncio.run(dm.send_command("widget", "power_off", {}))
+    state.set("device.widget.restarting", True)  # from a window that ran out
+    before = len(state.get_history(count=1000, prefix="device.widget."))
+    _drop(dm, driver, state)
+    assert _status_changes_since(state, before) == [
+        "asleep", "wake_command", "restarting", "offline_reason", "offline_detail",
+    ]
+
+    before = len(state.get_history(count=1000, prefix="device.widget."))
+    asyncio.run(dm.send_command("widget", "power_on", {}))
+    assert _status_changes_since(state, before) == [
+        "asleep", "wake_command", "restarting", "offline_detail",
+    ]
+
+
 def test_a_wake_that_does_not_come_back_reads_as_the_real_fault(book_path):
     dm, driver, state = _manager()
     asyncio.run(dm.send_command("widget", "power_off", {}))

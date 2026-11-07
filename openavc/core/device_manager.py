@@ -259,6 +259,11 @@ class _AwayStatus:
     over from the status it moved from: a fault published after a window
     leaves no ``restarting``, a device that wakes keeps no ``wake_command``.
     The default is the device back online, all five cleared.
+
+    ``sleep_first`` is for the two writes about a sleep (falling asleep,
+    waking): they change ``asleep`` and ``wake_command`` before
+    ``restarting``. The batch notifies in key order, so a project's
+    state_change triggers on these keys fire in that order.
     """
 
     restarting: bool | None = None
@@ -266,12 +271,17 @@ class _AwayStatus:
     wake_command: str | None = None
     offline_reason: str | None = None
     offline_detail: str | None = None
+    sleep_first: bool = False
 
     def state_keys(self, device_id: str) -> dict[str, Any]:
-        return {
-            f"device.{device_id}.restarting": self.restarting,
+        restarting = {f"device.{device_id}.restarting": self.restarting}
+        sleep = {
             f"device.{device_id}.asleep": self.asleep,
             f"device.{device_id}.wake_command": self.wake_command,
+        }
+        lead = {**sleep, **restarting} if self.sleep_first else {**restarting, **sleep}
+        return {
+            **lead,
             f"device.{device_id}.offline_reason": self.offline_reason,
             f"device.{device_id}.offline_detail": self.offline_detail,
         }
@@ -1078,6 +1088,7 @@ class DeviceManager:
             offline_detail=(
                 restarting_message(remaining, waking=True) if remaining is not None else None
             ),
+            sleep_first=True,
         ))
 
     def sleep_of(self, device_id: str):
@@ -2406,6 +2417,7 @@ class DeviceManager:
             asleep=True,
             wake_command=sleep.wake,
             offline_detail=asleep_message(sleep.wake_label),
+            sleep_first=True,
         ))
         return True
 
