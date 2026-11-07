@@ -390,3 +390,56 @@ def test_the_live_transport_error_outranks_the_one_kept_from_teardown(dm):
 
     assert code == CONNECTION_REFUSED
     assert dm.state.get("device.acme1.offline_reason") == CONNECTION_REFUSED
+
+
+async def test_a_device_removed_and_added_again_does_not_inherit_its_backoff(dm):
+    _place(dm, _AcmeDriver)
+    dm._last_connect_at["acme1"] = time.monotonic()
+    dm._note_flap("acme1")  # it connected, then dropped straight away
+    interval = dm._reconnect_interval()
+    assert dm._reconnect_delay("acme1", attempt=5) >= 2 * interval * 0.8
+
+    await dm.remove_device("acme1")
+    _place(dm, _AcmeDriver)
+
+    assert dm._reconnect_delay("acme1", attempt=5) <= interval * 1.2
+    dm._note_flap("acme1")  # its first drop is not a flap: it never connected
+    assert dm._reconnect_delay("acme1", attempt=5) <= interval * 1.2
+
+
+async def test_shutdown_cancels_a_reconnect_that_is_already_waiting(dm, monkeypatch):
+    driver = _place(dm, _AcmeDriver)
+    monkeypatch.setattr(dm, "_reconnect_delay", lambda device_id, attempt: 60.0)
+    dm._start_reconnect("acme1")
+    loop = dm._reconnect_tasks["acme1"]
+    await asyncio.sleep(0)  # the loop is now waiting out its delay
+
+    await dm.disconnect_all()
+
+    assert dm._reconnect_tasks == {}
+    assert loop.done()
+    assert driver.connect_attempts == 0
+
+
+@pytest.mark.parametrize(
+    ("config", "expected"),
+    [
+        ({"transport": "http", "host": "192.0.2.1", "ssl": True}, ("192.0.2.1", 443, "http")),
+        ({"transport": "http", "host": "192.0.2.1"}, ("192.0.2.1", 80, "http")),
+        ({"transport": "http", "host": "192.0.2.1", "port": 8443, "ssl": True},
+         ("192.0.2.1", 8443, "http")),
+        ({"transport": "serial", "host": "192.0.2.1", "port": "/dev/ttyUSB0"},
+         ("", "/dev/ttyUSB0", "serial")),
+        ({"host": "192.0.2.1", "port": 4001}, ("192.0.2.1", 4001, "tcp")),
+    ],
+)
+def test_the_address_a_fault_names_follows_the_connection_settings(dm, config, expected):
+    class _Driver:
+        DRIVER_INFO: dict[str, Any] = {"id": "acme_widget", "transport": "tcp"}
+        transport = None
+        last_transport_error = ""
+
+    driver = _Driver()
+    driver.config = config
+
+    assert dm._link_signals(driver)[1:] == expected
