@@ -370,27 +370,32 @@ class Redactor:
         from openavc.audit.observe import MIN_SECRET_LENGTH
 
         self._public = frozenset(public) | frozenset(names)
-        self._shield: re.Pattern[str] | None = None
         self._pairs: list[tuple[str, str, re.Pattern[str] | None]] = []
         self._hex_pairs: list[tuple[str, str, re.Pattern[str] | None]] = []
         for redaction in redactions:
-            if len(redaction.value) < MIN_SECRET_LENGTH:
-                continue
-            for form, replacement, bound, is_hex in _forms(redaction):
-                left, right = _BOUNDS.get(bound, ("", ""))
-                pattern = re.compile(left + re.escape(form) + right) if left else None
-                self._pairs.append((form, replacement, pattern))
-                if is_hex:
-                    self._hex_pairs.append((form, replacement, pattern))
+            if len(redaction.value) >= MIN_SECRET_LENGTH:
+                self._add_forms(redaction)
         self._pairs.sort(key=lambda triple: -len(triple[0]))
         self._hex_pairs.sort(key=lambda triple: -len(triple[0]))
-        # Only a name a secret would cut into needs shielding.
+        self._shield = self._shield_for(names)
+
+    def _add_forms(self, redaction: Redaction) -> None:
+        for form, replacement, bound, is_hex in _forms(redaction):
+            left, right = _BOUNDS.get(bound, ("", ""))
+            pattern = re.compile(left + re.escape(form) + right) if left else None
+            self._pairs.append((form, replacement, pattern))
+            if is_hex:
+                self._hex_pairs.append((form, replacement, pattern))
+
+    def _shield_for(self, names: Any) -> re.Pattern[str] | None:
+        """Only a name a secret would cut into needs shielding."""
         shielded = sorted(
             {n for n in names if n and any(form in n for form, _, _ in self._pairs)},
             key=len, reverse=True,
         )
-        if shielded:
-            self._shield = re.compile("(" + "|".join(re.escape(n) for n in shielded) + ")")
+        if not shielded:
+            return None
+        return re.compile("(" + "|".join(re.escape(n) for n in shielded) + ")")
 
     def text(self, value: str) -> str:
         if self._shield is not None and self._shield.search(value):
@@ -437,15 +442,19 @@ def redactions_for(session: "AuditSession") -> list[Redaction]:
     tester = getattr(session, "tester", None) or {}
     if tester.get("leave_out_serial"):
         out.extend(Redaction(s, SERIAL_REMOVED) for s in sorted(serial_numbers(session)))
-    # A driver run's credentials: what the person typed, and what the
-    # driver registered as secret while it ran.
-    values: set[str] = set()
+    out.extend(Redaction(v) for v in sorted(_run_secrets(session)) if isinstance(v, str) and v)
+    return out
+
+
+def _run_secrets(session: "AuditSession") -> set[Any]:
+    """A driver run's credentials: what the person typed, and what the
+    driver registered as secret while it ran."""
+    values: set[Any] = set()
     for run in getattr(session, "runs", None) or []:
         values |= set(getattr(run, "secrets", None) or ())
         for attempt in getattr(run, "listens", None) or []:
             values |= attempt.sandbox.observer.secrets
-    out.extend(Redaction(v) for v in sorted(values) if isinstance(v, str) and v)
-    return out
+    return values
 
 
 _SERIAL = re.compile(r"serial", re.IGNORECASE)
@@ -459,25 +468,48 @@ _SERIAL_OID = "1.3.6.1.2.1.47.1.1.1.1.11."
 
 def _serials_in(value: Any, out: set[str]) -> None:
     if isinstance(value, dict):
-        named = any(
-            isinstance(value.get(k), str) and _SERIAL.search(value[k]) for k in _NAMING_FIELDS
-        )
-        # A TLS certificate's serial is the certificate's, not the device's.
-        certificate = "issuer" in value
-        oid = value.get("oid")
-        if isinstance(oid, str) and oid.startswith(_SERIAL_OID) and isinstance(value.get("value"), str):
-            out.add(value["value"])
-        for key, item in value.items():
-            plain = isinstance(item, (str, int)) and not isinstance(item, bool)
-            if plain and (
-                (isinstance(key, str) and _SERIAL.search(key) and not certificate)
-                or (named and key in _VALUE_FIELDS)
-            ):
-                out.add(str(item))
-            _serials_in(item, out)
+        _serials_in_record(value, out)
     elif isinstance(value, (list, tuple)):
         for item in value:
             _serials_in(item, out)
+
+
+def _serials_in_record(record: dict[Any, Any], out: set[str]) -> None:
+    named = _names_a_serial(record)
+    # A TLS certificate's serial is the certificate's, not the device's.
+    certificate = "issuer" in record
+    serial = _oid_serial(record)
+    if serial is not None:
+        out.add(serial)
+    for key, item in record.items():
+        if _holds_a_serial(key, item, named, certificate):
+            out.add(str(item))
+        _serials_in(item, out)
+
+
+def _names_a_serial(record: dict[Any, Any]) -> bool:
+    """The record names a value with "serial" in its name (a status value, a change)."""
+    return any(
+        isinstance(record.get(k), str) and _SERIAL.search(record[k]) for k in _NAMING_FIELDS
+    )
+
+
+def _oid_serial(record: dict[Any, Any]) -> str | None:
+    """The value of an SNMP walk's entPhysicalSerialNum row, else None."""
+    oid, value = record.get("oid"), record.get("value")
+    if isinstance(oid, str) and oid.startswith(_SERIAL_OID) and isinstance(value, str):
+        return value
+    return None
+
+
+def _holds_a_serial(key: Any, item: Any, named: bool, certificate: bool) -> bool:
+    """A plain value under a key that says serial (not in a certificate), or
+    under a value field of a record that names a serial."""
+    if not isinstance(item, (str, int)) or isinstance(item, bool):
+        return False
+    if isinstance(key, str) and _SERIAL.search(key) and not certificate:
+        return True
+    return named and key in _VALUE_FIELDS
 
 
 def serial_numbers(session: "AuditSession") -> set[str]:
@@ -487,30 +519,34 @@ def serial_numbers(session: "AuditSession") -> set[str]:
     out: set[str] = set()
     footprint = _footprint_of(session)
     if footprint is not None:
-        if footprint.device is not None and footprint.device.serial_number:
-            out.add(str(footprint.device.serial_number))
+        device = footprint.device
+        if device is not None and device.serial_number:
+            out.add(str(device.serial_number))
         _serials_in(footprint.to_dict(), out)
     for run in getattr(session, "runs", None) or []:
-        for attempt in getattr(run, "listens", None) or []:
-            live = attempt.to_dict()
-            _serials_in({k: v for k, v in live.items() if k != "traffic"}, out)
-            _serials_in(list(getattr(attempt, "changes", None) or []), out)
-        for part in (getattr(run, "commands", None), getattr(run, "settings", None)):
-            if part is not None:
-                _serials_in(part.to_dict(), out)
+        _run_serials(run, out)
     from openavc.audit.observe import MIN_SECRET_LENGTH
 
     return {s for s in out if len(s.strip()) >= MIN_SECRET_LENGTH}
+
+
+def _run_serials(run: Any, out: set[str]) -> None:
+    """Every value one driver run reported, its traffic aside."""
+    for attempt in getattr(run, "listens", None) or []:
+        live = attempt.to_dict()
+        _serials_in({k: v for k, v in live.items() if k != "traffic"}, out)
+        _serials_in(list(getattr(attempt, "changes", None) or []), out)
+    for part in (getattr(run, "commands", None), getattr(run, "settings", None)):
+        if part is not None:
+            _serials_in(part.to_dict(), out)
 
 
 def _strings_in(value: Any, out: set[str]) -> None:
     if isinstance(value, str):
         out.add(value)
     elif isinstance(value, dict):
-        for key, item in value.items():
-            if isinstance(key, str):
-                out.add(key)
-            _strings_in(item, out)
+        out.update(key for key in value if isinstance(key, str))
+        _strings_in(list(value.values()), out)
     elif isinstance(value, (list, tuple, set, frozenset)):
         for item in value:
             _strings_in(item, out)
@@ -519,15 +555,22 @@ def _strings_in(value: Any, out: set[str]) -> None:
 def _catalog_names(value: Any, out: set[str]) -> None:
     """The driver ids, names and manufacturers anything in ``value`` names."""
     if isinstance(value, dict):
-        for key, item in value.items():
-            if key in ("driver_id", "driver_name", "manufacturer") and isinstance(item, str):
-                out.add(item)
-            elif key == "drivers" and isinstance(item, list):
-                out.update(d for d in item if isinstance(d, str))
-            _catalog_names(item, out)
+        out.update(name for key, item in value.items() for name in _names_under(key, item))
+        _catalog_names(list(value.values()), out)
     elif isinstance(value, list):
         for item in value:
             _catalog_names(item, out)
+
+
+_CATALOG_NAME_KEYS = ("driver_id", "driver_name", "manufacturer")
+
+
+def _names_under(key: Any, item: Any) -> list[str]:
+    if key in _CATALOG_NAME_KEYS and isinstance(item, str):
+        return [item]
+    if key == "drivers" and isinstance(item, list):
+        return [d for d in item if isinstance(d, str)]
+    return []
 
 
 def catalog_names(session: "AuditSession") -> set[str]:
@@ -536,19 +579,27 @@ def catalog_names(session: "AuditSession") -> set[str]:
     puts them), and every driver the verdict names."""
     out: set[str] = set()
     for run in getattr(session, "runs", None) or []:
-        identity = run.choice.identity or {}
-        for key in ("id", "name", "manufacturer"):
-            if isinstance(identity.get(key), str):
-                out.add(identity[key])
-        for f in identity.get("files") or []:
-            name = f.get("name")
-            if isinstance(name, str) and name:
-                out |= {name, f"driver/{name}", f"driver/run-{run.index + 1}/{name}"}
+        out |= _run_catalog_names(run)
     footprint = _footprint_of(session)
     if footprint is not None:
         verdict = (footprint.to_dict() or {}).get("verdict") or {}
         _catalog_names({k: v for k, v in verdict.items() if k != "catalog"}, out)
     out.discard("")
+    return out
+
+
+def _run_catalog_names(run: Any) -> set[str]:
+    """One tested driver's id, name, manufacturer and file names, and the
+    paths the zip puts those files at."""
+    identity = run.choice.identity or {}
+    out = {
+        identity[key] for key in ("id", "name", "manufacturer")
+        if isinstance(identity.get(key), str)
+    }
+    for f in identity.get("files") or []:
+        name = f.get("name")
+        if isinstance(name, str) and name:
+            out |= {name, f"driver/{name}", f"driver/run-{run.index + 1}/{name}"}
     return out
 
 
@@ -1308,33 +1359,44 @@ def _quote(view: dict[str, str] | None, limit: int = 160) -> str:
 def _traffic_text(entry: dict[str, Any], limit: int = 400) -> str:
     """One traffic entry as a timeline line reads it."""
     meta = entry.get("meta") or {}
-    # A file a command took or handed back is never recorded: one entry names
-    # it, and what moved while it ran is kept as its size only.
     if entry.get("channel") == "file":
-        size = meta.get("size")
-        sized = f", {describe_size(size)}" if isinstance(size, int) else ""
-        moved = "sent" if entry.get("direction") == "tx" else "received"
-        return f"file {meta.get('file', '')}{sized} {moved} for {meta.get('command', 'a command')}"
+        return _file_entry_text(entry, meta)
     if isinstance(meta.get("withheld"), int):
         return f"{describe_size(meta['withheld'])}, not recorded while a file command ran"
     body = _quote(entry, limit) if entry.get("text") else ""
     if entry.get("channel") in ("http", "http_listener"):
-        request = f"{meta.get('method', '')} {meta.get('target', '')}".strip()
-        if entry.get("direction") == "tx":
-            head = request
-        elif meta.get("error"):
-            head = f"no response to {request}: {meta['error']}"
-        elif meta.get("status") is not None:
-            head = f"{meta.get('status')} {meta.get('reason', '')}".strip() + f" for {request}"
-        else:
-            head = request or "request"
+        head = _http_head(entry, meta)
         return f"{head}, body {body}" if body else head
-    where = ""
+    return _peer_prefix(meta) + (body or "nothing")
+
+
+def _file_entry_text(entry: dict[str, Any], meta: dict[str, Any]) -> str:
+    """A file a command took or handed back is never recorded: one entry
+    names it, and what moved while it ran is kept as its size only."""
+    size = meta.get("size")
+    sized = f", {describe_size(size)}" if isinstance(size, int) else ""
+    moved = "sent" if entry.get("direction") == "tx" else "received"
+    return f"file {meta.get('file', '')}{sized} {moved} for {meta.get('command', 'a command')}"
+
+
+def _http_head(entry: dict[str, Any], meta: dict[str, Any]) -> str:
+    """An HTTP entry's request, or what answered it."""
+    request = f"{meta.get('method', '')} {meta.get('target', '')}".strip()
+    if entry.get("direction") == "tx":
+        return request
+    if meta.get("error"):
+        return f"no response to {request}: {meta['error']}"
+    if meta.get("status") is not None:
+        return f"{meta.get('status')} {meta.get('reason', '')}".strip() + f" for {request}"
+    return request or "request"
+
+
+def _peer_prefix(meta: dict[str, Any]) -> str:
     if meta.get("topic"):
-        where = f"topic {meta['topic']}: "
-    elif meta.get("peer"):
-        where = f"{meta['peer']}: "
-    return where + (body or "nothing")
+        return f"topic {meta['topic']}: "
+    if meta.get("peer"):
+        return f"{meta['peer']}: "
+    return ""
 
 
 _PROBE_ID = re.compile(r"^custom_(.+?)_(?:companion_)?(?:tcp|udp)$")
