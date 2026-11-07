@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any
 from unittest.mock import patch
 
@@ -106,6 +107,19 @@ async def test_an_attempt_that_removes_its_device_ends_the_loop_without_another_
     assert len(waits) == 1  # the wait before the one attempt, none after it
     assert dm.state.get("device.acme1.offline_reason") == CONNECTION_REFUSED
     assert dm.state.get("device.acme1.reconnect_failed") is None
+
+
+async def test_a_device_removed_during_the_wait_is_not_dialed(dm):
+    driver = _place(dm, _AcmeDriver)
+
+    async def removed_while_waiting(delay: float) -> None:
+        dm._devices.pop("acme1", None)
+
+    with patch(SLEEP, side_effect=removed_while_waiting):
+        await dm._reconnect_loop("acme1")
+
+    assert driver.connect_attempts == 0
+    assert dm.state.get("device.acme1.offline_reason") is None
 
 
 async def test_a_loop_for_a_device_that_is_not_there_does_nothing(dm):
@@ -307,6 +321,22 @@ async def test_a_drop_while_queued_settings_are_applied_tries_again(dm, monkeypa
     assert dm.state.get("device.acme1.reconnect_failed") is None
 
 
+async def test_a_reconnect_that_succeeds_starts_the_flap_clock(dm):
+    class _Up(_AcmeDriver):
+        async def connect(self) -> None:
+            self.connect_attempts += 1
+            self.come_up()
+
+    driver = _place(dm, _Up)
+    before = time.monotonic()
+    with patch(SLEEP, side_effect=_stop_after(driver, 99)):
+        await dm._reconnect_loop("acme1")
+
+    assert dm._last_connect_at["acme1"] >= before
+    dm._note_flap("acme1")  # and it drops again straight away
+    assert dm._flap_counts["acme1"] == 1
+
+
 async def test_an_attempt_a_newer_connect_ended_leaves_the_device_to_it(dm):
     class _Ended(_AcmeDriver):
         async def connect(self) -> None:
@@ -322,6 +352,27 @@ async def test_an_attempt_a_newer_connect_ended_leaves_the_device_to_it(dm):
     # Left as it was: the connect that ended this one owns the device now.
     assert dm.state.get("device.acme1.offline_reason") == CONNECTION_REFUSED
     assert dm.state.get("device.acme1.reconnect_failed") is None
+
+
+async def test_a_kicked_retry_keeps_its_place_when_the_loop_it_replaced_ends(dm):
+    driver = _place(dm, _AcmeDriver)
+    dm._start_reconnect("acme1")
+    replaced = dm._reconnect_tasks["acme1"]
+    await asyncio.sleep(0)  # the first loop is now waiting out its delay
+
+    assert dm.kick_reconnect("acme1") is True
+    fresh = dm._reconnect_tasks["acme1"]
+    await replaced  # cancelled, and its clean-up has run
+    for _ in range(3):
+        await asyncio.sleep(0)
+
+    try:
+        assert fresh is not replaced
+        assert dm._reconnect_tasks.get("acme1") is fresh
+        assert not fresh.done()
+        assert driver.connect_attempts == 1  # the kicked retry dialed at once
+    finally:
+        await dm._cancel_reconnect("acme1")
 
 
 def test_the_live_transport_error_outranks_the_one_kept_from_teardown(dm):

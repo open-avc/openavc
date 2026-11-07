@@ -14,6 +14,7 @@ one IR port, and a widget bound to the serial one.
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any
 
 from openavc.core.connection_fault import BRIDGE_OFFLINE, ConnectionFaultError
@@ -124,6 +125,24 @@ def test_dead_bridge_is_named_instead_of_the_passthrough_address():
     assert detail and "Acme Bridge" in detail
     # The address the integrator never typed must not be what they are shown.
     assert str(PASSTHROUGH) not in detail
+
+
+def test_a_dead_bridge_replaces_the_restart_window_the_device_was_showing():
+    # The bridge outranks a commanded-restart window the widget had open: no
+    # amount of waiting for the widget fixes the box carrying its traffic.
+    dm, bridge, widget = _rig(bridge_online=True)
+    dm._restart_windows["w1"] = time.monotonic() + 45.0
+    dm._set_offline_reason("w1", widget, exc=_refused())
+    assert dm.state.get("device.w1.restarting") is True
+
+    bridge.set_state("connected", False)
+    bridge._connected = False
+    code = dm._set_offline_reason("w1", widget, exc=_refused())
+
+    assert code == BRIDGE_OFFLINE
+    assert dm.state.get("device.w1.restarting") is None
+    assert dm.state.get("device.w1.offline_reason") == BRIDGE_OFFLINE
+    assert dm.restart_seconds_left("w1") is None
 
 
 def test_a_bridge_whose_driver_is_not_installed_yet_still_names_the_bridge():
