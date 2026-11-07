@@ -21,7 +21,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from openavc.drivers.registry import _DRIVER_REGISTRY
-from openavc.core.device_manager import DeviceManager, _MAX_PERMANENT_FAULT_ATTEMPTS
+from openavc.core.device_manager import DeviceManager
+from openavc.core.device_reconnect import _MAX_PERMANENT_FAULT_ATTEMPTS
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.drivers.base import BaseDriver, ConnectionFaultError
