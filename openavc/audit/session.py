@@ -258,7 +258,6 @@ class AuditSession:
         self.check: Any = None
         self.footprint: Any = None
         self.report_name: str | None = None
-        self.report_saved_at: float | None = None
         # "About you" on the report step: name, company, email, notes, and
         # whether to leave the serial number out. All optional.
         self.tester: dict[str, Any] = {}

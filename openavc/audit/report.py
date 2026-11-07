@@ -242,7 +242,6 @@ import json
 import logging
 import platform
 import re
-import time
 import uuid
 import zipfile
 from dataclasses import dataclass
@@ -1857,5 +1856,4 @@ async def save_session_report(session: "AuditSession", store: ReportStore) -> st
     else:
         saved = store.save(name, data)
     session.report_name = saved
-    session.report_saved_at = time.time()
     return saved
