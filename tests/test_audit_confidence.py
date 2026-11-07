@@ -18,7 +18,7 @@ import pytest
 
 from openavc.audit.confidence import TEST_REPORT_URL_MAX, driver_test_report, suggested_confidence
 from openavc.audit.limits import driver_limits
-from openavc.audit.report import _signal_text
+from openavc.audit.signal_text import signal_text
 
 
 def _section(**over):
@@ -601,12 +601,12 @@ SIGNAL_CASES = [
 
 @pytest.mark.parametrize("sig,text", SIGNAL_CASES)
 def test_each_signal_reads_as_the_evidence_lines_say_it(sig, text):
-    assert _signal_text(sig, NAMES) == text
+    assert signal_text(sig, NAMES) == text
 
 
 def test_a_signal_without_the_verdict_s_names_names_no_driver():
     sig = _vendor(from_driver=True, supplied_by="acme_x")
-    assert _signal_text(sig) == 'Manufacturer "Acme" named by the driver when its probe matched'
+    assert signal_text(sig) == 'Manufacturer "Acme" named by the driver when its probe matched'
 
 
 class _Footprint:
@@ -637,3 +637,20 @@ def test_the_report_s_limits_are_the_check_s_state_then_its_own_then_the_drivers
     check_state, ids,
 ):
     assert _limits_of(check_state) == ids
+
+
+@pytest.mark.parametrize("raw,cleaned", [
+    ("\x00\x01\x02\x03\x04Hi", ("Hi", 0)),               # the preamble goes
+    ("Hello\x01\x02\x03World", ("Hello World", 3)),      # a short run reads as a space
+    ("Hello\x01\x02\x03\x04World", ("Hello", 0)),        # four end the message
+    ("Hello\x01\t\x02\x03World", ("Hello World", 3)),    # a tab neither counts nor breaks a run
+    ("Hi\x7f\x7f\x7f\x7fThere", ("Hi", 0)),              # DEL is not printable
+    ("\r\nOK\r\n", ("OK", 0)),
+    ("A\x1fB", ("A B", 1)),
+    ("\x01\x02", ("", 0)),
+    ("", ("", 0)),
+])
+def test_a_reply_s_readable_part_follows_the_ide_s_rule(raw, cleaned):
+    from openavc.audit.signal_text import clean_banner
+
+    assert clean_banner(raw) == cleaned

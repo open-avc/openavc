@@ -257,7 +257,6 @@ from openavc.audit.report_text import (
     REPORT_CSS as _CSS,
     clock as _clock,
     escape_html as _e,
-    hex_pairs,
     html_row as _row,
     quote_bytes as _quote,
     slug as _slug,
@@ -265,6 +264,7 @@ from openavc.audit.report_text import (
     utc_offset,
 )
 from openavc.audit.session import footprint_of
+from openavc.audit.signal_text import signal_text
 from openavc.utils.boolean_words import value_text
 
 if TYPE_CHECKING:
@@ -791,7 +791,7 @@ def _summary_why(signals: list[dict[str, Any]], names: dict[str, Any]) -> list[s
         parts.append(
             "<p class=\"meta\">Also seen, and no catalog driver uses "
             f"{'it' if len(unused) == 1 else 'them'}: "
-            + "; ".join(_e(_signal_text(sig, names)) for sig in unused) + ".</p>"
+            + "; ".join(_e(signal_text(sig, names)) for sig in unused) + ".</p>"
         )
     return parts
 
@@ -799,7 +799,7 @@ def _summary_why(signals: list[dict[str, Any]], names: dict[str, Any]) -> list[s
 def _why_item(sig: dict[str, Any], names: dict[str, Any]) -> str:
     drivers = [str(names.get(d, {}).get("name") or d) for d in sig["drivers"]]
     verb = "identifies" if sig.get("strong") else "suggests"
-    return f"<li>{_e(_signal_text(sig, names))} {verb} {_e(_join(drivers))}</li>"
+    return f"<li>{_e(signal_text(sig, names))} {verb} {_e(_join(drivers))}</li>"
 
 
 _IDENTITY_ROWS = (
@@ -1464,139 +1464,6 @@ def _first_example(kind: str, events: list[dict[str, Any]]) -> Any:
         example.get("text") or example.get("state")
         or example.get("command") or example.get("address") or ""
     )
-
-
-_SIGNAL_PREFIXES = {
-    "mdns": "mDNS announcement on {}",
-    "ssdp": "SSDP announcement for {}",
-    "oui": "MAC address prefix {} seen",
-    "snmp_pen": "SNMP enterprise number {}",
-    "hostname": "Hostname {} observed",
-    "port_open": "Port {} is open",
-}
-
-
-def _signal_text(sig: dict[str, Any], names: dict[str, Any] | None = None) -> str:
-    """A signal as the wizard's evidence lines say it (``describeEvidence`` in
-    the IDE): what was seen, never a probe's own id. ``names`` is the
-    verdict's ``drivers``, for naming the driver whose probe supplied a
-    manufacturer."""
-    data = (sig.get("evidence") or {}).get("data") or {}
-    kind = data.get("kind")
-    sid = data.get("source_id")
-    port = data.get("port") if isinstance(data.get("port"), int) else None
-    on = f" on port {port}" if port is not None else ""
-    pattern = data.get("matched_pattern")
-    value = data.get("value")
-    if kind == "mdns":
-        return f"mDNS announcement on {sid or 'an unknown service'}"
-    if kind == "ssdp":
-        return f"SSDP announcement for {sid or 'an unknown device type'}"
-    if kind == "amx_ddp":
-        named = " ".join(str(v) for v in (data.get("make"), data.get("model")) if v)
-        return f"AMX DDP beacon: {named}" if named else "AMX DDP beacon"
-    if kind == "broadcast":
-        return f"UDP probe{on} matched" + (f" {pattern}" if pattern else "")
-    if kind == "probe":
-        response = data.get("response") or {}
-        raw = str(response.get("text") or "")
-        text, noise = _clean_banner(raw)
-        readable = len("".join(text.split()))
-        if readable >= 2 and noise * 2 <= readable:
-            text = text[:80]
-            return f"TCP probe{on} returned " + (f"'{text}'" if '"' in text else f'"{text}"')
-        if pattern:
-            return f"TCP probe{on} matched {pattern}"
-        if response.get("hex"):
-            return f"TCP probe{on} returned hex {hex_pairs(str(response['hex'])[:80])}"
-        return f"TCP probe{on} answered"
-    if kind == "oui":
-        vendor = data.get("vendor")
-        return (f"MAC address prefix {value} belongs to {vendor}" if vendor
-                else f"MAC address prefix {value} seen")
-    if kind == "hostname":
-        return (f"Hostname pattern {pattern} matched {value}" if pattern
-                else f"Hostname {value} observed")
-    if kind == "snmp_pen":
-        return f"SNMP enterprise number {value}"
-    if kind == "vendor_string":
-        return f'Manufacturer "{value}" named {_vendor_where(data, names)}'
-    if kind == "open_port":
-        return f"Port {value} is open"
-    source = str(sig.get("source") or "")
-    prefix, _, rest = source.partition(":")
-    if prefix in _SIGNAL_PREFIXES and rest:
-        return _SIGNAL_PREFIXES[prefix].format(rest)
-    if prefix == "probe":
-        return "A TCP identification check answered"
-    if prefix == "broadcast":
-        return "A UDP identification check answered"
-    return source or "A signal"
-
-
-def _clean_banner(raw: str) -> tuple[str, int]:
-    """A reply's readable part and how many unprintable characters sit
-    inside it (``cleanBannerText`` in the IDE, the same rule): the preamble
-    before the first printable character goes, a run of four unprintable
-    ones ends the message, shorter runs read as a space. A reply reads as
-    text with two readable characters and no more than half as many
-    unprintable ones (``readsAsText``)."""
-    def printable(ch: str) -> bool:
-        return 0x20 <= ord(ch) <= 0x7E
-
-    start = 0
-    while start < len(raw) and not printable(raw[start]):
-        start += 1
-    end, run_start, run = len(raw), -1, 0
-    for i in range(start, len(raw)):
-        ch = raw[i]
-        if printable(ch):
-            run_start, run = -1, 0
-            continue
-        if ch in "\t\r\n":
-            continue
-        if run_start < 0:
-            run_start = i
-        run += 1
-        if run >= 4:
-            end = run_start
-            break
-    kept = raw[start:end]
-    text = " ".join("".join(ch if printable(ch) else " " for ch in kept).split())
-    noise = sum(1 for ch in kept if not printable(ch) and ch not in "\t\r\n")
-    return text, noise
-
-
-# A manufacturer the driver's own probe supplies when it matches
-# (``extract_manufacturer``): the device did not say it.
-DRIVER_NAMED = "by the driver when its probe matched"
-
-
-def _vendor_where(data: dict[str, Any], names: dict[str, Any] | None = None) -> str:
-    """Where a manufacturer string came from (``vendorStringWhere`` in the
-    IDE). A probe's own id is internal and never shown. One a driver's probe
-    supplied names that driver when its name is known: the line lists every
-    driver the manufacturer points at, and only that one's probe matched."""
-    if data.get("from_driver"):
-        entry = (names or {}).get(str(data.get("supplied_by") or ""))
-        name = entry.get("name") if isinstance(entry, dict) else None
-        return f"by the {name} driver when its probe matched" if name else DRIVER_NAMED
-    source = str(data.get("source_probe_id") or "")
-    kind = str(data.get("from_kind") or "")
-    what, _, port = source.partition(":")
-    if what == "greeting" and port:
-        return f"in the greeting on port {port}"
-    if what == "http_server" and port:
-        return f"by the web server on port {port}"
-    if source == "ssdp_server":
-        return "in the SSDP server name"
-    if kind == "ssdp":
-        return "in the SSDP description"
-    if kind == "mdns":
-        return "in an mDNS announcement"
-    if kind == "amx_ddp":
-        return "in the AMX DDP beacon"
-    return "in a probe reply"
 
 
 _MAC_SOURCE_TEXT = {

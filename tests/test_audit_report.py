@@ -319,10 +319,10 @@ def test_a_binary_probe_reply_is_said_by_its_pattern_or_its_bytes():
     """A checksummed binary reply holds a printable byte or two; the line
     never draws those as the reply (it read "N ]" for a NAK). Same rule as
     the IDE's evidence lines."""
-    from openavc.audit.report import _signal_text
+    from openavc.audit.signal_text import signal_text
 
     def line(**data):
-        return _signal_text({"evidence": {"data": {"kind": "probe", "port": 1515, **data}}})
+        return signal_text({"evidence": {"data": {"kind": "probe", "port": 1515, **data}}})
 
     binary = {"text": "\xaa\xff\x01\x03N\x0b\x01]", "hex": "aaff01034e0b015d"}
     assert line(response=binary, matched_pattern="hex aa ff") == (
@@ -336,10 +336,10 @@ def test_a_binary_probe_reply_is_said_by_its_pattern_or_its_bytes():
 
 
 def test_a_manufacturer_the_driver_supplies_reads_as_the_drivers():
-    from openavc.audit.report import _signal_text
+    from openavc.audit.signal_text import signal_text
 
     def line(**data):
-        return _signal_text({"evidence": {"data": {"kind": "vendor_string", "value": "acme", **data}}})
+        return signal_text({"evidence": {"data": {"kind": "vendor_string", "value": "acme", **data}}})
 
     assert line(source_probe_id="custom_acme_widget_tcp", from_kind="probe") == (
         'Manufacturer "acme" named in a probe reply'
