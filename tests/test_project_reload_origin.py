@@ -284,3 +284,32 @@ def test_a_setup_wizard_still_names_the_tab_that_started_it():
         return driver.seen[0]
 
     assert _origin_after_the_request(start, finish) == {"origin_client": "tab-1"}
+
+
+def test_a_cloud_agent_started_by_a_pairing_request_can_take_updates(tmp_path, monkeypatch):
+    """Paired while running, the system already has its update manager: the
+    new agent's command handler gets it, or a cloud software update reports
+    "noted" and nothing happens until the next restart."""
+    eng, _sent = _engine(tmp_path)
+    updates = object()
+    eng.update_manager = updates
+
+    async def idle_loop(self):
+        return None
+
+    monkeypatch.setattr(config_mod, "CLOUD_ENABLED", True)
+    monkeypatch.setattr(config_mod, "CLOUD_SYSTEM_KEY", "a" * 64)
+    monkeypatch.setattr(config_mod, "CLOUD_SYSTEM_ID", "acme-system")
+    monkeypatch.setattr(config_mod, "CLOUD_ENDPOINT", "wss://cloud.example.invalid/agent")
+    monkeypatch.setattr(agent_mod.CloudAgent, "_connection_loop", idle_loop)
+
+    async def run():
+        await eng._start_cloud_agent()
+        handler = eng.cloud_agent._command_handler
+        await eng.cloud_agent._connection_loop_task
+        return handler
+
+    try:
+        assert asyncio.run(run())._update_manager is updates
+    finally:
+        eng.cloud_agent = None

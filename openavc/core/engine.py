@@ -2452,10 +2452,13 @@ class Engine:
             relay = StateRelay(self.cloud_agent, self.state)
             self.cloud_agent.set_state_relay(relay)
 
+            # At startup the update manager is still None here and is handed
+            # over when it starts; a system paired while running has it already.
             handler = CommandHandler(
                 self.cloud_agent, self.devices, self.events,
                 reload_fn=self.reload_project,
                 apply_fn=self.apply_project,
+                update_manager=self.update_manager,
                 project_path=self.project_path,
             )
             self.cloud_agent.set_command_handler(handler)
