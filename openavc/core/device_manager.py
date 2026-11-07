@@ -317,6 +317,31 @@ def _probe_fault(
     return ConnectionFaultError(fault.message, code=fault.code)
 
 
+def _typed_fault(
+    driver: Any, exc: BaseException | None, host: str, port: Any,
+) -> ConnectionFault | None:
+    """The fault already named before anything is classified, or None.
+
+    Typed faults win over string matching: first a ConnectionFaultError in
+    the exception chain (the freshest signal), then a fault the driver
+    stashed before forcing a disconnect (liveness watchdogs).
+    """
+    fault = typed_fault_from_exc(exc, host=host, port=port)
+    if fault is None and driver is not None:
+        fault = getattr(driver, "last_fault", None)
+    return fault
+
+
+def _kept_silence_verdict(fault: ConnectionFault, driver: Any) -> ConnectionFault:
+    """A device dropped because it stopped answering, whose reconnect gets no
+    answer either, keeps the sentence the drop gave. The attempt's own failure
+    reads as a generic no_response ("check the driver, transport and port"),
+    which is wrong advice for a device that was working."""
+    if fault.code != NO_RESPONSE or driver is None:
+        return fault
+    return getattr(driver, "_silence_verdict", None) or fault
+
+
 def _log_task_exception(task: asyncio.Task) -> None:
     """Log unhandled exceptions from fire-and-forget tasks."""
     if task.cancelled():
@@ -2244,28 +2269,17 @@ class DeviceManager:
         ``fault``, when given, is the reason and nothing is classified.
         """
         given = fault is not None
-        last_error = ""
-        host, port, transport = "", None, ""
-        if driver is not None:
-            last_error = getattr(driver, "last_transport_error", "") or ""
-            live = getattr(driver, "transport", None)
-            if live is not None:
-                fresh = getattr(live, "last_error", "") or ""
-                if fresh:
-                    last_error = fresh
-            host, port, transport = self._connection_descriptor(driver)
+        last_error, host, port, transport = self._link_signals(driver)
 
         # A device a running simulation could not simulate is failing against
         # its real address, so every signal below is about a socket that was
         # never meant to be reached. Answer the question the author is actually
         # asking before the classifier answers a different one correctly.
-        gap = self.unsimulated_driver(device_id) if self.unsimulated_driver else None
+        gap = self._simulation_gap(device_id)
         if gap:
             fault = self._no_simulator_fault(device_id, gap)
         if fault is None:
-            fault = typed_fault_from_exc(exc, host=host, port=port)
-        if fault is None and driver is not None:
-            fault = getattr(driver, "last_fault", None)
+            fault = _typed_fault(driver, exc, host, port)
         # Before the classifier describes the socket: a device bound through a
         # bridge dials the BRIDGE's pass-through address, so what the classifier
         # would report is a host and port the integrator never typed ("Connection
@@ -2282,68 +2296,108 @@ class DeviceManager:
             if bridge_id is not None:
                 self._set_bridge_offline_reason(device_id, bridge_id)
                 return BRIDGE_OFFLINE
-        if fault is None:
             fault = classify_connection_fault(
                 last_error=last_error, exc=exc,
                 host=host, port=port, transport=transport,
             )
-        # A device dropped because it stopped answering, whose reconnect gets
-        # no answer either, keeps the sentence the drop gave. The attempt's own
-        # failure reads as a generic no_response ("check the driver, transport
-        # and port"), which is wrong advice for a device that was working.
-        if not given and fault.code == NO_RESPONSE and driver is not None:
-            fault = getattr(driver, "_silence_verdict", None) or fault
+        if not given:
+            fault = _kept_silence_verdict(fault, driver)
         # A device at a 169.254 address, unreachable while the adapter chosen
         # in Reach devices through holds no 169.254 address of its own: say
         # that, not "check the IP address" (the address is right).
         if fault.code == UNREACHABLE:
             fault = link_local_fault(host, port) or fault
-        # A commanded restart is absence we asked for, so for as long as the
-        # driver said it would last the device reports a window instead of a
-        # fault: a sentence in `offline_detail`, `restarting` true, and
-        # `offline_reason` left None. None is what does the work — the cloud's
-        # error tally, every alert rule and every `offline_reason` condition go
-        # quiet without one of them learning a new value.
-        #
-        # A permanent fault breaks the window on the spot. Those mean the
-        # device is REACHABLE and refusing us (a rejected login, a certificate
-        # nobody trusts), which is positive evidence that it is not still
-        # booting; the classified code is still returned either way, because
-        # the reconnect policy hinges on this failure rather than on what is
-        # published about it.
-        remaining = self.restart_seconds_left(device_id)
-        if remaining is not None and not is_permanent_fault(fault.code):
-            self._publish_status(device_id, _AwayStatus(
-                restarting=True,
-                offline_detail=restarting_message(
-                    remaining, waking=device_id in self._waking,
-                ),
-            ))
+        return self._publish_offline(device_id, driver, fault)
+
+    def _link_signals(self, driver: BaseDriver | None) -> tuple[str, str, Any, str]:
+        """What the classifier reads about a device's link: the transport's
+        last error, then the (host, port, transport) its message names.
+
+        The live transport's error wins over the one BaseDriver keeps from a
+        transport it tore down.
+        """
+        if driver is None:
+            return "", "", None, ""
+        last_error = getattr(driver, "last_transport_error", "") or ""
+        live = getattr(driver, "transport", None)
+        if live is not None:
+            last_error = getattr(live, "last_error", "") or last_error
+        host, port, transport = self._connection_descriptor(driver)
+        return last_error, host, port, transport
+
+    def _publish_offline(
+        self, device_id: str, driver: BaseDriver | None, fault: ConnectionFault,
+    ) -> str:
+        """Publish a classified fault, unless the device is away because we
+        asked it to be: then the window or the sleep is published instead.
+
+        Returns the fault's code either way, because the reconnect policy
+        hinges on this failure rather than on what is published about it.
+        """
+        if self._publish_restarting(device_id, fault):
             return fault.code
         self._end_restart_window(device_id)
-        # A device we put to sleep (sleeps_device) is asleep, not faulty, for
-        # every failure that is only its absence: the same None offline_reason
-        # the restart window relies on. A permanent fault means it answered,
-        # and a device still connected long after the sleeping command stayed
-        # awake; either ends the sleep and the fault is published as itself.
-        sleep = self._sleep.get(device_id, self._driver_id(device_id, driver))
-        if sleep is not None:
-            if is_permanent_fault(fault.code) or self._sleep.stayed_awake(device_id):
-                self._sleep.end(device_id)
-            else:
-                if not sleep.asleep:
-                    log.info("[%s] Asleep; %s wakes it", device_id, sleep.wake_label)
-                self._sleep.mark_asleep(device_id)
-                self._publish_status(device_id, _AwayStatus(
-                    asleep=True,
-                    wake_command=sleep.wake,
-                    offline_detail=asleep_message(sleep.wake_label),
-                ))
-                return fault.code
+        if self._publish_asleep(device_id, driver, fault):
+            return fault.code
         self._publish_status(device_id, _AwayStatus(
             offline_reason=fault.code, offline_detail=fault.message,
         ))
         return fault.code
+
+    def _publish_restarting(self, device_id: str, fault: ConnectionFault) -> bool:
+        """Publish the commanded-restart window in place of ``fault``, while
+        one is open. True when it did.
+
+        A commanded restart is absence we asked for, so for as long as the
+        driver said it would last the device reports a window instead of a
+        fault: a sentence in `offline_detail`, `restarting` true, and
+        `offline_reason` left None. None is what does the work — the cloud's
+        error tally, every alert rule and every `offline_reason` condition go
+        quiet without one of them learning a new value.
+
+        A permanent fault breaks the window on the spot. Those mean the
+        device is REACHABLE and refusing us (a rejected login, a certificate
+        nobody trusts), which is positive evidence that it is not still
+        booting.
+        """
+        remaining = self.restart_seconds_left(device_id)
+        if remaining is None or is_permanent_fault(fault.code):
+            return False
+        self._publish_status(device_id, _AwayStatus(
+            restarting=True,
+            offline_detail=restarting_message(
+                remaining, waking=device_id in self._waking,
+            ),
+        ))
+        return True
+
+    def _publish_asleep(
+        self, device_id: str, driver: BaseDriver | None, fault: ConnectionFault,
+    ) -> bool:
+        """Publish the device asleep in place of ``fault``, when we put it to
+        sleep. True when it did.
+
+        A device we put to sleep (sleeps_device) is asleep, not faulty, for
+        every failure that is only its absence: the same None offline_reason
+        the restart window relies on. A permanent fault means it answered,
+        and a device still connected long after the sleeping command stayed
+        awake; either ends the sleep and the fault is published as itself.
+        """
+        sleep = self._sleep.get(device_id, self._driver_id(device_id, driver))
+        if sleep is None:
+            return False
+        if is_permanent_fault(fault.code) or self._sleep.stayed_awake(device_id):
+            self._sleep.end(device_id)
+            return False
+        if not sleep.asleep:
+            log.info("[%s] Asleep; %s wakes it", device_id, sleep.wake_label)
+        self._sleep.mark_asleep(device_id)
+        self._publish_status(device_id, _AwayStatus(
+            asleep=True,
+            wake_command=sleep.wake,
+            offline_detail=asleep_message(sleep.wake_label),
+        ))
+        return True
 
     def _driver_id(self, device_id: str, driver: BaseDriver | None) -> str | None:
         """The id of the driver behind ``device_id``, or None when unknown."""
