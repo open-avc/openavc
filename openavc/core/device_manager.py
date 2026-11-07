@@ -20,6 +20,7 @@ from typing import Any, TYPE_CHECKING
 from urllib.parse import urlsplit
 
 from openavc.core.connection_fault import (
+    AUTH_FAILED,
     BRIDGE_OFFLINE,
     INVALID_CONFIG,
     LOGIN_MISSING,
@@ -710,9 +711,7 @@ class DeviceManager:
                 return
             code = self._set_offline_reason(device_id, driver, exc=e)
             log.warning(f"Failed to connect '{device_id}': {self._failure_text(device_id, e)}")
-            if code == "auth_failed":
-                self._pause_reconnect_for_auth(device_id)
-            else:
+            if not self._paused_for_refused_login(device_id, code):
                 self._start_reconnect(device_id)
 
         # Auto-detect an Open Web UI for the device. Runs whether or not the
@@ -2452,6 +2451,19 @@ class DeviceManager:
             f"device.{device_id}.reconnect_failed", True, source="device_manager"
         )
 
+    def _paused_for_refused_login(self, device_id: str, code: str) -> bool:
+        """Pause the retry when ``code`` says the device refused the login.
+
+        The one place that rule lives, for every path that has just
+        classified a failure (a first connect, a drop, a reconnect attempt,
+        the Reconnect button): see :meth:`_pause_reconnect_for_auth` for why a
+        refused login is never retried on its own. True when it paused.
+        """
+        if code != AUTH_FAILED:
+            return False
+        self._pause_reconnect_for_auth(device_id)
+        return True
+
     def _stop_reconnect_for_permanent_fault(self, device_id: str, code: str) -> None:
         """Stop auto-reconnect after a fault only a human can clear.
 
@@ -2523,10 +2535,9 @@ class DeviceManager:
         # Classify the drop from the transport's stashed last error (no connect
         # exception on this path) so the device card shows an actionable reason
         # instead of a bare code.
-        if self._set_offline_reason(device_id, driver) == "auth_failed":
+        if self._paused_for_refused_login(device_id, self._set_offline_reason(device_id, driver)):
             # The driver had its credential refused on the live connection,
             # and its own login there was this drop's one attempt.
-            self._pause_reconnect_for_auth(device_id)
             return
         log.info(f"[{device_id}] Transport disconnected — starting auto-reconnect")
         self._start_reconnect(device_id)
@@ -3094,8 +3105,9 @@ class DeviceManager:
                         if not await driver._wait_for_answer():
                             # Closed again before answering. The driver kept
                             # why (another silent verdict, or the link failing).
-                            if self._set_offline_reason(device_id, driver) == "auth_failed":
-                                self._pause_reconnect_for_auth(device_id)
+                            if self._paused_for_refused_login(
+                                device_id, self._set_offline_reason(device_id, driver),
+                            ):
                                 return
                             attempt += 1
                             continue
@@ -3107,8 +3119,9 @@ class DeviceManager:
                         # handler saw this loop running and left the retry to
                         # it, so returning here would leave the device down
                         # with nothing retrying.
-                        if self._set_offline_reason(device_id, driver) == "auth_failed":
-                            self._pause_reconnect_for_auth(device_id)
+                        if self._paused_for_refused_login(
+                            device_id, self._set_offline_reason(device_id, driver),
+                        ):
                             return
                         log.info(f"[{device_id}] The connection dropped while it was starting up; retrying")
                         attempt += 1
@@ -3121,8 +3134,9 @@ class DeviceManager:
                     if not driver.get_state("connected"):
                         # Dropped again while its settings were applied: the
                         # same hand-off as above, one await later.
-                        if self._set_offline_reason(device_id, driver) == "auth_failed":
-                            self._pause_reconnect_for_auth(device_id)
+                        if self._paused_for_refused_login(
+                            device_id, self._set_offline_reason(device_id, driver),
+                        ):
                             return
                         attempt += 1
                         continue
@@ -3139,13 +3153,12 @@ class DeviceManager:
                         log.warning(
                             f"[{device_id}] Reconnect failed: {self._failure_text(device_id, e)}"
                         )
-                    if code == "auth_failed":
+                    if self._paused_for_refused_login(device_id, code):
                         # The device is reachable but rejecting the login. More
                         # attempts can only trip its lockout — stop here and
                         # wait for new credentials (an unreachable device that
                         # comes back with bad creds lands here on the attempt
                         # that discovers it).
-                        self._pause_reconnect_for_auth(device_id)
                         return
                     if is_permanent_fault(code):
                         # Host key, TLS trust, connection settings, missing
@@ -3252,10 +3265,8 @@ class DeviceManager:
                 self.state.set(f"device.{device_id}.connected", False, source="device_manager")
                 code = self._set_offline_reason(device_id, driver, exc=e)
                 log.warning(f"Reconnect failed for {device_id}: {self._failure_text(device_id, e)}")
-                if code == "auth_failed":
-                    # The manual attempt was this action's one try.
-                    self._pause_reconnect_for_auth(device_id)
-                else:
+                # The manual attempt was this action's one try.
+                if not self._paused_for_refused_login(device_id, code):
                     self._start_reconnect(device_id)
             # Probed whether or not the control protocol connected, as at
             # bring-up. Stopping simulation hands a device back through here,
