@@ -48,7 +48,7 @@ report covers what happened since then; ``window_start`` and the summary say
 from when.
 
 Masking, one redactor over the whole record and every file
-(``audit.report.Redactor``): the device's registered secrets, the value of
+(``audit.redaction.Redactor``): the device's registered secrets, the value of
 every setting its driver marks secret or that is named like a credential, a
 value the driver wrote to state under a credential's name (state is the one
 source the platform never masks), a command parameter of type ``password``,
@@ -69,23 +69,22 @@ from typing import Any
 
 from openavc.audit.driver_choice import driver_identity
 from openavc.audit.observe import MIN_SECRET_LENGTH, audit_traffic_redactor
-from openavc.audit.report import (
+from openavc.audit.redaction import (
     SERIAL_REMOVED,
     Redaction,
     Redactor,
-    ReportStore,
-    _clock,
-    _CSS,
-    _e,
-    _row,
-    _serials_in,
-    _slug,
-    _traffic_text,
     driver_public_strings,
-    generator_info,
-    place_files,
+    serials_in as _serials_in,
+)
+from openavc.audit.report import ReportStore, generator_info, place_files, write_zip
+from openavc.audit.report_text import (
+    REPORT_CSS as _CSS,
+    clock as _clock,
+    escape_html as _e,
+    html_row as _row,
+    slug as _slug,
+    traffic_text as _traffic_text,
     utc_offset,
-    write_zip,
 )
 from openavc.core.device_config import connection_of, resolve_device_config
 from openavc.core.device_traffic import RING_ENTRIES, get_traffic_recorder, serialize_entry

@@ -14,13 +14,13 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from openavc.audit import report
-from openavc.audit.report import (
+from openavc.audit import redaction
+from openavc.audit.redaction import (
     REDACTED,
     SERIAL_REMOVED,
     Redaction,
     Redactor,
-    _serials_in,
+    serials_in as _serials_in,
     _strings_in,
     catalog_names,
     driver_public_strings,
@@ -306,4 +306,4 @@ def test_a_session_redactor_takes_the_sessions_redactions_and_names(published):
     redactor = session_redactor(session)
     assert redactor.text("comm-secret-1 acme_widget") == f"{REDACTED} acme_widget"
     assert redactor.tree({"name": "Acme Widget"}) == {"name": "Acme Widget"}
-    assert isinstance(redactor, report.Redactor)
+    assert isinstance(redactor, redaction.Redactor)

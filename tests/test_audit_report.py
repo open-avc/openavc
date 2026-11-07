@@ -16,11 +16,10 @@ import zipfile
 import pytest
 
 from openavc.audit.footprint import Footprint, Limit
+from openavc.audit.redaction import REDACTED, SERIAL_REMOVED
 from openavc.audit.report import (
-    REDACTED,
     REPORT_KIND,
     REPORT_VERSION,
-    SERIAL_REMOVED,
     ReportStore,
     build_report,
     render_summary,
@@ -138,7 +137,7 @@ def test_a_numeric_secret_is_masked_without_cutting_into_numbers():
     """A PIN is hex digits: masked where it stands alone, never inside a
     timestamp (which would break the JSON), a hash or a hex dump; its own
     bytes in a hex dump are masked by their hex form."""
-    from openavc.audit.report import Redaction, Redactor
+    from openavc.audit.redaction import Redaction, Redactor
 
     redactor = Redactor([Redaction("7391")])
     record = {
@@ -174,7 +173,7 @@ def test_a_secret_run_into_other_characters_is_masked_in_the_traffic():
 
 
 def test_the_record_masks_a_glued_or_encoded_secret_and_leaves_numbers_whole():
-    from openavc.audit.report import Redaction, Redactor
+    from openavc.audit.redaction import Redaction, Redactor
 
     redactor = Redactor([Redaction("1234"), Redaction("p@ss w0rd"), Redaction("café")])
     out = redactor.tree({
@@ -209,7 +208,7 @@ async def test_every_serial_number_heard_is_left_out():
     only the one the network check put on the device."""
     from types import SimpleNamespace
 
-    from openavc.audit.report import redactions_for, serial_numbers
+    from openavc.audit.redaction import redactions_for, serial_numbers
 
     manager, session = await _session(leave_out_serial=True)
     try:
@@ -307,7 +306,7 @@ async def test_the_model_name_and_model_number_are_reported_apart():
 def test_every_sentence_writes_bytes_one_way():
     """A sentence writes bytes as hex pairs, ``hex aa 0b 01``; a ``hex`` field
     holds them unspaced. A long run is cut at the same number of bytes."""
-    from openavc.audit.report import _quote, hex_pairs
+    from openavc.audit.report_text import hex_pairs, quote_bytes as _quote
 
     assert hex_pairs("aa0b01000c") == "aa 0b 01 00 0c"
     assert _quote({"hex": "aa0b01000c", "text": "\xaa\x0b\x01\x00\x0c"}) == "hex aa 0b 01 00 0c"

@@ -404,6 +404,18 @@ class AuditSession:
         return out
 
 
+def footprint_of(session: AuditSession) -> Any:
+    """The finished footprint, or the one in progress, or None before the
+    check has started (its listeners run from the session's start, but there
+    is nothing to report until the check does)."""
+    if session.footprint is not None:
+        return session.footprint
+    check = getattr(session, "check", None)
+    if check is None or getattr(check, "status", "idle") == "idle":
+        return None
+    return check.footprint
+
+
 class AuditManager:
     """Owns the one audit session a server may have."""
 

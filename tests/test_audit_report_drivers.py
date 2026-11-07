@@ -303,7 +303,8 @@ async def test_a_published_default_password_is_hidden_without_saying_so(driver):
 def test_a_secret_that_is_a_number_or_a_word_leaves_the_json_whole():
     """Redacted as a tree, never as JSON text: a PIN that is also a port, or a
     password of "true", cannot cut a number or a literal out of report.json."""
-    from openavc.audit.report import Redaction, build_zip
+    from openavc.audit.redaction import Redaction
+    from openavc.audit.report import build_zip
 
     record = {"port": 1515, "ok": True, "note": "PIN 1515 sent"}
     for secret in ("1515", "true"):
@@ -657,7 +658,8 @@ def test_an_answered_status_query_confirms_and_a_command_with_no_sets_says_why()
 def test_clock_times_say_their_time_zone_and_the_liveness_check_is_said():
     import re
 
-    from openavc.audit.report import _render_driver, render_timeline, utc_offset
+    from openavc.audit.report import _render_driver, render_timeline
+    from openavc.audit.report_text import utc_offset
 
     offset = utc_offset(1_700_000_000.0)
     assert re.fullmatch(r"UTC[+-]\d\d:\d\d", offset)

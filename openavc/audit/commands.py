@@ -1096,7 +1096,7 @@ class CommandPass:
         and ends early at the driver's next request: what is refused after
         that answers that request, so it is kept apart, with what the driver
         had just sent, and never put on the command."""
-        from openavc.audit.report import _traffic_text
+        from openavc.audit.report_text import traffic_text as _traffic_text
 
         returned = trial.returned_at or trial.sent_at
         # The window's traffic with each entry's place in the device's list,

@@ -216,45 +216,20 @@
 - ``complete``: false when the report was taken before the network check
   finished.
 
-**Redaction.** Every secret the person typed (a read community other than
-``public``, a driver credential) and every credential the driver's config
-registered is replaced in the record, string by string, in its plain, JSON,
-HTML and hex forms (unspaced and in pairs), before anything is written; a
-serial number the person asked to leave out is replaced the same way,
-every one the audit heard (``serial_numbers``: the network check's, and any
-value a driver reported under a name with "serial" in it). The
+**Redaction** (the rules are ``audit.redaction``). Every secret the person
+typed (a read community other than ``public``, a driver credential) and
+every credential the driver's config registered is replaced in the record
+before anything is written; a serial number the person asked to leave out
+is replaced the same way, every one the audit heard. The
 record is redacted as a tree and never as JSON text, so a number, a ``true``
 or a key the secret happens to equal is left alone and ``report.json``
 always parses; ``summary.html`` and ``timeline.txt`` are drawn from the
 redacted record, and ``log.txt`` (the session's own log lines, not in the
 record) is the one file redacted as text. Traffic is masked (``***``) as it
 is written out, so the hex of a masked entry still decodes. The report never
-reads the server's own configuration.
-
-What is already public is left as it is: a driver file whose bytes match the
-catalog's is copied unredacted, and a string that is exactly one of the
-names the catalog and the drivers that ran publish (a driver's id, name and
-manufacturer, and every string a published driver declares: its labels,
-defaults, command and value names) is never changed, and the catalog's names
-are left as they are inside a longer string too ("Driver chosen: ..."). Otherwise a password
-that is the driver's published default, or a word a driver uses, would be
-cut out of the driver's own text and say what it was. The wizard tells the
-person before the download when a credential they typed is the driver's
-published default (``DriverRun.published_secrets``); the report says nothing
-of it. A driver file that does not match the catalog (imported, or changed
+reads the server's own configuration. A driver file whose bytes match the
+catalog's is copied unredacted; one that does not (imported, or changed
 here) is redacted, and its entry says whether that changed it.
-
-A secret shorter than ``observe.MIN_SECRET_LENGTH`` is not searched for,
-since it would match ordinary text everywhere; the report never writes a
-typed secret into a field of its own, so such a value could only appear if
-the device repeated it. A numeric secret (a PIN) is replaced in its plain
-forms wherever it is not part of a longer number (``CODE1234``, yes;
-``12345`` or ``1.1234``, no), and one made only of hex digits wherever it is
-not part of a longer run of them. In a hex or hash field (``hex``,
-``sha256``) only a secret's hex forms are looked for, since that is where
-its own bytes show; there they are replaced wherever they appear. A secret
-is also looked for as a URL writes it (percent-encoded) and as a traffic
-entry's text shows its UTF-8 bytes.
 
 **Recent reports** are kept in ``{data_dir}/audit_reports/``, the newest
 ``REPORTS_KEPT``, so closing a browser tab does not lose one.
@@ -262,7 +237,6 @@ entry's text shows its UTF-8 bytes.
 
 from __future__ import annotations
 
-import html
 import io
 import json
 import logging
@@ -276,7 +250,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from openavc.drivers.command_files import describe_size
+from openavc.audit.redaction import Redactor, session_redactor
+from openavc.audit.report_text import (
+    REPORT_CSS as _CSS,
+    clock as _clock,
+    escape_html as _e,
+    hex_pairs,
+    html_row as _row,
+    quote_bytes as _quote,
+    slug as _slug,
+    traffic_text as _traffic_text,
+    utc_offset,
+)
+from openavc.audit.session import footprint_of
 from openavc.utils.boolean_words import value_text
 
 if TYPE_CHECKING:
@@ -287,365 +273,12 @@ log = logging.getLogger("audit.report")
 REPORT_VERSION = 1
 REPORT_KIND = "device_audit"
 REPORTS_KEPT = 10
-REDACTED = "[redacted]"
-SERIAL_REMOVED = "[serial number removed]"
 _NAME_RE = re.compile(r"^openavc-device-audit-[a-z0-9-]+\.zip$")
-
-
-# ---------------------------------------------------------------------------
-# Redaction
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class Redaction:
-    """One value to take out of a report, and what to put in its place."""
-
-    value: str
-    replacement: str = REDACTED
-
-
-_HEX_DIGITS = re.compile(r"[0-9A-Fa-f]+")
-_DIGITS = re.compile(r"[0-9]+")
-# Where a record holds bytes as hex or a hash: only a secret's hex forms are
-# looked for there (its plain digits would match inside any hex run).
-_HEX_FIELDS = frozenset({"hex", "sha256", "catalog_sha256"})
-
-# How a plain form is bounded: not at all; by digits (a numeric PIN is
-# masked in "CODE1234" but never cut out of "12345" or "1.1234"); by hex
-# digits (a secret that is all hex letters and digits).
-_FREE, _NOT_IN_A_NUMBER, _NOT_IN_HEX = "free", "number", "hex"
-_BOUNDS = {
-    _NOT_IN_A_NUMBER: (r"(?<![0-9.])", r"(?![0-9])"),
-    _NOT_IN_HEX: (r"(?<![0-9A-Fa-f.])", r"(?![0-9A-Fa-f])"),
-}
-
-
-def _forms(redaction: Redaction) -> list[tuple[str, str, str, bool]]:
-    """Each way ``value`` can be written in a report: ``(form, replacement,
-    bound, is_hex)``, longest first (see the module docstring)."""
-    from openavc.utils.log_redaction import _percent_forms
-
-    value, repl = redaction.value, redaction.replacement
-    bound = (
-        _NOT_IN_A_NUMBER if _DIGITS.fullmatch(value)
-        else _NOT_IN_HEX if _HEX_DIGITS.fullmatch(value) else _FREE
-    )
-    raw = value.encode("utf-8")
-    quads = [
-        (value, repl, bound, False),
-        (json.dumps(value)[1:-1], json.dumps(repl)[1:-1], bound, False),
-        (html.escape(value), html.escape(repl), bound, False),
-        # Its UTF-8 bytes read as Latin-1: how a traffic entry's text shows them.
-        (raw.decode("latin-1"), repl, _FREE, False),
-        *((form, repl, _FREE, False) for form in _percent_forms(value)),
-        (raw.hex(), repl.encode("utf-8").hex(), _FREE, True),
-        (raw.hex().upper(), repl.encode("utf-8").hex().upper(), _FREE, True),
-        # The spaced form a sentence writes bytes in (``hex_pairs``).
-        (raw.hex(" "), repl.encode("utf-8").hex(" "), _FREE, True),
-        (raw.hex(" ").upper(), repl.encode("utf-8").hex(" ").upper(), _FREE, True),
-    ]
-    seen: dict[str, tuple[str, str, bool]] = {}
-    for form, replacement, bounded, is_hex in quads:
-        if form and form not in seen:
-            seen[form] = (replacement, bounded, is_hex)
-    return sorted(
-        ((form, *rest) for form, rest in seen.items()),
-        key=lambda quad: -len(quad[0]),
-    )
-
-
-class Redactor:
-    """Replaces each secret in a text, whatever form it was written in.
-
-    ``public``: strings published already (the catalog's and the drivers'
-    own), left as they are wherever a whole string is one of them. ``names``:
-    the catalog's names (driver ids, names, manufacturers, file names), left
-    as they are inside a longer string too.
-    """
-
-    def __init__(
-        self, redactions: list[Redaction], public: Any = (), names: Any = (),
-    ) -> None:
-        from openavc.audit.observe import MIN_SECRET_LENGTH
-
-        self._public = frozenset(public) | frozenset(names)
-        self._pairs: list[tuple[str, str, re.Pattern[str] | None]] = []
-        self._hex_pairs: list[tuple[str, str, re.Pattern[str] | None]] = []
-        for redaction in redactions:
-            if len(redaction.value) >= MIN_SECRET_LENGTH:
-                self._add_forms(redaction)
-        self._pairs.sort(key=lambda triple: -len(triple[0]))
-        self._hex_pairs.sort(key=lambda triple: -len(triple[0]))
-        self._shield = self._shield_for(names)
-
-    def _add_forms(self, redaction: Redaction) -> None:
-        for form, replacement, bound, is_hex in _forms(redaction):
-            left, right = _BOUNDS.get(bound, ("", ""))
-            pattern = re.compile(left + re.escape(form) + right) if left else None
-            self._pairs.append((form, replacement, pattern))
-            if is_hex:
-                self._hex_pairs.append((form, replacement, pattern))
-
-    def _shield_for(self, names: Any) -> re.Pattern[str] | None:
-        """Only a name a secret would cut into needs shielding."""
-        shielded = sorted(
-            {n for n in names if n and any(form in n for form, _, _ in self._pairs)},
-            key=len, reverse=True,
-        )
-        if not shielded:
-            return None
-        return re.compile("(" + "|".join(re.escape(n) for n in shielded) + ")")
-
-    def text(self, value: str) -> str:
-        if self._shield is not None and self._shield.search(value):
-            parts = self._shield.split(value)
-            # Odd parts are the names the split kept.
-            return "".join(
-                part if i % 2 else self._replace(part) for i, part in enumerate(parts)
-            )
-        return self._replace(value)
-
-    def _replace(self, value: str, pairs: list | None = None) -> str:
-        for form, replacement, pattern in self._pairs if pairs is None else pairs:
-            if form in value:
-                value = (
-                    pattern.sub(lambda _m, r=replacement: r, value) if pattern is not None
-                    else value.replace(form, replacement)
-                )
-        return value
-
-    def tree(self, value: Any) -> Any:
-        """``value`` with every string in it redacted (dict keys included),
-        except a string that is exactly a published one; under a hex or hash
-        field only a secret's hex forms are looked for."""
-        if isinstance(value, str):
-            return value if value in self._public else self.text(value)
-        if isinstance(value, dict):
-            return {
-                self.tree(k) if isinstance(k, str) else k:
-                self._replace(v, self._hex_pairs) if k in _HEX_FIELDS and isinstance(v, str)
-                else self.tree(v)
-                for k, v in value.items()
-            }
-        if isinstance(value, (list, tuple)):
-            return [self.tree(v) for v in value]
-        return value
-
-
-def redactions_for(session: "AuditSession") -> list[Redaction]:
-    """What this session's report must not contain."""
-    out = [
-        Redaction(c) for c in session.options.snmp_communities
-        if c and c != "public"
-    ]
-    tester = getattr(session, "tester", None) or {}
-    if tester.get("leave_out_serial"):
-        out.extend(Redaction(s, SERIAL_REMOVED) for s in sorted(serial_numbers(session)))
-    out.extend(Redaction(v) for v in sorted(_run_secrets(session)) if isinstance(v, str) and v)
-    return out
-
-
-def _run_secrets(session: "AuditSession") -> set[Any]:
-    """A driver run's credentials: what the person typed, and what the
-    driver registered as secret while it ran."""
-    values: set[Any] = set()
-    for run in getattr(session, "runs", None) or []:
-        values |= set(getattr(run, "secrets", None) or ())
-        for attempt in getattr(run, "listens", None) or []:
-            values |= attempt.sandbox.observer.secrets
-    return values
-
-
-_SERIAL = re.compile(r"serial", re.IGNORECASE)
-# Where a record holding a value names it (a status value, a change), and
-# the fields that hold the value itself.
-_NAMING_FIELDS = ("name", "key", "state", "state_key")
-_VALUE_FIELDS = ("value", "now", "before", "old", "new", "first", "last", "original")
-# ENTITY-MIB entPhysicalSerialNum, as an SNMP walk's rows name it.
-_SERIAL_OID = "1.3.6.1.2.1.47.1.1.1.1.11."
-
-
-def _serials_in(value: Any, out: set[str]) -> None:
-    if isinstance(value, dict):
-        _serials_in_record(value, out)
-    elif isinstance(value, (list, tuple)):
-        for item in value:
-            _serials_in(item, out)
-
-
-def _serials_in_record(record: dict[Any, Any], out: set[str]) -> None:
-    named = _names_a_serial(record)
-    # A TLS certificate's serial is the certificate's, not the device's.
-    certificate = "issuer" in record
-    serial = _oid_serial(record)
-    if serial is not None:
-        out.add(serial)
-    for key, item in record.items():
-        if _holds_a_serial(key, item, named, certificate):
-            out.add(str(item))
-        _serials_in(item, out)
-
-
-def _names_a_serial(record: dict[Any, Any]) -> bool:
-    """The record names a value with "serial" in its name (a status value, a change)."""
-    return any(
-        isinstance(record.get(k), str) and _SERIAL.search(record[k]) for k in _NAMING_FIELDS
-    )
-
-
-def _oid_serial(record: dict[Any, Any]) -> str | None:
-    """The value of an SNMP walk's entPhysicalSerialNum row, else None."""
-    oid, value = record.get("oid"), record.get("value")
-    if isinstance(oid, str) and oid.startswith(_SERIAL_OID) and isinstance(value, str):
-        return value
-    return None
-
-
-def _holds_a_serial(key: Any, item: Any, named: bool, certificate: bool) -> bool:
-    """A plain value under a key that says serial (not in a certificate), or
-    under a value field of a record that names a serial."""
-    if not isinstance(item, (str, int)) or isinstance(item, bool):
-        return False
-    if isinstance(key, str) and _SERIAL.search(key) and not certificate:
-        return True
-    return named and key in _VALUE_FIELDS
-
-
-def serial_numbers(session: "AuditSession") -> set[str]:
-    """Every serial number the audit heard, from wherever it came: the
-    network check (SSDP, SNMP, mDNS, AMX DDP) and every value a driver
-    reported under a name with "serial" in it."""
-    out: set[str] = set()
-    footprint = _footprint_of(session)
-    if footprint is not None:
-        device = footprint.device
-        if device is not None and device.serial_number:
-            out.add(str(device.serial_number))
-        _serials_in(footprint.to_dict(), out)
-    for run in getattr(session, "runs", None) or []:
-        _run_serials(run, out)
-    from openavc.audit.observe import MIN_SECRET_LENGTH
-
-    return {s for s in out if len(s.strip()) >= MIN_SECRET_LENGTH}
-
-
-def _run_serials(run: Any, out: set[str]) -> None:
-    """Every value one driver run reported, its traffic aside."""
-    for attempt in getattr(run, "listens", None) or []:
-        live = attempt.to_dict()
-        _serials_in({k: v for k, v in live.items() if k != "traffic"}, out)
-        _serials_in(list(getattr(attempt, "changes", None) or []), out)
-    for part in (getattr(run, "commands", None), getattr(run, "settings", None)):
-        if part is not None:
-            _serials_in(part.to_dict(), out)
-
-
-def _strings_in(value: Any, out: set[str]) -> None:
-    if isinstance(value, str):
-        out.add(value)
-    elif isinstance(value, dict):
-        out.update(key for key in value if isinstance(key, str))
-        _strings_in(list(value.values()), out)
-    elif isinstance(value, (list, tuple, set, frozenset)):
-        for item in value:
-            _strings_in(item, out)
-
-
-def _catalog_names(value: Any, out: set[str]) -> None:
-    """The driver ids, names and manufacturers anything in ``value`` names."""
-    if isinstance(value, dict):
-        out.update(name for key, item in value.items() for name in _names_under(key, item))
-        _catalog_names(list(value.values()), out)
-    elif isinstance(value, list):
-        for item in value:
-            _catalog_names(item, out)
-
-
-_CATALOG_NAME_KEYS = ("driver_id", "driver_name", "manufacturer")
-
-
-def _names_under(key: Any, item: Any) -> list[str]:
-    if key in _CATALOG_NAME_KEYS and isinstance(item, str):
-        return [item]
-    if key == "drivers" and isinstance(item, list):
-        return [d for d in item if isinstance(d, str)]
-    return []
-
-
-def catalog_names(session: "AuditSession") -> set[str]:
-    """The names the catalog publishes for the drivers this audit met: each
-    tested driver's id, name, manufacturer and file names (and where the zip
-    puts them), and every driver the verdict names."""
-    out: set[str] = set()
-    for run in getattr(session, "runs", None) or []:
-        out |= _run_catalog_names(run)
-    footprint = _footprint_of(session)
-    if footprint is not None:
-        verdict = (footprint.to_dict() or {}).get("verdict") or {}
-        _catalog_names({k: v for k, v in verdict.items() if k != "catalog"}, out)
-    out.discard("")
-    return out
-
-
-def _run_catalog_names(run: Any) -> set[str]:
-    """One tested driver's id, name, manufacturer and file names, and the
-    paths the zip puts those files at."""
-    identity = run.choice.identity or {}
-    out = {
-        identity[key] for key in ("id", "name", "manufacturer")
-        if isinstance(identity.get(key), str)
-    }
-    for f in identity.get("files") or []:
-        name = f.get("name")
-        if isinstance(name, str) and name:
-            out |= {name, f"driver/{name}", f"driver/run-{run.index + 1}/{name}"}
-    return out
-
-
-def driver_public_strings(driver_id: str, identity: dict[str, Any] | None) -> set[str]:
-    """Every string one driver declares, when the copy that ran is the
-    catalog's (every file matches it); nothing for any other copy."""
-    from openavc.drivers.registry import get_driver_class
-
-    out: set[str] = set()
-    files = (identity or {}).get("files") or []
-    if files and all(f.get("matches_catalog") is True for f in files):
-        cls = get_driver_class(driver_id)
-        _strings_in(getattr(cls, "DRIVER_INFO", None) or {}, out)
-    out.discard("")
-    return out
-
-
-def public_strings(session: "AuditSession") -> set[str]:
-    """Every string a published driver that ran declares (see the module
-    docstring): never redacted where a whole string is one of them."""
-    out: set[str] = set()
-    for run in getattr(session, "runs", None) or []:
-        out |= driver_public_strings(run.choice.driver_id, run.choice.identity)
-    return out
-
-
-def session_redactor(session: "AuditSession") -> "Redactor":
-    """The redactor for ``session``'s report."""
-    return Redactor(redactions_for(session), public_strings(session), catalog_names(session))
 
 
 # ---------------------------------------------------------------------------
 # The record
 # ---------------------------------------------------------------------------
-
-
-def _footprint_of(session: "AuditSession"):
-    """The finished footprint, or the one in progress, or None before the
-    check has started (its listeners run from the session's start, but there
-    is nothing to report until the check does)."""
-    if session.footprint is not None:
-        return session.footprint
-    check = getattr(session, "check", None)
-    if check is None or getattr(check, "status", "idle") == "idle":
-        return None
-    return check.footprint
 
 
 @dataclass(frozen=True)
@@ -915,7 +548,7 @@ def build_report(session: "AuditSession") -> dict[str, Any]:
     """The whole record for ``session``, redacted."""
     redactor = session_redactor(session)
     placed = place_driver_files(session, redactor)
-    footprint = _footprint_of(session)
+    footprint = footprint_of(session)
     fp = footprint.to_dict() if footprint is not None else {}
     complete = session.footprint is not None
     device = fp.get("device") or {}
@@ -1262,11 +895,6 @@ ANSWER_WORDS = {"no": "the person said it did not happen", "partly": "the person
 # ---------------------------------------------------------------------------
 
 
-def _slug(value: Any, fallback: str) -> str:
-    text = re.sub(r"[^a-z0-9]+", "-", str(value or "").lower()).strip("-")
-    return (text[:40].strip("-")) or fallback
-
-
 def _recognized_as(report: dict[str, Any]) -> tuple[str, str]:
     """(manufacturer, name) of the driver the network check recognized the
     device as, or empty strings. A driver that only might fit is not one."""
@@ -1315,88 +943,6 @@ def report_filename(report: dict[str, Any], when: float | None = None) -> str:
     )
     name = "-".join(_slug(part, "unknown") for part in parts)
     return f"openavc-device-audit-{name}-{stamp}.zip"
-
-
-def utc_offset(t: float | None = None) -> str:
-    """This computer's time zone at ``t`` as an offset, ``UTC-04:00``: every
-    clock time in the report is local to the computer that ran the audit."""
-    stamp = datetime.fromtimestamp(t if t is not None else time.time()).astimezone()
-    raw = stamp.strftime("%z") or "+0000"
-    return f"UTC{raw[:3]}:{raw[3:]}"
-
-
-def _clock(t: float | None) -> str:
-    if not t:
-        return "--:--:--.---"
-    dt = datetime.fromtimestamp(t)
-    return dt.strftime("%H:%M:%S.") + f"{dt.microsecond // 1000:03d}"
-
-
-def hex_pairs(hex_text: str) -> str:
-    """Bytes as every sentence in a report writes them, ``aa 0b 01``: two
-    digits a byte, spaced (a ``hex`` field holds the same bytes unspaced)."""
-    return " ".join(hex_text[i:i + 2] for i in range(0, len(hex_text), 2))
-
-
-def _quote(view: dict[str, str] | None, limit: int = 160) -> str:
-    """A byte view as a reader sees it: text when printable, else hex pairs
-    (the first ``limit / 2`` bytes)."""
-    if not view:
-        return "nothing"
-    text = view.get("text", "")
-    if not text:
-        return "nothing"
-    printable = all(c.isprintable() or c in "\r\n\t" for c in text)
-    if not printable:
-        raw = view.get("hex", "")
-        return "hex " + hex_pairs(raw[:limit]) + ("..." if len(raw) > limit else "")
-    shown = text.encode("unicode_escape").decode("ascii")
-    if len(shown) > limit:
-        shown = shown[:limit] + "..."
-    return f'"{shown}"'
-
-
-def _traffic_text(entry: dict[str, Any], limit: int = 400) -> str:
-    """One traffic entry as a timeline line reads it."""
-    meta = entry.get("meta") or {}
-    if entry.get("channel") == "file":
-        return _file_entry_text(entry, meta)
-    if isinstance(meta.get("withheld"), int):
-        return f"{describe_size(meta['withheld'])}, not recorded while a file command ran"
-    body = _quote(entry, limit) if entry.get("text") else ""
-    if entry.get("channel") in ("http", "http_listener"):
-        head = _http_head(entry, meta)
-        return f"{head}, body {body}" if body else head
-    return _peer_prefix(meta) + (body or "nothing")
-
-
-def _file_entry_text(entry: dict[str, Any], meta: dict[str, Any]) -> str:
-    """A file a command took or handed back is never recorded: one entry
-    names it, and what moved while it ran is kept as its size only."""
-    size = meta.get("size")
-    sized = f", {describe_size(size)}" if isinstance(size, int) else ""
-    moved = "sent" if entry.get("direction") == "tx" else "received"
-    return f"file {meta.get('file', '')}{sized} {moved} for {meta.get('command', 'a command')}"
-
-
-def _http_head(entry: dict[str, Any], meta: dict[str, Any]) -> str:
-    """An HTTP entry's request, or what answered it."""
-    request = f"{meta.get('method', '')} {meta.get('target', '')}".strip()
-    if entry.get("direction") == "tx":
-        return request
-    if meta.get("error"):
-        return f"no response to {request}: {meta['error']}"
-    if meta.get("status") is not None:
-        return f"{meta.get('status')} {meta.get('reason', '')}".strip() + f" for {request}"
-    return request or "request"
-
-
-def _peer_prefix(meta: dict[str, Any]) -> str:
-    if meta.get("topic"):
-        return f"topic {meta['topic']}: "
-    if meta.get("peer"):
-        return f"{meta['peer']}: "
-    return ""
 
 
 _PROBE_ID = re.compile(r"^custom_(.+?)_(?:companion_)?(?:tcp|udp)$")
@@ -1471,41 +1017,6 @@ def _traffic_rows(drivers: list[dict[str, Any]]) -> list[tuple[float, str, str]]
             if not entry.get("chunk")
         ]
     return rows
-
-
-_CSS = """
-:root { --fg:#1f2328; --muted:#59636e; --line:#d1d9e0; --bg:#ffffff; --panel:#f6f8fa;
-  --ok:#1a7f37; --warn:#9a6700; --bad:#cf222e; }
-@media (prefers-color-scheme: dark) { :root { --fg:#e6edf3; --muted:#9198a1; --line:#3d444d;
-  --bg:#0d1117; --panel:#151b23; --ok:#3fb950; --warn:#d29922; --bad:#f85149; } }
-* { box-sizing: border-box; }
-body { margin:0; padding:24px 16px; background:var(--bg); color:var(--fg);
-  font:15px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-main { max-width: 920px; margin: 0 auto; }
-h1 { font-size: 24px; margin: 0 0 4px; }
-h2 { font-size: 18px; margin: 28px 0 8px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
-h3 { font-size: 15px; margin: 16px 0 4px; }
-.meta { color: var(--muted); margin: 0 0 16px; }
-.verdict { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
-  padding: 12px 16px; font-size: 17px; }
-table { border-collapse: collapse; width: 100%; margin: 4px 0 8px; }
-th, td { text-align: left; vertical-align: top; padding: 4px 8px; border-bottom: 1px solid var(--line); }
-th { color: var(--muted); font-weight: 600; width: 28%; }
-code, pre { font-family: ui-monospace, Consolas, "SFMono-Regular", monospace; font-size: 13px; }
-pre { white-space: pre-wrap; word-break: break-all; background: var(--panel); padding: 8px;
-  border-radius: 6px; margin: 4px 0; }
-.matched { color: var(--ok); } .not_matched { color: var(--bad); } .not_observed { color: var(--muted); }
-ul { margin: 4px 0; padding-left: 20px; }
-footer { color: var(--muted); margin-top: 32px; font-size: 13px; }
-"""
-
-
-def _e(value: Any) -> str:
-    return html.escape("" if value is None else str(value))
-
-
-def _row(label: str, value_html: str) -> str:
-    return f"<tr><th>{_e(label)}</th><td>{value_html}</td></tr>"
 
 
 def _page_bits(page: dict[str, Any]) -> list[str]:
@@ -2819,7 +2330,7 @@ async def save_session_report(session: "AuditSession", store: ReportStore) -> st
 
     Nothing is saved for a session whose network check never started.
     """
-    if _footprint_of(session) is None:
+    if footprint_of(session) is None:
         return None
     name, data = report_zip(session)
     if session.report_name and store.path(session.report_name) is not None:

@@ -5,5 +5,8 @@
 - ``footprint``: the network check, composed from the discovery scanners'
   own functions against one address.
 - ``report``: the report file (``report.json``, ``summary.html``,
-  ``timeline.txt``), redaction, and the recent reports kept on disk.
+  ``timeline.txt``) and the recent reports kept on disk.
+- ``redaction``: what a report must not contain, taken out in every form.
+- ``report_text``: how every report writes a time, bytes, a traffic line and
+  an HTML row (Report a problem's too).
 """

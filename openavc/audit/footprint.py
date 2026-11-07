@@ -1459,7 +1459,7 @@ def check_state(session: "AuditSession") -> dict[str, Any]:
     }
     fp = session.footprint
     if fp is not None:
-        from openavc.audit.report import Redactor, redactions_for
+        from openavc.audit.redaction import Redactor, redactions_for
 
         result = {
             "verdict": fp.verdict,
