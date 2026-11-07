@@ -20,7 +20,7 @@ import re
 import time
 from typing import Any
 
-from openavc.core.condition_eval import _coerce_bool, eval_operator
+from openavc.core.condition_eval import eval_operator, reads_as_on
 from openavc.core.state_store import VALID_KEY_PREFIXES, is_flat_primitive
 from openavc.drivers import compiled_protocol
 from openavc.drivers.base import (
@@ -1220,9 +1220,7 @@ class ConfigurableDriver(BaseDriver):
                 f"skipping entry {query!r}"
             )
             return False
-        value = self.config.get(field)
-        as_bool = _coerce_bool(value)
-        return bool(value) if as_bool is None else as_bool
+        return reads_as_on(self.config.get(field))
 
     def _expand_query(self, query: Any) -> list[str]:
         """Expand one polling/on_connect entry. Strings pass through

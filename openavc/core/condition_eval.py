@@ -58,6 +58,18 @@ def _coerce_bool(value: Any) -> bool | None:
     return None
 
 
+def reads_as_on(value: Any) -> bool:
+    """A config value read as an on/off switch.
+
+    A bool, or a word ``_coerce_bool`` knows ("yes", "off", "1"), says what it
+    says; anything else counts by plain truthiness, so an unset field (None)
+    or an empty one is off. The integrator's opt-in checkboxes a driver
+    declares (a ``when:`` on a poll query or a push registration) read this.
+    """
+    as_bool = _coerce_bool(value)
+    return bool(value) if as_bool is None else as_bool
+
+
 def eval_operator(op: str, actual: Any, target: Any) -> bool:
     """Evaluate a comparison operator with alias normalization and type coercion."""
     op = _OPERATOR_ALIASES.get(op, op)
