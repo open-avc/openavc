@@ -24,7 +24,7 @@ from openavc.cloud.protocol import (
     PING, ACK, SESSION_ROTATE, SESSION_INVALID,
     CONFIG_UPDATE, CAPABILITIES_UPDATE, THROTTLE, ERROR,
     COMMAND, CONFIG_PUSH, RESTART, DIAGNOSTIC,
-    SOFTWARE_UPDATE, TUNNEL_OPEN, TUNNEL_CLOSE, ALERT_RULES_UPDATE,
+    SOFTWARE_UPDATE, PANEL_SOFTWARE_UPDATE, TUNNEL_OPEN, TUNNEL_CLOSE, ALERT_RULES_UPDATE,
     AI_TOOL_CALL, GAP_REPORT, GET_PROJECT, GET_DEVICE_COMMANDS,
     CERT_RESULT, CERT_RENEW_DUE, HELP_ACKNOWLEDGED,
     COMMAND_RESULT, PROJECT_DATA, DEVICE_COMMANDS_DATA,
@@ -100,6 +100,11 @@ DEFAULT_CAPABILITIES = [
     # its real password, so the cloud sends a project holding the marker only
     # to a system that announces this. Nothing on this side is gated by it.
     "saved_logins",
+    # This version can stage a panel software update (panel_software_update).
+    # Announced by every system, panel or not: whether there is panel
+    # software to update is what `system.panel_software.*` state says, and a
+    # system without it refuses the message with `no_panel_software`.
+    "panel_software_update",
 ]
 
 # Downstream messages that require a specific capability before the agent will
@@ -118,6 +123,9 @@ _CAPABILITY_GATED: dict[str, str] = {
     # ignores stray pushes instead of trying to apply an update it's not
     # supposed to. See A59 in the pre-release audit.
     "software_update": "fleet_update",
+    # Its own capability, not fleet_update's: an older system announces no
+    # such name, which is how the cloud knows which systems understand it.
+    "panel_software_update": "panel_software_update",
     # The highest-risk remote-control messages: they drive AV hardware,
     # full_replace the project, and restart the service. The spec model is
     # that the agent enforces capabilities as defense-in-depth, so a plan that
@@ -147,6 +155,7 @@ _DROP_NACK_TYPES: dict[str, str] = {
     CONFIG_PUSH: COMMAND_RESULT,
     RESTART: COMMAND_RESULT,
     SOFTWARE_UPDATE: COMMAND_RESULT,
+    PANEL_SOFTWARE_UPDATE: COMMAND_RESULT,
     GET_PROJECT: PROJECT_DATA,
     GET_DEVICE_COMMANDS: DEVICE_COMMANDS_DATA,
     DIAGNOSTIC: DIAGNOSTIC_RESULT,
@@ -970,7 +979,7 @@ class CloudAgent:
                 await self._tunnel_handler.handle_tunnel_close(msg)
             else:
                 log.info("Cloud agent: received tunnel_close but no tunnel handler")
-        elif msg_type == SOFTWARE_UPDATE:
+        elif msg_type in (SOFTWARE_UPDATE, PANEL_SOFTWARE_UPDATE):
             if self._command_handler:
                 await self._command_handler.handle(msg)
             else:

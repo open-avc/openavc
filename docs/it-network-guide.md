@@ -612,6 +612,7 @@ When an instance is paired, the cloud console can send it the following:
 | Device command | Execute a device command already defined in the local project (e.g., "turn on projector") |
 | Diagnostic | Run a network diagnostic from the device's perspective: ping, TCP port check, DNS lookup, or a port scan of a host. A port a connected project device is using is reported open and in use by that device, without connecting to it |
 | Software update | Trigger a software update check and install. Only a release signed by OpenAVC is installed: a file whose signature does not check out is refused before it runs ([System Updates](updates.md#installing-an-update)) |
+| Panel software update | Appliance hardware only: download a newer release of the panel's own software over HTTPS, checked against its checksum, to where the panel installs it from. The panel installs it itself, and only a release signed with the panel's own key and newer than the one it has |
 | Restart | Restart the OpenAVC service |
 | Configuration push | Replace or update the project file on the device (a backup is taken first, then the engine reloads) |
 | Alert rules | Push alert rule definitions to be evaluated locally |

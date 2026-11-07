@@ -116,6 +116,10 @@ COMMAND = "command"
 CONFIG_PUSH = "config_push"
 DIAGNOSTIC = "diagnostic"
 SOFTWARE_UPDATE = "software_update"
+# Stage a newer copy of the panel software on appliance hardware
+# (updater/panel_software.py). A sibling of software_update, never a branch of
+# it: it does not touch OpenAVC itself, restart anything or take a backup.
+PANEL_SOFTWARE_UPDATE = "panel_software_update"
 TUNNEL_OPEN = "tunnel_open"
 TUNNEL_CLOSE = "tunnel_close"
 RESTART = "restart"
@@ -146,7 +150,7 @@ UPSTREAM_TYPES = {
 DOWNSTREAM_TYPES = {
     ACK, SESSION_ROTATE, SESSION_INVALID, CONFIG_UPDATE,
     CAPABILITIES_UPDATE, THROTTLE, ERROR, COMMAND, CONFIG_PUSH,
-    DIAGNOSTIC, SOFTWARE_UPDATE, TUNNEL_OPEN, TUNNEL_CLOSE,
+    DIAGNOSTIC, SOFTWARE_UPDATE, PANEL_SOFTWARE_UPDATE, TUNNEL_OPEN, TUNNEL_CLOSE,
     RESTART, PING, ALERT_RULES_UPDATE, AI_TOOL_CALL,
     GET_PROJECT, GET_DEVICE_COMMANDS, CERT_RESULT, CERT_RENEW_DUE,
     HELP_ACKNOWLEDGED,
@@ -186,6 +190,7 @@ MESSAGE_PRIORITY = {
     TUNNEL_CLOSE: 5,
     DIAGNOSTIC: 4,
     SOFTWARE_UPDATE: 4,
+    PANEL_SOFTWARE_UPDATE: 4,
     ALERT_RULES_UPDATE: 4,
     AI_TOOL_CALL: 5,
     GET_PROJECT: 5,
@@ -484,7 +489,8 @@ def _request_result_payload(
 def build_command_result_payload(
     request_id: str, success: bool, result: Any = None, error: str | None = None
 ) -> dict[str, Any]:
-    """Result payload for command / config_push / restart / software_update."""
+    """Result payload for command / config_push / restart / software_update /
+    panel_software_update."""
     return _request_result_payload(request_id, success, result, error)
 
 

@@ -90,6 +90,19 @@ def _base_url(proto: str, host: str, port: int) -> str:
     return f"{proto}://{host}:{port}"
 
 
+def _panel_software(engine) -> dict[str, str] | None:
+    """The panel software's version and any update waiting for it, or None
+    where there is no panel software (updater/panel_software.py)."""
+    state = getattr(engine, "state", None)
+    version = state.get("system.panel_software.version") if state is not None else None
+    if not version:
+        return None
+    return {
+        "version": str(version),
+        "pending_version": str(state.get("system.panel_software.pending_version") or ""),
+    }
+
+
 def _panel_has_content(engine) -> bool:
     """Whether the loaded project has anything for the panel to show.
 
@@ -146,6 +159,7 @@ async def setup_status(
         "project_name": project_name,
         "panel_has_content": _panel_has_content(engine),
         "version": __version__,
+        "panel_software": _panel_software(engine),
         "network": None,
     }
 
@@ -520,7 +534,10 @@ _PAGE = """<!DOCTYPE html>
       }
     }
 
-    text('version', s.version ? 'v' + s.version : '');
+    var ps = s.panel_software;
+    text('version', (s.version ? 'v' + s.version : '') +
+      (ps && ps.version ? ' \u00b7 Panel software ' + ps.version +
+        (ps.pending_version ? ' (update to ' + ps.pending_version + ' ready)' : '') : ''));
 
     if (net && netAvailable === null) probeNetcfg();
   }

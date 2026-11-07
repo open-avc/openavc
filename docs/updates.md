@@ -228,6 +228,17 @@ cloud portal. A cloud-connected system reports the setting, so the portal shows
 which rooms are opted out rather than leaving your integrator to wonder why one
 stayed behind.
 
+### Panel software on appliance hardware
+
+Appliance hardware runs its own panel software beside OpenAVC, and it updates
+separately, from OpenAVC Cloud only. The Updates view shows its version under
+**Panel Software**, the result of its last update, and any update waiting on the
+panel. An update from the cloud installs either by itself, once nobody has touched
+the panel for ten minutes, or when somebody starts it at the panel. While the value
+chosen in **Settings > Panel Display > Stay bright while** is on, an update that
+would install by itself waits until it goes off. A panel that is not connected to
+OpenAVC Cloud cannot take panel software updates remotely.
+
 ## Disabling Automatic Checks
 
 To disable the background update check (the system will never check GitHub on its own):

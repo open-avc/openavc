@@ -287,12 +287,12 @@ def test_a_setup_wizard_still_names_the_tab_that_started_it():
 
 
 def test_a_cloud_agent_started_by_a_pairing_request_can_take_updates(tmp_path, monkeypatch):
-    """Paired while running, the system already has its update manager: the
-    new agent's command handler gets it, or a cloud software update reports
-    "noted" and nothing happens until the next restart."""
+    """Paired while running, the system already has its updaters: the new
+    agent's command handler gets them, or a cloud update reports "noted"
+    and nothing happens until the next restart."""
     eng, _sent = _engine(tmp_path)
-    updates = object()
-    eng.update_manager = updates
+    updates, panel = object(), object()
+    eng.update_manager, eng.panel_software = updates, panel
 
     async def idle_loop(self):
         return None
@@ -310,6 +310,8 @@ def test_a_cloud_agent_started_by_a_pairing_request_can_take_updates(tmp_path, m
         return handler
 
     try:
-        assert asyncio.run(run())._update_manager is updates
+        handler = asyncio.run(run())
+        assert handler._update_manager is updates
+        assert handler._panel_software is panel
     finally:
         eng.cloud_agent = None

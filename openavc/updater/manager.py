@@ -107,6 +107,11 @@ class UpdateManager:
                 else "will retry on the next restart",
             )
 
+    @property
+    def update_in_progress(self) -> bool:
+        """True from the start of an update until it fails or the server restarts."""
+        return self._update_in_progress
+
     def _set_state(self, key: str, value: Any) -> None:
         """Set a state key if state store is available."""
         if self._state:
@@ -325,9 +330,30 @@ class UpdateManager:
             )
 
         log.info("Downloading update artifact: %s", url)
+        await self.download_to(
+            url, artifact_path,
+            progress=lambda pct: self._set_state("system.update_progress", pct),
+        )
+        return artifact_path
 
-        if artifact_path.exists():
-            artifact_path.unlink()
+    async def download_to(
+        self,
+        url: str,
+        path: Path,
+        *,
+        progress=None,
+        max_bytes: int | None = None,
+    ) -> int:
+        """GET ``url`` into ``path``, replacing whatever is there.
+
+        Returns the size written. ``progress`` is called with 0..99 as bytes
+        arrive (when the server says how many to expect); ``max_bytes`` stops a
+        download that announces or delivers more than that. On any failure the
+        file is removed and the error raised. Checks nothing about the content:
+        callers verify the hash.
+        """
+        if path.exists():
+            path.unlink()
 
         downloaded = 0
         total = 0
@@ -336,34 +362,41 @@ class UpdateManager:
                 async with client.stream("GET", url) as response:
                     response.raise_for_status()
                     total = int(response.headers.get("content-length", 0))
+                    if max_bytes is not None and total > max_bytes:
+                        raise RuntimeError(
+                            f"the file is {total} bytes, over the {max_bytes}-byte limit"
+                        )
 
-                    with open(artifact_path, "wb") as f:
+                    with open(path, "wb") as f:
                         async for chunk in response.aiter_bytes(chunk_size=65536):
+                            downloaded += len(chunk)
+                            if max_bytes is not None and downloaded > max_bytes:
+                                raise RuntimeError(
+                                    f"the file is over the {max_bytes}-byte limit"
+                                )
                             # to_thread: a 64KB write stalls on slow media
                             # (SD cards) and this loop runs for the whole
                             # artifact
                             await asyncio.to_thread(f.write, chunk)
-                            downloaded += len(chunk)
-                            if total > 0:
-                                pct = min(int(downloaded * 100 / total), 99)
-                                self._set_state("system.update_progress", pct)
+                            if progress is not None and total > 0:
+                                progress(min(int(downloaded * 100 / total), 99))
         except BaseException:
-            # A mid-stream error/cancellation must not leave a partial artifact
-            # in the cache (it would never be applied — the size/checksum gates
+            # A mid-stream error/cancellation must not leave a partial file
+            # behind (it would never be applied — the size/checksum gates
             # catch it — but it wastes disk until the next download).
-            artifact_path.unlink(missing_ok=True)
+            path.unlink(missing_ok=True)
             raise
 
-        actual_size = artifact_path.stat().st_size
-        log.info("Downloaded: %s (%d bytes, expected %d)", artifact_path.name, actual_size, total)
+        actual_size = path.stat().st_size
+        log.info("Downloaded: %s (%d bytes, expected %d)", path.name, actual_size, total)
 
         if total > 0 and actual_size != total:
-            artifact_path.unlink(missing_ok=True)
+            path.unlink(missing_ok=True)
             raise RuntimeError(
                 f"Download incomplete: got {actual_size} bytes, expected {total}"
             )
 
-        return artifact_path
+        return actual_size
 
     async def _verify_checksum(self, *, checksum_url: str, artifact_path: Path,
                                artifact_name: str) -> None:

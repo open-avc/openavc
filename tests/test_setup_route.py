@@ -396,3 +396,21 @@ async def test_unclaimed_reports_setup_state(monkeypatch):
     finally:
         rest.set_engine(None)
         Path(tmp_path).unlink(missing_ok=True)
+
+
+# --- Panel software (appliance hardware only) ---
+
+
+async def test_status_has_no_panel_software_where_there_is_none(claimed, remote_client):
+    assert remote_client.get("/api/setup/status").json()["panel_software"] is None
+
+
+async def test_status_names_the_panel_software_and_an_update_waiting(claimed, remote_client):
+    claimed.state.set("system.panel_software.version", "0.3.27")
+    assert remote_client.get("/api/setup/status").json()["panel_software"] == {
+        "version": "0.3.27", "pending_version": "",
+    }
+    claimed.state.set("system.panel_software.pending_version", "0.3.28")
+    assert remote_client.get("/api/setup/status").json()["panel_software"] == {
+        "version": "0.3.27", "pending_version": "0.3.28",
+    }

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   healthProbeOutcome,
   historyEntryDisplay,
+  panelSoftwareDisplay,
   updateCompletionOutcome,
   semverLt,
 } from "./updatesHelpers";
@@ -112,5 +113,67 @@ describe("historyEntryDisplay", () => {
     const d = historyEntryDisplay({ from_version: "0.32.0", to_version: "rollback" });
     expect(d.isRollback).toBe(true);
     expect(d.label).toBe("v0.32.0 → previous version");
+  });
+});
+
+// The Panel Software section of the Updates page reads the
+// `system.panel_software.*` keys the server publishes from the panel's own
+// declaration. Absent everywhere that is not appliance hardware.
+describe("panelSoftwareDisplay", () => {
+  const base = {
+    "system.panel_software.version": "0.3.27",
+    "system.panel_software.version_code": 30,
+    "system.panel_software.install_idle_seconds": 600,
+    "system.panel_software.pending_version": "",
+    "system.panel_software.pending_install": "",
+    "system.panel_software.last_result": "",
+  };
+
+  it("is absent without panel software", () => {
+    expect(panelSoftwareDisplay({})).toBeNull();
+    expect(panelSoftwareDisplay({ "system.version": "0.40.0" })).toBeNull();
+  });
+
+  it("shows the version with nothing waiting and no history", () => {
+    expect(panelSoftwareDisplay(base)).toEqual({ version: "0.3.27", pending: null, lastResult: null });
+  });
+
+  it("says how each waiting update installs", () => {
+    const waiting = (mode: string) =>
+      panelSoftwareDisplay({
+        ...base,
+        "system.panel_software.pending_version": "0.3.28",
+        "system.panel_software.pending_install": mode,
+      })?.pending;
+    expect(waiting("when_idle")).toBe(
+      "Panel software 0.3.28 is ready. It installs by itself once nobody has touched the panel for 10 minutes.",
+    );
+    expect(waiting("held")).toBe(
+      "Panel software 0.3.28 is ready. It waits while the space is in use, then installs once nobody has touched the panel for 10 minutes.",
+    );
+    expect(waiting("at_panel")).toBe("Panel software 0.3.28 is ready. It installs when somebody starts it at the panel.");
+  });
+
+  it("reports the last attempt in the panel's own words when it did not install", () => {
+    const last = (result: string, message: string) =>
+      panelSoftwareDisplay({
+        ...base,
+        "system.panel_software.last_result": result,
+        "system.panel_software.last_result_version": "0.3.28",
+        "system.panel_software.last_result_message": message,
+        "system.panel_software.last_result_at": "2026-11-06T09:00:00Z",
+      })?.lastResult;
+    expect(last("installed", "Updated from 0.3.27.")).toEqual({
+      ok: true, text: "Updated to 0.3.28", at: "2026-11-06T09:00:00Z",
+    });
+    expect(last("refused", "The file is not signed with this panel's key.")).toEqual({
+      ok: false,
+      text: "Refused the update to 0.3.28: The file is not signed with this panel's key.",
+      at: "2026-11-06T09:00:00Z",
+    });
+    expect(last("failed", "The update did not install: the installer never reported back")?.text).toBe(
+      "The update did not install: the installer never reported back",
+    );
+    expect(last("failed", "")?.text).toBe("The update to 0.3.28 did not install.");
   });
 });

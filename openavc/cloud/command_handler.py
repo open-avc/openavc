@@ -13,7 +13,7 @@ from typing import Any, TYPE_CHECKING
 
 from openavc.cloud.protocol import (
     COMMAND, CONFIG_PUSH, RESTART, DIAGNOSTIC, SOFTWARE_UPDATE,
-    GET_PROJECT, GET_DEVICE_COMMANDS,
+    PANEL_SOFTWARE_UPDATE, GET_PROJECT, GET_DEVICE_COMMANDS,
     COMMAND_RESULT, PROJECT_DATA, DEVICE_COMMANDS_DATA,
     DIAGNOSTIC_RESULT, MAX_EMBED_BYTES,
     build_command_result_payload, build_diagnostic_result_payload,
@@ -53,6 +53,7 @@ class CommandHandler:
         apply_fn=None,
         update_manager=None,
         project_path=None,
+        panel_software=None,
     ):
         """
         Args:
@@ -65,6 +66,8 @@ class CommandHandler:
                 persists and reconciles a pushed project through the one seam.
             update_manager: Optional UpdateManager for cloud-triggered updates.
             project_path: Path to the active project.avc file.
+            panel_software: Optional PanelSoftwareUpdates for panel software
+                updates on appliance hardware.
         """
         self._agent = agent
         self._devices = devices
@@ -73,6 +76,7 @@ class CommandHandler:
         self._apply_fn = apply_fn
         self._update_manager = update_manager
         self._project_path = project_path
+        self._panel_software = panel_software
 
     async def handle(self, msg: dict[str, Any]) -> None:
         """
@@ -103,6 +107,8 @@ class CommandHandler:
                 await self._handle_diagnostic(payload, request_id, actor)
             elif msg_type == SOFTWARE_UPDATE:
                 await self._handle_software_update(payload, request_id, actor)
+            elif msg_type == PANEL_SOFTWARE_UPDATE:
+                await self._handle_panel_software_update(payload, request_id, actor)
             elif msg_type == GET_PROJECT:
                 await self._handle_get_project(payload, request_id, actor)
             elif msg_type == GET_DEVICE_COMMANDS:
@@ -465,6 +471,46 @@ class CommandHandler:
                 request_id, False,
                 error=f"Update failed: {e}",
             )
+
+    async def _handle_panel_software_update(
+        self, payload: dict[str, Any], request_id: str, actor: str
+    ) -> None:
+        """Stage a panel software update the cloud sent.
+
+        The result says whether the file is staged. The install happens later,
+        on the panel, and its outcome arrives as ``system.panel_software.*``
+        state. A refusal answers ``error`` as ``<code>: <sentence>``. Under a
+        product firmware host it is refused like a software update: firmware
+        owns every update there.
+        """
+        panel = self._panel_software
+        if panel is None:
+            await self._send_result(
+                request_id, False,
+                error="subsystem_unavailable: panel software updates are not running on this system",
+            )
+            return
+        target_version = payload.get("target_version", "")
+        log.info(f"Cloud panel software update: {actor} → version={target_version}")
+        await self._events.emit("cloud.panel_software_update", {
+            "target_version": target_version,
+            "install": payload.get("install"),
+            "user_name": payload.get("user_name", ""),
+            "user_id": payload.get("user_id", ""),
+            "request_id": request_id,
+        })
+        outcome = await panel.stage(
+            update_url=payload.get("update_url"),
+            checksum_sha256=payload.get("checksum_sha256"),
+            target_version=target_version,
+            target_version_code=payload.get("target_version_code"),
+            signer_sha256=payload.get("signer_sha256"),
+            install=payload.get("install"),
+        )
+        if outcome.success:
+            await self._send_result(request_id, True, result=outcome.message)
+        else:
+            await self._send_result(request_id, False, error=f"{outcome.code}: {outcome.message}")
 
     async def _handle_get_project(
         self, payload: dict[str, Any], request_id: str, actor: str

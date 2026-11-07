@@ -180,6 +180,7 @@ class Engine:
         self._logins_backed_up_at_start = False
         self.cloud_agent = None  # CloudAgent, initialized in start() if enabled
         self.update_manager = None  # UpdateManager, initialized in start()
+        self.panel_software = None  # PanelSoftwareUpdates, initialized in start()
         self.mdns_advertiser = None  # MDNSAdvertiser, initialized in start() if enabled
 
         # Setup-action runner (driver-declared provisioning wizards)
@@ -646,6 +647,24 @@ class Engine:
             log.exception("Update manager failed to start — continuing without updates")
             self.update_manager = None
 
+        # Panel software updates on appliance hardware. Says and does nothing
+        # on a system whose device supervisor has not declared itself.
+        if self.update_manager is not None:
+            try:
+                from openavc.updater.panel_software import PanelSoftwareUpdates
+                self.panel_software = PanelSoftwareUpdates(
+                    self.state, self.update_manager,
+                    display_settings=lambda: getattr(
+                        getattr(self.project, "settings", None), "display", None
+                    ),
+                )
+                await self.panel_software.start()
+                if self.cloud_agent and getattr(self.cloud_agent, "_command_handler", None):
+                    self.cloud_agent._command_handler._panel_software = self.panel_software
+            except Exception:
+                log.exception("Panel software updates failed to start — continuing without them")
+                self.panel_software = None
+
         log.info(
             f'Engine started — project "{self.project.project.name}" '
             f"({len(self.project.devices)} devices, "
@@ -699,6 +718,8 @@ class Engine:
         # Stop update manager
         if self.update_manager:
             await self.update_manager.stop_auto_check()
+        if self.panel_software:
+            await self.panel_software.stop()
 
         self.learned_config.stop()
 
@@ -2452,14 +2473,15 @@ class Engine:
             relay = StateRelay(self.cloud_agent, self.state)
             self.cloud_agent.set_state_relay(relay)
 
-            # At startup the update manager is still None here and is handed
-            # over when it starts; a system paired while running has it already.
+            # At startup both updaters are still None here and are handed over
+            # when they start; a system paired while running has them already.
             handler = CommandHandler(
                 self.cloud_agent, self.devices, self.events,
                 reload_fn=self.reload_project,
                 apply_fn=self.apply_project,
                 update_manager=self.update_manager,
                 project_path=self.project_path,
+                panel_software=self.panel_software,
             )
             self.cloud_agent.set_command_handler(handler)
 

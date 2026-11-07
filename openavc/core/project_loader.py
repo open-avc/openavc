@@ -739,11 +739,28 @@ class DisplaySettings(_ForwardCompatModel):
     idle_dim_wake_passes_touch: bool = False
     # Optional state key that holds the panel bright while it is truthy. A
     # meeting generates no touches, so a bare timer dims mid-presentation.
+    # The same key holds back a panel software update (updater/panel_software.py).
     idle_dim_hold_state_key: str = ""
     # The panel's normal brightness, 1..100. None means "not managed" -- the
     # panel keeps whatever its own maintenance control set, which is what
     # every panel does until somebody sets this.
     brightness_percent: int | None = None
+
+    def hold_engaged(self, state) -> bool:
+        """Whether the hold key is set and its value reads on right now: the
+        one reading of "the space is in use" this platform has.
+
+        A key nothing has written yet, or a store that cannot answer, reads
+        not-held. For the dim that is the safe side, since a touch undoes a
+        dim where a stuck hold disables the feature for good.
+        """
+        key = str(self.idle_dim_hold_state_key or "").strip()
+        if not key or state is None:
+            return False
+        try:
+            return bool(state.get(key))
+        except Exception:
+            return False
 
 
 class DeviceSettings(_ForwardCompatModel):

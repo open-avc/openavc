@@ -225,16 +225,9 @@ async def get_display_idle(
         blackout = False
 
     hold_key = str(d.idle_dim_hold_state_key or "").strip()
-    hold = False
-    if hold_key and engine is not None:
-        try:
-            hold = bool(engine.state.get(hold_key))
-        except Exception:
-            # A key nothing has written yet, or an engine still starting.
-            # Not-held is the safe reading: it dims, which anyone can undo by
-            # touching the panel, where a stuck hold silently disables the
-            # whole feature.
-            hold = False
+    # The one reading of the key, shared with panel software updates. An
+    # engine still starting reads not-held, the safe side for a dim.
+    hold = d.hold_engaged(getattr(engine, "state", None))
 
     brightness = d.brightness_percent
     if brightness is not None:

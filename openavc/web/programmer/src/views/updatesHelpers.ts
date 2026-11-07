@@ -114,3 +114,53 @@ export function historyEntryDisplay(entry: HistoryEntryLike): {
     statusLabel: STATUS_LABELS[status] ?? status,
   };
 }
+
+/**
+ * The panel software section of the Updates page, from the
+ * `system.panel_software.*` state keys. Null where there is no panel software,
+ * which is every system that is not appliance hardware.
+ */
+export interface PanelSoftwareDisplay {
+  version: string;
+  /** A sentence about an update waiting on the panel, or null. */
+  pending: string | null;
+  /** The last install attempt, or null when there has been none. */
+  lastResult: { ok: boolean; text: string; at: string } | null;
+}
+
+export function panelSoftwareDisplay(state: Record<string, unknown>): PanelSoftwareDisplay | null {
+  const version = String(state["system.panel_software.version"] ?? "");
+  if (!version) return null;
+
+  const pendingVersion = String(state["system.panel_software.pending_version"] ?? "");
+  const pendingInstall = String(state["system.panel_software.pending_install"] ?? "");
+  const idleSeconds = Number(state["system.panel_software.install_idle_seconds"] ?? 0);
+  const minutes = Math.max(1, Math.round((idleSeconds > 0 ? idleSeconds : 600) / 60));
+  const untouched = "nobody has touched the panel for " + minutes + (minutes === 1 ? " minute" : " minutes");
+  const ready = "Panel software " + (pendingVersion || "update") + " is ready.";
+  let pending: string | null = null;
+  if (pendingInstall === "when_idle") {
+    pending = ready + " It installs by itself once " + untouched + ".";
+  } else if (pendingInstall === "held") {
+    pending = ready + " It waits while the space is in use, then installs once " + untouched + ".";
+  } else if (pendingInstall === "at_panel") {
+    pending = ready + " It installs when somebody starts it at the panel.";
+  }
+
+  const result = String(state["system.panel_software.last_result"] ?? "");
+  const resultVersion = String(state["system.panel_software.last_result_version"] ?? "");
+  const message = String(state["system.panel_software.last_result_message"] ?? "");
+  const at = String(state["system.panel_software.last_result_at"] ?? "");
+  const target = resultVersion ? " to " + resultVersion : "";
+  let lastResult: PanelSoftwareDisplay["lastResult"] = null;
+  if (result === "installed") {
+    lastResult = { ok: true, text: "Updated" + target, at };
+  } else if (result === "refused") {
+    lastResult = { ok: false, text: "Refused the update" + target + (message ? ": " + message : "."), at };
+  } else if (result === "failed") {
+    // The panel's own sentence already says it did not install.
+    lastResult = { ok: false, text: message || "The update" + target + " did not install.", at };
+  }
+
+  return { version, pending, lastResult };
+}

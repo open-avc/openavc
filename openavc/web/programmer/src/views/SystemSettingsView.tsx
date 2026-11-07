@@ -10,6 +10,7 @@ import { CutOffRestartLines, CutOffSaved, CutOffWarning, type CutOffFacts } from
 import { adapterName, ownScreenOpensProgrammer, restartPlan, sameListenChoice, type RestartPlan } from "../components/system/adapterChoice";
 import { VariableKeyPicker } from "../components/shared/VariableKeyPicker";
 import { useProjectStore } from "../store/projectStore";
+import { useConnectionStore } from "../store/connectionStore";
 import { RestartProgressDialog } from "../components/shared/RestartProgressDialog";
 import { configuredOrigin, restartOrigin, runningOrigin, withHost } from "../components/shared/restartPollHelpers";
 import { showError, showSuccess } from "../store/toastStore";
@@ -459,6 +460,8 @@ export function SystemSettingsView() {
   const dimLevel = useProjectStore((s) => s.project?.settings?.display?.idle_dim_level_percent ?? 20);
   const dimWakePasses = useProjectStore((s) => s.project?.settings?.display?.idle_dim_wake_passes_touch ?? false);
   const dimHoldKey = useProjectStore((s) => s.project?.settings?.display?.idle_dim_hold_state_key ?? "");
+  // Present only on a panel whose software can be updated from the cloud.
+  const panelSoftwareUpdates = useConnectionStore((s) => !!s.liveState["system.panel_software.version"]);
   const panelBrightness = useProjectStore((s) => s.project?.settings?.display?.brightness_percent ?? null);
   const reconnectInterval = useProjectStore((s) => s.project?.settings?.devices?.reconnect_interval_seconds ?? null);
   const [ssh, setSsh] = useState<SshStatus | null>(null);
@@ -2234,7 +2237,7 @@ export function SystemSettingsView() {
               showDeviceState
               placeholder="Nothing — dim on the timer alone"
             />
-            <span style={helpText}>Optional. While this value is on, the panel never dims. A meeting in progress generates no touches, so point this at whatever the project already sets when the space is in use — a system-on variable, or a display's power state.</span>
+            <span style={helpText}>Optional. While this value is on, the panel never dims{panelSoftwareUpdates ? " and a panel software update waits to install" : ""}. A meeting in progress generates no touches, so point this at whatever the project already sets when the space is in use — a system-on variable, or a display's power state.</span>
           </div>
           <div style={toggleRow}>
             <div>
