@@ -277,6 +277,17 @@ class _AwayStatus:
         }
 
 
+@dataclass
+class _ReconnectRun:
+    """One reconnect loop's counts, kept from one attempt to the next."""
+
+    immediate: bool = False  # the first attempt goes without waiting
+    attempt: int = 0  # 0-indexed: the attempt now being made
+    # Permanent faults in a row; see _MAX_PERMANENT_FAULT_ATTEMPTS.
+    permanent_attempts: int = 0
+    noisy: bool = True  # whether this attempt is said in the log
+
+
 def _dial_target(host: Any, port: Any) -> tuple[Any, Any]:
     """The name and port the reconnect check dials for a device's host.
 
@@ -3003,176 +3014,10 @@ class DeviceManager:
         # This loop is spawned from inside the disconnect emit chain but outlives
         # it, so it must not keep being charged to it — see detach_emit_chain.
         detach_emit_chain()
-        attempt = 0
-        permanent_attempts = 0
-
+        run = _ReconnectRun(immediate=immediate)
         try:
-            while True:
-                # Check device still exists before each attempt
-                driver = self._devices.get(device_id)
-                if driver is None:
-                    log.debug(f"[{device_id}] Device removed, stopping reconnect")
-                    return
-                if self._simulation_gap(device_id) is not None:
-                    self._set_offline_reason(device_id, driver)
-                    return
-
-                # Quiet by construction: the first few attempts are the
-                # interesting ones, then a heartbeat. This loop can run for
-                # days, so a line (and a state write, which fans out over the
-                # WebSocket to every panel) per attempt would be pure noise
-                # for a number nothing counts down from any more.
-                noisy = attempt < _RECONNECT_LOG_FIRST or attempt % _RECONNECT_LOG_EVERY == 0
-                # A device asleep on purpose is silent: nothing is wrong, and
-                # it may stay asleep all night (one line said it fell asleep).
-                sleep = self._sleep.get(device_id)
-                if sleep is not None and sleep.asleep:
-                    noisy = False
-                if noisy:
-                    self.state.set(
-                        f"device.{device_id}.reconnect_attempt", attempt + 1,
-                        source="device_manager",
-                    )
-                if attempt == 0 and immediate:
-                    delay = 0.0
-                else:
-                    delay = self._reconnect_delay(device_id, attempt)
-                    if noisy:
-                        log.info(
-                            "[%s] Reconnect attempt %d in %.1fs...",
-                            device_id, attempt + 1, delay,
-                        )
-                    await asyncio.sleep(delay)
-
-                # Re-check after sleep — device may have been removed
-                if device_id not in self._devices:
-                    log.debug(f"[{device_id}] Device removed during wait, stopping reconnect")
-                    return
-
-                # Stop polling before anything else touches the transport.
-                # This sits ahead of the probe on purpose: the probe can skip
-                # the rest of the cycle, and a poll loop left running against a
-                # dead transport would then never be stopped at all — which,
-                # now that the loop has no ceiling, means never.
-                try:
-                    await driver.stop_polling()
-                except Exception:
-                    log.debug(f"[{device_id}] stop_polling failed", exc_info=True)
-
-                if self._simulation_gap(device_id) is not None:
-                    self._set_offline_reason(device_id, driver)
-                    return
-
-                # Cheap reachability first for the transports whose connect is
-                # expensive. A device that is still absent costs one short
-                # socket here instead of an ssh subprocess every few seconds.
-                failure = await self._probe_failure(device_id, driver)
-                if failure is not None:
-                    # The control port didn't answer, so the expensive connect
-                    # would only fail slower. Still classify — skipping the
-                    # attempt must not leave the device card showing a stale
-                    # reason for a device that is now simply not there — and
-                    # say what the dial found: a refused port is the service,
-                    # not the address.
-                    self._set_offline_reason(device_id, driver, exc=failure)
-                    attempt += 1
-                    continue
-
-                try:
-                    self._refresh_usb_serial_port(device_id, driver)
-                    # A device dropped because it stopped answering (its polls
-                    # or its liveness probe) is not announced again until it
-                    # answers: re-announcing it at every reconnect made its
-                    # card read connected for most of each retry and fired its
-                    # Connected/Disconnected triggers every cycle. The link
-                    # still opens, polls and probes as usual.
-                    if getattr(driver, "_dropped_for_silence", False) is True:
-                        driver._hold_next_connect = True
-                    await self._connect_driver(device_id, driver)
-                    if getattr(driver, "_held", False) is True:
-                        if noisy:
-                            log.info(
-                                "[%s] Connected; it stays offline until the "
-                                "device answers", device_id,
-                            )
-                        # A reason about a connection that has since closed
-                        # (dropped, refused) no longer holds while this one is
-                        # open; a silence verdict still does.
-                        if self.state.get(f"device.{device_id}.offline_reason") != NO_RESPONSE:
-                            self._set_offline_reason(
-                                device_id, driver, fault=held_connection_fault(),
-                            )
-                        if not await driver._wait_for_answer():
-                            # Closed again before answering. The driver kept
-                            # why (another silent verdict, or the link failing).
-                            if self._paused_for_refused_login(
-                                device_id, self._set_offline_reason(device_id, driver),
-                            ):
-                                return
-                            attempt += 1
-                            continue
-                    if not driver.get_state("connected"):
-                        # The connection dropped while the driver was still
-                        # starting up (a device that accepts one as it boots,
-                        # then resets it). connect() logs its start-up steps'
-                        # failures rather than raising, and the drop's own
-                        # handler saw this loop running and left the retry to
-                        # it, so returning here would leave the device down
-                        # with nothing retrying.
-                        if self._paused_for_refused_login(
-                            device_id, self._set_offline_reason(device_id, driver),
-                        ):
-                            return
-                        log.info(f"[{device_id}] The connection dropped while it was starting up; retrying")
-                        attempt += 1
-                        continue
-                    log.info(f"[{device_id}] Reconnected successfully")
-                    self._last_connect_at[device_id] = time.monotonic()
-                    self._clear_offline_reason(device_id)
-                    self.state.set(f"device.{device_id}.reconnect_attempt", None, source="device_manager")
-                    await self._apply_pending_settings(device_id)
-                    if not driver.get_state("connected"):
-                        # Dropped again while its settings were applied: the
-                        # same hand-off as above, one await later.
-                        if self._paused_for_refused_login(
-                            device_id, self._set_offline_reason(device_id, driver),
-                        ):
-                            return
-                        attempt += 1
-                        continue
-                    return
-                except ConnectEndedError:
-                    # A Reconnect, pause or resume ended this attempt and owns
-                    # the device now.
-                    return
-                except Exception as e:
-                    # Refine the offline reason from this attempt's failure —
-                    # the cause can change between attempts (auth vs unreachable).
-                    code = self._set_offline_reason(device_id, driver, exc=e)
-                    if noisy:
-                        log.warning(
-                            f"[{device_id}] Reconnect failed: {self._failure_text(device_id, e)}"
-                        )
-                    if self._paused_for_refused_login(device_id, code):
-                        # The device is reachable but rejecting the login. More
-                        # attempts can only trip its lockout — stop here and
-                        # wait for new credentials (an unreachable device that
-                        # comes back with bad creds lands here on the attempt
-                        # that discovers it).
-                        return
-                    if is_permanent_fault(code):
-                        # Host key, TLS trust, connection settings, missing
-                        # client: a human has to change something. Allow a
-                        # couple of tries first — a device rebooting mid-scan
-                        # can briefly present one of these — then stop, since
-                        # nothing about waiting longer will clear them.
-                        permanent_attempts += 1
-                        if permanent_attempts >= _MAX_PERMANENT_FAULT_ATTEMPTS:
-                            self._stop_reconnect_for_permanent_fault(device_id, code)
-                            return
-                    else:
-                        permanent_attempts = 0
-                    attempt += 1
+            while not await self._reconnect_attempt(device_id, run):
+                run.attempt += 1
         except asyncio.CancelledError:
             log.debug(f"[{device_id}] Reconnect cancelled")
         finally:
@@ -3182,6 +3027,200 @@ class DeviceManager:
             # with no retry at all.
             if self._reconnect_tasks.get(device_id) is asyncio.current_task():
                 self._reconnect_tasks.pop(device_id, None)
+
+    async def _reconnect_attempt(self, device_id: str, run: _ReconnectRun) -> bool:
+        """One turn of the reconnect loop: wait, check, then dial. True when
+        the loop is finished (connected, gone, or stopped for a human)."""
+        # Check device still exists before each attempt
+        driver = self._devices.get(device_id)
+        if driver is None:
+            log.debug(f"[{device_id}] Device removed, stopping reconnect")
+            return True
+        if self._stopped_for_simulation(device_id, driver):
+            return True
+        self._begin_attempt(device_id, run)
+        await self._wait_for_attempt(device_id, run)
+        # Re-check after sleep — device may have been removed
+        if device_id not in self._devices:
+            log.debug(f"[{device_id}] Device removed during wait, stopping reconnect")
+            return True
+        await self._stop_polling_for_attempt(device_id, driver)
+        if self._stopped_for_simulation(device_id, driver):
+            return True
+        # Cheap reachability first for the transports whose connect is
+        # expensive. A device that is still absent costs one short socket here
+        # instead of an ssh subprocess every few seconds.
+        failure = await self._probe_failure(device_id, driver)
+        if failure is not None:
+            # The control port didn't answer, so the expensive connect would
+            # only fail slower. Still classify — skipping the attempt must not
+            # leave the device card showing a stale reason for a device that is
+            # now simply not there — and say what the dial found: a refused
+            # port is the service, not the address.
+            self._set_offline_reason(device_id, driver, exc=failure)
+            return False
+        try:
+            return await self._dial_attempt(device_id, driver, run)
+        except ConnectEndedError:
+            # A Reconnect, pause or resume ended this attempt and owns the
+            # device now.
+            return True
+        except Exception as e:
+            return self._attempt_failed(device_id, driver, e, run)
+
+    def _stopped_for_simulation(self, device_id: str, driver: BaseDriver) -> bool:
+        """A device a running simulation has no simulator for is not dialed:
+        its card says why, and the loop ends. True when it ended."""
+        if self._simulation_gap(device_id) is None:
+            return False
+        self._set_offline_reason(device_id, driver)
+        return True
+
+    def _begin_attempt(self, device_id: str, run: _ReconnectRun) -> None:
+        """Decide whether this attempt is said, and publish its number if so.
+
+        Quiet by construction: the first few attempts are the interesting
+        ones, then a heartbeat. This loop can run for days, so a line (and a
+        state write, which fans out over the WebSocket to every panel) per
+        attempt would be pure noise for a number nothing counts down from any
+        more. A device asleep on purpose is silent: nothing is wrong, and it
+        may stay asleep all night (one line said it fell asleep).
+        """
+        attempt = run.attempt
+        run.noisy = attempt < _RECONNECT_LOG_FIRST or attempt % _RECONNECT_LOG_EVERY == 0
+        sleep = self._sleep.get(device_id)
+        if sleep is not None and sleep.asleep:
+            run.noisy = False
+        if run.noisy:
+            self.state.set(
+                f"device.{device_id}.reconnect_attempt", attempt + 1,
+                source="device_manager",
+            )
+
+    async def _wait_for_attempt(self, device_id: str, run: _ReconnectRun) -> None:
+        """Wait out the delay before this attempt; an immediate first attempt
+        does not wait at all."""
+        if run.attempt == 0 and run.immediate:
+            return
+        delay = self._reconnect_delay(device_id, run.attempt)
+        if run.noisy:
+            log.info(
+                "[%s] Reconnect attempt %d in %.1fs...",
+                device_id, run.attempt + 1, delay,
+            )
+        await asyncio.sleep(delay)
+
+    @staticmethod
+    async def _stop_polling_for_attempt(device_id: str, driver: BaseDriver) -> None:
+        """Stop polling before anything else touches the transport.
+
+        This comes ahead of the probe on purpose: the probe can skip the rest
+        of the attempt, and a poll loop left running against a dead transport
+        would then never be stopped at all — which, now that the loop has no
+        ceiling, means never.
+        """
+        try:
+            await driver.stop_polling()
+        except Exception:
+            log.debug(f"[{device_id}] stop_polling failed", exc_info=True)
+
+    async def _dial_attempt(
+        self, device_id: str, driver: BaseDriver, run: _ReconnectRun,
+    ) -> bool:
+        """Dial once. True when the loop is finished: connected and still up
+        once its start-up and queued settings have run, or paused for a
+        refused login. A connection that drops on the way is a failed attempt.
+        """
+        self._refresh_usb_serial_port(device_id, driver)
+        # A device dropped because it stopped answering (its polls or its
+        # liveness probe) is not announced again until it answers:
+        # re-announcing it at every reconnect made its card read connected for
+        # most of each retry and fired its Connected/Disconnected triggers
+        # every cycle. The link still opens, polls and probes as usual.
+        if getattr(driver, "_dropped_for_silence", False) is True:
+            driver._hold_next_connect = True
+        await self._connect_driver(device_id, driver)
+        held = getattr(driver, "_held", False) is True
+        if held and not await self._held_connection_answered(device_id, driver, run):
+            # Closed again before answering. The driver kept why (another
+            # silent verdict, or the link failing).
+            return self._paused_for_refused_login(
+                device_id, self._set_offline_reason(device_id, driver),
+            )
+        if not driver.get_state("connected"):
+            # The connection dropped while the driver was still starting up (a
+            # device that accepts one as it boots, then resets it). connect()
+            # logs its start-up steps' failures rather than raising, and the
+            # drop's own handler saw this loop running and left the retry to
+            # it, so returning here would leave the device down with nothing
+            # retrying.
+            if self._paused_for_refused_login(
+                device_id, self._set_offline_reason(device_id, driver),
+            ):
+                return True
+            log.info(f"[{device_id}] The connection dropped while it was starting up; retrying")
+            return False
+        log.info(f"[{device_id}] Reconnected successfully")
+        self._last_connect_at[device_id] = time.monotonic()
+        self._clear_offline_reason(device_id)
+        self.state.set(f"device.{device_id}.reconnect_attempt", None, source="device_manager")
+        await self._apply_pending_settings(device_id)
+        if not driver.get_state("connected"):
+            # Dropped again while its settings were applied: the same hand-off
+            # as above, one await later.
+            return self._paused_for_refused_login(
+                device_id, self._set_offline_reason(device_id, driver),
+            )
+        return True
+
+    async def _held_connection_answered(
+        self, device_id: str, driver: BaseDriver, run: _ReconnectRun,
+    ) -> bool:
+        """Wait on a held connection: True once the device answers, False when
+        the connection closes first."""
+        if run.noisy:
+            log.info(
+                "[%s] Connected; it stays offline until the device answers",
+                device_id,
+            )
+        # A reason about a connection that has since closed (dropped, refused)
+        # no longer holds while this one is open; a silence verdict still does.
+        if self.state.get(f"device.{device_id}.offline_reason") != NO_RESPONSE:
+            self._set_offline_reason(
+                device_id, driver, fault=held_connection_fault(),
+            )
+        return await driver._wait_for_answer()
+
+    def _attempt_failed(
+        self, device_id: str, driver: BaseDriver, exc: Exception, run: _ReconnectRun,
+    ) -> bool:
+        """After an attempt that raised: classify it, say it, and decide. True
+        when the loop stops."""
+        # Refine the offline reason from this attempt's failure — the cause
+        # can change between attempts (auth vs unreachable).
+        code = self._set_offline_reason(device_id, driver, exc=exc)
+        if run.noisy:
+            log.warning(
+                f"[{device_id}] Reconnect failed: {self._failure_text(device_id, exc)}"
+            )
+        if self._paused_for_refused_login(device_id, code):
+            # The device is reachable but rejecting the login. More attempts
+            # can only trip its lockout — stop here and wait for new
+            # credentials (an unreachable device that comes back with bad
+            # creds lands here on the attempt that discovers it).
+            return True
+        if not is_permanent_fault(code):
+            run.permanent_attempts = 0
+            return False
+        # Host key, TLS trust, connection settings, missing client: a human
+        # has to change something. Allow a couple of tries first — a device
+        # rebooting mid-scan can briefly present one of these — then stop,
+        # since nothing about waiting longer will clear them.
+        run.permanent_attempts += 1
+        if run.permanent_attempts < _MAX_PERMANENT_FAULT_ATTEMPTS:
+            return False
+        self._stop_reconnect_for_permanent_fault(device_id, code)
+        return True
 
     def _refresh_usb_serial_port(self, device_id: str, driver) -> None:
         """Re-resolve a usb_serial-bound adapter to its current OS path.
