@@ -6,7 +6,7 @@ wake command brings it back (a display whose standby closes its control port,
 a computer told to shut down). Without this, such a device read exactly like a
 broken one: offline with a fault reason, alerting, every control greyed.
 
-The lifecycle, driven from ``core/device_manager.py``:
+The lifecycle, driven from the device manager's away status (``core/device_away.py``):
 
 1. **Armed.** A successful send of a sleeping command arms the device. Nothing
    is published: it is still connected and says so.
