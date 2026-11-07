@@ -1,0 +1,6 @@
+OpenAVC device audit of acme-tv (unresolved)
+Started ? (UTC<offset>), OpenAVC 9.9.9
+Times are this computer's local time, UTC<offset>.
+Traffic lines are what the driver sent (tx) and handled (rx); report.json holds every byte, and the raw receive chunks before framing.
+
+<clock>  x  only one

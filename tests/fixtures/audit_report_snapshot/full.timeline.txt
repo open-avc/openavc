@@ -1,0 +1,28 @@
+OpenAVC device audit of widget.local (10.0.0.50)
+Started <date> (UTC<offset>), OpenAVC 9.9.9
+Times are this computer's local time, UTC<offset>.
+Traffic lines are what the driver sent (tx) and handled (rx); report.json holds every byte, and the raw receive chunks before framing.
+
+--:--:--.---  note              An entry with no time.
+--:--:--.---  probe             Identification check, TCP port 4000: sent nothing, reply nothing, connection reset (no match)
+<clock>  session           Audit started.
+<clock>  probe             acme_widget identification check, TCP port 23: sent "VER?\r", reply "VER=2.1\r" (matched)
+<clock>  probe             acme_other identification check, UDP port 9131: sent hex 01 02, reply nothing (no reply)
+<clock>  probe             acme_third identification check, TCP port 23: not sent, the port asked for a login (login_prompt)
+<clock>  probe             Identification check, TCP port 23: the port's greeting "Welcome", no connection of its own (no match)
+<clock>  check             Network check finished.
+<clock>  tx tcp            [Acme Widget] "POWER?\r"
+<clock>  rx tcp            [Acme Widget] 10.0.0.50:23: "POWER=ON\r"
+<clock>  rx udp            [Acme Widget] hex 00 01 ff
+<clock>  tx http           [Acme Widget] GET /status
+<clock>  rx http           [Acme Widget] 200 OK for GET /status, body "{"on":true}"
+<clock>  rx http           [Acme Widget] no response to POST /power: timed out
+<clock>  rx http_listener  [Acme Widget] request, body "x=1"
+<clock>  rx http           [Acme Widget] request
+<clock>  rx mqtt           [Acme Widget] topic acme/widget/power: "on"
+<clock>  rx tcp            [Acme Widget] nothing
+<clock>  tx file           [Acme Widget] file firmware.bin, 2.0 KB sent for Upload firmware
+<clock>  rx file           [Acme Widget] file log.txt received for a command
+<clock>  rx tcp            [Acme Widget] 4.1 KB, not recorded while a file command ran
+<clock>  tx tcp            [Acme Widget] "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA..."
+<clock>  tx serial         [Acme Other] "Q\r"

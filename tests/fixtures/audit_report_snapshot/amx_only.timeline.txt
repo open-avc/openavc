@@ -1,0 +1,5 @@
+OpenAVC device audit of 10.0.0.80 (10.0.0.80)
+Started ? (UTC<offset>), OpenAVC None
+Times are this computer's local time, UTC<offset>.
+Traffic lines are what the driver sent (tx) and handled (rx); report.json holds every byte, and the raw receive chunks before framing.
+

@@ -1,0 +1,25 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Device audit: Acme</title><style>
+:root { --fg:#1f2328; --muted:#59636e; --line:#d1d9e0; --bg:#ffffff; --panel:#f6f8fa;
+  --ok:#1a7f37; --warn:#9a6700; --bad:#cf222e; }
+@media (prefers-color-scheme: dark) { :root { --fg:#e6edf3; --muted:#9198a1; --line:#3d444d;
+  --bg:#0d1117; --panel:#151b23; --ok:#3fb950; --warn:#d29922; --bad:#f85149; } }
+* { box-sizing: border-box; }
+body { margin:0; padding:24px 16px; background:var(--bg); color:var(--fg);
+  font:15px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+main { max-width: 920px; margin: 0 auto; }
+h1 { font-size: 24px; margin: 0 0 4px; }
+h2 { font-size: 18px; margin: 28px 0 8px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+h3 { font-size: 15px; margin: 16px 0 4px; }
+.meta { color: var(--muted); margin: 0 0 16px; }
+.verdict { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 12px 16px; font-size: 17px; }
+table { border-collapse: collapse; width: 100%; margin: 4px 0 8px; }
+th, td { text-align: left; vertical-align: top; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; width: 28%; }
+code, pre { font-family: ui-monospace, Consolas, "SFMono-Regular", monospace; font-size: 13px; }
+pre { white-space: pre-wrap; word-break: break-all; background: var(--panel); padding: 8px;
+  border-radius: 6px; margin: 4px 0; }
+.matched { color: var(--ok); } .not_matched { color: var(--bad); } .not_observed { color: var(--muted); }
+ul { margin: 4px 0; padding-left: 20px; }
+footer { color: var(--muted); margin-top: 32px; font-size: 13px; }
+</style></head><body><main><h1>Device audit: Acme</h1><p class="meta">acme-tv &middot;  &middot; OpenAVC 9.9.9 on TestOS-1.0</p><div class="verdict"></div><p class="meta">Checked against 7 catalog drivers (from an earlier fetch).</p><h2>What the device reported</h2><table><tr><th>Manufacturer</th><td>Acme</td></tr></table><h2>On the network</h2><table><tr><th>Ping</th><td>could not be sent</td></tr><tr><th>MAC address</th><td>00:11:22:33:44:66 (from magic)</td></tr><tr><th>NetBIOS</th><td>ACMETV (none)</td></tr><tr><th>TCP ports (0 checked, )</th><td>open: 8001; refused: 0; no answer: 0</td></tr></table><h2>Announcements</h2><p>mDNS: none heard.</p><h3>SSDP</h3><table><tr><th>Types</th><td>none</td></tr></table><h2>SNMP</h2><p>No answer (2 communities tried).</p><h2>Driver test: Acme TV 1.0</h2><table><tr><th>Driver</th><td><code>acme_tv</code>, Python driver, built into OpenAVC</td></tr><tr><th>Device, as entered</th><td>Acme</td></tr><tr><th>Network check</th><td></td></tr></table><h3>Connect and listen</h3><p>Connected 1.0 s after starting; the device sent nothing back to 0 messages; 0 of 0 status values reported.</p><table><tr><th>First bytes sent</th><td>never</td></tr><tr><th>First reply</th><td>never</td></tr><tr><th>Traffic</th><td>0 entries (0 sent, 0 received, 0 bytes); every one is in timeline.txt and report.json</td></tr><tr><th>Front-panel check</th><td>not run</td></tr></table><h3>Power and cable</h3><p>The power cycle and cable pull tests were not run.</p><h2>About the person who ran it</h2><table><tr><th>Email</th><td>pat@example.invalid</td></tr></table><footer>The complete record is report.json, every event in order is timeline.txt, and OpenAVC's own log lines about the audit are log.txt, all in the same file as this page.</footer></main></body></html>

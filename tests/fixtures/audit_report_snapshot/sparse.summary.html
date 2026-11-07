@@ -1,0 +1,25 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Device audit: 10.0.0.60</title><style>
+:root { --fg:#1f2328; --muted:#59636e; --line:#d1d9e0; --bg:#ffffff; --panel:#f6f8fa;
+  --ok:#1a7f37; --warn:#9a6700; --bad:#cf222e; }
+@media (prefers-color-scheme: dark) { :root { --fg:#e6edf3; --muted:#9198a1; --line:#3d444d;
+  --bg:#0d1117; --panel:#151b23; --ok:#3fb950; --warn:#d29922; --bad:#f85149; } }
+* { box-sizing: border-box; }
+body { margin:0; padding:24px 16px; background:var(--bg); color:var(--fg);
+  font:15px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+main { max-width: 920px; margin: 0 auto; }
+h1 { font-size: 24px; margin: 0 0 4px; }
+h2 { font-size: 18px; margin: 28px 0 8px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+h3 { font-size: 15px; margin: 16px 0 4px; }
+.meta { color: var(--muted); margin: 0 0 16px; }
+.verdict { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 12px 16px; font-size: 17px; }
+table { border-collapse: collapse; width: 100%; margin: 4px 0 8px; }
+th, td { text-align: left; vertical-align: top; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; width: 28%; }
+code, pre { font-family: ui-monospace, Consolas, "SFMono-Regular", monospace; font-size: 13px; }
+pre { white-space: pre-wrap; word-break: break-all; background: var(--panel); padding: 8px;
+  border-radius: 6px; margin: 4px 0; }
+.matched { color: var(--ok); } .not_matched { color: var(--bad); } .not_observed { color: var(--muted); }
+ul { margin: 4px 0; padding-left: 20px; }
+footer { color: var(--muted); margin-top: 32px; font-size: 13px; }
+</style></head><body><main><h1>Device audit: 10.0.0.60</h1><p class="meta">10.0.0.60 &middot; <date> UTC<offset> &middot; OpenAVC 9.9.9 on TestOS-1.0</p><p class="meta">The network check had not finished when this report was taken.</p><div class="verdict">No driver recognized this device.</div><p class="meta">Also seen, and no catalog driver uses it: MAC address prefix 00:11:24 seen.</p><p class="meta">Checked against 0 catalog drivers (catalog unavailable).</p><h2>What the device reported</h2><table></table><h2>On the network</h2><table><tr><th>Ping</th><td>no answer</td></tr><tr><th>MAC address</th><td>not read</td></tr><tr><th>TCP ports (5 checked, common ports)</th><td>open: none; refused: 0; no answer: 2</td></tr></table><h3>What each open port sent when OpenAVC connected</h3><p>No open port sent a greeting when OpenAVC connected.</p><h2>Announcements</h2><p>The device announced nothing during the check.</p><h2>SNMP</h2><p>No answer (1 community tried).</p><footer>The complete record is report.json, every event in order is timeline.txt, and OpenAVC's own log lines about the audit are log.txt, all in the same file as this page.</footer></main></body></html>
