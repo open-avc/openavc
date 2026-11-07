@@ -1,6 +1,6 @@
-# OpenAVC v0.40.0-rc2
+# OpenAVC v0.40.0
 
-A second release candidate for 0.40.0, offered only to systems on the Beta channel. Device and plugin logins now stay on the system they were entered on: the project, its backups and exports, and the copies OpenAVC Cloud keeps hold "saved on this system" where each password was. Script code that waits on a slow call no longer holds up the rest of the system. New since the first candidate: drivers can receive the UDP packets a device sends, and on Windows an update brings the tray icon back and no longer leaves behind old update tasks that could reinstall an earlier version.
+Device and plugin logins now stay on the system they were entered on: the project, its backups and exports, and the copies OpenAVC Cloud keeps hold "saved on this system" where each password was. Script code that waits on a slow call no longer holds up the rest of the system, and drivers can receive the UDP packets a device sends. On Windows, an update now brings the tray icon back and no longer leaves behind old update tasks that could reinstall an earlier version.
 
 ## Logins
 
@@ -26,12 +26,17 @@ A second release candidate for 0.40.0, offered only to systems on the Beta chann
 
 * Drivers can listen for the UDP packets a device sends to a port set on the device, such as SNMP traps, and simulated devices send them too. The Driver Builder offers it under Push Notifications (UDP Listener).
 
+## Cloud
+
+* Fixed: a system paired to OpenAVC Cloud without restarting now installs the software updates the cloud sends it.
+
 ## Windows
 
 * Fixed: the OpenAVC icon by the clock now comes back on its own after an update.
 * Fixed: a scheduled task left by an earlier update could run again after a Windows restart and put that older version back. Updates now remove their task, and this version removes the ones earlier updates left.
 
-## Installing
+## Updating
 
+* Project format stays at 0.16.0. A project saved on this version opens on v0.39.0 and v0.38.0 without its logins, which stay on this system.
 * The Docker image can now listen on ports below 1024 with host networking, so Short URLs and devices that send to a low port (SNMP traps on 162) work there.
 * The one-line Linux install now completes on servers whose Python has no venv package.
