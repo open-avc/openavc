@@ -20,7 +20,8 @@ from openavc.core.connection_fault import (
     no_simulator_fault,
 )
 from openavc.core.device_away import DeviceAwayMixin
-from openavc.core.device_reconnect import DeviceReconnectMixin, _log_task_exception
+from openavc.core.device_reconnect import DeviceReconnectMixin
+from openavc.core.device_web_ui import DeviceWebUiMixin
 from openavc.core.pending_settings import PendingSettingsMixin
 from openavc.drivers.avcdriver_semantic import undeclared_child_type_reason
 from openavc.drivers.base import (
@@ -195,7 +196,9 @@ def _orphan_config(config: dict[str, Any]) -> dict[str, Any]:
     return {k: (SAVED_LOGIN if config.get(k) == SAVED_LOGIN else v) for k, v in masked.items()}
 
 
-class DeviceManager(DeviceAwayMixin, DeviceReconnectMixin, PendingSettingsMixin):
+class DeviceManager(
+    DeviceAwayMixin, DeviceReconnectMixin, PendingSettingsMixin, DeviceWebUiMixin,
+):
     """Manages all device driver instances."""
 
     def __init__(self, state: StateStore, events: EventBus):
@@ -221,12 +224,7 @@ class DeviceManager(DeviceAwayMixin, DeviceReconnectMixin, PendingSettingsMixin)
         # pause carried across an instance replacement has to carry the time
         # it had remaining rather than restart its term.
         self._pause_deadlines: dict[str, float] = {}
-        # Auto-detected Open Web UI URLs, keyed by device id (see web_ui_probe).
-        # Ephemeral by design — re-detected on add/connect, never persisted.
-        self._detected_web_ui_urls: dict[str, str] = {}
-        # In-flight web-UI probes, keyed by device id — holds a task reference
-        # (so it isn't GC'd) and dedupes the add-time and connect-time triggers.
-        self._web_ui_probe_tasks: dict[str, asyncio.Task] = {}
+        self._init_web_ui()
         self._init_pending()
         self._init_away()
         # Set by SimulationManager while a simulated bench is running: given a
@@ -626,10 +624,7 @@ class DeviceManager(DeviceAwayMixin, DeviceReconnectMixin, PendingSettingsMixin)
         self._device_configs.pop(device_id, None)
         # Drop the detected web UI URL so a re-add under the same id re-detects
         # (config may have changed the host/scheme), and cancel any in-flight probe.
-        self._detected_web_ui_urls.pop(device_id, None)
-        probe = self._web_ui_probe_tasks.pop(device_id, None)
-        if probe is not None:
-            probe.cancel()
+        self._forget_web_ui(device_id)
         # Nothing left to confirm a queued write against — the driver, its
         # state keys and the queue itself all go with the device.
         self._cancel_pending_confirm(device_id)
@@ -1503,9 +1498,7 @@ class DeviceManager(DeviceAwayMixin, DeviceReconnectMixin, PendingSettingsMixin)
         for device_id in list(self._pause_expiry_tasks.keys()):
             self._cancel_pause_expiry(device_id)
         # Cancel any in-flight web-UI probes so they don't outlive shutdown.
-        for task in list(self._web_ui_probe_tasks.values()):
-            task.cancel()
-        self._web_ui_probe_tasks.clear()
+        self._cancel_web_ui_probes()
         # Same for read-back watchers: a setting still unconfirmed at shutdown
         # stays queued and is re-sent on the next start, which is the answer
         # this whole mechanism exists to give.
@@ -1659,77 +1652,6 @@ class DeviceManager(DeviceAwayMixin, DeviceReconnectMixin, PendingSettingsMixin)
             if driver is None:
                 continue
             await self._prepare_bridge_for(dev_id, driver.config or {})
-
-    def _schedule_web_ui_probe(self, device_id: str) -> None:
-        """Kick off a one-shot Open Web UI probe for an auto-mode device.
-
-        Idempotent and cheap to call at add time and on every (re)connect. Skips
-        when the driver forced ``web_ui`` on or off, when a URL was already
-        detected, when the device has no host to reach, or when it's an
-        HTTP-transport device (its URL comes straight from config in the action
-        resolver — no probe needed). The detected URL is stashed on
-        ``_detected_web_ui_urls`` and surfaced by ``get_device_info``.
-
-        Skipped too while a running simulation holds the device. Connected to
-        the simulator, its host is this computer's loopback address, where
-        the probe finds whatever this computer serves (OpenAVC itself on
-        8080), and a simulated device has no web page of its own; with no
-        simulator for its driver, it is kept off its own address altogether.
-        A URL found at the device's own address before simulation started is
-        kept.
-        """
-        driver = self._devices.get(device_id)
-        if driver is None or driver.DRIVER_INFO.get("web_ui") is not None:
-            return
-        if device_id in self._detected_web_ui_urls or device_id in self._web_ui_probe_tasks:
-            return
-        if self._simulation_gap(device_id) is not None or (
-            self.redirected_to_simulator is not None and self.redirected_to_simulator(device_id)
-        ):
-            return
-        config = getattr(driver, "config", None) or {}
-        host = config.get("host")
-        if not host:
-            return
-        transport = config.get("transport") or driver.DRIVER_INFO.get("transport")
-        if transport == "http":
-            return
-        task = asyncio.create_task(self._run_web_ui_probe(device_id, str(host)))
-        self._web_ui_probe_tasks[device_id] = task
-        task.add_done_callback(lambda t, d=device_id: self._web_ui_probe_tasks.pop(d, None))
-        task.add_done_callback(_log_task_exception)
-
-    async def _run_web_ui_probe(self, device_id: str, host: str) -> None:
-        """Probe the device's host for a web UI and record any URL found."""
-        from openavc.core.web_ui_probe import probe_web_ui
-
-        url = await probe_web_ui(host)
-        # Guard against a device removed while the probe was in flight, and don't
-        # clobber a URL that arrived first (e.g. a discovery seed).
-        if url and device_id in self._devices and device_id not in self._detected_web_ui_urls:
-            self._record_web_ui_url(device_id, url)
-
-    def seed_web_ui_url(self, device_id: str, url: str) -> None:
-        """Record a web UI URL detected outside the probe (e.g. from a discovery
-        scan's already-known open ports), so the button shows immediately.
-
-        Only when the driver is in auto-detect mode (``web_ui`` unset); first
-        writer wins, so a probe already in flight doesn't override it.
-        """
-        driver = self._devices.get(device_id)
-        if driver is None or driver.DRIVER_INFO.get("web_ui") is not None:
-            return
-        if url and device_id not in self._detected_web_ui_urls:
-            self._record_web_ui_url(device_id, url)
-
-    def _record_web_ui_url(self, device_id: str, url: str) -> None:
-        """Keep a detected web UI URL for ``get_device_info`` and publish it as
-        ``device.<id>.web_ui_url``. The probe finishes after a device page has
-        fetched the device's actions, so the state change is what tells that
-        page the Open Web UI action now exists. ``remove_device`` clears the
-        key with the rest of the device's state."""
-        self._detected_web_ui_urls[device_id] = url
-        self.state.set(f"device.{device_id}.web_ui_url", url, source="device_manager")
 
     def _bridge_routed_dependents(self, bridge_id: str) -> list[str]:
         """Live device ids that route their commands through ``bridge_id`` and
