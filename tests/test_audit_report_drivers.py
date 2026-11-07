@@ -21,13 +21,13 @@ from types import SimpleNamespace
 import pytest
 
 from openavc.audit.driver_choice import DriverChoice
+from openavc.audit.limits import driver_limits
 from openavc.audit.listen import DONE, start_listen
 from openavc.audit.passes import DriverRun, set_connection
 from openavc.audit.confidence import TEST_REPORT_URL_MAX, driver_test_report, suggested_confidence
 from openavc.audit.report import (
     Redactor,
     _attempt_sentence,
-    _driver_limits,
     _traffic_text,
     build_report,
     place_driver_files,
@@ -367,7 +367,7 @@ def test_limits_for_traffic_the_audit_could_not_keep():
         index=0, choice=SimpleNamespace(identity={"name": "Acme Socket"}, driver_id="x"),
         listens=[attempt(True, None), attempt(False, 1.0)],
     )
-    limits = _driver_limits(SimpleNamespace(runs=[run], no_driver=False))
+    limits = driver_limits(SimpleNamespace(runs=[run], no_driver=False))
     assert [(x["id"], x["run"]) for x in limits] == [
         ("traffic_not_captured", 0), ("traffic_truncated", 0),
     ]
@@ -388,13 +388,13 @@ def test_a_push_the_device_never_sent_is_a_limit_naming_where(monkeypatch):
         listens=[_limit_attempt(callbacks=[url])],
     )
     use_bind("127.0.0.1")
-    [limit] = _driver_limits(SimpleNamespace(runs=[run], no_driver=False))
+    [limit] = driver_limits(SimpleNamespace(runs=[run], no_driver=False))
     assert limit["id"] == "push_never_arrived" and limit["callbacks"] == [url]
     assert limit["text"].startswith(f"Acme Speaker asked the device to send its events to {url}")
     assert "OpenAVC is not listening on 192.168.1.20" in limit["text"]
 
     use_bind("0.0.0.0")
-    [limit] = _driver_limits(SimpleNamespace(runs=[run], no_driver=False))
+    [limit] = driver_limits(SimpleNamespace(runs=[run], no_driver=False))
     assert "firewall" in limit["text"]
 
     # This computer only, with device updates received on that address by
@@ -403,11 +403,11 @@ def test_a_push_the_device_never_sent_is_a_limit_naming_where(monkeypatch):
 
     use_bind("127.0.0.1")
     monkeypatch.setattr(push_listeners, "serves", lambda host: True)
-    [limit] = _driver_limits(SimpleNamespace(runs=[run], no_driver=False))
+    [limit] = driver_limits(SimpleNamespace(runs=[run], no_driver=False))
     assert "firewall" in limit["text"]
 
     run.listens = [_limit_attempt(callbacks=[url], traffic=[heard])]
-    assert _driver_limits(SimpleNamespace(runs=[run], no_driver=False)) == []
+    assert driver_limits(SimpleNamespace(runs=[run], no_driver=False)) == []
 
 
 def test_kept_events_and_log_lines_say_when_they_stopped_keeping():
@@ -418,7 +418,7 @@ def test_kept_events_and_log_lines_say_when_they_stopped_keeping():
         listens=[_limit_attempt(counts={"unmatched_response": EVENT_DETAIL_KEPT + 1})],
     )
     log = SimpleNamespace(dropped=3, keep=5000)
-    ids = [x["id"] for x in _driver_limits(SimpleNamespace(runs=[run], no_driver=False, log=log))]
+    ids = [x["id"] for x in driver_limits(SimpleNamespace(runs=[run], no_driver=False, log=log))]
     assert ids == ["events_capped", "log_capped"]
 
 

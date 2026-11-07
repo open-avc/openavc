@@ -17,7 +17,8 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from openavc.audit.confidence import TEST_REPORT_URL_MAX, driver_test_report, suggested_confidence
-from openavc.audit.report import _driver_limits, _signal_text
+from openavc.audit.limits import driver_limits
+from openavc.audit.report import _signal_text
 
 
 def _section(**over):
@@ -422,8 +423,8 @@ def _limit_attempt(not_captured=False, truncated=None, callbacks=(), counts=None
     )
 
 
-def _outage(used):
-    return SimpleNamespace(ping={"used": used}, to_dict=lambda: {"kind": "cable_pull"})
+def _outage(used, kind="cable_pull"):
+    return SimpleNamespace(ping={"used": used}, to_dict=lambda: {"kind": kind})
 
 
 def _run(index, name, listens, outages=()):
@@ -452,9 +453,10 @@ LIMIT_CASES = {
     "every limit a connected run can have, once each": (
         SimpleNamespace(
             runs=[_run(0, "Acme Two", [
-                _limit_attempt(True, 2.0, counts={"a": 50, "b": 51}),
+                _limit_attempt(True, 0.0, counts={"a": 50, "b": 51}),
                 _limit_attempt(True, None, counts={"a": 1}),
-            ], outages=[_outage(True), _outage(False), _outage(False)])],
+            ], outages=[_outage(True, "power_cycle"), _outage(False),
+                        _outage(False, "power_cycle")])],
             log=SimpleNamespace(dropped=1, keep=5000),
         ),
         [
@@ -489,7 +491,18 @@ LIMIT_CASES = {
 @pytest.mark.parametrize("name", list(LIMIT_CASES))
 def test_the_driver_limits_are_every_one_in_order(name):
     session, expected = LIMIT_CASES[name]
-    assert _driver_limits(session) == expected
+    assert driver_limits(session) == expected
+
+
+def test_a_run_s_limits_come_in_one_order():
+    url = "http://192.168.1.20:8080/api/push/audit-x"
+    run = _run(0, "Acme Two", [
+        _limit_attempt(True, 2.0, callbacks=[url], counts={"a": 51}),
+    ], outages=[_outage(False)])
+    assert [limit["id"] for limit in driver_limits(SimpleNamespace(runs=[run]))] == [
+        "traffic_not_captured", "outage_by_marks", "traffic_truncated", "push_never_arrived",
+        "events_capped",
+    ]
 
 
 def test_a_push_limit_is_said_once_per_run(monkeypatch):
@@ -497,7 +510,7 @@ def test_a_push_limit_is_said_once_per_run(monkeypatch):
     run = _run(0, "Acme Speaker", [_limit_attempt(callbacks=[url]),
                                    _limit_attempt(callbacks=["http://other/"])])
     session = SimpleNamespace(runs=[run, _run(1, "Acme Quiet", [_limit_attempt()])])
-    limits = _driver_limits(session)
+    limits = driver_limits(session)
     assert [(x["id"], x["run"], x["callbacks"]) for x in limits] == [
         ("push_never_arrived", 0, [url]),
     ]
@@ -594,3 +607,33 @@ def test_each_signal_reads_as_the_evidence_lines_say_it(sig, text):
 def test_a_signal_without_the_verdict_s_names_names_no_driver():
     sig = _vendor(from_driver=True, supplied_by="acme_x")
     assert _signal_text(sig) == 'Manufacturer "Acme" named by the driver when its probe matched'
+
+
+class _Footprint:
+    """A network check's footprint carrying one limit of its own."""
+
+    def to_dict(self):
+        return {"limits": [{"id": "snmp_not_answered", "text": "SNMP did not answer."}]}
+
+
+def _limits_of(check_state: str) -> list[str]:
+    from openavc.audit.report import build_report
+    from openavc.audit.session import AuditOptions, AuditSession, AuditTarget
+
+    session = AuditSession("lim", AuditTarget("10.0.0.5", "10.0.0.5"), AuditOptions())
+    if check_state == "finished":
+        session.footprint = _Footprint()
+    elif check_state == "running":
+        session.check = SimpleNamespace(status="running", footprint=_Footprint())
+    return [limit["id"] for limit in build_report(session)["limits"]]
+
+
+@pytest.mark.parametrize("check_state,ids", [
+    ("not run", ["check_not_run", "no_driver_tested"]),
+    ("running", ["check_unfinished", "snmp_not_answered", "no_driver_tested"]),
+    ("finished", ["snmp_not_answered", "no_driver_tested"]),
+])
+def test_the_report_s_limits_are_the_check_s_state_then_its_own_then_the_drivers(
+    check_state, ids,
+):
+    assert _limits_of(check_state) == ids

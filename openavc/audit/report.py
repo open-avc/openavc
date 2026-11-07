@@ -251,6 +251,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from openavc.audit.confidence import device_was_silent, driver_test_report, suggested_confidence
+from openavc.audit.limits import report_limits
 from openavc.audit.redaction import Redactor, session_redactor
 from openavc.audit.report_text import (
     REPORT_CSS as _CSS,
@@ -453,80 +454,6 @@ def _driver_section(run: Any, placed: list[PlacedFile]) -> dict[str, Any]:
     }
 
 
-def _driver_limits(session: "AuditSession") -> list[dict[str, Any]]:
-    """What the driver test could not see, per run."""
-    from openavc.audit.listen import push_heard, push_unheard_text
-    from openavc.audit.observe import EVENT_DETAIL_KEPT, TRAFFIC_CAP_BYTES
-
-    runs = list(getattr(session, "runs", None) or [])
-    limits: list[dict[str, Any]] = []
-    if not any(run.listens for run in runs):
-        text = (
-            "The person said there is no driver for this device yet, so none was tested; "
-            "this report covers the network check only."
-            if getattr(session, "no_driver", False)
-            else "No driver was tested; this report covers the network check only."
-        )
-        limits.append({"id": "no_driver_tested", "text": text})
-    cap_mb = TRAFFIC_CAP_BYTES // (1024 * 1024)
-    for run in runs:
-        name = run.choice.identity.get("name") or run.choice.driver_id
-        if not run.listens:
-            limits.append({
-                "id": "driver_not_connected", "run": run.index,
-                "text": f"{name} was chosen, but the audit did not connect it.",
-            })
-            continue
-        views = [attempt.to_dict()["traffic"] for attempt in run.listens]
-        if any(v["not_captured"] for v in views):
-            limits.append({
-                "id": "traffic_not_captured", "run": run.index,
-                "text": f"{name} manages its own connection, so its traffic was not captured.",
-            })
-        for test in getattr(run, "outages", None) or []:
-            if not test.ping.get("used"):
-                limits.append({
-                    "id": "outage_by_marks", "run": run.index,
-                    "text": f"The device does not answer ping, so the times in {name}'s "
-                            f"{test.to_dict()['kind'].replace('_', ' ')} test come from the "
-                            "buttons pressed during it.",
-                })
-                break
-        if any(attempt.sandbox.observer.truncated_at is not None for attempt in run.listens):
-            limits.append({
-                "id": "traffic_truncated", "run": run.index,
-                "text": f"{name}'s traffic passed {cap_mb} MB, so the report keeps the "
-                        f"first {cap_mb} MB of it.",
-            })
-        for attempt in run.listens:
-            urls = attempt.sandbox.push_callbacks()
-            if urls and not push_heard(attempt.sandbox):
-                limits.append({
-                    "id": "push_never_arrived", "run": run.index, "callbacks": urls,
-                    "text": push_unheard_text(name, urls),
-                })
-                break
-        if any(
-            count > EVENT_DETAIL_KEPT
-            for attempt in run.listens
-            for count in attempt.sandbox.observer.event_counts.values()
-        ):
-            limits.append({
-                "id": "events_capped", "run": run.index,
-                "text": f"Where {name} did the same thing wrong more than {EVENT_DETAIL_KEPT} "
-                        "times, the report keeps the first "
-                        f"{EVENT_DETAIL_KEPT} in full and counts the rest.",
-            })
-    log_lines = getattr(session, "log", None)
-    if log_lines is not None and log_lines.dropped:
-        limits.append({
-            "id": "log_capped",
-            "text": f"OpenAVC wrote more than {log_lines.keep} log lines about this audit; "
-                    f"log.txt keeps the first {log_lines.keep}.",
-        })
-    return limits
-
-
 def generator_info() -> dict[str, Any]:
     from openavc.version import __version__
 
@@ -556,15 +483,7 @@ def build_report(session: "AuditSession") -> dict[str, Any]:
     tester = dict(getattr(session, "tester", None) or {})
     tester.pop("leave_out_serial", None)
 
-    limits = list(fp.get("limits", []))
-    if footprint is not None and not complete:
-        limits.insert(0, {
-            "id": "check_unfinished",
-            "text": "The network check had not finished when this report was taken.",
-        })
-    if footprint is None:
-        limits.insert(0, {"id": "check_not_run", "text": "The network check did not run."})
-    limits.extend(_driver_limits(session))
+    limits = report_limits(session, footprint, list(fp.get("limits", [])))
 
     network = fp.get("network") or {}
     names = fp.get("names") or {}
