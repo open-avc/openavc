@@ -907,7 +907,6 @@ class BaseDriver(ABC):
         self.transport: Any = None
         self._poll_task: asyncio.Task | None = None
         self._connected = False
-        self._last_poll_success: float = 0.0
         # When the current connect() began, and when the latest poll() that
         # returned began (stamped by __init_subclass__'s wrapper). Together
         # they tell the poll loop whether this connect already polled.
@@ -4016,8 +4015,6 @@ class BaseDriver(ABC):
         except (TypeError, ValueError):
             max_dry_polls = 3
         dry_polls = 0
-        # Seed at loop start so we don't false-positive before the first poll.
-        self._last_poll_success = time.monotonic()
 
         # The silence check (_watches_for_silence): polls in a row that sent
         # something and heard nothing back by the time the next one was due.
@@ -4093,7 +4090,6 @@ class BaseDriver(ABC):
                     parsed_before = self._parsed_count() if reading else None
                     framed_before = self._framed_count() if reading else None
                     await self.poll()
-                    self._last_poll_success = time.monotonic()
                     dry_polls = 0
                     last_poll_exc = None
                     if (
