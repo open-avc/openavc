@@ -24,6 +24,7 @@ import re
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any
 
 from openavc.core.connection_fault import (
@@ -414,6 +415,38 @@ def _verify_failure_error(
         if alone.code == fault.code:
             return ConnectionError(line)
     return not_responding
+
+
+def _httpx_errors() -> tuple[type[BaseException], ...]:
+    """The errors a poll's HTTP failure raises: httpx's, when it imports."""
+    try:
+        import httpx
+    except ImportError:
+        return ()
+    return (httpx.HTTPError,)
+
+
+@dataclass
+class _PollWatch:
+    """What BaseDriver._poll_loop carries from one cycle to the next.
+
+    ``pending`` is the last poll, for the silence check: its transport,
+    whether it sent anything, and the connection's receive count when it
+    began. ``parse_pending`` is the same poll for the unread-replies check:
+    its transport, receive count, parsed count and framed-message count when
+    it began. Each is judged when the next poll is due.
+    """
+
+    max_missed: int
+    watching: bool  # the silence check runs (_watches_for_silence)
+    reading: bool  # the unread-replies check runs (_parsed_count)
+    dry_polls: int = 0
+    last_exc: BaseException | None = None
+    silent_polls: int = 0
+    heard_cycles: int = 0
+    pending: tuple[Any, bool, int] | None = None
+    unread_cycles: int = 0
+    parse_pending: tuple[Any, int, int, int | None] | None = None
 
 
 class BaseDriver(ABC):
@@ -3587,211 +3620,292 @@ class BaseDriver(ABC):
         (_judge_reading), and nothing else: the connection stays up.
         """
         detach_emit_chain()  # a device-lifetime loop is a root, not a continuation
-        try:
-            import httpx
-            httpx_errors: tuple = (httpx.HTTPError,)
-        except ImportError:
-            httpx_errors = ()
-
-        # Clamp to >= 1: a config value of 0 (or negative, or non-numeric) would
-        # make `dry_polls >= max_dry_polls` true after the first poll and mark a
-        # healthy device disconnected. The watchdog can't be disabled by setting
-        # 0 — the minimum is one missed poll.
-        try:
-            max_dry_polls = max(int(self.config.get("max_missed_polls", 3)), 1)
-        except (TypeError, ValueError):
-            max_dry_polls = 3
-        dry_polls = 0
-
-        # The silence check (_watches_for_silence): polls in a row that sent
-        # something and heard nothing back by the time the next one was due.
-        # `pending` is the last poll the loop ran: its transport, whether it
-        # sent anything, and the connection's receive count when it began.
-        watching = self._watches_for_silence()
-        silent_polls = 0
-        heard_cycles = 0
-        pending: tuple[Any, bool, int] | None = None
-        # The unread-replies check (_parsed_count, _judge_reading): polls in
-        # a row that brought replies the driver's rules read none of. Judged
-        # like the silence check, when the next poll is due; reported, never
-        # a disconnect, so it also runs beside a liveness probe.
-        # `parse_pending` is the last poll's transport, receive count, parsed
-        # count and framed-message count when it began.
-        reading = self._parsed_count() is not None
-        unread_cycles = 0
-        parse_pending: tuple[Any, int, int, int | None] | None = None
+        httpx_errors = _httpx_errors()
+        watch = _PollWatch(
+            max_missed=self._max_missed_polls(),
+            watching=self._watches_for_silence(),
+            reading=self._parsed_count() is not None,
+        )
         # A verdict lasts while the automatic reconnect holds the device
         # offline (the warning is logged once an episode, and the sentence
         # stays in last_error); any other connection starts again, and the
         # sentence a held check left behind clears after its first clean poll.
         if not self._held:
             self._unread_replies_hold = False
-
-        last_poll_exc: BaseException | None = None
         try:
-            polled_at = self._last_poll_started_at
-            began_at = self._connect_began_at
-            if polled_at is not None and began_at is not None and polled_at >= began_at:
-                remaining = interval - (time.monotonic() - polled_at)
-                if remaining > 0:
-                    await asyncio.sleep(remaining)
+            await self._wait_after_connect_poll(interval)
             while True:
-                if parse_pending is not None:
-                    unread_cycles = self._judge_reading(
-                        parse_pending, unread_cycles, max_dry_polls,
-                    )
-                    parse_pending = None
-                if pending is not None:
-                    transport, sent, heard_before = pending
-                    pending = None
-                    now = self._io_counts()
-                    if now is not None and now[0] is transport:
-                        if now[2] > heard_before:
-                            silent_polls = 0
-                            heard_cycles += 1
-                            if heard_cycles >= 2:
-                                await self._announce_held()
-                        elif sent and not self._silence_expected():
-                            silent_polls += 1
-                    if silent_polls >= max_dry_polls:
-                        if self._held:
-                            log.info(
-                                f"[{self.device_id}] Still nothing back from "
-                                f"{silent_polls} poll cycles; closing the "
-                                f"connection to try again"
-                            )
-                        else:
-                            log.warning(
-                                f"[{self.device_id}] Nothing came back from "
-                                f"{silent_polls} poll cycles in a row; marking "
-                                f"disconnected"
-                            )
-                        self._last_fault = self._silence_fault(silent_polls)
-                        self._silence_verdict = self._last_fault
-                        self._dropped_for_silence = True
-                        self._handle_transport_disconnect()
-                        return
-                try:
-                    errors_before = self._last_error_writes
-                    before = self._io_counts() if watching or reading else None
-                    parsed_before = self._parsed_count() if reading else None
-                    framed_before = self._framed_count() if reading else None
-                    await self.poll()
-                    dry_polls = 0
-                    last_poll_exc = None
-                    if (
-                        self._last_error_writes == errors_before
-                        and not self._unread_replies_hold
-                    ):
-                        self._clear_stale_last_error()
-                    if before is not None:
-                        after = self._io_counts()
-                        if after is not None and after[0] is before[0]:
-                            if (
-                                self._held
-                                and self._connected
-                                and after[1] == before[1]
-                                and after[2] > 0
-                                and self._poll_waits_on_device()
-                            ):
-                                # Nothing goes out to answer until the
-                                # device's state changes, and the device has
-                                # answered on this connection already.
-                                await self._announce_held()
-                            if watching:
-                                pending = (
-                                    before[0], after[1] > before[1], before[2],
-                                )
-                            if parsed_before is not None:
-                                parse_pending = (
-                                    before[0], before[2], parsed_before,
-                                    framed_before,
-                                )
-                except (ConnectionError, TimeoutError, OSError) as exc:
-                    refused = typed_fault_from_exc(
-                        exc, host=self.config.get("host", ""), port=self.config.get("port"),
-                    )
-                    if refused is not None and refused.code == AUTH_FAILED:
-                        log.warning(
-                            f"[{self.device_id}] Poll refused the credential; "
-                            f"dropping the connection: {exc}"
-                        )
-                        self._last_fault = refused
-                        self._handle_transport_disconnect()
-                        return
-                    log.warning(
-                        f"[{self.device_id}] Poll failed (connection): {exc}"
-                    )
-                    dry_polls += 1
-                    last_poll_exc = exc
-                except httpx_errors as exc:
-                    log.warning(
-                        f"[{self.device_id}] Poll failed (HTTP): {exc}"
-                    )
-                    dry_polls += 1
-                    last_poll_exc = exc
-                except Exception as exc:
-                    log.exception(
-                        f"[{self.device_id}] Unexpected error during poll"
-                    )
-                    try:
-                        await self.events.emit(
-                            f"device.error.{self.device_id}",
-                            {"device_id": self.device_id, "error": str(exc)},
-                        )
-                    except Exception:
-                        log.exception(
-                            f"[{self.device_id}] Failed to emit device.error"
-                        )
-
-                if dry_polls >= max_dry_polls:
-                    log.warning(
-                        f"[{self.device_id}] No response for "
-                        f"{dry_polls} poll cycles — marking disconnected"
-                    )
-                    # Record WHY for the fault classifier: the disconnect
-                    # event carries no exception, and a silently-dead peer
-                    # leaves no transport error — without this the card
-                    # shows the generic "connection dropped". A typed fault
-                    # raised by poll() itself wins; otherwise this is the
-                    # canonical stopped-answering case.
-                    # Classify the specific cause from the last poll error when
-                    # it's more informative than the generic stopped-answering
-                    # wording: a plain ConnectionError that really means
-                    # "connection refused" should surface as connection_refused,
-                    # not no_response. The classifier's generic codes
-                    # (no_response, transport_disconnected) fall through to the
-                    # poll-cycle message below — it says the device WAS answering
-                    # and then stopped, which reads better than either.
-                    fault: ConnectionFault | None = None
-                    if last_poll_exc is not None:
-                        classified = classify_connection_fault(
-                            last_error=None,
-                            exc=last_poll_exc,
-                            host=self.config.get("host", ""),
-                            port=self.config.get("port"),
-                            transport=self.config.get("transport", ""),
-                        )
-                        if classified.code not in (
-                            NO_RESPONSE,
-                            TRANSPORT_DISCONNECTED,
-                        ):
-                            fault = classified
-                    if fault is None:
-                        fault = ConnectionFault(
-                            NO_RESPONSE,
-                            f"The device stopped answering: {dry_polls} polls "
-                            f"in a row failed.",
-                        )
-                    self._last_fault = fault
-                    if fault.code == NO_RESPONSE:
-                        self._silence_verdict = fault
-                    self._handle_transport_disconnect()
+                self._judge_last_reading(watch)
+                if await self._judge_last_silence(watch):
                     return
-
-                await self._wait_out_interval(interval, pending, heard_cycles >= 1)
+                if await self._poll_once(watch, httpx_errors):
+                    return
+                if watch.dry_polls >= watch.max_missed:
+                    self._drop_for_failed_polls(watch)
+                    return
+                await self._wait_out_interval(interval, watch.pending, watch.heard_cycles >= 1)
         except asyncio.CancelledError:
             return
+
+    def _max_missed_polls(self) -> int:
+        """The device's ``max_missed_polls``, at least 1.
+
+        A value of 0 (or negative, or non-numeric) would drop a healthy device
+        after its first poll: the watchdog cannot be turned off that way, and
+        the minimum is one missed poll.
+        """
+        try:
+            return max(int(self.config.get("max_missed_polls", 3)), 1)
+        except (TypeError, ValueError):
+            return 3
+
+    async def _wait_after_connect_poll(self, interval: float) -> None:
+        """Wait out the rest of the interval when this connect has polled
+        already: an _initial_sync that reads state was the first cycle."""
+        polled_at = self._last_poll_started_at
+        began_at = self._connect_began_at
+        if polled_at is None or began_at is None:
+            return
+        if polled_at < began_at:
+            return
+        remaining = interval - (time.monotonic() - polled_at)
+        if remaining > 0:
+            await asyncio.sleep(remaining)
+
+    def _judge_last_reading(self, watch: _PollWatch) -> None:
+        """The unread-replies check on the poll before this one (_judge_reading)."""
+        if watch.parse_pending is None:
+            return
+        watch.unread_cycles = self._judge_reading(
+            watch.parse_pending, watch.unread_cycles, watch.max_missed,
+        )
+        watch.parse_pending = None
+
+    async def _judge_last_silence(self, watch: _PollWatch) -> bool:
+        """The silence check on the poll before this one. True when it
+        dropped the connection: ``max_missed_polls`` polls in a row that
+        sent something heard nothing back."""
+        pending = watch.pending
+        if pending is None:
+            return False
+        watch.pending = None
+        await self._count_silence(watch, pending)
+        if watch.silent_polls < watch.max_missed:
+            return False
+        self._drop_for_silence(watch.silent_polls)
+        return True
+
+    async def _count_silence(self, watch: _PollWatch, pending: tuple[Any, bool, int]) -> None:
+        """Count one poll toward the silence check.
+
+        An answer since it began resets the count, and the second cycle in a
+        row that heard one announces a held connection. A poll that sent
+        something and heard nothing adds one, unless the driver expects
+        silence now (_silence_expected). A poll judged on another connection
+        than the one it went out on counts for nothing.
+        """
+        transport, sent, heard_before = pending
+        now = self._io_counts()
+        if now is None or now[0] is not transport:
+            return
+        if now[2] > heard_before:
+            watch.silent_polls = 0
+            watch.heard_cycles += 1
+            if watch.heard_cycles >= 2:
+                await self._announce_held()
+        elif sent and not self._silence_expected():
+            watch.silent_polls += 1
+
+    def _drop_for_silence(self, cycles: int) -> None:
+        """Drop a connection whose polls drew no answer, as ``no_response``.
+        The automatic reconnect then holds the device offline until it
+        answers (connect(), _announce_held)."""
+        if self._held:
+            log.info(
+                f"[{self.device_id}] Still nothing back from "
+                f"{cycles} poll cycles; closing the "
+                f"connection to try again"
+            )
+        else:
+            log.warning(
+                f"[{self.device_id}] Nothing came back from "
+                f"{cycles} poll cycles in a row; marking "
+                f"disconnected"
+            )
+        self._last_fault = self._silence_fault(cycles)
+        self._silence_verdict = self._last_fault
+        self._dropped_for_silence = True
+        self._handle_transport_disconnect()
+
+    async def _poll_once(
+        self, watch: _PollWatch, httpx_errors: tuple[type[BaseException], ...],
+    ) -> bool:
+        """Run one poll() and count what it says about the device. True when
+        that dropped the connection: the device refused the credential.
+
+        A transport-level failure (a connection error, a timeout, an OS error
+        or an httpx HTTP error) is a missed poll. Anything else is a device
+        that is reachable and misbehaving: logged and emitted as
+        ``device.error``, never counted. The bookkeeping after a clean poll
+        runs inside the same handlers, so a failure there is judged the way
+        a failing poll is.
+        """
+        try:
+            await self._poll_and_note(watch)
+        except (ConnectionError, TimeoutError, OSError) as exc:
+            if self._poll_refused_credential(exc):
+                return True
+            log.warning(
+                f"[{self.device_id}] Poll failed (connection): {exc}"
+            )
+            watch.dry_polls += 1
+            watch.last_exc = exc
+        except httpx_errors as exc:
+            log.warning(
+                f"[{self.device_id}] Poll failed (HTTP): {exc}"
+            )
+            watch.dry_polls += 1
+            watch.last_exc = exc
+        except Exception as exc:
+            log.exception(
+                f"[{self.device_id}] Unexpected error during poll"
+            )
+            await self._emit_poll_error(exc)
+        return False
+
+    async def _poll_and_note(self, watch: _PollWatch) -> None:
+        """poll(), then what a clean one leaves: the missed-poll count reset,
+        a stale last_error cleared, and its traffic kept for the next cycle's
+        silence and unread-replies checks."""
+        errors_before = self._last_error_writes
+        before = self._io_counts() if watch.watching or watch.reading else None
+        read_before = (
+            (self._parsed_count(), self._framed_count()) if watch.reading else (None, None)
+        )
+        await self.poll()
+        watch.dry_polls = 0
+        watch.last_exc = None
+        if (
+            self._last_error_writes == errors_before
+            and not self._unread_replies_hold
+        ):
+            self._clear_stale_last_error()
+        if before is not None:
+            await self._note_poll_traffic(watch, before, read_before)
+
+    async def _note_poll_traffic(
+        self, watch: _PollWatch, before: tuple[Any, int, int],
+        read_before: tuple[int | None, int | None],
+    ) -> None:
+        """Keep a clean poll's traffic for the checks the next cycle runs,
+        when it went out on the connection it began on."""
+        after = self._io_counts()
+        if after is None or after[0] is not before[0]:
+            return
+        if self._answered_while_poll_held(before, after):
+            # Nothing goes out to answer until the device's state changes,
+            # and the device has answered on this connection already.
+            await self._announce_held()
+        if watch.watching:
+            watch.pending = (before[0], after[1] > before[1], before[2])
+        parsed_before, framed_before = read_before
+        if parsed_before is not None:
+            watch.parse_pending = (before[0], before[2], parsed_before, framed_before)
+
+    def _answered_while_poll_held(
+        self, before: tuple[Any, int, int], after: tuple[Any, int, int],
+    ) -> bool:
+        """Whether a held connection's poll sent nothing because the device's
+        own state holds polling back (_poll_waits_on_device), from a device
+        that has answered on this connection already."""
+        if not (self._held and self._connected):
+            return False
+        if after[1] != before[1] or after[2] <= 0:
+            return False
+        return self._poll_waits_on_device()
+
+    def _poll_refused_credential(self, exc: BaseException) -> bool:
+        """Drop the connection when a poll failed by the device refusing the
+        credential; True when it did."""
+        refused = self._refused_credential(exc)
+        if refused is None:
+            return False
+        log.warning(
+            f"[{self.device_id}] Poll refused the credential; "
+            f"dropping the connection: {exc}"
+        )
+        self._last_fault = refused
+        self._handle_transport_disconnect()
+        return True
+
+    def _refused_credential(self, exc: BaseException) -> ConnectionFault | None:
+        """The typed ``auth_failed`` fault ``exc`` carries, or None.
+
+        A poll or a liveness probe drops the connection on the first one: the
+        device answered by refusing the credential, and asking again is what
+        trips its lockout. Untyped text that only reads like a refusal ("401
+        Unauthorized") is not one, since an expired session looks the same.
+        """
+        refused = typed_fault_from_exc(
+            exc, host=self.config.get("host", ""), port=self.config.get("port"),
+        )
+        if refused is not None and refused.code == AUTH_FAILED:
+            return refused
+        return None
+
+    async def _emit_poll_error(self, exc: BaseException) -> None:
+        """``device.error`` for a poll that failed with the device reachable."""
+        try:
+            await self.events.emit(
+                f"device.error.{self.device_id}",
+                {"device_id": self.device_id, "error": str(exc)},
+            )
+        except Exception:
+            log.exception(
+                f"[{self.device_id}] Failed to emit device.error"
+            )
+
+    def _drop_for_failed_polls(self, watch: _PollWatch) -> None:
+        """Drop the connection after ``max_missed_polls`` failed polls in a row."""
+        log.warning(
+            f"[{self.device_id}] No response for "
+            f"{watch.dry_polls} poll cycles — marking disconnected"
+        )
+        fault = self._failed_polls_fault(watch.dry_polls, watch.last_exc)
+        self._last_fault = fault
+        if fault.code == NO_RESPONSE:
+            self._silence_verdict = fault
+        self._handle_transport_disconnect()
+
+    def _failed_polls_fault(
+        self, count: int, last_exc: BaseException | None,
+    ) -> ConnectionFault:
+        """Why ``count`` failed polls in a row dropped the connection.
+
+        Recorded for the fault classifier: the disconnect event carries no
+        exception, and a silently dead peer leaves no transport error, so
+        without this the card shows the generic "connection dropped". The last
+        poll's error decides when it says more than the generic codes do (a
+        typed fault poll() raised, or a plain ConnectionError that really means
+        "connection refused"). Those generic codes, no_response and
+        transport_disconnected, give way to a sentence saying the device WAS
+        answering and then stopped, which reads better than either.
+        """
+        if last_exc is not None:
+            classified = classify_connection_fault(
+                last_error=None,
+                exc=last_exc,
+                host=self.config.get("host", ""),
+                port=self.config.get("port"),
+                transport=self.config.get("transport", ""),
+            )
+            if classified.code not in (NO_RESPONSE, TRANSPORT_DISCONNECTED):
+                return classified
+        return ConnectionFault(
+            NO_RESPONSE,
+            f"The device stopped answering: {count} polls "
+            f"in a row failed.",
+        )
 
     # --- Convenience helpers ---
 
