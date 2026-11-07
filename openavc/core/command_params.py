@@ -14,7 +14,7 @@ and Validate is the check an integrator runs before handing a room over.
 
 One rule, one home
 ------------------
-The rule itself is :func:`openavc.drivers.base.missing_required_params`, next to
+The rule itself is :func:`openavc.drivers.param_validation.missing_required_params`, next to
 the runtime gate that enforces it, so a static "this is fine" and a live refusal
 cannot come from two different readings of the same driver. What this module
 adds is the lookup around it: which driver, which command, and -- for a group --
