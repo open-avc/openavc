@@ -1452,53 +1452,92 @@ def _join(items: list[str]) -> str:
 
 def render_summary(report: dict[str, Any]) -> str:
     """``summary.html``: the report for a person, self-contained, no scripts."""
-    target = report.get("target", {})
     fp = report.get("footprint", {})
     verdict = report.get("verdict", {})
-    reported = report.get("device", {}).get("reported", {})
-    session = report.get("session", {})
-    catalog = report.get("catalog", {})
-    generator = report.get("generator", {})
+    parts = _summary_head(report) + _summary_verdict(report) + _summary_identity(report)
+    for section in (_summary_network, _summary_greetings, _summary_web, _summary_certificates,
+                    _summary_announcements, _summary_snmp):
+        parts += section(fp)
+    parts += _summary_checks(verdict)
+    for driver in report.get("drivers", []):
+        parts.extend(_render_driver(driver))
+    parts += _summary_limits(report.get("limits", []))
+    parts += _summary_tester(report.get("session", {}).get("tester") or {})
+    parts.append(_SUMMARY_FOOTER)
+    return "".join(parts)
 
+
+_SUMMARY_FOOTER = (
+    "<footer>The complete record is report.json, every event in order is "
+    "timeline.txt, and OpenAVC's own log lines about the audit are log.txt, all in "
+    "the same file as this page.</footer></main></body></html>"
+)
+
+
+def _summary_head(report: dict[str, Any]) -> list[str]:
+    """The page's head, title line and, for an unfinished check, the note saying so."""
+    target = report.get("target", {})
+    generator = report.get("generator", {})
     title = (
         " ".join(str(b) for b in device_name_parts(report) if b)
         or target.get("address") or "Device"
     )
-    started = session.get("started_at")
+    started = report.get("session", {}).get("started_at")
     when = (
         datetime.fromtimestamp(started).strftime("%Y-%m-%d %H:%M") + f" {utc_offset(started)}"
         if started else ""
     )
-    parts: list[str] = [
+    ip = target.get("ip")
+    shown_ip = " (" + _e(ip) + ")" if ip and ip != target.get("address") else ""
+    parts = [
         "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">",
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
         f"<title>Device audit: {_e(title)}</title><style>{_CSS}</style></head><body><main>",
         f"<h1>Device audit: {_e(title)}</h1>",
-        f"<p class=\"meta\">{_e(target.get('address'))}"
-        f"{' (' + _e(target.get('ip')) + ')' if target.get('ip') and target.get('ip') != target.get('address') else ''}"
+        f"<p class=\"meta\">{_e(target.get('address'))}{shown_ip}"
         f" &middot; {_e(when)} &middot; OpenAVC {_e(generator.get('openavc_version'))}"
         f" on {_e(generator.get('os'))}</p>",
     ]
     if not report.get("complete"):
         parts.append("<p class=\"meta\">The network check had not finished when this report was taken.</p>")
+    return parts
 
-    # Verdict and why.
-    parts.append(f"<div class=\"verdict\">{_e(verdict.get('sentence', ''))}</div>")
+
+_CATALOG_USED_TEXT = {
+    "fresh": "fetched for this audit",
+    "cached": "from an earlier fetch",
+    "none": "catalog unavailable",
+}
+
+
+def _summary_verdict(report: dict[str, Any]) -> list[str]:
+    """The verdict, the signals behind it, and the catalog it was checked against."""
+    verdict = report.get("verdict", {})
+    catalog = report.get("catalog", {})
     signals = (verdict.get("explanation") or {}).get("signals", [])
     names = verdict.get("drivers", {})
-    pointing = [sig for sig in signals if sig.get("drivers")]
-    # A manufacturer the driver's own probe supplied is not something the
-    # device was seen to say.
-    unused = [
-        sig for sig in signals
-        if not sig.get("drivers") and not ((sig.get("evidence") or {}).get("data") or {}).get("from_driver")
+    sha = ", index.json SHA-256 " + _e(catalog.get("sha256")) if catalog.get("sha256") else ""
+    return [
+        f"<div class=\"verdict\">{_e(verdict.get('sentence', ''))}</div>",
+        *_summary_why(signals, names),
+        f"<p class=\"meta\">Checked against {_e(catalog.get('driver_count'))} catalog drivers"
+        f" ({_e(_CATALOG_USED_TEXT.get(catalog.get('used'), ''))}){sha}.</p>",
     ]
+
+
+def _seen_on_the_device(sig: dict[str, Any]) -> bool:
+    """False for a manufacturer the driver's own probe supplied: the device
+    was not seen to say it."""
+    return not ((sig.get("evidence") or {}).get("data") or {}).get("from_driver")
+
+
+def _summary_why(signals: list[dict[str, Any]], names: dict[str, Any]) -> list[str]:
+    """Each signal that points at a driver, and the ones seen that no driver uses."""
+    pointing = [sig for sig in signals if sig.get("drivers")]
+    unused = [sig for sig in signals if not sig.get("drivers") and _seen_on_the_device(sig)]
+    parts = []
     if pointing:
-        items = []
-        for sig in pointing:
-            drivers = [str(names.get(d, {}).get("name") or d) for d in sig["drivers"]]
-            verb = "identifies" if sig.get("strong") else "suggests"
-            items.append(f"<li>{_e(_signal_text(sig, names))} {verb} {_e(_join(drivers))}</li>")
+        items = [_why_item(sig, names) for sig in pointing]
         parts.append("<h3>Why</h3><ul>" + "".join(items) + "</ul>")
     if unused:
         parts.append(
@@ -1506,233 +1545,315 @@ def render_summary(report: dict[str, Any]) -> str:
             f"{'it' if len(unused) == 1 else 'them'}: "
             + "; ".join(_e(_signal_text(sig, names)) for sig in unused) + ".</p>"
         )
-    parts.append(
-        f"<p class=\"meta\">Checked against {_e(catalog.get('driver_count'))} catalog drivers"
-        f" ({_e({'fresh': 'fetched for this audit', 'cached': 'from an earlier fetch', 'none': 'catalog unavailable'}.get(catalog.get('used'), ''))})"
-        f"{', index.json SHA-256 ' + _e(catalog.get('sha256')) if catalog.get('sha256') else ''}.</p>"
-    )
+    return parts
 
-    # Identity.
-    parts.append("<h2>What the device reported</h2><table>")
-    # The device's own name as the driver read it beats a name the network
-    # check heard, which can be an id (an mDNS instance name).
-    read_name = next((
+
+def _why_item(sig: dict[str, Any], names: dict[str, Any]) -> str:
+    drivers = [str(names.get(d, {}).get("name") or d) for d in sig["drivers"]]
+    verb = "identifies" if sig.get("strong") else "suggests"
+    return f"<li>{_e(_signal_text(sig, names))} {verb} {_e(_join(drivers))}</li>"
+
+
+_IDENTITY_ROWS = (
+    ("manufacturer", "Manufacturer"), ("model", "Model"), ("model_number", "Model number"),
+    ("firmware", "Firmware"),
+    ("serial_number", "Serial number"), ("device_name", "Name"), ("hostname", "Host name"),
+    ("mac", "MAC address"),
+)
+
+
+def _summary_identity(report: dict[str, Any]) -> list[str]:
+    """What the device reported about itself, and where each part came from."""
+    reported = report.get("device", {}).get("reported", {})
+    sources = (report.get("device") or {}).get("reported_sources", {})
+    read_name = _driver_read_name(report)
+    rows = []
+    for key, label in _IDENTITY_ROWS:
+        where = sources.get(key)
+        if key == "device_name" and read_name:
+            rows.append(_row(label, _e(_read_name_text(read_name, reported.get(key), where))))
+        elif reported.get(key):
+            rows.append(_row(label, _e(reported[key]) + (f" (from {_e(where)})" if where else "")))
+    return ["<h2>What the device reported</h2><table>", *rows, "</table>"]
+
+
+def _driver_read_name(report: dict[str, Any]) -> str | None:
+    """The device's own name as a driver read it. It beats a name the
+    network check heard, which can be an id (an mDNS instance name)."""
+    return next((
         value for section in report.get("drivers") or []
         for key, _, value in _driver_read_identity(section) if key == "device_name"
     ), None)
-    for key, label in (
-        ("manufacturer", "Manufacturer"), ("model", "Model"), ("model_number", "Model number"),
-        ("firmware", "Firmware"),
-        ("serial_number", "Serial number"), ("device_name", "Name"), ("hostname", "Host name"),
-        ("mac", "MAC address"),
-    ):
-        where = (report.get("device") or {}).get("reported_sources", {}).get(key)
-        if key == "device_name" and read_name:
-            heard = reported.get(key)
-            also = (
-                f"; {heard}" + (f" from {where}" if where else "")
-                if heard and str(heard).strip().lower() != read_name.strip().lower() else ""
-            )
-            parts.append(_row(label, _e(f"{read_name} (as the driver read it{also})")))
-        elif reported.get(key):
-            parts.append(_row(label, _e(reported[key]) + (f" (from {_e(where)})" if where else "")))
-    parts.append("</table>")
 
-    # Network.
+
+def _read_name_text(read_name: str, heard: Any, where: str | None) -> str:
+    """The name the driver read, with the one the check heard when it differs."""
+    also = (
+        f"; {heard}" + (f" from {where}" if where else "")
+        if heard and str(heard).strip().lower() != read_name.strip().lower() else ""
+    )
+    return f"{read_name} (as the driver read it{also})"
+
+
+_PING_TEXT = {"alive": "answers", "timeout": "no answer", "error": "could not be sent"}
+
+
+def _summary_network(fp: dict[str, Any]) -> list[str]:
+    """Ping, the MAC address, the names the network gave, and the TCP ports."""
     ping = fp.get("ping", {})
     ports = fp.get("ports", {})
-    mac = fp.get("mac", {})
-    netbios = (fp.get("names") or {}).get("netbios") or {}
-    parts.append("<h2>On the network</h2><table>")
-    parts.append(_row("Ping", _e(
-        {"alive": "answers", "timeout": "no answer", "error": "could not be sent"}.get(
-            ping.get("result"), ping.get("result"))
-    )))
-    parts.append(_row("MAC address", _e(
-        f"{mac.get('address')} (from {_MAC_SOURCE_TEXT.get(mac.get('source'), mac.get('source'))})"
-        if mac.get("address") else "not read"
-    )))
-    if (fp.get("names") or {}).get("reverse_dns"):
-        parts.append(_row("Reverse DNS", _e(fp["names"]["reverse_dns"])))
+    names = fp.get("names") or {}
+    netbios = names.get("netbios") or {}
+    parts = [
+        "<h2>On the network</h2><table>",
+        _row("Ping", _e(_PING_TEXT.get(ping.get("result"), ping.get("result")))),
+        _row("MAC address", _e(_mac_text(fp.get("mac", {})))),
+    ]
+    if names.get("reverse_dns"):
+        parts.append(_row("Reverse DNS", _e(names["reverse_dns"])))
     if netbios:
-        names_list = [n.get("name", "") for n in netbios.get("names", [])]
-        parts.append(_row("NetBIOS", _e(
-            f"{netbios.get('hostname')}"
-            f"{', workgroup ' + netbios['workgroup'] if netbios.get('workgroup') else ''}"
-            f" ({_join(names_list)})"
-        )))
+        parts.append(_row("NetBIOS", _e(_netbios_text(netbios))))
     parts.append(_row(
         f"TCP ports ({ports.get('checked', 0)} checked, {ports.get('range', '')})",
-        _e(
-            f"open: {_join([str(p) for p in ports.get('open', [])])}"
-            + (
-                f" ({_join([str(p) for p in ports['from_announcements']])} named in the device's "
-                "own announcement, outside the list checked)"
-                if ports.get("from_announcements") else ""
-            )
-            + f"; refused: {len(ports.get('refused', []))}; "
-            f"no answer: {len(ports.get('filtered', []))}"
-        ),
+        _e(_ports_text(ports)),
     ))
     parts.append("</table>")
+    return parts
 
-    greetings = fp.get("greetings", {})
-    spoke = {p: g for p, g in greetings.items() if g.get("text")}
-    if greetings:
-        parts.append("<h3>What each open port sent when OpenAVC connected</h3>")
-        if spoke:
-            for port, g in spoke.items():
-                parts.append(f"<p>Port {_e(port)}:</p><pre>{_e(_quote(g, 600))}</pre>")
-        else:
-            parts.append("<p>No open port sent a greeting when OpenAVC connected.</p>")
 
-    web = fp.get("web", {})
-    if web:
-        parts.append("<h3>Web pages</h3><table>")
-        for port, page in web.items():
-            bits = _page_bits(page)
-            if (page.get("tries") or 1) > 1:
-                bits.insert(1, "asked twice" if not page.get("status_line") else "answered when asked again")
-            if str(port) in {str(p) for p in ports.get("from_announcements", [])}:
-                bits.append("a port the device named in an announcement, not one the port check covers")
-            parts.append(_row(f"Port {port} ({page.get('url', '')})", _e("; ".join(bits))))
-            followed = page.get("followed")
-            if followed:
-                parts.append(_row(
-                    f"Port {port}, the page it redirects to ({followed.get('url', '')})",
-                    _e("; ".join(_page_bits(followed))),
-                ))
-        parts.append("</table>")
-    certs = fp.get("certificates", {})
-    if certs:
-        parts.append("<h3>Certificates</h3><table>")
-        for port, cert in certs.items():
-            parts.append(_row(f"Port {port}", _e(
-                f"subject {cert.get('subject')}; issuer {cert.get('issuer')}"
-                f"{' (self-signed)' if cert.get('self_signed') else ''}; "
-                f"names {_join(cert.get('san_dns', []) + cert.get('san_ip', []))}; "
-                f"valid {cert.get('not_before')} to {cert.get('not_after')}; "
-                f"SHA-256 {cert.get('sha256')}"
-            )))
-        parts.append("</table>")
+def _mac_text(mac: dict[str, Any]) -> str:
+    if not mac.get("address"):
+        return "not read"
+    return f"{mac.get('address')} (from {_MAC_SOURCE_TEXT.get(mac.get('source'), mac.get('source'))})"
 
-    parts.append("<h2>Announcements</h2>")
-    if fp.get("started_at") and fp.get("finished_at"):
-        listened = round(fp["finished_at"] - fp["started_at"])
-        parts.append(
-            f"<p class=\"meta\">The network check listened for {listened} seconds; the "
-            "listeners kept running while the audit did.</p>"
-        )
-    mdns = fp.get("mdns")
-    if not mdns and (fp.get("ssdp") or fp.get("amx_ddp")):
-        parts.append("<p>mDNS: none heard.</p>")
-    if mdns:
-        rows = []
-        for svc in mdns.get("services", []):
-            txt = ", ".join(f"{k}={v}" for k, v in (svc.get("txt") or {}).items())
-            rows.append(
-                f"<li><code>{_e(svc.get('service_type'))}</code> "
-                f"{_e(svc.get('instance_name') or '')} port {_e(svc.get('port'))}"
-                f"{' &middot; TXT ' + _e(txt) if txt else ''}</li>"
-            )
-        parts.append("<h3>mDNS</h3><ul>" + "".join(rows) + "</ul>")
-        if mdns.get("enumerated_types"):
-            parts.append(f"<p>Lists these service types: {_e(_join(mdns['enumerated_types']))}</p>")
-    ssdp = fp.get("ssdp")
-    if ssdp:
-        parts.append("<h3>SSDP</h3><table>")
-        parts.append(_row("Types", _e(_join(ssdp.get("device_types", [])))))
-        for key, label in (
-            ("friendly_name", "Name"), ("manufacturer", "Manufacturer"),
-            ("model_name", "Model"), ("model_number", "Model number"),
-            ("server", "Server header"),
-        ):
-            if ssdp.get(key):
-                parts.append(_row(label, _e(ssdp[key])))
-        # A device can announce several root devices, each with its own
-        # description; the check reads one (the last announced).
-        locations = list(dict.fromkeys(
-            [h.get("location") for h in ssdp.get("raw_headers") or [] if isinstance(h, dict)]
-            + [ssdp.get("location")]
-        ))
-        locations = [loc for loc in locations if loc]
-        if locations:
-            read = ssdp.get("location")
-            parts.append(_row(
-                "Descriptions at" if len(locations) > 1 else "Description at",
-                _e("; ".join(
-                    loc + (" (the one read)" if len(locations) > 1 and loc == read else "")
-                    for loc in locations
-                )),
-            ))
-        parts.append("</table>")
-    amx = fp.get("amx_ddp")
-    if amx:
-        parts.append("<h3>AMX DDP beacon</h3><table>")
-        for key, value in (amx.get("fields") or {}).items():
-            parts.append(_row(key, _e(value)))
-        parts.append("</table>")
-    if not (mdns or ssdp or amx):
-        parts.append("<p>The device announced nothing during the check.</p>")
 
-    snmp = fp.get("snmp", {})
-    parts.append("<h2>SNMP</h2>")
-    if snmp.get("answered"):
-        parts.append(f"<p>Answered with {_e(snmp.get('community'))}.</p><table>")
-        for key, value in (snmp.get("values") or {}).items():
-            parts.append(_row(key, _e(value)))
-        parts.append("</table>")
-        if snmp.get("walk"):
-            parts.append(
-                f"<p>{len(snmp['walk'])} values read in the full walk"
-                f"{'' if snmp.get('walk_complete') else ' (stopped at the limit)'}; "
-                "they are in report.json.</p>"
-            )
-    else:
-        tried = snmp.get("communities_tried", 0)
-        parts.append(
-            f"<p>No answer ({_e(tried)} {'community' if tried == 1 else 'communities'} tried).</p>"
-        )
+def _netbios_text(netbios: dict[str, Any]) -> str:
+    names = [n.get("name", "") for n in netbios.get("names", [])]
+    workgroup = ", workgroup " + netbios["workgroup"] if netbios.get("workgroup") else ""
+    return f"{netbios.get('hostname')}{workgroup} ({_join(names)})"
 
-    checks = verdict.get("checks", {})
-    if checks:
-        parts.append("<h2>Each driver's discovery signals against this device</h2>")
-        for driver_id, rows in checks.items():
-            name = names.get(driver_id, {}).get("name") or driver_id
-            parts.append(f"<h3>{_e(name)} <code>{_e(driver_id)}</code></h3><table>")
-            for check in rows:
-                parts.append(
-                    f"<tr><th>{_e(check.get('declared'))}</th><td>"
-                    f"<span class=\"{_e(check.get('status'))}\">{_e(check.get('status', '').replace('_', ' '))}</span>"
-                    f": {_e(check.get('detail'))}</td></tr>"
-                )
-            parts.append("</table>")
 
-    drivers = report.get("drivers", [])
-    for section in drivers:
-        parts.extend(_render_driver(section))
-
-    limits = report.get("limits", [])
-    if limits:
-        parts.append("<h2>What the audit could not see</h2><ul>")
-        parts.extend(f"<li>{_e(limit.get('text'))}</li>" for limit in limits)
-        parts.append("</ul>")
-
-    tester = session.get("tester") or {}
-    if any(tester.get(k) for k in ("name", "company", "email", "notes")):
-        parts.append("<h2>About the person who ran it</h2><table>")
-        for key, label in (("name", "Name"), ("company", "Company"), ("email", "Email"),
-                           ("notes", "Notes")):
-            if tester.get(key):
-                parts.append(_row(label, _e(tester[key])))
-        parts.append("</table>")
-
-    parts.append(
-        "<footer>The complete record is report.json, every event in order is "
-        "timeline.txt, and OpenAVC's own log lines about the audit are log.txt, all in "
-        "the same file as this page.</footer></main></body></html>"
+def _ports_text(ports: dict[str, Any]) -> str:
+    announced = (
+        f" ({_join([str(p) for p in ports['from_announcements']])} named in the device's "
+        "own announcement, outside the list checked)"
+        if ports.get("from_announcements") else ""
     )
-    return "".join(parts)
+    return (
+        f"open: {_join([str(p) for p in ports.get('open', [])])}{announced}"
+        f"; refused: {len(ports.get('refused', []))}; "
+        f"no answer: {len(ports.get('filtered', []))}"
+    )
+
+
+def _summary_greetings(fp: dict[str, Any]) -> list[str]:
+    """What each open port sent when the check connected."""
+    greetings = fp.get("greetings", {})
+    if not greetings:
+        return []
+    spoke = {p: g for p, g in greetings.items() if g.get("text")}
+    parts = ["<h3>What each open port sent when OpenAVC connected</h3>"]
+    if not spoke:
+        return parts + ["<p>No open port sent a greeting when OpenAVC connected.</p>"]
+    return parts + [f"<p>Port {_e(port)}:</p><pre>{_e(_quote(g, 600))}</pre>" for port, g in spoke.items()]
+
+
+def _summary_web(fp: dict[str, Any]) -> list[str]:
+    """Each web page the check read, and the page a redirect led to."""
+    web = fp.get("web", {})
+    if not web:
+        return []
+    announced = {str(p) for p in fp.get("ports", {}).get("from_announcements", [])}
+    parts = ["<h3>Web pages</h3><table>"]
+    for port, page in web.items():
+        parts += _web_rows(port, page, str(port) in announced)
+    parts.append("</table>")
+    return parts
+
+
+def _web_rows(port: Any, page: dict[str, Any], announced: bool) -> list[str]:
+    bits = _page_bits(page)
+    if (page.get("tries") or 1) > 1:
+        bits.insert(1, "asked twice" if not page.get("status_line") else "answered when asked again")
+    if announced:
+        bits.append("a port the device named in an announcement, not one the port check covers")
+    rows = [_row(f"Port {port} ({page.get('url', '')})", _e("; ".join(bits)))]
+    followed = page.get("followed")
+    if followed:
+        rows.append(_row(
+            f"Port {port}, the page it redirects to ({followed.get('url', '')})",
+            _e("; ".join(_page_bits(followed))),
+        ))
+    return rows
+
+
+def _summary_certificates(fp: dict[str, Any]) -> list[str]:
+    certs = fp.get("certificates", {})
+    if not certs:
+        return []
+    rows = [_row(f"Port {port}", _e(_certificate_text(cert))) for port, cert in certs.items()]
+    return ["<h3>Certificates</h3><table>", *rows, "</table>"]
+
+
+def _certificate_text(cert: dict[str, Any]) -> str:
+    return (
+        f"subject {cert.get('subject')}; issuer {cert.get('issuer')}"
+        f"{' (self-signed)' if cert.get('self_signed') else ''}; "
+        f"names {_join(cert.get('san_dns', []) + cert.get('san_ip', []))}; "
+        f"valid {cert.get('not_before')} to {cert.get('not_after')}; "
+        f"SHA-256 {cert.get('sha256')}"
+    )
+
+
+def _summary_announcements(fp: dict[str, Any]) -> list[str]:
+    """What the device announced (mDNS, SSDP, an AMX beacon), or that it announced nothing."""
+    mdns = fp.get("mdns")
+    heard = _summary_mdns(mdns) + _summary_ssdp(fp.get("ssdp")) + _summary_amx(fp.get("amx_ddp"))
+    if not heard:
+        heard = ["<p>The device announced nothing during the check.</p>"]
+    elif not mdns:
+        heard.insert(0, "<p>mDNS: none heard.</p>")
+    return ["<h2>Announcements</h2>", *_listened_line(fp), *heard]
+
+
+def _listened_line(fp: dict[str, Any]) -> list[str]:
+    if not (fp.get("started_at") and fp.get("finished_at")):
+        return []
+    listened = round(fp["finished_at"] - fp["started_at"])
+    return [
+        f"<p class=\"meta\">The network check listened for {listened} seconds; the "
+        "listeners kept running while the audit did.</p>"
+    ]
+
+
+def _summary_mdns(mdns: dict[str, Any] | None) -> list[str]:
+    if not mdns:
+        return []
+    items = "".join(_mdns_item(svc) for svc in mdns.get("services", []))
+    parts = ["<h3>mDNS</h3><ul>" + items + "</ul>"]
+    if mdns.get("enumerated_types"):
+        parts.append(f"<p>Lists these service types: {_e(_join(mdns['enumerated_types']))}</p>")
+    return parts
+
+
+def _mdns_item(svc: dict[str, Any]) -> str:
+    txt = ", ".join(f"{k}={v}" for k, v in (svc.get("txt") or {}).items())
+    return (
+        f"<li><code>{_e(svc.get('service_type'))}</code> "
+        f"{_e(svc.get('instance_name') or '')} port {_e(svc.get('port'))}"
+        f"{' &middot; TXT ' + _e(txt) if txt else ''}</li>"
+    )
+
+
+_SSDP_ROWS = (
+    ("friendly_name", "Name"), ("manufacturer", "Manufacturer"),
+    ("model_name", "Model"), ("model_number", "Model number"),
+    ("server", "Server header"),
+)
+
+
+def _summary_ssdp(ssdp: dict[str, Any] | None) -> list[str]:
+    if not ssdp:
+        return []
+    return [
+        "<h3>SSDP</h3><table>",
+        _row("Types", _e(_join(ssdp.get("device_types", [])))),
+        *(_row(label, _e(ssdp[key])) for key, label in _SSDP_ROWS if ssdp.get(key)),
+        *_ssdp_locations(ssdp),
+        "</table>",
+    ]
+
+
+def _ssdp_locations(ssdp: dict[str, Any]) -> list[str]:
+    """Where the descriptions are. A device can announce several root
+    devices, each with its own description; the check reads one (the last
+    announced)."""
+    locations = list(dict.fromkeys(
+        [h.get("location") for h in ssdp.get("raw_headers") or [] if isinstance(h, dict)]
+        + [ssdp.get("location")]
+    ))
+    locations = [loc for loc in locations if loc]
+    if not locations:
+        return []
+    read = ssdp.get("location")
+    several = len(locations) > 1
+    return [_row(
+        "Descriptions at" if several else "Description at",
+        _e("; ".join(loc + (" (the one read)" if several and loc == read else "") for loc in locations)),
+    )]
+
+
+def _summary_amx(amx: dict[str, Any] | None) -> list[str]:
+    if not amx:
+        return []
+    rows = [_row(key, _e(value)) for key, value in (amx.get("fields") or {}).items()]
+    return ["<h3>AMX DDP beacon</h3><table>", *rows, "</table>"]
+
+
+def _summary_snmp(fp: dict[str, Any]) -> list[str]:
+    snmp = fp.get("snmp", {})
+    if not snmp.get("answered"):
+        tried = snmp.get("communities_tried", 0)
+        return [
+            "<h2>SNMP</h2>",
+            f"<p>No answer ({_e(tried)} {'community' if tried == 1 else 'communities'} tried).</p>",
+        ]
+    parts = [
+        "<h2>SNMP</h2>",
+        f"<p>Answered with {_e(snmp.get('community'))}.</p><table>",
+        *(_row(key, _e(value)) for key, value in (snmp.get("values") or {}).items()),
+        "</table>",
+    ]
+    if snmp.get("walk"):
+        parts.append(
+            f"<p>{len(snmp['walk'])} values read in the full walk"
+            f"{'' if snmp.get('walk_complete') else ' (stopped at the limit)'}; "
+            "they are in report.json.</p>"
+        )
+    return parts
+
+
+def _summary_checks(verdict: dict[str, Any]) -> list[str]:
+    """Each named driver's declared discovery signals, judged against the device."""
+    checks = verdict.get("checks", {})
+    if not checks:
+        return []
+    names = verdict.get("drivers", {})
+    parts = ["<h2>Each driver's discovery signals against this device</h2>"]
+    for driver_id, rows in checks.items():
+        name = names.get(driver_id, {}).get("name") or driver_id
+        parts.append(f"<h3>{_e(name)} <code>{_e(driver_id)}</code></h3><table>")
+        parts += [_check_row(check) for check in rows]
+        parts.append("</table>")
+    return parts
+
+
+def _check_row(check: dict[str, Any]) -> str:
+    return (
+        f"<tr><th>{_e(check.get('declared'))}</th><td>"
+        f"<span class=\"{_e(check.get('status'))}\">{_e(check.get('status', '').replace('_', ' '))}</span>"
+        f": {_e(check.get('detail'))}</td></tr>"
+    )
+
+
+def _summary_limits(limits: list[dict[str, Any]]) -> list[str]:
+    if not limits:
+        return []
+    return [
+        "<h2>What the audit could not see</h2><ul>",
+        *(f"<li>{_e(limit.get('text'))}</li>" for limit in limits),
+        "</ul>",
+    ]
+
+
+_TESTER_ROWS = (("name", "Name"), ("company", "Company"), ("email", "Email"), ("notes", "Notes"))
+
+
+def _summary_tester(tester: dict[str, Any]) -> list[str]:
+    rows = [_row(label, _e(tester[key])) for key, label in _TESTER_ROWS if tester.get(key)]
+    if not rows:
+        return []
+    return ["<h2>About the person who ran it</h2><table>", *rows, "</table>"]
 
 
 _SOURCE_TEXT = {
