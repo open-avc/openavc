@@ -15,6 +15,7 @@ import contextlib
 import random
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 from urllib.parse import urlsplit
 
@@ -246,6 +247,33 @@ _MAX_RESTART_WINDOW_SECONDS = 600.0
 # Bounded by the site's own interval where that is already tighter (see
 # _reconnect_delay for why this one case earns a shorter wait at all).
 _RESTART_RECONNECT_INTERVAL = 2.0
+
+
+@dataclass(frozen=True)
+class _AwayStatus:
+    """Why a device is away, as the five ``device.<id>.`` keys that say it.
+
+    Each status a device moves to (a fault, a commanded-restart window,
+    asleep, back online) is written as all five at once, so none is left
+    over from the status it moved from: a fault published after a window
+    leaves no ``restarting``, a device that wakes keeps no ``wake_command``.
+    The default is the device back online, all five cleared.
+    """
+
+    restarting: bool | None = None
+    asleep: bool | None = None
+    wake_command: str | None = None
+    offline_reason: str | None = None
+    offline_detail: str | None = None
+
+    def state_keys(self, device_id: str) -> dict[str, Any]:
+        return {
+            f"device.{device_id}.restarting": self.restarting,
+            f"device.{device_id}.asleep": self.asleep,
+            f"device.{device_id}.wake_command": self.wake_command,
+            f"device.{device_id}.offline_reason": self.offline_reason,
+            f"device.{device_id}.offline_detail": self.offline_detail,
+        }
 
 
 def _dial_target(host: Any, port: Any) -> tuple[Any, Any]:
@@ -1010,18 +1038,12 @@ class DeviceManager:
         if self.state.get(f"device.{device_id}.connected"):
             return
         remaining = self.restart_seconds_left(device_id)
-        self.state.set_batch(
-            {
-                f"device.{device_id}.asleep": None,
-                f"device.{device_id}.wake_command": None,
-                f"device.{device_id}.restarting": True if remaining is not None else None,
-                f"device.{device_id}.offline_reason": None,
-                f"device.{device_id}.offline_detail": (
-                    restarting_message(remaining, waking=True) if remaining is not None else None
-                ),
-            },
-            source="device_manager",
-        )
+        self._publish_status(device_id, _AwayStatus(
+            restarting=True if remaining is not None else None,
+            offline_detail=(
+                restarting_message(remaining, waking=True) if remaining is not None else None
+            ),
+        ))
 
     def sleep_of(self, device_id: str):
         """The device's sleep (core/device_sleep.Sleep), or None."""
@@ -2291,18 +2313,12 @@ class DeviceManager:
         # published about it.
         remaining = self.restart_seconds_left(device_id)
         if remaining is not None and not is_permanent_fault(fault.code):
-            self.state.set_batch(
-                {
-                    f"device.{device_id}.restarting": True,
-                    f"device.{device_id}.asleep": None,
-                    f"device.{device_id}.wake_command": None,
-                    f"device.{device_id}.offline_reason": None,
-                    f"device.{device_id}.offline_detail": restarting_message(
-                        remaining, waking=device_id in self._waking,
-                    ),
-                },
-                source="device_manager",
-            )
+            self._publish_status(device_id, _AwayStatus(
+                restarting=True,
+                offline_detail=restarting_message(
+                    remaining, waking=device_id in self._waking,
+                ),
+            ))
             return fault.code
         self._end_restart_window(device_id)
         # A device we put to sleep (sleeps_device) is asleep, not faulty, for
@@ -2318,27 +2334,15 @@ class DeviceManager:
                 if not sleep.asleep:
                     log.info("[%s] Asleep; %s wakes it", device_id, sleep.wake_label)
                 self._sleep.mark_asleep(device_id)
-                self.state.set_batch(
-                    {
-                        f"device.{device_id}.asleep": True,
-                        f"device.{device_id}.wake_command": sleep.wake,
-                        f"device.{device_id}.restarting": None,
-                        f"device.{device_id}.offline_reason": None,
-                        f"device.{device_id}.offline_detail": asleep_message(sleep.wake_label),
-                    },
-                    source="device_manager",
-                )
+                self._publish_status(device_id, _AwayStatus(
+                    asleep=True,
+                    wake_command=sleep.wake,
+                    offline_detail=asleep_message(sleep.wake_label),
+                ))
                 return fault.code
-        self.state.set_batch(
-            {
-                f"device.{device_id}.restarting": None,
-                f"device.{device_id}.asleep": None,
-                f"device.{device_id}.wake_command": None,
-                f"device.{device_id}.offline_reason": fault.code,
-                f"device.{device_id}.offline_detail": fault.message,
-            },
-            source="device_manager",
-        )
+        self._publish_status(device_id, _AwayStatus(
+            offline_reason=fault.code, offline_detail=fault.message,
+        ))
         return fault.code
 
     def _driver_id(self, device_id: str, driver: BaseDriver | None) -> str | None:
@@ -2355,16 +2359,11 @@ class DeviceManager:
         """
         self._end_restart_window(device_id)
         self._sleep.end(device_id)
-        self.state.set_batch(
-            {
-                f"device.{device_id}.restarting": None,
-                f"device.{device_id}.asleep": None,
-                f"device.{device_id}.wake_command": None,
-                f"device.{device_id}.offline_reason": None,
-                f"device.{device_id}.offline_detail": None,
-            },
-            source="device_manager",
-        )
+        self._publish_status(device_id, _AwayStatus())
+
+    def _publish_status(self, device_id: str, status: _AwayStatus) -> None:
+        """Write why a device is away, all five keys in one batch."""
+        self.state.set_batch(status.state_keys(device_id), source="device_manager")
 
     def _pause_reconnect_for_auth(self, device_id: str) -> None:
         """Hold auto-reconnect after a credential rejection.
@@ -2706,16 +2705,9 @@ class DeviceManager:
         # window this device happened to have open: no amount of waiting for
         # this device to finish booting fixes the one carrying its traffic.
         self._end_restart_window(device_id)
-        self.state.set_batch(
-            {
-                f"device.{device_id}.restarting": None,
-                f"device.{device_id}.asleep": None,
-                f"device.{device_id}.wake_command": None,
-                f"device.{device_id}.offline_reason": fault.code,
-                f"device.{device_id}.offline_detail": fault.message,
-            },
-            source="device_manager",
-        )
+        self._publish_status(device_id, _AwayStatus(
+            offline_reason=fault.code, offline_detail=fault.message,
+        ))
 
     def _simulation_gap(self, device_id: str) -> str | None:
         return self.unsimulated_driver(device_id) if self.unsimulated_driver else None
