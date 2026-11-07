@@ -14,6 +14,7 @@ import subprocess
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from xml.sax.saxutils import escape as xml_escape
 
 from openavc.utils.spawn import CREATE_NO_WINDOW
 
@@ -66,6 +67,81 @@ def clear_stale_rollback_marker(data_dir: Path) -> bool:
     return True
 
 
+#: Every task the updater registers is named with this, then the version.
+UPDATE_TASK_PREFIX = "OpenAVCUpdate-"
+
+#: How long the leftover-task cleanup may take before startup goes on without it.
+LEFTOVER_TASKS_TIMEOUT_SECONDS = 30
+
+
+def _system32(program: str) -> str:
+    root = os.environ.get("SystemRoot") or r"C:\Windows"
+    return str(Path(root) / "System32" / program)
+
+
+def _schtasks() -> str:
+    return _system32("schtasks.exe")
+
+
+# Every OpenAVCUpdate-* task in the root folder that is not running, removed
+# one at a time; State is an enum, the same in every language, where
+# schtasks' Status column is translated. One line out per task.
+_LEFTOVER_TASKS_SCRIPT = (
+    "Get-ScheduledTask -TaskPath '\\' -TaskName '" + UPDATE_TASK_PREFIX + "*' "
+    "-ErrorAction SilentlyContinue | Where-Object { $_.State -ne 'Running' } | "
+    "ForEach-Object { $name = $_.TaskName; try { "
+    "Unregister-ScheduledTask -TaskName $name -TaskPath $_.TaskPath -Confirm:$false "
+    "-ErrorAction Stop; 'removed ' + $name } catch { 'kept ' + $name + ': ' + "
+    "$_.Exception.Message } }"
+)
+
+
+def remove_leftover_update_tasks() -> list[str]:
+    """Delete the update tasks earlier runs left registered; return their names.
+
+    Every task named ``OpenAVCUpdate-*`` that is not running goes, whatever
+    version or test made it: updaters before this one never deleted theirs,
+    so an install updated in-app several times holds one per update, each
+    pointing at a cached installer, and a restart can run them again
+    (``_launch_installer_via_scheduler``). A running one is kept: at the
+    first start after an update it is the installer that just started this
+    server, and its own last action deletes it.
+
+    Called at startup before anything can schedule a task (the automatic
+    rollback does), and on Windows installs only. Nothing it meets can stop
+    the server starting: every failure is logged and the list comes back
+    short.
+    """
+    if sys.platform != "win32":
+        return []
+    # PSModulePath left out, as installer_signature.read_signature does.
+    env = {k: v for k, v in os.environ.items() if k.upper() != "PSMODULEPATH"}
+    try:
+        result = subprocess.run(
+            [_system32(r"WindowsPowerShell\v1.0\powershell.exe"), "-NoLogo", "-NoProfile",
+             "-NonInteractive", "-Command", _LEFTOVER_TASKS_SCRIPT],
+            capture_output=True, timeout=LEFTOVER_TASKS_TIMEOUT_SECONDS, env=env,
+            creationflags=CREATE_NO_WINDOW,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        log.warning("Could not look for leftover update tasks: %s", e)
+        return []
+    removed = []
+    for line in result.stdout.decode("utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if line.startswith("removed "):
+            removed.append(line[len("removed "):])
+        elif line.startswith("kept "):
+            log.warning("Could not delete leftover update task %s", line[len("kept "):])
+    if result.returncode != 0:
+        log.warning(
+            "Looking for leftover update tasks ended with code %d", result.returncode,
+        )
+    if removed:
+        log.info("Deleted %d leftover update task(s): %s", len(removed), ", ".join(removed))
+    return removed
+
+
 def _launch_installer_via_scheduler(installer: Path, label: str) -> bool:
     """Schedule a one-time Windows task to run the installer ~15s from now.
 
@@ -81,9 +157,21 @@ def _launch_installer_via_scheduler(installer: Path, label: str) -> bool:
         trigger is silently skipped forever
       - RunLevel via /ru SYSTEM defaults to LeastPrivilege, which can prevent
         the installer from running with full admin rights
+
+    The task's last action deletes the task. Left registered, a one-time
+    task with StartWhenAvailable can be run again as a missed start: on one
+    Windows install a restart had Task Scheduler run every update task it
+    still held, and the oldest installer to finish put that version back in
+    place of the current one. The delete runs whether the installer
+    succeeded, failed or was missing. The trigger has no end, because one
+    that expired before the task could run (the machine slept straight
+    after scheduling it) would leave the server exited with nothing to
+    install. A task this action did not get to delete is removed by
+    ``remove_leftover_update_tasks`` at the next start.
     """
     run_at = (datetime.now() + timedelta(seconds=15)).strftime("%Y-%m-%dT%H:%M:%S")
-    task_name = f"OpenAVCUpdate-{label}"
+    task_name = f"{UPDATE_TASK_PREFIX}{label}"
+    delete_task = xml_escape(f'/delete /f /tn "{task_name}"')
 
     xml = f'''<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
@@ -115,6 +203,10 @@ def _launch_installer_via_scheduler(installer: Path, label: str) -> bool:
     <Exec>
       <Command>{installer}</Command>
       <Arguments>/VERYSILENT /SUPPRESSMSGBOXES /NORESTART</Arguments>
+    </Exec>
+    <Exec>
+      <Command>{_schtasks()}</Command>
+      <Arguments>{delete_task}</Arguments>
     </Exec>
   </Actions>
 </Task>'''

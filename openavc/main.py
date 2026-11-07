@@ -162,6 +162,15 @@ async def _initialize_engine(app: FastAPI) -> None:
         from openavc.updater.host import get_firmware_host
         firmware_host = get_firmware_host()
         if not firmware_host:
+            # Windows: delete the update tasks earlier versions left registered,
+            # which a restart can run again, installing an old version. First,
+            # before the automatic rollback below can schedule a task of its own.
+            if sys.platform == "win32":
+                from openavc.updater.platform import DeploymentType, detect_deployment_type
+                if detect_deployment_type() == DeploymentType.WINDOWS_INSTALLER:
+                    from openavc.updater.rollback import remove_leftover_update_tasks
+                    remove_leftover_update_tasks()
+
             # Check if automatic rollback is needed (failed update crash detection)
             from openavc.updater.rollback import check_rollback_needed
             data_dir = get_system_config().data_dir
