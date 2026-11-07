@@ -12,9 +12,10 @@ import hashlib
 import json
 import logging
 import shutil
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from openavc.updater.checker import ReleaseInfo, UpdateChecker
 from openavc.updater.platform import (
@@ -355,31 +356,8 @@ class UpdateManager:
         if path.exists():
             path.unlink()
 
-        downloaded = 0
-        total = 0
         try:
-            async with internet_client(timeout=300.0, follow_redirects=True) as client:
-                async with client.stream("GET", url) as response:
-                    response.raise_for_status()
-                    total = int(response.headers.get("content-length", 0))
-                    if max_bytes is not None and total > max_bytes:
-                        raise RuntimeError(
-                            f"the file is {total} bytes, over the {max_bytes}-byte limit"
-                        )
-
-                    with open(path, "wb") as f:
-                        async for chunk in response.aiter_bytes(chunk_size=65536):
-                            downloaded += len(chunk)
-                            if max_bytes is not None and downloaded > max_bytes:
-                                raise RuntimeError(
-                                    f"the file is over the {max_bytes}-byte limit"
-                                )
-                            # to_thread: a 64KB write stalls on slow media
-                            # (SD cards) and this loop runs for the whole
-                            # artifact
-                            await asyncio.to_thread(f.write, chunk)
-                            if progress is not None and total > 0:
-                                progress(min(int(downloaded * 100 / total), 99))
+            total = await _Download(url, path, progress, max_bytes).stream()
         except BaseException:
             # A mid-stream error/cancellation must not leave a partial file
             # behind (it would never be applied — the size/checksum gates
@@ -1350,3 +1328,45 @@ class UpdateManager:
         # Check for connected WebSocket clients (Programmer or Panel)
         ws_count = self._state.get("system.ws_clients", 0)
         return isinstance(ws_count, int) and ws_count > 0
+
+
+@dataclass(frozen=True)
+class _Download:
+    """The GET behind ``UpdateManager.download_to``."""
+
+    url: str
+    path: Path
+    progress: Callable[[int], None] | None
+    max_bytes: int | None
+
+    async def stream(self) -> int:
+        """Write the response body to ``path``. Returns the size the server
+        announced, 0 when it announced none."""
+        async with internet_client(timeout=300.0, follow_redirects=True) as client:
+            async with client.stream("GET", self.url) as response:
+                response.raise_for_status()
+                total = self._announced(response)
+                await self._write(response, total)
+        return total
+
+    def _announced(self, response) -> int:
+        total = int(response.headers.get("content-length", 0))
+        if self.max_bytes is not None and total > self.max_bytes:
+            raise RuntimeError(
+                f"the file is {total} bytes, over the {self.max_bytes}-byte limit"
+            )
+        return total
+
+    async def _write(self, response, total: int) -> None:
+        downloaded = 0
+        with open(self.path, "wb") as f:
+            async for chunk in response.aiter_bytes(chunk_size=65536):
+                downloaded += len(chunk)
+                if self.max_bytes is not None and downloaded > self.max_bytes:
+                    raise RuntimeError(f"the file is over the {self.max_bytes}-byte limit")
+                # to_thread: a 64KB write stalls on slow media
+                # (SD cards) and this loop runs for the whole
+                # artifact
+                await asyncio.to_thread(f.write, chunk)
+                if self.progress is not None and total > 0:
+                    self.progress(min(int(downloaded * 100 / total), 99))

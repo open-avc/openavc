@@ -105,10 +105,8 @@ class CommandHandler:
                 await self._handle_restart(payload, request_id, actor)
             elif msg_type == DIAGNOSTIC:
                 await self._handle_diagnostic(payload, request_id, actor)
-            elif msg_type == SOFTWARE_UPDATE:
-                await self._handle_software_update(payload, request_id, actor)
-            elif msg_type == PANEL_SOFTWARE_UPDATE:
-                await self._handle_panel_software_update(payload, request_id, actor)
+            elif msg_type in (SOFTWARE_UPDATE, PANEL_SOFTWARE_UPDATE):
+                await self._handle_update(msg_type, payload, request_id, actor)
             elif msg_type == GET_PROJECT:
                 await self._handle_get_project(payload, request_id, actor)
             elif msg_type == GET_DEVICE_COMMANDS:
@@ -471,6 +469,16 @@ class CommandHandler:
                 request_id, False,
                 error=f"Update failed: {e}",
             )
+
+    async def _handle_update(
+        self, msg_type: str, payload: dict[str, Any], request_id: str, actor: str
+    ) -> None:
+        """An update for OpenAVC itself (software_update) or for the panel
+        software on appliance hardware (panel_software_update)."""
+        if msg_type == PANEL_SOFTWARE_UPDATE:
+            await self._handle_panel_software_update(payload, request_id, actor)
+        else:
+            await self._handle_software_update(payload, request_id, actor)
 
     async def _handle_panel_software_update(
         self, payload: dict[str, Any], request_id: str, actor: str

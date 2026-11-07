@@ -130,7 +130,9 @@ class Declaration:
         in ``folder`` and neither is a link; None otherwise."""
         update = _declared_file(folder, self.update_file)
         request = _declared_file(folder, self.request_file)
-        if update is None or request is None or update.name == request.name:
+        if update is None or request is None:
+            return None
+        if update.name == request.name:
             return None
         return update, request
 
@@ -150,9 +152,10 @@ def _text(value: Any) -> str:
 
 
 def _positive_int(value: Any) -> int | None:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+    # A bool is an int to Python, and never a count.
+    if isinstance(value, bool) or not isinstance(value, int):
         return None
-    return value
+    return value if value > 0 else None
 
 
 def _signer_set(value: Any) -> frozenset[str]:
@@ -166,24 +169,33 @@ def _signer_set(value: Any) -> frozenset[str]:
     return frozenset(parts)
 
 
-def _declared_file(folder: Path, raw: str) -> Path | None:
+def _reserved_name(name: str) -> bool:
+    """The declaration's own name, or a name a file has only while it is written."""
+    return name == DECLARATION_NAME or name.endswith((PARTIAL_SUFFIX, ".tmp"))
+
+
+def _absolute_path(raw: str) -> Path | None:
     if not raw:
         return None
     declared = Path(raw)
-    if not declared.is_absolute():
+    return declared if declared.is_absolute() else None
+
+
+def _directly_in(folder: Path, declared: Path) -> bool:
+    try:
+        return declared.parent.resolve() == folder.resolve()
+    except OSError:
+        return False
+
+
+def _declared_file(folder: Path, raw: str) -> Path | None:
+    declared = _absolute_path(raw)
+    if declared is None:
         return None
     name = declared.name
-    if (
-        name == DECLARATION_NAME
-        or name.endswith(PARTIAL_SUFFIX)
-        or name.endswith(".tmp")
-        or plain_file_in(folder, name) is None
-    ):
+    if _reserved_name(name) or plain_file_in(folder, name) is None:
         return None
-    try:
-        if declared.parent.resolve() != folder.resolve():
-            return None
-    except OSError:
+    if not _directly_in(folder, declared):
         return None
     target = folder / name
     if is_link(folder) or is_link(target):
@@ -191,14 +203,30 @@ def _declared_file(folder: Path, raw: str) -> Path | None:
     return target
 
 
-def parse_declaration(text: str) -> Declaration:
-    """Read a declaration's text. Raises DeclarationError when it cannot be used."""
+def _partial(update_file: Path) -> Path:
+    """Where a download is written until its hash matches."""
+    return update_file.with_name(update_file.name + PARTIAL_SUFFIX)
+
+
+def _json_object(text: str) -> dict:
     try:
         data = json.loads(text)
     except ValueError as e:
         raise DeclarationError("is not valid JSON") from e
     if not isinstance(data, dict):
         raise DeclarationError("is not a JSON object")
+    return data
+
+
+def _path_field(data: dict, key: str) -> str:
+    """A declared path as written, or "" when it is not text."""
+    value = data.get(key)
+    return value if isinstance(value, str) else ""
+
+
+def parse_declaration(text: str) -> Declaration:
+    """Read a declaration's text. Raises DeclarationError when it cannot be used."""
+    data = _json_object(text)
     if data.get("schema") != DECLARATION_SCHEMA:
         raise DeclarationError(
             f"has schema {data.get('schema')!r}; this version reads schema {DECLARATION_SCHEMA}"
@@ -206,14 +234,13 @@ def parse_declaration(text: str) -> Declaration:
     code = _positive_int(data.get("version_code"))
     if code is None:
         raise DeclarationError("has no usable version_code")
-    idle = _positive_int(data.get("auto_install_idle_seconds")) or DEFAULT_IDLE_SECONDS
     return Declaration(
         version=_text(data.get("version")),
         version_code=code,
         signers=_signer_set(data.get("signer_sha256")),
-        update_file=data.get("update_file") if isinstance(data.get("update_file"), str) else "",
-        request_file=data.get("request_file") if isinstance(data.get("request_file"), str) else "",
-        idle_seconds=idle,
+        update_file=_path_field(data, "update_file"),
+        request_file=_path_field(data, "request_file"),
+        idle_seconds=_positive_int(data.get("auto_install_idle_seconds")) or DEFAULT_IDLE_SECONDS,
         last_result=_text(data.get("last_result")),
         last_result_version=_text(data.get("last_result_version")),
         last_result_message=_text(data.get("last_result_message")),
@@ -230,6 +257,18 @@ def read_declaration(folder: Path) -> Declaration | None:
     except OSError as e:
         raise DeclarationError(f"could not be read: {e}") from e
     return parse_declaration(text)
+
+
+def panel_software_summary(state) -> dict[str, str] | None:
+    """The panel software's version and any update waiting for it, read from
+    the state this module publishes; None where there is no panel software."""
+    version = state.get(STATE_PREFIX + "version") if state is not None else None
+    if not version:
+        return None
+    return {
+        "version": str(version),
+        "pending_version": str(state.get(STATE_PREFIX + "pending_version") or ""),
+    }
 
 
 @dataclass
@@ -267,6 +306,30 @@ class _Record:
         return record
 
 
+def _pending_install(record: _Record | None, held: bool) -> str:
+    if record is None:
+        return ""
+    if record.install == INSTALL_WHEN_IDLE and held:
+        return PENDING_HELD
+    return record.install
+
+
+def _state_values(decl: Declaration, record: _Record | None, held: bool) -> dict[str, Any]:
+    """What is published, by field (STATE_FIELDS)."""
+    return {
+        "version": decl.version,
+        "version_code": decl.version_code,
+        "last_result": decl.last_result,
+        "last_result_version": decl.last_result_version,
+        "last_result_message": decl.last_result_message,
+        "last_result_at": decl.last_result_at,
+        "pending_version": record.version if record else "",
+        "pending_version_code": record.version_code if record else None,
+        "pending_install": _pending_install(record, held),
+        "install_idle_seconds": decl.idle_seconds,
+    }
+
+
 def _write_atomic(path: Path, content: str) -> None:
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(content, encoding="utf-8")
@@ -284,6 +347,120 @@ def _sha256_file(path: Path) -> str:
 
 def _label(version: str, version_code: int) -> str:
     return version or f"build {version_code}"
+
+
+def _invalid(message: str) -> StageOutcome:
+    return StageOutcome(False, message, "invalid_request")
+
+
+def _signers_differ(wanted: frozenset[str], declared: frozenset[str]) -> bool:
+    """Both sides name a signer and they are not the same one. Where either
+    names none, the supervisor's own check of the file decides."""
+    if not (wanted and declared):
+        return False
+    return wanted != declared
+
+
+@dataclass(frozen=True)
+class _Request:
+    """An update as the cloud sent it (``stage``'s arguments), and how each
+    part reads once checked."""
+
+    update_url: Any
+    checksum_sha256: Any
+    target_version: Any
+    target_version_code: Any
+    signer_sha256: Any
+    install: Any
+
+    @property
+    def url(self) -> str:
+        return self.update_url if isinstance(self.update_url, str) else ""
+
+    @property
+    def sha256(self) -> str:
+        sha = self.checksum_sha256
+        return sha.strip().lower() if isinstance(sha, str) else ""
+
+    @property
+    def version_code(self) -> int | None:
+        return _positive_int(self.target_version_code)
+
+    @property
+    def version(self) -> str:
+        return _text(self.target_version)[:64]
+
+    @property
+    def label(self) -> str:
+        return _label(self.version, self.version_code)
+
+    @property
+    def mode(self) -> str:
+        return INSTALL_AT_PANEL if self.install is None else self.install
+
+    @property
+    def signers(self) -> frozenset[str]:
+        return _signer_set(self.signer_sha256) if self.signer_sha256 else frozenset()
+
+    def refusal(self) -> StageOutcome | None:
+        """Why this update cannot be staged on any panel, or None."""
+        scheme = urlparse(self.url).scheme
+        if scheme != "https":
+            return _invalid(f"Refusing a download address that is not HTTPS ({scheme or 'none'}).")
+        if not _HEX64.match(self.sha256):
+            return _invalid("The update has no valid SHA-256 checksum, so nothing was staged.")
+        if self.version_code is None:
+            return _invalid("The update has no valid version code, so nothing was staged.")
+        if self.mode not in INSTALL_MODES:
+            return _invalid(f"Unknown install choice {self.install!r}.")
+        if self.signer_sha256 and not self.signers:
+            return _invalid("The update's signer is not a valid SHA-256 value.")
+        return None
+
+    def refusal_for(self, decl: Declaration) -> StageOutcome | None:
+        """Why the panel software ``decl`` describes cannot take this update, or None."""
+        if self.version_code <= decl.version_code:
+            return StageOutcome(
+                False,
+                f"This panel already has panel software {_label(decl.version, decl.version_code)}, "
+                f"which is the same as {self.label} or newer.",
+                "not_newer",
+            )
+        if _signers_differ(self.signers, decl.signers):
+            return StageOutcome(
+                False,
+                f"Panel software {self.label} is not signed with this panel's key, so nothing was staged.",
+                "wrong_signer",
+            )
+        return None
+
+
+@dataclass(frozen=True)
+class _Destination:
+    """Where the declaration puts an update, and the file that asks for its install."""
+
+    declaration: Declaration
+    update_file: Path
+    request_file: Path
+
+
+async def _verify_download(request: _Request, partial: Path) -> StageOutcome | None:
+    """Check a finished download against its checksum. On a refusal it is deleted."""
+    try:
+        actual = await asyncio.to_thread(_sha256_file, partial)
+    except OSError as e:
+        _remove(partial)
+        return StageOutcome(False, f"The downloaded file could not be read: {e}", "download_failed")
+    if actual != request.sha256:
+        _remove(partial)
+        log.warning("Panel software: %s did not match its checksum; deleted", request.label)
+        return StageOutcome(
+            False,
+            f"The download of panel software {request.label} did not match its checksum, "
+            "so it was deleted and nothing was staged.",
+            "checksum_mismatch",
+        )
+    return None
 
 
 class PanelSoftwareUpdates:
@@ -393,79 +570,72 @@ class PanelSoftwareUpdates:
         return decl
 
     def _settle(self, decl: Declaration, record: _Record) -> tuple[_Record | None, bool]:
+        """What is left of ``record`` now, and whether its install is held back."""
         targets = decl.targets(self._folder)
-        if targets is None:
+        if targets is None or self._spent(decl, record, targets[0]):
             self._drop_record()
             return None, False
-        update_file, request_file = targets
-        try:
-            st = update_file.stat()
-        except OSError:
-            st = None
-        if st is None or (st.st_size, st.st_mtime_ns) != (record.size, record.mtime_ns):
-            # Installed (the supervisor deletes the file it installed from),
-            # replaced by somebody else, or removed by hand.
-            self._drop_record()
-            return None, False
-        if decl.version_code >= record.version_code:
-            # Installed: the supervisor deletes the spent file at its next start.
-            self._drop_record()
-            return None, False
+        request_file = targets[1]
         requested_now = request_file.exists()
         if record.install != INSTALL_WHEN_IDLE:
             # Somebody at the panel starts this one, so nothing here asks.
             if requested_now:
                 _remove(request_file)
             return record, False
+        return self._settle_when_idle(record, request_file, requested_now)
 
+    def _spent(self, decl: Declaration, record: _Record, update_file: Path) -> bool:
+        """Whether the file this server staged is no longer waiting."""
+        if not self._intact(update_file, record):
+            # Installed (the supervisor deletes the file it installed from),
+            # replaced by somebody else, or removed by hand.
+            return True
+        # Installed: the supervisor deletes the spent file at its next start.
+        return decl.version_code >= record.version_code
+
+    def _settle_when_idle(
+        self, record: _Record, request_file: Path, requested_now: bool
+    ) -> tuple[_Record | None, bool]:
         if record.requested and not requested_now:
             # The supervisor took the request away: it refused the file or the
             # install failed, and its declaration says which. Not asked again.
             self._drop_record()
             return None, False
-
         held = self._hold_engaged()
         if held:
-            if requested_now:
-                _remove(request_file)
-            if record.requested:
-                record.requested = False
-                self._write_record(record)
+            self._hold_back(record, request_file, requested_now)
         elif not (requested_now and record.requested):
-            _write_atomic(request_file, f"sha256={record.sha256}\n")
-            record.requested = True
-            self._write_record(record)
+            self._ask_for_install(record, request_file)
         return record, held
+
+    def _hold_back(self, record: _Record, request_file: Path, requested_now: bool) -> None:
+        if requested_now:
+            _remove(request_file)
+        if record.requested:
+            record.requested = False
+            self._write_record(record)
+
+    def _ask_for_install(self, record: _Record, request_file: Path) -> None:
+        _write_atomic(request_file, f"sha256={record.sha256}\n")
+        record.requested = True
+        self._write_record(record)
 
     def _publish(self, decl: Declaration | None, record: _Record | None, held: bool) -> None:
         if self._state is None:
             return
         if decl is None:
-            if self._published:
-                for field in STATE_FIELDS:
-                    self._state.delete(STATE_PREFIX + field, source="system")
-                self._published = False
+            self._unpublish()
             return
-        if record is None:
-            pending = ""
-        elif record.install == INSTALL_WHEN_IDLE and held:
-            pending = PENDING_HELD
-        else:
-            pending = record.install
-        values: dict[str, Any] = {
-            "version": decl.version,
-            "version_code": decl.version_code,
-            "last_result": decl.last_result,
-            "last_result_version": decl.last_result_version,
-            "last_result_message": decl.last_result_message,
-            "last_result_at": decl.last_result_at,
-            "pending_version": record.version if record else "",
-            "pending_version_code": record.version_code if record else None,
-            "pending_install": pending,
-            "install_idle_seconds": decl.idle_seconds,
-        }
+        values = _state_values(decl, record, held)
         self._state.set_batch({STATE_PREFIX + k: v for k, v in values.items()}, source="system")
         self._published = True
+
+    def _unpublish(self) -> None:
+        if not self._published:
+            return
+        for field in STATE_FIELDS:
+            self._state.delete(STATE_PREFIX + field, source="system")
+        self._published = False
 
     # ---- the space in use -----------------------------------------------
 
@@ -531,7 +701,7 @@ class PanelSoftwareUpdates:
         decl = self._declaration()
         targets = decl.targets(self._folder) if decl is not None else None
         if targets is not None:
-            _remove(targets[0].with_name(targets[0].name + PARTIAL_SUFFIX))
+            _remove(_partial(targets[0]))
 
     # ---- staging --------------------------------------------------------
 
@@ -555,47 +725,38 @@ class PanelSoftwareUpdates:
         host = _firmware_host()
         if host is not None:
             return StageOutcome(False, host.guidance, "firmware_managed")
-
-        url = update_url if isinstance(update_url, str) else ""
-        scheme = urlparse(url).scheme
-        if scheme != "https":
-            return StageOutcome(
-                False, f"Refusing a download address that is not HTTPS ({scheme or 'none'}).", "invalid_request"
-            )
-        sha = checksum_sha256.strip().lower() if isinstance(checksum_sha256, str) else ""
-        if not _HEX64.match(sha):
-            return StageOutcome(False, "The update has no valid SHA-256 checksum, so nothing was staged.", "invalid_request")
-        code = _positive_int(target_version_code)
-        if code is None:
-            return StageOutcome(False, "The update has no valid version code, so nothing was staged.", "invalid_request")
-        mode = INSTALL_AT_PANEL if install is None else install
-        if mode not in INSTALL_MODES:
-            return StageOutcome(False, f"Unknown install choice {install!r}.", "invalid_request")
-        version = _text(target_version)[:64]
-        label = _label(version, code)
-        wanted_signers = _signer_set(signer_sha256) if signer_sha256 else frozenset()
-        if signer_sha256 and not wanted_signers:
-            return StageOutcome(False, "The update's signer is not a valid SHA-256 value.", "invalid_request")
-
+        request = _Request(
+            update_url, checksum_sha256, target_version, target_version_code, signer_sha256, install
+        )
+        refusal = request.refusal()
+        if refusal is not None:
+            return refusal
         if self._lock.locked():
             return StageOutcome(False, "A panel software update is already being staged on this system.", "busy")
         async with self._lock:
-            return await self._stage_locked(url, sha, code, version, label, wanted_signers, mode)
+            return await self._stage_locked(request)
 
-    async def _stage_locked(
-        self,
-        url: str,
-        sha: str,
-        code: int,
-        version: str,
-        label: str,
-        wanted_signers: frozenset[str],
-        mode: str,
-    ) -> StageOutcome:
+    async def _stage_locked(self, request: _Request) -> StageOutcome:
         if getattr(self._updates, "update_in_progress", False):
             return StageOutcome(
                 False, "OpenAVC is installing its own update. Try again once it has restarted.", "server_updating"
             )
+        dest = self._destination()
+        if isinstance(dest, StageOutcome):
+            return dest
+        refusal = request.refusal_for(dest.declaration)
+        if refusal is not None:
+            return refusal
+        restaged = self._restage(request, dest)
+        if restaged is not None:
+            return restaged
+        refusal = self._space_refusal()
+        if refusal is not None:
+            return refusal
+        return await self._download_and_stage(request, dest)
+
+    def _destination(self) -> _Destination | StageOutcome:
+        """Where the declaration puts an update, or why it puts it nowhere."""
         try:
             decl = read_declaration(self._folder)
         except DeclarationError as e:
@@ -609,27 +770,23 @@ class PanelSoftwareUpdates:
                 "The panel software names an update location outside its own folder, so nothing was staged.",
                 "declaration_invalid",
             )
-        update_file, request_file = targets
-        if code <= decl.version_code:
-            return StageOutcome(
-                False,
-                f"This panel already has panel software {_label(decl.version, decl.version_code)}, "
-                f"which is the same as {label} or newer.",
-                "not_newer",
-            )
-        if wanted_signers and decl.signers and wanted_signers != decl.signers:
-            return StageOutcome(False, f"Panel software {label} is not signed with this panel's key, so nothing was staged.", "wrong_signer")
+        return _Destination(decl, *targets)
 
+    def _restage(self, request: _Request, dest: _Destination) -> StageOutcome | None:
+        """The same file, staged already. Sent again, it is asked for again,
+        under whichever install choice it now carries. None for any other file."""
         record = self._read_record()
-        if record is not None and record.sha256 == sha and self._intact(update_file, record):
-            # The same file, staged already. Sent again, it is asked for
-            # again, under whichever install choice it now carries.
-            record.install = mode
-            record.requested = False
-            self._write_record(record)
-            self._publish_after_stage()
-            return StageOutcome(True, self._ready_message(label, mode, decl))
+        if record is None or record.sha256 != request.sha256:
+            return None
+        if not self._intact(dest.update_file, record):
+            return None
+        record.install = request.mode
+        record.requested = False
+        self._write_record(record)
+        self._publish_after_stage()
+        return StageOutcome(True, self._ready_message(request.label, request.mode, dest.declaration))
 
+    def _space_refusal(self) -> StageOutcome | None:
         try:
             free = shutil.disk_usage(str(self._folder)).free
         except OSError as e:
@@ -641,53 +798,52 @@ class PanelSoftwareUpdates:
                 f"{MIN_FREE_BYTES // (1024 * 1024)} MB needed.",
                 "insufficient_space",
             )
+        return None
 
+    async def _download_and_stage(self, request: _Request, dest: _Destination) -> StageOutcome:
         # The order the supervisor relies on: the old request goes first, so
         # nothing can ask for a file while it is being replaced.
-        _remove(request_file)
+        _remove(dest.request_file)
         self._drop_record()
         self._publish_after_stage()
 
-        partial = update_file.with_name(update_file.name + PARTIAL_SUFFIX)
-        log.info("Panel software: downloading %s", label)
-        try:
-            await self._updates.download_to(url, partial, max_bytes=MAX_UPDATE_BYTES)
-        except Exception as e:
-            _remove(partial)
-            log.warning("Panel software: download of %s failed: %s", label, e)
-            return StageOutcome(False, f"Panel software {label} could not be downloaded: {e}", "download_failed")
-
-        try:
-            actual = await asyncio.to_thread(_sha256_file, partial)
-        except OSError as e:
-            _remove(partial)
-            return StageOutcome(False, f"The downloaded file could not be read: {e}", "download_failed")
-        if actual != sha:
-            _remove(partial)
-            log.warning("Panel software: %s did not match its checksum; deleted", label)
-            return StageOutcome(
-                False,
-                f"The download of panel software {label} did not match its checksum, so it was deleted and nothing was staged.",
-                "checksum_mismatch",
-            )
+        partial = _partial(dest.update_file)
+        log.info("Panel software: downloading %s", request.label)
+        refusal = await self._download(request, partial)
+        if refusal is not None:
+            return refusal
 
         os.chmod(partial, 0o644)
-        os.replace(partial, update_file)
+        os.replace(partial, dest.update_file)
+        self._record_staged(request, dest.update_file)
+        log.info("Panel software: %s staged (%s)", request.label, request.mode)
+        self._publish_after_stage()
+        return StageOutcome(True, self._ready_message(request.label, request.mode, dest.declaration))
+
+    async def _download(self, request: _Request, partial: Path) -> StageOutcome | None:
+        """Download the update to ``partial`` and check it. On a refusal
+        nothing is left behind."""
+        try:
+            await self._updates.download_to(request.url, partial, max_bytes=MAX_UPDATE_BYTES)
+        except Exception as e:
+            _remove(partial)
+            log.warning("Panel software: download of %s failed: %s", request.label, e)
+            return StageOutcome(False, f"Panel software {request.label} could not be downloaded: {e}", "download_failed")
+        return await _verify_download(request, partial)
+
+    def _record_staged(self, request: _Request, update_file: Path) -> None:
         st = update_file.stat()
         self._write_record(
             _Record(
-                sha256=sha,
-                version=version,
-                version_code=code,
-                install=mode,
+                sha256=request.sha256,
+                version=request.version,
+                version_code=request.version_code,
+                install=request.mode,
                 size=st.st_size,
                 mtime_ns=st.st_mtime_ns,
                 staged_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             )
         )
-        log.info("Panel software: %s staged (%s)", label, mode)
-        self._publish_after_stage()
-        return StageOutcome(True, self._ready_message(label, mode, decl))
 
     def _publish_after_stage(self) -> None:
         # Called with the staging lock held, which refresh() reads as "do not

@@ -40,6 +40,7 @@ from openavc.api.auth import (
 )
 from openavc.api.routes.system import cloud_remote_access_set_up, own_screen_opens_programmer
 from openavc.system_config import get_system_config
+from openavc.updater.panel_software import panel_software_summary
 from openavc.utils.hostnames import resolvable_hostname
 from openavc.api.auth import local_console_auth_satisfied
 from openavc.version import __version__
@@ -90,19 +91,6 @@ def _base_url(proto: str, host: str, port: int) -> str:
     return f"{proto}://{host}:{port}"
 
 
-def _panel_software(engine) -> dict[str, str] | None:
-    """The panel software's version and any update waiting for it, or None
-    where there is no panel software (updater/panel_software.py)."""
-    state = getattr(engine, "state", None)
-    version = state.get("system.panel_software.version") if state is not None else None
-    if not version:
-        return None
-    return {
-        "version": str(version),
-        "pending_version": str(state.get("system.panel_software.pending_version") or ""),
-    }
-
-
 def _panel_has_content(engine) -> bool:
     """Whether the loaded project has anything for the panel to show.
 
@@ -149,9 +137,7 @@ async def setup_status(
     engine = _get_engine()
     state = auth_state()
 
-    project_name = None
-    if engine.project is not None:
-        project_name = engine.project.project.name
+    project_name = engine.project.project.name if engine.project is not None else None
 
     payload: dict[str, Any] = {
         "state": state,
@@ -159,7 +145,7 @@ async def setup_status(
         "project_name": project_name,
         "panel_has_content": _panel_has_content(engine),
         "version": __version__,
-        "panel_software": _panel_software(engine),
+        "panel_software": panel_software_summary(getattr(engine, "state", None)),
         "network": None,
     }
 

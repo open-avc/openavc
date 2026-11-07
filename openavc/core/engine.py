@@ -179,8 +179,8 @@ class Engine:
         # Whether this start backed up the project before moving its logins.
         self._logins_backed_up_at_start = False
         self.cloud_agent = None  # CloudAgent, initialized in start() if enabled
-        self.update_manager = None  # UpdateManager, initialized in start()
-        self.panel_software = None  # PanelSoftwareUpdates, initialized in start()
+        # UpdateManager and PanelSoftwareUpdates, both initialized in start()
+        self.update_manager = self.panel_software = None
         self.mdns_advertiser = None  # MDNSAdvertiser, initialized in start() if enabled
 
         # Setup-action runner (driver-declared provisioning wizards)
@@ -639,31 +639,15 @@ class Engine:
             self.update_manager = UpdateManager(state_store=self.state)
             await self.update_manager.start_auto_check()
             # Wire into cloud command handler for cloud-triggered updates
-            if self.cloud_agent and hasattr(self.cloud_agent, '_command_handler'):
-                handler = self.cloud_agent._command_handler
-                if handler:
-                    handler._update_manager = self.update_manager
+            handler = getattr(self.cloud_agent, "_command_handler", None)
+            if handler:
+                handler._update_manager = self.update_manager
         except Exception:
             log.exception("Update manager failed to start — continuing without updates")
             self.update_manager = None
 
-        # Panel software updates on appliance hardware. Says and does nothing
-        # on a system whose device supervisor has not declared itself.
-        if self.update_manager is not None:
-            try:
-                from openavc.updater.panel_software import PanelSoftwareUpdates
-                self.panel_software = PanelSoftwareUpdates(
-                    self.state, self.update_manager,
-                    display_settings=lambda: getattr(
-                        getattr(self.project, "settings", None), "display", None
-                    ),
-                )
-                await self.panel_software.start()
-                if self.cloud_agent and getattr(self.cloud_agent, "_command_handler", None):
-                    self.cloud_agent._command_handler._panel_software = self.panel_software
-            except Exception:
-                log.exception("Panel software updates failed to start — continuing without them")
-                self.panel_software = None
+        # Panel software updates on appliance hardware, through the update manager
+        await self._start_panel_software()
 
         log.info(
             f'Engine started — project "{self.project.project.name}" '
@@ -718,8 +702,7 @@ class Engine:
         # Stop update manager
         if self.update_manager:
             await self.update_manager.stop_auto_check()
-        if self.panel_software:
-            await self.panel_software.stop()
+        await self._stop_panel_software()
 
         self.learned_config.stop()
 
@@ -2431,6 +2414,33 @@ class Engine:
         the subsystem already matches the desired state)."""
         await self._reload_isc()
         await self._reconcile_mdns()
+
+    # --- Panel software helpers ---
+
+    async def _start_panel_software(self) -> None:
+        """Panel software updates on appliance hardware, once the update
+        manager is up: they download through it. Says and does nothing on a
+        system whose device supervisor has not declared itself."""
+        if self.update_manager is None:
+            return
+        try:
+            from openavc.updater.panel_software import PanelSoftwareUpdates
+            self.panel_software = PanelSoftwareUpdates(
+                self.state, self.update_manager,
+                display_settings=lambda: getattr(
+                    getattr(self.project, "settings", None), "display", None
+                ),
+            )
+            await self.panel_software.start()
+            if self.cloud_agent and getattr(self.cloud_agent, "_command_handler", None):
+                self.cloud_agent._command_handler._panel_software = self.panel_software
+        except Exception:
+            log.exception("Panel software updates failed to start — continuing without them")
+            self.panel_software = None
+
+    async def _stop_panel_software(self) -> None:
+        if self.panel_software:
+            await self.panel_software.stop()
 
     # --- Cloud Agent helpers ---
 

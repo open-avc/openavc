@@ -129,38 +129,53 @@ export interface PanelSoftwareDisplay {
 }
 
 export function panelSoftwareDisplay(state: Record<string, unknown>): PanelSoftwareDisplay | null {
-  const version = String(state["system.panel_software.version"] ?? "");
+  const version = panelText(state, "version");
   if (!version) return null;
+  return { version, pending: pendingSentence(state), lastResult: lastResultDisplay(state) };
+}
 
-  const pendingVersion = String(state["system.panel_software.pending_version"] ?? "");
-  const pendingInstall = String(state["system.panel_software.pending_install"] ?? "");
+/** One `system.panel_software.*` value as text, "" when it is not set. */
+function panelText(state: Record<string, unknown>, key: string): string {
+  return String(state["system.panel_software." + key] ?? "");
+}
+
+/** "nobody has touched the panel for N minutes", from the panel's own idle window. */
+function untouchedFor(state: Record<string, unknown>): string {
   const idleSeconds = Number(state["system.panel_software.install_idle_seconds"] ?? 0);
   const minutes = Math.max(1, Math.round((idleSeconds > 0 ? idleSeconds : 600) / 60));
-  const untouched = "nobody has touched the panel for " + minutes + (minutes === 1 ? " minute" : " minutes");
-  const ready = "Panel software " + (pendingVersion || "update") + " is ready.";
-  let pending: string | null = null;
+  return "nobody has touched the panel for " + minutes + (minutes === 1 ? " minute" : " minutes");
+}
+
+function pendingSentence(state: Record<string, unknown>): string | null {
+  const pendingInstall = panelText(state, "pending_install");
+  const ready = "Panel software " + (panelText(state, "pending_version") || "update") + " is ready.";
   if (pendingInstall === "when_idle") {
-    pending = ready + " It installs by itself once " + untouched + ".";
-  } else if (pendingInstall === "held") {
-    pending = ready + " It waits while the space is in use, then installs once " + untouched + ".";
-  } else if (pendingInstall === "at_panel") {
-    pending = ready + " It installs when somebody starts it at the panel.";
+    return ready + " It installs by itself once " + untouchedFor(state) + ".";
   }
+  if (pendingInstall === "held") {
+    return ready + " It waits while the space is in use, then installs once " + untouchedFor(state) + ".";
+  }
+  if (pendingInstall === "at_panel") {
+    return ready + " It installs when somebody starts it at the panel.";
+  }
+  return null;
+}
 
-  const result = String(state["system.panel_software.last_result"] ?? "");
-  const resultVersion = String(state["system.panel_software.last_result_version"] ?? "");
-  const message = String(state["system.panel_software.last_result_message"] ?? "");
-  const at = String(state["system.panel_software.last_result_at"] ?? "");
+function lastResultDisplay(state: Record<string, unknown>): PanelSoftwareDisplay["lastResult"] {
+  const result = panelText(state, "last_result");
+  const message = panelText(state, "last_result_message");
+  const at = panelText(state, "last_result_at");
+  const resultVersion = panelText(state, "last_result_version");
   const target = resultVersion ? " to " + resultVersion : "";
-  let lastResult: PanelSoftwareDisplay["lastResult"] = null;
   if (result === "installed") {
-    lastResult = { ok: true, text: "Updated" + target, at };
-  } else if (result === "refused") {
-    lastResult = { ok: false, text: "Refused the update" + target + (message ? ": " + message : "."), at };
-  } else if (result === "failed") {
-    // The panel's own sentence already says it did not install.
-    lastResult = { ok: false, text: message || "The update" + target + " did not install.", at };
+    return { ok: true, text: "Updated" + target, at };
   }
-
-  return { version, pending, lastResult };
+  if (result === "refused") {
+    return { ok: false, text: "Refused the update" + target + (message ? ": " + message : "."), at };
+  }
+  if (result === "failed") {
+    // The panel's own sentence already says it did not install.
+    return { ok: false, text: message || "The update" + target + " did not install.", at };
+  }
+  return null;
 }
