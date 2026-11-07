@@ -1664,9 +1664,9 @@ def _ports_text(ports: dict[str, Any]) -> str:
 def _summary_greetings(fp: dict[str, Any]) -> list[str]:
     """What each open port sent when the check connected."""
     greetings = fp.get("greetings", {})
+    spoke = {p: g for p, g in greetings.items() if g.get("text")}
     if not greetings:
         return []
-    spoke = {p: g for p, g in greetings.items() if g.get("text")}
     parts = ["<h3>What each open port sent when OpenAVC connected</h3>"]
     if not spoke:
         return parts + ["<p>No open port sent a greeting when OpenAVC connected.</p>"]
@@ -2073,9 +2073,7 @@ def _connection_rows(connection: dict[str, Any]) -> list[str]:
 
 def _driver_attempts(attempts: list[dict[str, Any]]) -> list[str]:
     """Each connect-and-listen: its sentence, its table, and what it found."""
-    if not attempts:
-        return ["<p>The audit did not connect this driver.</p>"]
-    parts: list[str] = []
+    parts = [] if attempts else ["<p>The audit did not connect this driver.</p>"]
     for number, attempt in enumerate(attempts, 1):
         heading = "Connect and listen" + (f", attempt {number}" if len(attempts) > 1 else "")
         parts.append(f"<h3>{heading}</h3><p>{_e(_attempt_sentence(attempt))}</p><table>")
