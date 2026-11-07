@@ -14,6 +14,7 @@ Uses an invented device (Acme).
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import pytest
@@ -339,3 +340,129 @@ async def test_a_live_write_is_read_back_by_the_same_rule(dm):
     assert await dm.await_setting_readback("dev", "brightness", 70) == (False, 55)
     # No declared state variable to read it by: nothing to wait for.
     assert await dm.await_setting_readback("dev", "label", "x") == (False, None)
+
+
+# ── The quieter paths ───────────────────────────────────────────────────────
+
+
+def _failing_error_reports(dm: DeviceManager) -> list[str]:
+    """Make every ``device.error.<id>`` emit raise; returns the errors tried."""
+    tried: list[str] = []
+    emit = dm.events.emit
+
+    async def emit_or_fail(event: str, payload: Any = None) -> None:
+        if event.startswith("device.error."):
+            tried.append(payload["error"])
+            raise RuntimeError("event bus down")
+        await emit(event, payload)
+
+    dm.events.emit = emit_or_fail
+    return tried
+
+
+async def test_a_queue_with_no_driver_to_send_it_is_left_alone(dm):
+    dm._device_configs["dev"] = {"pending_settings": {"brightness": 70}}
+    applied = _applied(dm)
+
+    await dm._apply_pending_settings("dev")
+
+    assert dm._device_configs["dev"]["pending_settings"] == {"brightness": 70}
+    assert applied == []
+    assert "dev" not in dm._pending_confirm_tasks
+
+
+async def test_a_failure_that_cannot_be_reported_does_not_stop_the_rest(dm):
+    class _RefusesBrightness(_ReadBackDriver):
+        async def set_device_setting(self, key, value):
+            if key == "brightness":
+                raise ValueError("firmware refused it")
+            return await super().set_device_setting(key, value)
+
+    driver = _RefusesBrightness("dev", {}, dm.state, dm.events)
+    await driver.connect()
+    dm._devices["dev"] = driver
+    dm._device_configs["dev"] = {"pending_settings": {"brightness": 70, "label": "Lobby"}}
+    tried = _failing_error_reports(dm)
+    applied = _applied(dm)
+
+    await dm._apply_pending_settings("dev")
+
+    assert tried == ["Pending setting 'brightness' failed to apply: firmware refused it"]
+    assert driver.writes == [("label", "Lobby")]
+    assert dm._device_configs["dev"]["pending_settings"] == {"brightness": 70}
+    assert applied == [{"device_id": "dev", "applied": ["label"], "remaining": {"brightness": 70}}]
+
+
+async def test_a_watch_whose_device_is_already_gone_settles_nothing(dm):
+    dm._device_configs["dev"] = {"pending_settings": {"brightness": 70}}
+    applied = _applied(dm)
+
+    await dm._confirm_pending_settings(
+        "dev", {"brightness": ("brightness", 70)}, {"brightness": 70},
+    )
+
+    assert dm._device_configs["dev"]["pending_settings"] == {"brightness": 70}
+    assert applied == []
+
+
+async def test_an_unconfirmed_write_that_cannot_be_reported_still_settles_the_rest(dm):
+    driver = await _device(dm)
+    driver.set_state("brightness", 55)
+    tried = _failing_error_reports(dm)
+    applied = _applied(dm)
+    await dm.store_pending_settings("dev", {"brightness": 70, "mode": "1"})
+    original = driver.set_device_setting
+
+    async def echo_mode_only(key, value):  # mode reads back, brightness does not
+        driver.echo = key == "mode"
+        return await original(key, value)
+
+    driver.set_device_setting = echo_mode_only
+
+    await dm._apply_pending_settings("dev")
+    await dm._pending_confirm_tasks["dev"]
+
+    assert tried == [
+        "Pending setting 'brightness' was sent but the device still reports 55 "
+        "instead of 70. It stays queued and will be sent again on the next connection."
+    ]
+    assert dm._device_configs["dev"]["pending_settings"] == {"brightness": 70}
+    assert applied == [{"device_id": "dev", "applied": ["mode"], "remaining": {"brightness": 70}}]
+
+
+async def test_an_orphaned_device_queues_settings_as_given(dm):
+    dm._device_configs["dev"] = {}
+
+    await dm.store_pending_settings("dev", {"no_such_setting": "anything", "brightness": "700"})
+
+    assert dm._device_configs["dev"]["pending_settings"] == {
+        "no_such_setting": "anything", "brightness": "700",
+    }
+
+
+async def test_a_value_queued_in_another_form_clears_once_confirmed(dm):
+    """A hand-edited project can queue ``"70"`` for an integer setting: the
+    send coerces it, and the confirmation still clears the entry as queued."""
+    driver = await _device(dm)
+    dm._device_configs["dev"] = {"pending_settings": {"brightness": "70"}}
+
+    await dm._apply_pending_settings("dev")
+    await dm._pending_confirm_tasks["dev"]
+
+    assert driver.writes == [("brightness", 70)]
+    assert "pending_settings" not in dm._device_configs["dev"]
+
+
+async def test_a_live_write_stops_waiting_when_the_device_drops(dm):
+    driver = await _device(dm)
+    driver.echo = False
+    driver.set_state("brightness", 55)
+    dm._confirm_window = lambda _driver: 30.0
+    await dm.set_device_setting("dev", "brightness", 70)
+    await driver.disconnect()
+
+    result = await asyncio.wait_for(
+        dm.await_setting_readback("dev", "brightness", 70), timeout=2.0,
+    )
+
+    assert result == (False, 55)
