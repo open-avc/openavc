@@ -6,6 +6,7 @@ device (Acme), never a real product. The mechanism is what's under test, not any
 specific driver's action set.
 """
 
+import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -387,6 +388,116 @@ def test_a_forced_web_ui_publishes_nothing():
     dm = _dm_with_device({"web_ui": True})
     dm.seed_web_ui_url("dev1", "http://192.0.2.20")
     assert dm.state.get("device.dev1.web_ui_url") is None
+
+
+# When a device's web page is probed for, and what is kept. The probe is
+# stubbed: each test counts the hosts it was asked about.
+
+
+def _probe_counting(monkeypatch, url: str | None = "http://found") -> list[str]:
+    asked: list[str] = []
+
+    async def probe(host):
+        asked.append(host)
+        return url
+
+    monkeypatch.setattr("openavc.core.web_ui_probe.probe_web_ui", probe)
+    return asked
+
+
+async def _settle(dm) -> None:
+    await asyncio.gather(*list(dm._web_ui_probe_tasks.values()), return_exceptions=True)
+
+
+@pytest.mark.parametrize("forced", [True, False, "http://192.0.2.99"])
+async def test_a_driver_that_sets_its_web_page_is_never_probed(monkeypatch, forced):
+    asked = _probe_counting(monkeypatch)
+    dm = _dm_with_device({"web_ui": forced})
+    dm._schedule_web_ui_probe("dev1")
+    await _settle(dm)
+    assert asked == []
+
+
+async def test_an_auto_detecting_device_is_probed_once_at_its_host(monkeypatch):
+    asked = _probe_counting(monkeypatch)
+    dm = _dm_with_device({})
+    dm._schedule_web_ui_probe("dev1")
+    dm._schedule_web_ui_probe("dev1")  # a connect while the first is in flight
+    await _settle(dm)
+    dm._schedule_web_ui_probe("dev1")  # and one after a URL was found
+    await _settle(dm)
+    assert asked == ["192.0.2.20"]
+    assert dm._detected_web_ui_urls == {"dev1": "http://found"}
+
+
+@pytest.mark.parametrize(
+    "config",
+    [{}, {"host": ""}, {"host": "192.0.2.20", "transport": "http"}],
+)
+async def test_a_device_with_no_host_or_an_http_link_is_not_probed(monkeypatch, config):
+    asked = _probe_counting(monkeypatch)
+    dm = _dm_with_device({})
+    dm._devices["dev1"].config = config
+    dm._schedule_web_ui_probe("dev1")
+    await _settle(dm)
+    assert asked == []
+
+
+async def test_an_http_driver_is_not_probed(monkeypatch):
+    asked = _probe_counting(monkeypatch)
+    dm = _dm_with_device({"transport": "http"})
+    dm._schedule_web_ui_probe("dev1")
+    await _settle(dm)
+    assert asked == []
+
+
+async def test_a_page_found_after_its_device_was_removed_is_not_kept(monkeypatch):
+    _probe_counting(monkeypatch)
+    dm = _dm_with_device({})
+    dm._devices.pop("dev1")
+    await dm._run_web_ui_probe("dev1", "192.0.2.20")
+    assert dm._detected_web_ui_urls == {}
+    assert dm.state.get("device.dev1.web_ui_url") is None
+
+
+async def test_removing_a_device_forgets_its_page_and_stops_its_probe(monkeypatch):
+    hold = asyncio.Event()
+
+    async def slow_probe(host):
+        await hold.wait()
+        return "http://late"
+
+    monkeypatch.setattr("openavc.core.web_ui_probe.probe_web_ui", slow_probe)
+    dm = _dm_with_device({})
+    dm._schedule_web_ui_probe("dev1")
+    probe = dm._web_ui_probe_tasks["dev1"]
+    dm.seed_web_ui_url("dev1", "http://192.0.2.20")  # a discovery scan found it meanwhile
+    dm._detected_web_ui_urls["other"] = "http://kept"
+
+    await dm.remove_device("dev1")
+    await asyncio.sleep(0)
+
+    assert probe.cancelled()
+    assert dm._detected_web_ui_urls == {"other": "http://kept"}
+
+
+async def test_shutdown_stops_every_probe_in_flight(monkeypatch):
+    hold = asyncio.Event()
+
+    async def slow_probe(host):
+        await hold.wait()
+        return "http://late"
+
+    monkeypatch.setattr("openavc.core.web_ui_probe.probe_web_ui", slow_probe)
+    dm = _dm_with_device({})
+    dm._schedule_web_ui_probe("dev1")
+    probe = dm._web_ui_probe_tasks["dev1"]
+
+    await dm.disconnect_all()
+    await asyncio.sleep(0)
+
+    assert probe.cancelled()
+    assert dm._web_ui_probe_tasks == {}
 
 
 # --- Invoke endpoint -------------------------------------------------------
