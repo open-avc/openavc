@@ -222,23 +222,27 @@ _SERIAL_OID = "1.3.6.1.2.1.47.1.1.1.1.11."
 
 def serials_in(value: Any, out: set[str]) -> None:
     if isinstance(value, dict):
-        _serials_in_record(value, out)
+        out.update(_record_serials(value))
+        items: Any = value.values()
     elif isinstance(value, (list, tuple)):
-        for item in value:
-            serials_in(item, out)
+        items = value
+    else:
+        return
+    for item in items:
+        serials_in(item, out)
 
 
-def _serials_in_record(record: dict[Any, Any], out: set[str]) -> None:
+def _record_serials(record: dict[Any, Any]) -> list[str]:
+    """The serial numbers one record holds itself, the records inside it aside."""
     named = _names_a_serial(record)
     # A TLS certificate's serial is the certificate's, not the device's.
     certificate = "issuer" in record
+    found = [
+        str(item) for key, item in record.items()
+        if _holds_a_serial(key, item, named, certificate)
+    ]
     serial = _oid_serial(record)
-    if serial is not None:
-        out.add(serial)
-    for key, item in record.items():
-        if _holds_a_serial(key, item, named, certificate):
-            out.add(str(item))
-        serials_in(item, out)
+    return found if serial is None else [serial, *found]
 
 
 def _names_a_serial(record: dict[Any, Any]) -> bool:
@@ -302,22 +306,29 @@ def _run_serials(run: Any, out: set[str]) -> None:
 def _strings_in(value: Any, out: set[str]) -> None:
     if isinstance(value, str):
         out.add(value)
-    elif isinstance(value, dict):
+        return
+    if isinstance(value, dict):
         out.update(key for key in value if isinstance(key, str))
-        _strings_in(list(value.values()), out)
+        items: Any = value.values()
     elif isinstance(value, (list, tuple, set, frozenset)):
-        for item in value:
-            _strings_in(item, out)
+        items = value
+    else:
+        return
+    for item in items:
+        _strings_in(item, out)
 
 
 def _catalog_names(value: Any, out: set[str]) -> None:
     """The driver ids, names and manufacturers anything in ``value`` names."""
     if isinstance(value, dict):
         out.update(name for key, item in value.items() for name in _names_under(key, item))
-        _catalog_names(list(value.values()), out)
+        items: Any = value.values()
     elif isinstance(value, list):
-        for item in value:
-            _catalog_names(item, out)
+        items = value
+    else:
+        return
+    for item in items:
+        _catalog_names(item, out)
 
 
 _CATALOG_NAME_KEYS = ("driver_id", "driver_name", "manufacturer")
