@@ -426,6 +426,32 @@ def _httpx_errors() -> tuple[type[BaseException], ...]:
     return (httpx.HTTPError,)
 
 
+def _probe_miss_reason(exc: BaseException, deadline: float) -> str:
+    """Why a liveness probe missed, for the log. The probe's deadline raises
+    a timeout with no text of its own."""
+    return str(exc) or (
+        f"no answer within {deadline:g} s"
+        if isinstance(exc, (asyncio.TimeoutError, TimeoutError))
+        else type(exc).__name__
+    )
+
+
+@dataclass
+class _ProbeWatch:
+    """What BaseDriver._health_loop carries from one probe to the next, and
+    the probe in flight: whether it went out on a held connection, its
+    deadline, and when it started."""
+
+    interval: float
+    timeout: float
+    max_failures: int
+    wait: float = 0.0  # seconds before the next probe
+    paused: bool = False  # the device's state holds the probe back
+    held: bool = False
+    deadline: float = 0.0
+    started: float = 0.0
+
+
 @dataclass
 class _PollWatch:
     """What BaseDriver._poll_loop carries from one cycle to the next.
@@ -2308,114 +2334,138 @@ class BaseDriver(ABC):
         the probe pauses and once when it resumes.
         """
         detach_emit_chain()  # a device-lifetime loop is a root, not a continuation
-        interval = float(self.HEALTH_INTERVAL_S)
-        timeout = float(self.HEALTH_TIMEOUT_S)
-        max_failures = max(int(self.HEALTH_MAX_FAILURES), 1)
+        probe = _ProbeWatch(
+            interval=float(self.HEALTH_INTERVAL_S),
+            timeout=float(self.HEALTH_TIMEOUT_S),
+            max_failures=max(int(self.HEALTH_MAX_FAILURES), 1),
+        )
         # Seconds before the next probe: none on a held connection, which
         # exists to ask whether the device is back.
-        wait = 0.0 if self._held else interval
-        paused = False
+        probe.wait = 0.0 if self._held else probe.interval
         try:
             while self._link_alive():
                 # Even at 0 this yields, so a probe that never awaits cannot
                 # hold the event loop.
-                await asyncio.sleep(wait)
-                wait = interval
+                await asyncio.sleep(probe.wait)
+                probe.wait = probe.interval
                 if not self._link_alive():
                     return
-                try:
-                    held = await self._liveness_held()
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    # A driver's own hook failing must not end the watchdog.
-                    log.exception(
-                        f"[{self.device_id}] Could not tell whether the "
-                        f"device's state holds the liveness probe back; "
-                        f"probing"
-                    )
-                    held = False
+                held = await self._probe_held_back()
                 if not self._link_alive():
                     return
-                if held != paused:
-                    paused = held
-                    log.info(
-                        f"[{self.device_id}] Liveness probe paused: the "
-                        f"device's state holds it back"
-                        if held else f"[{self.device_id}] Liveness probe resumed"
-                    )
+                self._note_probe_pause(probe, held)
                 if held:
-                    counts = self._io_counts()
-                    if self._held and counts is not None and counts[2] > 0:
-                        # Nothing goes out to answer until the device's state
-                        # changes, and the device has answered on this
-                        # connection already.
-                        await self._announce_held()
+                    await self._announce_if_answered_while_probe_held()
                     continue
-                held_probe = self._held
-                deadline = max(interval, timeout) if held_probe else timeout
-                started = time.monotonic()
-                try:
-                    # asyncio.timeout, not wait_for: on Python 3.11 wait_for
-                    # starts the probe as a task, which yields first, and a
-                    # command sent in that gap would go out between the
-                    # decision above and the probe.
-                    async with asyncio.timeout(deadline):
-                        await self._liveness_probe()
-                except asyncio.CancelledError:
-                    raise
-                except Exception as exc:
-                    refused = typed_fault_from_exc(
-                        exc, host=self.config.get("host", ""), port=self.config.get("port"),
-                    )
-                    if refused is not None and refused.code == AUTH_FAILED:
-                        log.warning(
-                            f"[{self.device_id}] Liveness probe refused the "
-                            f"credential; dropping the connection: {exc}"
-                        )
-                        self._force_disconnect(AUTH_FAILED, refused.message)
-                        return
-                    self._health_failures += 1
-                    if held_probe:
-                        # The next probe is due an interval after this one
-                        # went out, however much of it the wait used.
-                        wait = max(0.0, interval - (time.monotonic() - started))
-                    # A held device is already shown offline: its misses are
-                    # expected, and a device that stays down for hours would
-                    # otherwise warn twice on every retry.
-                    # The probe's deadline raises a timeout with no text.
-                    why = str(exc) or (
-                        f"no answer within {deadline:g} s"
-                        if isinstance(exc, (asyncio.TimeoutError, TimeoutError))
-                        else type(exc).__name__
-                    )
-                    (log.debug if self._held else log.warning)(
-                        f"[{self.device_id}] Liveness probe failed "
-                        f"({self._health_failures}/{max_failures}): {why}"
-                    )
-                    if self._health_failures >= max_failures:
-                        if self._held:
-                            log.info(
-                                f"[{self.device_id}] Still no answer to the "
-                                f"liveness probe; closing the connection to "
-                                f"try again"
-                            )
-                        else:
-                            log.warning(
-                                f"[{self.device_id}] Device stopped answering "
-                                f"liveness probes; disconnecting"
-                            )
-                        self._dropped_for_silence = True
-                        self._force_disconnect(
-                            NO_RESPONSE, self._probe_fault_message()
-                        )
-                        self._silence_verdict = self._last_fault
-                        return
-                else:
-                    self._health_failures = 0
-                    await self._announce_held()
+                if await self._probe_once(probe):
+                    return
         except asyncio.CancelledError:
             return
+
+    async def _probe_held_back(self) -> bool:
+        """_liveness_held, read as "not held" when the hook fails: a driver's
+        own hook failing must not end the watchdog."""
+        try:
+            return await self._liveness_held()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception(
+                f"[{self.device_id}] Could not tell whether the "
+                f"device's state holds the liveness probe back; "
+                f"probing"
+            )
+            return False
+
+    def _note_probe_pause(self, probe: _ProbeWatch, held: bool) -> None:
+        """Say once in the log when the probe pauses, and once when it resumes."""
+        if held != probe.paused:
+            probe.paused = held
+            log.info(
+                f"[{self.device_id}] Liveness probe paused: the "
+                f"device's state holds it back"
+                if held else f"[{self.device_id}] Liveness probe resumed"
+            )
+
+    async def _announce_if_answered_while_probe_held(self) -> None:
+        """Announce a held connection whose probe the device's state holds
+        back, once the device has answered anything on it: nothing goes out
+        to answer until that state changes."""
+        counts = self._io_counts()
+        if self._held and counts is not None and counts[2] > 0:
+            await self._announce_held()
+
+    async def _probe_once(self, probe: _ProbeWatch) -> bool:
+        """Send one liveness probe and judge it. True when that dropped the
+        connection."""
+        probe.held = self._held
+        probe.deadline = max(probe.interval, probe.timeout) if probe.held else probe.timeout
+        probe.started = time.monotonic()
+        try:
+            # asyncio.timeout, not wait_for: on Python 3.11 wait_for
+            # starts the probe as a task, which yields first, and a
+            # command sent in that gap would go out between the
+            # decision above and the probe.
+            async with asyncio.timeout(probe.deadline):
+                await self._liveness_probe()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            return self._probe_missed(probe, exc)
+        self._health_failures = 0
+        await self._announce_held()
+        return False
+
+    def _probe_missed(self, probe: _ProbeWatch, exc: Exception) -> bool:
+        """Count a probe that raised. True when that dropped the connection:
+        a refused credential drops it at once, HEALTH_MAX_FAILURES misses in
+        a row drop it as ``no_response``."""
+        refused = self._refused_credential(exc)
+        if refused is not None:
+            log.warning(
+                f"[{self.device_id}] Liveness probe refused the "
+                f"credential; dropping the connection: {exc}"
+            )
+            self._force_disconnect(AUTH_FAILED, refused.message)
+            return True
+        self._health_failures += 1
+        if probe.held:
+            # The next probe is due an interval after this one
+            # went out, however much of it the wait used.
+            probe.wait = max(0.0, probe.interval - (time.monotonic() - probe.started))
+        why = _probe_miss_reason(exc, probe.deadline)
+        # A held device is already shown offline: its misses are
+        # expected, and a device that stays down for hours would
+        # otherwise warn twice on every retry.
+        (log.debug if self._held else log.warning)(
+            f"[{self.device_id}] Liveness probe failed "
+            f"({self._health_failures}/{probe.max_failures}): {why}"
+        )
+        if self._health_failures < probe.max_failures:
+            return False
+        self._drop_for_unanswered_probes()
+        return True
+
+    def _drop_for_unanswered_probes(self) -> None:
+        """Drop a connection whose device stopped answering the liveness
+        probe, as ``no_response``. The automatic reconnect then holds it
+        offline until a probe is answered (connect(), _announce_held)."""
+        if self._held:
+            log.info(
+                f"[{self.device_id}] Still no answer to the "
+                f"liveness probe; closing the connection to "
+                f"try again"
+            )
+        else:
+            log.warning(
+                f"[{self.device_id}] Device stopped answering "
+                f"liveness probes; disconnecting"
+            )
+        self._dropped_for_silence = True
+        self._force_disconnect(
+            NO_RESPONSE, self._probe_fault_message()
+        )
+        self._silence_verdict = self._last_fault
 
     # --- Silence check (a peer that takes every poll and answers none) ---
 
