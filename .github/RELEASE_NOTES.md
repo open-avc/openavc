@@ -1,6 +1,6 @@
-# OpenAVC v0.40.0-rc1
+# OpenAVC v0.40.0-rc2
 
-A release candidate for 0.40.0, offered only to systems on the Beta channel. Device and plugin logins now stay on the system they were entered on: the project, its backups and exports, and the copies OpenAVC Cloud keeps hold "saved on this system" where each password was. Script code that waits on a slow call no longer holds up the rest of the system.
+A second release candidate for 0.40.0, offered only to systems on the Beta channel. Device and plugin logins now stay on the system they were entered on: the project, its backups and exports, and the copies OpenAVC Cloud keeps hold "saved on this system" where each password was. Script code that waits on a slow call no longer holds up the rest of the system. New since the first candidate: drivers can receive the UDP packets a device sends, and on Windows an update brings the tray icon back and no longer leaves behind old update tasks that could reinstall an earlier version.
 
 ## Logins
 
@@ -11,6 +11,7 @@ A release candidate for 0.40.0, offered only to systems on the Beta channel. Dev
 * The AI Assistant never reads or sets a login. Enter one on the device's page or in the plugin's settings.
 * A login written into a stream address is no longer sent to OpenAVC Cloud, and the Inter-System key no longer appears in the log or in reports.
 * To go back to an earlier version, use **Rollback** in the Updates view, which puts the logins back first. An older version installed by hand over this one finds no passwords, and its devices with a login cannot sign in.
+* On Docker, which has no Rollback, run `docker compose run --rm openavc --put-back-logins` with OpenAVC stopped before changing the image tag to an earlier version. The System Updates guide has the steps.
 
 ## Programmer
 
@@ -20,3 +21,17 @@ A release candidate for 0.40.0, offered only to systems on the Beta channel. Dev
 ## Panel
 
 * Fixed: a list whose key pattern holds brackets or parentheses now matches them as typed.
+
+## Drivers
+
+* Drivers can listen for the UDP packets a device sends to a port set on the device, such as SNMP traps, and simulated devices send them too. The Driver Builder offers it under Push Notifications (UDP Listener).
+
+## Windows
+
+* Fixed: the OpenAVC icon by the clock now comes back on its own after an update.
+* Fixed: a scheduled task left by an earlier update could run again after a Windows restart and put that older version back. Updates now remove their task, and this version removes the ones earlier updates left.
+
+## Installing
+
+* The Docker image can now listen on ports below 1024 with host networking, so Short URLs and devices that send to a low port (SNMP traps on 162) work there.
+* The one-line Linux install now completes on servers whose Python has no venv package.
