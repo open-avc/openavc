@@ -7,6 +7,7 @@ truthful regardless of which transport (or no transport) the driver picked.
 """
 
 import asyncio
+import time
 from typing import Any
 
 import httpx
@@ -306,3 +307,172 @@ async def test_verify_reachable_returns_false_for_dead_host() -> None:
     drv = _make_driver()
     # 127.0.0.1:1 — reserved, nothing should be listening
     assert await drv._verify_reachable("127.0.0.1", 1, timeout=0.5) is False
+
+
+# --- What the loop carries from one cycle to the next ---
+
+
+class _RecordingBus(EventBus):
+    """An event bus that keeps what was emitted, and can refuse to emit."""
+
+    def __init__(self, fail: bool = False) -> None:
+        super().__init__()
+        self.emitted: list[tuple[str, Any]] = []
+        self.fail = fail
+
+    async def emit(self, event: str, payload: dict[str, Any] | None = None) -> None:
+        self.emitted.append((event, payload))
+        if self.fail:
+            raise RuntimeError("bus down")
+
+
+@pytest.mark.asyncio
+async def test_a_connect_that_already_polled_waits_out_the_interval() -> None:
+    """A poll the connect itself ran (an _initial_sync reading state) was the
+    first cycle: the loop's first poll waits for the rest of the interval."""
+    drv = _make_driver()
+    now = time.monotonic()
+    drv._connect_began_at = now - 1.0
+    drv._last_poll_started_at = now
+    await drv.start_polling(1.0)
+    try:
+        await asyncio.sleep(0.2)
+        assert drv.poll_count == 0
+        await _wait_until(lambda: drv.poll_count >= 1)
+        assert drv.poll_count == 1
+    finally:
+        await drv.stop_polling()
+
+
+@pytest.mark.asyncio
+async def test_a_poll_from_before_this_connect_does_not_delay_the_first() -> None:
+    drv = _make_driver()
+    now = time.monotonic()
+    drv._last_poll_started_at = now - 1.0
+    drv._connect_began_at = now
+    await drv.start_polling(5.0)
+    try:
+        await _wait_until(lambda: drv.poll_count >= 1, timeout=1.0)
+        assert drv.poll_count == 1
+    finally:
+        await drv.stop_polling()
+
+
+@pytest.mark.asyncio
+async def test_a_protocol_error_is_reported_as_device_error() -> None:
+    bus = _RecordingBus()
+    drv = _CountingDriver(
+        device_id="test_dev", config={"max_missed_polls": 3}, state=StateStore(), events=bus,
+    )
+    drv._connected = True
+    drv.set_state("connected", True)
+    drv.poll_raises = ValueError("unexpected response shape")
+
+    await drv.start_polling(0.01)
+    await _wait_until(lambda: drv.poll_count >= 2)
+    await drv.stop_polling()
+
+    errors = [p for e, p in bus.emitted if e == "device.error.test_dev"]
+    assert errors[0] == {"device_id": "test_dev", "error": "unexpected response shape"}
+    assert drv.get_state("connected") is True
+
+
+@pytest.mark.asyncio
+async def test_a_device_error_that_cannot_be_emitted_does_not_stop_polling(caplog) -> None:
+    bus = _RecordingBus(fail=True)
+    drv = _CountingDriver(
+        device_id="test_dev", config={"max_missed_polls": 3}, state=StateStore(), events=bus,
+    )
+    drv._connected = True
+    drv.set_state("connected", True)
+    drv.poll_raises = ValueError("unexpected response shape")
+
+    with caplog.at_level("ERROR", logger="openavc.drivers.base"):
+        await drv.start_polling(0.01)
+        await _wait_until(lambda: drv.poll_count >= 4)
+        await drv.stop_polling()
+
+    assert drv.poll_count >= 4
+    assert "[test_dev] Failed to emit device.error" in caplog.text
+    assert drv.get_state("connected") is True
+
+
+class _Counted:
+    """A transport that keeps send and receive counts, and never hears back."""
+
+    def __init__(self) -> None:
+        self.connected = True
+        self.send_count = 0
+        self.receive_count = 0
+        self.last_error = ""
+
+    async def send(self, data: bytes) -> None:
+        self.send_count += 1
+
+    async def close(self) -> None:
+        self.connected = False
+
+
+class _SilentPeerDriver(_CountingDriver):
+    """Polls a peer that never answers. ``swap`` replaces the transport during
+    each poll ("during") or between polls ("between"), as a reconnect would."""
+
+    swap = ""
+
+    async def on_data_received(self, data: bytes) -> None:
+        pass
+
+    async def poll(self) -> None:
+        await super().poll()
+        if self.swap == "during":
+            self.transport = _Counted()
+        self.transport.send_count += 1
+
+    async def _wait_out_interval(self, interval: float, pending: Any, heard_earlier: bool) -> None:
+        if self.swap == "between":
+            self.transport = _Counted()
+        await super()._wait_out_interval(interval, pending, heard_earlier)
+
+
+def _silent_peer(swap: str) -> _SilentPeerDriver:
+    drv = _SilentPeerDriver(
+        device_id="test_dev", config={"max_missed_polls": 2}, state=StateStore(), events=EventBus(),
+    )
+    drv.swap = swap
+    drv.transport = _Counted()
+    drv._connected = True
+    drv.set_state("connected", True)
+    return drv
+
+
+@pytest.mark.asyncio
+async def test_a_silent_peer_drops_after_max_missed_polls() -> None:
+    drv = _silent_peer("")
+    assert drv._watches_for_silence() is True
+    await drv.start_polling(0.01)
+    await _wait_until(lambda: drv.get_state("connected") is False)
+    await drv.stop_polling()
+
+    assert drv.get_state("connected") is False
+    assert drv.poll_count == 2
+    assert drv.last_fault.code == "no_response"
+    assert drv.last_fault.message.startswith(
+        "Nothing has answered on this connection: 2 polls in a row got no reply."
+    )
+    assert drv._dropped_for_silence is True
+    assert drv._silence_verdict is drv.last_fault
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("swap", ["during", "between"])
+async def test_a_poll_judged_on_another_connection_counts_for_nothing(swap) -> None:
+    """Silence is judged against the connection the poll went out on: once
+    the transport is replaced, that poll says nothing about the new one."""
+    drv = _silent_peer(swap)
+    await drv.start_polling(0.01)
+    await _wait_until(lambda: drv.poll_count >= 8)
+    await drv.stop_polling()
+
+    assert drv.get_state("connected") is True
+    assert drv.last_fault is None
+    assert drv._dropped_for_silence is False

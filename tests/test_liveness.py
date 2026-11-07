@@ -1250,3 +1250,74 @@ async def test_a_device_the_probe_holds_still_takes_a_command(managed_probed_acm
     await dm.send_command("acme1", "power_on")
     assert await _until(lambda: b"PWR 1" in server["lines"], 1.0)
     assert state.get("device.acme1.connected") is False
+
+
+# --- The loop's own checks between probes ---
+
+
+@pytest.mark.asyncio
+async def test_a_hold_hook_that_fails_does_not_stop_the_probe(caplog) -> None:
+    class _HookFails(_ProbeDriver):
+        async def _liveness_held(self) -> bool:
+            raise RuntimeError("hook broke")
+
+    drv = _make_driver(_HookFails)
+    with caplog.at_level("ERROR", logger="openavc.drivers.base"):
+        drv._start_health_loop()
+        await asyncio.sleep(0.15)
+        drv._stop_health_loop()
+
+    assert drv.probe_count >= 1
+    assert (
+        "[test_dev] Could not tell whether the device's state holds the liveness "
+        "probe back; probing"
+    ) in caplog.text
+    assert drv.get_state("connected") is True
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_hold_hook_ends_the_loop_quietly() -> None:
+    class _HookCancelled(_ProbeDriver):
+        async def _liveness_held(self) -> bool:
+            raise asyncio.CancelledError
+
+    drv = _make_driver(_HookCancelled)
+    drv._start_health_loop()
+    task = drv._health_task
+    await asyncio.sleep(0.1)
+
+    assert task.done() and not task.cancelled()
+    assert task.exception() is None
+    assert drv.probe_count == 0
+
+
+@pytest.mark.asyncio
+async def test_a_link_that_drops_during_the_wait_is_not_probed() -> None:
+    class _SlowProbe(_ProbeDriver):
+        HEALTH_INTERVAL_S = 0.2
+
+    drv = _make_driver(_SlowProbe)
+    drv._start_health_loop()
+    task = drv._health_task
+    await asyncio.sleep(0.05)
+    drv.transport.connected = False
+    await asyncio.sleep(0.3)
+
+    assert task.done() and task.exception() is None
+    assert drv.probe_count == 0
+
+
+@pytest.mark.asyncio
+async def test_a_link_that_drops_while_the_hold_hook_runs_is_not_probed() -> None:
+    class _DropsInHook(_ProbeDriver):
+        async def _liveness_held(self) -> bool:
+            self.transport.connected = False
+            return False
+
+    drv = _make_driver(_DropsInHook)
+    drv._start_health_loop()
+    task = drv._health_task
+    await asyncio.sleep(0.1)
+
+    assert task.done() and task.exception() is None
+    assert drv.probe_count == 0
