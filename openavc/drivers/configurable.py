@@ -17,8 +17,12 @@ over a line of text (``text_replies``), the JSON-body rules and the
 ``json_path`` walk (``json_replies``), OSC commands and reply rules
 (``osc_wire``), what a reply's value becomes and which child it belongs to
 (``reply_values``), and a rule's throttle (``reply_throttle``). Around the
-connection: the ``auth:`` sign-in (``sign_in``) and the children an
-``instances:`` block declares (``declared_roster``).
+connection: the ``auth:`` sign-in (``sign_in``), the children an
+``instances:`` block declares (``declared_roster``), and whether an HTTP
+device is refusing the credentials (``http_credential``). The lines the
+driver sends on its own: start-up and the poll (``start_up_and_poll``), and
+what a poll or start-up entry sends and whether its gates let it go now
+(``query_entries``). Writing a device setting: ``setting_writes``.
 """
 
 from __future__ import annotations
