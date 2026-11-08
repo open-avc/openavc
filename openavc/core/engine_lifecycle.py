@@ -210,7 +210,8 @@ class EngineLifecycleMixin:
     """``start``, ``stop`` and ``_stop_inner``, each a list of stages.
 
     From its host (Engine) it uses nearly everything: the subsystems built in
-    ``Engine.__init__``, the project load and login moves, the device
+    ``Engine.__init__``, the project load and the login moves
+    (core/project_logins.py), the device
     add/bring-up, the variable runtime (core/project_variables.py), the
     runtime services (ISC, mDNS, cloud, panel software) and the background
     loops.
@@ -321,11 +322,7 @@ class EngineLifecycleMixin:
         # plugin's logins move later in this start, once the plugins are
         # loaded and can say which settings hold one (_move_logins_at_start).
         self._logins_backed_up_at_start = False
-        moved = self._move_logins(self.project, typed=False)
-        logins_moved = moved is not self.project and await self._back_up_before_moving_logins()
-        if logins_moved:
-            self._logins_backed_up_at_start = True
-            self.project = moved
+        logins_moved = await self._adopt_moved_logins(self._move_logins(self.project, typed=False))
         # Exports and backups read the saved project. Materialize a newly
         # inserted host reference before any hardware or programming starts.
         if self.project != loaded_project:

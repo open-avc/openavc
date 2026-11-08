@@ -86,7 +86,7 @@ class TestTheGateReadingItself:
             (core / name).read_text(encoding="utf-8")
             for name in (
                 "engine.py", "engine_lifecycle.py", "project_changes.py",
-                "project_reconcile.py", "runtime_services.py",
+                "project_reconcile.py", "runtime_services.py", "project_logins.py",
             )
         )
         # The expression used to be spelled at both start paths. It lives in

@@ -13,16 +13,17 @@ stop, one method per stage), ``project_changes`` (how a project change is
 saved, applied and announced, and its revision), ``project_reconcile`` (how
 the running system follows it: the reconcile by section, the device and
 plugin syncs, the device bring-up), ``project_variables`` (the ``var.*``
-runtime) and ``runtime_services`` (the ISC mesh, the mDNS advertiser, panel
-software updates and the cloud agent). How the project's devices reach the
+runtime), ``project_logins`` (the logins the project holds: who waits for
+one, moving them into the login file, a plugin's own config save) and
+``runtime_services`` (the ISC mesh, the mDNS advertiser, panel software
+updates and the cloud agent). Loading the project, with its recovery, is
+``project_recovery``. How the project's devices reach the
 device manager is ``device_sync``.
 """
 
 from __future__ import annotations
 
 import asyncio
-import copy
-import functools
 import hmac
 import socket
 import time
@@ -32,18 +33,8 @@ from typing import Any
 from openavc import config, runtime_flags
 from openavc.core.device_config import resolve_device_config
 from openavc.core.device_logins import (
-    DEVICE,
-    SAVED_LOGIN,
-    StoreView,
     fill_saved_logins,
     filled_plugin_config,
-    in_project,
-    marked_fields,
-    move_logins,
-    move_plugin_logins,
-    plugin_logins_waiting,
-    saved_isc_key,
-    saved_logins_of,
 )
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
@@ -63,12 +54,11 @@ from openavc.core.project_changes import (  # noqa: F401 -- ProjectRevisionConfl
     ProjectChangesMixin,
     ProjectRevisionConflictError,
 )
+from openavc.core.project_logins import ProjectLoginsMixin
 from openavc.core.project_reconcile import ProjectReconcileMixin
 from openavc.core.project_variables import ProjectVariablesMixin
 from openavc.core.project_loader import (
     ProjectConfig,
-    refresh_crash_copy,
-    save_project_async,
 )
 from openavc.core.runtime_services import RuntimeServicesMixin
 from openavc.core.script_engine import ScriptEngine
@@ -78,25 +68,17 @@ from openavc.core.trigger_engine import TriggerEngine
 from openavc.core.ui_events import UIEventRuntime
 from openavc.core.ws_hub import WSHub
 from openavc.discovery import network_scanner
-from openavc.drivers.registry import is_driver_registered
 from openavc.ui.action_devices import annotate_action_devices
 from openavc.ui.matrix_model import resolve_ui
-from openavc.utils.log_redaction import get_secret_registry, project_secret_values
 from openavc.utils.logger import get_logger
 from openavc.version import __version__
 
 log = get_logger(__name__)
 
 
-def _replace_plugin_config(project: ProjectConfig, plugin_id: str, config: dict) -> None:
-    """``config`` as the plugin's config in ``project``, if it still has it."""
-    if plugin_id in project.plugins:
-        project.plugins[plugin_id].config = config
-
-
 class Engine(
     EngineLifecycleMixin, ProjectChangesMixin, ProjectReconcileMixin, ProjectVariablesMixin,
-    RuntimeServicesMixin,
+    ProjectLoginsMixin, RuntimeServicesMixin,
 ):
     """
     Main runtime engine. Singleton per OpenAVC instance.
@@ -126,11 +108,8 @@ class Engine(
         from openavc.system_config import get_data_dir
         self.panel_devices = PanelDeviceStore(get_data_dir() / "panel_devices.json")
         self.panel_devices.load()
-        # The device logins saved on this system (core/device_logins). Read
-        # from disk on first use; neither of its files exists until a login
-        # is saved.
-        from openavc.core.device_logins import device_logins
-        self.device_logins = device_logins(get_data_dir())
+        # The device logins saved on this system, and the start's backup flag.
+        self._init_logins()
         self._panel_sweep_task: asyncio.Task | None = None
         self._os_programs_task: asyncio.Task | None = None
         # Panel interaction runtime (peer of the macro engine, see ui_events)
@@ -173,8 +152,6 @@ class Engine(
         )
         self.persister: StatePersister | None = None
         self.isc = None  # ISCManager, initialized in start() if enabled
-        # Whether this start backed up the project before moving its logins.
-        self._logins_backed_up_at_start = False
         self.cloud_agent = None  # CloudAgent, initialized in start() if enabled
         # UpdateManager and PanelSoftwareUpdates, both initialized in start()
         self.update_manager = self.panel_software = None
@@ -261,26 +238,6 @@ class Engine(
             # behaviour and is always safe.
             self.devices.project_reconnect_interval = None
 
-    def _register_project_secrets(self) -> None:
-        """Hand the log redaction the project's own secrets: the mesh key and
-        every plugin login, from the login file where the project holds the
-        marker, as the project holds them where it does not (a move that could
-        not finish). Registered whether the mesh or the plugin runs or not."""
-        try:
-            values = {
-                v for v in project_secret_values(self.project) if v != SAVED_LOGIN
-            }
-            if self.project is not None:
-                key = saved_isc_key(self.project, self.device_logins)
-                if key:
-                    values.add(key)
-                for found in saved_logins_of(self.project, StoreView(self.device_logins)):
-                    if found.kind != DEVICE:
-                        values |= set(found.fields.values())
-            get_secret_registry().set_project_secrets(values)
-        except Exception:  # never block a project on the log redaction
-            log.debug("Could not register the project's secrets for log redaction", exc_info=True)
-
     def _record_push_ports(self) -> None:
         """Write the ports this project's devices push to, for the Linux host
         firewall helper (``core/push_ports.py``). Never fatal: a port left
@@ -310,172 +267,6 @@ class Engine(
         if installed is not None:
             return installed
         return fill_saved_logins(resolve_device_config(device, self.project), self.device_logins)
-
-    def logins_needed(self) -> list[dict[str, str]]:
-        """The devices that wait for somebody to enter a login, in project
-        order, as id and name: each enabled device on an installed driver
-        whose project marks a login as saved on this system that this system
-        does not have (``core.device_logins``), the setting its driver refuses
-        to dial with ``login_missing``. Read from the project and the login
-        file, so it is right as soon as a project is applied, before any
-        device has tried to connect."""
-        if self.project is None:
-            return []
-        needed = []
-        for device in self.project.devices:
-            if not device.enabled or not is_driver_registered(device.driver):
-                continue
-            if marked_fields(self.resolved_device_config(device).get("config")):
-                needed.append({"id": device.id, "name": device.name or device.id})
-        return needed
-
-    def plugin_logins_needed(self) -> list[dict[str, str]]:
-        """The plugins that wait for somebody to enter a login, in project
-        order, as id and name: each enabled, installed plugin whose config
-        marks a login it declares as saved on this system that this system
-        does not have (``core.device_logins.plugin_logins_waiting``). A login
-        the plugin makes itself (Present's display keys) never waits: it is
-        made again."""
-        if self.project is None:
-            return []
-        from openavc.core.plugin_loader import _PLUGIN_CLASS_REGISTRY
-
-        needed = []
-        for plugin_id, entry in self.project.plugins.items():
-            plugin_class = _PLUGIN_CLASS_REGISTRY.get(plugin_id)
-            if not entry.enabled or plugin_class is None:
-                continue
-            if plugin_logins_waiting(plugin_id, entry.config, self.device_logins):
-                info = getattr(plugin_class, "PLUGIN_INFO", None) or {}
-                needed.append({"id": plugin_id, "name": str(info.get("name") or plugin_id)})
-        return needed
-
-    def _move_logins(self, project: ProjectConfig, *, typed: bool) -> ProjectConfig:
-        """``project`` with each login it holds in the clear moved into this
-        system's login file (``core.device_logins.move_logins``): the same
-        object when nothing moved or the move could not finish. Product
-        hardware is left out; its login never lives in the project."""
-        try:
-            built_in = {d.id for d in project.devices if self.installed_equipment.matches(d)}
-            return move_logins(project, self.device_logins, typed=typed, skip=built_in.__contains__)
-        except Exception:  # a move that fails leaves every login where it was
-            log.exception("Could not move the device logins out of the project")
-            return project
-
-    async def _move_logins_at_start(self) -> None:
-        """The second half of the first-start move, run once the plugins are
-        loaded: each plugin login the project still holds in the clear moves
-        into the login file, then every Project Library copy's logins (inline:
-        one small file per saved project). The project is backed up first
-        unless this start already did, before the device logins moved: that
-        backup is the file as it was, these logins and all."""
-        moved = self._move_logins(self.project, typed=False)
-        if moved is not self.project:
-            if self._logins_backed_up_at_start or await self._back_up_before_moving_logins():
-                self._logins_backed_up_at_start = True
-                self.project = moved
-                await save_project_async(self.project_path, self.project)
-                await asyncio.to_thread(refresh_crash_copy, self.project_path)
-                self._register_project_secrets()
-        try:
-            from openavc.core.project_library import move_library_logins
-
-            move_library_logins(self.device_logins)
-        except Exception:  # never block startup on the library
-            log.exception("Could not move the logins out of the Project Library")
-
-    async def _back_up_before_moving_logins(self) -> bool:
-        """Back up the project file before the move rewrites it. False when
-        the backup failed, and the file must then stay as it is."""
-        from openavc.core.backup_manager import create_backup
-
-        try:
-            await asyncio.to_thread(
-                create_backup, self.project_path, "Before moving device logins out of the project",
-            )
-        except Exception:
-            log.exception("Could not back up the project, so its device logins stay in it for now")
-            return False
-        return True
-
-    def _sweep_device_logins(self) -> None:
-        """Date the saved logins of devices, plugin items and plugins that left
-        the project, and delete those gone 90 days (``DeviceLogins.sweep``). Never fatal: a sweep that
-        cannot write leaves the dates as they were, and the logins in place."""
-        if self.project is None:
-            return
-        try:
-            self.device_logins.sweep(in_project(self.project))
-        except Exception:
-            log.exception("Could not update the saved device logins")
-
-    async def _save_plugin_config(self, plugin_id: str, config: dict) -> None:
-        """Save updated plugin config to the project file (callback for PluginAPI).
-
-        The plugin already runs with ``config`` (PluginAPI swapped it before
-        calling here), so this is a bookkeeping persist — no reconcile. A
-        plugin can call ``save_config`` from a hook the reconciler awaits
-        inline (``on_start``, ``on_config_changed``, an event handler), i.e.
-        while the reconcile lock is held — taking the lock then would
-        deadlock. When the lock is free this persists before returning and
-        raises on failure (the PluginAPI contract); when it is held, the
-        write is deferred to run right after the reconcile finishes.
-        """
-        if not self.project or plugin_id not in self.project.plugins:
-            return
-        previous = self.project.plugins[plugin_id].config
-        # The plugin saves the config it runs with, its logins filled in. Each
-        # moves into the login file here, since this persist never passes
-        # _apply_project_locked: one the plugin changed (a regenerated key, a
-        # password typed into its own page) replaces the saved one, and the
-        # project keeps the marker.
-        config = move_plugin_logins(plugin_id, config, self.device_logins, current=previous)
-
-        on_error = functools.partial(self._plugin_config_not_saved, plugin_id, previous)
-        if self._reload_lock.locked():
-            # Possibly our own call chain holds the lock (a plugin hook run
-            # by the reconciler) — awaiting it would deadlock. The plugin's
-            # live config is already current; only the persist is deferred.
-            _replace_plugin_config(self.project, plugin_id, config)
-            self.schedule_bookkeeping_change(
-                lambda project: self._write_running_plugin_config(project, plugin_id),
-                on_error=on_error,
-            )
-        else:
-            try:
-                await self.persist_bookkeeping_change(
-                    lambda project: _replace_plugin_config(project, plugin_id, config),
-                    on_error=on_error,
-                )
-            except Exception as e:
-                log.error(f"Failed to save plugin config for '{plugin_id}': {e}")
-                raise
-        # A login the plugin made or changed is masked in the log from now on.
-        self._register_project_secrets()
-
-    async def _plugin_config_not_saved(self, plugin_id: str, previous: dict) -> None:
-        # Revert the in-memory project so it matches disk. Otherwise a
-        # bad/unwritable config lingers in the shared project model and
-        # the next save of ANYTHING re-serializes it and fails too.
-        _replace_plugin_config(self.project, plugin_id, previous)
-        await self.broadcast_ws({
-            "type": "error",
-            "message": f"Failed to save plugin config for '{plugin_id}'",
-        })
-
-    def _write_running_plugin_config(self, project: ProjectConfig, plugin_id: str) -> None:
-        """The deferred half of a plugin's save, run after the reconcile."""
-        # By then another save of this plugin may have landed (its own
-        # save_config, the settings form, the assistant). Writing the config
-        # as it was captured would put the older one back over it, so the
-        # config the plugin runs with when this runs is the one written.
-        if plugin_id not in project.plugins or not self.plugin_loader.is_running(plugin_id):
-            return
-        running = copy.deepcopy(self.plugin_loader.get_running_config(plugin_id))
-        project.plugins[plugin_id].config = move_plugin_logins(
-            plugin_id, running, self.device_logins,
-            current=project.plugins[plugin_id].config,
-        )
 
     # --- UI Event Handling ---
 
