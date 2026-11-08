@@ -177,9 +177,11 @@ def load_or_recover(project_path: Path) -> ProjectConfig:
     A missing file is seeded from the bundled starter project. If the file is
     missing with no seed, or cannot be read or validated, the newest backup
     that loads replaces it; if none does, an empty Recovery Project is saved
-    in its place. Anything but the happy path and the seed leaves a record
-    (``record``), because a room that came up on two-minute-old settings has
-    to say so to the person whose newer edit is not in it.
+    in its place. A restored backup leaves a record (``record``), and so does
+    an empty project started over a file that could not be read, because a
+    room that came up on two-minute-old settings has to say so to the person
+    whose newer edit is not in it. A missing file with nothing to restore is
+    a first boot and leaves none.
     """
     try:
         return load_project(project_path)

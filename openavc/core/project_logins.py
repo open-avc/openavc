@@ -5,21 +5,19 @@ the log redaction's copy of the project's own secrets, the sweep of logins
 whose owner left the project, and a plugin's own save of its config, which
 moves its logins on the way to disk.
 
-A move happens twice in a start: the device logins as the project loads, the
-plugin logins once the plugins are loaded and can say which settings hold
-one. The project file is backed up before the first move rewrites it, once
-per start (``_adopt_moved_logins`` is that rule); a move or a backup that
-cannot finish changes nothing.
+A move happens twice in a start: the device logins as the project loads
+(``_move_device_logins_at_load``), the plugin logins once the plugins are
+loaded and can say which settings hold one (``_move_logins_at_start``). The
+project file is backed up before the first move rewrites it, once per start
+(``_adopt_moved_logins``), and a save that moved logins refreshes the crash
+copy (``_save_project_at_start``); a move or a backup that cannot finish
+changes nothing.
 
-A plugin calls ``save_config`` from hooks the reconcile awaits while it holds
-the reload lock, so ``_save_plugin_config`` saves now when the lock is free and
-otherwise defers the write to run right after the reconcile, writing the
-config the plugin then runs with.
-
-Mixed into Engine (core/engine.py), which builds the login file in
-``_init_logins`` and supplies ``resolved_device_config``, the plugin loader
-and the bookkeeping saves (core/project_changes.py). Logs under the engine's
-name.
+Mixed into Engine (core/engine.py). From the engine it reads the project and
+its path, ``resolved_device_config``, the product hardware
+(``installed_equipment``), the plugin loader and ``broadcast_ws``; a plugin's
+save goes through the bookkeeping doors of core/project_changes.py, which own
+when a save waits for a reconcile. Logs under the engine's name.
 """
 
 from __future__ import annotations
@@ -158,15 +156,26 @@ class ProjectLoginsMixin:
         self.project = moved
         return True
 
+    async def _move_device_logins_at_load(self) -> bool:
+        """The first half of the first-start move, as the project loads: a
+        login the project still holds in the clear (every login, on the first
+        start of a version that keeps them in this system's login file) moves
+        into that file before anything dials, and the project keeps the
+        marker. This file may exist nowhere else (an update that took no
+        backup of its own, an installer run by hand), so it is backed up
+        first. True when the logins moved; the start saves the project
+        (``_save_project_at_start``). A plugin's logins move later, once the
+        plugins are loaded and can say which settings hold one."""
+        self._logins_backed_up_at_start = False
+        return await self._adopt_moved_logins(self._move_logins(self.project, typed=False))
+
     async def _move_logins_at_start(self) -> None:
         """The second half of the first-start move, run once the plugins are
         loaded: each plugin login the project still holds in the clear moves
-        into the login file, saved with the crash copy refreshed, then every
-        Project Library copy's logins (inline: one small file per saved
-        project)."""
+        into the login file, saved, then every Project Library copy's logins
+        (inline: one small file per saved project)."""
         if await self._adopt_moved_logins(self._move_logins(self.project, typed=False)):
-            await save_project_async(self.project_path, self.project)
-            await asyncio.to_thread(refresh_crash_copy, self.project_path)
+            await self._save_project_at_start(logins_moved=True)
             self._register_project_secrets()
         try:
             from openavc.core.project_library import move_library_logins
@@ -174,6 +183,15 @@ class ProjectLoginsMixin:
             move_library_logins(self.device_logins)
         except Exception:  # never block startup on the library
             log.exception("Could not move the logins out of the Project Library")
+
+    async def _save_project_at_start(self, *, logins_moved: bool) -> None:
+        """Save the running project during a start. After a save that moved
+        logins out, the crash copy is made the file as now saved: the copy
+        taken before that save still holds the logins, and would keep them
+        until the next save."""
+        await save_project_async(self.project_path, self.project)
+        if logins_moved:
+            await asyncio.to_thread(refresh_crash_copy, self.project_path)
 
     async def _back_up_before_moving_logins(self) -> bool:
         """Back up the project file before the move rewrites it. False when
@@ -206,11 +224,10 @@ class ProjectLoginsMixin:
         The plugin already runs with ``config`` (PluginAPI swapped it before
         calling here), so this is a bookkeeping persist — no reconcile. A
         plugin can call ``save_config`` from a hook the reconciler awaits
-        inline (``on_start``, ``on_config_changed``, an event handler), i.e.
-        while the reconcile lock is held — taking the lock then would
-        deadlock. When the lock is free this persists before returning and
-        raises on failure (the PluginAPI contract); when it is held, the
-        write is deferred to run right after the reconcile finishes.
+        inline (``on_start``, ``on_config_changed``, an event handler), so
+        it goes through ``persist_or_defer_bookkeeping_change``: saved before
+        returning, raising on failure (the PluginAPI contract), unless the
+        reconcile holds the lock, when the write runs right after it.
         """
         if not self.project or plugin_id not in self.project.plugins:
             return
@@ -222,25 +239,16 @@ class ProjectLoginsMixin:
         # project keeps the marker.
         config = move_plugin_logins(plugin_id, config, self.device_logins, current=previous)
 
-        on_error = functools.partial(self._plugin_config_not_saved, plugin_id, previous)
-        if self._reload_lock.locked():
-            # Possibly our own call chain holds the lock (a plugin hook run
-            # by the reconciler) — awaiting it would deadlock. The plugin's
-            # live config is already current; only the persist is deferred.
-            _replace_plugin_config(self.project, plugin_id, config)
-            self.schedule_bookkeeping_change(
-                lambda project: self._write_running_plugin_config(project, plugin_id),
-                on_error=on_error,
+        try:
+            await self.persist_or_defer_bookkeeping_change(
+                lambda project: _replace_plugin_config(project, plugin_id, config),
+                # Deferred, it writes the config the plugin runs with by then.
+                deferred=lambda project: self._write_running_plugin_config(project, plugin_id),
+                on_error=functools.partial(self._plugin_config_not_saved, plugin_id, previous),
             )
-        else:
-            try:
-                await self.persist_bookkeeping_change(
-                    lambda project: _replace_plugin_config(project, plugin_id, config),
-                    on_error=on_error,
-                )
-            except Exception as e:
-                log.error(f"Failed to save plugin config for '{plugin_id}': {e}")
-                raise
+        except Exception as e:
+            log.error(f"Failed to save plugin config for '{plugin_id}': {e}")
+            raise
         # A login the plugin made or changed is masked in the log from now on.
         self._register_project_secrets()
 

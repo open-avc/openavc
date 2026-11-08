@@ -27,7 +27,6 @@ import time
 from pathlib import Path
 
 from openavc.core.device_sync import add_devices
-from openavc.core.project_loader import refresh_crash_copy, save_project_async
 from openavc.core.script_engine import ScriptEngine
 from openavc.utils.logger import get_logger
 from openavc.version import __version__
@@ -314,22 +313,13 @@ class EngineLifecycleMixin:
         published (its recovery notice, settings, name and assets)."""
         loaded_project = self._load_project_safe()
         self.project = self.installed_equipment.compose(loaded_project, for_load=True)
-        # A login the project still holds in the clear (every login, on the
-        # first start of a version that keeps them in this system's login
-        # file) moves into that file before anything dials, and the project
-        # keeps the marker. This file may exist nowhere else (an update that
-        # took no backup of its own, an installer run by hand), so it is
-        # backed up first; a move that cannot finish changes nothing. A
-        # plugin's logins move later in this start, once the plugins are
-        # loaded and can say which settings hold one (_move_logins_at_start).
-        self._logins_backed_up_at_start = False
-        logins_moved = await self._adopt_moved_logins(self._move_logins(self.project, typed=False))
+        # The device logins it still holds in the clear move out before
+        # anything dials (core/project_logins.py).
+        logins_moved = await self._move_device_logins_at_load()
         # Exports and backups read the saved project. Materialize a newly
         # inserted host reference before any hardware or programming starts.
         if self.project != loaded_project:
-            await save_project_async(self.project_path, self.project)
-            if logins_moved:
-                await asyncio.to_thread(refresh_crash_copy, self.project_path)
+            await self._save_project_at_start(logins_moved=logins_moved)
         # Whatever that had to do to get a project, say so. Published from the
         # record on disk rather than from this boot, so a notice nobody has
         # dismissed survives the restart that would otherwise bury it.

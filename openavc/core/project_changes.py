@@ -344,6 +344,24 @@ class ProjectChangesMixin:
                 "ui": self.panel_ui(),
             })
 
+    async def persist_or_defer_bookkeeping_change(self, mutate, *, deferred, on_error=None) -> None:
+        """Persist a bookkeeping change from code that may be running inside
+        a reconcile (a plugin hook the reconciler awaits holds the reload
+        lock, and awaiting it then would deadlock).
+
+        With the lock free, ``persist_bookkeeping_change(mutate)``: saved
+        before this returns, raising on failure. With it held, ``mutate`` is
+        applied to the running project now and ``deferred(project)`` is
+        queued to be written right after the reconcile; it is applied to the
+        project current then, so it can read what the runtime holds at that
+        moment rather than what the caller captured.
+        """
+        if self._reload_lock.locked():
+            mutate(self.project)
+            self.schedule_bookkeeping_change(deferred, on_error=on_error)
+        else:
+            await self.persist_bookkeeping_change(mutate, on_error=on_error)
+
     async def persist_bookkeeping_change(self, mutate, *, on_error=None) -> str:
         """Persist an in-place project mutation whose runtime effect is
         already applied — no reconcile, just save + revision bump +
