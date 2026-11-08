@@ -125,7 +125,7 @@ def _build_commands_meta(commands_def: dict[str, Any]) -> dict[str, Any]:
     and the difference is why it was missed: every other command field is
     read off the raw definition at send time, but the connected-gate and a
     promoted button's availability both read DRIVER_INFO
-    (``DeviceManager._command_available_offline``,
+    (``command_gates.available_offline``,
     ``actions._command_availability``). A field dropped here is therefore
     inert for a YAML driver while working for a Python one, which sets
     DRIVER_INFO itself. Anything else those two ever read must be added here
