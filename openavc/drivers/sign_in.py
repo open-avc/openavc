@@ -25,9 +25,11 @@ The rules worth knowing before changing anything here:
   prompts, so on TCP the first moments after connect are held raw: a prompt
   among them fails the connect as ``auth_failed`` naming the blank setting;
   otherwise they replay through the frame parser into the reply rules.
-* **The flood cap.** The raw buffer stops at ``_AUTH_MAX_BUFFER``: this is
-  an unauthenticated path, and a device (or anything spoofing it) could
-  otherwise stream forever before any prompt matched.
+* **The flood cap.** Once the raw buffer passes ``_AUTH_MAX_BUFFER`` the
+  stage waiting aborts as ``no_response`` (the blank-credential listen ends
+  and replays what came): this is an unauthenticated path, and a device (or
+  anything spoofing it) could otherwise stream forever before any prompt
+  matched.
 
 ``SignIn`` is a mixin ``ConfigurableDriver`` inherits, so every name stays
 on the driver object. ``drivers/dry_run.py`` runs ``_perform_auth_handshake``
@@ -240,7 +242,7 @@ class SignIn:
         waiting decides what it means."""
         self._auth_buffer.extend(data)
         if len(self._auth_buffer) > _AUTH_MAX_BUFFER:
-            # A pre-auth flood: stop accumulating and let the stage abort.
+            # A pre-auth flood: the stage waiting sees the flag and aborts.
             self._auth_overflow = True
         self._auth_event.set()
 
