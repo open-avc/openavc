@@ -303,26 +303,17 @@ class CommandTrial:
 class CommandPass:
     """The commands step for one driver run."""
 
-    def __init__(
-        self,
-        session: "AuditSession",
-        run: "DriverRun",
-        *,
-        window_seconds: float = WINDOW_SECONDS,
-        query_window_seconds: float = QUERY_WINDOW_SECONDS,
-        max_window_seconds: float = MAX_WINDOW_SECONDS,
-        restart_margin_seconds: float = RESTART_MARGIN_SECONDS,
-        after_reconnect_seconds: float = AFTER_RECONNECT_SECONDS,
-        flush_seconds: float = FLUSH_SECONDS,
-    ) -> None:
+    def __init__(self, session: "AuditSession", run: "DriverRun") -> None:
         self.session = session
         self.run = run
-        self.window_seconds = window_seconds
-        self.query_window_seconds = query_window_seconds
-        self.max_window_seconds = max_window_seconds
-        self.restart_margin_seconds = restart_margin_seconds
-        self.after_reconnect_seconds = after_reconnect_seconds
-        self.flush_seconds = flush_seconds
+        # How long a window is held and how often the wizard hears of it
+        # (``commands_for`` lets a test set its own).
+        self.window_seconds = WINDOW_SECONDS
+        self.query_window_seconds = QUERY_WINDOW_SECONDS
+        self.max_window_seconds = MAX_WINDOW_SECONDS
+        self.restart_margin_seconds = RESTART_MARGIN_SECONDS
+        self.after_reconnect_seconds = AFTER_RECONNECT_SECONDS
+        self.flush_seconds = FLUSH_SECONDS
         self.trials: list[CommandTrial] = []
         # "Run all status queries": {"status", "total", "sent", "skipped"}.
         self.batch: dict[str, Any] | None = None
@@ -337,12 +328,16 @@ class CommandPass:
 
     # -- where it runs --------------------------------------------------------
 
+    def _connected(self) -> bool:
+        """Is the current attempt's driver connected to the device?"""
+        listen = self.run.listen
+        return listen is not None and listen.sandbox.started
+
     def _live(self):
         """The current attempt, while its driver is connected to the device."""
-        listen = self.run.listen
-        if listen is None or not listen.sandbox.started:
+        if not self._connected():
             raise AuditError(NOT_CONNECTED_YET)
-        return listen
+        return self.run.listen
 
     def _attempt(self, trial: CommandTrial) -> Any:
         """The connect-and-listen attempt whose connection carried ``trial``."""
@@ -364,8 +359,7 @@ class CommandPass:
         return driver
 
     def catalog(self) -> list[dict[str, Any]]:
-        listen = self.run.listen
-        if self._final_catalog is not None and (listen is None or not listen.sandbox.started):
+        if self._final_catalog is not None and not self._connected():
             return self._final_catalog
         return command_catalog(self._driver())
 
@@ -383,8 +377,7 @@ class CommandPass:
             for pdef in (entry.get("params") or {}).values()
             if isinstance(pdef, dict) and isinstance(pdef.get("options_state"), str)
         }
-        listen = self.run.listen
-        state = listen.sandbox.device_state() if listen is not None and listen.sandbox.started else {}
+        state = self.run.listen.sandbox.device_state() if self._connected() else {}
         return {key: recorded(state.get(key)) for key in sorted(keys)}
 
     def _driver_name(self) -> str:
@@ -434,39 +427,34 @@ class CommandPass:
         ``keep_file`` keeps a file the command hands back for the wizard's
         download.
         """
-        try:
-            self._refuse_if_busy()
-            listen = self._live()
-        except AuditError:
-            if on_finished is not None:
-                on_finished()
-            raise
+        listen = self._ready(on_finished)
         # A name the driver does not declare is still sent: the manager's own
         # refusal is part of what the audit records about the driver.
         entry = self.catalog_entry(name) or {"name": name, "label": name}
         listen.end_window_now("A command was sent")
         self.session.enter_step("commands")
-        values = dict(params or {})
-        values.update(files or {})
-        trial = self._open_trial(entry, values, batch=False)
-        trial.file_command = bool(entry.get("takes_file") or entry.get("returns_file") or files)
+        trial = self._open_trial(entry, {**(params or {}), **(files or {})}, batch=False)
+        trial.file_command = _moves_a_file(entry) or bool(files)
         trial.on_finished = on_finished
         trial.keep_file = keep_file
         task = self._task = self.session.track_task(asyncio.create_task(self._send_and_watch(trial)))
-        if trial.file_command:
-            # A file can take minutes to reach a device, longer than a request
-            # may wait (30 s through the cloud tunnel): answered as soon as it
-            # starts, and followed over audit.subscribe like every send.
-            return trial
-        # Answer once the driver's call has returned, not as soon as it is
-        # queued: a command refused at once is then already recorded, and the
-        # caller's copy of the state is not older than what was published.
-        returned = asyncio.ensure_future(trial.returned.wait())
-        try:
-            await asyncio.wait({task, returned}, return_when=asyncio.FIRST_COMPLETED)
-        finally:
-            returned.cancel()
+        # A file can take minutes to reach a device, longer than a request
+        # may wait (30 s through the cloud tunnel): answered as soon as it
+        # starts, and followed over audit.subscribe like every send.
+        if not trial.file_command:
+            await _until_returned(trial, task)
         return trial
+
+    def _ready(self, on_finished: Any) -> Any:
+        """The connection a Send goes out on, or the refusal; a refused Send
+        still lets the door's staged uploads go."""
+        try:
+            self._refuse_if_busy()
+            return self._live()
+        except AuditError:
+            if on_finished is not None:
+                on_finished()
+            raise
 
     async def send_again(self, number: int, name: str | None = None) -> CommandTrial:
         """"Try again": the same command with the same values as command
@@ -496,16 +484,23 @@ class CommandPass:
         self._publish(trial)
         return trial
 
-    def extend(self, seconds: float = EXTEND_SECONDS) -> None:
-        """"Wait longer": keep watching the current command."""
+    def _watched(self) -> CommandTrial:
+        """The command whose window is open, or the refusal."""
         trial = self.current()
-        if trial is None or trial.status != WATCHING or trial.ends_at is None:
+        if trial is None or trial.status != WATCHING:
             raise AuditError(NOT_WATCHING)
-        cap = (trial.returned_at or trial.sent_at) + max(
-            self.max_window_seconds, self._restart_span(trial),
-        )
+        return trial
+
+    def extend(self, seconds: float = EXTEND_SECONDS) -> None:
+        """"Wait longer": keep watching the current command, up to the most a
+        window can be held from its return (a declared restart's, when longer)."""
+        trial = self._watched()
+        if trial.ends_at is None:
+            raise AuditError(NOT_WATCHING)
+        start = trial.returned_at or trial.sent_at
+        cap = start + max(self.max_window_seconds, self._restart_span(trial))
         if trial.ends_at >= cap - 0.001:
-            raise AuditError(WATCH_CAP.format(span=_duration(cap - (trial.returned_at or trial.sent_at))))
+            raise AuditError(WATCH_CAP.format(span=_duration(cap - start)))
         new_end = min(trial.ends_at + seconds, cap)
         trial.extended += new_end - trial.ends_at
         trial.ends_at = new_end
@@ -513,9 +508,7 @@ class CommandPass:
 
     def end_now(self) -> None:
         """"Stop watching": close the current command's window now."""
-        trial = self.current()
-        if trial is None or trial.status != WATCHING:
-            raise AuditError(NOT_WATCHING)
+        trial = self._watched()
         trial.stopped_early = True
         trial.ends_at = time.time()
         self._publish(trial)
@@ -524,12 +517,7 @@ class CommandPass:
         """Send every status query that needs no value, one after another."""
         self._refuse_if_busy()
         listen = self._live()
-        catalog = self.catalog()
-        def runnable(c: dict[str, Any]) -> bool:
-            return not (c["needs_input"] or c.get("takes_file") or c.get("returns_file"))
-
-        queries = [c for c in catalog if c["query"] and runnable(c)]
-        skipped = [c["name"] for c in catalog if c["query"] and not runnable(c)]
+        queries, skipped = _status_queries(self.catalog())
         if not queries:
             raise AuditError(NO_QUERIES.format(driver=self._driver_name()))
         listen.end_window_now("The status queries were sent")
@@ -546,7 +534,7 @@ class CommandPass:
     async def _run_batch(self, queries: list[dict[str, Any]]) -> None:
         try:
             for entry in queries:
-                if self.run.listen is None or not self.run.listen.sandbox.started:
+                if not self._connected():
                     break
                 trial = self._open_trial(entry, {}, batch=True)
                 await self._send_and_watch(trial, window=self.query_window_seconds)
@@ -558,17 +546,8 @@ class CommandPass:
 
     def _open_trial(self, entry: dict[str, Any], params: dict[str, Any], *, batch: bool) -> CommandTrial:
         name = entry["name"]
-        # A value typed into a secret parameter (a password a command sets,
-        # or one named like a credential) is masked in every record, the
-        # traffic included.
-        secret_names = {
-            k for k, pdef in (entry.get("params") or {}).items()
-            if isinstance(pdef, dict) and (is_secret_setting(k, pdef) or is_secret_key(k))
-        }
-        secret = {str(params[k]) for k in secret_names if params.get(k) not in (None, "")}
-        if secret:
-            self.run.secrets |= secret
-            self.run.listen.sandbox.observer.add_secrets(secret)
+        secret_names = _secret_params(entry)
+        self._keep_secrets(secret_names, params)
         previous = self.trials[-1] if self.trials else None
         now = time.time()
         # Read before the trial is added: from then on something is watched.
@@ -583,15 +562,8 @@ class CommandPass:
             connect_attempt=max(0, len(self.run.listens) - 1),
             sent_at=now,
             secret_params=secret_names,
-            declared={
-                k: entry.get(k) for k in (
-                    "sets", "query_for", "restarts_device_for", "available_offline", "confirm",
-                ) if entry.get(k)
-            },
-            since_previous={
-                "number": previous.number, "command": previous.command,
-                "label": previous.label, "seconds": round(now - previous.sent_at, 3),
-            } if previous is not None else None,
+            declared=_declared(entry),
+            since_previous=_since(previous, now),
             before=dict(self.run.listen.sandbox.device_state()),
             already_moving=moving,
         )
@@ -603,6 +575,15 @@ class CommandPass:
         )
         self._publish(trial)
         return trial
+
+    def _keep_secrets(self, names: set[str], params: dict[str, Any]) -> None:
+        """A value typed into a secret parameter (a password a command sets,
+        or one named like a credential) is masked in every record, the
+        traffic included."""
+        secret = {str(params[k]) for k in names if params.get(k) not in (None, "")}
+        if secret:
+            self.run.secrets |= secret
+            self.run.listen.sandbox.observer.add_secrets(secret)
 
     def _readback_span(self, trial: CommandTrial) -> float:
         """How long a command that declares what it sets may be watched for
@@ -625,7 +606,7 @@ class CommandPass:
         call returned, or does it already read what it should? (A reply on
         its way when the command was sent can still answer with the old
         value.)"""
-        entry = {**trial.declared, "params": self._params_of(trial.command)}
+        entry = self._declaration(trial)
         state = sandbox.device_state()
         fresh = sandbox.written_after(trial.returned_seq)
         for effect in declared_effects(entry, trial.params, self._driver()):
@@ -761,81 +742,83 @@ class CommandPass:
         whether anything was sent, and how a drop or a restart went."""
         attempt = self._attempt(trial)
         observer = attempt.sandbox.observer if attempt is not None else None
-        traffic = frames_in(trial, observer)
         if not trial.error:
-            readout = Readout(
-                state=current_values(attempt) if attempt is not None else {},
-                changed={c["key"] for c in trial.changes},
-                driver=self._driver(),
-            )
-            entry = {**trial.declared, "params": self._params_of(trial.command)}
-            trial.effects.extend(judged_effects(entry, trial, readout))
-            if trial.declared.get("query_for"):
-                answered = any(e.direction == RX for e in traffic)
-                trial.query = query_answer(entry, trial, readout, answered)
+            self._judge(trial, attempt, frames_in(trial, observer))
         trial.refusals.update(refusals(trial, observer))
         trial.refusals.update(unmatched_replies(trial, observer))
         if not trial.error and attempt is not None:
             trial.sent_nothing = _sent_nothing(trial, attempt)
-        if trial.went_away_at and not trial.declared.get("restarts_device_for"):
+        restarts = trial.declared.get("restarts_device_for")
+        if trial.went_away_at and not restarts:
             # The connection dropped while it was watched: say so, every time,
             # rather than letting the values a reconnect rewrites read as the
             # command's.
             trial.drops = _drops(trial)
-        if trial.declared.get("restarts_device_for") and not trial.error:
+        if restarts and not trial.error:
             trial.restart = _restart(trial)
+
+    def _judge(self, trial: CommandTrial, attempt: Any, traffic: list[Any]) -> None:
+        """The declared effect against what the device reports now, and a
+        status query's answer."""
+        readout = Readout(
+            state=current_values(attempt) if attempt is not None else {},
+            changed={c["key"] for c in trial.changes},
+            driver=self._driver(),
+        )
+        entry = self._declaration(trial)
+        trial.effects.extend(judged_effects(entry, trial, readout))
+        if trial.declared.get("query_for"):
+            answered = any(e.direction == RX for e in traffic)
+            trial.query = query_answer(entry, trial, readout, answered)
+
+    def _declaration(self, trial: CommandTrial) -> dict[str, Any]:
+        """What the command declares, with its parameters, as the effect
+        check reads it."""
+        return {**trial.declared, "params": self._params_of(trial.command)}
 
     def _params_of(self, command: str) -> dict[str, Any]:
         return dict((self.catalog_entry(command) or {}).get("params") or {})
 
     async def stop(self) -> None:
         """End what is being sent or watched; keep every record."""
-        task = self._task
-        if task is not None and not task.done() and task is not asyncio.current_task():
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
+        await self._cancel_task()
         busy = self.current()
         if busy is not None:
             if busy.returned_at is None:
                 busy.returned_at = time.time()
             self._finish(busy)
-        if self.batch is not None and self.batch.get("status") == "running":
+        if self._batch_running():
             self.batch["status"] = "done"
             self._publish()
-        listen = self.run.listen
-        if listen is not None and listen.sandbox.started:
+        if self._connected():
             self._final_catalog = command_catalog(self._driver())
+
+    async def _cancel_task(self) -> None:
+        """Cancel what is being sent or watched and wait for it to unwind
+        (never the task that is asking)."""
+        task = self._task
+        if task is None or task.done() or task is asyncio.current_task():
+            return
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
 
     # -- reading -----------------------------------------------------------------
 
     def _trial_view(self, trial: CommandTrial, *, every_entry: bool) -> dict[str, Any]:
+        """``trial`` as the wizard shows it (with ``every_entry``, as the
+        report keeps it): its traffic, secrets masked, what it moved and,
+        once its window has closed, what it did in words. The live view
+        keeps the newest ``LIVE_CHANGES`` changes and errors."""
         observer = self._observer(trial)
-        traffic = frames_in(trial, observer)
         redactor = observer.redactor() if observer is not None else None
-        if every_entry:
-            shown, gaps = traffic, []
-        else:
-            shown, gaps = live_traffic(traffic, own_send(trial, observer, traffic))
         out = trial.to_dict()
-        out["traffic"] = {
-            "sent": sum(1 for e in traffic if e.direction == TX),
-            "received": sum(1 for e in traffic if e.direction == RX),
-            "entries": [serialize_entry(e, redactor) for e in shown] if redactor else [],
-        }
-        if gaps:
-            # What only the report carries: how many, and where each run of
-            # them would go among the entries shown.
-            out["traffic"]["left_out"] = sum(g["count"] for g in gaps)
-            out["traffic"]["gaps"] = gaps
+        out["traffic"] = _traffic_view(trial, observer, redactor, every_entry=every_entry)
         if redactor is not None:
-            out["params"] = redactor.value(dict(out["params"]))
-            out["changes"] = redactor.value(out["changes"])
-            out["device_errors"] = redactor.value(out["device_errors"])
-            out["refusals"] = redactor.value(out["refusals"])
+            for key in _MASKED:
+                out[key] = redactor.value(out[key])
         out["moved"] = moved_values(
             out["changes"], trial.already_moving, getattr(self._driver(), "DRIVER_INFO", {}) or {},
         )
-        # What it did, in words, once its window has closed.
         out["summary"] = trial_sentence(out) if trial.status == DONE else ""
         if not every_entry:
             out["changes"] = out["changes"][-LIVE_CHANGES:]
@@ -911,6 +894,85 @@ class CommandPass:
             **self._lists_update(),
         }
         self.session.publish({"type": "audit.commands", "run": self.run.index, "commands": update})
+
+
+# What a trial view masks: everything in it a person typed or a device said.
+_MASKED = ("params", "changes", "device_errors", "refusals")
+# What a trial keeps of what the command declares, each only when set.
+_DECLARED = ("sets", "query_for", "restarts_device_for", "available_offline", "confirm")
+
+
+def _moves_a_file(entry: dict[str, Any]) -> bool:
+    """Does the command take a file or hand one back?"""
+    return bool(entry.get("takes_file") or entry.get("returns_file"))
+
+
+def _runs_alone(entry: dict[str, Any]) -> bool:
+    """Can the command be sent with nothing given: no value it needs, no file?"""
+    return not (entry["needs_input"] or _moves_a_file(entry))
+
+
+def _status_queries(catalog: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
+    """The status queries that run together, and the names of those left
+    for their own Send."""
+    queries = [c for c in catalog if c["query"]]
+    return [c for c in queries if _runs_alone(c)], [c["name"] for c in queries if not _runs_alone(c)]
+
+
+def _secret_params(entry: dict[str, Any]) -> set[str]:
+    """The parameters whose value is a secret: marked so, or named like a
+    credential."""
+    return {
+        k for k, pdef in (entry.get("params") or {}).items()
+        if isinstance(pdef, dict) and (is_secret_setting(k, pdef) or is_secret_key(k))
+    }
+
+
+def _declared(entry: dict[str, Any]) -> dict[str, Any]:
+    return {k: entry.get(k) for k in _DECLARED if entry.get(k)}
+
+
+def _since(previous: CommandTrial | None, now: float) -> dict[str, Any] | None:
+    """The command sent before this one, and how long before."""
+    if previous is None:
+        return None
+    return {
+        "number": previous.number, "command": previous.command,
+        "label": previous.label, "seconds": round(now - previous.sent_at, 3),
+    }
+
+
+async def _until_returned(trial: CommandTrial, task: asyncio.Task) -> None:
+    """Wait until the driver's call has returned, not just been queued: a
+    command refused at once is then already recorded, and the caller's copy
+    of the state is not older than what was published."""
+    returned = asyncio.ensure_future(trial.returned.wait())
+    try:
+        await asyncio.wait({task, returned}, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        returned.cancel()
+
+
+def _traffic_view(trial: CommandTrial, observer: Any, redactor: Any, *, every_entry: bool) -> dict[str, Any]:
+    """A command's traffic as shown: how many messages went each way, and
+    the entries (for the live view from its own message, ``LIVE_ENTRIES``
+    at most, with where the rest would go)."""
+    traffic = frames_in(trial, observer)
+    if every_entry:
+        shown, gaps = traffic, []
+    else:
+        shown, gaps = live_traffic(traffic, own_send(trial, observer, traffic))
+    view = {
+        "sent": sum(1 for e in traffic if e.direction == TX),
+        "received": sum(1 for e in traffic if e.direction == RX),
+        "entries": [serialize_entry(e, redactor) for e in shown] if redactor else [],
+    }
+    if gaps:
+        # What only the report carries: how many, and where each run of
+        # them would go among the entries shown.
+        view["left_out"] = sum(g["count"] for g in gaps)
+        view["gaps"] = gaps
+    return view
 
 
 def _refused_unsent(trial: CommandTrial, sandbox: Any) -> bool:
