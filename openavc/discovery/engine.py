@@ -1,4 +1,27 @@
-"""Discovery engine — orchestrates all scanning methods."""
+"""Discovery engine: runs a scan's phases and turns what they observed into
+answers.
+
+A scan starts its passive listeners, sweeps for live hosts, reads MAC
+addresses and names, port-scans, launches SNMP, collects what the listeners
+heard, runs the drivers' own probes, and finally matches every device's
+evidence against the drivers (``_scan_pipeline_inner`` lists the phases). The
+driver probes are ``probe_phase.DriverProbes`` and the listeners' collection
+is ``passive_phase.PassiveCollection``, mixins this class inherits; the
+records each phase adds are built in ``scan_evidence``.
+
+The rules worth knowing before changing anything here:
+
+* Every network phase runs under its own budget, set from its own workload
+  (``scan_budget``), and keeps what it found when that budget runs out; the
+  whole scan has a ceiling only as a backstop.
+* The matcher (``_finalize_scan``) runs outside every deadline, so a scan cut
+  short still identifies what it observed, and reports itself ``partial``.
+* An address only the ARP table named is held back until it answers
+  something for itself (``_arp_provisional``): a panel cannot un-see a
+  device, so it is announced only once it has earned its place.
+* A port a connected project device holds is never connected to
+  (``port_guard``); that device is identified from its driver instead.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +30,7 @@ import ipaddress
 import logging
 import socket as _socket
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Awaitable, Iterable
 
@@ -17,6 +41,7 @@ from openavc.discovery.network_scanner import (
     netbios_sweep,
     ping_sweep,
 )
+from openavc.discovery.passive_phase import BackgroundScans, PassiveCollection
 from openavc.discovery.port_guard import PortGuard, held_ports
 from openavc.discovery.probe_phase import DriverProbes
 from openavc.discovery.scan_scope import host_count, ip_in_subnets
@@ -39,17 +64,17 @@ from openavc.discovery.companion import (
     CompanionProbe,
     load_discovery_companions,
 )
+from openavc.discovery.scan_evidence import (
+    banner_texts,
+    derived_evidence,
+    hostname_evidence,
+    mac_info_and_evidence,
+)
 from openavc.discovery.tier_matcher import (
-    KIND_HOSTNAME,
     DriverProfile,
     SignalIndex,
     TierMatcher,
     evidence_connected,
-    evidence_hostname,
-    evidence_open_port,
-    evidence_oui,
-    extract_vendor_strings,
-    vendor_strings_in_text,
 )
 from openavc.discovery.result import (
     DeviceState,
@@ -61,14 +86,6 @@ from openavc.discovery import scan_budget as budgeting
 from openavc.discovery.scan_budget import ScanBudget
 
 log = logging.getLogger("discovery")
-
-# Flood guard for the aggregate results dict. Each passive listener already
-# caps its own distinct sources per scan window (512 each in the mDNS, SSDP,
-# and AMX-DDP scanners); this bound covers their sum with headroom and only
-# counts NEW result entries created by passive/unsolicited traffic. Active
-# results (a ping sweep on a /16 is legitimately thousands of hosts, port
-# scans, driver probes) are never counted against it.
-MAX_PASSIVE_RESULT_SOURCES = 2048
 
 
 def _driver_version_tuple(version: object) -> tuple[int, int, int]:
@@ -126,22 +143,6 @@ PHASE_WEIGHTS: dict[str, dict[str, float]] = {
     },
 }
 
-# Passive-collect heartbeat window. The listeners run in the background the
-# whole scan; phase 7 keeps them listening for late mDNS/SSDP/AMX answers,
-# then stops them and waits for the SSDP XML fetches. How long it listens is
-# a depth policy (``DepthPolicy.passive_collect_seconds``), possibly
-# shortened by the budget; the constant below is the fallback for callers
-# that pass no wait, and these are module-level so tests can shrink the
-# otherwise-untestable 5–30s window.
-_PASSIVE_COLLECT_TICK_SECONDS: float = 1.0
-_PASSIVE_COLLECT_DEFAULT_WAIT_SECONDS: float = 15.0
-# Ceiling on the wait after the listeners are told to stop: mDNS and AMX DDP
-# exit within half a second, and SSDP fetches description XML ten at a time
-# with a 3 s timeout each, so this covers two full rounds of slow fetches.
-# The phase's budget already covers it: SNMP, which the budget allows 5 s
-# after the window, has usually finished during the window itself.
-_LISTENER_DRAIN_SECONDS: float = 6.0
-
 # Minimum spacing between intra-phase progress pushes. The sweep phases tick
 # once per host; the bar only needs to look alive, so one message a second is
 # plenty and keeps a 1022-host sweep off the WS send queue.
@@ -166,103 +167,6 @@ _REPING_MAX_SECONDS: float = 6.0
 # Generic alternate web, streaming and management ports a thorough scan adds.
 # No vendor labels.
 THOROUGH_EXTRA_PORTS: tuple[int, ...] = (554, 3000, 4000, 5060, 8443, 8888, 9000, 10000)
-
-
-def hostname_evidence(hostname: str, index: SignalIndex) -> list:
-    """The evidence a scan records for a host name.
-
-    One record per driver pattern the name matches, so the "Why?" reveal can
-    show the pattern that fired; a single bare record when none does, as the
-    audit trail.
-    """
-    patterns = index.matched_hostname_patterns(hostname)
-    if patterns:
-        return [evidence_hostname(hostname, matched_pattern=pat) for pat in patterns]
-    return [evidence_hostname(hostname)]
-
-
-def mdns_hostname_evidence(result: Any, index: SignalIndex, evidence: list) -> list:
-    """The host-name evidence for the name a device announces over mDNS.
-
-    The bare name (``controller``, never ``controller.local``), as the
-    device card shows it; nothing when the device announced no name or a
-    record for the same name is already in ``evidence`` (reverse DNS or
-    NetBIOS gave it first). Many AV devices publish no reverse-DNS or
-    NetBIOS name, so without this a ``hostname:`` hint written for the
-    name the device actually announces never fires.
-    """
-    name = result.to_device_info().get("hostname")
-    if not name:
-        return []
-    seen = {
-        str(ev.data.get("value") or "").lower()
-        for ev in evidence if ev.data.get("kind") == KIND_HOSTNAME
-    }
-    if name.lower() in seen:
-        return []
-    return hostname_evidence(name, index)
-
-
-def mac_info_and_evidence(
-    mac: str, oui_db: OUIDatabase,
-) -> tuple[dict[str, Any], Any]:
-    """What a MAC address tells a scan: device info and the OUI evidence.
-
-    The info carries ``mac`` and, when the OUI table knows the prefix, the
-    ``manufacturer`` and ``category`` it names (the network card's maker,
-    which is often not the device's).
-    """
-    info: dict[str, Any] = {"mac": mac}
-    vendor = None
-    block = None
-    found = oui_db.lookup_block(mac)
-    if found:
-        block, vendor, category = found
-        info["manufacturer"] = vendor
-        info["category"] = category
-    return info, evidence_oui(mac, vendor=vendor, block=block)
-
-
-def derived_evidence(
-    evidence_log: list,
-    open_ports: list[int],
-    index: SignalIndex,
-    texts: dict[str, str] | None = None,
-) -> list:
-    """The records a scan adds to a device's evidence in its last phase.
-
-    An open-port record for each open port some driver's ``port_open:`` hint
-    names (bare openness on a generic port is too weak to record for every
-    port), the manufacturer strings lifted from probe replies, and the
-    manufacturer aliases the device names in its own words: ``texts`` (what a
-    port sent unprompted, a web server's ``Server`` header, keyed as
-    ``vendor_strings_in_text`` reads them) and an SSDP ``SERVER``. A string
-    already recorded is not recorded again.
-    """
-    records = [
-        evidence_open_port(port) for port in open_ports
-        if index.find_soft_open_port(port)
-    ]
-    records.extend(extract_vendor_strings(evidence_log + records))
-    all_texts = dict(texts or {})
-    for ev in evidence_log:
-        server = ev.data.get("server") if ev.data.get("kind") == "ssdp" else None
-        if isinstance(server, str) and server:
-            all_texts.setdefault("ssdp_server", server)
-    have = {
-        ev.data.get("value") for ev in evidence_log + records
-        if ev.data.get("kind") == "vendor_string"
-    }
-    for ev in vendor_strings_in_text(all_texts, index):
-        if ev.data["value"] not in have:
-            have.add(ev.data["value"])
-            records.append(ev)
-    return records
-
-
-def banner_texts(banners: dict[int, str]) -> dict[str, str]:
-    """A device's port greetings keyed as ``vendor_strings_in_text`` reads them."""
-    return {f"greeting:{port}": text for port, text in sorted(banners.items()) if text}
 
 
 async def _resolve_hostnames(
@@ -295,6 +199,16 @@ async def _resolve_hostnames(
         return_exceptions=True,
     )
     return results
+
+
+@dataclass(frozen=True)
+class PortScanSettings:
+    """How a scan port-scans its hosts: the ports it checks, how many hosts
+    at once, and whether gentle mode pauses between them."""
+
+    ports: list[int]
+    concurrency: int
+    gentle: bool
 
 
 class ScanStatus:
@@ -358,51 +272,7 @@ class ScanBlocked(RuntimeError):
     """
 
 
-def _add_ssdp_evidence(device: DiscoveredDevice, result: Any) -> None:
-    """One record per observed UPnP type: the driver-claimed family URN is
-    only one of the types a device advertises."""
-    device.evidence_log.extend(result.to_evidence_records())
-
-
-def _add_amx_ddp_evidence(device: DiscoveredDevice, beacon: Any) -> None:
-    device.evidence_log.append(beacon.to_evidence())
-
-
-def _log_listener_failures(listeners: Iterable[tuple[asyncio.Task, str]]) -> None:
-    """Retrieve each listener's outcome so a crashed one is logged, and so a
-    failed task doesn't resurface later as asyncio's "exception was never
-    retrieved". The evidence itself comes from the scanners, not from these
-    results."""
-    for task, label in listeners:
-        if task.done() and not task.cancelled():
-            exc = task.exception()
-            if exc is not None:
-                log.debug("%s listener failed", label, exc_info=exc)
-
-
-def _snmp_results(snmp_task: asyncio.Task, snmp_scanner: "SNMPScanner | None") -> dict:
-    """What the SNMP scan found: its result when it finished, else (it
-    overran its window and was cancelled) everything its scanner identified
-    before the cutoff, since the scanner fills its results as it goes. A
-    large or slow subnet keeps its SNMP enrichment that way."""
-    if snmp_task.done() and not snmp_task.cancelled():
-        try:
-            return snmp_task.result()
-        except Exception:  # Catch-all: task.result() re-raises whatever the task raised
-            log.debug("SNMP task failed", exc_info=True)
-            return {}
-    if snmp_scanner is None:
-        return {}
-    partial = snmp_scanner.results
-    if partial:
-        log.info(
-            "SNMP scan overran the collect window; merging %d partial result(s)",
-            len(partial),
-        )
-    return partial
-
-
-class DiscoveryEngine(DriverProbes):
+class DiscoveryEngine(DriverProbes, PassiveCollection):
     """Orchestrates device discovery across all scanning methods."""
 
     def __init__(self) -> None:
@@ -1120,18 +990,14 @@ class DiscoveryEngine(DriverProbes):
         # The 600s cap is a safety net; they'll be stopped much sooner.
         # Created inside the try so the finally cleans them up on EVERY exit
         # path — see _cancel_background_tasks for why that matters.
-        mdns_task: asyncio.Task | None = None
-        ssdp_task: asyncio.Task | None = None
-        amx_ddp_task: asyncio.Task | None = None
-        snmp_task: asyncio.Task | None = None
-        snmp_scanner: SNMPScanner | None = None
+        background = BackgroundScans()
 
         try:
-            mdns_task = asyncio.create_task(mdns_scanner.start(duration=600.0))
-            ssdp_task = asyncio.create_task(ssdp_scanner.scan(
+            background.mdns = asyncio.create_task(mdns_scanner.start(duration=600.0))
+            background.ssdp = asyncio.create_task(ssdp_scanner.scan(
                 timeout=600.0, fetch_descriptions=True,
             ))
-            amx_ddp_task = asyncio.create_task(amx_ddp_scanner.start(duration=600.0))
+            background.amx_ddp = asyncio.create_task(amx_ddp_scanner.start(duration=600.0))
 
             # --- Phase 3: Ping Sweep ---
             await self._set_phase(3, "ping_sweep", "Scanning for live hosts...")
@@ -1284,7 +1150,7 @@ class DiscoveryEngine(DriverProbes):
                 await self._run_budgeted(
                     budgeting.PHASE_PORT, port_plan.budget,
                     self._port_scan_hosts(
-                        targets, port_list, port_plan.concurrency, gentle,
+                        targets, PortScanSettings(port_list, port_plan.concurrency, gentle),
                     ),
                     "The port scan ran out of its share of the scan time. Some "
                     "devices are missing their open-port signal.",
@@ -1303,10 +1169,10 @@ class DiscoveryEngine(DriverProbes):
             await self._set_phase(6, "protocol_probe", "Identifying device protocols...")
 
             if snmp_enabled and alive_ips:
-                snmp_scanner = SNMPScanner(source_ip=control_ip)
+                background.snmp_scanner = SNMPScanner(source_ip=control_ip)
                 snmp_concurrency = 10 if gentle else 20
-                snmp_task = asyncio.create_task(
-                    snmp_scanner.scan_devices(
+                background.snmp = asyncio.create_task(
+                    background.snmp_scanner.scan_devices(
                         alive_ips,
                         community=snmp_community,
                         timeout=2.0,
@@ -1330,9 +1196,8 @@ class DiscoveryEngine(DriverProbes):
             await self._run_budgeted(
                 budgeting.PHASE_PASSIVE, collect_plan.budget,
                 self._collect_phase(
-                    mdns_task, ssdp_task, amx_ddp_task, snmp_task, snmp_scanner,
-                    collect_plan.wait_seconds, alive_ips, port_list,
-                    policy.port_host_concurrency, gentle,
+                    background, collect_plan.wait_seconds, alive_ips,
+                    PortScanSettings(port_list, policy.port_host_concurrency, gentle),
                 ),
                 "Collecting device announcements ran out of its share of the "
                 "scan time. Some announcements may be missing.",
@@ -1394,9 +1259,7 @@ class DiscoveryEngine(DriverProbes):
             # or ANY pipeline error this finally is the only thing that stops
             # their 600s loops, so the sockets/threads don't leak into the next
             # scan that binds the same SO_REUSEADDR ports.
-            await self._cancel_background_tasks(
-                mdns_task, ssdp_task, amx_ddp_task, snmp_task,
-            )
+            await self._cancel_background_tasks(*background.tasks())
 
     def _alive_ips(self) -> list[str]:
         """Hosts marked alive so far this scan, in address order.
@@ -1570,13 +1433,11 @@ class DiscoveryEngine(DriverProbes):
     async def _port_scan_hosts(
         self,
         hosts: list[str],
-        ports: list[int],
-        concurrency: int,
-        gentle: bool,
+        settings: PortScanSettings,
         phase: str = "port_scan",
         always_emit: bool = False,
     ) -> None:
-        """Port-scan a set of hosts, ``concurrency`` of them at a time.
+        """Port-scan a set of hosts, ``settings.concurrency`` of them at a time.
 
         Hosts used to be scanned strictly one after another, which made this
         phase cost ``alive x per-host`` with no way to trade parallelism for
@@ -1587,9 +1448,9 @@ class DiscoveryEngine(DriverProbes):
         per-host pause and a much lower width.
         """
         total = len(hosts)
-        if not total or not ports:
+        if not total or not settings.ports:
             return
-        semaphore = asyncio.Semaphore(max(1, concurrency))
+        semaphore = asyncio.Semaphore(max(1, settings.concurrency))
         done = 0
 
         async def _scan_one(ip: str) -> None:
@@ -1597,7 +1458,7 @@ class DiscoveryEngine(DriverProbes):
             async with semaphore:
                 device = self._get_or_create(ip)
                 open_ports = await scan_host_ports(
-                    ip, ports, timeout=1.0, source_ip=self._scan_source_ip,
+                    ip, settings.ports, timeout=1.0, source_ip=self._scan_source_ip,
                     guard=self._guard,
                 )
                 self._port_scanned.add(ip)
@@ -1616,7 +1477,7 @@ class DiscoveryEngine(DriverProbes):
                     await self._emit_device_update(device, phase)
 
                 # Gentle mode: small delay before this slot takes another host
-                if gentle:
+                if settings.gentle:
                     await asyncio.sleep(0.1)
 
             done += 1
@@ -1626,16 +1487,10 @@ class DiscoveryEngine(DriverProbes):
 
     async def _collect_phase(
         self,
-        mdns_task: asyncio.Task,
-        ssdp_task: asyncio.Task,
-        amx_ddp_task: asyncio.Task,
-        snmp_task: asyncio.Task | None,
-        snmp_scanner: "SNMPScanner | None",
+        background: BackgroundScans,
         passive_wait: float,
         alive_ips: list[str],
-        port_list: list[int],
-        concurrency: int,
-        gentle: bool,
+        followup: PortScanSettings,
     ) -> None:
         """Phase 7's collection half: gather everything already observed.
 
@@ -1644,17 +1499,28 @@ class DiscoveryEngine(DriverProbes):
         put in the cache. All of it feeds the probe pass that comes next.
         """
         await self._collect_passive_results(
-            mdns_task, ssdp_task, amx_ddp_task, wait_seconds=passive_wait,
+            background.mdns, background.ssdp, background.amx_ddp,
+            wait_seconds=passive_wait,
         )
-        await self._collect_snmp_results(snmp_task, snmp_scanner)
+        await self._collect_snmp_results(background.snmp, background.snmp_scanner)
+        await self._port_scan_passive_only(alive_ips, followup)
 
-        # Follow-up: port scan devices found only by passive discovery
-        # (mDNS/SSDP/AMX-DDP) that weren't in the ping sweep, so the
-        # custom-probe pass sees their open ports. "Not scanned yet" is
-        # the test, not "no open ports": an mDNS SRV port already sits in
-        # open_ports, and a device that drops ping but advertises one
-        # service must still have its other ports found and probed. Only
-        # inside the scanned subnets (``ip_in_subnets``).
+        # Pick up a MAC + OUI for passive-discovered devices the phase-4
+        # ARP harvest missed (found via mDNS/SSDP on a ping-skipped subnet).
+        await self._late_arp_harvest()
+
+    async def _port_scan_passive_only(
+        self, alive_ips: list[str], settings: PortScanSettings,
+    ) -> None:
+        """Port-scan the devices only passive discovery found.
+
+        Those (mDNS/SSDP/AMX-DDP) that weren't in the ping sweep, so the
+        custom-probe pass sees their open ports. "Not scanned yet" is the
+        test, not "no open ports": an mDNS SRV port already sits in
+        open_ports, and a device that drops ping but advertises one service
+        must still have its other ports found and probed. Only inside the
+        scanned subnets (``ip_in_subnets``).
+        """
         ping_found = set(alive_ips) if alive_ips else set()
         passive_only = [
             ip for ip, dev in self.results.items()
@@ -1667,13 +1533,8 @@ class DiscoveryEngine(DriverProbes):
                 len(passive_only),
             )
             await self._port_scan_hosts(
-                passive_only, port_list, concurrency, gentle,
-                phase="passive_followup", always_emit=True,
+                passive_only, settings, phase="passive_followup", always_emit=True,
             )
-
-        # Pick up a MAC + OUI for passive-discovered devices the phase-4
-        # ARP harvest missed (found via mDNS/SSDP on a ping-skipped subnet).
-        await self._late_arp_harvest()
 
     def _apply_plan(self, key: str, warnings: list[str]) -> None:
         """Record a phase plan: its granted deadline, and any narrowing.
@@ -1811,188 +1672,6 @@ class DiscoveryEngine(DriverProbes):
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
 
-    async def _collect_passive_results(
-        self,
-        mdns_task: asyncio.Task,
-        ssdp_task: asyncio.Task,
-        amx_ddp_task: asyncio.Task,
-        wait_seconds: float | None = None,
-    ) -> None:
-        """Listen through the collect window, stop the listeners, then merge.
-
-        The listeners have been running since phase 2 and keep running for
-        the whole window: late mDNS answers, SSDP NOTIFYs and AMX DDP beacons
-        (sent every 30 to 60 seconds) arrive only while a socket is open to
-        hear them. At the end of the window they are told to stop; mDNS and
-        AMX DDP leave their receive loops within half a second, and SSDP then
-        fetches the UPnP description XML for everything it heard, which gets
-        its own ceiling (``_LISTENER_DRAIN_SECONDS``). A fetch still running
-        at the ceiling is cancelled, and every description already parsed
-        stays on its result, so one unresponsive web server can't hold the
-        scan.
-
-        ``wait_seconds`` is the window the scan budget granted (the depth
-        policy's value, possibly shortened to leave room for driver probes).
-        None falls back to the module default.
-        """
-        total_wait = (
-            wait_seconds if wait_seconds is not None
-            else _PASSIVE_COLLECT_DEFAULT_WAIT_SECONDS
-        )
-        remaining = await self._listen_out_window(
-            {mdns_task, ssdp_task, amx_ddp_task}, total_wait,
-        )
-        await self._stop_passive_listeners()
-        if remaining:
-            _, remaining = await asyncio.wait(
-                remaining, timeout=_LISTENER_DRAIN_SECONDS,
-            )
-        await self._cancel_background_tasks(*remaining)
-        _log_listener_failures(
-            ((mdns_task, "mDNS"), (ssdp_task, "SSDP"), (amx_ddp_task, "AMX DDP")),
-        )
-        await self.merge_passive_results()
-
-    async def _listen_out_window(
-        self, tasks: set[asyncio.Task], total_wait: float,
-    ) -> set[asyncio.Task]:
-        """Keep listening for ``total_wait`` seconds, a heartbeat a tick so
-        the progress bar moves with a countdown rather than looking stuck.
-        Returns the listeners still running. The window ends early only when
-        every listener has already exited (for example, none could open its
-        socket), since nothing is left to hear anything.
-
-        The window is measured on the loop's clock, not by counting ticks:
-        where the clock is coarser than a tick (15.6 ms on Windows before
-        Python 3.13), a short timeout fires at once and a count of ticks
-        would end the window before any time had passed.
-        """
-        loop = asyncio.get_running_loop()
-        started = loop.time()
-        elapsed = 0.0
-        while elapsed < total_wait and tasks:
-            _, tasks = await asyncio.wait(
-                tasks, timeout=min(_PASSIVE_COLLECT_TICK_SECONDS, total_wait - elapsed),
-            )
-            elapsed = loop.time() - started
-            await self._update_intra_progress(min(elapsed / total_wait, 1.0))
-            secs_left = max(0, int(total_wait - elapsed))
-            await self._emit_progress(
-                "passive_collect",
-                f"Collecting passive results... ({secs_left}s remaining)",
-            )
-        return tasks
-
-    async def _stop_passive_listeners(self) -> None:
-        """Tell this scan's passive listeners to leave their receive loops."""
-        scanners = self._passive_scanners
-        if scanners is None:
-            return
-        mdns_scanner, ssdp_scanner, amx_ddp_scanner = scanners
-        # mDNS and SSDP check the flag between receives (every 0.5 s). SSDP's
-        # task then fetches descriptions before it finishes, so it is not
-        # stopped outright the way AMX DDP is.
-        mdns_scanner._running = False
-        ssdp_scanner._running = False
-        await amx_ddp_scanner.stop()
-
-    async def merge_passive_results(self) -> int:
-        """Merge whatever the passive listeners have heard into ``self.results``.
-
-        Reads each scanner's in-memory ``results`` rather than its task's return
-        value. That is the same dict — every listener's coroutine ends with
-        ``return dict(self._results)`` — but reading it directly works when the
-        task was **cancelled**, which is the whole point: a scan that runs out of
-        time cancels the listeners in ``_scan_pipeline_inner``'s ``finally``, and
-        reading the task result there yields nothing. The announcements were
-        already received and parsed; discarding them threw away the strongest
-        identification signals a scan collects (mDNS/SSDP/AMX-DDP), which is why
-        a truncated scan used to return devices as ``possible`` rather than
-        ``identified``.
-
-        Idempotent per (source, ip): phase 7 calls this on the normal path and
-        ``_run_scan`` calls it again after a truncation, including a truncation
-        that landed midway through phase 7's own merge. Without the guard the
-        second pass would re-append evidence for devices already merged, growing
-        the evidence log and the "Why?" reveal with duplicates.
-
-        Returns the number of (source, ip) pairs merged by this call.
-        """
-        scanners = self._passive_scanners
-        if scanners is None:
-            return 0
-        mdns_scanner, ssdp_scanner, amx_ddp_scanner = scanners
-        merged = await self._merge_passive_source(
-            "mdns", mdns_scanner.results, self._add_mdns_evidence,
-        )
-        merged += await self._merge_passive_source(
-            "ssdp", ssdp_scanner.results, _add_ssdp_evidence,
-        )
-        merged += await self._merge_passive_source(
-            "amx_ddp", amx_ddp_scanner.results, _add_amx_ddp_evidence,
-        )
-        return merged
-
-    async def _merge_passive_source(
-        self, source: str, results: dict[str, Any],
-        add_evidence: Callable[[DiscoveredDevice, Any], None],
-    ) -> int:
-        """Merge one listener's results: each address once a scan, a new one
-        only under the passive cap (``_get_or_create_passive``)."""
-        merged = 0
-        for ip, result in results.items():
-            if not self._claim_passive_merge(source, ip):
-                continue
-            device = self._get_or_create_passive(ip)
-            if device is None:
-                continue
-            device.alive = True
-            add_evidence(device, result)
-            merge_device_info(device, result.to_device_info(), source)
-            await self._emit_device_update(device, source)
-            merged += 1
-        return merged
-
-    def _add_mdns_evidence(self, device: DiscoveredDevice, result: Any) -> None:
-        """One record per advertised service: the vendor type that identifies
-        a device is often only one of the types it announces, and packet
-        order must not decide which survives. Then the announced name, unless
-        a record for it is already there."""
-        device.evidence_log.extend(result.to_evidence_records())
-        device.evidence_log.extend(
-            mdns_hostname_evidence(result, self.signal_index, device.evidence_log)
-        )
-
-    def _claim_passive_merge(self, source: str, ip: str) -> bool:
-        """True the first time this (source, ip) is merged in the current scan."""
-        key = (source, ip)
-        if key in self._passive_merged:
-            return False
-        self._passive_merged.add(key)
-        return True
-
-    async def _collect_snmp_results(
-        self,
-        snmp_task: asyncio.Task | None,
-        snmp_scanner: "SNMPScanner | None" = None,
-    ) -> None:
-        """Wait for the SNMP scan, up to its window, and merge what it found."""
-        if snmp_task is None:
-            return
-        await asyncio.wait([snmp_task], timeout=5.0)
-        await self._cancel_background_tasks(snmp_task)
-        snmp_results = _snmp_results(snmp_task, snmp_scanner)
-        for ip, snmp_info in snmp_results.items():
-            device = self._get_or_create(ip)
-            device.alive = True
-            ev = snmp_info.to_evidence()
-            if ev is not None:
-                device.evidence_log.append(ev)
-            merge_device_info(device, snmp_info.to_device_info(), "snmp")
-            await self._emit_device_update(device, "snmp")
-        if snmp_results:
-            log.info("SNMP enriched %d devices", len(snmp_results))
-
     async def _reping(self, ips: list[str], alive: set[str]) -> None:
         """Ping a short list again, unhurried, recording what answers.
 
@@ -2073,31 +1752,6 @@ class DiscoveryEngine(DriverProbes):
             self.results[ip] = DiscoveredDevice(ip=ip)
             self._refresh_device_count()
         return self.results[ip]
-
-    def _get_or_create_passive(self, ip: str) -> DiscoveredDevice | None:
-        """``_get_or_create`` for passive/unsolicited sources, capped.
-
-        Returns None (caller drops the record) once passive listeners have
-        created MAX_PASSIVE_RESULT_SOURCES new entries this scan — each new
-        entry costs a DiscoveredDevice plus a WebSocket fan-out to every
-        client, so unsolicited traffic must not grow it without bound.
-        Existing entries (hosts the ping sweep already found) keep updating.
-        """
-        if ip in self.results:
-            return self.results[ip]
-        if self._passive_sources_created >= MAX_PASSIVE_RESULT_SOURCES:
-            if not self._passive_cap_warned:
-                self._passive_cap_warned = True
-                msg = (
-                    "Passive discovery hit the %d-source result cap; "
-                    "ignoring additional mDNS/SSDP/AMX sources for this scan"
-                    % MAX_PASSIVE_RESULT_SOURCES
-                )
-                log.warning(msg)
-                self.scan_status.warnings.append(msg)
-            return None
-        self._passive_sources_created += 1
-        return self._get_or_create(ip)
 
     async def _late_arp_harvest(self) -> None:
         """Harvest a MAC + OUI for alive devices the phase-4 ARP pass missed.

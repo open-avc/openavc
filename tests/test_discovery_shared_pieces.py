@@ -9,19 +9,18 @@ from __future__ import annotations
 
 import asyncio
 
-from openavc.discovery.engine import (
-    THOROUGH_EXTRA_PORTS,
-    DiscoveryEngine,
-    banner_texts,
-    derived_evidence,
-    hostname_evidence,
-    mac_info_and_evidence,
-)
+from openavc.discovery.engine import THOROUGH_EXTRA_PORTS, DiscoveryEngine
 from openavc.discovery.hints import build_signal_index, parse_driver_discovery
 from openavc.discovery.http_fetch import HttpExchange, http_get, parse_head, same_origin_redirect
 from openavc.discovery.oui_database import OUIDatabase
 from openavc.discovery.port_scanner import BASELINE_PORTS, read_greeting
 from openavc.discovery.result import DeviceState
+from openavc.discovery.scan_evidence import (
+    banner_texts,
+    derived_evidence,
+    hostname_evidence,
+    mac_info_and_evidence,
+)
 from openavc.discovery.tier_matcher import (
     TierMatcher,
     evidence_active_probe,

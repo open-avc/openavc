@@ -22,7 +22,7 @@ from dataclasses import dataclass
 import pytest
 
 from openavc.discovery.companion import ProbeContext, run_companion
-from openavc.discovery.engine import DiscoveryEngine
+from openavc.discovery.engine import DiscoveryEngine, PortScanSettings
 from openavc.discovery.hints import parse_driver_discovery
 from openavc.discovery.port_guard import (
     GREETING_LOGIN,
@@ -239,7 +239,7 @@ class TestTheScanLeavesConnectedDevicesAlone:
             }) for port in (held.port, free.port)]
             await _start_guard(engine)
 
-            await engine._port_scan_hosts([HOST], [held.port, free.port], 1, False)
+            await engine._port_scan_hosts([HOST], PortScanSettings([held.port, free.port], 1, False))
             device = engine.results[HOST]
             assert device.open_ports == [free.port]
             # An announcement can name a port the scan never opened.

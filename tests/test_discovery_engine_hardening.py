@@ -22,9 +22,10 @@ from unittest.mock import patch, AsyncMock, MagicMock
 
 import pytest
 
-from openavc.discovery import engine as engine_mod
+from openavc.discovery import passive_phase as passive_mod
+from openavc.discovery.passive_phase import BackgroundScans
 from openavc.discovery import probe_phase
-from openavc.discovery.engine import DiscoveryEngine
+from openavc.discovery.engine import DiscoveryEngine, PortScanSettings
 from openavc.discovery.scan_scope import ip_in_subnets
 from openavc.discovery.result import (
     DiscoveredDevice,
@@ -351,8 +352,8 @@ class TestScanContactsOnlyItsSubnets:
              patch.object(engine, "_late_arp_harvest", new_callable=AsyncMock), \
              patch.object(engine, "_port_scan_hosts", fake_port_scan):
             await engine._collect_phase(
-                None, None, None, None, None, passive_wait=0, alive_ips=[],
-                port_list=[80], concurrency=1, gentle=False,
+                BackgroundScans(), passive_wait=0, alive_ips=[],
+                followup=PortScanSettings([80], 1, False),
             )
         assert scanned == ["10.77.0.20"]
 
@@ -367,17 +368,19 @@ class TestScanContactsOnlyItsSubnets:
         engine._port_scanned.add("10.77.0.21")
         order: list = []
 
-        async def fake_port_scan(hosts, ports, concurrency, gentle, phase="port_scan",
-                                 always_emit=False):
-            order.append((hosts, ports, concurrency, gentle, phase, always_emit))
+        async def fake_port_scan(hosts, settings, phase="port_scan", always_emit=False):
+            order.append((
+                hosts, settings.ports, settings.concurrency, settings.gentle,
+                phase, always_emit,
+            ))
 
         async def late_arp():
             order.append("late_arp")
 
         with patch.object(engine, "_collect_passive_results", new_callable=AsyncMock),              patch.object(engine, "_collect_snmp_results", new_callable=AsyncMock),              patch.object(engine, "_late_arp_harvest", late_arp),              patch.object(engine, "_port_scan_hosts", fake_port_scan):
             await engine._collect_phase(
-                None, None, None, None, None, passive_wait=0, alive_ips=["10.77.0.22"],
-                port_list=[80, 443], concurrency=3, gentle=True,
+                BackgroundScans(), passive_wait=0, alive_ips=["10.77.0.22"],
+                followup=PortScanSettings([80, 443], 3, True),
             )
         assert order == [
             (["10.77.0.20"], [80, 443], 3, True, "passive_followup", True),
@@ -406,17 +409,17 @@ class TestScanContactsOnlyItsSubnets:
 class TestCollectCancellation:
     def setup_method(self):
         # Shrink the otherwise 5–30s passive-collect window for the tests.
-        self._tick = engine_mod._PASSIVE_COLLECT_TICK_SECONDS
-        self._wait = engine_mod._PASSIVE_COLLECT_DEFAULT_WAIT_SECONDS
-        self._drain = engine_mod._LISTENER_DRAIN_SECONDS
-        engine_mod._PASSIVE_COLLECT_TICK_SECONDS = 0.01
-        engine_mod._PASSIVE_COLLECT_DEFAULT_WAIT_SECONDS = 0.02
-        engine_mod._LISTENER_DRAIN_SECONDS = 0.02
+        self._tick = passive_mod._PASSIVE_COLLECT_TICK_SECONDS
+        self._wait = passive_mod._PASSIVE_COLLECT_DEFAULT_WAIT_SECONDS
+        self._drain = passive_mod._LISTENER_DRAIN_SECONDS
+        passive_mod._PASSIVE_COLLECT_TICK_SECONDS = 0.01
+        passive_mod._PASSIVE_COLLECT_DEFAULT_WAIT_SECONDS = 0.02
+        passive_mod._LISTENER_DRAIN_SECONDS = 0.02
 
     def teardown_method(self):
-        engine_mod._PASSIVE_COLLECT_TICK_SECONDS = self._tick
-        engine_mod._PASSIVE_COLLECT_DEFAULT_WAIT_SECONDS = self._wait
-        engine_mod._LISTENER_DRAIN_SECONDS = self._drain
+        passive_mod._PASSIVE_COLLECT_TICK_SECONDS = self._tick
+        passive_mod._PASSIVE_COLLECT_DEFAULT_WAIT_SECONDS = self._wait
+        passive_mod._LISTENER_DRAIN_SECONDS = self._drain
 
     async def test_child_cancellation_is_swallowed(self):
         """Listeners still pending past the window are cancelled and the
@@ -664,7 +667,7 @@ class TestPassiveResultCap:
 
     def test_capped_returns_none_and_warns_once(self):
         engine = DiscoveryEngine()
-        engine._passive_sources_created = engine_mod.MAX_PASSIVE_RESULT_SOURCES
+        engine._passive_sources_created = passive_mod.MAX_PASSIVE_RESULT_SOURCES
         assert engine._get_or_create_passive("10.0.0.1") is None
         assert engine._get_or_create_passive("10.0.0.2") is None
         assert "10.0.0.1" not in engine.results
@@ -674,7 +677,7 @@ class TestPassiveResultCap:
     def test_existing_entry_updates_past_cap(self):
         engine = DiscoveryEngine()
         device = engine._get_or_create("10.0.0.1")
-        engine._passive_sources_created = engine_mod.MAX_PASSIVE_RESULT_SOURCES
+        engine._passive_sources_created = passive_mod.MAX_PASSIVE_RESULT_SOURCES
         assert engine._get_or_create_passive("10.0.0.1") is device
 
     def test_active_creation_not_counted(self):

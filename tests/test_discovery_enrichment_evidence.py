@@ -108,7 +108,7 @@ class TestOUIEvidence:
 
 class TestOUIBlockEvidence:
     def test_the_record_names_the_block_its_vendor_came_from(self):
-        from openavc.discovery.engine import mac_info_and_evidence
+        from openavc.discovery.scan_evidence import mac_info_and_evidence
         from openavc.discovery.oui_database import OUIDatabase
 
         db = OUIDatabase()

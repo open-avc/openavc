@@ -71,15 +71,7 @@ from openavc.discovery.companion import (
     ProbeContext,
     run_companion,
 )
-from openavc.discovery.engine import (
-    DiscoveryEngine,
-    _resolve_hostnames,
-    banner_texts,
-    derived_evidence,
-    hostname_evidence,
-    mdns_hostname_evidence,
-    mac_info_and_evidence,
-)
+from openavc.discovery.engine import DiscoveryEngine, _resolve_hostnames
 from openavc.discovery.explain import (
     DeviceObservations,
     evaluate_driver_signals,
@@ -115,6 +107,13 @@ from openavc.discovery.result import (
     Evidence,
     device_info_from_evidence,
     merge_device_info,
+)
+from openavc.discovery.scan_evidence import (
+    banner_texts,
+    derived_evidence,
+    hostname_evidence,
+    mac_info_and_evidence,
+    mdns_hostname_evidence,
 )
 from openavc.discovery.snmp_scanner import SNMPScanner
 from openavc.discovery.ssdp_scanner import SSDPScanner

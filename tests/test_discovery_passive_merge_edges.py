@@ -14,7 +14,7 @@ import logging
 from typing import Any
 from unittest.mock import patch
 
-from openavc.discovery import engine as engine_mod
+from openavc.discovery import passive_phase as passive_mod
 from openavc.discovery.engine import DiscoveryEngine
 from openavc.discovery.result import Evidence, SignalTier
 from openavc.discovery.tier_matcher import evidence_hostname
@@ -110,7 +110,7 @@ async def test_a_new_address_past_the_passive_cap_is_dropped_by_every_source(cap
         amx={"10.77.0.7": _Result([], {}, evidence=_ev("amx_ddp:a"))},
     )
     engine._get_or_create("10.77.0.9")
-    with patch.object(engine_mod, "MAX_PASSIVE_RESULT_SOURCES", 0):
+    with patch.object(passive_mod, "MAX_PASSIVE_RESULT_SOURCES", 0):
         assert await engine.merge_passive_results() == 1
     assert set(engine.results) == {"10.77.0.9"}
     assert updates.seen == [("10.77.0.9", "ssdp")]
@@ -266,8 +266,8 @@ async def test_the_listeners_get_the_drain_to_finish_and_a_crash_is_logged(caplo
         asyncio.ensure_future(ssdp_fetching()),
         asyncio.ensure_future(amx_listening()),
     )
-    with patch.object(engine_mod, "_PASSIVE_COLLECT_TICK_SECONDS", 0.01), \
-            patch.object(engine_mod, "_LISTENER_DRAIN_SECONDS", 2.0):
+    with patch.object(passive_mod, "_PASSIVE_COLLECT_TICK_SECONDS", 0.01), \
+            patch.object(passive_mod, "_LISTENER_DRAIN_SECONDS", 2.0):
         await engine._collect_passive_results(*tasks, wait_seconds=0.03)
     assert tasks[1].done() and not tasks[1].cancelled()
     assert tasks[2].done() and not tasks[2].cancelled()

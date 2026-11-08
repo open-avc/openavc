@@ -14,7 +14,7 @@ import dataclasses
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from openavc.discovery import engine as engine_mod
+from openavc.discovery import passive_phase as passive_mod
 from openavc.discovery.amx_ddp_scanner import AMXDDPScanner
 from openavc.discovery.engine import DiscoveryEngine
 from openavc.discovery.scan_budget import ScanBudget, resolve_policy
@@ -60,11 +60,11 @@ def _instant_listener(method: str):
 
 class TestListenWindow:
     def setup_method(self):
-        self._tick = engine_mod._PASSIVE_COLLECT_TICK_SECONDS
-        engine_mod._PASSIVE_COLLECT_TICK_SECONDS = 0.01
+        self._tick = passive_mod._PASSIVE_COLLECT_TICK_SECONDS
+        passive_mod._PASSIVE_COLLECT_TICK_SECONDS = 0.01
 
     def teardown_method(self):
-        engine_mod._PASSIVE_COLLECT_TICK_SECONDS = self._tick
+        passive_mod._PASSIVE_COLLECT_TICK_SECONDS = self._tick
 
     async def test_announcement_sent_during_the_window_reaches_the_evidence(self):
         engine = DiscoveryEngine()
