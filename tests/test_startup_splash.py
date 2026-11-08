@@ -11,7 +11,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from openavc.main import StartupSplashMiddleware
+from openavc.middleware.startup_splash import StartupSplashMiddleware
 
 
 def _client(**state) -> TestClient:

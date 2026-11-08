@@ -69,11 +69,10 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse
 
-from openavc import config, runtime_flags
+from openavc import config, restart, runtime_flags
 from openavc.api import rest, ws, isc_ws, discovery as discovery_api, plugins as plugins_api, assets as assets_api, themes as themes_api, ai_proxy as ai_proxy_api, ir_learn_ws
 from openavc.api import simulator_proxy
 from openavc.api.host_policy import (
@@ -130,86 +129,223 @@ discovery_engine = DiscoveryEngine()
 audit_manager = AuditManager(engine.devices, discovery_engine)
 
 
-async def _initialize_engine(app: FastAPI) -> None:
-    """Run engine initialization in the background so HTTP serves immediately."""
+def _resolve_listen_plan():
+    """Who can connect: main() resolved it before binding, and a server
+    started some other way resolves it here. It feeds a warning and the
+    banner, so a failure is logged and never blocks startup (None)."""
     try:
-        # Who can connect: main() resolved it before binding, and a server
-        # started some other way resolves it here. It feeds a warning and the
-        # banner, so it never blocks startup.
-        try:
-            plan = config.listen_plan()
-        except Exception:
-            log.exception("Could not resolve who can connect")
-            plan = None
+        return config.listen_plan()
+    except Exception:
+        log.exception("Could not resolve who can connect")
+        return None
 
-        # Warn if server is network-exposed without authentication
-        if (
-            plan is not None and plan.reaches_network
-            and not config.PROGRAMMER_PASSWORD and not config.API_KEY
-        ):
-            log.warning("=" * 60)
-            where = (
-                "any network" if plan.mode == "any"
-                else f"the {plan.adapter_name or 'chosen'} network"
-            )
-            log.warning("  WARNING: Accepting connections from %s with NO authentication.", where)
-            log.warning("  Anyone on the network can access and control devices.")
-            log.warning("  Set an admin password (open the Programmer), or choose")
-            log.warning("  This computer only in Settings > Network > Accept connections from.")
-            log.warning("=" * 60)
+
+def _open_without_password(plan) -> bool:
+    if plan is None or not plan.reaches_network:
+        return False
+    return not (config.PROGRAMMER_PASSWORD or config.API_KEY)
+
+
+def _warn_if_open_without_password(plan) -> None:
+    """Warn when the network can connect and there is no admin password."""
+    if not _open_without_password(plan):
+        return
+    log.warning("=" * 60)
+    where = (
+        "any network" if plan.mode == "any"
+        else f"the {plan.adapter_name or 'chosen'} network"
+    )
+    log.warning("  WARNING: Accepting connections from %s with NO authentication.", where)
+    log.warning("  Anyone on the network can access and control devices.")
+    log.warning("  Set an admin password (open the Programmer), or choose")
+    log.warning("  This computer only in Settings > Network > Accept connections from.")
+    log.warning("=" * 60)
+
+
+def _settle_updates_before_start(data_dir) -> None:
+    """The update work before the engine starts, on an install whose updates
+    are OpenAVC's own (no firmware host): leftover Windows update tasks
+    deleted, a failed update rolled back, stale update records swept."""
+    _remove_leftover_windows_update_tasks()
+    _roll_back_a_failed_update(data_dir)
+    _sweep_stale_update_records(data_dir)
+
+
+def _remove_leftover_windows_update_tasks() -> None:
+    """Windows: delete the update tasks earlier versions left registered,
+    which a restart can run again, installing an old version. First, before
+    the automatic rollback can schedule a task of its own."""
+    if sys.platform != "win32":
+        return
+    from openavc.updater.platform import DeploymentType, detect_deployment_type
+    if detect_deployment_type() == DeploymentType.WINDOWS_INSTALLER:
+        from openavc.updater.rollback import remove_leftover_update_tasks
+        remove_leftover_update_tasks()
+
+
+def _roll_back_a_failed_update(data_dir) -> None:
+    """An update whose new version kept failing to start (the crash
+    detection in updater/rollback.py) is undone here, and the process exits
+    for the service manager to start the old version."""
+    from openavc.updater.rollback import check_rollback_needed
+    if not check_rollback_needed(data_dir):
+        return
+    from pathlib import Path
+    from openavc.updater.rollback import perform_rollback, restore_pre_update_data
+    # Restore user data from the pre-update backup BEFORE swapping the
+    # code back: the rolled-back code may predate the running version's
+    # project-format migrations, so the restore must run on this side.
+    restore_pre_update_data(data_dir, project_path=Path(config.PROJECT_PATH))
+    # The earlier version reads each device login from the project,
+    # and the Project Library is not in the pre-update backup.
+    from openavc.core.device_logins import put_back_for_rollback
+    put_back_for_rollback(data_dir, Path(config.PROJECT_PATH))
+    if perform_rollback(data_dir, automatic=True):
+        # Windows: exit 42 tells NSSM not to restart (installer handles it)
+        # Linux: exit 0 triggers systemd restart, ExecStartPre applies rollback
+        exit_code = 42 if sys.platform == "win32" else 0
+        log.warning("Rollback initiated, exiting process (code %d)", exit_code)
+        os._exit(exit_code)
+
+
+def _sweep_stale_update_records(data_dir) -> None:
+    """Defense in depth: drop a stale Linux apply-update.json left behind by
+    a failed/aborted apply, so update-helper.sh (root, ExecStartPre) can't
+    re-consume it on an unrelated restart. On systemd the helper runs before
+    us, so this mainly covers non-systemd / crash-before-helper. The same for
+    a leftover apply-rollback marker: one that survives to this point was
+    never consumed by the pre-start wrapper, and would silently downgrade
+    the install on a later unrelated restart."""
+    stale_apply = data_dir / "apply-update.json"
+    if stale_apply.exists():
+        try:
+            stale_apply.unlink()
+            log.warning("Removed stale apply-update.json at startup")
+        except OSError:
+            log.exception("Could not remove stale apply-update.json at startup")
+
+    from openavc.updater.rollback import clear_stale_rollback_marker
+    clear_stale_rollback_marker(data_dir)
+
+
+def _load_discovery_hints() -> None:
+    """Discovery's signals, once the engine has registered the drivers: each
+    driver's hints, and the _discovery.py companions that ship beside
+    built-in or community drivers."""
+    discovery_engine.load_driver_hints_from_registry(list_registered_drivers())
+    from openavc.system_config import (
+        DRIVER_DEFINITIONS_DIR,
+        DRIVER_REPO_DIR,
+    )
+    discovery_engine.load_discovery_companions_from_dirs(
+        [DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR],
+    )
+
+
+def _watch_listen_choice() -> asyncio.Task:
+    """Follow the chosen adapter: back, gone, or on a new DHCP address, the
+    server restarts through the restart request and listens again where the
+    choice now points (openavc/listen.py).
+
+    The same ten-second tick checks the safety net's deadline: a change that
+    cut off the browser making it goes back by itself unless the Programmer
+    is opened through the new choice (listen_safety_net.py). It also re-reads
+    the Reach devices through adapter's address, off the event loop, so
+    device traffic follows a DHCP renewal with no restart
+    (openavc/reach_devices.py).
+    """
+    from openavc import listen, listen_safety_net, reach_devices
+    from openavc.system_config import get_system_config
+
+    async def restart_to_follow_adapter(_reason: str) -> None:
+        await engine.events.emit(
+            "system.restart_requested", {"mode": "graceful", "source": "listen"}
+        )
+
+    async def safety_net_tick() -> None:
+        try:
+            if reach_devices.choice():
+                await asyncio.to_thread(reach_devices.refresh)
+        except Exception:  # the safety net below must still tick
+            log.debug("Reach devices through: refresh failed", exc_info=True)
+        await listen_safety_net.tick(get_system_config(), restart_to_follow_adapter)
+
+    return asyncio.create_task(
+        listen.ListenWatcher(restart_to_follow_adapter, on_tick=safety_net_tick).run()
+    )
+
+
+def _log_banner(plan) -> None:
+    """The addresses to open, logged once the engine is ready: the only
+    instruction a manual or checkout run ever gets."""
+    if config.TLS_ENABLED:
+        scheme, port = "https", config.TLS_PORT
+    else:
+        scheme, port = "http", config.HTTP_PORT
+    log.info("=" * 60)
+    log.info(f"  Panel UI:    {scheme}://localhost:{port}/panel")
+    log.info(f"  Programmer:  {scheme}://localhost:{port}/programmer")
+    log.info(f"  REST API:    {scheme}://localhost:{port}/api")
+    _log_lan_access(plan, scheme, port)
+    if config.TLS_ENABLED and config.TLS_REDIRECT_HTTP:
+        log.info(
+            f"  HTTP redirect: http://localhost:{config.HTTP_PORT} "
+            f"-> https://localhost:{config.TLS_PORT}"
+        )
+    log.info("=" * 60)
+
+
+def _log_lan_access(plan, scheme: str, port: int) -> None:
+    local_ip = str(engine.get_status().get("local_ip") or "")
+    if plan is None:
+        return
+    if plan.problem is not None:
+        # The chosen adapter is missing, so this listens on loopback
+        # only. One sentence, the same one every surface shows.
+        log.warning(f"  LAN access:  none. {plan.problem.message}")
+    elif plan.local_only:
+        # Every URL below this point is built from a LAN address, and the
+        # kernel refuses all of them on a loopback-only listener. Saying
+        # so is the only useful line here: the Dashboard's Panel Access
+        # card already tells the same truth from the other side.
+        log.info(
+            "  LAN access:  none. Accepting connections from this computer "
+            "only; change Settings > Network > Accept connections from and "
+            "restart to reach it from the network."
+        )
+    elif local_ip and local_ip != "127.0.0.1":
+        _log_lan_urls(plan, local_ip, scheme, port)
+
+
+def _log_lan_urls(plan, local_ip: str, scheme: str, port: int) -> None:
+    only = f"  ({plan.adapter_name} only)" if plan.mode == "adapter" else ""
+    log.info(f"  LAN access:  {scheme}://{local_ip}:{port}/panel{only}")
+    if runtime_flags.port80_active:
+        log.info(f"  Short URL:   http://{local_ip}/panel")
+    certified = _certified_host_for(local_ip) if config.TLS_ENABLED else None
+    if certified:
+        log.info(
+            f"  Trusted URL: https://{certified}:{config.TLS_PORT}/panel"
+            "  (no browser warnings)"
+        )
+
+
+async def _initialize_engine(app: FastAPI) -> None:
+    """Run engine initialization in the background so HTTP serves immediately.
+
+    Every step is inside the one ``try``: a failure anywhere is left in
+    ``app.state.engine_error`` for the splash page and the log, never raised.
+    """
+    try:
+        plan = _resolve_listen_plan()
+        _warn_if_open_without_password(plan)
 
         from openavc.system_config import get_system_config
         from openavc.updater.host import get_firmware_host
         firmware_host = get_firmware_host()
         if not firmware_host:
-            # Windows: delete the update tasks earlier versions left registered,
-            # which a restart can run again, installing an old version. First,
-            # before the automatic rollback below can schedule a task of its own.
-            if sys.platform == "win32":
-                from openavc.updater.platform import DeploymentType, detect_deployment_type
-                if detect_deployment_type() == DeploymentType.WINDOWS_INSTALLER:
-                    from openavc.updater.rollback import remove_leftover_update_tasks
-                    remove_leftover_update_tasks()
-
-            # Check if automatic rollback is needed (failed update crash detection)
-            from openavc.updater.rollback import check_rollback_needed
             data_dir = get_system_config().data_dir
-            if check_rollback_needed(data_dir):
-                from pathlib import Path
-                from openavc.updater.rollback import perform_rollback, restore_pre_update_data
-                # Restore user data from the pre-update backup BEFORE swapping the
-                # code back: the rolled-back code may predate the running version's
-                # project-format migrations, so the restore must run on this side.
-                restore_pre_update_data(data_dir, project_path=Path(config.PROJECT_PATH))
-                # The earlier version reads each device login from the project,
-                # and the Project Library is not in the pre-update backup.
-                from openavc.core.device_logins import put_back_for_rollback
-                put_back_for_rollback(data_dir, Path(config.PROJECT_PATH))
-                success = perform_rollback(data_dir, automatic=True)
-                if success:
-                    # Windows: exit 42 tells NSSM not to restart (installer handles it)
-                    # Linux: exit 0 triggers systemd restart, ExecStartPre applies rollback
-                    exit_code = 42 if sys.platform == "win32" else 0
-                    log.warning("Rollback initiated, exiting process (code %d)", exit_code)
-                    os._exit(exit_code)
-
-            # Defense in depth: drop any stale Linux apply-update.json left behind by
-            # a failed/aborted apply, so update-helper.sh (root, ExecStartPre) can't
-            # re-consume it on an unrelated restart. On systemd the helper runs
-            # before us, so this mainly covers non-systemd / crash-before-helper.
-            stale_apply = data_dir / "apply-update.json"
-            if stale_apply.exists():
-                try:
-                    stale_apply.unlink()
-                    log.warning("Removed stale apply-update.json at startup")
-                except OSError:
-                    log.exception("Could not remove stale apply-update.json at startup")
-
-            # Same defense for a leftover apply-rollback marker: one that survives
-            # to this point was never consumed by the pre-start wrapper, and would
-            # silently downgrade the install on a later unrelated restart.
-            from openavc.updater.rollback import clear_stale_rollback_marker
-            clear_stale_rollback_marker(data_dir)
+            _settle_updates_before_start(data_dir)
 
         await engine.start()
 
@@ -223,152 +359,18 @@ async def _initialize_engine(app: FastAPI) -> None:
             from openavc.updater.rollback import confirm_startup
             confirm_startup(data_dir)
 
-        # Load driver hints into discovery engine after drivers are registered
-        discovery_engine.load_driver_hints_from_registry(list_registered_drivers())
+        _load_discovery_hints()
 
-        # Phase 9.7: load any sibling _discovery.py companions that ship
-        # alongside built-in or community drivers.
-        from openavc.system_config import (
-            DRIVER_DEFINITIONS_DIR,
-            DRIVER_REPO_DIR,
-        )
-        discovery_engine.load_discovery_companions_from_dirs(
-            [DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR],
-        )
-
-        # Wire cloud-driven restart: the cloud agent emits
-        # system.restart_requested after rate-limiting and sending its
-        # command_result. The on-host service manager (NSSM / systemd /
-        # Docker restart policy) brings the process back up — except in
-        # dev (`python -m openavc.main`), where there's no service manager,
-        # so we spawn a replacement ourselves before exiting.
+        # A restart request (Settings, the cloud agent, the listen watcher
+        # below) ends this process: openavc/restart.py.
         async def _on_restart_requested(_event: str, data: dict) -> None:
-            mode = (data or {}).get("mode", "graceful")
-            # source distinguishes a local UI/API restart from a cloud-driven
-            # one — the event fires from both, so a hardcoded label misled
-            # anyone reading the log during a Settings-triggered restart.
-            source = (data or {}).get("source", "unknown")
-            log.warning(
-                "Restart requested (source=%s, mode=%s); exiting in 2s", source, mode,
-            )
-            # Brief delay so the command_result WS frame and log line flush
-            # before the process exits.
-            await asyncio.sleep(0 if mode == "hard" else 2)
-
-            # Hard watchdog: a daemon thread that calls os._exit(0)
-            # unconditionally after 7s. Required because EventBus.emit nests
-            # asyncio.gather() calls when handlers themselves emit events,
-            # and cancelling that chain at shutdown can recurse past Python's
-            # stack limit (RecursionError in _GatheringFuture.cancel). When
-            # that happens, the cancellation itself can't complete, so
-            # `await engine.stop()` hangs forever AND `asyncio.wait_for(...)`
-            # would also hang (timeout fires but the coroutine can't be
-            # cancelled). A separate thread doesn't need the event loop to
-            # be healthy — it just exits the process. Service managers
-            # (NSSM/systemd/Docker) then bring us back up.
-            import threading
-            threading.Timer(7.0, lambda: os._exit(0)).start()
-
-            # Spawn the replacement BEFORE attempting graceful shutdown so a
-            # dev session is guaranteed to come back up even if the watchdog
-            # fires. The child waits for our port to free (OPENAVC_RESTARTING).
-            # In service-managed deployments, the manager handles relaunch.
-            if not _is_service_managed():
-                _spawn_replacement()
-
-            # Best-effort graceful shutdown. The wait_for timeout protects
-            # against the common case (cancellable hangs); the threading
-            # watchdog above protects against the recursion-in-cancel case.
-            try:
-                if app.state.engine_ready:
-                    await asyncio.wait_for(engine.stop(), timeout=5.0)
-            except asyncio.TimeoutError:
-                log.warning("Graceful shutdown exceeded 5s — forcing exit")
-            except Exception:
-                log.exception("Error during graceful shutdown before restart")
-            os._exit(0)
+            await restart.exit_for_restart(data, engine, app.state)
 
         engine.events.on("system.restart_requested", _on_restart_requested)
-
-        # Follow the chosen adapter: back, gone, or on a new DHCP address,
-        # the server restarts through the same path and listens again where
-        # the choice now points (openavc/listen.py).
-        from openavc import listen
-
-        from openavc import listen_safety_net
-
-        async def _restart_to_follow_adapter(_reason: str) -> None:
-            await engine.events.emit(
-                "system.restart_requested", {"mode": "graceful", "source": "listen"}
-            )
-
-        # The same ten-second tick checks the safety net's deadline: a change
-        # that cut off the browser making it goes back by itself unless the
-        # Programmer is opened through the new choice (listen_safety_net.py).
-        # It also re-reads the Reach devices through adapter's address, off
-        # the event loop, so device traffic follows a DHCP renewal with no
-        # restart (openavc/reach_devices.py).
-        from openavc import reach_devices
-
-        async def _safety_net_tick() -> None:
-            try:
-                if reach_devices.choice():
-                    await asyncio.to_thread(reach_devices.refresh)
-            except Exception:  # the safety net below must still tick
-                log.debug("Reach devices through: refresh failed", exc_info=True)
-            await listen_safety_net.tick(get_system_config(), _restart_to_follow_adapter)
-
-        app.state.listen_watcher = asyncio.create_task(
-            listen.ListenWatcher(_restart_to_follow_adapter, on_tick=_safety_net_tick).run()
-        )
+        app.state.listen_watcher = _watch_listen_choice()
 
         app.state.engine_ready = True
-        if config.TLS_ENABLED:
-            scheme = "https"
-            port = config.TLS_PORT
-        else:
-            scheme = "http"
-            port = config.HTTP_PORT
-        log.info("=" * 60)
-        log.info(f"  Panel UI:    {scheme}://localhost:{port}/panel")
-        log.info(f"  Programmer:  {scheme}://localhost:{port}/programmer")
-        log.info(f"  REST API:    {scheme}://localhost:{port}/api")
-        local_ip = str(engine.get_status().get("local_ip") or "")
-        if plan is None:
-            pass
-        elif plan.problem is not None:
-            # The chosen adapter is missing, so this listens on loopback
-            # only. One sentence, the same one every surface shows.
-            log.warning(f"  LAN access:  none. {plan.problem.message}")
-        elif plan.local_only:
-            # Every URL below this point is built from a LAN address, and the
-            # kernel refuses all of them on a loopback-only listener. Saying
-            # so is the only useful line here: this banner is the sole
-            # instruction a manual/checkout run ever gets, and the Dashboard's
-            # Panel Access card already tells the same truth from the other
-            # side.
-            log.info(
-                "  LAN access:  none. Accepting connections from this computer "
-                "only; change Settings > Network > Accept connections from and "
-                "restart to reach it from the network."
-            )
-        elif local_ip and local_ip != "127.0.0.1":
-            only = f"  ({plan.adapter_name} only)" if plan.mode == "adapter" else ""
-            log.info(f"  LAN access:  {scheme}://{local_ip}:{port}/panel{only}")
-            if runtime_flags.port80_active:
-                log.info(f"  Short URL:   http://{local_ip}/panel")
-            certified = _certified_host_for(local_ip) if config.TLS_ENABLED else None
-            if certified:
-                log.info(
-                    f"  Trusted URL: https://{certified}:{config.TLS_PORT}/panel"
-                    "  (no browser warnings)"
-                )
-        if config.TLS_ENABLED and config.TLS_REDIRECT_HTTP:
-            log.info(
-                f"  HTTP redirect: http://localhost:{config.HTTP_PORT} "
-                f"-> https://localhost:{config.TLS_PORT}"
-            )
-        log.info("=" * 60)
+        _log_banner(plan)
     except Exception as e:
         app.state.engine_error = str(e)
         log.exception("Engine startup failed: %s", e)
@@ -566,107 +568,8 @@ app.add_middleware(ClientOriginMiddleware)
 from openavc.middleware.rate_limit import RateLimitMiddleware
 app.add_middleware(RateLimitMiddleware)
 
-# --- Startup splash page (served while engine initializes) ---
-
-_STARTUP_PAGE = """\
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OpenAVC</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    background: #1a1a2e; color: #fff;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    display: flex; align-items: center; justify-content: center;
-    height: 100vh; overflow: hidden;
-  }
-  .container { text-align: center; }
-  .logo {
-    font-size: 2rem; font-weight: 700; letter-spacing: 0.02em;
-    margin-bottom: 2rem; opacity: 0.95;
-  }
-  .logo span { color: #8AB493; }
-  .spinner {
-    width: 36px; height: 36px; margin: 0 auto 1.5rem;
-    border: 3px solid rgba(255,255,255,0.1);
-    border-top-color: #8AB493;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .message { font-size: 1rem; opacity: 0.6; }
-  .error {
-    color: #F44336; opacity: 1; margin-top: 1rem;
-    max-width: 500px; word-break: break-word;
-  }
-</style>
-</head>
-<body>
-<div class="container">
-  <div class="logo">Open<span>AVC</span></div>
-  <div class="spinner" id="spinner"></div>
-  <div class="message" id="message">Starting up...</div>
-</div>
-<script>
-(function() {
-  var msg = document.getElementById('message');
-  var spinner = document.getElementById('spinner');
-  function check() {
-    fetch('/api/startup-status').then(function(r) { return r.json(); }).then(function(d) {
-      if (d.ready) {
-        location.reload();
-      } else if (d.error) {
-        spinner.style.display = 'none';
-        msg.textContent = 'Startup failed';
-        var err = document.createElement('div');
-        err.className = 'error';
-        err.textContent = d.error;
-        msg.parentNode.appendChild(err);
-      } else {
-        setTimeout(check, 500);
-      }
-    }).catch(function() {
-      setTimeout(check, 1000);
-    });
-  }
-  setTimeout(check, 500);
-})();
-</script>
-</body>
-</html>
-"""
-
-
-class StartupSplashMiddleware(BaseHTTPMiddleware):
-    """Serves a loading page for UI routes while the engine is initializing."""
-
-    async def dispatch(self, request: Request, call_next):
-        if getattr(request.app.state, "engine_ready", True):
-            return await call_next(request)
-
-        path = request.url.path
-
-        # Startup status endpoint — always available
-        if path == "/api/startup-status":
-            return JSONResponse({
-                "ready": False,
-                "error": request.app.state.engine_error,
-            })
-
-        # Block API routes during startup (engine.project is None, etc.)
-        if path.startswith("/api/"):
-            return JSONResponse(
-                {"detail": "Server is starting up"},
-                status_code=503,
-            )
-
-        # Serve splash page for all UI routes
-        return HTMLResponse(_STARTUP_PAGE, status_code=503)
-
-
+# Served while the engine initializes.
+from openavc.middleware.startup_splash import StartupSplashMiddleware
 app.add_middleware(StartupSplashMiddleware)
 
 # Serve Panel UI static files
@@ -735,129 +638,6 @@ if programmer_dir.exists():
 # Added last so admission covers splash, cache and other response middleware as
 # well as route dispatch. SDK hosts replace the provider, not this middleware.
 app.add_middleware(HostPolicyMiddleware)
-
-
-def _is_service_managed() -> bool:
-    """True when a host service manager (NSSM / systemd / Docker) will relaunch us.
-
-    When True, a plain `os._exit(0)` is enough to "restart" — the manager
-    spawns a replacement. When False (typical dev session), we must spawn
-    a replacement ourselves before exiting or the user is left with a
-    dead server.
-
-    Detection signals:
-      OPENAVC_SERVICE_MANAGED=1  — set by the installer/service unit (canonical)
-      INVOCATION_ID env var      — set by systemd
-      PID 1 or /.dockerenv       — running inside a Docker container
-    """
-    if os.environ.get("OPENAVC_SERVICE_MANAGED") == "1":
-        return True
-    if os.environ.get("INVOCATION_ID"):
-        return True
-    try:
-        if os.getpid() == 1:
-            return True
-    except OSError:
-        pass
-    if os.path.exists("/.dockerenv"):
-        return True
-    return False
-
-
-def _spawn_replacement() -> None:
-    """Launch a fresh copy of this process, detached from the current one.
-
-    Used during cloud-driven restart in dev sessions where no service
-    manager will relaunch us. The child uses `sys.orig_argv` so the original
-    invocation is reproduced exactly (`python -m openavc.main`, the frozen
-    exe, with `--simulator`, etc.) — except argv[0], which is replaced with
-    `sys.executable` on non-frozen runs. On macOS framework builds (Homebrew)
-    the interpreter re-execs itself through Python.app at startup, so
-    orig_argv[0] is the bare framework binary with no trace of the venv
-    (the __PYVENV_LAUNCHER__ handoff var is stripped from the environment
-    too) — a child spawned from it can't import anything installed in the
-    venv. sys.executable still points at the venv interpreter, and on
-    Windows/Linux the two agree, so preferring it is a no-op there.
-    OPENAVC_RESTARTING tells the child to
-    retry its port pre-flight briefly: the parent's `os._exit(0)` releases
-    the listening socket essentially immediately, but on Windows there's a
-    brief window where the new bind can race the old one.
-
-    Child stdout/stderr are redirected to ``data_dir/logs/restart-child.log``
-    so a silent failure on Windows (the child has no console window) leaves a
-    trail. Path + parent PID are logged before spawning so the user can
-    correlate the breadcrumb with the actual relaunch.
-
-    Windows child gets CREATE_NO_WINDOW — a hidden console — NOT
-    DETACHED_PROCESS (no console at all). The difference matters: console
-    children of the replacement (ping during a discovery scan, ssh, pip)
-    attach to whatever console their parent has. With a hidden console they
-    stay hidden; with no console, Windows gives each one its own visible
-    console window — a discovery scan then pops one window per address.
-    """
-    import subprocess
-    from openavc.system_config import get_data_dir
-    try:
-        cmd = list(getattr(sys, "orig_argv", None) or ([sys.executable] + sys.argv))
-        # Relaunch through the interpreter that's actually running us, not
-        # whatever argv[0] claims. On macOS the framework build re-execs
-        # through Python.app, leaving an orig_argv[0] that knows nothing of
-        # the venv — the replacement would die on its first import. Frozen
-        # exes keep their argv untouched (sys.executable IS the bundle exe).
-        if cmd and sys.executable and not getattr(sys, "frozen", False):
-            cmd[0] = sys.executable
-        env = {**os.environ, "OPENAVC_RESTARTING": "1"}
-
-        # Capture child output so the console-less child on Windows doesn't
-        # swallow startup errors silently. Append (not truncate) — successive
-        # restarts in one dev session leave readable history.
-        try:
-            log_dir = get_data_dir() / "logs"
-            log_dir.mkdir(parents=True, exist_ok=True)
-            child_log_path = log_dir / "restart-child.log"
-            child_log = open(child_log_path, "a", buffering=1, encoding="utf-8", errors="replace")
-            child_log.write(
-                f"\n--- spawning replacement (parent pid={os.getpid()}, "
-                f"argv={cmd}) at {__import__('datetime').datetime.now().isoformat()} ---\n"
-            )
-            child_log.flush()
-        except OSError as exc:
-            log.warning("Could not open restart-child log: %s; child output will be lost", exc)
-            child_log = subprocess.DEVNULL
-            child_log_path = None
-
-        if sys.platform == "win32":
-            child = subprocess.Popen(
-                cmd,
-                env=env,
-                creationflags=(
-                    subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
-                ),
-                close_fds=True,
-                stdin=subprocess.DEVNULL,
-                stdout=child_log,
-                stderr=subprocess.STDOUT,
-            )
-        else:
-            child = subprocess.Popen(
-                cmd,
-                env=env,
-                start_new_session=True,
-                close_fds=True,
-                stdin=subprocess.DEVNULL,
-                stdout=child_log,
-                stderr=subprocess.STDOUT,
-            )
-        if child_log_path is not None:
-            log.info(
-                "Spawned replacement process pid=%s; child output -> %s",
-                child.pid,
-                child_log_path,
-            )
-        else:
-            log.info("Spawned replacement process pid=%s", child.pid)
-    except Exception:
-        log.exception("Failed to spawn replacement process; exiting without restart")
 
 
 # The data folder's status/ subfolder holds what the Windows tray app and the

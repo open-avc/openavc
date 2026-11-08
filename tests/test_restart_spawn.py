@@ -1,4 +1,4 @@
-"""Tests for _spawn_replacement — the dev-session restart relauncher.
+"""Tests for openavc.restart.spawn_replacement — the dev-session restart relauncher.
 
 The replacement child must be launched through the interpreter that is
 actually running the server (``sys.executable``), not ``sys.orig_argv[0]``.
@@ -16,12 +16,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from openavc.main import _spawn_replacement
+from openavc.restart import spawn_replacement
 
 
 @pytest.fixture
 def spawn_capture(monkeypatch, tmp_path):
-    """Capture the Popen call _spawn_replacement makes, without spawning."""
+    """Capture the Popen call spawn_replacement makes, without spawning."""
     calls: list[dict] = []
 
     def fake_popen(cmd, **kwargs):
@@ -44,7 +44,7 @@ def test_replaces_argv0_with_running_interpreter(spawn_capture, monkeypatch):
     )
     monkeypatch.delattr(sys, "frozen", raising=False)
 
-    _spawn_replacement()
+    spawn_replacement()
 
     assert len(spawn_capture) == 1
     cmd = spawn_capture[0]["cmd"]
@@ -61,7 +61,7 @@ def test_preserves_arguments_and_sets_restart_flag(spawn_capture, monkeypatch):
     )
     monkeypatch.delattr(sys, "frozen", raising=False)
 
-    _spawn_replacement()
+    spawn_replacement()
 
     cmd = spawn_capture[0]["cmd"]
     assert cmd == [sys.executable, "-m", "openavc.main", "--simulator"]
@@ -77,7 +77,7 @@ def test_frozen_bundle_keeps_argv_untouched(spawn_capture, monkeypatch):
     )
     monkeypatch.setattr(sys, "frozen", True, raising=False)
 
-    _spawn_replacement()
+    spawn_replacement()
 
     cmd = spawn_capture[0]["cmd"]
     assert cmd == ["/Applications/OpenAVC.app/Contents/MacOS/openavc", "--simulator"]
@@ -96,7 +96,7 @@ def test_a_posix_child_starts_in_its_own_session_writing_to_the_restart_log(
     monkeypatch.delattr(sys, "frozen", raising=False)
     monkeypatch.setattr(sys, "platform", "linux")
     with caplog.at_level(logging.INFO, logger="openavc.main"):
-        _spawn_replacement()
+        spawn_replacement()
 
     (spawned,) = spawn_capture
     child_log = tmp_path / "logs" / "restart-child.log"
@@ -120,8 +120,8 @@ def test_a_posix_child_starts_in_its_own_session_writing_to_the_restart_log(
 def test_successive_restarts_append_to_the_restart_log(spawn_capture, monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "orig_argv", [sys.executable, "-m", "openavc.main"], raising=False)
     monkeypatch.setattr(sys, "platform", "linux")
-    _spawn_replacement()
-    _spawn_replacement()
+    spawn_replacement()
+    spawn_replacement()
     for spawned in spawn_capture:
         spawned["stdout"].close()
     text = (tmp_path / "logs" / "restart-child.log").read_text(encoding="utf-8")
@@ -137,7 +137,7 @@ def test_a_windows_child_gets_a_hidden_console_in_its_own_process_group(
     monkeypatch.setattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200, raising=False)
     monkeypatch.setattr(sys, "orig_argv", [sys.executable, "-m", "openavc.main"], raising=False)
     monkeypatch.setattr(sys, "platform", "win32")
-    _spawn_replacement()
+    spawn_replacement()
 
     (spawned,) = spawn_capture
     spawned["stdout"].close()
@@ -166,7 +166,7 @@ def test_with_no_restart_log_the_child_output_is_discarded(spawn_capture, monkey
     monkeypatch.setattr(sys, "orig_argv", [sys.executable, "-m", "openavc.main"], raising=False)
     monkeypatch.setattr(sys, "platform", "linux")
     with caplog.at_level(logging.INFO, logger="openavc.main"):
-        _spawn_replacement()
+        spawn_replacement()
 
     (spawned,) = spawn_capture
     assert spawned["stdout"] is subprocess.DEVNULL
@@ -190,7 +190,7 @@ def test_a_spawn_that_fails_is_logged_and_never_raised(monkeypatch, tmp_path, ca
     monkeypatch.setattr(system_config, "get_data_dir", lambda: tmp_path)
     monkeypatch.setattr(sys, "platform", "linux")
     with caplog.at_level(logging.ERROR, logger="openavc.main"):
-        _spawn_replacement()
+        spawn_replacement()
 
     assert [r.getMessage() for r in caplog.records] == [
         "Failed to spawn replacement process; exiting without restart"
@@ -201,7 +201,7 @@ def test_without_orig_argv_it_relaunches_from_executable_and_argv(spawn_capture,
     monkeypatch.delattr(sys, "orig_argv", raising=False)
     monkeypatch.delattr(sys, "frozen", raising=False)
     monkeypatch.setattr(sys, "argv", ["openavc/main.py", "--flag"])
-    _spawn_replacement()
+    spawn_replacement()
     spawn_capture[0]["stdout"].close()
     assert spawn_capture[0]["cmd"] == [sys.executable, "openavc/main.py", "--flag"]
 
@@ -213,14 +213,14 @@ def test_without_orig_argv_it_relaunches_from_executable_and_argv(spawn_capture,
 def no_manager(monkeypatch):
     import os
 
-    from openavc.main import _is_service_managed
+    from openavc.restart import is_service_managed
 
     monkeypatch.delenv("OPENAVC_SERVICE_MANAGED", raising=False)
     monkeypatch.delenv("INVOCATION_ID", raising=False)
     monkeypatch.setattr(os, "getpid", lambda: 4242)
     real_exists = os.path.exists
     monkeypatch.setattr(os.path, "exists", lambda p: False if p == "/.dockerenv" else real_exists(p))
-    return _is_service_managed
+    return is_service_managed
 
 
 def test_nothing_says_a_manager_is_there(no_manager):
