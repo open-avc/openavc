@@ -359,7 +359,10 @@ async def test_a_connection_that_drops_again_is_waited_out(driver):
         await _until(lambda: test.status == DONE, timeout=30.0)
 
         record = test.to_dict()
-        assert record["reconnected_at"] < record["dropped_again_at"] < record["reconnected_again_at"]
+        # The reset follows the reconnect's first reply, so both can be stamped
+        # in the same clock tick (Windows before Python 3.13 stamps to 15.6 ms);
+        # the reconnect after it waits a second.
+        assert record["reconnected_at"] <= record["dropped_again_at"] < record["reconnected_again_at"]
         assert record["measured"]["dropped_again_after"] is not None
         assert record["measured"]["reconnected_again_after"] is not None
         # What came back is counted from the reconnect that held.
