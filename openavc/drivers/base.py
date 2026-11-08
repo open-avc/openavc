@@ -74,6 +74,8 @@ from openavc.drivers.param_validation import (  # noqa: F401
     validate_device_setting_value,
 )
 from openavc.core.state_store import StateStore, is_flat_primitive
+# Drivers have imported FrameParser from here; it stays importable.
+from openavc.transport.frame_parsers import FrameParser  # noqa: F401
 from openavc.transport.http_client import capture_driver_clients, capture_driver_websockets
 from openavc.transport.udp import UDPTransport
 from openavc.utils.log_redaction import (
@@ -789,7 +791,7 @@ class BaseDriver(ChildEntities, PushChannel, LivenessWatch, PollLoop, TransportL
         if self._connect_attempt is not attempt:
             raise ConnectEndedError(default_fault_message(TRANSPORT_DISCONNECTED))
 
-    async def _close_transport(self) -> None:
+    async def _close_platform_transport(self) -> None:
         """Close the platform transport and forget it. A close that fails is
         the caller's failure (the quiet form below is not)."""
         if self.transport:
@@ -997,7 +999,7 @@ class BaseDriver(ChildEntities, PushChannel, LivenessWatch, PollLoop, TransportL
         if not isinstance(cause, BaseException):
             cause = None
         self._stash_transport_error()
-        await self._close_transport()
+        await self._close_platform_transport()
         raise _verify_failure_error(
             self._last_transport_error, cause,
             self.config.get("host", "?"), self.config.get("port", "?"),
@@ -1034,7 +1036,7 @@ class BaseDriver(ChildEntities, PushChannel, LivenessWatch, PollLoop, TransportL
         # The transport's last error first (e.g. an SSH auth failure surfaces
         # in ssh's log on the transport, not in this exception).
         self._stash_transport_error()
-        await self._close_transport()
+        await self._close_platform_transport()
         await self._close_session()
         self._connected = False
 
@@ -1148,7 +1150,7 @@ class BaseDriver(ChildEntities, PushChannel, LivenessWatch, PollLoop, TransportL
         self._stop_health_loop()
         await self._stop_push()
         await self.stop_polling()
-        await self._close_transport()
+        await self._close_platform_transport()
         await self._close_session()
         self._connected = False
         # A deliberate disconnect ends any hold: whatever connects next is a
