@@ -218,6 +218,22 @@ async def test_a_held_poll_sends_no_follow_up_and_still_holds_the_rule() -> None
     assert drv._follow_up_until[(id(rule), "")] > time.monotonic()
 
 
+async def test_a_poll_gate_that_shuts_mid_round_ends_it_even_if_it_opens_again() -> None:
+    cap = Capture()
+    drv = _driver(_with(LINE_UNIT, polling={"queries": [], "when_state": {"standby": False}}), cap)
+    standby = iter([True, False, False])
+
+    async def gate_moves() -> None:
+        drv.state.set("device.dev1.standby", next(standby))
+
+    drv._pace_line = gate_moves
+    rule = object()
+    drv._follow_up(rule, ["GA\r", "GB\r"], "", [])
+    await _settle(drv)
+    assert cap.sent == []
+    assert drv._follow_up_until[(id(rule), "")] > time.monotonic()
+
+
 async def test_a_failed_line_ends_the_round_with_a_warning(caplog) -> None:
     cap = Capture(fail=b"GA")
     drv = _driver(LINE_UNIT, cap)
