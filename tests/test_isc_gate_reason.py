@@ -80,7 +80,7 @@ class TestTheGateReadingItself:
         from pathlib import Path
 
         engine_src = (
-            Path(__file__).resolve().parents[1] / "openavc" / "core" / "engine.py"
+            Path(__file__).resolve().parents[1] / "openavc" / "core" / "runtime_services.py"
         ).read_text(encoding="utf-8")
         # The expression used to be spelled at both start paths. It lives in
         # the helper now and nowhere else; a second copy is how the reported

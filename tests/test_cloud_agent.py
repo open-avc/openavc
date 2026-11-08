@@ -1024,7 +1024,7 @@ class TestHeartbeat:
         from pathlib import Path
 
         source = (
-            Path(__file__).resolve().parents[1] / "openavc" / "core" / "engine.py"
+            Path(__file__).resolve().parents[1] / "openavc" / "core" / "runtime_services.py"
         ).read_text(encoding="utf-8")
         construction = source[source.index("heartbeat = HeartbeatCollector("):]
         construction = construction[: construction.index(")")]
