@@ -53,7 +53,7 @@ DATA_DIR = Path(os.environ.get('PROGRAMDATA', 'C:\\ProgramData')) / 'OpenAVC'
 # The installer restricts the data folder to the service and administrators,
 # and the tray runs as the signed-in user, so the tray reads only status\, the
 # one folder every local account can read. The server writes both files there
-# (STATUS_DIR_NAME and the file names in openavc/main.py).
+# (STATUS_DIR_NAME and the file names in openavc/status_folder.py).
 STATUS_DIR = DATA_DIR / 'status'
 STARTUP_ERROR_FILE = STATUS_DIR / 'startup-error.json'
 SERVER_ADDRESS_FILE = STATUS_DIR / 'server.json'

@@ -46,7 +46,7 @@ DEFAULT_PORT = 8080
 POLL_INTERVAL = 5  # seconds
 SERVICE_LABEL = "com.openavc.server"
 DATA_DIR = Path("/Library/Application Support/OpenAVC")
-# Where the server records, at every start, where it listens (openavc/main.py).
+# Where the server records, at every start, where it listens (openavc/status_folder.py).
 # The menu bar runs as the signed-in user and the server as root, so this is
 # the one file in the data folder the menu bar can read: the server writes it
 # readable by everyone, and system.json readable by root only.

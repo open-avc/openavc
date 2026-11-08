@@ -56,8 +56,8 @@ def test_localhost_passes_both_families_and_retains_both_parent_sockets(monkeypa
         monkeypatch.setattr(main.config, "TLS_PORT", port)
         monkeypatch.setattr(main.config, "TLS_ENABLED", mode == "tls")
         monkeypatch.setattr(main.config, "PORT80_REDIRECT", mode == "http-redirect")
-        monkeypatch.setattr(main, "_write_server_address", lambda: None)
-        monkeypatch.setattr(main, "_clear_startup_error", lambda: None)
+        monkeypatch.setattr(main.status_folder, "write_server_address", lambda: None)
+        monkeypatch.setattr(main.status_folder, "clear_startup_error", lambda: None)
         actual = []
 
         async def asynchronous(listeners):
@@ -88,8 +88,8 @@ def test_equivalent_ipv6_spelling_matches_bound_socket(monkeypatch):
         monkeypatch.setattr(main.config, "HTTP_PORT", parent.getsockname()[1])
         monkeypatch.setattr(main.config, "TLS_ENABLED", False)
         monkeypatch.setattr(main.config, "PORT80_REDIRECT", False)
-        monkeypatch.setattr(main, "_write_server_address", lambda: None)
-        monkeypatch.setattr(main, "_clear_startup_error", lambda: None)
+        monkeypatch.setattr(main.status_folder, "write_server_address", lambda: None)
+        monkeypatch.setattr(main.status_folder, "clear_startup_error", lambda: None)
         actual = []
         monkeypatch.setattr(main.uvicorn, "Server", lambda config: SimpleNamespace(run=lambda **kwargs: actual.extend(kwargs["sockets"])))
         main.main()

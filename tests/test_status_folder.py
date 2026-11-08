@@ -28,6 +28,7 @@ from unittest.mock import Mock
 import pytest
 
 import openavc.main as main
+from openavc import status_folder
 from openavc import config
 
 INSTALLER = Path(__file__).resolve().parents[1] / "installer"
@@ -86,11 +87,11 @@ def data_dir(monkeypatch, tmp_path):
 
 
 def test_both_ends_name_the_same_folder_and_files():
-    assert tray_mod.STATUS_DIR == tray_mod.DATA_DIR / main.STATUS_DIR_NAME
-    assert tray_mod.STARTUP_ERROR_FILE == tray_mod.STATUS_DIR / main.STARTUP_ERROR_FILE_NAME
-    assert tray_mod.SERVER_ADDRESS_FILE == tray_mod.STATUS_DIR / main.SERVER_ADDRESS_FILE_NAME
+    assert tray_mod.STATUS_DIR == tray_mod.DATA_DIR / status_folder.STATUS_DIR_NAME
+    assert tray_mod.STARTUP_ERROR_FILE == tray_mod.STATUS_DIR / status_folder.STARTUP_ERROR_FILE_NAME
+    assert tray_mod.SERVER_ADDRESS_FILE == tray_mod.STATUS_DIR / status_folder.SERVER_ADDRESS_FILE_NAME
     assert menubar_mod.SERVER_ADDRESS_FILE == (
-        menubar_mod.DATA_DIR / main.STATUS_DIR_NAME / main.SERVER_ADDRESS_FILE_NAME
+        menubar_mod.DATA_DIR / status_folder.STATUS_DIR_NAME / status_folder.SERVER_ADDRESS_FILE_NAME
     )
 
 
@@ -103,7 +104,7 @@ def test_the_menu_bar_reads_the_address_and_problem_the_server_records(data_dir,
     unplugged = plan_for("adapter", ETHERNET, adapters=[])
     monkeypatch.setattr(config, "listen_plan", lambda: unplugged)
 
-    main._write_server_address()
+    status_folder.write_server_address()
 
     assert menubar_mod._get_server_config() == {
         "http_port": 8090, "tls_enabled": True, "tls_port": 8444,
@@ -118,7 +119,7 @@ def test_every_account_can_read_where_the_server_listens(data_dir, monkeypatch):
     """On macOS the server runs as root and the menu bar app as the signed-in user."""
     monkeypatch.setattr(config, "HTTP_PORT", 8090)
 
-    main._write_server_address()
+    status_folder.write_server_address()
 
     mode = stat.S_IMODE((data_dir / "status" / "server.json").stat().st_mode)
     assert mode & 0o044 == 0o044, oct(mode)
@@ -129,7 +130,7 @@ def test_the_tray_reads_the_address_the_server_records(data_dir, monkeypatch):
     monkeypatch.setattr(config, "TLS_ENABLED", True)
     monkeypatch.setattr(config, "TLS_PORT", 8444)
 
-    main._write_server_address()
+    status_folder.write_server_address()
 
     written = json.loads((data_dir / "status" / "server.json").read_text(encoding="utf-8"))
     ports = {"http_port": 8090, "tls_enabled": True, "tls_port": 8444}
@@ -142,7 +143,7 @@ def test_the_tray_reads_the_startup_error_the_server_records(data_dir, monkeypat
     monkeypatch.setattr(tray_mod, "_show_error_dialog", lambda title, message: shown.append(message))
     monkeypatch.setattr(tray_mod.threading, "Thread", _InlineThread)
 
-    main._write_startup_error("port_in_use", "HTTP port 8090 is already in use.")
+    status_folder.write_startup_error("port_in_use", "HTTP port 8090 is already in use.")
 
     assert (data_dir / "status" / "startup-error.json").is_file()
     assert not (data_dir / "startup-error.json").exists()
@@ -150,7 +151,7 @@ def test_the_tray_reads_the_startup_error_the_server_records(data_dir, monkeypat
     tray._check_startup_error()
     assert shown == ["HTTP port 8090 is already in use."]
 
-    main._clear_startup_error()
+    status_folder.clear_startup_error()
 
     assert not (data_dir / "status" / "startup-error.json").exists()
     tray._check_startup_error()
@@ -177,7 +178,7 @@ def test_a_start_records_the_address_and_clears_the_last_error(data_dir, monkeyp
     monkeypatch.setattr(listen_sockets, "bind_for_plan", bind)
     served = []
     monkeypatch.setattr(main.uvicorn.Server, "run", lambda self, sockets: served.append(sockets))
-    main._write_startup_error("port_in_use", "an earlier failure")
+    status_folder.write_startup_error("port_in_use", "an earlier failure")
 
     main.main()
 
@@ -224,8 +225,8 @@ def test_the_folder_every_account_can_read_carries_only_these(data_dir, monkeypa
     """status/ is readable by every local account on Windows: nothing else goes in it."""
     monkeypatch.setattr(config, "HTTP_PORT", 8090)
 
-    main._write_server_address()
-    main._write_startup_error("tls_error", "HTTPS is enabled but the TLS listener cannot start.")
+    status_folder.write_server_address()
+    status_folder.write_startup_error("tls_error", "HTTPS is enabled but the TLS listener cannot start.")
 
     status = data_dir / "status"
     assert sorted(p.name for p in status.iterdir()) == ["server.json", "startup-error.json"]

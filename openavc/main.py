@@ -72,7 +72,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from openavc import config, restart, runtime_flags
+from openavc import config, restart, runtime_flags, status_folder
 from openavc.api import rest, ws, isc_ws, discovery as discovery_api, plugins as plugins_api, assets as assets_api, themes as themes_api, ai_proxy as ai_proxy_api, ir_learn_ws
 from openavc.api import simulator_proxy
 from openavc.api.host_policy import (
@@ -641,82 +641,6 @@ if programmer_dir.exists():
 app.add_middleware(HostPolicyMiddleware)
 
 
-# The data folder's status/ subfolder holds what the Windows tray app and the
-# macOS menu bar app read. Both run as the signed-in user. On Windows the
-# installer leaves this one folder readable (and only readable) by every local
-# account, while the rest of the data folder belongs to the service and
-# administrators (installer/secure-data-dir.bat); on macOS the server runs as
-# root, so server.json is written readable by everyone (STATUS_FILE_MODE).
-# Nothing secret may be written here. installer/tray.py and
-# installer/menubar.py name the same folder and files.
-STATUS_DIR_NAME = "status"
-STARTUP_ERROR_FILE_NAME = "startup-error.json"
-SERVER_ADDRESS_FILE_NAME = "server.json"
-STATUS_FILE_MODE = 0o644
-
-
-def _status_dir():
-    from openavc.system_config import get_data_dir
-    return get_data_dir() / STATUS_DIR_NAME
-
-
-def _write_startup_error(error_type: str, message: str) -> None:
-    """Write a startup error file so the tray app (or other monitors) can report it."""
-    import json as _json
-    try:
-        status_dir = _status_dir()
-        status_dir.mkdir(parents=True, exist_ok=True)
-        error_file = status_dir / STARTUP_ERROR_FILE_NAME
-        error_file.write_text(_json.dumps({
-            "error": error_type,
-            "message": message,
-            "timestamp": __import__("datetime").datetime.now().isoformat(),
-        }), encoding="utf-8")
-    except OSError:
-        pass
-
-
-def _clear_startup_error() -> None:
-    """Remove the startup error file on successful start."""
-    try:
-        error_file = _status_dir() / STARTUP_ERROR_FILE_NAME
-        if error_file.exists():
-            error_file.unlink()
-    except OSError:
-        pass
-
-
-def _write_server_address() -> None:
-    """Record where this server listens, for the tray app and the menu bar.
-
-    The tray cannot read system.json, and it cannot ask the server without
-    already knowing the port. These are the values the server binds,
-    environment overrides included, rewritten at every start once the
-    sockets are bound, so a port or a listen choice changed in Settings
-    reaches the tray with the restart that applies it. ``listen`` carries the
-    addresses listened on and, when the chosen adapter is missing, the
-    sentence that says so.
-    """
-    import json as _json
-    from openavc.utils.fileio import atomic_write_text
-    plan = config.listen_plan()
-    try:
-        status_dir = _status_dir()
-        status_dir.mkdir(parents=True, exist_ok=True)
-        atomic_write_text(status_dir / SERVER_ADDRESS_FILE_NAME, _json.dumps({
-            "http_port": config.HTTP_PORT,
-            "tls_enabled": config.TLS_ENABLED,
-            "tls_port": config.TLS_PORT,
-            "listen": {
-                "mode": plan.mode,
-                "addresses": list(plan.hosts),
-                "problem": plan.problem.message if plan.problem else None,
-            },
-        }), mode=STATUS_FILE_MODE)
-    except OSError:
-        pass
-
-
 def _make_aux_redirect_server(app, port: int):
     """Build a best-effort auxiliary redirect listener on the listen plan's
     addresses (the ones the main listener settled on).
@@ -830,7 +754,7 @@ def _certificate_files():
             "or disable HTTPS (Settings > Security, or OPENAVC_TLS_ENABLED=false)."
         )
         print(f"\n*** {msg} ***\n", file=sys.stderr)
-        _write_startup_error("tls_error", msg)
+        status_folder.write_startup_error("tls_error", msg)
         raise SystemExit(1) from exc
 
 
@@ -954,7 +878,7 @@ def _bind_primary_port(plan):
         else:
             msg = exc.message("HTTP port", "OPENAVC_PORT")
         print(f"\n*** {msg} ***\n")
-        _write_startup_error(exc.error_type, msg)
+        status_folder.write_startup_error(exc.error_type, msg)
         raise SystemExit(1)
 
 
@@ -998,8 +922,8 @@ def main():
     sockets, plan = _bind_primary_port(plan)
     try:
         _settle_listening(plan)
-        _clear_startup_error()
-        _write_server_address()
+        status_folder.clear_startup_error()
+        status_folder.write_server_address()
         listen_sockets.push_listeners.enable(config.HTTP_PORT)
         _serve(sockets)
     finally:

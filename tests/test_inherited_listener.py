@@ -36,8 +36,8 @@ def test_valid_listener_uses_normal_startup_and_preserves_parent_copy(monkeypatc
         monkeypatch.setattr(main.config, "TLS_ENABLED", mode == "tls")
         monkeypatch.setattr(main.config, "PORT80_REDIRECT", mode == "http-redirect")
         addresses, routes = Mock(), []
-        monkeypatch.setattr(main, "_write_server_address", addresses)
-        monkeypatch.setattr(main, "_clear_startup_error", Mock())
+        monkeypatch.setattr(main.status_folder, "write_server_address", addresses)
+        monkeypatch.setattr(main.status_folder, "clear_startup_error", Mock())
 
         async def tls(listeners):
             routes.append(("tls", listeners[0].getsockname()))
