@@ -358,6 +358,50 @@ class ScanBlocked(RuntimeError):
     """
 
 
+def _add_ssdp_evidence(device: DiscoveredDevice, result: Any) -> None:
+    """One record per observed UPnP type: the driver-claimed family URN is
+    only one of the types a device advertises."""
+    device.evidence_log.extend(result.to_evidence_records())
+
+
+def _add_amx_ddp_evidence(device: DiscoveredDevice, beacon: Any) -> None:
+    device.evidence_log.append(beacon.to_evidence())
+
+
+def _log_listener_failures(listeners: Iterable[tuple[asyncio.Task, str]]) -> None:
+    """Retrieve each listener's outcome so a crashed one is logged, and so a
+    failed task doesn't resurface later as asyncio's "exception was never
+    retrieved". The evidence itself comes from the scanners, not from these
+    results."""
+    for task, label in listeners:
+        if task.done() and not task.cancelled():
+            exc = task.exception()
+            if exc is not None:
+                log.debug("%s listener failed", label, exc_info=exc)
+
+
+def _snmp_results(snmp_task: asyncio.Task, snmp_scanner: "SNMPScanner | None") -> dict:
+    """What the SNMP scan found: its result when it finished, else (it
+    overran its window and was cancelled) everything its scanner identified
+    before the cutoff, since the scanner fills its results as it goes. A
+    large or slow subnet keeps its SNMP enrichment that way."""
+    if snmp_task.done() and not snmp_task.cancelled():
+        try:
+            return snmp_task.result()
+        except Exception:  # Catch-all: task.result() re-raises whatever the task raised
+            log.debug("SNMP task failed", exc_info=True)
+            return {}
+    if snmp_scanner is None:
+        return {}
+    partial = snmp_scanner.results
+    if partial:
+        log.info(
+            "SNMP scan overran the collect window; merging %d partial result(s)",
+            len(partial),
+        )
+    return partial
+
+
 class DiscoveryEngine(DriverProbes):
     """Orchestrates device discovery across all scanning methods."""
 
@@ -1786,78 +1830,62 @@ class DiscoveryEngine(DriverProbes):
         hear them. At the end of the window they are told to stop; mDNS and
         AMX DDP leave their receive loops within half a second, and SSDP then
         fetches the UPnP description XML for everything it heard, which gets
-        its own ceiling (``_LISTENER_DRAIN_SECONDS``).
-
-        Uses a 1-second heartbeat loop so the progress bar moves steadily
-        with a countdown rather than appearing stuck.
+        its own ceiling (``_LISTENER_DRAIN_SECONDS``). A fetch still running
+        at the ceiling is cancelled, and every description already parsed
+        stays on its result, so one unresponsive web server can't hold the
+        scan.
 
         ``wait_seconds`` is the window the scan budget granted (the depth
         policy's value, possibly shortened to leave room for driver probes).
-        None falls back to the module default. The window ends early only
-        when every listener has already exited (for example, none could open
-        its socket), since nothing is left to hear anything.
+        None falls back to the module default.
         """
         total_wait = (
             wait_seconds if wait_seconds is not None
             else _PASSIVE_COLLECT_DEFAULT_WAIT_SECONDS
         )
-        remaining_tasks = {mdns_task, ssdp_task, amx_ddp_task}
-        tick = _PASSIVE_COLLECT_TICK_SECONDS
-        # The window is measured on the loop's clock, not by counting ticks:
-        # where the clock is coarser than a tick (15.6 ms on Windows before
-        # Python 3.13), a short timeout fires at once and a count of ticks
-        # would end the window before any time had passed.
+        remaining = await self._listen_out_window(
+            {mdns_task, ssdp_task, amx_ddp_task}, total_wait,
+        )
+        await self._stop_passive_listeners()
+        if remaining:
+            _, remaining = await asyncio.wait(
+                remaining, timeout=_LISTENER_DRAIN_SECONDS,
+            )
+        await self._cancel_background_tasks(*remaining)
+        _log_listener_failures(
+            ((mdns_task, "mDNS"), (ssdp_task, "SSDP"), (amx_ddp_task, "AMX DDP")),
+        )
+        await self.merge_passive_results()
+
+    async def _listen_out_window(
+        self, tasks: set[asyncio.Task], total_wait: float,
+    ) -> set[asyncio.Task]:
+        """Keep listening for ``total_wait`` seconds, a heartbeat a tick so
+        the progress bar moves with a countdown rather than looking stuck.
+        Returns the listeners still running. The window ends early only when
+        every listener has already exited (for example, none could open its
+        socket), since nothing is left to hear anything.
+
+        The window is measured on the loop's clock, not by counting ticks:
+        where the clock is coarser than a tick (15.6 ms on Windows before
+        Python 3.13), a short timeout fires at once and a count of ticks
+        would end the window before any time had passed.
+        """
         loop = asyncio.get_running_loop()
         started = loop.time()
         elapsed = 0.0
-
-        while elapsed < total_wait and remaining_tasks:
-            _, pending = await asyncio.wait(
-                remaining_tasks, timeout=min(tick, total_wait - elapsed),
+        while elapsed < total_wait and tasks:
+            _, tasks = await asyncio.wait(
+                tasks, timeout=min(_PASSIVE_COLLECT_TICK_SECONDS, total_wait - elapsed),
             )
-            remaining_tasks = pending
             elapsed = loop.time() - started
-            fraction = min(elapsed / total_wait, 1.0)
-            await self._update_intra_progress(fraction)
+            await self._update_intra_progress(min(elapsed / total_wait, 1.0))
             secs_left = max(0, int(total_wait - elapsed))
             await self._emit_progress(
                 "passive_collect",
                 f"Collecting passive results... ({secs_left}s remaining)",
             )
-
-        # The window is over: stop listening, and give SSDP its description
-        # fetches. Awaited with a ceiling so one unresponsive web server can't
-        # hold the scan; a fetch still running at the ceiling is cancelled
-        # below, and every description already parsed stays on its result.
-        await self._stop_passive_listeners()
-        if remaining_tasks:
-            _, remaining_tasks = await asyncio.wait(
-                remaining_tasks, timeout=_LISTENER_DRAIN_SECONDS,
-            )
-
-        # Cancel any listeners still running past the drain ceiling. gather()
-        # with return_exceptions swallows each task's own CancelledError but
-        # still propagates a cancellation aimed at THIS coroutine — so a
-        # stop_scan()/timeout cancellation isn't silently eaten here (which
-        # would let the collect loop run on instead of aborting promptly).
-        if remaining_tasks:
-            for task in remaining_tasks:
-                task.cancel()
-            await asyncio.gather(*remaining_tasks, return_exceptions=True)
-
-        # Retrieve each listener's outcome so a crashed one is logged, and so a
-        # failed task doesn't resurface later as asyncio's "exception was never
-        # retrieved". The evidence itself comes from the scanners below, not
-        # from these results.
-        for task, label in (
-            (mdns_task, "mDNS"), (ssdp_task, "SSDP"), (amx_ddp_task, "AMX DDP"),
-        ):
-            if task.done() and not task.cancelled():
-                exc = task.exception()
-                if exc is not None:
-                    log.debug("%s listener failed", label, exc_info=exc)
-
-        await self.merge_passive_results()
+        return tasks
 
     async def _stop_passive_listeners(self) -> None:
         """Tell this scan's passive listeners to leave their receive loops."""
@@ -1898,53 +1926,46 @@ class DiscoveryEngine(DriverProbes):
         if scanners is None:
             return 0
         mdns_scanner, ssdp_scanner, amx_ddp_scanner = scanners
-        merged = 0
-
-        for ip, mdns_result in mdns_scanner.results.items():
-            if not self._claim_passive_merge("mdns", ip):
-                continue
-            device = self._get_or_create_passive(ip)
-            if device is None:
-                continue
-            device.alive = True
-            # One record per advertised service: the vendor type that
-            # identifies a device is often only one of the types it
-            # announces, and packet order must not decide which survives.
-            device.evidence_log.extend(mdns_result.to_evidence_records())
-            device.evidence_log.extend(
-                mdns_hostname_evidence(mdns_result, self.signal_index, device.evidence_log)
-            )
-            merge_device_info(device, mdns_result.to_device_info(), "mdns")
-            await self._emit_device_update(device, "mdns")
-            merged += 1
-
-        for ip, ssdp_result in ssdp_scanner.results.items():
-            if not self._claim_passive_merge("ssdp", ip):
-                continue
-            device = self._get_or_create_passive(ip)
-            if device is None:
-                continue
-            device.alive = True
-            # One record per observed UPnP type — the driver-claimed
-            # family URN is only one of the types a device advertises.
-            device.evidence_log.extend(ssdp_result.to_evidence_records())
-            merge_device_info(device, ssdp_result.to_device_info(), "ssdp")
-            await self._emit_device_update(device, "ssdp")
-            merged += 1
-
-        for ip, beacon in amx_ddp_scanner.results.items():
-            if not self._claim_passive_merge("amx_ddp", ip):
-                continue
-            device = self._get_or_create_passive(ip)
-            if device is None:
-                continue
-            device.alive = True
-            device.evidence_log.append(beacon.to_evidence())
-            merge_device_info(device, beacon.to_device_info(), "amx_ddp")
-            await self._emit_device_update(device, "amx_ddp")
-            merged += 1
-
+        merged = await self._merge_passive_source(
+            "mdns", mdns_scanner.results, self._add_mdns_evidence,
+        )
+        merged += await self._merge_passive_source(
+            "ssdp", ssdp_scanner.results, _add_ssdp_evidence,
+        )
+        merged += await self._merge_passive_source(
+            "amx_ddp", amx_ddp_scanner.results, _add_amx_ddp_evidence,
+        )
         return merged
+
+    async def _merge_passive_source(
+        self, source: str, results: dict[str, Any],
+        add_evidence: Callable[[DiscoveredDevice, Any], None],
+    ) -> int:
+        """Merge one listener's results: each address once a scan, a new one
+        only under the passive cap (``_get_or_create_passive``)."""
+        merged = 0
+        for ip, result in results.items():
+            if not self._claim_passive_merge(source, ip):
+                continue
+            device = self._get_or_create_passive(ip)
+            if device is None:
+                continue
+            device.alive = True
+            add_evidence(device, result)
+            merge_device_info(device, result.to_device_info(), source)
+            await self._emit_device_update(device, source)
+            merged += 1
+        return merged
+
+    def _add_mdns_evidence(self, device: DiscoveredDevice, result: Any) -> None:
+        """One record per advertised service: the vendor type that identifies
+        a device is often only one of the types it announces, and packet
+        order must not decide which survives. Then the announced name, unless
+        a record for it is already there."""
+        device.evidence_log.extend(result.to_evidence_records())
+        device.evidence_log.extend(
+            mdns_hostname_evidence(result, self.signal_index, device.evidence_log)
+        )
 
     def _claim_passive_merge(self, source: str, ip: str) -> bool:
         """True the first time this (source, ip) is merged in the current scan."""
@@ -1959,39 +1980,12 @@ class DiscoveryEngine(DriverProbes):
         snmp_task: asyncio.Task | None,
         snmp_scanner: "SNMPScanner | None" = None,
     ) -> None:
-        """Wait for SNMP scan and merge results."""
+        """Wait for the SNMP scan, up to its window, and merge what it found."""
         if snmp_task is None:
             return
-
-        # Wait with timeout
-        done, pending = await asyncio.wait([snmp_task], timeout=5.0)
-
-        # Cancel if still running. gather() with return_exceptions swallows the
-        # SNMP task's own CancelledError but still propagates a cancellation
-        # aimed at THIS coroutine, preserving cooperative cancellation.
-        if pending:
-            for task in pending:
-                task.cancel()
-            await asyncio.gather(*pending, return_exceptions=True)
-
-        snmp_results = {}
-        if snmp_task.done() and not snmp_task.cancelled():
-            try:
-                snmp_results = snmp_task.result()
-            except Exception:  # Catch-all: task.result() re-raises whatever the task raised
-                log.debug("SNMP task failed", exc_info=True)
-        elif snmp_scanner is not None:
-            # Overran the 5s window and got cancelled. The scanner populates
-            # its results incrementally, so every device it identified before
-            # the cutoff is still available — merge those rather than dropping
-            # all SNMP enrichment on a large/slow subnet.
-            snmp_results = snmp_scanner.results
-            if snmp_results:
-                log.info(
-                    "SNMP scan overran the collect window; merging %d partial result(s)",
-                    len(snmp_results),
-                )
-
+        await asyncio.wait([snmp_task], timeout=5.0)
+        await self._cancel_background_tasks(snmp_task)
+        snmp_results = _snmp_results(snmp_task, snmp_scanner)
         for ip, snmp_info in snmp_results.items():
             device = self._get_or_create(ip)
             device.alive = True
@@ -2000,7 +1994,6 @@ class DiscoveryEngine(DriverProbes):
                 device.evidence_log.append(ev)
             merge_device_info(device, snmp_info.to_device_info(), "snmp")
             await self._emit_device_update(device, "snmp")
-
         if snmp_results:
             log.info("SNMP enriched %d devices", len(snmp_results))
 
