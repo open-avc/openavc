@@ -109,6 +109,21 @@ def test_the_drop_after_it_is_asleep_not_a_fault(book_path):
     assert asleep_message("Power On") == "Asleep. Power On wakes it."
 
 
+def test_an_armed_device_not_yet_asleep_is_refused_as_not_connected(book_path):
+    """Armed by its sleeping command, but no drop seen since: the refusal is
+    the plain one, not "asleep"."""
+    dm, driver, state = _manager()
+    asyncio.run(dm.send_command("widget", "power_off", {}))
+    driver._state["connected"] = False
+    state.set("device.widget.connected", False)
+
+    with pytest.raises(ConnectionError) as refused:
+        asyncio.run(dm.send_command("widget", "set_level", {}))
+
+    assert str(refused.value) == "Device 'widget' is not connected"
+    assert not hasattr(refused.value, "asleep_wake")
+
+
 def test_every_failed_reconnect_keeps_it_asleep(book_path):
     dm, driver, state = _manager()
     asyncio.run(dm.send_command("widget", "power_off", {}))
