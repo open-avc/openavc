@@ -10,8 +10,9 @@ Handles:
 Its other jobs live in their own modules, mixed in so every name stays on the
 manager: retrying a dropped device (device_reconnect.py), saying why a device
 is away (device_away.py), queued settings (pending_settings.py), the Open Web
-UI page (device_web_ui.py), devices on a bridge port (device_bridges.py) and
-a device paused on purpose (device_pause.py).
+UI page (device_web_ui.py), devices on a bridge port (device_bridges.py), a
+device paused on purpose (device_pause.py) and devices waiting for their
+driver (device_orphans.py).
 The checks a command passes before its driver are core/command_gates.py, and
 what the doors raise is core/device_errors.py, whose names this module
 re-exports.
@@ -46,6 +47,7 @@ from openavc.core.device_errors import (  # noqa: F401  (re-exported: the path t
     mark_failed_command,
     not_connected,
 )
+from openavc.core.device_orphans import DeviceOrphansMixin
 from openavc.core.device_pause import (  # noqa: F401  (the constants re-exported)
     PAUSE_TTL,
     PAUSED_FOR_AUDIT,
@@ -60,7 +62,7 @@ from openavc.drivers.base import (
     UnknownDeviceSettingError,
     validate_device_setting_value,
 )
-from openavc.drivers.registry import get_driver_class, is_driver_registered
+from openavc.drivers.registry import get_driver_class
 from openavc.core.device_config import DeviceConnection, bridge_first, connection_of
 from openavc.core.device_logins import SAVED_LOGIN, login_fields, marked_fields
 from openavc.core.event_bus import EventBus
@@ -126,7 +128,7 @@ def _device_id_of(event: str) -> str | None:
 
 class DeviceManager(
     DeviceAwayMixin, DeviceReconnectMixin, PendingSettingsMixin, DeviceWebUiMixin,
-    DeviceBridgesMixin, DevicePauseMixin,
+    DeviceBridgesMixin, DevicePauseMixin, DeviceOrphansMixin,
 ):
     """Manages all device driver instances."""
 
@@ -141,7 +143,7 @@ class DeviceManager(
         self._devices: dict[str, BaseDriver] = {}
         self._device_configs: dict[str, dict[str, Any]] = {}
         self._init_reconnect()
-        self._orphaned_devices: dict[str, dict[str, Any]] = {}  # devices with missing drivers
+        self._init_orphans()
         self._intentional_disconnect: set[str] = set()  # suppress auto-reconnect
         # Registered but not yet dialed — see add_device(defer_connect=True)
         # and bring_up(). A project save registers its devices inside the
@@ -299,25 +301,6 @@ class DeviceManager(
         self.state.set(f"device.{device_id}.connected", False, source="config")
         self.state.set(f"device.{device_id}.enabled", False, source="config")
         log.info(f"Device {device_id} is disabled, skipping connection")
-
-    async def _register_orphan(
-        self, device_id: str, device_config: dict[str, Any], name: str,
-    ) -> None:
-        """Keep a device whose driver is not installed, and say why it waits.
-        It activates when the driver arrives (retry_all_orphans)."""
-        driver_id = device_config["driver"]
-        log.warning(f"Device '{device_id}' is orphaned: {missing_driver_reason(driver_id)}")
-        self._orphaned_devices[device_id] = device_config
-        self._device_configs[device_id] = device_config
-        self.state.set(f"device.{device_id}.name", name, source="config")
-        self.state.set(f"device.{device_id}.connected", False, source="config")
-        self.state.set(f"device.{device_id}.orphaned", True, source="config")
-        self.state.set(
-            f"device.{device_id}.orphan_reason",
-            missing_driver_reason(driver_id),
-            source="config",
-        )
-        await self.events.emit("device.orphaned", {"device_id": device_id, "driver": driver_id})
 
 
     async def _bring_up_device(self, device_id: str) -> None:
@@ -838,108 +821,6 @@ class DeviceManager(
         if stored is not None:
             stored.setdefault("config", {}).update(delta)
 
-    async def retry_orphaned_device(
-        self, device_id: str, *, defer_connect: bool = False
-    ) -> bool:
-        """Re-attempt adding an orphaned device (e.g., after installing its driver).
-
-        Returns True if the device was successfully activated, False if still
-        orphaned. "Activated" means registered: the connection is opened by
-        the bring-up round asked for below, not before this returns, so a
-        caller that needs the device on the wire awaits
-        ``Engine.wait_for_device_bringup``.
-        """
-        config = self._orphan_record(device_id)
-        driver_id = config.get("driver", "")
-
-        # Check if the driver is now available
-        if not is_driver_registered(driver_id):
-            return False
-
-        # Remove from orphan tracking and re-add normally.
-        #
-        # Registered, not dialed, whenever a bring-up round can open it: the
-        # round re-applies the simulation redirect to the new instance before
-        # anything is dialed, so a device activated while simulation is
-        # running reaches the simulator on its FIRST attempt. Dialing here
-        # sent it to its REAL address and left it reconnect-looping against
-        # hardware that is not there, with no recovery an integrator could
-        # guess (``/api/simulation/start`` refuses, "already active"; a
-        # reconnect re-dials the real address). Same rule as reload_driver,
-        # for the same reason.
-        #
-        # A caller that asked for the deferral owns its own round (the engine's
-        # reconcile does); one that did not gets it asked for here, or the
-        # device would sit registered and never dialed.
-        ask_for_round = not defer_connect and self.request_bringup is not None
-        await self.remove_device(device_id)
-        await self.add_device(config, defer_connect=defer_connect or ask_for_round)
-        activated = device_id not in self._orphaned_devices
-        if activated and ask_for_round:
-            self.request_bringup()
-        return activated
-
-    def _orphan_record(self, device_id: str) -> dict[str, Any]:
-        """An orphaned device's record.
-
-        The two ways to ask about the wrong device are separate answers,
-        because the door above them is: an id nobody has is not found, while a
-        device that is running perfectly well has nothing to retry.
-        """
-        if device_id in self._orphaned_devices:
-            return self._orphaned_devices[device_id]
-        if device_id not in self._device_configs:
-            raise DeviceNotFoundError(f"Device '{device_id}' not found")
-        raise ValueError(f"Device '{device_id}' is not orphaned")
-
-    async def retry_all_orphans(self, *, defer_connect: bool = False) -> list[str]:
-        """Promote every orphan whose driver is now in the registry.
-
-        Called after the driver loader runs (project reload, community
-        install) so devices that were stuck in orphan state because their
-        driver wasn't loaded yet come online without a server restart.
-        Returns the list of device IDs that successfully activated.
-        """
-        return await self._activate_orphans(
-            is_driver_registered, defer_connect=defer_connect,
-            note="(driver '{driver}' now installed)",
-        )
-
-    async def _activate_orphans(
-        self, wanted: Callable[[str], bool], *, defer_connect: bool = False, note: str,
-    ) -> list[str]:
-        """Activate every orphan waiting for a driver id ``wanted`` accepts.
-
-        The ids activated. One that fails is logged and the rest still run.
-        ``note`` ends each "Activated" log line, with ``{driver}`` filled in.
-        """
-        activated: list[str] = []
-        # Snapshot before iterating — retry_orphaned_device mutates the dict
-        for device_id, config in list(self._orphaned_devices.items()):
-            driver_id = config.get("driver", "")
-            if wanted(driver_id) and await self._try_orphan(device_id, defer_connect):
-                activated.append(device_id)
-                log.info(f"Activated orphaned device '{device_id}' " + note.format(driver=driver_id))
-        return activated
-
-    async def _try_orphan(self, device_id: str, defer_connect: bool) -> bool:
-        """:meth:`retry_orphaned_device`, with a failure logged as False."""
-        try:
-            return await self.retry_orphaned_device(device_id, defer_connect=defer_connect)
-        except Exception:
-            log.exception(f"Failed to activate orphaned device '{device_id}'")
-            return False
-
-    def get_missing_drivers(self) -> list[str]:
-        """Return the unique driver IDs that orphaned devices are waiting for."""
-        seen: set[str] = set()
-        result: list[str] = []
-        for cfg in self._orphaned_devices.values():
-            driver_id = cfg.get("driver", "")
-            if driver_id and driver_id not in seen:
-                seen.add(driver_id)
-                result.append(driver_id)
-        return result
 
     async def set_device_setting(
         self, device_id: str, key: str, value: Any
