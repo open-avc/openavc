@@ -395,7 +395,9 @@ async def test_what_the_window_hears_while_it_is_open():
     first_drop = trial.went_away_at
     await conn.emit("device.disconnected")  # still away: the same drop
     await conn.emit("device.connected")
-    await asyncio.sleep(0.05)
+    # Twice the 50 ms the stamps are checked against: Windows before Python
+    # 3.13 stamps time.time() to 15.6 ms, so a 50 ms sleep can read as 45.
+    await asyncio.sleep(0.1)
     await conn.emit("device.connected")  # back with no drop between: nothing new
     await conn.emit("device.disconnected")
     await _done(trial)
