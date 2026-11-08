@@ -83,7 +83,7 @@ from openavc.discovery.result import (
     merge_device_info,
 )
 from openavc.discovery import scan_budget as budgeting
-from openavc.discovery.scan_budget import ScanBudget
+from openavc.discovery.scan_budget import DepthPolicy, ScanBudget
 
 log = logging.getLogger("discovery")
 
@@ -262,6 +262,72 @@ class ScanStatus:
             "budget_seconds": round(self.budget_seconds, 2),
             "phase_budgets": dict(self.phase_budgets),
         }
+
+
+def _log_reach_choice(control_ip: str, ignore_pin: bool) -> None:
+    """Say in the log which adapters this scan reaches devices through."""
+    if ignore_pin:
+        log.info("Scan requested with the Reach devices through adapter ignored")
+    elif control_ip:
+        log.info("Reach devices through %s: scanning that adapter's subnets only", control_ip)
+    else:
+        log.info("Reach devices through every connected adapter: scanning every adapter that has a link")
+
+
+def _refuse_unusable_reach_choice() -> None:
+    """Raise the sentence the person reads when the adapter chosen in Reach
+    devices through has no address to scan from."""
+    from openavc import reach_devices
+
+    unusable = reach_devices.unusable_choice()
+    if unusable is not None:
+        raise ValueError(reach_devices.no_address_sentence(unusable.adapter_name))
+
+
+def _add_extra_subnets(targets: list[str], extra_subnets: list[str] | None) -> None:
+    """Append each of ``extra_subnets`` not already in ``targets``, in place."""
+    for subnet in extra_subnets or []:
+        if subnet not in targets:
+            targets.append(subnet)
+
+
+def _adapter_at(address: str) -> dict[str, Any] | None:
+    """The first network adapter on this computer with ``address``, or None."""
+    from openavc.discovery.network_scanner import get_network_adapters
+
+    return next((a for a in get_network_adapters() if a["ip"] == address), None)
+
+
+def _no_targets_sentence(control_ip: str, subnets: list[str] | None) -> str:
+    """Why a scan found nothing to scan, in the words the person reads.
+
+    A pinned control interface that no longer exists is the usual culprit
+    (the box moved networks since it was set), and the generic message sent
+    one integrator hunting a phantom subnet, so a pin is named, with where to
+    clear it.
+    """
+    if not control_ip or subnets:
+        return "No subnets to scan. Specify subnets manually."
+    pinned = _adapter_at(control_ip)
+    if pinned is not None and not pinned.get("link", True):
+        return (
+            f"{pinned['name']} ({control_ip}), chosen in Settings > "
+            "Network > Reach devices through, has no link. Connect "
+            "its cable, or choose another adapter (or Every "
+            "connected adapter) there."
+        )
+    from openavc import reach_devices
+    try:
+        name = reach_devices.current().adapter_name
+    except Exception:  # the sentence still names the address
+        name = ""
+    return (
+        f"{name or 'The adapter'} chosen in Settings > Network > "
+        f"Reach devices through isn't connected: no adapter on "
+        f"this computer has {control_ip}. Choose a current adapter "
+        "there (or Every connected adapter), or specify subnets "
+        "manually."
+    )
 
 
 class ScanBlocked(RuntimeError):
@@ -638,136 +704,130 @@ class DiscoveryEngine(DriverProbes, PassiveCollection):
                 of the early ones spending it all.
         """
         async with self._scan_lock:
-            if self._scan_task and not self._scan_task.done():
-                raise RuntimeError("Scan already running")
-            blocked = self.scan_blocker() if self.scan_blocker is not None else None
-            if blocked:
-                raise ScanBlocked(blocked)
+            self._refuse_to_start()
 
             self._scan_counter += 1
             scan_id = f"scan_{self._scan_counter}_{int(time.time())}"
 
-            # Determine target subnets (filtered to control interface if set)
             control_ip = "" if ignore_control_interface else self._get_control_interface()
-            if ignore_control_interface:
-                log.info("Scan requested with the Reach devices through adapter ignored")
-            elif control_ip:
-                log.info("Reach devices through %s: scanning that adapter's subnets only", control_ip)
-            else:
-                log.info("Reach devices through every connected adapter: scanning every adapter that has a link")
-            if not control_ip and not ignore_control_interface:
-                from openavc import reach_devices
-
-                unusable = reach_devices.unusable_choice()
-                if unusable is not None:
-                    raise ValueError(reach_devices.no_address_sentence(unusable.adapter_name))
-            targets = subnets if subnets else get_local_subnets(
-                interface_ip=control_ip or None
+            targets = self._scan_targets(
+                subnets, extra_subnets, control_ip, ignore_control_interface,
             )
-            if extra_subnets:
-                for s in extra_subnets:
-                    if s not in targets:
-                        targets.append(s)
-
-            log.info("Discovery target subnets: %s", targets)
-
-            if not targets:
-                # A pinned control interface that no longer exists is the usual
-                # culprit here (the box moved networks since it was set), and
-                # the generic message sent one integrator hunting a phantom
-                # subnet — name the pin and where to clear it.
-                if control_ip and not subnets:
-                    from openavc.discovery.network_scanner import get_network_adapters
-                    pinned = next(
-                        (a for a in get_network_adapters() if a["ip"] == control_ip),
-                        None,
-                    )
-                    if pinned is not None and not pinned.get("link", True):
-                        raise ValueError(
-                            f"{pinned['name']} ({control_ip}), chosen in Settings > "
-                            "Network > Reach devices through, has no link. Connect "
-                            "its cable, or choose another adapter (or Every "
-                            "connected adapter) there."
-                        )
-                    from openavc import reach_devices
-                    try:
-                        name = reach_devices.current().adapter_name
-                    except Exception:  # the sentence still names the address
-                        name = ""
-                    raise ValueError(
-                        f"{name or 'The adapter'} chosen in Settings > Network > "
-                        f"Reach devices through isn't connected: no adapter on "
-                        f"this computer has {control_ip}. Choose a current adapter "
-                        "there (or Every connected adapter), or specify subnets "
-                        "manually."
-                    )
-                raise ValueError("No subnets to scan. Specify subnets manually.")
-
-            depth = self.config.get("scan_depth", "standard")
-            gentle = bool(self.config.get("gentle_mode", False))
-            policy = budgeting.resolve_policy(depth, gentle)
-            total_seconds = (
-                float(timeout) if timeout is not None else policy.total_seconds
-            )
+            policy, total_seconds = self._scan_policy(timeout)
 
             self._on_update = on_update
             self._scan_ignores_pin = ignore_control_interface
-            self.scan_status = ScanStatus()
-            self.scan_status.scan_id = scan_id
-            self.scan_status.status = "running"
-            self.scan_status.started_at = time.time()
-            self.scan_status.subnets = targets
-            self.scan_status.budget_seconds = total_seconds
-
-            # Store active adapter info for UI display
-            if control_ip:
-                from openavc.discovery.network_scanner import get_network_adapters
-                for adapter in get_network_adapters():
-                    if adapter["ip"] == control_ip:
-                        self.scan_status.active_adapter = {
-                            "name": adapter["name"],
-                            "ip": adapter["ip"],
-                            "subnet": adapter["subnet"],
-                        }
-                        break
-
-            # Mark previously found devices as stale — they'll be removed at the
-            # end of the scan if not re-discovered.  This gives the full pipeline
-            # (ping, port scan, probes, SSDP, mDNS) a chance to re-find them
-            # before we clean up.
-            #
-            # Reset each device's per-scan observations too. The evidence_log,
-            # open ports, and banners are re-derived from scratch every scan;
-            # without this they accumulate across re-scans — the evidence_log
-            # grows unbounded (memory, plus an O(n) match() cost that climbs
-            # every scan) and finalize re-appends an identical open-port
-            # enrichment record per scan, piling up duplicate rows in the
-            # "Why?" reveal. Identity fields stay (they're re-merged from the
-            # fresh evidence) so the card doesn't blank mid-scan.
-            for device in self.results.values():
-                device.alive = False
-                device.evidence_log.clear()
-                device.open_ports.clear()
-                device.banners.clear()
-                device.port_probes.clear()
-
-            self._passive_sources_created = 0
-            self._passive_cap_warned = False
-            self._passive_scanners = None
-            self._passive_merged.clear()
-            self._probe_finished.clear()
-            self._probe_merged.clear()
-            self._budget = ScanBudget(policy, total_seconds)
-            self._arp_provisional = set()
-            self._port_scanned = set()
-            self._narrowed = False
-            self._guard = PortGuard()
-            self._held = {}
+            self._begin_status(scan_id, targets, total_seconds, control_ip)
+            self._reset_for_scan(policy, total_seconds)
 
             self._scan_task = asyncio.create_task(
                 self._run_scan(targets, total_seconds)
             )
             return scan_id
+
+    def _refuse_to_start(self) -> None:
+        """Raise when a scan is already running, or when something else holds
+        the network (``scan_blocker``: a device audit)."""
+        if self._scan_task and not self._scan_task.done():
+            raise RuntimeError("Scan already running")
+        blocked = self.scan_blocker() if self.scan_blocker is not None else None
+        if blocked:
+            raise ScanBlocked(blocked)
+
+    def _scan_targets(
+        self,
+        subnets: list[str] | None,
+        extra_subnets: list[str] | None,
+        control_ip: str,
+        ignore_pin: bool,
+    ) -> list[str]:
+        """The subnets this scan covers: the ones asked for, else every subnet
+        of the Reach devices through adapter (every connected adapter when
+        none is chosen), plus ``extra_subnets``.
+
+        Raises ``ValueError`` with the sentence the person reads when the
+        chosen adapter has no address, or when there is nothing to scan.
+        ``subnets`` is extended in place with the extras, and is the list the
+        scan's status reports.
+        """
+        _log_reach_choice(control_ip, ignore_pin)
+        if not control_ip and not ignore_pin:
+            _refuse_unusable_reach_choice()
+        targets = subnets if subnets else get_local_subnets(
+            interface_ip=control_ip or None
+        )
+        _add_extra_subnets(targets, extra_subnets)
+
+        log.info("Discovery target subnets: %s", targets)
+
+        if not targets:
+            raise ValueError(_no_targets_sentence(control_ip, subnets))
+        return targets
+
+    def _scan_policy(self, timeout: float | None) -> tuple[DepthPolicy, float]:
+        """The depth policy this scan runs under (gentle mode applied) and its
+        ceiling in seconds: ``timeout`` when given, else the policy's."""
+        depth = self.config.get("scan_depth", "standard")
+        gentle = bool(self.config.get("gentle_mode", False))
+        policy = budgeting.resolve_policy(depth, gentle)
+        total_seconds = (
+            float(timeout) if timeout is not None else policy.total_seconds
+        )
+        return policy, total_seconds
+
+    def _begin_status(
+        self, scan_id: str, targets: list[str], total_seconds: float, control_ip: str,
+    ) -> None:
+        """A fresh, running ``scan_status`` for this scan, naming the adapter
+        it scans through for the UI when one is chosen."""
+        self.scan_status = ScanStatus()
+        self.scan_status.scan_id = scan_id
+        self.scan_status.status = "running"
+        self.scan_status.started_at = time.time()
+        self.scan_status.subnets = targets
+        self.scan_status.budget_seconds = total_seconds
+
+        adapter = _adapter_at(control_ip) if control_ip else None
+        if adapter is not None:
+            self.scan_status.active_adapter = {
+                "name": adapter["name"],
+                "ip": adapter["ip"],
+                "subnet": adapter["subnet"],
+            }
+
+    def _reset_for_scan(self, policy: DepthPolicy, total_seconds: float) -> None:
+        """Clear what the last scan left behind before this one starts.
+
+        Previously found devices are marked stale: they are removed at the
+        end of the scan if not re-discovered, which gives the full pipeline
+        (ping, port scan, probes, SSDP, mDNS) a chance to re-find them first.
+        Their per-scan observations are cleared too. The evidence_log, open
+        ports and banners are re-derived from scratch every scan; kept, the
+        evidence_log grows without bound (memory, plus a match() cost that
+        climbs every scan) and finalize re-appends an identical open-port
+        record per scan, piling up duplicate rows in the "Why?" reveal.
+        Identity fields stay (they're re-merged from the fresh evidence) so
+        the card doesn't blank mid-scan.
+        """
+        for device in self.results.values():
+            device.alive = False
+            device.evidence_log.clear()
+            device.open_ports.clear()
+            device.banners.clear()
+            device.port_probes.clear()
+
+        self._passive_sources_created = 0
+        self._passive_cap_warned = False
+        self._passive_scanners = None
+        self._passive_merged.clear()
+        self._probe_finished.clear()
+        self._probe_merged.clear()
+        self._budget = ScanBudget(policy, total_seconds)
+        self._arp_provisional = set()
+        self._port_scanned = set()
+        self._narrowed = False
+        self._guard = PortGuard()
+        self._held = {}
 
     async def stop_scan(self) -> None:
         """Cancel a running scan."""
