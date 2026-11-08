@@ -774,3 +774,33 @@ async def test_add_device_with_an_id_in_use_is_refused_before_its_config_is_read
     answer = await handler._add_device({"id": "key1", "driver": "acme_keyed", "config": {"api_key": "k-1"}})
 
     assert answer == {"error": "Device 'key1' already exists"}
+
+
+class _AcmeLocked(_AcmeWidget):
+    """The same, with a password it cannot connect without."""
+
+    DRIVER_INFO: dict[str, Any] = {
+        **_AcmeWidget.DRIVER_INFO,
+        "id": "acme_locked",
+        "config_schema": {
+            "host": {"type": "string", "label": "IP Address"},
+            "password": {"type": "string", "secret": True, "required": True, "label": "Password"},
+        },
+    }
+
+
+@pytest.mark.parametrize(("enabled", "waits"), [(True, True), (False, False)])
+async def test_only_an_enabled_device_is_told_it_needs_a_login(setup, enabled, waits):
+    handler, _engine = setup
+    register_driver(_AcmeLocked)
+    try:
+        answer = await handler._add_device(
+            {"id": "lock1", "driver": "acme_locked", "enabled": enabled, "config": {"host": "192.0.2.70"}},
+        )
+    finally:
+        unregister_driver("acme_locked")
+
+    assert answer["status"] == "created"
+    assert ("needs_login" in answer) is waits
+    if waits:
+        assert answer["needs_login"] == ["password"]
