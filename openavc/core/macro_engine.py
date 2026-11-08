@@ -23,7 +23,7 @@ from __future__ import annotations
 import asyncio
 import time
 from contextvars import ContextVar
-from typing import Any, Awaitable, Callable, TYPE_CHECKING
+from typing import Any, Awaitable, Callable, NamedTuple, TYPE_CHECKING
 
 from openavc.core.event_bus import EventBus
 from openavc.core.group_command import DeviceGroups, GroupCommand
@@ -97,6 +97,28 @@ def _log_detached_failure(task: asyncio.Task) -> None:
     exc = task.exception()
     if exc is not None:
         log.error(f"Macro task failed with nobody waiting on it: {exc}")
+
+
+class _StartGuards(NamedTuple):
+    """A macro's own start guards, read from its definition.
+
+    Enforced in ``execute``, the one point every invocation passes through, so
+    a macro fired from a script, REST, the AI tool, a UI press or another macro
+    is throttled the same as one fired from a trigger. The defaults
+    (overlap=allow, cooldown 0, no cancel_group) leave concurrent runs alone.
+    """
+
+    overlap: str
+    cooldown: float
+    cancel_group: str | None
+
+    @classmethod
+    def of(cls, macro: dict[str, Any]) -> _StartGuards:
+        return cls(
+            overlap=macro.get("overlap") or "allow",
+            cooldown=float(macro.get("cooldown_seconds") or 0),
+            cancel_group=macro.get("cancel_group"),
+        )
 
 
 class MacroEngine(MacroSteps):
@@ -254,16 +276,13 @@ class MacroEngine(MacroSteps):
         the same macro_id are all candidates — each task is treated
         individually.
         """
-        out: list[tuple[str, asyncio.Task]] = []
-        for mid, task_set in self._running.items():
-            macro_config = self._macros.get(mid, {})
-            if macro_config.get("cancel_group") != group:
-                continue
-            for task in task_set:
-                if task is exclude_task:
-                    continue
-                out.append((mid, task))
-        return out
+        return [
+            (mid, task)
+            for mid, task_set in self._running.items()
+            if self._macros.get(mid, {}).get("cancel_group") == group
+            for task in task_set
+            if task is not exclude_task
+        ]
 
     async def _drain_cancelled(
         self, cancelled: list[tuple[str, asyncio.Task]]
@@ -378,12 +397,8 @@ class MacroEngine(MacroSteps):
         # calling step. Only the outer invocation owns the event-only outcome;
         # swallowing it here would let dependent parent steps keep running.
         nested_call = bool(_call_chain)
-        if _call_chain is None:
-            _call_chain = frozenset()
-
-        self._refuse_start(macro_id, _call_chain)
+        _call_chain = self._chain_into(macro_id, _call_chain)
         macro = self._macros[macro_id]
-        _call_chain = _call_chain | {macro_id}
         # Publish the chain to this task's context so handler tasks spawned
         # by this macro's steps (and any macros.execute() they make) inherit
         # it — see active_call_chain().
@@ -392,87 +407,13 @@ class MacroEngine(MacroSteps):
         name = macro.get("name", macro_id)
         steps = macro.get("steps", [])
         stop_on_error = macro.get("stop_on_error", False)
-        cancel_group = macro.get("cancel_group")
-
-        # A macro's own overlap/cooldown guard. Unlike the trigger's, it is
-        # enforced here — the one point every invocation passes through — so a
-        # macro fired from a script, REST, the AI tool, a UI press, or another
-        # macro is throttled the same as one fired from a trigger. Defaults
-        # (overlap=allow, cooldown=0) leave the historic concurrent behaviour
-        # untouched.
-        overlap = macro.get("overlap") or "allow"
-        cooldown = float(macro.get("cooldown_seconds") or 0)
-
+        guards = _StartGuards.of(macro)
         task = asyncio.current_task()
 
-        # overlap=queue: hold this start until any in-flight invocation of the
-        # same macro finishes, then fall through to claim the slot. The
-        # recursion guard above already stops a macro queueing behind itself;
-        # this waits on independent concurrent invocations. Bounded so a
-        # wedged run can't make a queued call wait forever.
-        if overlap == "queue":
-            waited = 0.0
-            while self.is_macro_running(macro_id):
-                if waited >= _QUEUE_MAX_WAIT_SECONDS:
-                    log.warning(
-                        f"Macro '{name}' overlap=queue: gave up after "
-                        f"{_QUEUE_MAX_WAIT_SECONDS:.0f}s waiting for the running "
-                        f"invocation to finish; starting anyway"
-                    )
-                    break
-                await asyncio.sleep(_QUEUE_POLL_SECONDS)
-                waited += _QUEUE_POLL_SECONDS
-
-        # Critical section: registering this task in _running and choosing
-        # which group members to preempt must happen atomically against
-        # other concurrent execute() callers. Otherwise two macros in the
-        # same cancel_group reaching this section within one event-loop
-        # tick can both register, then each cancels the other and neither
-        # runs (A49). The lock is released as soon as we've called
-        # ``task.cancel()`` on the targets; the drain await happens
-        # outside the lock so other unrelated macros can still start.
-        cancelled: list[tuple[str, asyncio.Task]] = []
-        blocked: str | None = None
-        if task is not None:
-            async with self._start_lock:
-                blocked = self._throttle_reason(macro_id, overlap, cooldown)
-                if blocked is None:
-                    self._running.setdefault(macro_id, set()).add(task)
-                    if cooldown > 0:
-                        self._last_started_monotonic[macro_id] = time.monotonic()
-                    if cancel_group:
-                        cancelled = self._collect_group_targets(
-                            cancel_group, exclude_task=task
-                        )
-                        for mid, t in cancelled:
-                            log.info(f"Preempting macro '{mid}' (cancel_group '{cancel_group}')")
-                            t.cancel()
-        else:
-            # Synthetic execute() with no current task: honour the throttle
-            # (skip/cooldown) but there's no task to register or preempt with.
-            blocked = self._throttle_reason(macro_id, overlap, cooldown)
-            if blocked is None:
-                if cooldown > 0:
-                    self._last_started_monotonic[macro_id] = time.monotonic()
-                if cancel_group:
-                    # No current task — preempt anyway.
-                    cancelled = self._collect_group_targets(cancel_group, exclude_task=None)
-                    for mid, t in cancelled:
-                        log.info(f"Preempting macro '{mid}' (cancel_group '{cancel_group}')")
-                        t.cancel()
+        blocked, cancelled = await self._claim_start(macro_id, name, task, guards)
         if blocked is not None:
             _active_call_chain.reset(_chain_token)
-            log.info(f"Macro '{name}' skipped — {blocked}")
-            # A run that never starts is still an outcome somebody asked for.
-            # Every other way a run ends has a lifecycle event; without this
-            # one a caller waiting on the outcome (the WebSocket's
-            # macro.execute acks receipt and nothing more) waits forever.
-            # Emitted outside the start lock: a handler that starts a macro
-            # of its own takes that lock too.
-            await self.events.emit(
-                f"macro.skipped.{macro_id}",
-                {"macro_id": macro_id, "name": name, "reason": blocked},
-            )
+            await self._report_skipped(macro_id, name, blocked)
             return "skipped"
 
         # Wait for preempted tasks to fully unwind before we start sending
@@ -489,49 +430,137 @@ class MacroEngine(MacroSteps):
             failed_steps = await self.execute_steps(
                 steps, context, macro_id, stop_on_error, _call_chain=_call_chain
             )
-            outcome = "failed" if failed_steps else "completed"
-            self._release(macro_id, task)
-            # Still `macro.completed`, and deliberately: the run DID reach the
-            # end, which is what that event has always meant and what the IDE's
-            # progress display keys off. What it never carried is how it went,
-            # so a run that stepped over three dead devices marked itself
-            # complete and said so in the same words as a clean one.
-            await self.events.emit(
-                f"macro.completed.{macro_id}",
-                {
-                    "macro_id": macro_id, "name": name,
-                    "outcome": outcome, "failed_steps": failed_steps,
-                },
-            )
-            log.info(
-                f"Macro '{name}' completed"
-                if not failed_steps
-                else f"Macro '{name}' completed with {failed_steps} failed step(s)"
-            )
-            return outcome
+            return await self._report_completed(macro_id, name, task, failed_steps)
         except asyncio.CancelledError:
             log.info(f"Macro '{name}' was cancelled")
-            self._release(macro_id, task)
-            await self.events.emit(
-                f"macro.cancelled.{macro_id}",
-                {"macro_id": macro_id, "name": name},
-            )
+            await self._announce_end(macro_id, name, task, "cancelled")
             if nested_call:
                 raise
             return "cancelled"
         except Exception as e:  # Catch-all: isolates macro execution errors
             log.exception(f"Macro '{name}' failed")
-            self._release(macro_id, task)
-            await self.events.emit(
-                f"macro.error.{macro_id}",
-                {"macro_id": macro_id, "name": name, "error": str(e)},
-            )
+            await self._announce_end(macro_id, name, task, "error", error=str(e))
             if nested_call:
                 raise
             return "failed"
         finally:
             _active_call_chain.reset(_chain_token)
             self._release(macro_id, task)
+
+    async def _wait_for_slot(self, macro_id: str, name: str) -> None:
+        """overlap=queue: hold this start until any in-flight invocation of the
+        same macro finishes, then let it go on to claim the slot.
+
+        The recursion guard already stops a macro queueing behind itself; this
+        waits on independent concurrent invocations. Bounded so a wedged run
+        can't make a queued call wait forever: past the ceiling it starts
+        anyway, beside the run it was waiting for.
+        """
+        waited = 0.0
+        while self.is_macro_running(macro_id):
+            if waited >= _QUEUE_MAX_WAIT_SECONDS:
+                log.warning(
+                    f"Macro '{name}' overlap=queue: gave up after "
+                    f"{_QUEUE_MAX_WAIT_SECONDS:.0f}s waiting for the running "
+                    f"invocation to finish; starting anyway"
+                )
+                return
+            await asyncio.sleep(_QUEUE_POLL_SECONDS)
+            waited += _QUEUE_POLL_SECONDS
+
+    async def _claim_start(
+        self, macro_id: str, name: str, task: asyncio.Task | None, guards: _StartGuards,
+    ) -> tuple[str | None, list[tuple[str, asyncio.Task]]]:
+        """Take this run's slot, or say why it may not start. Under
+        overlap=queue it first waits for the running invocation (``_wait_for_slot``).
+
+        Returns ``(reason, [])`` for a start the macro's own guard refuses,
+        else ``(None, preempted)``: the cancel_group members it cancelled.
+
+        Registering the task in ``_running`` and choosing which group members
+        to preempt happen together under the start lock. Otherwise two macros
+        in the same cancel_group reaching this point within one event-loop tick
+        could both register, then each cancel the other and neither run (A49).
+        The lock is released once the targets are cancelled; waiting for them
+        to unwind happens outside it, so unrelated macros can still start.
+
+        With no current task (a synthetic execute()) there is nothing to
+        register: the throttle and the preemption still apply, without the lock.
+        """
+        if guards.overlap == "queue":
+            await self._wait_for_slot(macro_id, name)
+        if task is None:
+            return self._claim(macro_id, None, guards)
+        async with self._start_lock:
+            return self._claim(macro_id, task, guards)
+
+    def _claim(
+        self, macro_id: str, task: asyncio.Task | None, guards: _StartGuards,
+    ) -> tuple[str | None, list[tuple[str, asyncio.Task]]]:
+        blocked = self._throttle_reason(macro_id, guards.overlap, guards.cooldown)
+        if blocked is not None:
+            return blocked, []
+        if task is not None:
+            self._running.setdefault(macro_id, set()).add(task)
+        if guards.cooldown > 0:
+            self._last_started_monotonic[macro_id] = time.monotonic()
+        return None, self._preempt(guards.cancel_group, task)
+
+    def _preempt(
+        self, cancel_group: str | None, task: asyncio.Task | None,
+    ) -> list[tuple[str, asyncio.Task]]:
+        """Cancel every other running member of ``cancel_group``."""
+        if not cancel_group:
+            return []
+        cancelled = self._collect_group_targets(cancel_group, exclude_task=task)
+        for mid, t in cancelled:
+            log.info(f"Preempting macro '{mid}' (cancel_group '{cancel_group}')")
+            t.cancel()
+        return cancelled
+
+    async def _report_skipped(self, macro_id: str, name: str, reason: str) -> None:
+        log.info(f"Macro '{name}' skipped — {reason}")
+        # A run that never starts is still an outcome somebody asked for.
+        # Every other way a run ends has a lifecycle event; without this
+        # one a caller waiting on the outcome (the WebSocket's
+        # macro.execute acks receipt and nothing more) waits forever.
+        # Emitted outside the start lock: a handler that starts a macro
+        # of its own takes that lock too.
+        await self.events.emit(
+            f"macro.skipped.{macro_id}",
+            {"macro_id": macro_id, "name": name, "reason": reason},
+        )
+
+    async def _report_completed(
+        self, macro_id: str, name: str, task: asyncio.Task | None, failed_steps: int,
+    ) -> str:
+        outcome = "failed" if failed_steps else "completed"
+        # Still `macro.completed`, and deliberately: the run DID reach the
+        # end, which is what that event has always meant and what the IDE's
+        # progress display keys off. What it never carried is how it went,
+        # so a run that stepped over three dead devices marked itself
+        # complete and said so in the same words as a clean one.
+        await self._announce_end(
+            macro_id, name, task, "completed",
+            outcome=outcome, failed_steps=failed_steps,
+        )
+        log.info(
+            f"Macro '{name}' completed"
+            if not failed_steps
+            else f"Macro '{name}' completed with {failed_steps} failed step(s)"
+        )
+        return outcome
+
+    async def _announce_end(
+        self, macro_id: str, name: str, task: asyncio.Task | None, ending: str,
+        **fields: Any,
+    ) -> None:
+        """``macro.<ending>.<macro_id>``, with the run released first (see
+        ``_release``)."""
+        self._release(macro_id, task)
+        await self.events.emit(
+            f"macro.{ending}.{macro_id}", {"macro_id": macro_id, "name": name, **fields},
+        )
 
     def _release(self, macro_id: str, task: asyncio.Task | None) -> None:
         """Stop counting ``task`` as a run of ``macro_id``. Idempotent.
@@ -549,6 +578,15 @@ class MacroEngine(MacroSteps):
             task_set.discard(task)
             if not task_set:
                 self._running.pop(macro_id, None)
+
+    def _chain_into(
+        self, macro_id: str, call_chain: frozenset[str] | None,
+    ) -> frozenset[str]:
+        """The chain a run of ``macro_id`` runs inside, once ``_refuse_start``
+        lets it in from ``call_chain``."""
+        call_chain = call_chain or frozenset()
+        self._refuse_start(macro_id, call_chain)
+        return call_chain | {macro_id}
 
     def _refuse_start(self, macro_id: str, call_chain: frozenset[str]) -> None:
         """Raise ``ValueError`` for a macro that cannot start from this chain:
