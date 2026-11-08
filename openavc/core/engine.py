@@ -531,10 +531,7 @@ class Engine(ProjectVariablesMixin):
         self._start_variables()
 
         # Load macros and device groups
-        macros_data = [m.model_dump() for m in self.project.macros]
-        self.macros.load_macros(macros_data)
-        groups_data = [g.model_dump() for g in self.project.device_groups]
-        self.macros.load_groups(groups_data)
+        self._load_macro_definitions(macros=True, groups=True)
 
         # Add and connect devices in parallel (add_devices), with the
         # connection table merged into each device's config.
@@ -592,8 +589,7 @@ class Engine(ProjectVariablesMixin):
             log.exception("Script engine failed to load scripts")
 
         # Trigger engine (automatic macro triggers)
-        macros_data_triggers = [m.model_dump() for m in self.project.macros]
-        self.triggers.load_triggers(macros_data_triggers)
+        self._load_triggers()
 
         # Bridge macro events to WebSocket for live progress tracking
         self._event_sub_ids.append(self.events.on("macro.started.*", self._on_macro_event))
@@ -1097,6 +1093,28 @@ class Engine(ProjectVariablesMixin):
         if origin is ProjectOrigin.LOAD:
             self._load_project_drivers()
 
+        triggers_stopped = await self._pause_for_reconcile(diff)
+        await self._reconcile_sections(diff)
+
+        if triggers_stopped:
+            # The rebuild is loss-free: cooldown and cron-dedup baselines are
+            # restored from the state store for surviving trigger ids.
+            # Startup triggers re-fire only when a whole new project arrives;
+            # an edit-save must not re-run power-on automation.
+            await self._restart_triggers(fire_startup=(origin is ProjectOrigin.LOAD))
+
+        if diff.variables:
+            self._rebind_variables()
+
+        if diff.scripts and self.scripts:
+            self._reconcile_scripts(diff, origin)
+
+        if diff.isc:
+            await self._reload_isc()
+
+    async def _pause_for_reconcile(self, diff: ProjectDiff) -> bool:
+        """Stop what must not run while the change lands; True when the
+        triggers were stopped (and so must be restarted)."""
         # Stop triggers before any reconcile step that deletes state keys
         # (var.*, device.*, plugin.*) so a state_change trigger can't fire
         # on a key that is mid-cleanup. Macro changes land here too: the
@@ -1112,84 +1130,82 @@ class Engine(ProjectVariablesMixin):
         # those definitions actually changed.
         if diff.macros or diff.device_groups:
             await self.macros.cancel_all()
+        return triggers_stopped
 
+    async def _reconcile_sections(self, diff: ProjectDiff) -> None:
+        """Variables, devices, plugins, then the macro and group definitions."""
         if diff.variables:
             self._reconcile_variables()
-
         if diff.devices or diff.connections:
-            # Always the whole sync, never a per-device diff: a bridge edit
-            # changes the resolved host/port of every device bound through
-            # it, so cross-row effects only surface when every device's
-            # resolved config is re-compared. _sync_devices diffs in memory
-            # and is cheap.
-            #
-            # Nothing here dials a device. Registration is in-memory and
-            # instant; connecting is a network wait per device, and a save
-            # that holds it is a save that can be reported as FAILED by a
-            # client timeout after the bytes are already on disk. The
-            # bring-up runs after this reconcile answers — see
-            # _schedule_device_bringup.
-            await self._sync_devices(defer_connect=True)
-
-            # Promote any orphans whose driver is now in the registry.
-            # Must follow both the driver load and the device sync.
-            await self.devices.retry_all_orphans(defer_connect=True)
-
-            # _sync_devices replaces driver instances, so simulator
-            # redirects must be re-applied — and they are re-applied BEFORE
-            # the deferred connects, which is why the bring-up owns both in
-            # that order rather than the redirect chasing a connect that has
-            # already failed against the device's real address.
-            self._schedule_device_bringup()
-
+            await self._reconcile_devices()
         if diff.plugins:
             await self._sync_plugins()
+        self._load_macro_definitions(macros=diff.macros, groups=diff.device_groups)
 
-        if diff.macros:
+    async def _reconcile_devices(self) -> None:
+        # Always the whole sync, never a per-device diff: a bridge edit
+        # changes the resolved host/port of every device bound through
+        # it, so cross-row effects only surface when every device's
+        # resolved config is re-compared. _sync_devices diffs in memory
+        # and is cheap.
+        #
+        # Nothing here dials a device. Registration is in-memory and
+        # instant; connecting is a network wait per device, and a save
+        # that holds it is a save that can be reported as FAILED by a
+        # client timeout after the bytes are already on disk. The
+        # bring-up runs after this reconcile answers — see
+        # _schedule_device_bringup.
+        await self._sync_devices(defer_connect=True)
+
+        # Promote any orphans whose driver is now in the registry.
+        # Must follow both the driver load and the device sync.
+        await self.devices.retry_all_orphans(defer_connect=True)
+
+        # _sync_devices replaces driver instances, so simulator
+        # redirects must be re-applied — and they are re-applied BEFORE
+        # the deferred connects, which is why the bring-up owns both in
+        # that order rather than the redirect chasing a connect that has
+        # already failed against the device's real address.
+        self._schedule_device_bringup()
+
+    def _reconcile_scripts(self, diff: ProjectDiff, origin: ProjectOrigin) -> None:
+        if origin is ProjectOrigin.LOAD:
+            # A new project can replace script FILES while the configs
+            # stay identical (library open, backup restore) — only a
+            # full reload is safe here.
+            self.scripts.reload_scripts(
+                [s.model_dump() for s in self.project.scripts]
+            )
+            return
+        # Per-script: unchanged scripts keep their handlers and
+        # timer phase; a failed re-import keeps the old version.
+        for script_id in diff.scripts_to_unload:
+            self.scripts.unload_script(script_id)
+        for cfg in diff.scripts_to_reload:
+            result = self.scripts.reload_script(cfg)
+            if result.get("status") == "error":
+                log.error(
+                    f"Script '{cfg.get('id')}' failed to reload: "
+                    f"{result.get('error')}"
+                )
+
+    def _load_macro_definitions(self, *, macros: bool, groups: bool) -> None:
+        """Hand the macro engine the project's macros, its device groups, or
+        both: at a start, and for each one a change or a rollback touched."""
+        if macros:
             self.macros.load_macros([m.model_dump() for m in self.project.macros])
-        if diff.device_groups:
+        if groups:
             self.macros.load_groups(
                 [g.model_dump() for g in self.project.device_groups]
             )
 
-        if triggers_stopped:
-            # The rebuild is loss-free: cooldown and cron-dedup baselines are
-            # restored from the state store for surviving trigger ids.
-            # Startup triggers re-fire only when a whole new project arrives;
-            # an edit-save must not re-run power-on automation.
-            self.triggers.load_triggers(
-                [m.model_dump() for m in self.project.macros]
-            )
-            await self.triggers.start(
-                fire_startup=(origin is ProjectOrigin.LOAD)
-            )
+    def _load_triggers(self) -> None:
+        """The trigger definitions, which live in the project's macros."""
+        self.triggers.load_triggers([m.model_dump() for m in self.project.macros])
 
-        if diff.variables:
-            self._rebind_variables()
-
-        if diff.scripts and self.scripts:
-            if origin is ProjectOrigin.LOAD:
-                # A new project can replace script FILES while the configs
-                # stay identical (library open, backup restore) — only a
-                # full reload is safe here.
-                self.scripts.reload_scripts(
-                    [s.model_dump() for s in self.project.scripts]
-                )
-            else:
-                # Per-script: unchanged scripts keep their handlers and
-                # timer phase; a failed re-import keeps the old version.
-                for script_id in diff.scripts_to_unload:
-                    self.scripts.unload_script(script_id)
-                for cfg in diff.scripts_to_reload:
-                    result = self.scripts.reload_script(cfg)
-                    if result.get("status") == "error":
-                        log.error(
-                            f"Script '{cfg.get('id')}' failed to reload: "
-                            f"{result.get('error')}"
-                        )
-
-        if diff.isc:
-            await self._reload_isc()
+    async def _restart_triggers(self, *, fire_startup: bool) -> None:
+        self._load_triggers()
+        await self.triggers.start(fire_startup=fire_startup)
 
     async def _rollback_reconcile(self, diff: ProjectDiff) -> None:
         """Best-effort re-sync after a failed reconcile, scoped to the same
@@ -1207,12 +1223,7 @@ class Engine(ProjectVariablesMixin):
         if diff.plugins:
             await self._sync_plugins()
 
-        if diff.macros:
-            self.macros.load_macros([m.model_dump() for m in self.project.macros])
-        if diff.device_groups:
-            self.macros.load_groups(
-                [g.model_dump() for g in self.project.device_groups]
-            )
+        self._load_macro_definitions(macros=diff.macros, groups=diff.device_groups)
 
         if diff.requires_trigger_rebuild:
             # The forward pass may have failed before or after restarting
@@ -1222,10 +1233,7 @@ class Engine(ProjectVariablesMixin):
             # startup triggers while recovering — the restored project was
             # already running.
             await self.triggers.stop()
-            self.triggers.load_triggers(
-                [m.model_dump() for m in self.project.macros]
-            )
-            await self.triggers.start(fire_startup=False)
+            await self._restart_triggers(fire_startup=False)
 
         if diff.variables:
             self._rebind_variables()
