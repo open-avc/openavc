@@ -589,6 +589,16 @@ class TestWholeBindings:
             )
         assert caplog.records == []
 
+    @pytest.mark.parametrize("ref", [0, False])
+    def test_a_falsy_reference_is_not_looked_up(self, caplog, ref):
+        b = {"do": {"press": [
+            {"action": "macro", "macro": ref},
+            {"action": "device.command", "device": ref, "command": "on"},
+        ]}}
+        with caplog.at_level(logging.WARNING, logger="openavc"):
+            assert validate_bindings(b, _project()) is None
+        assert caplog.records == []
+
     def test_a_refusal_never_looks_the_references_up(self):
         # A macro reference that cannot be looked up (an object) would raise
         # in the reference check; a refusal is answered before it runs.
