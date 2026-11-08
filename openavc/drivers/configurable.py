@@ -117,18 +117,6 @@ def _build_commands_meta(commands_def: dict[str, Any]) -> dict[str, Any]:
     return commands_meta
 
 
-def _side_route(cmd_def: Any) -> str | None:
-    """The route a command takes without the device's own connection: an IR
-    code (``ir``) or a UDP side-send (``udp``); None for every other."""
-    if not isinstance(cmd_def, dict):
-        return None
-    if cmd_def.get("ir"):
-        return "ir"
-    if isinstance(cmd_def.get("udp"), dict):
-        return "udp"
-    return None
-
-
 def _inline_poll_queries(commands: dict[str, Any]) -> list[str]:
     """The poll lines a device's own commands add: those the editor flagged
     "poll" are sent on the device's poll_interval to keep status values live
@@ -198,6 +186,7 @@ class ConfigurableDriver(
         # (template location, token) pairs already warned about — see
         # _substitute_for_wire.
         self._warned_unresolved: set[tuple[str, str]] = set()
+        self._init_send_framing()
         self._merge_config_protocol()
 
         # Child rosters can size themselves from a device-reported state var
@@ -345,8 +334,6 @@ class ConfigurableDriver(
         a per-device protocol must not write to it.
         """
         line_ending = self._line_ending()
-        self._init_send_framing()
-
         norm_commands = normalize_config_commands(
             self.config.get("commands"),
             self._command_suffix or line_ending,
@@ -401,7 +388,8 @@ class ConfigurableDriver(
 
     def _init_send_framing(self) -> None:
         """The send-side framing every byte-stream command takes (opt-in),
-        the device's config first, then the definition.
+        the device's config first, then the definition. Set before the
+        inline-protocol merge, which frames the device's own commands with it.
 
         A constant ``command_prefix`` / ``command_suffix`` wraps every
         command so a text protocol with a fixed packet header + terminator is
@@ -581,9 +569,9 @@ class ConfigurableDriver(
         params = params or {}
         cmd_def = self._definition.get("commands", {}).get(command)
 
-        route = _side_route(cmd_def)
-        if route is not None:
-            return await self._send_side_route(route, command, cmd_def, params)
+        side_send = self._side_sender(cmd_def)
+        if side_send is not None:
+            return await side_send(command, cmd_def, params)
 
         if not self._link_open():
             raise ConnectionError(f"[{self.device_id}] Not connected")
@@ -601,18 +589,33 @@ class ConfigurableDriver(
             self._read_back(command, cmd_def, given, wire)
         return result
 
-    async def _send_side_route(
-        self, route: str, command: str, cmd_def: dict[str, Any], params: dict[str, Any],
+    def _side_sender(self, cmd_def: Any) -> Any:
+        """The sender for a command that needs no connection of the device's
+        own, an IR code or a UDP side-send; None for every other command."""
+        if not isinstance(cmd_def, dict):
+            return None
+        if cmd_def.get("ir"):
+            return self._send_ir_command
+        if isinstance(cmd_def.get("udp"), dict):
+            return self._send_udp_side
+        return None
+
+    async def _send_ir_command(
+        self, command: str, cmd_def: dict[str, Any], params: dict[str, Any],
     ) -> Any:
-        """An IR code-set command, emitted through the bound bridge (the
+        """An IR code-set command, emitted through the bound bridge. The
         bridge driver converts the Pronto code to its wire format and
-        confirms the emit), or a UDP side-send, its params checked and
-        wire-mapped as on the transport's own route."""
-        if route == "ir":
-            ir = cmd_def["ir"]
-            return await self.emit_via_bridge(
-                "ir", {"pronto": ir.get("pronto", ""), "repeat": ir.get("repeat", 1)},
-            )
+        confirms the emit."""
+        ir = cmd_def["ir"]
+        return await self.emit_via_bridge(
+            "ir", {"pronto": ir.get("pronto", ""), "repeat": ir.get("repeat", 1)},
+        )
+
+    async def _send_udp_side(
+        self, command: str, cmd_def: dict[str, Any], params: dict[str, Any],
+    ) -> Any:
+        """A UDP side-send, its params checked and wire-mapped as on the
+        transport's own route."""
         _given, wire = self._given_and_wire(command, cmd_def, params)
         return await self._send_udp_command(command, cmd_def, wire)
 
