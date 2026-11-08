@@ -50,6 +50,7 @@ from openavc.drivers.spec import (
     LINE_GAP_TRANSPORTS,
 )
 from openavc.drivers.declared_roster import DeclaredRoster
+from openavc.drivers.http_credential import HttpCredential
 from openavc.drivers.json_replies import JsonReplies
 from openavc.drivers.osc_wire import OscWire
 from openavc.drivers.reply_throttle import ReplyThrottle
@@ -80,28 +81,6 @@ try:
     _HTTP_TRANSPORT_ERRORS: tuple[type[BaseException], ...] = (_httpx.HTTPError,)
 except ImportError:  # pragma: no cover - httpx is a hard dependency in practice
     _HTTP_TRANSPORT_ERRORS = ()
-
-# HTTP statuses that mean "the device refused this request's credentials": 401
-# from the device itself, 407 from a proxy in front of it, 403 for the devices
-# that answer a bad login with Forbidden rather than Unauthorized. One of these
-# on its own is not a verdict: devices refuse an endpoint the account may not
-# read while the credentials are fine. _judge_http_answer() and poll() decide.
-_HTTP_AUTH_REJECT_STATUS = frozenset({401, 403, 407})
-
-# The two of those that say the credential itself did not authenticate. A
-# query that answered on this connection and now gets one of them means the
-# password changed or the account went, so nothing more is sent. A 403 there
-# names a resource the account may no longer use and is left to the
-# whole-cycle check in poll().
-_HTTP_CREDENTIAL_REFUSED_STATUS = frozenset({401, 407})
-
-# Distinct queries refused, with nothing yet answered on the connection, that
-# settle a wrong password. Every refused request counts toward a device's
-# lockout, so this is kept low; it is above one because an account is often
-# refused an endpoint or two it may not read while the password is right, and
-# those may come first in a driver's start-up or poll list.
-_HTTP_REFUSALS_BEFORE_ANY_ANSWER = 3
-
 
 
 def _build_commands_meta(commands_def: dict[str, Any]) -> dict[str, Any]:
@@ -164,6 +143,7 @@ _CHILD_ID_TOKEN = re.compile(r"\{child_id(?::[^{}]*)?\}")
 
 class ConfigurableDriver(
     SignIn,
+    HttpCredential,
     DeclaredRoster,
     ReplyThrottle,
     TextReplies,
@@ -222,13 +202,8 @@ class ConfigurableDriver(
         # derived config is computed.
 
         # How the HTTP credential has fared on this connection's start-up and
-        # poll queries (_judge_http_answer): the queries that answered, the
-        # distinct queries refused while none had, and the poll cycle in
-        # flight as [requests, refusals] (None outside one). The first two
-        # are reset on every connect.
-        self._http_answered: set[str] = set()
-        self._http_refused_unanswered: set[str] = set()
-        self._http_cycle: list[int] | None = None
+        # poll queries (http_credential).
+        self._init_http_credential()
 
         # Pacing for the lines this driver sends on its own (see _pace_line):
         # when the next may go, and whether to pace at all (a connection
@@ -526,10 +501,7 @@ class ConfigurableDriver(
         saved_poll_interval = self.config.get("poll_interval", 0)
         self.config["poll_interval"] = 0
 
-        # A new connection: what answered on the last one proves nothing
-        # about the credential on this one.
-        self._http_answered = set()
-        self._http_refused_unanswered = set()
+        self._reset_http_credential()
 
         # Enable auth-buffering BEFORE the TCP connect so any prompt the
         # device emits the moment the connection opens lands in the auth
@@ -771,70 +743,6 @@ class ConfigurableDriver(
                 await self.transport.send(
                     self._apply_send_frame(_safe_encode_escapes(formatted))
                 )
-
-    def _judge_http_answer(self, query: str, response: Any) -> None:
-        """Weigh one start-up or poll answer against the HTTP credential.
-
-        Every refused request is a failed login on the device, and devices
-        lock an account or the controller's address after a few, so this
-        raises the typed ``auth_failed`` (and nothing more is sent) as soon
-        as the refusal is the credential's:
-
-        - a query that answered on this connection is now refused 401/407:
-          the device stopped accepting the credential;
-        - the _HTTP_REFUSALS_BEFORE_ANY_ANSWER-th distinct query refused
-          with nothing answered yet: the device never accepted it.
-
-        A query refused from the start once something has answered is an
-        endpoint this account may not use and never counts, in the poll
-        cycle's tally either. A poll cycle whose every counted request was
-        refused is poll()'s to judge.
-        """
-        status = getattr(response, "status_code", None)
-        if not isinstance(status, int):
-            return
-        cycle = self._http_cycle
-        if status not in _HTTP_AUTH_REJECT_STATUS:
-            self._http_answered.add(query)
-            if cycle is not None:
-                cycle[0] += 1
-            return
-        if query in self._http_answered:
-            if cycle is not None:
-                cycle[0] += 1
-                cycle[1] += 1
-            if status not in _HTTP_CREDENTIAL_REFUSED_STATUS:
-                return
-            log.warning(
-                f"[{self.device_id}] '{query}' answered earlier on this "
-                f"connection and is now refused (HTTP {status}); dropping "
-                f"the connection"
-            )
-            raise ConnectionFaultError(
-                "The device stopped accepting the username and password. "
-                "Check them in the device settings.",
-                code="auth_failed",
-            )
-        if self._http_answered:
-            log.debug(
-                f"[{self.device_id}] '{query}' refused (HTTP {status}); "
-                f"other queries answer, so the account may not read it"
-            )
-            return
-        if cycle is not None:
-            cycle[0] += 1
-            cycle[1] += 1
-        self._http_refused_unanswered.add(query)
-        if len(self._http_refused_unanswered) >= _HTTP_REFUSALS_BEFORE_ANY_ANSWER:
-            log.warning(
-                f"[{self.device_id}] {len(self._http_refused_unanswered)} "
-                f"queries refused and none answered; dropping the connection"
-            )
-            raise ConnectionFaultError(
-                "The device refused the username and password. "
-                "Check them in the device settings.",
-                code="auth_failed",
-            )
 
     def _state_gate_open(self, gate: Any) -> bool:
         """Whether a ``when_state:`` gate lets its entry (or the whole poll)
@@ -2071,9 +1979,9 @@ class ConfigurableDriver(
         is_osc = transport_type == "osc"
         is_http = transport_type == "http"
 
-        # Count this cycle's HTTP answers for the whole-cycle check below
-        # (_judge_http_answer fills it in).
-        self._http_cycle = [0, 0] if is_http else None
+        # Count this cycle's HTTP answers for the whole-cycle verdict
+        # (http_credential).
+        self._open_http_cycle(is_http)
 
         # The first poll after a connect follows on_connect at once, so a line
         # start-up has just sent is not sent again. A line whose send failed
@@ -2135,13 +2043,13 @@ class ConfigurableDriver(
                     # same way and drops the connection at once.
                     if getattr(exc, "fault_code", None) != "auth_failed":
                         log.warning(f"[{self.device_id}] Poll query failed (transport)")
-                    self._http_cycle = None  # cycle aborted, count is moot
+                    self._drop_http_cycle()
                     raise
                 except _HTTP_TRANSPORT_ERRORS as exc:
                     # httpx timeout / status / other transport errors are also
                     # transport-level for the watchdog — re-raise, don't swallow.
                     log.warning(f"[{self.device_id}] Poll query failed (HTTP): {exc}")
-                    self._http_cycle = None  # cycle aborted, count is moot
+                    self._drop_http_cycle()
                     raise
                 except Exception as exc:  # Template substitution, encoding, parse errors
                     # Protocol-level: the device answered but the query/response was
@@ -2156,27 +2064,8 @@ class ConfigurableDriver(
                     except Exception:
                         log.exception(f"[{self.device_id}] Failed to emit device.error")
 
-        cycle = self._http_cycle
-        self._http_cycle = None
-        if cycle is not None and cycle[0] > 0 and cycle[1] == cycle[0]:
-            # Every request this cycle came back refused: not one privileged
-            # endpoint, the credentials themselves. This catches what
-            # _judge_http_answer leaves alone: a list shorter than its count,
-            # and a device that answers a changed password with 403. An
-            # endpoint the account may not read is not in the tally, so a
-            # cycle that sent only such a page (start-up just read the rest,
-            # or a state condition held it back) is no verdict. Raise
-            # typed so the fault reaches the device card as auth_failed
-            # instead of the device sitting "connected" with stale state.
-            # BaseDriver's poll loop drops the connection on it at once rather
-            # than counting it as a missed poll, so the credentials are not
-            # sent for more cycles, and the platform then waits for them to
-            # change.
-            raise ConnectionFaultError(
-                "The device refused the username and password. "
-                "Check them in the device settings.",
-                code="auth_failed",
-            )
+        # Every request this cycle refused is the credentials themselves.
+        self._close_http_cycle()
 
     # Shared send_frame framing (see compiled_protocol module docs).
     _build_send_frame = staticmethod(compiled_protocol.build_send_frame)
