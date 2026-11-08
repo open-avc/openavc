@@ -15,12 +15,12 @@ from typing import Any, Awaitable, Callable, TYPE_CHECKING
 
 from openavc.core.condition_eval import eval_operator
 from openavc.core.event_bus import EventBus
+from openavc.core.macro_text import StepWording
 from openavc.core.state_store import StateStore
 from openavc.core.value_resolver import resolve_in_text, resolve_ref
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
-    from openavc.api.error_messages import CommandFailure
     from openavc.core.device_manager import DeviceManager
 
 log = get_logger(__name__)
@@ -122,7 +122,6 @@ class MacroEngine:
         # harnesses, where the check is skipped rather than guessed, the same
         # posture _broadcast_ws and _help take.
         self._project_device_ids = project_device_ids
-        self._project_provider = project_provider
         self._macros: dict[str, dict[str, Any]] = {}  # id -> macro config
         self._groups: dict[str, list[str]] = {}  # group_id -> [device_ids]
         self._group_names: dict[str, str] = {}  # group_id -> display name
@@ -148,6 +147,11 @@ class MacroEngine:
         self._max_conditional_depth = 5  # maximum nesting of conditional steps
         # Plugin-registered actions: action_type -> (handler, plugin_id, label)
         self._plugin_actions: dict[str, tuple[PluginActionHandler, str, str]] = {}
+        # Every sentence said about a step: its announcement, a failure's
+        # context and its two renderings.
+        self._wording = StepWording(
+            state, devices, project_provider, self._plugin_actions.get,
+        )
 
     def is_macro_running(self, macro_id: str) -> bool:
         """Check if any invocation of the macro is currently running."""
@@ -697,7 +701,7 @@ class MacroEngine:
                         "total_steps": total,
                         "step_path": step_path,
                         "action": action,
-                        "description": step.get("description") or self._auto_description(step),
+                        "description": self._wording.describe(step),
                         "status": "running",
                     },
                 )
@@ -708,15 +712,15 @@ class MacroEngine:
                     _call_chain, _step_path=step_path, _failures=failures,
                 )
             except Exception as e:  # Catch-all: isolates individual step errors from halting the macro
-                step_detail = self._step_error_detail(step, i, total)
+                step_detail = self._wording.failure_context(step, i, total)
                 failures.append(step_detail)
                 log.error(f"Macro step failed: {step_detail} — {e}")
-                error, message = self._step_failure(step, e)
+                error, message = self._wording.failure(step, e)
                 # Emit step-level error event so the frontend can show it
                 if macro_id:
                     await self.events.emit(
                         f"macro.step_error.{macro_id}",
-                        self._step_error_payload(
+                        self._wording.error_frame(
                             macro_id, step, i, total,
                             error=error, message=message, call_chain=_call_chain,
                         ),
@@ -734,12 +738,12 @@ class MacroEngine:
                 # It still does not raise, so stop_on_error is unchanged.
                 if unreported is not None and macro_id:
                     error, message = unreported
-                    step_detail = self._step_error_detail(step, i, total)
+                    step_detail = self._wording.failure_context(step, i, total)
                     failures.append(step_detail)
                     log.error(f"Macro step failed: {step_detail} — {error}")
                     await self.events.emit(
                         f"macro.step_error.{macro_id}",
-                        self._step_error_payload(
+                        self._wording.error_frame(
                             macro_id, step, i, total, error=error, message=message,
                             call_chain=_call_chain,
                         ),
@@ -791,178 +795,6 @@ class MacroEngine:
     ) -> dict[str, Any]:
         """Resolve $-references in parameter values."""
         return {k: self._resolve_value(v, context) for k, v in params.items()}
-
-    def _step_error_payload(
-        self, macro_id: str, step: dict[str, Any], index: int, total: int,
-        *, error: str, message: str, call_chain: frozenset[str] | None = None,
-    ) -> dict[str, Any]:
-        """One frame for a failed step, whoever noticed it.
-
-        Two renderings of the failure, deliberately: ``error`` is what the
-        exception said, which is what a log and the Programmer's run history
-        are for (for a device command, Send Command's answer, which keeps a
-        driver's own text out), and ``message`` is the same failure written for
-        somebody standing at a panel. The panel has no way to translate the first into
-        the second -- it holds no device names, no host and no exception type
-        -- so the sentence is built here, where all three still exist.
-
-        ``call_chain`` is every macro this failure happened inside, this one
-        included. A panel deciding whether the failure belongs to something
-        somebody there pressed needs it: press "System On", which calls
-        "Projector On", and ``macro_id`` names the sub-macro nobody has heard
-        of. Sorted for a stable frame -- the engine tracks the chain as a set
-        (concurrent chains, not one stack), so it answers "was this inside X"
-        and cannot be read back as the order they were called in.
-        """
-        chain = set(call_chain or ()) | {macro_id}
-        return {
-            "macro_id": macro_id,
-            "call_chain": sorted(chain),
-            "step_index": index,
-            "total_steps": total,
-            "action": step.get("action", ""),
-            "device": step.get("device", ""),
-            "group": step.get("group", ""),
-            "command": step.get("command", ""),
-            "error": error,
-            "message": message,
-            "description": step.get("description") or self._auto_description(step),
-        }
-
-    def _step_failure(self, step: dict[str, Any], exc: Exception) -> tuple[str, str]:
-        """A failed step's ``error`` and ``message`` (see ``_step_error_payload``).
-
-        A device command step answers with the rule every command door uses,
-        so a macro failure and a direct press failure read the same way
-        whichever control ran them. Any other step's exception is the
-        platform's or a plugin's own, and keeps its text.
-        """
-        if step.get("action") == "device.command":
-            failure = self._command_failure(
-                str(step.get("device") or ""), str(step.get("command") or ""), exc,
-            )
-            return failure.programmer, failure.panel
-        return str(exc), self._step_error_message(step, exc)
-
-    def _command_failure(self, device_id: str, command: str, exc: Exception) -> CommandFailure:
-        """``describe_command_failure`` with this device's name, host and
-        command label filled in. Deferred import, as below."""
-        from openavc.api.error_messages import describe_command_failure
-
-        project = self._project_provider() if self._project_provider else None
-        return describe_command_failure(
-            exc, device_id, command, state=self.state, project=project,
-            driver=self.devices.get_driver(device_id),
-        )
-
-    def _step_error_message(self, step: dict[str, Any], exc: Exception) -> str:
-        """Why the step did not do what it says, in words somebody can act on.
-
-        The same translation, with the same device context, that a panel press
-        already gets -- a macro failure and a direct press failure are the same
-        failure and must not read two different ways because of which control
-        ran them.
-        """
-        if step.get("action") == "wait_until" and isinstance(exc, TimeoutError):
-            # This timer watches a condition, which may be a variable rather
-            # than device feedback. It does not establish a connection failure.
-            description = str(step.get("description") or "").strip().rstrip(".")
-            message = (
-                f"Timed out: {description}." if description
-                else "The requested status was not reached in time."
-            )
-            return f"{message} Check the system and try again."
-        return self._device_error_message(str(step.get("device") or ""), exc)
-
-    def _device_error_message(self, device_id: str, exc: Exception) -> str:
-        """``friendly_error`` with this device's name and host filled in.
-
-        The name matters more here than anywhere else: a macro step names the
-        device by id, and the id is the one label nobody in the room has ever
-        seen. Deferred import to keep this module free of API imports at load
-        time, matching ``ui_events`` and the project loader.
-        """
-        from openavc.api.error_messages import device_error_label, friendly_error
-
-        if not device_id:
-            return friendly_error(exc, at_panel=True)
-        project = self._project_provider() if self._project_provider else None
-        name = device_error_label(device_id, self.state, project, exc=exc)
-        host = self.state.get(f"device.{device_id}.host") or ""
-        return friendly_error(exc, device=str(name), host=str(host), at_panel=True)
-
-    def _step_error_detail(self, step: dict[str, Any], index: int, total: int) -> str:
-        """Build a descriptive error context string for a failed macro step."""
-        action = step.get("action", "unknown")
-        parts = [f"step {index + 1}/{total}", action]
-        if action in ("device.command", "group.command"):
-            command = step.get("command", "")
-            if command:
-                parts.append(f"command '{command}'")
-        if action == "device.command":
-            device_id = step.get("device", "")
-            if device_id:
-                device_name = self.state.get(f"device.{device_id}.name") or device_id
-                parts.append(f"on '{device_name}'")
-        elif action == "group.command":
-            group_id = step.get("group", "")
-            if group_id:
-                parts.append(f"on group '{group_id}'")
-        elif action == "macro":
-            sub = step.get("macro", "")
-            if sub:
-                parts.append(f"calling '{sub}'")
-        else:
-            plugin_action = self._plugin_actions.get(action)
-            if plugin_action is not None:
-                _handler, plugin_id, _label = plugin_action
-                parts.append(f"plugin '{plugin_id}'")
-        return ", ".join(parts)
-
-    def _auto_description(self, step: dict[str, Any]) -> str:
-        """Generate a human-readable description for a macro step."""
-        action = step.get("action", "")
-        if action == "device.command":
-            return f"Sending {step.get('command', '?')} to {step.get('device', '?')}"
-        if action == "group.command":
-            return f"Sending {step.get('command', '?')} to group {step.get('group', '?')}"
-        if action == "delay":
-            return f"Waiting {step.get('seconds', 0)} seconds"
-        if action == "state.set":
-            return f"Setting {step.get('key', '?')}"
-        if action == "macro":
-            return f"Running macro {step.get('macro', '?')}"
-        if action == "event.emit":
-            return f"Emitting {step.get('event', '?')}"
-        if action == "conditional":
-            # `or {}` for the same reason as the wait_until line below: a step
-            # that never filled a field in still carries the key, holding null,
-            # so the `{}` default never applied. This one runs while ANNOUNCING
-            # step one, so a conditional with no condition killed the whole
-            # macro before any of it ran.
-            return f"Checking {(step.get('condition') or {}).get('key', '?')}"
-        if action == "wait_until":
-            cond = step.get("condition") or {}
-            key = cond.get("key", "?")
-            timeout = step.get("timeout")
-            tmo = "no timeout" if timeout is None else f"{timeout}s"
-            return f"Waiting for {key} ({tmo})"
-        if action == "help.request":
-            return "Asking for help"
-        if action == "help.clear":
-            return "Clearing the help request"
-        if action == "ui.navigate":
-            page = step.get("page", "?")
-            if page == "$back":
-                return "Going back"
-            if page == "$dismiss":
-                return "Dismissing overlay"
-            return f"Navigating panel to {page}"
-        plugin_action = self._plugin_actions.get(action)
-        if plugin_action is not None:
-            _handler, _plugin_id, label = plugin_action
-            return label
-        return action
 
     async def _execute_step(
         self, step: dict[str, Any], context: dict[str, Any],
@@ -1068,7 +900,7 @@ class MacroEngine:
                 device_name = self.state.get(f"device.{did}.name") or did
                 if isinstance(result, Exception):
                     log.error(f"  Group command error on '{device_name}': {result}")
-                    failure = self._command_failure(did, command, result)
+                    failure = self._wording.command_failure(did, command, result)
                     outcome[did] = {
                         "device_id": did, "name": device_name, "success": False,
                         "error": failure.programmer,
@@ -1085,7 +917,7 @@ class MacroEngine:
                 outcome[did] = {
                     "device_id": did, "name": device_name, "success": False,
                     "error": "Device offline",
-                    "message": self._device_error_message(did, offline),
+                    "message": self._wording.device_message(did, offline),
                 }
             for did in missing_ids:
                 # The one place a group can say more than device.command can:
