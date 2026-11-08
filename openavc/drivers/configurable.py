@@ -117,6 +117,31 @@ def _build_commands_meta(commands_def: dict[str, Any]) -> dict[str, Any]:
     return commands_meta
 
 
+def _side_route(cmd_def: Any) -> str | None:
+    """The route a command takes without the device's own connection: an IR
+    code (``ir``) or a UDP side-send (``udp``); None for every other."""
+    if not isinstance(cmd_def, dict):
+        return None
+    if cmd_def.get("ir"):
+        return "ir"
+    if isinstance(cmd_def.get("udp"), dict):
+        return "udp"
+    return None
+
+
+def _inline_poll_queries(commands: dict[str, Any]) -> list[str]:
+    """The poll lines a device's own commands add: those the editor flagged
+    "poll" are sent on the device's poll_interval to keep status values live
+    (most AV gear doesn't push). A byte-stream command's query is its send
+    string (line ending included); an HTTP or OSC command has no send string,
+    so its name is used (poll() looks the name up)."""
+    return [
+        cmd["send"] if isinstance(cmd.get("send"), str) else name
+        for name, cmd in commands.items()
+        if cmd.get("poll")
+    ]
+
+
 # One {name} / {name:spec} token left unsubstituted on the way to the wire.
 # Same shape the authoring check uses, so both agree on what counts as a
 # placeholder and a literal JSON brace is neither.
@@ -319,46 +344,8 @@ class ConfigurableDriver(
         class attribute is shared across every device of this driver type, so
         a per-device protocol must not write to it.
         """
-        # The shared line terminator: the device's configured delimiter, else
-        # the driver default (DRIVER_INFO/def). Appended to each send command
-        # so commands authored in the editor don't each need a literal \r.
-        line_ending = self.config.get("delimiter")
-        if not line_ending:
-            line_ending = self.DRIVER_INFO.get("delimiter") or self._definition.get(
-                "delimiter", ""
-            )
-
-        # Send-side command framing (opt-in, byte-stream only). A constant
-        # command_prefix / command_suffix wraps every command so a text protocol
-        # with a fixed packet header + terminator is authored once, not per
-        # command. File-authored commands are wrapped at send time (send_command,
-        # gated on _inline_command_names); inline/device-config commands are
-        # wrapped here so their poll queries + the auto-simulator see the framed
-        # form. command_suffix falls back to the delimiter for inline commands
-        # only — never for file commands, whose send strings already carry their
-        # terminator (a delimiter fallback there would double-terminate them).
-        self._command_prefix = (
-            self.config.get("command_prefix")
-            or self._definition.get("command_prefix")
-            or ""
-        )
-        self._command_suffix = (
-            self.config.get("command_suffix")
-            or self._definition.get("command_suffix")
-            or ""
-        )
-
-        # Send-side packet framing (opt-in, byte-stream only). A length_prefix
-        # send_frame wraps the fully-framed command payload (command_prefix +
-        # send + command_suffix, escape-decoded) in a binary packet header whose
-        # data-length field is COMPUTED per message — the send analog of a
-        # length_prefix frame_parser. Needed for protocols like eISCP whose
-        # 16-byte header carries a computed data-length a static command_prefix
-        # can't express (the length varies once feedback queries and step
-        # commands of different byte lengths are in the set). Applied at every
-        # byte-stream send origin (command, raw query, liveness probe, device
-        # setting write); absent means today's behavior exactly.
-        self._send_frame = self._build_send_frame(self._definition.get("send_frame"))
+        line_ending = self._line_ending()
+        self._init_send_framing()
 
         norm_commands = normalize_config_commands(
             self.config.get("commands"),
@@ -378,7 +365,7 @@ class ConfigurableDriver(
         # the bound bridge (see send_command). Config codes win by name.
         ir_commands = normalize_ir_codes(self.config.get("ir_codes"))
 
-        if not (norm_commands or norm_responses or norm_state_vars or ir_commands):
+        if not any((norm_commands, norm_responses, norm_state_vars, ir_commands)):
             return
 
         # Auto-declare params for {placeholder} tokens so parameterized commands
@@ -386,42 +373,13 @@ class ConfigurableDriver(
         # token resolves from config, not a prompt.
         declare_command_params(norm_commands, set(self.config.keys()))
 
-        merged = dict(self._definition)
-        file_commands = merged.get("commands") or {}
-        file_responses = merged.get("responses") or []
-        file_state_vars = merged.get("state_variables") or {}
-
-        merged_commands = {**file_commands, **norm_commands, **ir_commands}
-        merged_responses = list(file_responses) + norm_responses
-        derived_vars = derive_state_vars_from_responses(merged_responses)
-        merged_state_vars = {**file_state_vars, **derived_vars, **norm_state_vars}
-
-        # Commands the editor flagged "poll" are sent on the device's
-        # poll_interval to keep status values live (the device must be polled —
-        # most AV gear doesn't push). For a byte-stream command the query is the
-        # send string (line ending included); an HTTP/OSC command has no send
-        # string, so its name is used (poll() looks the name up). Appended after
-        # any file-defined poll queries.
-        poll_queries = [
-            cmd["send"] if isinstance(cmd.get("send"), str) else name
-            for name, cmd in norm_commands.items()
-            if cmd.get("poll")
-        ]
-        if poll_queries:
-            file_polling = merged.get("polling") or {}
-            merged["polling"] = {
-                **file_polling,
-                "queries": list(file_polling.get("queries", [])) + poll_queries,
-            }
-
-        merged["commands"] = merged_commands
-        merged["responses"] = merged_responses
-        merged["state_variables"] = merged_state_vars
-        self._definition = merged
-
+        self._definition = self._merged_definition(
+            {**norm_commands, **ir_commands}, norm_responses, norm_state_vars,
+            _inline_poll_queries(norm_commands),
+        )
         info = dict(self.DRIVER_INFO)
-        info["commands"] = _build_commands_meta(merged_commands)
-        info["state_variables"] = merged_state_vars
+        info["commands"] = _build_commands_meta(self._definition["commands"])
+        info["state_variables"] = self._definition["state_variables"]
         self.DRIVER_INFO = info
 
         # Re-seed state variables now that the config-added ones exist.
@@ -429,6 +387,84 @@ class ConfigurableDriver(
         # is harmless (same defaults) and gives the new vars an initial value
         # so they appear on the device card before the first matching reply.
         self._init_state_variables()
+
+    def _line_ending(self) -> str:
+        """The shared line terminator an inline command ends with: the
+        device's configured delimiter, else the driver default (DRIVER_INFO,
+        then the definition), so commands authored in the editor don't each
+        need a literal \\r."""
+        return (
+            self.config.get("delimiter")
+            or self.DRIVER_INFO.get("delimiter")
+            or self._definition.get("delimiter", "")
+        )
+
+    def _init_send_framing(self) -> None:
+        """The send-side framing every byte-stream command takes (opt-in),
+        the device's config first, then the definition.
+
+        A constant ``command_prefix`` / ``command_suffix`` wraps every
+        command so a text protocol with a fixed packet header + terminator is
+        authored once, not per command. File-authored commands are wrapped at
+        send time (build_wire, gated on _inline_command_names);
+        inline/device-config commands are wrapped at merge time so their poll
+        queries + the auto-simulator see the framed form. command_suffix falls
+        back to the delimiter for inline commands only — never for file
+        commands, whose send strings already carry their terminator (a
+        delimiter fallback there would double-terminate them).
+
+        A ``length_prefix`` ``send_frame`` wraps the fully-framed payload
+        (command_prefix + send + command_suffix, escape-decoded) in a binary
+        packet header whose data-length field is COMPUTED per message — the
+        send analog of a length_prefix frame_parser. Needed for protocols like
+        eISCP whose 16-byte header carries a computed data-length a static
+        command_prefix can't express (the length varies once feedback queries
+        and step commands of different byte lengths are in the set). Applied
+        at every byte-stream send origin (command, raw query, liveness probe,
+        device setting write); absent means no header.
+        """
+        self._command_prefix = (
+            self.config.get("command_prefix")
+            or self._definition.get("command_prefix")
+            or ""
+        )
+        self._command_suffix = (
+            self.config.get("command_suffix")
+            or self._definition.get("command_suffix")
+            or ""
+        )
+        self._send_frame = self._build_send_frame(self._definition.get("send_frame"))
+
+    def _merged_definition(
+        self,
+        commands: dict[str, Any],
+        responses: list[dict[str, Any]],
+        state_vars: dict[str, Any],
+        poll_queries: list[str],
+    ) -> dict[str, Any]:
+        """The file definition with the device's own protocol over it.
+
+        Commands merge by name (config wins), responses append after the
+        file's (so a file driver's base behavior still matches first —
+        first-match-wins), and state variables layer the file's, those
+        auto-derived from the merged responses, then the config's explicit
+        ones. Poll queries append after the file's."""
+        merged = dict(self._definition)
+        merged_responses = list(merged.get("responses") or []) + responses
+        if poll_queries:
+            file_polling = merged.get("polling") or {}
+            merged["polling"] = {
+                **file_polling,
+                "queries": list(file_polling.get("queries", [])) + poll_queries,
+            }
+        merged["commands"] = {**(merged.get("commands") or {}), **commands}
+        merged["responses"] = merged_responses
+        merged["state_variables"] = {
+            **(merged.get("state_variables") or {}),
+            **derive_state_vars_from_responses(merged_responses),
+            **state_vars,
+        }
+        return merged
 
     def _compute_derived_config(self) -> None:
         """Populate self.config with values derived from other config fields.
@@ -534,37 +570,22 @@ class ConfigurableDriver(
         read_back: bool = False,
     ) -> Any:
         """send_command's body; ``read_back`` schedules the command's
-        ``read_back:`` queries once its write is done."""
+        ``read_back:`` queries once its write is done.
+
+        Two routes need no connection of the device's own, so they come
+        before the connected gate: an IR code goes through the bound bridge's
+        emitter port (a bridge-routed IR device has no transport), and a UDP
+        side-send is one datagram beside the main transport (the whole point
+        of ``available_offline`` on a wake is that the control link is down).
+        """
         params = params or {}
+        cmd_def = self._definition.get("commands", {}).get(command)
 
-        commands = self._definition.get("commands", {})
-        cmd_def = commands.get(command)
+        route = _side_route(cmd_def)
+        if route is not None:
+            return await self._send_side_route(route, command, cmd_def, params)
 
-        # IR code-set command: routes through the bound bridge's emitter port,
-        # not a transport of its own. Handle before the transport-connected gate
-        # below (a bridge-routed IR device has no transport). The bridge driver
-        # converts the Pronto code to its wire format and confirms the emit.
-        if isinstance(cmd_def, dict) and cmd_def.get("ir"):
-            ir = cmd_def["ir"]
-            return await self.emit_via_bridge(
-                "ir",
-                {"pronto": ir.get("pronto", ""), "repeat": ir.get("repeat", 1)},
-            )
-
-        # UDP side-send: one datagram beside the main transport (a Wake-on-LAN
-        # magic packet from a display driver, a message to a presentation's
-        # UDP receiver). It needs no connection, so it too is handled before
-        # the connected gate: the whole point of ``available_offline`` on a
-        # wake is that the control link is down. Params are validated and
-        # wire-mapped exactly as on the transport branches below.
-        if isinstance(cmd_def, dict) and isinstance(cmd_def.get("udp"), dict):
-            params = _normalize_and_validate_command_params(
-                command, cmd_def.get("params", {}), params
-            )
-            params = self._apply_param_wire_maps(cmd_def.get("params", {}), params)
-            return await self._send_udp_command(command, cmd_def, params)
-
-        if not self.transport or not self.transport.connected:
+        if not self._link_open():
             raise ConnectionError(f"[{self.device_id}] Not connected")
 
         if cmd_def is None:
@@ -572,49 +593,61 @@ class ConfigurableDriver(
             self._observe(UNKNOWN_COMMAND, command=command)
             return None
 
-        # Runtime gate: trim + validate the supplied params against the
-        # command's declared schema (covers the TCP/serial, OSC, and HTTP
-        # branches below). Raises CommandParamError on a bad value.
-        params = _normalize_and_validate_command_params(
-            command, cmd_def.get("params", {}), params
-        )
-        # The values as the caller meant them: a read-back that names another
-        # command passes these on, and that command maps them itself.
-        given = params
+        given, wire = self._given_and_wire(command, cmd_def, params)
+        result = await self._send_in_form(command, cmd_def, wire)
+        # Read back whatever the device answered: an HTTP set it refused
+        # shows its unchanged value. Nothing went out, nothing to read.
+        if read_back and result is not None:
+            self._read_back(command, cmd_def, given, wire)
+        return result
 
-        # Wire-value translation (opt-in): a param may declare a ``map:``
-        # translating the validated user-facing value to what the protocol
-        # wants on the wire (0-based channel numbers, letter codes, ...).
-        # Applied once, here — after validation so min/max/enum checks see
-        # the user-facing value, before any transport branch so TCP, OSC,
-        # and HTTP sends all get the wire form. Values the map doesn't
-        # cover pass through unchanged.
-        params = self._apply_param_wire_maps(cmd_def.get("params", {}), params)
+    async def _send_side_route(
+        self, route: str, command: str, cmd_def: dict[str, Any], params: dict[str, Any],
+    ) -> Any:
+        """An IR code-set command, emitted through the bound bridge (the
+        bridge driver converts the Pronto code to its wire format and
+        confirms the emit), or a UDP side-send, its params checked and
+        wire-mapped as on the transport's own route."""
+        if route == "ir":
+            ir = cmd_def["ir"]
+            return await self.emit_via_bridge(
+                "ir", {"pronto": ir.get("pronto", ""), "repeat": ir.get("repeat", 1)},
+            )
+        _given, wire = self._given_and_wire(command, cmd_def, params)
+        return await self._send_udp_command(command, cmd_def, wire)
 
-        # Check if this is an OSC command (has 'address' key)
+    def _given_and_wire(
+        self, command: str, cmd_def: dict[str, Any], params: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """A command's parameters as the caller meant them, checked against
+        its declared schema (trimmed, validated; raises CommandParamError on
+        a bad value), and as they go on the wire.
+
+        A param may declare a ``map:`` translating the validated value to
+        what the protocol wants (0-based channel numbers, letter codes, ...),
+        applied after validation so min/max/enum checks see the user-facing
+        value, and before any send so every form gets the wire value. A
+        read-back that names another command passes the caller's values on,
+        and that command maps them itself."""
+        declared = cmd_def.get("params", {})
+        given = _normalize_and_validate_command_params(command, declared, params)
+        return given, self._apply_param_wire_maps(declared, given)
+
+    async def _send_in_form(
+        self, command: str, cmd_def: dict[str, Any], params: dict[str, Any],
+    ) -> Any:
+        """One command in the form its definition takes: an OSC message
+        (``address``), an HTTP request (``path`` or ``method``), else a
+        byte-stream line. None when nothing went out."""
         if self._is_osc_command(cmd_def):
-            result = await self._send_osc_command(command, cmd_def, params)
-            if read_back and result:
-                self._read_back(command, cmd_def, given, params)
-            return result
-
-        # Check if this is an HTTP transport command (has 'path' or 'method' keys)
+            return await self._send_osc_command(command, cmd_def, params)
         if self._is_http_command(cmd_def):
-            response = await self._send_http_command(command, cmd_def, params)
-            # Read back whatever the device answered: a set it refused shows
-            # its unchanged value.
-            if read_back and response is not None:
-                self._read_back(command, cmd_def, given, params)
-            return response
-
+            return await self._send_http_command(command, cmd_def, params)
         data = self.build_wire(command, params)
         if data is None:
             return None
-
         await self.transport.send(data)
         log.debug(f"[{self.device_id}] Sent command '{command}': {data!r}")
-        if read_back:
-            self._read_back(command, cmd_def, given, params)
         return True
 
     def build_wire(
