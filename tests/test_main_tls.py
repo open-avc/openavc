@@ -33,7 +33,8 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from openavc import tls
-from openavc.main import _build_redirect_app, _harden_tls_context
+from openavc.main import _harden_tls_context
+from openavc.redirects import build_redirect_app as _build_redirect_app
 from tests.helpers import make_cloud_cert_pem
 
 

@@ -411,7 +411,7 @@ async def test_redirect_listener_passes_push_through(monkeypatch):
     """With HTTPS + redirect enabled, the HTTP listener redirects everything
     EXCEPT /api/push/, which it serves in-process — devices don't follow
     redirects."""
-    from openavc.main import _build_redirect_app
+    from openavc.redirects import build_redirect_app as _build_redirect_app
 
     drv = _make_driver(_codec_def(), {"host": "127.0.0.1"})
     await drv._start_push()

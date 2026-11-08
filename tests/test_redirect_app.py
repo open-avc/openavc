@@ -16,7 +16,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from openavc import tls
-from openavc.main import _build_redirect_app
+from openavc.redirects import build_redirect_app as _build_redirect_app
 from tests.helpers import make_cloud_cert_pem
 
 LABEL = "ab12cd34ef56ab78"
@@ -247,7 +247,7 @@ def test_enrollment_while_running_flips_redirect(tmp_path):
 
 
 def test_certified_host_for_active_cert(tmp_path):
-    from openavc.main import _certified_host_for
+    from openavc.redirects import certified_host_for as _certified_host_for
 
     _install_cloud_cert(tmp_path)
     assert _certified_host_for("192.168.4.45") == f"192-168-4-45.{LABEL}.{ZONE}"
@@ -258,7 +258,7 @@ def test_certified_host_for_active_cert(tmp_path):
 
 
 def test_certified_host_for_without_cert():
-    from openavc.main import _certified_host_for
+    from openavc.redirects import certified_host_for as _certified_host_for
 
     assert _certified_host_for("192.168.4.45") is None
 
@@ -493,7 +493,7 @@ def test_probe_page_flips_live_with_holder(tmp_path):
 # broken certificate would otherwise leave no way in except editing
 # system.json by hand.
 
-from openavc.main import _build_http_listener_app  # noqa: E402
+from openavc.redirects import build_http_listener_app as _build_http_listener_app  # noqa: E402
 
 
 class _Recorder:
@@ -596,7 +596,7 @@ def test_the_https_listener_is_actually_wired_to_it():
     import openavc.main as main_mod
 
     src = inspect.getsource(main_mod)
-    assert "_build_http_listener_app(app, _build_redirect_app(config.TLS_PORT))" in src
+    assert "build_http_listener_app(app, build_redirect_app(config.TLS_PORT))" in src
 
 
 # --- what a redirect target is built from, pinned before a restructure ---

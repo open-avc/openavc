@@ -133,8 +133,8 @@ def scope_peer_is_loopback(scope: dict) -> bool:
     The HTTP listener that stands in front of the app while HTTPS is on has
     to answer it there — it decides whether to serve the request or redirect
     it, which happens before there is a ``Request`` to ask about. Reads the
-    socket peer only; it grants nothing on its own (see ``_build_http_listener_app``
-    in ``openavc/main.py`` for why the weaker question is the right one there).
+    socket peer only; it grants nothing on its own (see ``build_http_listener_app``
+    in ``openavc/redirects.py`` for why the weaker question is the right one there).
     """
     client = scope.get("client")
     return bool(client) and client[0] in LOOPBACK_HOSTS

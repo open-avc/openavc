@@ -507,7 +507,7 @@ async def test_the_https_banner_with_its_redirect_short_and_trusted_urls(boot, m
     boot.engine.get_status.return_value = {"local_ip": "192.168.4.20"}
     certified = []
     monkeypatch.setattr(
-        main, "_certified_host_for",
+        main, "certified_host_for",
         lambda host: certified.append(host) or "192-168-4-20.abc.example.net",
     )
     with caplog.at_level(logging.INFO, logger="openavc.main"):
@@ -535,7 +535,7 @@ async def test_plain_http_never_asks_for_a_trusted_name(boot, monkeypatch, caplo
     monkeypatch.setattr(config, "TLS_REDIRECT_HTTP", True)
     boot.engine.get_status.return_value = {"local_ip": "192.168.4.20"}
     monkeypatch.setattr(
-        main, "_certified_host_for", Mock(side_effect=AssertionError("asked on plain HTTP")),
+        main, "certified_host_for", Mock(side_effect=AssertionError("asked on plain HTTP")),
     )
     with caplog.at_level(logging.INFO, logger="openavc.main"):
         await boot.run()
@@ -552,7 +552,7 @@ async def test_https_with_no_trusted_name_names_no_trusted_url(boot, monkeypatch
     )
     monkeypatch.setattr(config, "PROGRAMMER_PASSWORD", "set")
     boot.engine.get_status.return_value = {"local_ip": "192.168.4.20"}
-    monkeypatch.setattr(main, "_certified_host_for", lambda host: None)
+    monkeypatch.setattr(main, "certified_host_for", lambda host: None)
     with caplog.at_level(logging.INFO, logger="openavc.main"):
         await boot.run()
 
