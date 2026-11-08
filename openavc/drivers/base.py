@@ -24,7 +24,7 @@ import re
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, NoReturn
 
 from openavc.core.connection_fault import (
     INVALID_CONFIG,
@@ -138,6 +138,15 @@ class ConnectEndedError(ConnectionError):
 
 # What a disconnect resolves a connect's drop future with (_run_handshake).
 _CONNECT_ENDED = object()
+
+
+def _raise_ended(exc: BaseException) -> NoReturn:
+    """Raise what a connect another door ended raises for ``exc``, the
+    failure it ended on: a ConnectEndedError as it is, anything else as the
+    cause of one."""
+    if isinstance(exc, ConnectEndedError):
+        raise exc
+    raise ConnectEndedError(default_fault_message(TRANSPORT_DISCONNECTED)) from exc
 
 
 class CommandPartialError(RuntimeError):
@@ -780,6 +789,13 @@ class BaseDriver(ChildEntities, PushChannel, LivenessWatch, PollLoop, TransportL
         if self._connect_attempt is not attempt:
             raise ConnectEndedError(default_fault_message(TRANSPORT_DISCONNECTED))
 
+    async def _close_transport(self) -> None:
+        """Close the platform transport and forget it. A close that fails is
+        the caller's failure (the quiet form below is not)."""
+        if self.transport:
+            await self.transport.close()
+            self.transport = None
+
     async def _close_transport_quietly(self) -> None:
         transport, self.transport = self.transport, None
         if transport is not None:
@@ -814,9 +830,34 @@ class BaseDriver(ChildEntities, PushChannel, LivenessWatch, PollLoop, TransportL
             raise ConnectEndedError(default_fault_message(TRANSPORT_DISCONNECTED))
 
     async def _connect_once(self, attempt: object) -> None:
-        """The body of :meth:`connect`, run under its lock."""
-        # Start each attempt with a clean slate so a previous failure's cause
-        # can't be misattributed to this one by the fault classifier.
+        """The body of :meth:`connect`, run under its lock: the stages its
+        docstring lists, in order, one method each."""
+        hold = await self._connect_clean_slate()
+        transport_type = self._effective_transport()
+        if transport_type == "bridge":
+            await self._connect_bridge_routed()
+            return
+        self._connect_refusal()
+        await self._pre_connect()
+        self._raise_if_ended(attempt)
+        await self._connect_establish(attempt, transport_type)
+        await self._connect_handshake(attempt, hold, transport_type)
+        # Push notifications (DRIVER_INFO["push"]): subscribe as soon as the
+        # session is up — BEFORE any subclass connect() stage runs on_connect
+        # arming commands, so the listener never misses the first frame a
+        # freshly-armed device sends. Failure is non-fatal (logged inside);
+        # polling still covers the device.
+        await self._start_push()
+        await self._end_if_ended(attempt)
+        await self._connect_initial_sync(attempt)
+        await self._end_if_ended(attempt)
+        await self._connect_start_watching(attempt)
+
+    async def _connect_clean_slate(self) -> bool:
+        """Stage 1: nothing from a previous attempt carries into this one.
+        Returns whether this attempt asks to be held."""
+        # So a previous failure's cause can't be misattributed to this one by
+        # the fault classifier.
         self._last_transport_error = ""
         self._last_fault = None
         # A poll from before this attempt says nothing about the state now.
@@ -840,112 +881,75 @@ class BaseDriver(ChildEntities, PushChannel, LivenessWatch, PollLoop, TransportL
             except Exception:
                 pass
             self.transport = None
+        return hold
 
-        transport_type = self._effective_transport()
-
-        # A bridge-routed device (e.g. an IR device bound to a bridge's emitter
-        # port) has no transport of its own — it emits through the live bridge
-        # instance (see emit_via_bridge). Its liveness mirrors the bound
-        # bridge: online iff the bridge is currently online. The DeviceManager
-        # keeps this in sync as the bridge connects/disconnects; here we seed it
-        # from the bridge's current state so a device added after its bridge is
-        # already up starts online (and one whose bridge is down starts
-        # offline, with a bridge_offline reason set by the DeviceManager).
-        if transport_type == "bridge":
-            self._bridge_routed = True
-            bridge_id = self.config.get("bridge")
-            bridge_port = self.config.get("bridge_port")
-            online = bool(
-                bridge_id
-                and bridge_port
-                and self.state.get(f"device.{bridge_id}.connected")
+    async def _connect_bridge_routed(self) -> None:
+        """A bridge-routed device (e.g. an IR device bound to a bridge's
+        emitter port) has no transport of its own — it emits through the live
+        bridge instance (see emit_via_bridge). Its liveness mirrors the bound
+        bridge: online iff the bridge is currently online. The DeviceManager
+        keeps this in sync as the bridge connects/disconnects; here it is
+        seeded from the bridge's current state, so a device added after its
+        bridge is already up starts online (and one whose bridge is down
+        starts offline, with a bridge_offline reason set by the DeviceManager).
+        """
+        self._bridge_routed = True
+        bridge_id = self.config.get("bridge")
+        bridge_port = self.config.get("bridge_port")
+        online = bool(
+            bridge_id
+            and bridge_port
+            and self.state.get(f"device.{bridge_id}.connected")
+        )
+        self._connected = online
+        self.set_state("connected", online)
+        if online:
+            await self.events.emit(f"device.connected.{self.device_id}")
+            log.info(
+                f"[{self.device_id}] Connected (bridge-routed via {bridge_id})"
             )
-            self._connected = online
-            self.set_state("connected", online)
-            if online:
-                await self.events.emit(f"device.connected.{self.device_id}")
-                log.info(
-                    f"[{self.device_id}] Connected (bridge-routed via {bridge_id})"
-                )
-            else:
-                log.info(
-                    f"[{self.device_id}] Bridge-routed; bound bridge "
-                    f"{bridge_id or '(none)'} is offline or unbound"
-                )
-            return
+        else:
+            log.info(
+                f"[{self.device_id}] Bridge-routed; bound bridge "
+                f"{bridge_id or '(none)'} is offline or unbound"
+            )
 
-        # A network device with no address is refused here, before any
-        # transport or driver-owned session is built: an empty address dials
-        # this computer, and the card then blamed a refused port on a device
-        # nobody had given an address. Every driver passes through here.
+    def _connect_refusal(self) -> None:
+        """Refuse a device that cannot connect as configured, before any
+        transport or driver-owned session is built. Every driver passes
+        through here; a bridge-routed device does not (it sends through its
+        bridge's own connection and signs in to nothing)."""
         # A bridge with no port chosen leaves the binding unresolved, so the
         # device would dial its own transport with nothing to dial, and the
         # card asked for an IP address its Edit Device form does not show.
         if bridge_port_missing(self.config):
             raise ConnectionFaultError(bridge_port_missing_message(), code=INVALID_CONFIG)
+        # An empty address dials this computer, and the card then blamed a
+        # refused port on a device nobody had given an address.
         if self.address_missing():
             raise ConnectionFaultError(no_address_message(), code=INVALID_CONFIG)
         # A setting still holding the "saved on this system" marker had no
-        # saved login to fill it (core/device_logins.py). Refused here, before
-        # anything is sent, so the device is never sent the marker as its
-        # login. A bridge-routed device returned above: it sends through its
-        # bridge's own connection and signs in to nothing.
+        # saved login to fill it (core/device_logins.py), so the device is
+        # never sent the marker as its login.
         if self.login_missing():
             raise ConnectionFaultError(code=LOGIN_MISSING)
 
-        # Stage 3 — establishment: driver-owned setup hook, then the
-        # transport (or driver-owned session) itself.
-        await self._pre_connect()
-        self._raise_if_ended(attempt)
-        # From the moment the transport exists until the handshake settles, a
-        # drop of this connection is this connect's to report (_run_handshake).
+    async def _connect_establish(self, attempt: object, transport_type: str) -> None:
+        """Stages 3 and 4: build the transport (or driver-owned session), then
+        check the device is there.
+
+        From the moment the transport exists until the handshake settles, a
+        drop of this connection is this connect's to report (_run_handshake).
+        Ended by another door while this ran, the disconnect that ended it
+        found neither the transport nor the session to close, so they are
+        closed here; a cancel is left to whoever cancelled.
+        """
         dropped: asyncio.Future[object] = asyncio.get_running_loop().create_future()
         self._connect_drop = dropped
         try:
             await self._create_transport(transport_type)
-            # Ended while it was being built: the disconnect found no
-            # transport to close, so this one is closed below.
             self._raise_if_ended(attempt)
-
-            # For connectionless transports (OSC, HTTP), verify the remote
-            # host is actually reachable before reporting connected. TCP and
-            # serial validate during open/create. UDP is genuinely
-            # connectionless and has no transport-level probe: a UDP device is
-            # noticed going away by its polls drawing no replies (the poll
-            # loop's silence check, for a driver that reads replies; an
-            # awaited poll that raises does the same) or by a liveness probe
-            # (a YAML `liveness:` block / a Python override of
-            # _liveness_probe). A UDP driver with none of those reads
-            # connected against a dead host forever.
-            # Set verify_timeout: 0 in config to skip the pre-connect probe on
-            # OSC/HTTP. It is skipped too while the device's state holds
-            # polling back (_connect_check_held).
-            verify_timeout = self.config.get("verify_timeout", 3.0)
-            if (
-                verify_timeout > 0
-                and hasattr(self.transport, "verify")
-                and not self._connect_check_held()
-            ):
-                if not await self.transport.verify(timeout=verify_timeout):
-                    self._raise_if_ended(attempt)
-                    # Retain the transport's underlying cause (refused /
-                    # timeout) before tearing it down: on its own the raise
-                    # below says "not responding", which the classifier would
-                    # read as no_response. A transport that keeps the
-                    # exception (HTTP) passes it on as this one's cause, since
-                    # a refusal can live in its chain alone.
-                    cause = getattr(self.transport, "verify_error", None)
-                    if not isinstance(cause, BaseException):
-                        cause = None
-                    self._stash_transport_error()
-                    if self.transport:
-                        await self.transport.close()
-                        self.transport = None
-                    raise _verify_failure_error(
-                        self._last_transport_error, cause,
-                        self.config.get("host", "?"), self.config.get("port", "?"),
-                        transport_type,
-                    ) from cause
+            await self._connect_verify(attempt, transport_type)
             self._raise_if_ended(attempt)
         except BaseException as exc:
             if self._connect_drop is dropped:
@@ -954,139 +958,181 @@ class BaseDriver(ChildEntities, PushChannel, LivenessWatch, PollLoop, TransportL
                 self._connect_attempt is not attempt
                 and not isinstance(exc, asyncio.CancelledError)
             ):
-                # The disconnect that ended this connect found neither to
-                # close: a driver that owns its session built it here too.
                 await self._close_transport_quietly()
                 await self._close_session_quietly()
-                if isinstance(exc, ConnectEndedError):
-                    raise
-                raise ConnectEndedError(
-                    default_fault_message(TRANSPORT_DISCONNECTED)
-                ) from exc
+                _raise_ended(exc)
             raise
 
+    async def _connect_verify(self, attempt: object, transport_type: str) -> None:
+        """Stage 4: a connectionless transport (OSC, HTTP) checks the remote
+        host is actually reachable before the device may report connected.
+
+        TCP and serial validate during open/create. UDP is genuinely
+        connectionless and has no transport-level probe: a UDP device is
+        noticed going away by its polls drawing no replies (the poll loop's
+        silence check, for a driver that reads replies; an awaited poll that
+        raises does the same) or by a liveness probe (a YAML `liveness:` block
+        / a Python override of _liveness_probe). A UDP driver with none of
+        those reads connected against a dead host forever.
+
+        ``verify_timeout: 0`` in config skips the check. It is skipped too
+        while the device's state holds polling back (_connect_check_held).
+        """
+        verify_timeout = self.config.get("verify_timeout", 3.0)
+        if not verify_timeout > 0:
+            return
+        if not hasattr(self.transport, "verify"):
+            return
+        if self._connect_check_held():
+            return
+        if await self.transport.verify(timeout=verify_timeout):
+            return
+        self._raise_if_ended(attempt)
+        # Retain the transport's underlying cause (refused / timeout) before
+        # tearing it down: on its own the raise below says "not responding",
+        # which the classifier would read as no_response. A transport that
+        # keeps the exception (HTTP) passes it on as this one's cause, since a
+        # refusal can live in its chain alone.
+        cause = getattr(self.transport, "verify_error", None)
+        if not isinstance(cause, BaseException):
+            cause = None
+        self._stash_transport_error()
+        await self._close_transport()
+        raise _verify_failure_error(
+            self._last_transport_error, cause,
+            self.config.get("host", "?"), self.config.get("port", "?"),
+            transport_type,
+        ) from cause
+
+    async def _connect_handshake(
+        self, attempt: object, hold: bool, transport_type: str,
+    ) -> None:
+        """Stage 5: the handshake, then the declare.
+
+        Device-specific session setup (e.g. an SSH/CLI driver entering
+        privileged mode and disabling output paging) runs before the device
+        is reported connected, so the first poll sees a ready session. A raise
+        here aborts the connection, and what the connect built is closed.
+        """
         try:
-            # Device-specific session setup (e.g. an SSH/CLI driver entering
-            # privileged mode and disabling output paging) runs before we
-            # report connected so the first poll sees a ready session. A raise
-            # here aborts the connection and the transport is cleaned up below.
             await self._run_handshake()
             self._raise_if_ended(attempt)
-            self._connected = True
-            if hold and (self._health_enabled() or self._watches_for_silence()):
-                # Sends, polling and the liveness probe run as usual;
-                # `connected` and the event wait for the first poll or probe
-                # the device answers (_announce_held).
-                self._held = True
-                self._answer_waiter = asyncio.get_running_loop().create_future()
-                log.info(
-                    f"[{self.device_id}] Connected via {transport_type}; the "
-                    f"device stopped answering last time, so it stays offline "
-                    f"until it answers"
-                )
-            else:
-                self._dropped_for_silence = False
-                self._silence_verdict = None
-                self.set_state("connected", True)
-                await self.events.emit(f"device.connected.{self.device_id}")
-                log.info(f"[{self.device_id}] Connected via {transport_type}")
+            await self._connect_declare(hold, transport_type)
         except Exception as exc:
-            if self._connect_attempt is not attempt:
-                # Ended by a disconnect or a newer connect, which owns the
-                # device now: close what is left of this one, report nothing.
-                await self._close_transport_quietly()
-                await self._close_session_quietly()
-                self._connected = False
-                if isinstance(exc, ConnectEndedError):
-                    raise
-                raise ConnectEndedError(
-                    default_fault_message(TRANSPORT_DISCONNECTED)
-                ) from exc
-            # Clean up transport if post-connect setup fails. Stash the
-            # transport's last error first (e.g. an SSH auth failure surfaces
-            # in ssh's log on the transport, not in this exception).
-            self._stash_transport_error()
-            if self.transport:
-                await self.transport.close()
-                self.transport = None
-            await self._close_session()
-            self._connected = False
+            await self._connect_handshake_failed(attempt, exc)
             raise
 
-        # Push notifications (DRIVER_INFO["push"]): subscribe as soon as the
-        # session is up — BEFORE any subclass connect() stage runs on_connect
-        # arming commands, so the listener never misses the first frame a
-        # freshly-armed device sends. Failure is non-fatal (logged inside);
-        # polling still covers the device.
-        await self._start_push()
-        await self._end_if_ended(attempt)
+    async def _connect_handshake_failed(self, attempt: object, exc: Exception) -> None:
+        """Close what a failed handshake or declare left. An attempt another
+        door ended raises its ConnectEndedError here and reports nothing else;
+        any other failure returns, for its caller to raise."""
+        if self._connect_attempt is not attempt:
+            await self._close_transport_quietly()
+            await self._close_session_quietly()
+            self._connected = False
+            _raise_ended(exc)
+        # The transport's last error first (e.g. an SSH auth failure surfaces
+        # in ssh's log on the transport, not in this exception).
+        self._stash_transport_error()
+        await self._close_transport()
+        await self._close_session()
+        self._connected = False
 
-        # Stage 6 — driver-specific initial sync (identity reads, roster
-        # registration, keep-alive loops), after `connected` is declared and
-        # push is armed but BEFORE polling starts, so the first poll cycle
-        # sees a fully-initialized device. A raise here tears the whole
-        # connection back down — the device was briefly connected, so the
-        # disconnect event is emitted for symmetry. A driver that prefers a
-        # degraded-but-connected outcome catches inside its override.
+    def _connect_is_held(self, hold: bool) -> bool:
+        """Whether this connection comes up held: the reconnect asked for it,
+        and a liveness probe or the poll loop's silence check can see the
+        device answer."""
+        if not hold:
+            return False
+        return self._health_enabled() or self._watches_for_silence()
+
+    async def _connect_declare(self, hold: bool, transport_type: str) -> None:
+        """The canonical declare: the internal flag, the ``connected`` state
+        key, then the ``device.connected.<id>`` event.
+
+        A held connection gets the flag alone. Sends, polling and the
+        liveness probe run as usual; ``connected`` and the event wait for the
+        first poll or probe the device answers (_announce_held).
+        """
+        self._connected = True
+        if self._connect_is_held(hold):
+            self._held = True
+            self._answer_waiter = asyncio.get_running_loop().create_future()
+            log.info(
+                f"[{self.device_id}] Connected via {transport_type}; the "
+                f"device stopped answering last time, so it stays offline "
+                f"until it answers"
+            )
+            return
+        self._dropped_for_silence = False
+        self._silence_verdict = None
+        self.set_state("connected", True)
+        await self.events.emit(f"device.connected.{self.device_id}")
+        log.info(f"[{self.device_id}] Connected via {transport_type}")
+
+    async def _connect_initial_sync(self, attempt: object) -> None:
+        """Stage 6: the driver's initial sync (identity reads, roster
+        registration, keep-alive loops), after ``connected`` is declared and
+        push is armed but BEFORE polling starts, so the first poll cycle sees
+        a fully-initialized device. A driver that prefers a
+        degraded-but-connected outcome catches inside its override."""
         try:
             await self._initial_sync()
         except Exception as exc:
-            if self._connect_attempt is not attempt:
-                # The disconnect that ended it already said so.
-                await self._unwind_ended_connect()
-                if isinstance(exc, ConnectEndedError):
-                    raise
-                raise ConnectEndedError(
-                    default_fault_message(TRANSPORT_DISCONNECTED)
-                ) from exc
-            self._stash_transport_error()
-            # The disconnect event emitted below reaches the device manager's
-            # handler with no exception to read, so a typed cause (a refused
-            # credential) is kept where it looks, or the handler would start
-            # a reconnect that the caller of connect() is about to hold.
-            typed = typed_fault_from_exc(
-                exc, host=self.config.get("host", ""), port=self.config.get("port"),
-            )
-            if typed is not None:
-                self._last_fault = typed
-            await self._stop_push()
-            transport = self.transport
-            self.transport = None
-            if transport is not None:
-                try:
-                    await transport.close()
-                except Exception:
-                    pass
-            await self._close_session()
-            self._connected = False
-            self.set_state("connected", False)
-            if self._held:
-                # Never announced, so there is nothing to take back.
-                self._held = False
-                self._settle_answer(False)
-                raise
-            try:
-                await self.events.emit(f"device.disconnected.{self.device_id}")
-            except Exception:
-                log.debug(
-                    f"[{self.device_id}] Failed to emit disconnect event",
-                    exc_info=True,
-                )
+            await self._connect_sync_failed(attempt, exc)
             raise
-        await self._end_if_ended(attempt)
 
-        # Start polling if configured
+    async def _connect_sync_failed(self, attempt: object, exc: Exception) -> None:
+        """Tear the whole connection back down after a failed initial sync.
+        The device was briefly connected, so the disconnect event is emitted
+        for symmetry. An attempt another door ended raises its
+        ConnectEndedError here, since the disconnect that ended it already
+        said so; any other failure returns, for its caller to raise."""
+        if self._connect_attempt is not attempt:
+            await self._unwind_ended_connect()
+            _raise_ended(exc)
+        self._stash_transport_error()
+        # The disconnect event emitted below reaches the device manager's
+        # handler with no exception to read, so a typed cause (a refused
+        # credential) is kept where it looks, or the handler would start a
+        # reconnect that the caller of connect() is about to hold.
+        typed = typed_fault_from_exc(
+            exc, host=self.config.get("host", ""), port=self.config.get("port"),
+        )
+        if typed is not None:
+            self._last_fault = typed
+        await self._stop_push()
+        await self._close_transport_quietly()
+        await self._close_session()
+        self._connected = False
+        self.set_state("connected", False)
+        if self._held:
+            # Never announced, so there is nothing to take back.
+            self._held = False
+            self._settle_answer(False)
+            return
+        try:
+            await self.events.emit(f"device.disconnected.{self.device_id}")
+        except Exception:
+            log.debug(
+                f"[{self.device_id}] Failed to emit disconnect event",
+                exc_info=True,
+            )
+
+    async def _connect_start_watching(self, attempt: object) -> None:
+        """The tail: polling if configured, then the liveness watchdog if the
+        driver supplies a probe.
+
+        The watchdog starts after ``connected`` is reported and sleeps a full
+        interval before its first probe, so subclass connect() stages that
+        run after super().connect() (logins, subscriptions) aren't raced. If
+        such a stage fails and tears the transport down, the loop notices the
+        dead transport and exits on its own.
+        """
         poll_interval = self.config.get("poll_interval", 0)
         if poll_interval > 0:
             await self.start_polling(poll_interval)
             await self._end_if_ended(attempt)
-
-        # Start the liveness watchdog if the driver supplies a probe. Started
-        # after `connected` is reported; the loop sleeps a full interval before
-        # the first probe, so subclass connect() stages that run after
-        # super().connect() (logins, subscriptions) aren't raced. If such a
-        # stage fails and tears the transport down, the loop notices the dead
-        # transport and exits on its own.
         if self._health_enabled():
             self._start_health_loop()
 
@@ -1102,9 +1148,7 @@ class BaseDriver(ChildEntities, PushChannel, LivenessWatch, PollLoop, TransportL
         self._stop_health_loop()
         await self._stop_push()
         await self.stop_polling()
-        if self.transport:
-            await self.transport.close()
-            self.transport = None
+        await self._close_transport()
         await self._close_session()
         self._connected = False
         # A deliberate disconnect ends any hold: whatever connects next is a
