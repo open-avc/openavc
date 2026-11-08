@@ -10,8 +10,10 @@ The rules worth knowing before changing anything here:
   table names, inside the scanned subnets, gets a second, unhurried ping
   (``_second_look``). One that answers is a host; one that stays quiet is
   carried on to the port scan unproven (``_arp_provisional``) and kept only if
-  it answers something there. With no way to ping, those addresses are left
-  out.
+  it answers something for itself before the matcher finishes
+  (``_settle_arp_only_hosts``, the scan's last step). Until then it is held
+  off the wire and out of the device count. With no way to ping, those
+  addresses are left out.
 * The ARP read covers every alive host: it is one cheap read and the phase's
   strongest signal. Only the name lookups are bounded
   (``ArpPlan.name_lookup_hosts``).
@@ -23,8 +25,8 @@ The rules worth knowing before changing anything here:
 stays on the engine. From its host it needs ``results``, ``scan_status``,
 ``oui_db``, ``_budget``, ``_ping_method`` (the sweep sets it),
 ``_scan_source_ip``, ``_arp_provisional``, ``_set_phase()``,
-``_apply_plan()``, ``_run_budgeted()``, ``_get_or_create()``,
-``_refresh_device_count()`` and ``_emit_device_update()``.
+``_apply_plan()``, ``_run_budgeted()``, ``_get_or_create()`` and
+``_emit_device_update()``.
 """
 
 from __future__ import annotations
@@ -32,10 +34,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import socket as _socket
+from collections.abc import Container
 
 from openavc.discovery import icmp
 from openavc.discovery.network_scanner import harvest_arp_table, netbios_sweep
-from openavc.discovery.result import merge_device_info
+from openavc.discovery.result import DiscoveredDevice, merge_device_info
 from openavc.discovery import scan_budget as budgeting
 from openavc.discovery.scan_budget import ArpPlan, DepthPolicy
 from openavc.discovery.scan_evidence import mac_info_and_evidence, names_and_mac
@@ -93,7 +96,8 @@ async def _resolve_hostnames(
 
 
 class ArpHarvest:
-    """Phase 4 and the late ARP read, for ``DiscoveryEngine``."""
+    """Phase 4, the late ARP read, and the probation of a host only the ARP
+    table named, for ``DiscoveryEngine``."""
 
     async def _arp_harvest_phase(self, alive_ips: list[str], policy: DepthPolicy) -> None:
         """Phase 4, budgeted from the alive count: the first number the scan
@@ -292,3 +296,73 @@ class ArpHarvest:
                 "Late ARP harvest enriched %d passive-only device(s) with a "
                 "MAC/OUI", enriched,
             )
+
+
+    @staticmethod
+    def _answered_for_itself(device: DiscoveredDevice) -> bool:
+        """Did the DEVICE answer something, rather than a cache or a DNS?
+
+        Reverse DNS is deliberately not on this list: that is the name
+        server talking, not the equipment.
+        """
+        return any((
+            device.open_ports,
+            device.mdns_services,
+            device.ssdp_info,
+            device.snmp_info,
+            device.protocols,
+            device.device_name,
+        ))
+
+    def _refresh_device_count(self) -> None:
+        """Publish the count of devices actually being shown.
+
+        Hosts the ARP table only named are excluded: they are held off the
+        wire until they earn their place, so counting them would report
+        more devices than the panel is displaying and then tick DOWN when
+        the unproven ones are dropped.
+        """
+        self.scan_status.devices_found = len(self.results) - len(
+            self._arp_provisional
+        )
+
+    async def _settle_arp_only_hosts(self, connected: Container[str]) -> None:
+        """The end of each ARP-named host's probation, as the matcher finishes.
+
+        One that never answered anything is not a device. It got a sweep, a
+        second ping, a port scan and the passive listeners to show itself;
+        with nothing to show, listing it would be inventing equipment out of
+        a cache entry that nobody can act on. A device a project driver is
+        connected to (an address in ``connected``) answers that driver, even
+        when the port it answers on was the one the scan left alone.
+
+        Whatever is left has earned its place, so it is announced now: the
+        first the panel hears of it.
+        """
+        unproven = [ip for ip in self._arp_provisional if self._unproven(ip, connected)]
+        for ip in unproven:
+            del self.results[ip]
+        if unproven:
+            log.info(
+                "Dropped %d ARP-named host(s) that answered nothing",
+                len(unproven),
+            )
+        await self._announce_earned_arp_hosts()
+
+    def _unproven(self, ip: str, connected: Container[str]) -> bool:
+        """An ARP-named host still in the results that showed nothing of its
+        own and is no project device's: the matcher drops it."""
+        device = self.results.get(ip)
+        return (
+            device is not None
+            and not self._answered_for_itself(device)
+            and ip not in connected
+        )
+
+    async def _announce_earned_arp_hosts(self) -> None:
+        """End every probation, announcing each host still in the results."""
+        for ip in sorted(self._arp_provisional):
+            self._arp_provisional.discard(ip)
+            earned = self.results.get(ip)
+            if earned is not None:
+                await self._emit_device_update(earned, "finalize")

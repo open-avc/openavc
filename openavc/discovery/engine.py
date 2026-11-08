@@ -22,8 +22,10 @@ The rules worth knowing before changing anything here:
 * The matcher (``_finalize_scan``) runs outside every deadline, so a scan cut
   short still identifies what it observed, and reports itself ``partial``.
 * An address only the ARP table named is held back until it answers
-  something for itself (``_arp_provisional``): a panel cannot un-see a
-  device, so it is announced only once it has earned its place.
+  something for itself (``_arp_provisional``; its probation is
+  ``arp_phase``'s, from the second look to the verdict as the matcher
+  finishes): a panel cannot un-see a device, so it is announced only once
+  it has earned its place.
 * A port a connected project device holds is never connected to
   (``port_guard``); that device is identified from its driver instead.
 """
@@ -336,6 +338,18 @@ def _no_targets_sentence(control_ip: str, subnets: list[str] | None) -> str:
     )
 
 
+async def _recover(merge: Callable[[], Awaitable[int]], kept: str, failed: str) -> None:
+    """Run one of the idempotent merges a phase cut short leaves for the end,
+    logging how many results it kept (``kept`` takes the count), or its
+    failure (``failed``) without stopping the scan's ending."""
+    try:
+        recovered = await merge()
+        if recovered:
+            log.info(kept, recovered)
+    except Exception:
+        log.exception(failed)
+
+
 class ScanBlocked(RuntimeError):
     """A scan cannot start because something else holds the network.
 
@@ -578,9 +592,14 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         if not device:
             return None
 
+        self._identify(device)
+        return device.to_dict()
+
+    def _identify(self, device: DiscoveredDevice) -> None:
+        """The device's identification from its evidence, and its driver's
+        category when it has none."""
         device.identification = self.tier_matcher.match(device.evidence_log)
         self._fill_category_from_match(device)
-        return device.to_dict()
 
     def _fill_category_from_match(self, device: DiscoveredDevice) -> None:
         """An identified device takes its driver's category when it has none.
@@ -782,9 +801,27 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         truncated = False
         cancelled = False
         try:
+            truncated = not await self._run_phases(subnets, timeout)
+        except asyncio.CancelledError:
+            cancelled = True
+            log.info("Scan cancelled")
+            raise
+        finally:
+            # Skipped only on an explicit cancel, where the user asked for no
+            # further work.
+            if not cancelled:
+                await self._match_what_was_observed(truncated)
+            self._settle_status(truncated)
+            await self._emit_complete()
+
+    async def _run_phases(self, subnets: list[str], timeout: float) -> bool:
+        """Phases 1-7 under the scan's ceiling: True when they ran to the end,
+        False when the ceiling or an unexpected error cut them short, with the
+        warning that says which. A cancel propagates."""
+        try:
             await asyncio.wait_for(self._scan_pipeline(subnets), timeout=timeout)
+            return True
         except asyncio.TimeoutError:
-            truncated = True
             phase = self.scan_status.phase or "startup"
             log.warning("Scan timed out after %.0fs during phase %s", timeout, phase)
             self.scan_status.warnings.append(
@@ -793,79 +830,75 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
                 "point are missing. Scan a smaller subnet, or raise the time limit, "
                 "for complete results."
             )
-        except asyncio.CancelledError:
-            cancelled = True
-            log.info("Scan cancelled")
-            raise
+            return False
         except Exception:  # Catch-all: isolates any scan pipeline error to ensure cleanup runs
-            truncated = True
             log.exception("Scan failed")
             self.scan_status.warnings.append(
                 "Scan ended early after an unexpected error. Results are incomplete "
                 "— see the server log for details."
             )
-        finally:
-            # Match drivers against whatever evidence was collected, even when
-            # the phases above were cut short. Skipped only on an explicit
-            # cancel, where the user asked for no further work.
-            if not cancelled:
-                # Recover the passive listeners' evidence first. On a truncated
-                # scan phase 7 never collected them and the pipeline's finally
-                # has since cancelled their tasks, so this is the only chance to
-                # merge announcements that were already received and parsed —
-                # and it must happen before matching, not after, or the matcher
-                # runs without them. Idempotent, so the normal path (where phase
-                # 7 already merged) is a no-op.
-                if truncated:
-                    try:
-                        recovered = await self.merge_passive_results()
-                        if recovered:
-                            log.info(
-                                "Recovered %d passive result(s) from a truncated scan",
-                                recovered,
-                            )
-                    except Exception:
-                        log.exception("Passive result recovery failed")
-                # The same for driver probes, and not only after the outer
-                # deadline: the probe phase runs under its own, which ends it
-                # without truncating the scan. Idempotent, so a probe phase
-                # that finished (and merged) leaves nothing to do here.
-                try:
-                    recovered = await self.merge_probe_results()
-                    if recovered:
-                        log.info(
-                            "Kept %d driver probe result(s) from a probe phase "
-                            "that ran out of time", recovered,
-                        )
-                except Exception:
-                    log.exception("Probe result recovery failed")
-                try:
-                    await self._finalize_scan()
-                except Exception:
-                    log.exception("Driver matching failed")
-                    self.scan_status.warnings.append(
-                        "Driver matching failed — devices were found but could not "
-                        "be identified. See the server log for details."
-                    )
-            # A narrowed scan is partial too: the budget dropped work before
-            # running it, so the results cover less of the network than was
-            # asked for. Reporting that as "complete" is the silent-cap
-            # failure the warnings exist to prevent.
-            self.scan_status.status = (
-                "cancelled" if self.scan_status.status == "cancelled"
-                else "partial" if (truncated or self._narrowed)
-                else "complete"
+            return False
+
+    async def _match_what_was_observed(self, truncated: bool) -> None:
+        """Match drivers against whatever evidence was collected, even when the
+        phases were cut short.
+
+        On a truncated scan the passive listeners' evidence is recovered
+        first: phase 7 never collected them and the pipeline's finally has
+        since cancelled their tasks, so this is the only chance to merge
+        announcements that were already received and parsed, and it must
+        happen before matching, or the matcher runs without them. The driver
+        probes' evidence is recovered on every scan, not only after the outer
+        deadline: the probe phase runs under its own, which ends it without
+        truncating the scan. Both merges are idempotent, so a phase that
+        finished (and merged) leaves nothing to do here.
+        """
+        if truncated:
+            await _recover(
+                self.merge_passive_results,
+                "Recovered %d passive result(s) from a truncated scan",
+                "Passive result recovery failed",
             )
-            self.scan_status.duration = time.time() - self.scan_status.started_at
-            self.scan_status.devices_found = len(self.results)
-            await self._emit({
-                "type": "discovery.complete",
-                "scan_id": self.scan_status.scan_id,
-                "status": self.scan_status.status,
-                "total_devices": len(self.results),
-                "duration_seconds": self.scan_status.duration,
-                "warnings": list(self.scan_status.warnings),
-            })
+        await _recover(
+            self.merge_probe_results,
+            "Kept %d driver probe result(s) from a probe phase that ran out of time",
+            "Probe result recovery failed",
+        )
+        try:
+            await self._finalize_scan()
+        except Exception:
+            log.exception("Driver matching failed")
+            self.scan_status.warnings.append(
+                "Driver matching failed — devices were found but could not "
+                "be identified. See the server log for details."
+            )
+
+    def _settle_status(self, truncated: bool) -> None:
+        """The scan's final status, duration and device count.
+
+        A narrowed scan is partial too: the budget dropped work before running
+        it, so the results cover less of the network than was asked for.
+        Reporting that as "complete" is the silent-cap failure the warnings
+        exist to prevent.
+        """
+        self.scan_status.status = (
+            "cancelled" if self.scan_status.status == "cancelled"
+            else "partial" if (truncated or self._narrowed)
+            else "complete"
+        )
+        self.scan_status.duration = time.time() - self.scan_status.started_at
+        self.scan_status.devices_found = len(self.results)
+
+    async def _emit_complete(self) -> None:
+        """Tell the clients the scan is over: its status, count, duration and warnings."""
+        await self._emit({
+            "type": "discovery.complete",
+            "scan_id": self.scan_status.scan_id,
+            "status": self.scan_status.status,
+            "total_devices": len(self.results),
+            "duration_seconds": self.scan_status.duration,
+            "warnings": list(self.scan_status.warnings),
+        })
 
     async def _scan_pipeline(self, subnets: list[str]) -> None:
         # Refresh the SignalIndex with the latest community catalog so
@@ -1036,9 +1069,17 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         just paid for, reporting a "complete" scan with zero identifications.
         """
         await self._set_phase(8, "finalize", "Matching drivers...")
-
         connected = self._connected_evidence()
-        finalize_total = len(self.results)
+        await self._match_each_device(connected)
+        self._drop_stale_devices()
+        await self._settle_arp_only_hosts(connected)
+        self.scan_status.devices_found = len(self.results)
+
+    async def _match_each_device(self, connected: dict[str, list[Evidence]]) -> None:
+        """Identify every device from its evidence, sending each as it is
+        identified and moving the bar with it. ``connected``: the records of
+        the project devices whose drivers hold a port at each address."""
+        total = len(self.results)
         for i, device in enumerate(self.results.values()):
             # Open-port records for ports a driver's port_open: hint names,
             # and manufacturer strings mined from probe replies (so a reply
@@ -1051,15 +1092,13 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
             # A project device's driver connected to this one: the identification
             # when no fingerprint answered (the scan left that port alone).
             device.evidence_log.extend(connected.get(device.ip, []))
-
-            device.identification = self.tier_matcher.match(device.evidence_log)
-            self._fill_category_from_match(device)
+            self._identify(device)
             device.port_probes = self._guard.record(device.ip)
             await self._emit_device_update(device, "driver_match")
-            if finalize_total > 0:
-                await self._update_intra_progress((i + 1) / finalize_total)
+            await self._update_intra_progress((i + 1) / total)
 
-        # Remove devices that were not re-discovered in this scan
+    def _drop_stale_devices(self) -> None:
+        """Remove the devices an earlier scan found that this one did not."""
         stale_ips = [ip for ip, dev in self.results.items() if not dev.alive]
         for ip in stale_ips:
             del self.results[ip]
@@ -1067,36 +1106,6 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
             log.info(
                 "Removed %d stale devices not found in this scan", len(stale_ips)
             )
-
-        # An ARP hint that never answered anything is not a device. It got a
-        # sweep, a second ping, a port scan and the passive listeners to show
-        # itself; with nothing to show, listing it would be inventing
-        # equipment out of a cache entry that nobody can act on.
-        # A device a project driver is connected to answers that driver, even
-        # when the port it answers on was the one the scan left alone.
-        unproven = [
-            ip for ip in self._arp_provisional
-            if ip in self.results
-            and not self._answered_for_itself(self.results[ip])
-            and ip not in connected
-        ]
-        for ip in unproven:
-            del self.results[ip]
-        if unproven:
-            log.info(
-                "Dropped %d ARP-named host(s) that answered nothing",
-                len(unproven),
-            )
-
-        # Whatever is left has earned its place, so announce it now -- this
-        # is the first the panel hears of these.
-        for ip in sorted(self._arp_provisional):
-            self._arp_provisional.discard(ip)
-            earned = self.results.get(ip)
-            if earned is not None:
-                await self._emit_device_update(earned, "finalize")
-
-        self.scan_status.devices_found = len(self.results)
 
     async def _cancel_background_tasks(
         self, *tasks: asyncio.Task | None,
@@ -1138,34 +1147,6 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
                 evidence_connected(driver_id, getattr(conn, "name", "") or driver_id, port),
             )
         return out
-
-    @staticmethod
-    def _answered_for_itself(device: DiscoveredDevice) -> bool:
-        """Did the DEVICE answer something, rather than a cache or a DNS?
-
-        Reverse DNS is deliberately not on this list: that is the name
-        server talking, not the equipment.
-        """
-        return bool(
-            device.open_ports
-            or device.mdns_services
-            or device.ssdp_info
-            or device.snmp_info
-            or device.protocols
-            or device.device_name
-        )
-
-    def _refresh_device_count(self) -> None:
-        """Publish the count of devices actually being shown.
-
-        Hosts the ARP table only named are excluded: they are held off the
-        wire until they earn their place, so counting them would report
-        more devices than the panel is displaying and then tick DOWN when
-        the unproven ones are dropped.
-        """
-        self.scan_status.devices_found = len(self.results) - len(
-            self._arp_provisional
-        )
 
     def _get_or_create(self, ip: str) -> DiscoveredDevice:
         """Get existing device record or create a new one."""
