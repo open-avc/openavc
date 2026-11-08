@@ -1,9 +1,13 @@
-"""Saying out loud that the project on disk was not the one that loaded.
+"""Getting a project at boot, and saying out loud when the project on disk was
+not the one that loaded.
 
-The recovery itself is in ``Engine._load_project_safe``: a project file that
-will not parse is replaced from the newest backup that does, and only when no
-backup loads at all does the instance start an empty Recovery Project. That
-part works. What it did not do was tell anybody. The two log lines it wrote
+``load_or_recover`` is the load (``Engine._load_project_safe`` asks it): a
+missing project file is seeded from the bundled starter project, a project
+file that will not parse is replaced from the newest backup that does, and
+only when no backup loads at all does the instance start an empty Recovery
+Project. Which of those leaves a record, and what it says, is decided beside
+the record itself. The recovery always worked. What it did not do was tell
+anybody. The two log lines it wrote
 scrolled past under device-poll noise, and the person whose last edit was in
 the window between the backup and the corrupt save had no way to know it was
 gone: the room came up, the panel worked, and the only available theory was
@@ -27,17 +31,21 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from openavc.core.project_loader import ProjectConfig, ProjectMeta, load_project, save_project
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from openavc.core.state_store import StateStore
 
 log = get_logger(__name__)
+# The load's lines are filed under the engine's name, where a start's lines are.
+_load_log = get_logger("openavc.core.engine")
 
 # The record, beside project.avc and state.json.
 MARKER_NAME = "recovery.json"
@@ -158,3 +166,117 @@ def _write_atomic(path: Path, text: str) -> None:
         except OSError:
             pass
         raise
+
+
+# --- The load -----------------------------------------------------------------
+
+
+def load_or_recover(project_path: Path) -> ProjectConfig:
+    """The project at ``project_path``, or what stands in for it.
+
+    A missing file is seeded from the bundled starter project. If the file is
+    missing with no seed, or cannot be read or validated, the newest backup
+    that loads replaces it; if none does, an empty Recovery Project is saved
+    in its place. Anything but the happy path and the seed leaves a record
+    (``record``), because a room that came up on two-minute-old settings has
+    to say so to the person whose newer edit is not in it.
+    """
+    try:
+        return load_project(project_path)
+    except FileNotFoundError:
+        _load_log.warning(f"Project file not found: {project_path}")
+        seeded = _seed_missing(project_path)
+        if seeded is not None:
+            return seeded
+        failure = MISSING
+    except json.JSONDecodeError as e:
+        failure = UNREADABLE
+        _load_log.error(f"Project file is corrupted (invalid JSON): {e}")
+    except Exception as e:
+        failure = UNREADABLE
+        _load_log.error(f"Project file failed to load: {e}")
+    restored = _restore_newest_backup(project_path, failure)
+    if restored is not None:
+        return restored
+    return _start_empty(project_path, failure)
+
+
+def _seed_missing(project_path: Path) -> ProjectConfig | None:
+    """The bundled starter project copied to ``project_path`` and loaded, or
+    None when there is no seed or it cannot be copied or loaded.
+
+    A missing project file is the normal first-boot state when install-time
+    seeding did not reach this path: notably a Docker image run with a
+    *bind-mounted* /data, which shadows the seed copied into the image layer
+    (only named volumes inherit image content). Seeding here boots every
+    deployment on the starter project instead of an empty Recovery Project,
+    however /data was provided. A missing file has no backups to restore, so
+    this is the first move.
+    """
+    from openavc.system_config import get_seed_project_path
+
+    seed = get_seed_project_path()
+    if seed is None:
+        return None
+    try:
+        project_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(seed, project_path)
+        _load_log.info(f"Seeded default project from {seed}")
+        return load_project(project_path)
+    except Exception as e:
+        _load_log.warning(f"Failed to seed project from {seed}: {e}")
+        return None
+
+
+def _restore_newest_backup(project_path: Path, failure: str) -> ProjectConfig | None:
+    """The newest backup that restores and loads, recorded as ``RESTORED``
+    for ``failure``; None when none does. A backup that fails is logged and
+    the next one tried."""
+    from openavc.core.backup_manager import list_backups, restore_from_backup
+
+    project_dir = project_path.parent
+    for backup in list_backups(project_path):
+        backup_path = project_dir / backup.filename
+        _load_log.info(f"Attempting restore from backup: {backup.filename}")
+        try:
+            restore_from_backup(backup_path, project_path)
+            project = load_project(project_path)
+            _load_log.info(f"Successfully restored project from backup: {backup.filename}")
+            record(
+                project_dir,
+                outcome=RESTORED,
+                reason=failure or UNREADABLE,
+                backup=backup.filename,
+                cutoff=backup.timestamp,
+            )
+            return project
+        except Exception as e:
+            _load_log.warning(f"Backup restore failed ({backup.filename}): {e}")
+    return None
+
+
+def _start_empty(project_path: Path, failure: str) -> ProjectConfig:
+    """An empty Recovery Project, saved at ``project_path``.
+
+    A project file that was simply absent, with nothing to restore, is a first
+    boot rather than a loss, so it gets no record. Only a project that existed
+    and could not be read is worth interrupting somebody for.
+    """
+    _load_log.warning("No backups available. Creating empty recovery project.")
+    if failure == UNREADABLE:
+        record(project_path.parent, outcome=RESET, reason=UNREADABLE)
+    empty = ProjectConfig(
+        project=ProjectMeta(
+            id="recovery",
+            name="Recovery Project",
+            description="Auto-created after project corruption. Use File > Open to load a project.",
+            created=datetime.now(timezone.utc).isoformat(),
+            modified=datetime.now(timezone.utc).isoformat(),
+        )
+    )
+    # save_project writes through a temp file beside the project and a
+    # .avc.bak sibling, both of which need the folder to exist: a fresh
+    # install, or OPENAVC_PROJECT pointed at a folder not yet created.
+    project_path.parent.mkdir(parents=True, exist_ok=True)
+    save_project(project_path, empty)
+    return empty

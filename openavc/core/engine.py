@@ -24,8 +24,6 @@ import asyncio
 import copy
 import functools
 import hmac
-import json
-import shutil
 import socket
 import time
 from pathlib import Path
@@ -69,10 +67,7 @@ from openavc.core.project_reconcile import ProjectReconcileMixin
 from openavc.core.project_variables import ProjectVariablesMixin
 from openavc.core.project_loader import (
     ProjectConfig,
-    ProjectMeta,
-    load_project,
     refresh_crash_copy,
-    save_project,
     save_project_async,
 )
 from openavc.core.runtime_services import RuntimeServicesMixin
@@ -574,104 +569,12 @@ class Engine(
         )
 
     def _load_project_safe(self) -> ProjectConfig:
-        """Load project.avc with corruption recovery.
-
-        If the project file is missing, corrupted, or fails validation:
-        1. Try restoring from the most recent backup
-        2. If no backup works, create a minimal empty project so the server starts
-
-        Anything but the happy path leaves a record for ``project_recovery`` to
-        publish, because a room that came up on two-minute-old settings has to
-        say so to the person whose newer edit is not in it.
-        """
+        """project.avc, or what stands in for it when it is missing or cannot
+        be read: the seed, a backup, or an empty Recovery Project, with the
+        record a recovery leaves (``project_recovery.load_or_recover``)."""
         from openavc.core import project_recovery
-        from openavc.core.backup_manager import list_backups, restore_from_backup
-        from openavc.system_config import get_seed_project_path
 
-        project_dir = self.project_path.parent
-        # Which way the project file failed, for the notice. Set by whichever
-        # except branch fires below.
-        failure = ""
-
-        # Happy path — load normally
-        try:
-            return load_project(self.project_path)
-        except FileNotFoundError:
-            failure = project_recovery.MISSING
-            log.warning(f"Project file not found: {self.project_path}")
-            # The configured project doesn't exist yet. This is the normal
-            # first-boot state when install-time seeding didn't reach this path
-            # — notably a Docker image run with a *bind-mounted* /data, which
-            # shadows the seed cp'd into the image layer (only named volumes
-            # inherit image content). Seed from the canonical bundled project so
-            # every deployment boots the starter project instead of an empty
-            # Recovery Project, independent of how /data was provided. A missing
-            # file has no backups to restore, so this is the right first move.
-            seed = get_seed_project_path()
-            if seed is not None:
-                try:
-                    project_dir.mkdir(parents=True, exist_ok=True)
-                    shutil.copyfile(seed, self.project_path)
-                    log.info(f"Seeded default project from {seed}")
-                    return load_project(self.project_path)
-                except Exception as e:
-                    log.warning(f"Failed to seed project from {seed}: {e}")
-        except json.JSONDecodeError as e:
-            failure = project_recovery.UNREADABLE
-            log.error(f"Project file is corrupted (invalid JSON): {e}")
-        except Exception as e:
-            failure = project_recovery.UNREADABLE
-            log.error(f"Project file failed to load: {e}")
-
-        # Try restoring from backups, newest first
-        backups = list_backups(self.project_path)
-        for backup in backups:
-            backup_path = project_dir / backup.filename
-            log.info(f"Attempting restore from backup: {backup.filename}")
-            try:
-                restore_from_backup(backup_path, self.project_path)
-                project = load_project(self.project_path)
-                log.info(f"Successfully restored project from backup: {backup.filename}")
-                project_recovery.record(
-                    project_dir,
-                    outcome=project_recovery.RESTORED,
-                    reason=failure or project_recovery.UNREADABLE,
-                    backup=backup.filename,
-                    cutoff=backup.timestamp,
-                )
-                return project
-            except Exception as e:
-                log.warning(f"Backup restore failed ({backup.filename}): {e}")
-                continue
-
-        # No backups worked — create minimal empty project
-        log.warning("No backups available. Creating empty recovery project.")
-        # A project file that was simply absent, with nothing to restore, is a
-        # first boot rather than a loss, so it gets no notice. Only a project
-        # that existed and could not be read is worth interrupting somebody for.
-        if failure == project_recovery.UNREADABLE:
-            project_recovery.record(
-                project_dir,
-                outcome=project_recovery.RESET,
-                reason=project_recovery.UNREADABLE,
-            )
-        from datetime import datetime, timezone
-        empty = ProjectConfig(
-            project=ProjectMeta(
-                id="recovery",
-                name="Recovery Project",
-                description="Auto-created after project corruption. Use File > Open to load a project.",
-                created=datetime.now(timezone.utc).isoformat(),
-                modified=datetime.now(timezone.utc).isoformat(),
-            )
-        )
-        # save_project writes via tempfile.mkstemp(dir=path.parent) and a
-        # .avc.bak sibling, both of which require the parent directory to
-        # exist. Without this, fresh installs / OPENAVC_PROJECT pointed at
-        # a not-yet-created directory crash startup with FileNotFoundError.
-        self.project_path.parent.mkdir(parents=True, exist_ok=True)
-        save_project(self.project_path, empty)
-        return empty
+        return project_recovery.load_or_recover(self.project_path)
 
     def _load_project_drivers(self) -> None:
         """Reload drivers from the global driver_repo/ directory.
