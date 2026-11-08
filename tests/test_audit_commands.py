@@ -1251,6 +1251,7 @@ async def test_a_later_refusal_on_the_same_clock_tick_is_still_not_the_commands(
     """Windows before Python 3.13 ticks time.time() every 15.6 ms, so the
     driver's next request, its refusal and the command's return can share one
     timestamp. The command's own exchange is cut by position, not by clock."""
+    import openavc.audit.command_window as window_mod
     import openavc.audit.commands as commands_mod
     import openavc.audit.sandbox as sandbox_mod
     import openavc.core.device_traffic as traffic_mod
@@ -1266,7 +1267,7 @@ async def test_a_later_refusal_on_the_same_clock_tick_is_still_not_the_commands(
         return frozen["at"] if frozen["at"] is not None else real()
 
     fake = SimpleNamespace(time=clock, monotonic=time.monotonic, sleep=time.sleep)
-    for mod in (commands_mod, sandbox_mod, traffic_mod):
+    for mod in (commands_mod, window_mod, sandbox_mod, traffic_mod):
         monkeypatch.setattr(mod, "time", fake)
     try:
         commands = commands_for(
