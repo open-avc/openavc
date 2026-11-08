@@ -174,6 +174,44 @@ class TestEvidenceResetOnScanStart:
         assert dev.open_ports == []
         assert dev.banners == {}
 
+    async def test_start_scan_forgets_what_the_last_scan_kept(self):
+        """Every per-scan record starts empty: the ports a device's probes
+        tried, what each listener merged, the passive cap, the probes kept,
+        the ARP-named hosts, the hosts scanned, the held ports and the guard."""
+        engine = DiscoveryEngine()
+        dev = DiscoveredDevice(ip="10.77.0.5", alive=True)
+        dev.port_probes = {23: {"probes": [{"how": "check"}]}}
+        engine.results["10.77.0.5"] = dev
+        engine._passive_sources_created = 7
+        engine._passive_cap_warned = True
+        engine._passive_scanners = (object(), object(), object())
+        engine._passive_merged = {("mdns", "10.77.0.5")}
+        engine._probe_finished = {0: []}
+        engine._probe_merged = {0}
+        engine._arp_provisional = {"10.77.0.9"}
+        engine._port_scanned = {"10.77.0.5"}
+        engine._narrowed = True
+        engine._held = {("10.77.0.5", 23): object()}
+        old_guard = engine._guard
+        old_budget = engine._budget
+
+        with patch.object(engine, "_run_scan", new_callable=AsyncMock):
+            await engine.start_scan(subnets=["10.77.0.0/24"])
+
+        assert dev.port_probes == {}
+        assert engine._passive_sources_created == 0
+        assert engine._passive_cap_warned is False
+        assert engine._passive_scanners is None
+        assert engine._passive_merged == set()
+        assert engine._probe_finished == {}
+        assert engine._probe_merged == set()
+        assert engine._arp_provisional == set()
+        assert engine._port_scanned == set()
+        assert engine._narrowed is False
+        assert engine._held == {}
+        assert engine._guard is not old_guard
+        assert engine._budget is not old_budget
+
     async def test_evidence_does_not_grow_across_rescans(self):
         """Two full scans (driven through start_scan, which owns the reset)
         that re-find the same device must not stack evidence."""
@@ -317,6 +355,34 @@ class TestScanContactsOnlyItsSubnets:
                 port_list=[80], concurrency=1, gentle=False,
             )
         assert scanned == ["10.77.0.20"]
+
+    async def test_follow_up_scans_only_hosts_not_scanned_yet_then_reads_arp(self):
+        """The follow-up takes the heard hosts the sweep and the port scan
+        both missed, announces each one it scans, and the late ARP read runs
+        after it."""
+        engine = DiscoveryEngine()
+        engine.scan_status.subnets = ["10.77.0.0/24"]
+        for ip in ("10.77.0.20", "10.77.0.21", "10.77.0.22"):
+            engine._get_or_create(ip).alive = True
+        engine._port_scanned.add("10.77.0.21")
+        order: list = []
+
+        async def fake_port_scan(hosts, ports, concurrency, gentle, phase="port_scan",
+                                 always_emit=False):
+            order.append((hosts, ports, concurrency, gentle, phase, always_emit))
+
+        async def late_arp():
+            order.append("late_arp")
+
+        with patch.object(engine, "_collect_passive_results", new_callable=AsyncMock),              patch.object(engine, "_collect_snmp_results", new_callable=AsyncMock),              patch.object(engine, "_late_arp_harvest", late_arp),              patch.object(engine, "_port_scan_hosts", fake_port_scan):
+            await engine._collect_phase(
+                None, None, None, None, None, passive_wait=0, alive_ips=["10.77.0.22"],
+                port_list=[80, 443], concurrency=3, gentle=True,
+            )
+        assert order == [
+            (["10.77.0.20"], [80, 443], 3, True, "passive_followup", True),
+            "late_arp",
+        ]
 
     async def test_upnp_description_fetched_only_in_scope(self):
         from openavc.discovery.ssdp_scanner import SSDPResult, SSDPScanner

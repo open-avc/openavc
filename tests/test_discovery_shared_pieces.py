@@ -215,3 +215,47 @@ async def test_read_greeting_sends_nothing_and_keeps_every_byte():
     assert greeting.data == b"\x00\x01WELCOME"
     assert greeting.first_byte_ms is not None
     assert received == [b""]  # the reader saw us close, having sent nothing
+
+
+def _vendor_strings(records):
+    return [
+        (r.data["value"], r.data["source_probe_id"]) for r in records
+        if r.data["kind"] == "vendor_string"
+    ]
+
+
+def _ssdp(server: str, port: int):
+    ev = evidence_active_probe(f"custom_{port}_tcp", response={"text": "hi"}, port=port)
+    ev.data.update({"kind": "ssdp", "server": server})
+    return ev
+
+
+def test_derived_evidence_reads_the_first_ssdp_server_that_says_something():
+    """A device heard twice names its server twice: the first non-empty
+    SERVER is the one read, and a server the caller's texts already carry
+    wins over both."""
+    index = _vendor_index()
+    heard = [_ssdp("", 1), _ssdp("Linux UPnP/1.0 WidgetWorks/3", 2), _ssdp("Acme Widgets/2", 3)]
+    assert _vendor_strings(derived_evidence(heard, [], index)) == [
+        ("widgetworks", "ssdp_server"),
+    ]
+    given = {"ssdp_server": "Acme Widgets/2"}
+    assert _vendor_strings(derived_evidence(heard, [], index, given)) == [
+        ("acme widgets", "ssdp_server"),
+    ]
+    assert given == {"ssdp_server": "Acme Widgets/2"}
+    greetings = {"greeting:23": "hello"}
+    derived_evidence(heard, [], index, greetings)
+    assert greetings == {"greeting:23": "hello"}  # the caller's dict untouched
+
+
+def test_derived_evidence_records_each_manufacturer_string_once():
+    """A string already in the evidence is not recorded again, and one two
+    texts name is recorded from the first of them."""
+    index = _vendor_index()
+    texts = {"greeting:23": "ACW Widget", "http_server:80": "ACW httpd"}
+    assert _vendor_strings(derived_evidence([], [], index, texts)) == [
+        ("acw", "greeting:23"),
+    ]
+    recorded = derived_evidence([], [], index, {"greeting:21": "ACW ftpd"})
+    assert _vendor_strings(derived_evidence(recorded, [], index, texts)) == []

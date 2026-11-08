@@ -876,3 +876,140 @@ class TestEmptySubnetErrors:
         assert scan_id
         assert seen["interface_ip"] is None
         assert self.engine._scan_ignores_pin is True
+
+
+class TestStartScanEdges:
+    """What a started scan reports and what a refused one says, at the edges
+    the other tests leave alone."""
+
+    def setup_method(self):
+        self.engine = DiscoveryEngine()
+
+    async def _start(self, control_ip, adapters, subnets=("192.0.2.0/24",), **kwargs):
+        with patch.object(self.engine, "_get_control_interface", return_value=control_ip), \
+             patch("openavc.discovery.engine.get_local_subnets", return_value=list(subnets)), \
+             patch("openavc.discovery.network_scanner.get_network_adapters",
+                   return_value=adapters) as listed, \
+             patch.object(self.engine, "_run_scan", new=AsyncMock()):
+            await self.engine.start_scan(**kwargs)
+        return listed
+
+    @pytest.mark.asyncio
+    async def test_the_adapter_a_pinned_scan_runs_through_is_reported(self):
+        adapters = [
+            {"name": "Wi-Fi", "ip": "192.0.2.50", "subnet": "192.0.2.0/24", "mac": "", "link": True},
+            {"name": "Ethernet", "ip": "192.0.2.77", "subnet": "192.0.2.0/24", "mac": "aa", "link": True},
+            {"name": "Ethernet 2", "ip": "192.0.2.77", "subnet": "192.0.2.0/25", "mac": "", "link": True},
+        ]
+        await self._start("192.0.2.77", adapters)
+        assert self.engine.scan_status.active_adapter == {
+            "name": "Ethernet", "ip": "192.0.2.77", "subnet": "192.0.2.0/24",
+        }
+
+    @pytest.mark.asyncio
+    async def test_no_adapter_is_reported_without_a_pin_or_for_a_missing_one(self):
+        listed = await self._start("", [{"name": "Ethernet", "ip": "192.0.2.77",
+                                          "subnet": "192.0.2.0/24", "link": True}])
+        assert self.engine.scan_status.active_adapter is None
+        listed.assert_not_called()
+        self.engine._scan_task = None
+        await self._start("192.0.2.77", [{"name": "Wi-Fi", "ip": "192.0.2.50",
+                                          "subnet": "192.0.2.0/24", "link": True}])
+        assert self.engine.scan_status.active_adapter is None
+
+    @pytest.mark.asyncio
+    async def test_extra_subnets_join_the_asked_ones_once_in_the_same_list(self):
+        asked = ["192.0.2.0/24"]
+        with patch.object(self.engine, "_get_control_interface", return_value=""), \
+             patch.object(self.engine, "_run_scan", new=AsyncMock()):
+            await self.engine.start_scan(
+                subnets=asked, extra_subnets=["192.0.2.0/24", "198.51.100.0/24"],
+            )
+        assert asked == ["192.0.2.0/24", "198.51.100.0/24"]
+        assert self.engine.scan_status.subnets is asked
+
+    @pytest.mark.asyncio
+    async def test_an_explicit_time_limit_is_the_scans_ceiling(self):
+        await self._start("", [], timeout=42)
+        assert self.engine.scan_status.budget_seconds == 42.0
+        assert self.engine._budget.total_seconds == 42.0
+
+    @pytest.mark.asyncio
+    async def test_a_pin_names_its_adapter_and_says_the_address_when_it_cannot(self):
+        tail = (" chosen in Settings > Network > Reach devices through isn't "
+                "connected: no adapter on this computer has 192.0.2.77. Choose a "
+                "current adapter there (or Every connected adapter), or specify "
+                "subnets manually.")
+        for current, name in (
+            (MagicMock(return_value=MagicMock(adapter_name="Ethernet")), "Ethernet"),
+            (MagicMock(side_effect=RuntimeError("gone")), "The adapter"),
+        ):
+            with patch.object(self.engine, "_get_control_interface", return_value="192.0.2.77"), \
+                 patch("openavc.discovery.engine.get_local_subnets", return_value=[]), \
+                 patch("openavc.discovery.network_scanner.get_network_adapters",
+                       return_value=[]), \
+                 patch("openavc.reach_devices.current", current):
+                with pytest.raises(ValueError) as exc:
+                    await self.engine.start_scan()
+            assert str(exc.value) == name + tail
+
+
+class TestBackgroundScansStartAsAsked:
+    """What the listeners and the SNMP scan are started with, read off the
+    scanners a whole pipeline run constructs."""
+
+    async def _run(self, alive, gentle=False, snmp_enabled=True):
+        from openavc.discovery.hints import parse_driver_discovery
+        from openavc.discovery.mdns_scanner import BASELINE_SERVICE_TYPES
+
+        engine = DiscoveryEngine()
+        engine.config.update({
+            "gentle_mode": gentle, "snmp_enabled": snmp_enabled,
+            "snmp_community": "acme-community",
+        })
+        engine.discovery_hints = [parse_driver_discovery({
+            "id": "acme_widget", "name": "Acme Widget", "manufacturer": "Acme",
+            "category": "utility", "transport": "tcp",
+            "discovery": {"mdns": ["_acme-widget._tcp"]},
+        })]
+        classes = TestScanPipeline()._mock_passive_scanners()
+        mdns_cls, ssdp_cls, amx_cls, snmp_cls = classes
+        with patch.object(engine, "_get_control_interface", return_value=""), \
+             patch("openavc.discovery.engine.ping_sweep", new_callable=AsyncMock, return_value=alive), \
+             patch("openavc.discovery.engine.harvest_arp_table", new_callable=AsyncMock, return_value={}), \
+             patch("openavc.discovery.engine.netbios_sweep", new_callable=AsyncMock, return_value={}), \
+             patch("openavc.discovery.engine.scan_host_ports", new_callable=AsyncMock, return_value=[]), \
+             patch("openavc.discovery.engine.grab_banners", new_callable=AsyncMock, return_value={}), \
+             patch("openavc.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}), \
+             patch.object(engine.community_index, "get_drivers", new_callable=AsyncMock, return_value=[]), \
+             patch("openavc.discovery.engine.MDNSScanner", mdns_cls), \
+             patch("openavc.discovery.engine.SSDPScanner", ssdp_cls), \
+             patch("openavc.discovery.engine.AMXDDPScanner", amx_cls), \
+             patch("openavc.discovery.engine.SNMPScanner", snmp_cls):
+            await engine._scan_pipeline_inner(["192.0.2.0/24"])
+        return classes, list(BASELINE_SERVICE_TYPES)
+
+    async def test_listeners_ask_for_the_drivers_services_and_fetch_in_scope(self):
+        (mdns_cls, ssdp_cls, _, _), baseline = await self._run(["192.0.2.10"])
+        services = mdns_cls.call_args.kwargs["service_types"]
+        assert services == baseline + ["_acme-widget._tcp."]
+        ssdp_cls.return_value.scan.assert_called_once_with(
+            timeout=600.0, fetch_descriptions=True,
+        )
+        scope = ssdp_cls.call_args.kwargs["fetch_scope"]
+        assert scope("192.0.2.77") is True
+        assert scope("198.51.100.1") is False
+
+    async def test_snmp_scans_the_live_hosts_with_the_scans_settings(self):
+        for gentle, concurrency in ((False, 20), (True, 10)):
+            (_, _, _, snmp_cls), _ = await self._run(["192.0.2.10"], gentle=gentle)
+            snmp_cls.return_value.scan_devices.assert_called_once_with(
+                ["192.0.2.10"], community="acme-community", timeout=2.0,
+                concurrency=concurrency, entity_mib=True,
+            )
+
+    async def test_no_snmp_without_live_hosts_or_when_it_is_off(self):
+        (_, _, _, snmp_cls), _ = await self._run([])
+        snmp_cls.assert_not_called()
+        (_, _, _, snmp_cls), _ = await self._run(["192.0.2.10"], snmp_enabled=False)
+        snmp_cls.assert_not_called()
