@@ -13,7 +13,8 @@ The rules worth knowing before changing anything here:
   order: ``address`` is an OSC message (refused unless connected, and on an
   OSC transport); ``path`` or ``method`` an HTTP request (refused unless the
   transport is HTTP); ``send`` a line of the device's protocol (refused unless
-  connected; inside the ``send_frame`` header, as every byte-stream line is).
+  connected; inside the ``send_frame`` header on every link, UDP included:
+  ``send_framing`` says where each origin's framing differs).
   A block with none of them is refused before anything is sent.
 * **What each returns.** True for an OSC message or a line, the HTTP answer
   for a request. A body that parses as JSON goes as JSON and its answer is
@@ -33,7 +34,6 @@ from typing import Any, Callable
 
 from openavc.drivers import compiled_protocol
 from openavc.drivers.base import UnknownDeviceSettingError
-from openavc.transport.binary_helpers import encode_escape_sequences as _safe_encode_escapes
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which
@@ -54,7 +54,7 @@ class SettingWrites:
     _safe_substitute: Callable[[str, dict[str, Any]], str]
     _build_osc_args: Callable[[list[Any], dict[str, Any]], list[Any]]
     _build_http_headers: Callable[[Any, dict[str, Any]], dict[str, str] | None]
-    _apply_send_frame: Callable[[bytes], bytes]
+    _line_bytes: Callable[[str], bytes]
 
     async def set_device_setting(self, key: str, value: Any) -> Any:
         """Write one device setting through its declared ``write`` block."""
@@ -169,6 +169,6 @@ class SettingWrites:
     ) -> bool:
         self._require_connected()
         formatted = self._safe_substitute(write_def["send"], params)
-        await self.transport.send(self._apply_send_frame(_safe_encode_escapes(formatted)))
+        await self.transport.send(self._line_bytes(formatted))
         self._setting_written(key, value)
         return True

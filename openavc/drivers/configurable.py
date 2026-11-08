@@ -19,8 +19,9 @@ over a line of text (``text_replies``), the JSON-body rules and the
 (``reply_values``), and a rule's throttle (``reply_throttle``). Around the
 connection: the ``auth:`` sign-in (``sign_in``), the children an
 ``instances:`` block declares (``declared_roster``), and whether an HTTP
-device is refusing the credentials (``http_credential``). The lines the
-driver sends on its own: start-up, the poll and the spacing between their
+device is refusing the credentials (``http_credential``). The framing of
+every byte the device's protocol puts on the wire, from every place that
+sends: ``send_framing``. The lines the driver sends on its own: start-up, the poll and the spacing between their
 lines (``start_up_and_poll``), what a poll or start-up entry sends and
 whether its gates let it go now (``query_entries``), and reading the device
 again after a change, a reply rule's ``then_query`` and a command's
@@ -54,6 +55,7 @@ from openavc.drivers.query_entries import QueryEntries
 from openavc.drivers.reply_throttle import ReplyThrottle
 from openavc.drivers.reply_values import ReplyValues
 from openavc.drivers.rereads import Rereads
+from openavc.drivers.send_framing import SendFraming
 from openavc.drivers.setting_writes import SettingWrites
 from openavc.drivers.sign_in import SignIn
 from openavc.drivers.start_up_and_poll import StartUpAndPoll
@@ -66,7 +68,6 @@ from openavc.drivers.inline_protocol import (
     normalize_config_state_vars,
     normalize_ir_codes,
 )
-from openavc.transport.binary_helpers import encode_escape_sequences as _safe_encode_escapes
 from openavc.transport.frame_parsers import FrameParser
 from openavc.utils.logger import get_logger
 
@@ -140,6 +141,7 @@ class ConfigurableDriver(
     StartUpAndPoll,
     Rereads,
     SettingWrites,
+    SendFraming,
     SignIn,
     HttpCredential,
     QueryEntries,
@@ -333,10 +335,9 @@ class ConfigurableDriver(
         class attribute is shared across every device of this driver type, so
         a per-device protocol must not write to it.
         """
-        line_ending = self._line_ending()
         norm_commands = normalize_config_commands(
             self.config.get("commands"),
-            self._command_suffix or line_ending,
+            self._inline_suffix(),
             prefix=self._command_prefix,
         )
         # File commands (not in this set) are the ones send_command frames.
@@ -374,54 +375,6 @@ class ConfigurableDriver(
         # is harmless (same defaults) and gives the new vars an initial value
         # so they appear on the device card before the first matching reply.
         self._init_state_variables()
-
-    def _line_ending(self) -> str:
-        """The shared line terminator an inline command ends with: the
-        device's configured delimiter, else the driver default (DRIVER_INFO,
-        then the definition), so commands authored in the editor don't each
-        need a literal \\r."""
-        return (
-            self.config.get("delimiter")
-            or self.DRIVER_INFO.get("delimiter")
-            or self._definition.get("delimiter", "")
-        )
-
-    def _init_send_framing(self) -> None:
-        """The send-side framing every byte-stream command takes (opt-in),
-        the device's config first, then the definition. Set before the
-        inline-protocol merge, which frames the device's own commands with it.
-
-        A constant ``command_prefix`` / ``command_suffix`` wraps every
-        command so a text protocol with a fixed packet header + terminator is
-        authored once, not per command. File-authored commands are wrapped at
-        send time (build_wire, gated on _inline_command_names);
-        inline/device-config commands are wrapped at merge time so their poll
-        queries + the auto-simulator see the framed form. command_suffix falls
-        back to the delimiter for inline commands only — never for file
-        commands, whose send strings already carry their terminator (a
-        delimiter fallback there would double-terminate them).
-
-        A ``length_prefix`` ``send_frame`` wraps the fully-framed payload
-        (command_prefix + send + command_suffix, escape-decoded) in a binary
-        packet header whose data-length field is COMPUTED per message — the
-        send analog of a length_prefix frame_parser. Needed for protocols like
-        eISCP whose 16-byte header carries a computed data-length a static
-        command_prefix can't express (the length varies once feedback queries
-        and step commands of different byte lengths are in the set). Applied
-        at every byte-stream send origin (command, raw query, liveness probe,
-        device setting write); absent means no header.
-        """
-        self._command_prefix = (
-            self.config.get("command_prefix")
-            or self._definition.get("command_prefix")
-            or ""
-        )
-        self._command_suffix = (
-            self.config.get("command_suffix")
-            or self._definition.get("command_suffix")
-            or ""
-        )
-        self._send_frame = self._build_send_frame(self._definition.get("send_frame"))
 
     def _merged_definition(
         self,
@@ -653,61 +606,6 @@ class ConfigurableDriver(
         log.debug(f"[{self.device_id}] Sent command '{command}': {data!r}")
         return True
 
-    def build_wire(
-        self, command: str, params: dict[str, Any] | None = None
-    ) -> bytes | None:
-        """Build the exact bytes a byte-stream command puts on the wire.
-
-        The whole send-side build in one place: command_prefix/suffix framing,
-        placeholder substitution, escape decoding, and the computed send_frame
-        header. Returns None when the command is unknown or declares no send
-        string (the two cases that make a byte-stream send a no-op).
-
-        Needs no transport, so the send path is testable — and previewable —
-        without opening a socket. Two limits on calling it directly: it is the
-        byte-stream route only (OSC and HTTP commands are built by their own
-        senders), and it takes params as given. send_command validates params
-        against the command's declared schema and applies their ``map:``
-        translations first, so anything that must match a real send has to go
-        through send_command, not here.
-        """
-        params = params or {}
-        cmd_def = self._definition.get("commands", {}).get(command)
-        if not isinstance(cmd_def, dict):
-            return None
-
-        raw = cmd_def.get("send", "")
-        if not raw:
-            log.warning(f"[{self.device_id}] Command '{command}' has no send string")
-            return None
-
-        # Send-side framing (opt-in): wrap a file-authored command with the
-        # driver's command_prefix / command_suffix so a fixed packet header +
-        # terminator is declared once, not per command. Inline/device-config
-        # commands are already framed at merge time (skipped via
-        # _inline_command_names); a command may opt out with raw: true to go on
-        # the wire exactly as written.
-        prefix = getattr(self, "_command_prefix", "")
-        suffix = getattr(self, "_command_suffix", "")
-        if (
-            (prefix or suffix)
-            and command not in getattr(self, "_inline_command_names", ())
-            and not cmd_def.get("raw")
-        ):
-            raw = f"{prefix}{raw}{suffix}"
-
-        # Substitute {param} placeholders — merge config values so drivers
-        # can use config fields like {set_id} or {level_instance_tag} in commands.
-        # Uses _safe_substitute to handle JSON protocols (UDP) where literal
-        # braces must be preserved — only {name} tokens matching known params
-        # are replaced, all other braces are left alone.
-        all_params = {**self.config, **self._push_params(), **params}
-        formatted = self._substitute_for_wire(f"commands.{command}.send", raw, all_params)
-
-        # Encode (handle explicit escape sequences only — safe subset), then
-        # wrap in the send_frame packet header (no-op unless declared).
-        return self._apply_send_frame(_safe_encode_escapes(formatted))
-
     async def _send_udp_command(
         self, command: str, cmd_def: dict[str, Any], params: dict[str, Any]
     ) -> Any:
@@ -756,7 +654,7 @@ class ConfigurableDriver(
         formatted = self._substitute_for_wire(
             f"{where}.payload", str(udp.get("payload") or ""), all_params
         )
-        data = _safe_encode_escapes(formatted)
+        data = self._unframed_bytes(formatted)
         await self.send_udp(
             data, host=host, port=port, broadcast=bool(udp.get("broadcast"))
         )
@@ -1092,14 +990,10 @@ class ConfigurableDriver(
             payload = lv["send"]
             if "{" in payload:
                 payload = self._safe_substitute(payload, self.config)
-            # command_prefix/suffix are NOT applied (the probe is a raw string —
-            # the author writes any application-layer framing into it), but the
-            # send_frame packet header IS wrapped (no-op unless declared): a
-            # length-framed transport like eISCP needs its header on every
-            # message, or the probe never elicits a reply and liveness fails.
-            await self.transport.send(
-                self._apply_send_frame(_safe_encode_escapes(payload))
-            )
+            # No prefix or suffix (the author writes any framing into the
+            # probe), but the send_frame header: a length-framed protocol like
+            # eISCP needs it on every message, or the probe is never answered.
+            await self.transport.send(self._line_bytes(payload))
 
     def _liveness_note_data(self, data: bytes) -> None:
         """Resolve a waiting liveness probe when qualifying data arrives.
@@ -1135,18 +1029,6 @@ class ConfigurableDriver(
             return
         self._framed_messages += 1
         self._read_text_reply(text)
-
-    # Shared send_frame framing (see compiled_protocol module docs).
-    _build_send_frame = staticmethod(compiled_protocol.build_send_frame)
-
-    def _apply_send_frame(self, data: bytes) -> bytes:
-        """Wrap escape-decoded byte-stream payload in the send_frame header.
-
-        No-op unless the driver declares a send_frame block. The data-length
-        field is computed from ``len(data)`` per message — the piece a static
-        command_prefix can't express.
-        """
-        return compiled_protocol.apply_send_frame(self._send_frame, data)
 
     def _create_frame_parser(self) -> FrameParser | None:
         """Check definition for frame parser config.

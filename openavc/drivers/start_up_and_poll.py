@@ -11,8 +11,8 @@ The rules worth knowing before changing anything here:
   ones inside the ``send_frame`` header, a no-op unless declared).
   ``_dispatch_query`` is that rule for every transport but OSC; a response
   rule's ``then_query`` sends through it too, and a command's ``read_back``
-  builds its raw queries with the same two halves (``_raw_bytes``,
-  ``_read_path``). Every answer ``_dispatch_query`` gets on HTTP is weighed
+  builds its raw queries with the same two halves (``_raw_bytes``, which is
+  ``send_framing``'s, and ``_read_path``). Every answer ``_dispatch_query`` gets on HTTP is weighed
   against the credential (``http_credential``); a read-back's is not.
 * **Spacing** is ``_pace_line``'s, for every line the driver sends on its
   own: start-up, the poll, a rule's follow-ups and a command's read-backs
@@ -53,7 +53,6 @@ from typing import Any, Callable
 
 from openavc.drivers.base import ConnectionFaultError
 from openavc.drivers.spec import DEFAULT_LINE_GAP_S, LINE_GAP_TRANSPORTS
-from openavc.transport.binary_helpers import encode_escape_sequences as _safe_encode_escapes
 from openavc.transport.pacing import pacing_clock, sleep_at_least
 from openavc.utils.logger import get_logger
 
@@ -108,7 +107,7 @@ class StartUpAndPoll:
     _substitute_for_wire: Callable[[str, str, dict[str, Any]], str]
     _safe_substitute: Callable[[str, dict[str, Any]], str]
     _build_osc_args: Callable[[list[Any], dict[str, Any]], list[Any]]
-    _apply_send_frame: Callable[[bytes], bytes]
+    _raw_bytes: Callable[[Any, str], bytes]
 
     def _init_start_up_and_poll(self) -> None:
         # When the next of the driver's own lines may go, and whether to pace
@@ -298,14 +297,6 @@ class StartUpAndPoll:
             return await self._read_path(text)
         await self.transport.send(self._raw_bytes(transport_type, text))
         return None
-
-    def _raw_bytes(self, transport_type: Any, text: str) -> bytes:
-        """A raw line's protocol bytes: escape-decoded, and on any link but
-        UDP inside the ``send_frame`` header (a no-op unless declared)."""
-        data = _safe_encode_escapes(text)
-        if transport_type != "udp":
-            data = self._apply_send_frame(data)
-        return data
 
     async def _read_path(self, path: str) -> Any:
         """GET a path and read its answer with the reply rules, as a

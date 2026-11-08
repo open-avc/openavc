@@ -25,7 +25,7 @@ The rules worth knowing before changing anything here:
 ``Rereads`` is a mixin ``ConfigurableDriver`` inherits, so every name stays on
 the driver object. A follow-up line goes out as a poll line does
 (``_dispatch_query``); a read-back's raw query is the poll's raw form
-(``_raw_bytes``, ``_read_path``), both in ``start_up_and_poll``.
+(``_raw_bytes`` in ``send_framing``, ``_read_path`` in ``start_up_and_poll``).
 """
 
 from __future__ import annotations
