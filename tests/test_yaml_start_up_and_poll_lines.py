@@ -631,3 +631,133 @@ async def test_an_answer_with_no_status_is_not_weighed() -> None:
     assert driver._http_answered == set()
     assert driver._http_refused_unanswered == set()
     assert driver._http_cycle == [0, 0]
+
+
+async def test_a_yaml_drivers_poll_notes_when_it_started() -> None:
+    """BaseDriver notes the start of a poll() the driver class defines; the
+    poll loop reads the note after a connect."""
+    definition = _with(LINE_DEVICE, polling={"queries": ["Q\\r"]})
+    cls = create_configurable_driver_class(definition)
+    assert getattr(cls.poll, "_notes_poll_start", False) is True
+    driver = _driver(definition, Capture())
+    assert driver._last_poll_started_at is None
+    await driver.poll()
+    assert isinstance(driver._last_poll_started_at, float)
+
+
+# ── What the review found unwatched ──
+
+FRAMED = {"type": "length_prefix", "header": "AB", "length_size": 1}
+
+
+async def test_a_raw_byte_stream_line_goes_in_the_send_frame_but_a_udp_one_does_not() -> None:
+    tcp = _with(LINE_DEVICE, send_frame=FRAMED, on_connect=["HI\\r"], polling={"queries": ["Q\\r"]})
+    transport = Capture()
+    driver = _driver(tcp, transport)
+    await driver._run_on_connect()
+    await driver.poll()
+    assert transport.sent == [b"AB\x03HI\r", b"AB\x02Q\r"]
+
+    udp = _with(tcp, id="acme_udp_unit", transport="udp")
+    transport = Capture()
+    driver = _driver(udp, transport)
+    await driver.poll()
+    assert transport.sent == [b"Q\r"]
+
+
+async def test_an_httpx_failure_ends_the_poll_and_the_tally(caplog) -> None:
+    import httpx
+
+    polled = _with(HTTP_DEVICE, polling={"queries": ["/a", "/b"]})
+    transport = HttpAnswers({"/a": 200, "/b": httpx.ReadTimeout("slow")})
+    driver = _driver(polled, transport)
+    with caplog.at_level(logging.WARNING), pytest.raises(httpx.ReadTimeout):
+        await driver.poll()
+    assert driver._http_cycle is None
+    assert "[dev1] Poll query failed (HTTP): slow" in caplog.text
+
+
+def test_the_connect_check_judges_the_polls_gate_quietly(caplog) -> None:
+    polling = {"queries": ["Q\\r"], "when_state": {"standby": False}}
+    driver = _driver(_with(LINE_DEVICE, polling=polling), Capture())
+    driver.set_state("standby", True)
+    with caplog.at_level(logging.INFO):
+        assert driver._connect_check_held() is True
+    assert driver._poll_waits_on_device() is False
+    assert "Polling paused" not in caplog.text
+    assert (
+        "[dev1] Connect check skipped: it polls only while Standby is false, "
+        "and the device reports Standby true"
+    ) in caplog.text
+
+
+def _answer(status: int) -> Any:
+    from types import SimpleNamespace
+
+    return SimpleNamespace(status_code=status, text="")
+
+
+def test_the_credential_rules_say_why_they_drop_the_connection(caplog) -> None:
+    driver = _driver(HTTP_DEVICE, HttpAnswers({}))
+    with caplog.at_level(logging.DEBUG, logger="openavc.drivers.configurable"):
+        driver._judge_http_answer("/a", _answer(200))
+        driver._judge_http_answer("/locked", _answer(403))
+        with pytest.raises(ConnectionFaultError) as stopped:
+            driver._judge_http_answer("/a", _answer(401))
+    assert stopped.value.fault_code == "auth_failed"
+    assert str(stopped.value) == (
+        "The device stopped accepting the username and password. "
+        "Check them in the device settings."
+    )
+    records = [(r.name, r.levelname, r.getMessage()) for r in caplog.records
+               if r.name == "openavc.drivers.configurable"]
+    assert ("openavc.drivers.configurable", "DEBUG",
+            "[dev1] '/locked' refused (HTTP 403); other queries answer, so the "
+            "account may not read it") in records
+    assert ("openavc.drivers.configurable", "WARNING",
+            "[dev1] '/a' answered earlier on this connection and is now refused "
+            "(HTTP 401); dropping the connection") in records
+
+    caplog.clear()
+    fresh = _driver(HTTP_DEVICE, HttpAnswers({}))
+    with caplog.at_level(logging.WARNING, logger="openavc.drivers.configurable"):
+        fresh._judge_http_answer("/a", _answer(401))
+        fresh._judge_http_answer("/b", _answer(407))
+        with pytest.raises(ConnectionFaultError) as refused:
+            fresh._judge_http_answer("/c", _answer(403))
+    assert str(refused.value) == (
+        "The device refused the username and password. Check them in the device settings."
+    )
+    assert [(r.levelname, r.getMessage()) for r in caplog.records
+            if r.name == "openavc.drivers.configurable"] == [
+        ("WARNING", "[dev1] 3 queries refused and none answered; dropping the connection"),
+    ]
+
+
+async def test_the_moved_lines_log_under_the_yaml_runtimes_name(caplog) -> None:
+    definition = _with(
+        LINE_DEVICE,
+        polling={"queries": ["A\\r"], "when_state": {"standby": False}},
+        device_settings={"gain": {"write": {"send": "GAIN {value}\\r"}}},
+    )
+    driver = _driver(definition, Capture())
+    with caplog.at_level(logging.DEBUG):
+        await driver.set_device_setting("gain", 3)
+        driver.set_state("standby", True)
+        await driver.poll()
+    mine = {(r.name, r.levelname, r.getMessage()) for r in caplog.records}
+    assert ("openavc.drivers.configurable", "DEBUG",
+            "[dev1] Set device setting 'gain' = 3") in mine
+    assert ("openavc.drivers.configurable", "INFO",
+            "[dev1] Polling paused: it polls only while Standby is false, and the "
+            "device reports Standby true") in mine
+
+
+async def test_a_poll_line_that_fails_to_build_is_logged_with_its_traceback(caplog) -> None:
+    definition = _with(LINE_DEVICE, polling={"queries": ["A\\r"]})
+    driver = _driver(definition, Capture(fail=b"A", error=ValueError("bad template")))
+    with caplog.at_level(logging.ERROR):
+        await driver.poll()
+    (record,) = [r for r in caplog.records if r.getMessage() == "[dev1] Poll query error"]
+    assert record.name == "openavc.drivers.configurable"
+    assert record.levelname == "ERROR" and record.exc_info is not None

@@ -165,6 +165,12 @@ class ConfigurableDriver(
     # DRIVER_INFO is set dynamically by create_configurable_driver_class()
     DRIVER_INFO: dict[str, Any] = {}
 
+    # BaseDriver notes when each poll starts only for a poll() the class
+    # defines itself (__init_subclass__ reads the class's own namespace), and
+    # the poll loop reads that note after a connect. The poll lives in
+    # StartUpAndPoll, so it is defined here by name.
+    poll = StartUpAndPoll.poll
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         # _definition is set on the class by the factory function
         self._definition: dict[str, Any] = getattr(self.__class__, "_definition", {})
