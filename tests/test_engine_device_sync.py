@@ -209,6 +209,21 @@ async def test_a_variable_reconcile_logs_the_keys_it_cleaned_up(tmp_path, caplog
 
 
 @pytest.mark.asyncio
+async def test_a_variable_reconcile_seeds_new_variables_and_keeps_the_rest(tmp_path):
+    eng = _engine(tmp_path, [])
+    from openavc.core.project_loader import VariableConfig
+
+    eng.project.variables = [
+        VariableConfig(id="kept", type="string", default="d1"),
+        VariableConfig(id="new", type="string", default="d2"),
+    ]
+    eng.state.set("var.kept", "running", source="ui")
+    await eng._reconcile(ProjectDiff(variables=True), ProjectOrigin.EDIT)
+    assert eng.state.get("var.kept") == "running"
+    assert eng.state.get("var.new") == "d2"
+
+
+@pytest.mark.asyncio
 async def test_a_script_that_fails_to_reload_is_logged(tmp_path, caplog):
     eng = _engine(tmp_path, [])
     eng.scripts = MagicMock()

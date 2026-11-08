@@ -638,3 +638,45 @@ async def test_a_start_that_moved_device_logins_remembers_it_backed_up(tmp_path,
         assert eng._logins_backed_up_at_start is True
     finally:
         await eng.stop()
+
+
+@pytest.mark.asyncio
+async def test_start_publishes_the_asset_catalog(tmp_path, no_update_checks):
+    eng = Engine(_project(tmp_path))
+    _quiet_services(eng, [])
+    try:
+        await eng.start()
+        assert json.loads(eng.state.get("project.assets")) == []
+    finally:
+        await eng.stop()
+
+
+@pytest.mark.asyncio
+async def test_stop_forgets_a_bring_up_nobody_has_started(tmp_path, no_update_checks):
+    eng = Engine(_project(tmp_path))
+    _quiet_services(eng, [])
+    await eng.start()
+    eng._bringup_requested = True
+    await eng.stop()
+    assert eng._bringup_requested is False
+
+
+@pytest.mark.asyncio
+async def test_after_a_stop_state_changes_no_longer_reach_the_websocket_hub(tmp_path, no_update_checks):
+    eng = Engine(_project(tmp_path))
+    _quiet_services(eng, [])
+    pushed = []
+    real = eng.ws.on_state_change
+
+    def on_state_change(*args, **kwargs):
+        pushed.append(args[0])
+        return real(*args, **kwargs)
+
+    eng.ws.on_state_change = on_state_change
+    await eng.start()
+    eng.state.set("var.v", "while running", source="ui")
+    assert "var.v" in pushed
+    await eng.stop()
+    pushed.clear()
+    eng.state.set("var.v", "after", source="ui")
+    assert pushed == []
