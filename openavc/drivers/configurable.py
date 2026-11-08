@@ -29,7 +29,7 @@ import re
 import time
 from typing import Any
 
-from openavc.core.condition_eval import eval_operator, reads_as_on
+from openavc.core.condition_eval import eval_operator
 from openavc.core.state_store import VALID_KEY_PREFIXES
 from openavc.drivers import compiled_protocol
 from openavc.drivers.base import (
@@ -42,7 +42,6 @@ from openavc.drivers.base import (
     normalize_and_validate_command_params as _normalize_and_validate_command_params,
     normalize_mac,
 )
-from openavc.drivers.child_ids import page_starts
 from openavc.drivers.param_labels import param_label
 from openavc.drivers.spec import (
     DEFAULT_LINE_GAP_S,
@@ -53,6 +52,7 @@ from openavc.drivers.declared_roster import DeclaredRoster
 from openavc.drivers.http_credential import HttpCredential
 from openavc.drivers.json_replies import JsonReplies
 from openavc.drivers.osc_wire import OscWire
+from openavc.drivers.query_entries import QueryEntries
 from openavc.drivers.reply_throttle import ReplyThrottle
 from openavc.drivers.reply_values import ReplyValues
 from openavc.drivers.sign_in import SignIn
@@ -144,6 +144,7 @@ _CHILD_ID_TOKEN = re.compile(r"\{child_id(?::[^{}]*)?\}")
 class ConfigurableDriver(
     SignIn,
     HttpCredential,
+    QueryEntries,
     DeclaredRoster,
     ReplyThrottle,
     TextReplies,
@@ -214,9 +215,6 @@ class ConfigurableDriver(
         # poll after a connect skips because start-up has just sent them.
         self._start_up_lines: set[str] = set()
         self._first_poll_skips: set[str] | None = None
-        # Whether the last poll was held back by polling.when_state, so the
-        # log says once when the poll pauses and once when it resumes.
-        self._poll_held = False
         # Response rules' then_query rounds (_follow_up): the tasks sending
         # them, and per (rule, routed child) when a round may go again
         # (infinity while one is going out).
@@ -743,181 +741,6 @@ class ConfigurableDriver(
                 await self.transport.send(
                     self._apply_send_frame(_safe_encode_escapes(formatted))
                 )
-
-    def _state_gate_open(self, gate: Any) -> bool:
-        """Whether a ``when_state:`` gate lets its entry (or the whole poll)
-        run now.
-
-        ``when_state: {<state var>: <value>}`` or ``{<state var>: [<values>]}``:
-        every variable named must hold one of its values. A variable the
-        device has not reported yet (unset since start-up) does not hold the
-        entry back, so a first connect still asks the device for the state the
-        gate reads. Values compare in the variable's declared type. A gate
-        that is not a mapping opens, as a malformed ``only_when`` does.
-        """
-        if not isinstance(gate, dict) or not gate:
-            return True
-        declared = self._definition.get("state_variables") or {}
-        for var, wanted in gate.items():
-            actual = self.get_state(var)
-            if actual is None:
-                continue
-            var_def = declared.get(var)
-            var_type = (
-                var_def.get("type", "string") if isinstance(var_def, dict) else "string"
-            )
-            values = wanted if isinstance(wanted, list) else [wanted]
-            allowed = [
-                compiled_protocol.coerce_json_value(v, var_type) for v in values
-            ]
-            if compiled_protocol.coerce_json_value(actual, var_type) not in allowed:
-                return False
-        return True
-
-    def _describe_state_gate(self, gate: dict[str, Any]) -> tuple[str, str]:
-        """A shut ``when_state`` gate in words, as the Driver Builder shows
-        it: what it waits for ("Standby is false"), and what the device
-        reports now for each variable that holds it shut ("Standby true")."""
-        declared = self._definition.get("state_variables") or {}
-
-        def label(var: str) -> str:
-            var_def = declared.get(var)
-            return (var_def.get("label") if isinstance(var_def, dict) else None) or var
-
-        def word(value: Any) -> str:
-            if isinstance(value, bool):
-                return "true" if value else "false"
-            return str(value)
-
-        wanted: list[str] = []
-        reported: list[str] = []
-        for var, values in gate.items():
-            values = values if isinstance(values, list) else [values]
-            wanted.append(f"{label(var)} is {' or '.join(word(v) for v in values)}")
-            if not self._state_gate_open({var: values}):
-                reported.append(f"{label(var)} {word(self.get_state(var))}")
-        return " and ".join(wanted), ", ".join(reported)
-
-    def _poll_gate_shut(self, polling: dict[str, Any]) -> bool:
-        """Whether ``polling.when_state`` holds the poll back now. Says so in
-        the log once when the poll pauses and once when it resumes."""
-        held = not self._state_gate_open(polling.get("when_state"))
-        if held != self._poll_held:
-            self._poll_held = held
-            if held:
-                wanted, reported = self._describe_state_gate(polling.get("when_state"))
-                log.info(
-                    f"[{self.device_id}] Polling paused: it polls only while "
-                    f"{wanted}, and the device reports {reported}"
-                )
-            else:
-                log.info(f"[{self.device_id}] Polling resumed")
-        return held
-
-    async def _line_gate_shut(
-        self, gates: dict[str, Any] | None, entry: Any, *, quiet: bool = False,
-    ) -> str | None:
-        """Judge the ``when_state`` gates again just before a line goes out:
-        ``"poll"`` when the whole poll's gate has shut (``gates`` is the
-        polling block; None for start-up), ``"entry"`` when this entry's has,
-        else None. ``quiet`` judges the poll's gate without the poll's
-        paused / resumed log, for a line that is not part of the poll (a
-        response rule's follow-up query).
-
-        A gated line first waits for the transport to finish any write under
-        way or waiting (a command somebody sent, and its
-        ``inter_command_delay``), one sent while this line was already waiting
-        included, so a reply to it that shuts the gate is read before the
-        decision; between the decision and the send nothing yields. Without an
-        ``inter_command_delay`` the line follows a command at once, and only
-        a reply that has already arrived counts.
-        """
-        poll_gate = gates.get("when_state") if gates is not None else None
-        entry_gate = entry.get("when_state") if isinstance(entry, dict) else None
-        if not poll_gate and not entry_gate:
-            return None
-        wait_idle = getattr(self.transport, "wait_idle", None)
-        if wait_idle is not None:
-            await wait_idle()
-        if gates is not None and (
-            not self._state_gate_open(poll_gate) if quiet
-            else self._poll_gate_shut(gates)
-        ):
-            return "poll"
-        if isinstance(entry, dict) and not self._state_gate_open(
-            entry.get("when_state")
-        ):
-            return "entry"
-        return None
-
-    def _query_enabled(self, query: dict[str, Any]) -> bool:
-        """Whether a ``when:``- or ``when_state:``-gated polling/on_connect
-        entry should run.
-
-        ``when: <config_field>`` runs the entry only while that config field is
-        truthy. It exists so a device whose chatty stream must be *armed* by the
-        queries themselves (a per-channel ``subscribe`` to a level meter, say)
-        can offer that as an integrator checkbox instead of forcing the choice
-        on every site. ``when_state:`` runs it only while the device's own
-        state allows (_state_gate_open): a unit that any command wakes from
-        standby is left in standby. An entry with neither always runs.
-        """
-        if not self._state_gate_open(query.get("when_state")):
-            return False
-        field = query.get("when")
-        if field is None:
-            return True
-        if not isinstance(field, str) or not field:
-            log.warning(
-                f"[{self.device_id}] query 'when' must name a config field; "
-                f"skipping entry {query!r}"
-            )
-            return False
-        return reads_as_on(self.config.get(field))
-
-    def _expand_query(self, query: Any) -> list[str]:
-        """Expand one polling/on_connect entry. Strings pass through
-        unchanged; an ``{each_child: <type>, send: <template>}`` dict yields
-        one query per registered child of that type with ``{child_id}``
-        substituted (the unpadded local id). ``{child_id:spec}`` format specs
-        work too (``{child_id:02d}`` zero-pads for padded-address protocols),
-        and ``page_size: N`` sends it once per page of N children instead
-        (``child_ids.page_starts``) for a list read that answers a page;
-        other ``{placeholders}`` pass through untouched for the downstream
-        config substitution. A ``{send: <string>}`` dict is a plain query that
-        only exists in dict form so it can carry ``when:``. Either dict form may
-        declare ``when: <config_field>`` to run only while that field is truthy,
-        and ``when_state:`` to run only while the device's state allows
-        (_state_gate_open). Anything else is skipped with a warning.
-        """
-        if isinstance(query, str):
-            return [query]
-        if isinstance(query, dict):
-            if not self._query_enabled(query):
-                return []
-            if "each_child" in query:
-                ctype = query.get("each_child")
-                template = query.get("send")
-                if not isinstance(ctype, str) or not isinstance(template, str) or not template:
-                    log.warning(
-                        f"[{self.device_id}] each_child query needs 'each_child' "
-                        f"+ 'send'; skipping"
-                    )
-                    return []
-                children = page_starts(
-                    self.list_children(ctype), query.get("page_size")
-                )
-                return [
-                    self._safe_substitute(template, {"child_id": local_id})
-                    for local_id in children
-                ]
-            send = query.get("send")
-            if isinstance(send, str) and send:
-                return [send]
-        log.warning(
-            f"[{self.device_id}] Unrecognized query entry {query!r}; skipping"
-        )
-        return []
 
     def _follow_up(
         self,
@@ -1706,38 +1529,8 @@ class ConfigurableDriver(
         """Complete messages that reached the response rules, read or not."""
         return self._framed_messages if self._reads_replies() else None
 
-    def _poll_waits_on_device(self) -> bool:
-        """The last poll was held back by ``polling.when_state``."""
-        return self._poll_held
-
-    def _connect_check_held(self) -> bool:
-        """``polling.when_state`` holds the poll back now (the state the
-        device reported last, kept from before the reconnect). Read without
-        touching the poll's own paused/resumed bookkeeping, which is the
-        poll loop's."""
-        gate = (self._definition.get("polling") or {}).get("when_state")
-        if not isinstance(gate, dict) or self._state_gate_open(gate):
-            return False
-        wanted, reported = self._describe_state_gate(gate)
-        log.info(
-            f"[{self.device_id}] Connect check skipped: it polls only while "
-            f"{wanted}, and the device reports {reported}"
-        )
-        return True
-
     def _unread_sample(self) -> str:
         return self._last_unread
-
-    async def _liveness_held(self) -> bool:
-        """``polling.when_state`` holds the poll back, so it holds the
-        probe back too: a unit that any message would wake is left in
-        standby. Judged as a poll line is (_line_gate_shut), after a command
-        sent just before has had its answer read, and without the poll's own
-        paused/resumed log, which is the poll loop's."""
-        polling = self._definition.get("polling")
-        if not isinstance(polling, dict):
-            return False
-        return await self._line_gate_shut(polling, None, quiet=True) == "poll"
 
     async def _liveness_probe(self) -> None:
         """Send the declared probe and wait for a qualifying reply.
