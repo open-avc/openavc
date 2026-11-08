@@ -550,3 +550,205 @@ async def test_a_value_that_is_not_flat_is_told_as_its_repr():
     await driver.on_data_received(osc_encode_message("/acme/blob", [("b", b"\x01\x02")]))
     failures = [detail for kind, detail in seen if kind == "coercion_failure"]
     assert failures == [{"raw": repr(b"\x01\x02"), "type": "integer", "stored": repr(b"\x01\x02")}]
+
+
+# --- the edges a deliberate break found unwatched --------------------------
+
+
+async def test_an_optional_capture_that_did_not_take_part_keeps_the_last_value():
+    driver, _ = _driver(_definition("tcp", [{
+        "match": r"ST(\w+)(?: M(\w+))?",
+        "mappings": [{"group": 2, "state": "mode"}, {"group": 1, "state": "power"}],
+    }]))
+    await driver.on_data_received(b"STON Mlive")
+    await driver.on_data_received(b"STOFF")
+    assert driver.get_state("mode") == "live"
+    assert driver.get_state("power") == "OFF"
+
+
+async def test_an_absent_child_id_capture_is_not_looked_up_in_the_id_map():
+    driver, _ = _driver(_definition("tcp", [{
+        "match": r"CH(\d+)(?:@(\w+))?",
+        "child_set": [{"type": "channel", "id": {"group": 2, "map": {"None": 1}},
+                       "state": {"level": "$1"}}],
+    }]))
+    await driver.on_data_received(b"CH5")
+    assert driver.get_child_state("channel", 1).get("level") is None
+
+
+async def test_a_numeric_wire_id_outside_the_id_map_is_skipped():
+    driver, _ = _driver(_definition("tcp", [{
+        "match": r"CH(\w+) (\d+)",
+        "child_set": [{"type": "channel", "id": {"group": 1, "map": {"A": 1}},
+                       "state": {"level": "$2"}}],
+    }]))
+    await driver.on_data_received(b"CH3 44")
+    assert driver.get_child_state("channel", 3).get("level") is None
+
+
+async def test_a_child_entry_that_read_nothing_routes_no_follow_up():
+    driver, _ = _driver(_definition("tcp", [{
+        "match": r"CH(\d+)",
+        "child_set": [{"type": "channel", "id": "$1", "state": {"level": "$4"}}],
+        "then_query": [{"send": "NAME? {child_id}\r", "query_for": "name"}],
+    }]))
+    routed: list[Any] = []
+    driver._follow_up = lambda *args: routed.append(args)
+    await driver.on_data_received(b"CH2")
+    assert len(routed) == 1
+    assert routed[0][3] == []
+
+
+async def test_child_list_items_are_trimmed_before_they_are_matched_whole():
+    driver, _ = _driver(_definition("tcp", [{
+        "match": r"LST (.*)",
+        "child_list": {"type": "channel", "group": 1, "separator": ",",
+                       "element": r"(\d+)=(\d+)", "id": "$1", "state": {"level": "$2"}},
+    }]))
+    await driver.on_data_received(b"LST 1=10, 2=20 ,3=30")
+    assert [driver.get_child_state("channel", n).get("level") for n in range(1, 4)] == [10, 20, 30]
+
+
+async def test_child_list_empty_matches_are_not_places_and_an_empty_list_writes_nothing():
+    driver, _ = _driver(_definition("tcp", [
+        {"match": r"RUN (.*)",
+         "child_list": {"type": "channel", "group": 1, "element": r"\d*", "state": {"level": "$0"}}},
+        {"match": r"SEP(.*)",
+         "child_list": {"type": "channel", "group": 1, "separator": ",",
+                        "element": r"(\d*)", "state": {"name": "$1"}}},
+    ]))
+    await driver.on_data_received(b"RUN 11 12")
+    assert [driver.get_child_state("channel", n).get("level") for n in range(1, 5)] == [11, 12, None, None]
+    await driver.on_data_received(b"SEP")
+    assert [driver.get_child_state("channel", n).get("name") for n in range(1, 5)] == [None] * 4
+
+
+async def test_an_unread_line_is_remembered_to_eighty_characters():
+    driver, _ = _driver(_definition("tcp", [{"match": r"^PWR(\w+)$", "set": {"power": "$1"}}]))
+    line = "X" * 100
+    await driver.on_data_received(line.encode())
+    assert driver._last_unread == "X" * 80
+
+
+async def test_an_unread_osc_address_is_remembered_to_eighty_characters():
+    driver, _ = _driver(_definition("osc", [{"address": "/acme/level", "mappings": [{"arg": 0, "state": "level"}]}]))
+    address = "/" + "a" * 99
+    await driver.on_data_received(osc_encode_message(address, [("i", 1)]))
+    assert driver._last_unread == address[:80]
+
+
+async def test_an_osc_mapping_naming_the_arg_one_past_the_end_is_skipped():
+    driver, _ = _driver(_definition("osc", [{
+        "address": "/acme/st",
+        "mappings": [{"arg": 1, "state": "mode"}, {"arg": 0, "state": "power"}],
+    }]))
+    await driver.on_data_received(osc_encode_message("/acme/st", [("s", "on")]))
+    assert driver.get_state("mode") is None
+    assert driver.get_state("power") == "on"
+
+
+async def test_an_osc_child_prop_with_a_negative_arg_is_skipped():
+    driver, _ = _driver(_definition("osc", [{
+        "address": "/ch/*/fader",
+        "child_set": [{"type": "channel", "id": {"segment": 1},
+                       "state": {"level": {"arg": -1}, "name": {"arg": 0}}}],
+    }]))
+    await driver.on_data_received(osc_encode_message("/ch/2/fader", [("s", "Vox")]))
+    assert driver.get_child_state("channel", 2).get("level") is None
+    assert driver.get_child_state("channel", 2).get("name") == "Vox"
+
+
+async def test_a_held_osc_child_rule_throttles_each_address_on_its_own():
+    driver, _ = _driver(_definition("osc", [{
+        "address": "/ch/*/fader", "throttle": 60,
+        "child_set": [{"type": "channel", "id": {"segment": 1}, "state": {"level": {"arg": 0}}}],
+    }]))
+    await driver.on_data_received(osc_encode_message("/ch/1/fader", [("i", 10)]))
+    await driver.on_data_received(osc_encode_message("/ch/2/fader", [("i", 20)]))
+    await driver.on_data_received(osc_encode_message("/ch/1/fader", [("i", 11)]))
+    assert [driver.get_child_state("channel", n).get("level") for n in (1, 2)] == [10, 20]
+    driver._drop_all_held()
+
+
+async def test_an_osc_json_path_value_is_converted_as_the_device_sent_it():
+    driver, seen = _driver(_definition("osc", [{
+        "address": "/reply/*",
+        "mappings": [
+            {"arg": 0, "state": "level", "json_path": "n", "type": "integer"},
+            {"arg": 0, "state": "label", "json_path": "on", "type": "string"},
+        ],
+    }]))
+    await driver.on_data_received(osc_encode_message("/reply/x", [("s", '{"n": 1.5, "on": true}')]))
+    readings = (driver.get_state("level"), driver.get_state("label"))
+    failures = [detail for kind, detail in seen if kind == "coercion_failure"]
+    assert (readings, failures) == ((1, "True"), [])
+
+
+def test_a_json_body_that_is_a_list_is_never_read_by_key_or_index():
+    driver, _ = _driver(_definition("tcp", [{"json": True, "set": {"mode": "0.mode"}}]))
+    assert driver._apply_json_responses('[{"mode": "a"}, {"mode": "b"}]') is False
+    assert driver.get_state("mode") is None
+
+
+async def test_an_unread_osc_message_tells_args_that_are_not_flat_as_their_repr():
+    driver, seen = _driver(_definition("osc", [{"address": "/acme/level", "mappings": [{"arg": 0, "state": "level"}]}]))
+    await driver.on_data_received(osc_encode_message("/other", [("b", b"\x07"), ("i", 2)]))
+    assert seen == [("unmatched_response", {"address": "/other", "args": [repr(b"\x07"), 2]})]
+
+
+async def test_an_osc_child_id_at_a_negative_segment_is_skipped():
+    driver, _ = _driver(_definition("osc", [{
+        "address": "/ch/*/fader",
+        "child_set": [{"type": "channel", "id": {"segment": -1, "map": {"fader": 2}},
+                       "state": {"level": {"arg": 0}}}],
+    }]))
+    await driver.on_data_received(osc_encode_message("/ch/1/fader", [("i", 9)]))
+    assert driver.get_child_state("channel", 2).get("level") is None
+
+
+def test_a_json_mapping_with_an_empty_key_reads_nothing():
+    driver, _ = _driver(_definition("tcp", [{"json": True, "set": {"mode": ""}}]))
+    assert driver._apply_json_responses('{"a": 1, "b": 2}') is False
+    assert driver.get_state("mode") is None
+
+
+def test_a_json_child_prop_value_map_names_the_value_as_text():
+    driver, _ = _driver(_definition("tcp", [{
+        "json": True,
+        "child_set": [{"type": "channel", "id": 1,
+                       "state": {"name": {"key": "on", "map": {"1": "Live", "True": "Yes"}}}}],
+    }]))
+    assert driver._apply_json_responses('{"on": 1}') is True
+    assert driver.get_child_state("channel", 1).get("name") == "Live"
+    assert driver._apply_json_responses('{"on": true}') is True
+    assert driver.get_child_state("channel", 1).get("name") == "Yes"
+
+
+def test_a_json_value_that_does_not_convert_is_told_to_an_observer():
+    driver, seen = _driver(_definition("tcp", [
+        {"json": True, "set": {"level": {"key": "level", "type": "integer"}}},
+    ]))
+    driver._apply_json_responses('{"level": "loud"}')
+    assert ("coercion_failure", {"raw": "loud", "type": "integer", "stored": "loud"}) in seen
+
+
+async def test_an_osc_command_substitutes_config_and_params_into_address_and_args():
+    from unittest.mock import AsyncMock, MagicMock
+
+    from openavc.transport.osc import OSCTransport
+    from openavc.transport.osc_codec import osc_decode_bundle
+
+    definition = _definition("osc", [], commands={
+        "go": {"address": "/ws/{workspace}/cue/{cue}", "args": [{"type": "s", "value": "{workspace}"}]},
+    })
+    definition["config_schema"]["workspace"] = {"type": "string", "label": "Workspace"}
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    cls = create_configurable_driver_class(definition)
+    driver = cls("dev1", {"host": "127.0.0.1", "port": 5000, "workspace": "W1"}, state, events)
+    transport = MagicMock(spec=OSCTransport)
+    transport.send = AsyncMock()
+    driver.transport = transport
+    assert await driver._send_osc_command("go", definition["commands"]["go"], {"cue": "7"}) is True
+    assert osc_decode_bundle(transport.send.call_args.args[0]) == [("/ws/W1/cue/7", [("s", "W1")])]
