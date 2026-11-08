@@ -1,21 +1,29 @@
 """
 OpenAVC DeviceManager — manages all device driver instances.
 
-Handles:
-- Instantiating drivers from project config
-- Connection lifecycle (connect, reconnect on failure, disconnect)
-- Routing commands to the correct device
-- Exposing device metadata
+What it keeps itself: each device's lifecycle (add, the deferred bring-up,
+edit, remove, shutdown), the config it was handed and the live driver it built
+from it, a driver reload, the connect and drop events, and the rule that a
+missing simulator never falls through to physical control.
+
+The rule worth knowing before changing it: a driver gets its OWN copy of its
+config, because the copy kept here is what the project reconcile compares
+against, and a live driver writes into its own. A caller that changes a running
+device's connection or protocol config, and writes it into the project, moves
+both copies (``merge_live_config``), or the next reconcile reads the skew as an
+edit and re-adds the device.
 
 Its other jobs live in their own modules, mixed in so every name stays on the
-manager: retrying a dropped device (device_reconnect.py), saying why a device
-is away (device_away.py), queued settings (pending_settings.py), the Open Web
-UI page (device_web_ui.py), devices on a bridge port (device_bridges.py), a
-device paused on purpose (device_pause.py), devices waiting for their driver
-(device_orphans.py) and what the manager says about its devices
-(device_info.py). The checks a command passes before its driver are
-core/command_gates.py, and what the doors raise is core/device_errors.py,
-whose names this module re-exports.
+manager: sending a command (device_commands.py), retrying a dropped device
+(device_reconnect.py), Reconnect and a setup action's hold on the connection
+(device_manual_reconnect.py), saying why a device is away (device_away.py),
+writing settings, live or queued (pending_settings.py), the Open Web UI page
+(device_web_ui.py), devices on a bridge port (device_bridges.py), a device
+paused on purpose (device_pause.py), devices waiting for their driver
+(device_orphans.py) and what the manager says about its devices, their
+settings included (device_info.py). The checks a command passes before its
+driver are core/command_gates.py, and what the doors raise is
+core/device_errors.py, whose names this module re-exports.
 """
 
 from __future__ import annotations
@@ -41,6 +49,7 @@ from openavc.core.device_errors import (  # noqa: F401  (re-exported: the path t
     not_connected,
 )
 from openavc.core.device_info import DeviceInfoMixin
+from openavc.core.device_manual_reconnect import DeviceManualReconnectMixin
 from openavc.core.device_orphans import DeviceOrphansMixin
 from openavc.core.device_pause import (  # noqa: F401  (the constants re-exported)
     PAUSE_TTL,
@@ -77,7 +86,7 @@ def _device_id_of(event: str) -> str | None:
 class DeviceManager(
     DeviceAwayMixin, DeviceReconnectMixin, PendingSettingsMixin, DeviceWebUiMixin,
     DeviceBridgesMixin, DevicePauseMixin, DeviceOrphansMixin, DeviceInfoMixin,
-    DeviceCommandsMixin,
+    DeviceCommandsMixin, DeviceManualReconnectMixin,
 ):
     """Manages all device driver instances."""
 
@@ -720,112 +729,3 @@ class DeviceManager(
     async def _connect_driver(self, device_id: str, driver: Any) -> None:
         self._require_control_target(device_id)
         await driver.connect()
-
-    async def reconnect_device(self, device_id: str) -> None:
-        """Force disconnect and reconnect a device."""
-        driver = self._live_driver(device_id)
-        # A manual reconnect overrides a test-panel pause — clear the pause
-        # bookkeeping so the flag can't go stale and the TTL backstop can't
-        # fire a redundant resume later.
-        if self.is_paused(device_id):
-            self._end_pause(device_id)
-        # Cancel any existing auto-reconnect task first
-        await self._cancel_reconnect(device_id)
-        self.state.set(f"device.{device_id}.reconnect_failed", None, source="device_manager")
-        self._clear_offline_reason(device_id)
-        self.state.set(f"device.{device_id}.reconnect_attempt", None, source="device_manager")
-        # Suppress auto-reconnect during intentional disconnect
-        self._intentional_disconnect.add(device_id)
-        try:
-            await self._disconnect_keeping_silence(driver)
-            await self._reconnect_once(device_id, driver)
-            # Probed whether or not the control protocol connected, as at
-            # bring-up. Stopping simulation hands a device back through here,
-            # and one added while simulating has not been probed at its own
-            # address yet.
-            self._schedule_web_ui_probe(device_id)
-        finally:
-            self._intentional_disconnect.discard(device_id)
-
-    @staticmethod
-    async def _disconnect_keeping_silence(driver: BaseDriver) -> None:
-        """Close the driver for Reconnect. Reconnect is "try again" with
-        nothing changed: a device dropped for its silence still stopped
-        answering if this attempt gets no answer either, so its sentence
-        outlives the disconnect, which forgets it."""
-        silence = getattr(driver, "_silence_verdict", None)
-        try:
-            await driver.disconnect()
-        except Exception:
-            pass
-        if silence is not None:
-            driver._silence_verdict = silence
-
-    async def _reconnect_once(self, device_id: str, driver: BaseDriver) -> None:
-        """Reconnect's one attempt. A failure is published and, unless the
-        device refused its login, handed to the reconnect loop."""
-        try:
-            self._refresh_usb_serial_port(device_id, driver)
-            await self._connect_driver(device_id, driver)
-            log.info(f"Reconnected device: {device_id}")
-            # The reason was cleared up front by reconnect_device.
-            self._note_bridge_offline_if_down(device_id, driver, driver.config or {})
-            # Flush the queue, like every other path that brings a device up,
-            # or a setting queued while the device was away survives the
-            # Reconnect button (and the simulator's redirect, which reconnects
-            # through here) and waits for some later connect nobody asks for.
-            await self._apply_pending_settings(device_id)
-        except ConnectEndedError:
-            pass  # ended by a newer press, a pause or a removal
-        except Exception as e:
-            self.state.set(f"device.{device_id}.connected", False, source="device_manager")
-            code = self._set_offline_reason(device_id, driver, exc=e)
-            log.warning(f"Reconnect failed for {device_id}: {self._failure_text(device_id, e)}")
-            # The manual attempt was this action's one try.
-            if not self._paused_for_refused_login(device_id, code):
-                self._start_reconnect(device_id)
-
-    async def begin_setup(self, device_id: str) -> None:
-        """Suppress auto-reconnect for the duration of a setup action.
-
-        A setup action opens its own out-of-band transport, independent of the
-        device's normal (often failing) one. Cancel any running reconnect loop
-        and add the device to the intentional-disconnect set so the
-        auto-reconnect machinery doesn't race the handler's own connection. The
-        device's live transport (if any) is left untouched — an offline device
-        is already down, and the handler doesn't use it. Pair with ``end_setup``.
-        """
-        self._live_driver(device_id)
-        await self._cancel_reconnect(device_id)
-        self._intentional_disconnect.add(device_id)
-
-    async def end_setup(self, device_id: str) -> None:
-        """Re-enable auto-reconnect after a setup action. If the device didn't
-        come back online during the run (the handler didn't reconnect, or its
-        reconnect failed), resume the normal auto-reconnect loop so it keeps
-        trying. Idempotent and safe if the device was removed mid-run.
-        """
-        self._intentional_disconnect.discard(device_id)
-        driver = self._devices.get(device_id)
-        if driver is not None and not driver.get_state("connected"):
-            self._start_reconnect(device_id)
-
-    async def reconnect_in_place(self, device_id: str) -> None:
-        """Reconnect the existing driver instance using its current config.
-
-        Used by a setup action's ``request_reconnect`` after a config update —
-        it reconnects the *same* driver instance (so the handler's `self` stays
-        valid) with whatever settings ``request_config_update`` merged into
-        ``self.config``. Does not touch the intentional-disconnect set: the
-        setup runner owns that suppression for the whole run. Raises on connect
-        failure so the handler can see it.
-        """
-        driver = self._live_driver(device_id)
-        self._clear_offline_reason(device_id)
-        try:
-            await driver.disconnect()
-        except Exception:
-            pass
-        await self._connect_driver(device_id, driver)
-
-
