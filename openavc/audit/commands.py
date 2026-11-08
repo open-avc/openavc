@@ -641,71 +641,97 @@ class CommandPass:
         return float(declared) + self.restart_margin_seconds if declared else 0.0
 
     async def _send_and_watch(self, trial: CommandTrial, *, window: float | None = None) -> None:
+        """Send ``trial`` and hold its window open. ``window``: the batch's
+        query window, which is never held for a read-back."""
         sandbox = self.run.listen.sandbox
         listener = WindowListener(trial, sandbox, after_reconnect_seconds=self.after_reconnect_seconds)
         trial.mark(sandbox.observer, trial.marks)
         try:
-            try:
-                result = await sandbox.manager.send_command(
-                    sandbox.device_id, trial.command, trial.params or None,
-                    files_allowed=trial.file_command,
-                )
-                trial.result = recorded(result)
-                if isinstance(result, DeviceFile) and trial.keep_file is not None:
-                    trial.returned_file = trial.keep_file(result)
-            except asyncio.CancelledError:
-                trial.error = "The audit stopped before the command finished."
-                raise
-            except Exception as exc:
-                trial.error = error_sentence(exc)
-                trial.error_type = type(exc).__name__
-            finally:
-                if trial.on_finished is not None:
-                    trial.on_finished()
-                    trial.on_finished = None
-                trial.returned_at = time.time()
-                trial.marks["returned"] = len(sandbox.observer.traffic)
-                trial.returned_seq = getattr(sandbox.state, "seq", 0)
-                span = self.window_seconds if window is None else window
-                if not trial.error:
-                    span = max(span, self._restart_span(trial))
-                    if window is None:
-                        span = max(span, self._readback_span(trial))
-                elif command_sent_nothing(
-                    trial.traffic_in(sandbox.observer), trial.sent_at, trial.returned_at,
-                    grace=0.0, started_inclusive=True,
-                ):
-                    # Refused before a byte left for the device: nothing to watch.
-                    span = 0.0
-                trial.ends_at = trial.returned_at + span
-                trial.status = WATCHING
-                trial.returned.set()
-                self._publish(trial)
-            # Watched past the usual window only to hear the device report what
-            # the command declares: once it has (or when nothing was sent, so
-            # nothing can come back), the window ends as usual.
-            waiting_for_readback = (
-                window is None and not trial.error and not self._restart_span(trial)
-                and self._readback_span(trial) > self.window_seconds
-            )
-            usual_end = (trial.returned_at or 0) + self.window_seconds
-            while time.time() < (trial.ends_at or 0) and sandbox.started:
-                await asyncio.sleep(
-                    min(self.flush_seconds, max(0.0, (trial.ends_at or 0) - time.time()))
-                )
-                if (
-                    waiting_for_readback and not trial.extended and time.time() >= usual_end
-                    and (self._read_back(trial, sandbox) or command_sent_nothing(
-                        trial.traffic_in(sandbox.observer), trial.sent_at,
-                        trial.returned_at or trial.sent_at, started_inclusive=True,
-                    ))
-                ):
-                    trial.ends_at = time.time()
-                    waiting_for_readback = False
-                self._publish(trial)
+            await self._call(trial, sandbox, window)
+            await self._hold_open(trial, sandbox, window)
         finally:
             listener.close()
             self._finish(trial)
+
+    async def _call(self, trial: CommandTrial, sandbox: Any, window: float | None) -> None:
+        """The driver's call through the production door: what it returned
+        or raised, and then the window opens."""
+        try:
+            result = await sandbox.manager.send_command(
+                sandbox.device_id, trial.command, trial.params or None,
+                files_allowed=trial.file_command,
+            )
+            trial.result = recorded(result)
+            if isinstance(result, DeviceFile) and trial.keep_file is not None:
+                trial.returned_file = trial.keep_file(result)
+        except asyncio.CancelledError:
+            trial.error = "The audit stopped before the command finished."
+            raise
+        except Exception as exc:
+            trial.error = error_sentence(exc)
+            trial.error_type = type(exc).__name__
+        finally:
+            self._returned(trial, sandbox, window)
+
+    def _returned(self, trial: CommandTrial, sandbox: Any, window: float | None) -> None:
+        """The call is over: the door's staged uploads go, where the traffic
+        and the store stood is noted, the window opens for as long as it
+        will be watched, and ``send`` and the wizard hear of it."""
+        if trial.on_finished is not None:
+            trial.on_finished()
+            trial.on_finished = None
+        trial.returned_at = time.time()
+        trial.marks["returned"] = len(sandbox.observer.traffic)
+        trial.returned_seq = getattr(sandbox.state, "seq", 0)
+        trial.ends_at = trial.returned_at + self._window_span(trial, sandbox, window)
+        trial.status = WATCHING
+        trial.returned.set()
+        self._publish(trial)
+
+    def _window_span(self, trial: CommandTrial, sandbox: Any, window: float | None) -> float:
+        """How long after the call returned the window stays open: the usual
+        window (or the batch's), a declared restart's and, for a command of
+        its own, the read-back wait, whichever is longest. A command refused
+        before a byte left for the device has nothing to watch."""
+        span = self.window_seconds if window is None else window
+        if trial.error:
+            return 0.0 if _refused_unsent(trial, sandbox) else span
+        if window is None:
+            return max(span, self._restart_span(trial), self._readback_span(trial))
+        return max(span, self._restart_span(trial))
+
+    async def _hold_open(self, trial: CommandTrial, sandbox: Any, window: float | None) -> None:
+        """Keep the window open until it ends or the driver stops, telling the
+        wizard as it goes. A window held past the usual time only to hear the
+        device report what the command declares ends as usual once it has
+        (or when nothing was sent, so nothing can come back)."""
+        waiting_for_readback = self._waits_for_readback(trial, window)
+        usual_end = (trial.returned_at or 0) + self.window_seconds
+        while time.time() < (trial.ends_at or 0) and sandbox.started:
+            await asyncio.sleep(
+                min(self.flush_seconds, max(0.0, (trial.ends_at or 0) - time.time()))
+            )
+            if waiting_for_readback and self._heard_back(trial, sandbox, usual_end):
+                trial.ends_at = time.time()
+                waiting_for_readback = False
+            self._publish(trial)
+
+    def _waits_for_readback(self, trial: CommandTrial, window: float | None) -> bool:
+        """Is the window held past the usual time only for a read-back? Never
+        for the batch's queries, a refusal or a restart."""
+        if window is not None or trial.error or self._restart_span(trial):
+            return False
+        return self._readback_span(trial) > self.window_seconds
+
+    def _heard_back(self, trial: CommandTrial, sandbox: Any, usual_end: float) -> bool:
+        """Past the usual end with no "Wait longer": has the device reported
+        what the command declares, or did nothing go out?"""
+        if trial.extended or time.time() < usual_end:
+            return False
+        return self._read_back(trial, sandbox) or command_sent_nothing(
+            trial.traffic_in(sandbox.observer), trial.sent_at,
+            trial.returned_at or trial.sent_at, started_inclusive=True,
+        )
 
     def _finish(self, trial: CommandTrial) -> None:
         if trial.status == DONE:
@@ -885,6 +911,15 @@ class CommandPass:
             **self._lists_update(),
         }
         self.session.publish({"type": "audit.commands", "run": self.run.index, "commands": update})
+
+
+def _refused_unsent(trial: CommandTrial, sandbox: Any) -> bool:
+    """Did a refused command fail before a byte left for the device? Only
+    what was sent before the call returned counts."""
+    return command_sent_nothing(
+        trial.traffic_in(sandbox.observer), trial.sent_at, trial.returned_at,
+        grace=0.0, started_inclusive=True,
+    )
 
 
 def _sent_nothing(trial: CommandTrial, attempt: Any) -> bool | None:
