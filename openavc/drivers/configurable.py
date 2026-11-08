@@ -18,8 +18,9 @@ over a line of text (``text_replies``), the JSON-body rules and the
 (``osc_wire``), what a reply's value becomes and which child it belongs to
 (``reply_values``), and a rule's throttle (``reply_throttle``). Around the
 connection: the ``auth:`` sign-in (``sign_in``), the children an
-``instances:`` block declares (``declared_roster``), and whether an HTTP
-device is refusing the credentials (``http_credential``). The framing of
+``instances:`` block declares (``declared_roster``), whether an HTTP device
+is refusing the credentials (``http_credential``), and the ``liveness:``
+watchdog (``liveness_block``). The framing of
 every byte the device's protocol puts on the wire, from every place that
 sends: ``send_framing``. The lines the driver sends on its own: start-up, the poll and the spacing between their
 lines (``start_up_and_poll``), what a poll or start-up entry sends and
@@ -30,7 +31,6 @@ again after a change, a reply rule's ``then_query`` and a command's
 
 from __future__ import annotations
 
-import asyncio
 import json
 import re
 from typing import Any
@@ -50,6 +50,7 @@ from openavc.drivers.param_labels import param_label
 from openavc.drivers.declared_roster import DeclaredRoster
 from openavc.drivers.http_credential import HttpCredential
 from openavc.drivers.json_replies import JsonReplies
+from openavc.drivers.liveness_block import LivenessBlock
 from openavc.drivers.osc_wire import OscWire
 from openavc.drivers.query_entries import QueryEntries
 from openavc.drivers.reply_throttle import ReplyThrottle
@@ -142,6 +143,7 @@ class ConfigurableDriver(
     Rereads,
     SettingWrites,
     SendFraming,
+    LivenessBlock,
     SignIn,
     HttpCredential,
     QueryEntries,
@@ -223,38 +225,15 @@ class ConfigurableDriver(
         # outside it on_data_received goes to the reply rules.
         self._init_sign_in()
 
-        # Declarative liveness watchdog (`liveness:` block): "send X every N,
-        # await a reply within T, reconnect after K misses". Backs the
-        # BaseDriver watchdog hook — _health_enabled()/_liveness_probe() below.
-        # Needed for transports that can't self-detect a dead peer: UDP (a
-        # fire-and-forget poll never notices silence), OSC, and push-mostly TCP
-        # (no FIN when the device vanishes). The loader validates the block;
-        # runtime parsing stays defensive so a hand-installed file can't crash
-        # the driver.
-        self._liveness_def: dict[str, Any] | None = None
-        self._liveness_expect: re.Pattern[str] | None = None
-        self._liveness_waiter: asyncio.Future[None] | None = None
+        # The `liveness:` block's watchdog (liveness_block).
+        self._init_liveness_block()
+
         # Messages a response rule read (it matched and applied, or a
         # throttle held its writes), and the last one none did: the poll
         # loop's unread-replies check (_parsed_count, BaseDriver._judge_reading).
         self._parsed_messages = 0
         self._framed_messages = 0
         self._last_unread = ""
-        lv = self._definition.get("liveness")
-        if isinstance(lv, dict) and isinstance(lv.get("send"), str) and lv["send"]:
-            try:
-                if lv.get("expect"):
-                    self._liveness_expect = re.compile(str(lv["expect"]))
-                self.HEALTH_INTERVAL_S = float(lv.get("interval", 30.0))
-                self.HEALTH_TIMEOUT_S = float(lv.get("timeout", 5.0))
-                self.HEALTH_MAX_FAILURES = int(lv.get("max_failures", 2))
-                self._liveness_def = lv
-            except (re.error, TypeError, ValueError) as e:
-                log.warning(
-                    f"[{self.device_id}] Invalid liveness block — watchdog "
-                    f"disabled: {e}"
-                )
-                self._liveness_expect = None
 
         compiled = compiled_protocol.compile_driver(
             self._definition, self.config, device_id=self.device_id
@@ -915,15 +894,6 @@ class ConfigurableDriver(
 
         return response
 
-    # --- Declarative liveness watchdog (`liveness:` block) ---
-
-    def _health_enabled(self) -> bool:
-        """The BaseDriver watchdog runs only when the YAML declares a
-        `liveness:` block (this class always overrides the probe, so the
-        default is-overridden check would wrongly enable it for every
-        declarative driver)."""
-        return self._liveness_def is not None
-
     def _reads_replies(self) -> bool:
         """A definition reads what the device sends when it declares a
         response rule of any kind. One with none is a device that is only
@@ -944,73 +914,6 @@ class ConfigurableDriver(
 
     def _unread_sample(self) -> str:
         return self._last_unread
-
-    async def _liveness_probe(self) -> None:
-        """Send the declared probe and wait for a qualifying reply.
-
-        Any inbound frame counts as alive — a poll reply or an unsolicited
-        push arriving during the wait window proves the device is there just
-        as well as a direct answer. An `expect` regex narrows that to matching
-        frames only, so a definition's `expect` matches the device's error
-        reply to the probe as well as the good one: an error is still an
-        answer, and a miss here drops the link. The reply deadline is
-        enforced by the BaseDriver loop (HEALTH_TIMEOUT_S wraps this
-        coroutine, HEALTH_INTERVAL_S on a held reconnect), which cancels the
-        await on timeout; the finally clears the waiter either way.
-        """
-        lv = self._liveness_def
-        if lv is None or self.transport is None:
-            return
-        waiter: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-        self._liveness_waiter = waiter
-        try:
-            await self._send_liveness_probe(lv)
-            await waiter
-        finally:
-            if self._liveness_waiter is waiter:
-                self._liveness_waiter = None
-
-    async def _send_liveness_probe(self, lv: dict[str, Any]) -> None:
-        """Transmit the probe payload for this driver's transport type.
-
-        `send` follows the same conventions as `polling.queries`: a raw
-        protocol string (escape sequences + {config} substitution, terminator
-        included) for tcp/serial/udp, an OSC address (with optional `args`)
-        for osc.
-        """
-        if self._definition.get("transport") == "osc":
-            from openavc.transport.osc_codec import osc_encode_message
-
-            address = lv["send"]
-            if "{" in address:
-                address = self._safe_substitute(address, self.config)
-            args = self._build_osc_args(lv.get("args", []), self.config)
-            await self.transport.send(osc_encode_message(address, args))
-        else:
-            payload = lv["send"]
-            if "{" in payload:
-                payload = self._safe_substitute(payload, self.config)
-            # No prefix or suffix (the author writes any framing into the
-            # probe), but the send_frame header: a length-framed protocol like
-            # eISCP needs it on every message, or the probe is never answered.
-            await self.transport.send(self._line_bytes(payload))
-
-    def _liveness_note_data(self, data: bytes) -> None:
-        """Resolve a waiting liveness probe when qualifying data arrives.
-
-        Called from on_data_received before normal dispatch; never consumes
-        the data. The expect regex (if any) is matched against a permissive
-        text decode so it works for binary-ish payloads too (an OSC packet
-        leads with its ASCII address, so address patterns still match).
-        """
-        waiter = self._liveness_waiter
-        if waiter is None or waiter.done():
-            return
-        if self._liveness_expect is not None:
-            text = data.decode("utf-8", errors="replace")
-            if not self._liveness_expect.search(text):
-                return
-        waiter.set_result(None)
 
     async def on_data_received(self, data: bytes) -> None:
         """One frame from the device: the sign-in's while it runs, else the
