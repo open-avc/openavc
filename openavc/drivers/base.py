@@ -295,6 +295,32 @@ def _verify_failure_error(
     return not_responding
 
 
+def _typed_handshake_failure(
+    handshake: asyncio.Future[None] | None,
+) -> BaseException | None:
+    """The failure a finished handshake ended on, when it is a typed fault (a
+    refused login); None for a handshake that never ran, was cancelled,
+    returned, or failed some other way."""
+    if handshake is None or not handshake.done() or handshake.cancelled():
+        return None
+    failure = handshake.exception()
+    if typed_fault_from_exc(failure) is None:
+        return None
+    return failure
+
+
+async def _stop_handshake(handshake: asyncio.Future[None] | None) -> None:
+    """Cancel a handshake the drop cut short and wait for it to stop. One
+    that ended on a failure of its own instead has that failure read, so it
+    is not logged as never retrieved."""
+    if handshake is None or handshake.done():
+        return
+    handshake.cancel()
+    await asyncio.wait((handshake,))
+    if not handshake.cancelled():
+        handshake.exception()
+
+
 class BaseDriver(
     ChildEntities, PushChannel, LivenessWatch, PollLoop, TransportLadder, UdpSideSend, ABC,
 ):
@@ -1426,25 +1452,26 @@ class BaseDriver(
                 if not dropped.done():
                     handshake.result()  # its own outcome: returns or raises
                     return
-            if dropped.result() is _CONNECT_ENDED:
-                raise ConnectEndedError(default_fault_message(TRANSPORT_DISCONNECTED))
-            if (
-                handshake is not None
-                and handshake.done()
-                and not handshake.cancelled()
-                and typed_fault_from_exc(handshake.exception()) is not None
-            ):
-                raise handshake.exception()  # type: ignore[misc]
-            raise self._dropped_error()
+            raise self._handshake_cut_short(dropped, handshake)
         finally:
             # Only ever this connect's own: connects run one at a time.
             if self._connect_drop is dropped:
                 self._connect_drop = None
-            if handshake is not None and not handshake.done():
-                handshake.cancel()
-                await asyncio.wait((handshake,))
-                if not handshake.cancelled():
-                    handshake.exception()  # seen, so it is not logged as lost
+            await _stop_handshake(handshake)
+
+    def _handshake_cut_short(
+        self, dropped: asyncio.Future[object], handshake: asyncio.Future[None] | None,
+    ) -> BaseException:
+        """What a connect raises when its connection dropped, or another door
+        ended it, before the handshake finished: ended, a ConnectEndedError;
+        a handshake that had already failed with a typed fault, that fault;
+        else why the connection closed (:meth:`_dropped_error`)."""
+        if dropped.result() is _CONNECT_ENDED:
+            return ConnectEndedError(default_fault_message(TRANSPORT_DISCONNECTED))
+        typed = _typed_handshake_failure(handshake)
+        if typed is not None:
+            return typed
+        return self._dropped_error()
 
     def _dropped_error(self) -> ConnectionError:
         """Why the connection closed under a connect, in the transport's words.
