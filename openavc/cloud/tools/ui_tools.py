@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from openavc.cloud.state_relay import cloud_state_value, is_cloud_excluded_key
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
+from openavc.cloud.tools.ui_bindings import normalize_bindings, validate_bindings
 from openavc.core.command_params import file_command_check, missing_params_check
 from openavc.core.ui_events import resolve_press
 from openavc.drivers.child_ids import declared_child_ids
@@ -984,7 +985,6 @@ class UIToolsMixin:
         if not page_id:
             return {"error": "Page ID is required"}
 
-        from openavc.cloud.ai_tool_handler import _normalize_bindings, _validate_bindings
         from openavc.core.project_loader import UIPage
         elements = input.get("elements", [])
         findings: list = []
@@ -1011,8 +1011,8 @@ class UIToolsMixin:
                     if place is not None:
                         boxes[el_id] = place
                     if isinstance(el_data.get("bindings"), dict):
-                        el_data["bindings"] = _normalize_bindings(el_data["bindings"])
-                        err = _validate_bindings(el_data["bindings"], project)
+                        el_data["bindings"] = normalize_bindings(el_data["bindings"])
+                        err = validate_bindings(el_data["bindings"], project)
                         if err:
                             raise ToolEditError({"error": f"Element '{el_id}': {err}"})
                 except (ToolEditError, ValueError) as exc:
@@ -1249,7 +1249,6 @@ class UIToolsMixin:
         if not elements:
             return {"error": "No elements provided"}
 
-        from openavc.cloud.ai_tool_handler import _normalize_bindings, _validate_bindings
         from openavc.core.project_loader import UIElement
         findings: list = []
         adjustments: list = []
@@ -1288,8 +1287,8 @@ class UIToolsMixin:
                 try:
                     place = _take_placement(el_data, f"Element '{el_id}'")
                     if "bindings" in el_data and isinstance(el_data["bindings"], dict):
-                        el_data["bindings"] = _normalize_bindings(el_data["bindings"])
-                        err = _validate_bindings(el_data["bindings"], project)
+                        el_data["bindings"] = normalize_bindings(el_data["bindings"])
+                        err = validate_bindings(el_data["bindings"], project)
                         if err:
                             raise ToolEditError({"error": f"Element '{el_id}': {err}"})
                     element = UIElement(**el_data)
@@ -1406,15 +1405,14 @@ class UIToolsMixin:
             # (UIElement has no validate_assignment), persisting a structurally
             # invalid element — reject it instead of assigning it raw.
             if "bindings" in input:
-                from openavc.cloud.ai_tool_handler import _normalize_bindings, _validate_bindings
                 bindings = input["bindings"]
                 if not isinstance(bindings, dict):
                     raise ToolEditError({
                         "error": f"Element '{element_id}': 'bindings' must be an object, "
                                  f"got {type(bindings).__name__}"
                     })
-                bindings = _normalize_bindings(bindings)
-                err = _validate_bindings(bindings, project)
+                bindings = normalize_bindings(bindings)
+                err = validate_bindings(bindings, project)
                 if err:
                     raise ToolEditError({"error": f"Element '{element_id}': {err}"})
 
@@ -1589,7 +1587,6 @@ class UIToolsMixin:
         if not element_id:
             return {"error": "Element ID is required"}
 
-        from openavc.cloud.ai_tool_handler import _normalize_bindings, _validate_bindings
         from openavc.core.project_loader import MasterElement
         el_data = {k: v for k, v in input.items() if k != "id"}
         el_data["id"] = element_id
@@ -1617,8 +1614,8 @@ class UIToolsMixin:
                 raise ToolEditError({"error": f"Master element '{element_id}' already exists"})
 
             if "bindings" in el_data and isinstance(el_data["bindings"], dict):
-                el_data["bindings"] = _normalize_bindings(el_data["bindings"])
-                err = _validate_bindings(el_data["bindings"], project)
+                el_data["bindings"] = normalize_bindings(el_data["bindings"])
+                err = validate_bindings(el_data["bindings"], project)
                 if err:
                     raise ToolEditError({"error": f"Master element '{element_id}': {err}"})
             if isinstance(el_data.get("placements"), dict):
@@ -1694,15 +1691,14 @@ class UIToolsMixin:
                 })
 
             if "bindings" in input:
-                from openavc.cloud.ai_tool_handler import _normalize_bindings, _validate_bindings
                 bindings = input["bindings"]
                 if not isinstance(bindings, dict):
                     raise ToolEditError({
                         "error": f"Master element '{element_id}': 'bindings' must be an "
                                  f"object, got {type(bindings).__name__}"
                     })
-                bindings = _normalize_bindings(bindings)
-                err = _validate_bindings(bindings, project)
+                bindings = normalize_bindings(bindings)
+                err = validate_bindings(bindings, project)
                 if err:
                     raise ToolEditError({"error": f"Master element '{element_id}': {err}"})
                 target.bindings = bindings

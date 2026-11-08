@@ -23,12 +23,10 @@ import pytest
 from openavc.cloud.ai_tool_handler import (
     TOOL_FAILED,
     AIToolHandler,
-    _normalize_bindings,
-    _validate_action,
-    _validate_bindings,
     _validate_variable,
     describe_tool_failure,
 )
+from openavc.cloud.tools.ui_bindings import _validate_action, normalize_bindings, validate_bindings
 from openavc.core.ui_events import DISPATCHED_ACTIONS
 
 FAILED = "Binding validation failed: "
@@ -149,7 +147,7 @@ class TestValidateAction:
 
 class TestDoBindings:
     def test_retired_flat_keys_are_listed_sorted(self):
-        err = _validate_bindings({"value": {}, "press": [], "do": {}, "feedback": 1})
+        err = validate_bindings({"value": {}, "press": [], "do": {}, "feedback": 1})
         assert err == (
             "Binding validation failed: bindings use the show/do model. Put "
             "interaction actions under 'do' (do.press, do.change, do.route, ...) "
@@ -163,35 +161,35 @@ class TestDoBindings:
         "text", "feedback", "color", "items", "selected", "visible_when", "meter",
     ])
     def test_every_retired_key(self, key):
-        err = _validate_bindings({key: None})
+        err = validate_bindings({key: None})
         assert err.endswith(f"Remove top-level: {key}")
 
     @pytest.mark.parametrize("do, kind", [([], "list"), ("x", "str"), (0, "int")])
     def test_do_must_be_an_object(self, do, kind):
-        assert _validate_bindings({"do": do}) == _refusal(f"'do' must be an object, got {kind}")
+        assert validate_bindings({"do": do}) == _refusal(f"'do' must be an object, got {kind}")
 
     def test_do_none_is_absent(self):
-        assert _validate_bindings({"do": None, "show": None}) is None
+        assert validate_bindings({"do": None, "show": None}) is None
 
     def test_an_unknown_interaction(self):
-        assert _validate_bindings({"do": {"tap": []}}) == _refusal(
+        assert validate_bindings({"do": {"tap": []}}) == _refusal(
             f"do.tap: not a valid interaction. Use: {INTERACTIONS}"
         )
 
     def test_an_unknown_interaction_is_not_checked_further(self):
-        assert _validate_bindings({"do": {"tap": "x", "hold": [{"action": "macro"}]}}) == _refusal(
+        assert validate_bindings({"do": {"tap": "x", "hold": [{"action": "macro"}]}}) == _refusal(
             f"do.tap: not a valid interaction. Use: {INTERACTIONS}",
             "do.hold[0]: macro action requires 'macro'",
         )
 
     @pytest.mark.parametrize("val, kind", [({"action": "macro"}, "dict"), ("x", "str"), (None, "NoneType")])
     def test_an_interaction_must_be_a_list(self, val, kind):
-        assert _validate_bindings({"do": {"change": val}}) == _refusal(
+        assert validate_bindings({"do": {"change": val}}) == _refusal(
             f"do.change must be an array of action objects, got {kind}"
         )
 
     def test_each_item_must_be_an_action_object(self):
-        assert _validate_bindings({"do": {"submit": ["x", {"action": "macro"}]}}) == _refusal(
+        assert validate_bindings({"do": {"submit": ["x", {"action": "macro"}]}}) == _refusal(
             "do.submit[0]: expected an action object, got str",
             "do.submit[1]: macro action requires 'macro'",
         )
@@ -203,7 +201,7 @@ class TestDoBindings:
             "release": "x",
             "hold": [{"action": "state.set"}],
         }
-        assert _validate_bindings({"do": do}) == _refusal(
+        assert validate_bindings({"do": do}) == _refusal(
             "do.press[0]: macro action requires 'macro'",
             f"do.bogus: not a valid interaction. Use: {INTERACTIONS}",
             "do.release must be an array of action objects, got str",
@@ -212,29 +210,29 @@ class TestDoBindings:
 
     def test_an_unknown_mode(self):
         b = {"do": {"press": [{"action": "macro", "macro": "go", "mode": "spin"}]}}
-        assert _validate_bindings(b) == _refusal(
+        assert validate_bindings(b) == _refusal(
             "do.press[0]: mode 'spin' is not valid. Use: tap, toggle, hold_repeat, tap_hold"
         )
 
     @pytest.mark.parametrize("mode", ["", None, "tap", "hold_repeat"])
     def test_modes_with_nothing_to_check(self, mode):
         b = {"do": {"press": [{"action": "macro", "macro": "go", "mode": mode}]}}
-        assert _validate_bindings(b) is None
+        assert validate_bindings(b) is None
 
     @pytest.mark.parametrize("mode", [[], {}, 0])
     def test_an_empty_mode_of_another_kind_has_nothing_to_check(self, mode):
         b = {"do": {"press": [{"action": "macro", "macro": "go", "mode": mode}]}}
-        assert _validate_bindings(b) is None
+        assert validate_bindings(b) is None
 
     def test_a_list_mode_raises_today(self):
         # Present behaviour, not a refusal: the membership test cannot hash it.
         b = {"do": {"press": [{"action": "macro", "macro": "go", "mode": ["toggle"]}]}}
         with pytest.raises(TypeError):
-            _validate_bindings(b)
+            validate_bindings(b)
 
     def test_toggle_needs_a_key_and_an_off_action(self):
         b = {"do": {"press": [{"action": "macro", "macro": "go", "mode": "toggle"}]}}
-        assert _validate_bindings(b) == _refusal(
+        assert validate_bindings(b) == _refusal(
             "do.press[0]: toggle mode requires 'toggle_key'",
             "do.press[0]: toggle mode requires 'off_action' (an action object)",
         )
@@ -245,7 +243,7 @@ class TestDoBindings:
             "action": "macro", "macro": "go", "mode": "toggle",
             "toggle_key": toggle_key, "off_action": {},
         }]}}
-        assert _validate_bindings(b) == _refusal("do.press[0]: toggle mode requires 'toggle_key'")
+        assert validate_bindings(b) == _refusal("do.press[0]: toggle mode requires 'toggle_key'")
 
     @pytest.mark.parametrize("off_action", [None, [], "macro"])
     def test_toggle_off_action_must_be_an_object(self, off_action):
@@ -253,7 +251,7 @@ class TestDoBindings:
             "action": "macro", "macro": "go", "mode": "toggle",
             "toggle_key": "var.x", "off_action": off_action,
         }]}}
-        assert _validate_bindings(b) == _refusal(
+        assert validate_bindings(b) == _refusal(
             "do.press[0]: toggle mode requires 'off_action' (an action object)"
         )
 
@@ -262,7 +260,7 @@ class TestDoBindings:
             "action": "macro", "macro": "go", "mode": "toggle",
             "toggle_key": "var.x", "off_action": {},
         }]}}
-        assert _validate_bindings(b) is None
+        assert validate_bindings(b) is None
 
     def test_a_valid_toggle_and_a_valid_tap_hold(self):
         for mode, field in (("toggle", "off_action"), ("tap_hold", "hold_action")):
@@ -270,14 +268,14 @@ class TestDoBindings:
                 "action": "macro", "macro": "go", "mode": mode, "toggle_key": "var.x",
                 field: {"action": "macro", "macro": "stop"},
             }]}}
-            assert _validate_bindings(b) is None
+            assert validate_bindings(b) is None
 
     def test_the_off_action_is_checked_as_an_action(self):
         b = {"do": {"press": [{
             "action": "macro", "macro": "go", "mode": "toggle",
             "toggle_key": "var.x", "off_action": {"action": "state.set"},
         }]}}
-        assert _validate_bindings(b) == _refusal(
+        assert validate_bindings(b) == _refusal(
             "do.press[0].off_action: state.set action requires 'key'"
         )
 
@@ -286,7 +284,7 @@ class TestDoBindings:
         first = {"action": "macro", "macro": "go", "mode": "tap_hold"}
         if hold_action is not None:
             first["hold_action"] = hold_action
-        assert _validate_bindings({"do": {"press": [first]}}) == _refusal(
+        assert validate_bindings({"do": {"press": [first]}}) == _refusal(
             "do.press[0]: tap_hold mode requires 'hold_action' (an action object)"
         )
 
@@ -295,7 +293,7 @@ class TestDoBindings:
             "action": "macro", "macro": "go", "mode": "tap_hold",
             "hold_action": {"action": "nope"},
         }]}}
-        assert _validate_bindings(b) == _refusal(
+        assert validate_bindings(b) == _refusal(
             "do.press[0].hold_action: action type 'nope' is not valid. Use: "
             + ", ".join(sorted(DISPATCHED_ACTIONS))
         )
@@ -304,25 +302,25 @@ class TestDoBindings:
         b = {"do": {"press": [{
             "action": "macro", "macro": "go", "mode": "tap_hold", "hold_action": {},
         }]}}
-        assert _validate_bindings(b) is None
+        assert validate_bindings(b) is None
 
     def test_only_the_first_press_action_carries_the_mode(self):
         b = {"do": {"press": [
             {"action": "macro", "macro": "go"},
             {"action": "macro", "macro": "go", "mode": "spin"},
         ], "change": [{"action": "macro", "macro": "go", "mode": "spin"}]}}
-        assert _validate_bindings(b) is None
+        assert validate_bindings(b) is None
 
     def test_no_mode_check_when_the_first_press_is_not_an_object(self):
         b = {"do": {"press": ["x", {"action": "macro", "macro": "go", "mode": "spin"}]}}
-        assert _validate_bindings(b) == _refusal("do.press[0]: expected an action object, got str")
+        assert validate_bindings(b) == _refusal("do.press[0]: expected an action object, got str")
 
     def test_the_mode_problems_follow_every_interaction_problem(self):
         b = {"do": {
             "press": [{"action": "macro", "mode": "toggle"}],
             "change": [{"action": "state.set"}],
         }}
-        assert _validate_bindings(b) == _refusal(
+        assert validate_bindings(b) == _refusal(
             "do.press[0]: macro action requires 'macro'",
             "do.change[0]: state.set action requires 'key'",
             "do.press[0]: toggle mode requires 'toggle_key'",
@@ -334,13 +332,13 @@ class TestDoBindings:
 
 
 def _show(**slots):
-    return _validate_bindings({"show": slots})
+    return validate_bindings({"show": slots})
 
 
 class TestShowBindings:
     @pytest.mark.parametrize("show, kind", [([], "list"), ("x", "str")])
     def test_show_must_be_an_object(self, show, kind):
-        assert _validate_bindings({"show": show}) == _refusal(f"'show' must be an object, got {kind}")
+        assert validate_bindings({"show": show}) == _refusal(f"'show' must be an object, got {kind}")
 
     @pytest.mark.parametrize("slot", ["value", "items", "look", "visible_when"])
     @pytest.mark.parametrize("val, kind", [("x", "str"), ([1], "list"), (3, "int")])
@@ -533,7 +531,7 @@ class TestWholeBindings:
             "show": {"value": {}, "visible_when": {"operator": "~"}},
             "do": {"press": [{"action": "macro", "mode": "tap_hold"}], "x": []},
         }
-        assert _validate_bindings(b) == _refusal(
+        assert validate_bindings(b) == _refusal(
             "do.press[0]: macro action requires 'macro'",
             f"do.x: not a valid interaction. Use: {INTERACTIONS}",
             "do.press[0]: tap_hold mode requires 'hold_action' (an action object)",
@@ -543,16 +541,16 @@ class TestWholeBindings:
         )
 
     def test_a_bad_do_and_a_bad_show_both_report(self):
-        assert _validate_bindings({"do": "x", "show": 1}) == _refusal(
+        assert validate_bindings({"do": "x", "show": 1}) == _refusal(
             "'do' must be an object, got str", "'show' must be an object, got int",
         )
 
     def test_an_empty_bindings_dict(self):
-        assert _validate_bindings({}) is None
+        assert validate_bindings({}) is None
 
     def test_an_unknown_top_level_key_only_warns(self, caplog):
         with caplog.at_level(logging.WARNING, logger="openavc"):
-            assert _validate_bindings({"show": {}, "extra": 1, "more": 2}) is None
+            assert validate_bindings({"show": {}, "extra": 1, "more": 2}) is None
         assert [r.getMessage() for r in caplog.records] == [
             "Binding reference warnings: unknown top-level binding key 'extra' "
             "(expected 'show' or 'do'); unknown top-level binding key 'more' "
@@ -569,7 +567,7 @@ class TestWholeBindings:
             "release": [{"action": "device.command", "device": "lost", "command": "off"}],
         }}
         with caplog.at_level(logging.WARNING, logger="openavc"):
-            assert _validate_bindings(b, _project(macros=["here"], devices=["amp"])) is None
+            assert validate_bindings(b, _project(macros=["here"], devices=["amp"])) is None
         assert [r.getMessage() for r in caplog.records] == [
             "Binding reference warnings: unknown top-level binding key 'extra' "
             "(expected 'show' or 'do'); do.press[0]: macro 'gone' not found in project; "
@@ -581,7 +579,7 @@ class TestWholeBindings:
             "a": {"action": "macro", "macro": "gone"},
         }}]}}
         with caplog.at_level(logging.WARNING, logger="openavc"):
-            assert _validate_bindings(b, _project()) is None
+            assert validate_bindings(b, _project()) is None
         assert caplog.records == []
 
     def test_no_warning_is_logged_beside_a_refusal(self, caplog):
@@ -590,7 +588,7 @@ class TestWholeBindings:
             "change": [{"action": "state.set"}],
         }}
         with caplog.at_level(logging.WARNING, logger="openavc"):
-            assert _validate_bindings(b, _project()) == _refusal(
+            assert validate_bindings(b, _project()) == _refusal(
                 "do.change[0]: state.set action requires 'key'"
             )
         assert caplog.records == []
@@ -602,7 +600,7 @@ class TestWholeBindings:
             "press": [{"action": "macro", "macro": {"id": "m"}}],
             "change": [{"action": "state.set"}],
         }}
-        assert _validate_bindings(b, _project()) == _refusal(
+        assert validate_bindings(b, _project()) == _refusal(
             "do.change[0]: state.set action requires 'key'"
         )
 
@@ -612,7 +610,7 @@ class TestWholeBindings:
             {"action": "device.command", "device": "d", "command": "c"},
         ]}}
         with caplog.at_level(logging.WARNING, logger="openavc"):
-            assert _validate_bindings(b, object()) is None
+            assert validate_bindings(b, object()) is None
         assert [r.getMessage() for r in caplog.records] == [
             "Binding reference warnings: do.press[0]: macro 'm' not found in project; "
             "do.press[1]: device 'd' not found in project"
@@ -621,12 +619,12 @@ class TestWholeBindings:
     def test_no_project_no_reference_check(self, caplog):
         b = {"do": {"press": [{"action": "macro", "macro": "m"}]}}
         with caplog.at_level(logging.WARNING, logger="openavc"):
-            assert _validate_bindings(b, None) is None
+            assert validate_bindings(b, None) is None
         assert caplog.records == []
 
     def test_a_show_only_binding_has_no_reference_check(self, caplog):
         with caplog.at_level(logging.WARNING, logger="openavc"):
-            assert _validate_bindings({"show": {"value": {"key": "var.x"}}}, _project()) is None
+            assert validate_bindings({"show": {"value": {"key": "var.x"}}}, _project()) is None
         assert caplog.records == []
 
 
@@ -637,7 +635,7 @@ class TestNormalizeBindings:
     def test_a_single_action_is_wrapped(self):
         action = {"action": "macro", "macro": "go"}
         b = {"do": {"press": action, "change": [action], "bogus": action, "submit": "x"}}
-        out = _normalize_bindings(b)
+        out = normalize_bindings(b)
         assert out is b
         assert b["do"] == {"press": [action], "change": [action], "bogus": action, "submit": "x"}
         assert b["do"]["press"][0] is action
@@ -648,12 +646,12 @@ class TestNormalizeBindings:
     ])
     def test_every_interaction_is_wrapped(self, interaction):
         b = {"do": {interaction: {"action": "macro"}}}
-        assert _normalize_bindings(b)["do"][interaction] == [{"action": "macro"}]
+        assert normalize_bindings(b)["do"][interaction] == [{"action": "macro"}]
 
     @pytest.mark.parametrize("b", [{}, {"do": None}, {"do": [{"action": "macro"}]}, {"show": {"value": {}}}])
     def test_nothing_else_changes(self, b):
         before = repr(b)
-        assert _normalize_bindings(b) is b
+        assert normalize_bindings(b) is b
         assert repr(b) == before
 
 

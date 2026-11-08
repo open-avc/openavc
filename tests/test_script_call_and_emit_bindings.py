@@ -741,7 +741,7 @@ def test_the_write_door_offers_exactly_what_the_runtime_dispatches():
     this pins their keys instead, and a new action with no required-field entry
     fails here rather than at somebody's write.
     """
-    from openavc.cloud.ai_tool_handler import _ACTION_REQUIRED_FIELDS, _VALID_ACTION_TYPES
+    from openavc.cloud.tools.ui_bindings import _ACTION_REQUIRED_FIELDS, _VALID_ACTION_TYPES
     from openavc.core.ui_events import DISPATCHED_ACTIONS
 
     assert _VALID_ACTION_TYPES == DISPATCHED_ACTIONS
@@ -749,7 +749,7 @@ def test_the_write_door_offers_exactly_what_the_runtime_dispatches():
 
 
 def test_the_write_door_takes_an_emit_and_still_names_its_required_field():
-    from openavc.cloud.ai_tool_handler import _validate_action
+    from openavc.cloud.tools.ui_bindings import _validate_action
 
     assert _validate_action(
         {"action": "event.emit", "event": "custom.ping", "payload": {"a": 1}}, "p"
@@ -759,7 +759,7 @@ def test_the_write_door_takes_an_emit_and_still_names_its_required_field():
 
 def test_a_rejected_action_lists_every_name_that_works():
     """The sentence used to be a hand-typed list, one name short of the truth."""
-    from openavc.cloud.ai_tool_handler import _validate_action
+    from openavc.cloud.tools.ui_bindings import _validate_action
 
     message = _validate_action({"action": "delay", "seconds": 2}, "p")
     assert "event.emit" in message and "script.call" in message
