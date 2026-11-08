@@ -3,7 +3,7 @@ engine runs, and the revision every such change is saved under.
 
 Two kinds of change. An **applied** one (``apply_project`` and the doors
 built on it) is taken in, saved, compared with the running project, swapped
-in and reconciled (``Engine._reconcile``), undone on the runtime if the
+in and reconciled (``core/project_reconcile.py``), undone on the runtime if the
 reconcile fails, and then announced. A **bookkeeping** one is a change the
 runtime already has (a device's pending settings cleared, a plugin's own
 ``save_config``): it is only saved and announced, never reconciled, and the

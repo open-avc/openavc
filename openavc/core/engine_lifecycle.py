@@ -9,8 +9,8 @@ devices and variables before scripts (scripts subscribe to ``var.*`` /
 ``device.*`` keys at import), and starts the triggers only after
 ``system.started``, so startup triggers fire. A stop ends everything that
 can fire a macro, then cancels the macros, then disconnects the devices they
-command. ``_reconcile`` (core/engine.py) shares these orderings, so a change
-to one is checked against the other.
+command. ``_reconcile`` (core/project_reconcile.py) shares these orderings, so
+a change to one is checked against the other.
 
 A part of the start that fails is counted in ``system.startup_errors`` and
 named in one warning; it never stops the rest of the start. Each step that
