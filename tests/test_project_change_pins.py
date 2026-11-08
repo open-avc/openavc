@@ -228,6 +228,26 @@ async def test_a_bookkeeping_persist_that_fails_runs_a_plain_undo_and_raises(tmp
 
 
 @pytest.mark.asyncio
+async def test_an_undo_that_raises_in_an_immediate_save_is_what_the_caller_sees(
+    tmp_path, monkeypatch,
+):
+    eng = _engine(tmp_path)
+    _capture_broadcasts(eng)
+
+    async def boom(path, project):
+        raise OSError("disk full")
+
+    def bad_undo():
+        raise RuntimeError("undo broke")
+
+    monkeypatch.setattr("openavc.core.project_changes.save_project_async", boom)
+    with pytest.raises(RuntimeError, match="undo broke"):
+        await eng.persist_bookkeeping_change(lambda p: None, on_error=bad_undo)
+
+    assert eng._revision_counter == 0
+
+
+@pytest.mark.asyncio
 async def test_a_deferred_save_announces_only_its_revision(tmp_path):
     """No origin, even when the request that queued it had one."""
     eng = _engine(tmp_path)
