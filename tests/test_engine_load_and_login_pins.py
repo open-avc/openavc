@@ -463,3 +463,21 @@ async def test_the_shutdown_leaves_the_isc_endpoint_and_proxy_on_the_stopped_mes
     finally:
         isc_ws.set_isc_manager(None)
         isc_proxy._bind(None)
+
+
+@pytest.mark.asyncio
+async def test_a_second_start_backs_the_project_up_again_before_moving_logins(tmp_path):
+    """Each start backs the file up before its first move, even on an engine
+    an earlier start already backed up for."""
+    project_path = _project_path(tmp_path)
+    project_path.parent.mkdir(parents=True)
+    save_project(project_path, _project_with_a_login())
+    eng = Engine(str(project_path))
+    eng._logins_backed_up_at_start = True  # as an earlier start left it
+
+    await eng._load_project_at_start()
+
+    assert eng.project.devices[0].config["password"] == SAVED_LOGIN
+    assert [b.reason for b in list_backups(project_path)] == [
+        "Before moving device logins out of the project",
+    ]
