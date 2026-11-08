@@ -778,22 +778,50 @@ def _harden_tls_context(context) -> None:
     tls_module.harden_tls_context(context)
 
 
-async def _run_tls(sockets: list) -> None:
-    """Run the TLS listener (and optional HTTP redirect listener) concurrently.
+def _mark_if_port_80(port: int) -> None:
+    """A listener is up on port 80, so typed URLs can drop the port (the
+    banner's Short URL and the status routes read this)."""
+    if port == 80:
+        runtime_flags.port80_active = True
 
-    ``sockets`` are the HTTPS port's, already bound by ``main()``. On
-    TLS-config failure, writes a startup-error file and exits non-zero with
-    the same shape as the port-in-use error so the tray app and other
-    monitors can surface the cause.
-    """
-    from openavc import listen_sockets
+
+def _start_aux_listener(tasks: list, app, port: int, refusal: str) -> None:
+    """Start a best-effort auxiliary listener beside the main one: its task
+    joins ``tasks``. One that cannot bind is a warning, ``refusal`` with the
+    bind error in its ``%s``, never a failed start."""
+    serve, err = _make_aux_redirect_server(app, port)
+    if serve is None:
+        log.warning(refusal, err)
+        return
+    tasks.append(asyncio.create_task(serve))
+    _mark_if_port_80(port)
+
+
+def _start_port80_redirect(tasks: list, target_port: int, scheme: str) -> None:
+    """The port-80 listener lets typed URLs drop the port entirely."""
+    _start_aux_listener(
+        tasks, build_redirect_app(target_port, scheme=scheme), 80,
+        "Port-80 redirect listener could not bind (%s); typed URLs still need the port.",
+    )
+
+
+def _port80_redirect_beside_https() -> bool:
+    """The port-80 redirect is wanted and no HTTPS-side listener owns 80."""
+    if not config.PORT80_REDIRECT or config.TLS_PORT == 80:
+        return False
+    return not (config.TLS_REDIRECT_HTTP and config.HTTP_PORT == 80)
+
+
+def _certificate_files():
+    """The HTTPS certificate and key, generated when there are none. One that
+    cannot be used stops the start the way a port that cannot be bound does:
+    the sentence on stderr and in the startup-error file the tray app and
+    other monitors read, then exit 1."""
     from openavc import tls as tls_module
     from openavc.system_config import get_system_config
 
     try:
-        cert_path, key_path = tls_module.load_or_generate(
-            config, get_system_config().data_dir
-        )
+        return tls_module.load_or_generate(config, get_system_config().data_dir)
     except tls_module.TLSConfigError as exc:
         msg = (
             "HTTPS is enabled but the TLS listener cannot start:\n"
@@ -804,8 +832,9 @@ async def _run_tls(sockets: list) -> None:
         print(f"\n*** {msg} ***\n", file=sys.stderr)
         _write_startup_error("tls_error", msg)
         raise SystemExit(1) from exc
-    listen_sockets.push_listeners.use_tls(str(cert_path), str(key_path))
 
+
+def _main_https_config(cert_path, key_path) -> "uvicorn.Config":
     main_config = uvicorn.Config(
         "openavc.main:app",
         port=config.TLS_PORT,
@@ -818,61 +847,57 @@ async def _run_tls(sockets: list) -> None:
     )
     # uvicorn builds the SSLContext from the cert/key when the config loads;
     # load it here so we can harden the built context directly (Server.serve()
-    # then reuses it rather than rebuilding) and attach the SNI callback:
-    # names on the cloud-issued cert get that cert, everything else —
-    # including all bare-IP HTTPS, which sends no SNI — keeps the self-signed
-    # leaf. The callback is installed even with no cloud cert on disk (empty
-    # holder = no-op) so a first enrollment while running takes effect
-    # without a restart.
+    # then reuses it rather than rebuilding) and attach the SNI callback.
     main_config.load()
     if main_config.ssl is not None:
-        _harden_tls_context(main_config.ssl)
-        if config.TLS_CLOUD_CERT:
-            tls_module.load_cloud_cert(get_system_config().data_dir)
-        main_config.ssl.sni_callback = tls_module.make_sni_callback(
-            tls_module.cloud_cert_holder()
-        )
-    main_server = uvicorn.Server(main_config)
+        _secure_https_context(main_config.ssl)
+    return main_config
+
+
+def _secure_https_context(context) -> None:
+    """Harden the HTTPS context and choose its certificate by name: names on
+    the cloud-issued cert get that cert, everything else (including all
+    bare-IP HTTPS, which sends no SNI) keeps the self-signed leaf. The
+    callback is installed even with no cloud cert on disk (empty holder =
+    no-op) so a first enrollment while running takes effect without a
+    restart."""
+    from openavc import tls as tls_module
+    from openavc.system_config import get_system_config
+
+    _harden_tls_context(context)
+    if config.TLS_CLOUD_CERT:
+        tls_module.load_cloud_cert(get_system_config().data_dir)
+    context.sni_callback = tls_module.make_sni_callback(tls_module.cloud_cert_holder())
+
+
+async def _run_tls(sockets: list) -> None:
+    """Run the HTTPS listener and the listeners beside it concurrently: the
+    HTTP port's (this machine served, the rest redirected) when the redirect
+    is on, and the port-80 redirect.
+
+    ``sockets`` are the HTTPS port's, already bound by ``main()``. The
+    auxiliary listeners are best-effort: one that cannot bind logs a warning
+    and never blocks startup.
+    """
+    from openavc import listen_sockets
+
+    cert_path, key_path = _certificate_files()
+    listen_sockets.push_listeners.use_tls(str(cert_path), str(key_path))
+
+    main_server = uvicorn.Server(_main_https_config(cert_path, key_path))
     tasks: list[asyncio.Task] = [asyncio.create_task(main_server.serve(sockets=sockets))]
-    if config.TLS_PORT == 80:
-        runtime_flags.port80_active = True
+    _mark_if_port_80(config.TLS_PORT)
 
     if config.TLS_REDIRECT_HTTP:
-        redirect_serve, redirect_err = _make_aux_redirect_server(
+        _start_aux_listener(
+            tasks,
             build_http_listener_app(app, build_redirect_app(config.TLS_PORT)),
             config.HTTP_PORT,
+            f"HTTP redirect listener could not bind to port {config.HTTP_PORT} (%s); "
+            "old http:// links will not auto-redirect.",
         )
-        if redirect_serve is not None:
-            tasks.append(asyncio.create_task(redirect_serve))
-            if config.HTTP_PORT == 80:
-                runtime_flags.port80_active = True
-        else:
-            log.warning(
-                "HTTP redirect listener could not bind to port %d (%s); "
-                "old http:// links will not auto-redirect.",
-                config.HTTP_PORT,
-                redirect_err,
-            )
-
-    # The port-80 listener lets typed URLs drop the port entirely. Skip when
-    # a listener above already owns 80.
-    if (
-        config.PORT80_REDIRECT
-        and config.TLS_PORT != 80
-        and not (config.TLS_REDIRECT_HTTP and config.HTTP_PORT == 80)
-    ):
-        serve80, err80 = _make_aux_redirect_server(
-            build_redirect_app(config.TLS_PORT), 80
-        )
-        if serve80 is not None:
-            tasks.append(asyncio.create_task(serve80))
-            runtime_flags.port80_active = True
-        else:
-            log.warning(
-                "Port-80 redirect listener could not bind (%s); "
-                "typed URLs still need the port.",
-                err80,
-            )
+    if _port80_redirect_beside_https():
+        _start_port80_redirect(tasks, config.TLS_PORT, "https")
 
     await _serve_until_first_exit(tasks)
 
@@ -896,24 +921,72 @@ async def _run_http(sockets: list) -> None:
     """
     main_server = uvicorn.Server(_main_http_config())
     tasks: list[asyncio.Task] = [asyncio.create_task(main_server.serve(sockets=sockets))]
-    if config.HTTP_PORT == 80:
-        runtime_flags.port80_active = True
-
+    _mark_if_port_80(config.HTTP_PORT)
     if config.HTTP_PORT != 80:
-        serve80, err80 = _make_aux_redirect_server(
-            build_redirect_app(config.HTTP_PORT, scheme="http"), 80
-        )
-        if serve80 is not None:
-            tasks.append(asyncio.create_task(serve80))
-            runtime_flags.port80_active = True
-        else:
-            log.warning(
-                "Port-80 redirect listener could not bind (%s); "
-                "typed URLs still need the port.",
-                err80,
-            )
+        _start_port80_redirect(tasks, config.HTTP_PORT, "http")
 
     await _serve_until_first_exit(tasks)
+
+
+def _bind_primary_port(plan):
+    """The main listener's sockets and the plan they were bound for: adopted
+    from a firmware supervisor (OPENAVC_LISTEN_FD) or bound here. A port that
+    cannot be bound stops the start: the sentence on the console and in the
+    startup-error file, then exit 1.
+
+    The main listener's port is the HTTPS one when HTTPS is on; the HTTP
+    port's listener beside it is best-effort and bound inside ``_run_tls``.
+    During a restart the previous process can hold the port for a moment
+    after it exits, so the bind retries through that window.
+    """
+    from openavc import listen_sockets
+
+    port = config.TLS_PORT if config.TLS_ENABLED else config.HTTP_PORT
+    retries = 20 if os.environ.get("OPENAVC_RESTARTING") == "1" else 1
+    try:
+        inherited = os.environ.get("OPENAVC_LISTEN_FD")
+        if inherited is not None:
+            return listen_sockets.inherited_for_plan(inherited, plan, port), plan
+        return listen_sockets.bind_for_plan(plan, port, retries=retries)
+    except listen_sockets.ListenBindError as exc:
+        if config.TLS_ENABLED:
+            msg = exc.message("HTTPS port", "OPENAVC_TLS_PORT")
+        else:
+            msg = exc.message("HTTP port", "OPENAVC_PORT")
+        print(f"\n*** {msg} ***\n")
+        _write_startup_error(exc.error_type, msg)
+        raise SystemExit(1)
+
+
+def _settle_listening(plan) -> None:
+    """Now listening: the plan is the current one, a missing adapter is said
+    once, the safety net's clock starts, and the restart marker is cleared
+    so a future startup error isn't masked by repeated retries."""
+    from openavc import listen, listen_safety_net
+    from openavc.system_config import get_system_config
+
+    listen.set_current(plan)
+    if plan.problem is not None:
+        log.warning(plan.problem.message)
+    # A change that cut off the browser making it starts its clock now, when
+    # the server is listening on it (openavc/listen_safety_net.py).
+    listen_safety_net.note_listening(get_system_config().data_dir, plan.choice)
+    os.environ.pop("OPENAVC_RESTARTING", None)
+
+
+def _serve(sockets: list) -> None:
+    """Serve the bound sockets until the server stops: HTTPS and the
+    listeners beside it, plain HTTP beside the port-80 redirect, or plain
+    HTTP alone."""
+    if config.TLS_ENABLED:
+        asyncio.run(_run_tls(sockets))
+    elif config.PORT80_REDIRECT:
+        asyncio.run(_run_http(sockets))
+    else:
+        _mark_if_port_80(config.HTTP_PORT)
+        # Server.run picks uvicorn's event loop (uvloop where installed), as
+        # uvicorn.run did before the sockets were bound here.
+        uvicorn.Server(_main_http_config()).run(sockets=sockets)
 
 
 def main():
@@ -922,56 +995,13 @@ def main():
     # Who can connect, settled and resolved against the adapters present now
     # (openavc/listen.py), before anything binds.
     plan = listen.start()
-
-    # The main listener's port. When TLS is on with redirect, the HTTP
-    # redirect listener is best-effort and bound inside _run_tls (logs a
-    # warning, never blocks startup).
-    _primary_port = config.TLS_PORT if config.TLS_ENABLED else config.HTTP_PORT
-    _primary_label = "HTTPS port" if config.TLS_ENABLED else "HTTP port"
-    _env_var_hint = "OPENAVC_TLS_PORT" if config.TLS_ENABLED else "OPENAVC_PORT"
-
-    # During a restart the previous process can hold the port for a moment
-    # after it exits; the bind retries through that window.
-    _retries = 20 if os.environ.get("OPENAVC_RESTARTING") == "1" else 1
+    sockets, plan = _bind_primary_port(plan)
     try:
-        inherited = os.environ.get("OPENAVC_LISTEN_FD")
-        if inherited is not None:
-            sockets = listen_sockets.inherited_for_plan(inherited, plan, _primary_port)
-        else:
-            sockets, plan = listen_sockets.bind_for_plan(plan, _primary_port, retries=_retries)
-    except listen_sockets.ListenBindError as exc:
-        msg = exc.message(_primary_label, _env_var_hint)
-        print(f"\n*** {msg} ***\n")
-        _write_startup_error(exc.error_type, msg)
-        raise SystemExit(1)
-    try:
-        listen.set_current(plan)
-        if plan.problem is not None:
-            log.warning(plan.problem.message)
-        # A change that cut off the browser making it starts its clock now, when
-        # the server is listening on it (openavc/listen_safety_net.py).
-        from openavc import listen_safety_net
-        from openavc.system_config import get_system_config
-
-        listen_safety_net.note_listening(get_system_config().data_dir, plan.choice)
-        # Clear the restart marker so a future startup error isn't masked by
-        # repeated retries.
-        os.environ.pop("OPENAVC_RESTARTING", None)
-
+        _settle_listening(plan)
         _clear_startup_error()
         _write_server_address()
         listen_sockets.push_listeners.enable(config.HTTP_PORT)
-
-        if config.TLS_ENABLED:
-            asyncio.run(_run_tls(sockets))
-        elif config.PORT80_REDIRECT:
-            asyncio.run(_run_http(sockets))
-        else:
-            if config.HTTP_PORT == 80:
-                runtime_flags.port80_active = True
-            # Server.run picks uvicorn's event loop (uvloop where installed), as
-            # uvicorn.run did before the sockets were bound here.
-            uvicorn.Server(_main_http_config()).run(sockets=sockets)
+        _serve(sockets)
     finally:
         listen_sockets.close_all(sockets)
 
