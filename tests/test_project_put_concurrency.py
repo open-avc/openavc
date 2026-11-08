@@ -52,7 +52,7 @@ def _stub_persistence(engine, monkeypatch, save_delay: float = 0.0):
             # Hold the save window open so concurrent PUTs genuinely overlap.
             await asyncio.sleep(save_delay)
 
-    monkeypatch.setattr("openavc.core.engine.save_project_async", fake_save)
+    monkeypatch.setattr("openavc.core.project_changes.save_project_async", fake_save)
 
     async def fake_reconcile(diff, origin):
         pass

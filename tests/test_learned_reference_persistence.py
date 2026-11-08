@@ -5,7 +5,7 @@ import copy
 
 import pytest
 
-from openavc.core import engine as engine_module
+from openavc.core import project_changes
 from openavc.core.project_diff import ProjectOrigin
 from tests.helpers import wait_for_condition
 from tests.test_learned_config import (
@@ -32,16 +32,16 @@ async def test_failed_save_rolls_back_and_retries_without_another_report(tmp_pat
     engine, driver = await ready(tmp_path, acme_widget)
     before = engine.project_path.read_bytes()
     project_before = engine.project.model_dump()
-    save = engine_module.save_project_async
+    save = project_changes.save_project_async
     try:
-        monkeypatch.setattr(engine_module, 'save_project_async', disk_full)
+        monkeypatch.setattr(project_changes, 'save_project_async', disk_full)
         driver.set_state('model', 'W100')
         await engine._bookkeeping_task
         assert engine.project_path.read_bytes() == before
         assert engine.project.model_dump() == project_before
         assert not driver.config.get('model')
         assert engine.devices.get_driver('w1') is driver
-        monkeypatch.setattr(engine_module, 'save_project_async', save)
+        monkeypatch.setattr(project_changes, 'save_project_async', save)
         await wait_for_condition(lambda: _disk_config(engine).get('model') == 'W100')
         assert engine.project.devices[0].config['model'] == 'W100'
         assert driver.config['model'] == 'W100'
@@ -56,7 +56,7 @@ async def test_batched_reports_undo_in_reverse_order_and_stop_cancels_retry(tmp_
     before = engine.project.model_dump()
     handles = []
     try:
-        monkeypatch.setattr(engine_module, 'save_project_async', disk_full)
+        monkeypatch.setattr(project_changes, 'save_project_async', disk_full)
         async with engine._reload_lock:
             driver.set_state('model', 'W100')
             driver.set_state('model', 'W200')
@@ -97,14 +97,14 @@ async def test_queued_report_cannot_modify_replacement(tmp_path, acme_widget, ch
 @pytest.mark.asyncio
 async def test_retry_cannot_modify_replacement(tmp_path, acme_widget, monkeypatch):
     engine, driver = await ready(tmp_path, acme_widget)
-    save = engine_module.save_project_async
+    save = project_changes.save_project_async
     try:
-        monkeypatch.setattr(engine_module, 'save_project_async', disk_full)
+        monkeypatch.setattr(project_changes, 'save_project_async', disk_full)
         driver.set_state('model', 'W100')
         await engine._bookkeeping_task
         handles = list(engine.learned_config._retry_handles.values())
         assert len(handles) == 1
-        monkeypatch.setattr(engine_module, 'save_project_async', save)
+        monkeypatch.setattr(project_changes, 'save_project_async', save)
         replacement = engine.project.model_copy(deep=True)
         replacement.devices[0].enabled = False
         replacement.connections['w1'] = {'host': 'replacement.invalid'}
@@ -122,7 +122,7 @@ async def test_batched_plugin_rollbacks_retain_original_config(tmp_path, monkeyp
     from tests.test_engine_bookkeeping_persist import _engine as plugin_engine
 
     engine = plugin_engine(tmp_path, plugins={'plug1': {'enabled': False, 'config': {'x': 1}}})
-    monkeypatch.setattr(engine_module, 'save_project_async', disk_full)
+    monkeypatch.setattr(project_changes, 'save_project_async', disk_full)
     try:
         async with engine._reload_lock:
             await engine._save_plugin_config('plug1', {'x': 2})

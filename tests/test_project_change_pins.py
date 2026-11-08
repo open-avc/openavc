@@ -216,7 +216,7 @@ async def test_a_bookkeeping_persist_that_fails_runs_a_plain_undo_and_raises(tmp
     async def boom(path, project):
         raise OSError("disk full")
 
-    monkeypatch.setattr("openavc.core.engine.save_project_async", boom)
+    monkeypatch.setattr("openavc.core.project_changes.save_project_async", boom)
     with pytest.raises(OSError, match="disk full"):
         await eng.persist_bookkeeping_change(lambda p: None, on_error=lambda: undone.append(1))
     with pytest.raises(OSError, match="disk full"):
@@ -273,7 +273,7 @@ async def test_a_failed_deferred_save_undoes_and_announces_nothing(tmp_path, mon
     async def undo():
         calls.append("undo")
 
-    monkeypatch.setattr("openavc.core.engine.save_project_async", boom)
+    monkeypatch.setattr("openavc.core.project_changes.save_project_async", boom)
     eng.schedule_bookkeeping_change(
         lambda p: None, on_error=undo, on_saved=lambda: calls.append("saved"),
     )
@@ -296,7 +296,7 @@ async def test_an_undo_that_raises_does_not_stop_the_others(tmp_path, monkeypatc
     def bad_undo():
         raise RuntimeError("undo broke")
 
-    monkeypatch.setattr("openavc.core.engine.save_project_async", boom)
+    monkeypatch.setattr("openavc.core.project_changes.save_project_async", boom)
     eng.schedule_bookkeeping_change(lambda p: None, on_error=lambda: undone.append("first"))
     # The later write is undone first (reverse order), and its failure is
     # logged rather than stopping the first one's undo.
@@ -371,7 +371,7 @@ async def test_a_plugin_config_that_cannot_be_saved_says_which_plugin(tmp_path, 
     async def boom(path, project):
         raise OSError("disk full")
 
-    monkeypatch.setattr("openavc.core.engine.save_project_async", boom)
+    monkeypatch.setattr("openavc.core.project_changes.save_project_async", boom)
     with pytest.raises(OSError):
         await eng._save_plugin_config("plug1", {"x": 2})
 

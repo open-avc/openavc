@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from openavc.core import engine as engine_module
+from openavc.core import project_changes
 from openavc.core.project_loader import DeviceConfig
 from openavc.drivers.registry import register_driver, unregister_driver
 from tests.helpers import wait_for_condition
@@ -18,7 +18,7 @@ async def test_failed_report_save_does_not_publish_a_new_roster(tmp_path, monkey
     _AcmeZoned.refreshed = []
     engine, _ = _engine(tmp_path)
     entered, fail_now = asyncio.Event(), asyncio.Event()
-    original_save = engine_module.save_project_async
+    original_save = project_changes.save_project_async
 
     async def delayed_failure(path, project):
         entered.set()
@@ -32,7 +32,7 @@ async def test_failed_report_save_does_not_publish_a_new_roster(tmp_path, monkey
         await wait_for_condition(lambda: engine.state.get('device.z1.connected') is True)
         driver = engine.devices.get_driver('z1')
         before = engine.project_path.read_bytes()
-        monkeypatch.setattr(engine_module, 'save_project_async', delayed_failure)
+        monkeypatch.setattr(project_changes, 'save_project_async', delayed_failure)
         driver.set_state('zones_reported', 'A,B,C,D')
         await asyncio.wait_for(entered.wait(), 5)
         # Drain already scheduled roster work while the write is held open.
@@ -42,7 +42,7 @@ async def test_failed_report_save_does_not_publish_a_new_roster(tmp_path, monkey
         assert engine.project_path.read_bytes() == before
         assert _disk_config(engine, 'z1')['zones'] == driver.config['zones'] == 'A,B'
         assert _AcmeZoned.refreshed == [], 'A failed setting was used to refresh the roster'
-        monkeypatch.setattr(engine_module, 'save_project_async', original_save)
+        monkeypatch.setattr(project_changes, 'save_project_async', original_save)
         await wait_for_condition(lambda: _disk_config(engine, 'z1')['zones'] == 'A,B,C,D')
         await wait_for_condition(lambda: _AcmeZoned.refreshed == ['A,B,C,D'])
     finally:

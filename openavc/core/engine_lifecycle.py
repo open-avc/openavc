@@ -466,14 +466,6 @@ class EngineLifecycleMixin:
         # the write persists before the process exits.
         await self._drain_bookkeeping("after")
 
-    async def _drain_bookkeeping(self, when: str) -> None:
-        task = self._bookkeeping_task
-        if task and not task.done():
-            try:
-                await asyncio.wait_for(task, timeout=5)
-            except Exception:
-                log.warning(f"Bookkeeping persist did not finish {when} shutdown")
-
     async def _stop_inner(self) -> None:
         """Tear down all subsystems. Caller holds _reload_lock."""
         if self.update_manager:

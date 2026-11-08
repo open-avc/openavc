@@ -296,7 +296,7 @@ async def test_plugin_save_config_failure_reverts_in_memory(tmp_path, monkeypatc
     async def boom(path, project):
         raise OSError("disk full")
 
-    monkeypatch.setattr("openavc.core.engine.save_project_async", boom)
+    monkeypatch.setattr("openavc.core.project_changes.save_project_async", boom)
 
     with pytest.raises(OSError):
         await eng._save_plugin_config("plug1", {"x": 2})
