@@ -597,3 +597,46 @@ def test_the_https_listener_is_actually_wired_to_it():
 
     src = inspect.getsource(main_mod)
     assert "_build_http_listener_app(app, _build_redirect_app(config.TLS_PORT))" in src
+
+
+# --- what a redirect target is built from, pinned before a restructure ---
+
+
+def test_the_probe_gives_the_certified_name_two_and_a_half_seconds(tmp_path):
+    _install_cloud_cert(tmp_path)
+    resp = _client().get(
+        "/", headers={"host": "192.168.1.20:8080", "accept": BROWSER_ACCEPT},
+        follow_redirects=False,
+    )
+    assert "setTimeout(function () { ctrl.abort(); }, 2500);" in resp.text
+
+
+def test_a_host_header_carrying_a_path_falls_back_to_the_request_url():
+    """The request URL's hostname, which the test client builds from the
+    scope's server address."""
+    resp = _client().get("/x", headers={"host": "evil.example/steal"}, follow_redirects=False)
+    assert resp.headers["location"] == "https://testserver:8443/x"
+
+
+def test_with_no_usable_host_at_all_the_target_is_localhost():
+    """No Host header and no server address in the scope: nothing names the
+    host, so the target falls back to localhost."""
+    sent = []
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        sent.append(message)
+
+    scope = {
+        "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
+        "method": "GET", "scheme": "http", "path": "/x", "raw_path": b"/x",
+        "query_string": b"", "root_path": "", "headers": [], "server": None,
+        "client": ("192.168.1.30", 50000),
+    }
+    asyncio.run(_build_redirect_app(8443)(scope, receive, send))
+
+    start = next(m for m in sent if m["type"] == "http.response.start")
+    assert start["status"] == 302
+    assert dict(start["headers"])[b"location"] == b"https://localhost:8443/x"
