@@ -15,6 +15,7 @@ from typing import Any, Awaitable, Callable, TYPE_CHECKING
 
 from openavc.core.condition_eval import eval_operator
 from openavc.core.event_bus import EventBus
+from openavc.core.group_command import DeviceGroups, GroupCommand, reached_nobody
 from openavc.core.macro_text import StepWording
 from openavc.core.state_store import StateStore
 from openavc.core.value_resolver import resolve_in_text, resolve_ref
@@ -123,8 +124,7 @@ class MacroEngine:
         # posture _broadcast_ws and _help take.
         self._project_device_ids = project_device_ids
         self._macros: dict[str, dict[str, Any]] = {}  # id -> macro config
-        self._groups: dict[str, list[str]] = {}  # group_id -> [device_ids]
-        self._group_names: dict[str, str] = {}  # group_id -> display name
+        self._groups = DeviceGroups()
         # macro_id -> set of currently-running tasks. A set (not a single
         # task) so that overlap: allow, REST/WS racing, and concurrent
         # script/plugin/AI dispatch all leave every in-flight invocation
@@ -152,6 +152,7 @@ class MacroEngine:
         self._wording = StepWording(
             state, devices, project_provider, self._plugin_actions.get,
         )
+        self._group_command = GroupCommand(devices, state, self._wording, self._groups)
 
     def is_macro_running(self, macro_id: str) -> bool:
         """Check if any invocation of the macro is currently running."""
@@ -290,18 +291,7 @@ class MacroEngine:
 
     def load_groups(self, groups: list[dict[str, Any]]) -> None:
         """Register device group definitions from the project config."""
-        self._groups.clear()
-        self._group_names.clear()
-        for group in groups:
-            group_id = group.get("id", "")
-            if group_id:
-                self._groups[group_id] = group.get("device_ids", [])
-                # Kept so a fan-out can name the group the way the IDE lists
-                # it. The id is what the macro step carries; the name is what
-                # somebody scanning the Groups list will recognise.
-                self._group_names[group_id] = group.get("name", "") or group_id
-        if self._groups:
-            log.info(f"Loaded {len(self._groups)} device group(s)")
+        self._groups.load(groups)
 
     def register_plugin_action(
         self,
@@ -847,94 +837,11 @@ class MacroEngine:
             group_id = step.get("group", "")
             command = step.get("command", "")
             params = self._resolve_params(step.get("params") or {}, context)
-            device_ids = self._groups.get(group_id)
-            if device_ids is None:
-                raise ValueError(f"Device group '{group_id}' not found. Check that the group exists in your project.")
-
-            if not device_ids:
-                log.debug(f"  Macro step: group '{group_id}' is empty, skipping")
-                return None
-            known_device_ids = (
-                self._project_device_ids() if self._project_device_ids else None
+            device_results = await self._group_command.send(
+                group_id, command, params, self._project_device_ids,
             )
-            # Send to all online devices concurrently
-            sent_ids = []
-            tasks = []
-            skipped_ids = []
-            missing_ids = []
-            for did in device_ids:
-                # A member id that names nothing is not an offline device, and
-                # until this branch existed it read as one: state.get returns
-                # None for a device that was never configured, None is falsy,
-                # and the group reported "Device offline" forever. An
-                # integrator who typo'd a member id, or whose device was
-                # deleted months ago, then goes looking for a network problem
-                # on a device that does not exist. Asked of the device configs
-                # rather than the live drivers on purpose -- a disabled or
-                # orphaned device has no driver instance but is very much in
-                # the project, and calling it missing would be the same lie
-                # pointed the other way.
-                if known_device_ids is not None and did not in known_device_ids:
-                    log.warning(
-                        f"  Group command: group '{group_id}' lists device "
-                        f"'{did}', which is not in this project"
-                    )
-                    missing_ids.append(did)
-                    continue
-                if not self.devices.command_goes_out(did, command):
-                    log.debug(f"  Group command: skipping offline device '{did}'")
-                    skipped_ids.append(did)
-                    continue
-                sent_ids.append(did)
-                tasks.append(self.devices.send_command(did, command, params))
-            results: list[Any] = []
-            if tasks:
-                log.debug(f"  Macro step: group '{group_id}'.{command} -> {len(tasks)} device(s)")
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-            # Per-device outcome, in the order the group declares its members
-            # rather than attempted-then-skipped: that is the order somebody
-            # wrote them in and the order the group reads in the IDE.
-            outcome: dict[str, dict[str, Any]] = {}
-            for j, result in enumerate(results):
-                did = sent_ids[j] if j < len(sent_ids) else "unknown"
-                device_name = self.state.get(f"device.{did}.name") or did
-                if isinstance(result, Exception):
-                    log.error(f"  Group command error on '{device_name}': {result}")
-                    failure = self._wording.command_failure(did, command, result)
-                    outcome[did] = {
-                        "device_id": did, "name": device_name, "success": False,
-                        "error": failure.programmer,
-                        "message": failure.panel,
-                    }
-                else:
-                    outcome[did] = {"device_id": did, "name": device_name, "success": True}
-            for did in skipped_ids:
-                device_name = self.state.get(f"device.{did}.name") or did
-                # Synthesised so an offline member reads the same way it would
-                # from a device.command step -- the panel must not learn a
-                # second sentence for the same fact.
-                offline = ConnectionError(f"Device '{did}' is not connected")
-                outcome[did] = {
-                    "device_id": did, "name": device_name, "success": False,
-                    "error": "Device offline",
-                    "message": self._wording.device_message(did, offline),
-                }
-            for did in missing_ids:
-                # The one place a group can say more than device.command can:
-                # it knows WHICH group holds the dead id, and that is the fact
-                # somebody needs to go and fix it. The error code stays aligned
-                # with what a device.command step raises for the same cause, so
-                # anything matching on the code sees one answer.
-                group_name = self._group_names.get(group_id) or group_id
-                outcome[did] = {
-                    "device_id": did, "name": did, "success": False,
-                    "error": "Device not found",
-                    "message": (
-                        f"Device '{did}' is listed in group '{group_name}' but is not in "
-                        f"this project. Remove it from the group, or add the device back."
-                    ),
-                }
-            device_results = [outcome[did] for did in device_ids if did in outcome]
+            if device_results is None:
+                return None
             if macro_id:
                 await self.events.emit(
                     f"macro.progress.{macro_id}",
@@ -947,18 +854,7 @@ class MacroEngine:
                         "status": "group_complete",
                     },
                 )
-            # A group step is a fan-out, so one dead member out of eight is not
-            # a failed step -- the room did most of what was asked, and saying
-            # so mid-sequence is noise at the moment somebody is starting a
-            # class. Reaching NOBODY is a different thing: nothing happened,
-            # and until now that was indistinguishable from success. Reported
-            # as the first member's own reason, because a name somebody can go
-            # and look at beats a count.
-            failures = [r for r in device_results if not r["success"]]
-            if failures and len(failures) == len(device_results):
-                first = failures[0]
-                return (str(first.get("error") or ""), str(first.get("message") or ""))
-            return None
+            return reached_nobody(device_results)
 
         elif action == "delay":
             seconds = max(0, step.get("seconds", 0))
