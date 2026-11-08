@@ -186,9 +186,23 @@ async def test_a_disconnect_mid_round_ends_it_and_still_holds_the_rule() -> None
 async def test_a_line_whose_own_gate_is_shut_is_skipped_and_the_round_goes_on() -> None:
     cap = Capture()
     drv = _driver(LINE_UNIT, cap)
-    drv.state.set("device.dev1.standby", True)
     shut = {"send": "GA\r", "when_state": {"standby": False}}
-    drv._follow_up(object(), [shut, "GB\r"], "", [])
+    drv.state.set("device.dev1.standby", True)
+    # Shut when the entry expands: the line is never built.
+    first, second = object(), object()
+    drv._follow_up(first, [shut, "GB\r"], "", [])
+    await _settle(drv)
+    assert cap.sent == [b"GB\r"]
+
+    # Shut only once the line waits for its slot: judged again, and skipped.
+    cap.sent.clear()
+    drv.state.set("device.dev1.standby", False)
+
+    async def standby_meanwhile() -> None:
+        drv.state.set("device.dev1.standby", True)
+
+    drv._pace_line = standby_meanwhile
+    drv._follow_up(second, [shut, "GB\r"], "", [])
     await _settle(drv)
     assert cap.sent == [b"GB\r"]
 
