@@ -13,7 +13,7 @@ import pytest
 from fastapi import HTTPException
 
 from openavc.api.routes.devices import _coerce_local_id
-from openavc.core.device_manager import DeviceManager
+from openavc.core.command_gates import coerce_child_id_params
 from openavc.drivers.base import CommandParamError
 from openavc.drivers.child_ids import child_id_kind, coerce_child_local_id
 from openavc.drivers.child_ids import child_display_name
@@ -121,7 +121,7 @@ def _driver(child_type_def, param_type="child_id"):
 
 
 def test_dispatch_coerces_padded_id_and_leaves_other_params():
-    out = DeviceManager._coerce_child_id_params(
+    out = coerce_child_id_params(
         _driver(INT_TYPE), "set_level", {"outlet": "003", "level": "50"},
     )
     assert out == {"outlet": 3, "level": "50"}
@@ -129,28 +129,28 @@ def test_dispatch_coerces_padded_id_and_leaves_other_params():
 
 def test_dispatch_leaves_the_caller_dict_alone():
     params = {"outlet": "003"}
-    DeviceManager._coerce_child_id_params(_driver(INT_TYPE), "set_level", params)
+    coerce_child_id_params(_driver(INT_TYPE), "set_level", params)
     assert params == {"outlet": "003"}
 
 
 def test_dispatch_passes_string_id_types_through_untouched():
     """String children reach the driver exactly as sent — only the integer
     kind has a padded wire form that needs normalizing."""
-    out = DeviceManager._coerce_child_id_params(
+    out = coerce_child_id_params(
         _driver(STR_TYPE), "set_level", {"outlet": "  gain_1  "},
     )
     assert out == {"outlet": "  gain_1  "}
 
 
 def test_dispatch_ignores_params_that_are_not_child_ids():
-    out = DeviceManager._coerce_child_id_params(
+    out = coerce_child_id_params(
         _driver(INT_TYPE, param_type="integer"), "set_level", {"outlet": "003"},
     )
     assert out == {"outlet": "003"}
 
 
 def test_dispatch_leaves_an_absent_id_alone():
-    out = DeviceManager._coerce_child_id_params(
+    out = coerce_child_id_params(
         _driver(INT_TYPE), "set_level", {"outlet": None, "level": 1},
     )
     assert out == {"outlet": None, "level": 1}
@@ -158,7 +158,7 @@ def test_dispatch_leaves_an_absent_id_alone():
 
 def test_dispatch_rejects_a_non_numeric_id():
     with pytest.raises(CommandParamError) as exc:
-        DeviceManager._coerce_child_id_params(
+        coerce_child_id_params(
             _driver(INT_TYPE), "set_level", {"outlet": "front-left"},
         )
     assert "child id number" in str(exc.value)
@@ -170,7 +170,7 @@ def test_dispatch_rejects_a_bool_id():
     or acted on child 1. It is refused at the gate now, with a message that
     names the parameter."""
     with pytest.raises(CommandParamError) as exc:
-        DeviceManager._coerce_child_id_params(
+        coerce_child_id_params(
             _driver(INT_TYPE), "set_level", {"outlet": True},
         )
     assert "outlet" in str(exc.value)
@@ -183,7 +183,7 @@ RANGED_TYPE = {"id_format": {"type": "integer", "min": 1, "max": 32}}
 
 @pytest.mark.parametrize("raw", [1, 32, "01", "032", 17])
 def test_dispatch_accepts_ids_inside_the_declared_range(raw):
-    out = DeviceManager._coerce_child_id_params(
+    out = coerce_child_id_params(
         _driver(RANGED_TYPE), "set_level", {"outlet": raw},
     )
     assert out["outlet"] == int(raw)
@@ -196,7 +196,7 @@ def test_dispatch_rejects_ids_outside_the_declared_range(raw, expected):
     with its own error and nothing surfaced it. The bound the driver wrote
     down was the one thing the gate never read."""
     with pytest.raises(CommandParamError) as exc:
-        DeviceManager._coerce_child_id_params(
+        coerce_child_id_params(
             _driver(RANGED_TYPE), "set_level", {"outlet": raw},
         )
     message = str(exc.value)
@@ -219,7 +219,7 @@ def test_dispatch_rejects_ids_outside_the_declared_range(raw, expected):
 def test_dispatch_only_range_checks_what_the_driver_actually_declared(
     id_format, raw,
 ):
-    out = DeviceManager._coerce_child_id_params(
+    out = coerce_child_id_params(
         _driver({"id_format": id_format}), "set_level", {"outlet": raw},
     )
     assert "outlet" in out
@@ -232,7 +232,7 @@ def test_dispatch_only_range_checks_what_the_driver_actually_declared(
 def test_dispatch_names_only_the_bound_that_exists(bounds, raw, expected):
     """A half-bounded type must not claim a range it never declared."""
     with pytest.raises(CommandParamError) as exc:
-        DeviceManager._coerce_child_id_params(
+        coerce_child_id_params(
             _driver({"id_format": {"type": "integer", **bounds}}),
             "set_level",
             {"outlet": raw},
@@ -250,7 +250,7 @@ def test_dispatch_names_only_the_bound_that_exists(bounds, raw, expected):
 def test_dispatch_tolerates_drivers_without_the_declarations(info):
     class _D:
         DRIVER_INFO = info
-    assert DeviceManager._coerce_child_id_params(
+    assert coerce_child_id_params(
         _D(), "set_level", {"outlet": "003"},
     ) == {"outlet": "003"}
 

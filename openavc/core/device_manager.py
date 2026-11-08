@@ -19,24 +19,23 @@ from openavc.core.connection_fault import (
     ConnectionFault,
     no_simulator_fault,
 )
+from openavc.core.command_gates import (
+    available_offline,
+    check_command_declared,
+    check_file_door,
+    coerce_child_id_params,
+    send_file_command,
+    validate_command_params,
+)
 from openavc.core.device_away import DeviceAwayMixin
 from openavc.core.device_bridges import DeviceBridgesMixin
 from openavc.core.device_reconnect import DeviceReconnectMixin
 from openavc.core.device_web_ui import DeviceWebUiMixin
 from openavc.core.pending_settings import PendingSettingsMixin
-from openavc.drivers.avcdriver_semantic import undeclared_child_type_reason
 from openavc.drivers.base import (
-    CommandParamError,
     ConnectEndedError,
-    UnknownCommandError,
     UnknownDeviceSettingError,
-    normalize_and_validate_command_params,
     validate_device_setting_value,
-)
-from openavc.drivers.child_ids import (
-    child_id_kind,
-    child_id_range_error,
-    coerce_child_local_id,
 )
 from openavc.drivers.registry import get_driver_class, is_driver_registered
 from openavc.core.device_config import DeviceConnection, bridge_first, connection_of
@@ -44,16 +43,7 @@ from openavc.core.device_logins import SAVED_LOGIN, login_fields, marked_fields
 from openavc.core.event_bus import EventBus
 from openavc.core.installed_equipment import driver_label, missing_driver_reason
 from openavc.core.state_store import StateStore
-from openavc.core.device_traffic import RX, TX, get_traffic_recorder
-from openavc.drivers.command_files import (
-    CommandFile,
-    DeviceFile,
-    FileCommandError,
-    returns_file_sentence,
-    takes_file_sentence,
-)
-from openavc.drivers.param_labels import param_label
-from openavc.drivers.spec import file_param_names
+from openavc.core.device_traffic import get_traffic_recorder
 from openavc.utils.log_redaction import get_secret_registry, redact_config
 from openavc.utils.logger import get_logger
 
@@ -646,11 +636,11 @@ class DeviceManager(
         # not declare is wrong whether or not the device happens to be online,
         # and "Device 'x' is not connected" would send the author to look at
         # the network instead of at the name they typed.
-        self._check_command_declared(driver, device_id, command)
+        check_command_declared(driver, device_id, command)
         # The same for a file command sent from a door with no file: the
         # sentence that helps is where it runs from, not that the device is
         # offline.
-        file_command = self._check_file_door(driver, command, params, files_allowed)
+        file_command = check_file_door(driver, command, params, files_allowed)
         self._require_control_target(device_id)
         # The connected-gate is skipped for commands the driver declares
         # available_offline — a handler that needs no live connection (e.g. a
@@ -664,25 +654,14 @@ class DeviceManager(
             # who send it are standing at a panel with no access to the IDE —
             # so retry now instead of leaving them to wait out the interval.
             self.kick_reconnect(device_id)
-            # Inside a commanded-restart window the refusal is the same refusal
-            # but a different sentence: "not connected" sends the reader to look
-            # at the device, and the honest instruction here is to wait.
-            remaining = self.restart_seconds_left(device_id)
-            if remaining is not None:
-                raise device_restarting(device_id, remaining)
-            sleep = self._sleep.get(device_id)
-            if sleep is not None and sleep.asleep:
-                raise device_asleep(device_id, sleep.wake_label)
-            raise not_connected(device_id)
+            raise self._offline_refusal(device_id)
         try:
-            params = self._coerce_child_id_params(driver, command, params)
-            params = self._validate_command_params(driver, command, params)
+            params = coerce_child_id_params(driver, command, params)
+            params = validate_command_params(driver, command, params)
             if file_command is None:
                 result = await driver.send_command(command, params)
             else:
-                result = await self._send_file_command(
-                    driver, device_id, command, params, file_command,
-                )
+                result = await send_file_command(driver, device_id, file_command, params)
         except Exception as exc:
             mark_failed_command(exc, device_id, command)
             await self.events.emit(
@@ -693,128 +672,24 @@ class DeviceManager(
         # Armed only on a send that did not raise. A command that never left
         # the building has not restarted anything, and arming on the attempt
         # would suppress the very fault that stopped it.
-        woke = self._note_sleep_command(device_id, driver, command)
-        self._arm_restart_window(device_id, driver, command)
-        if woke:
-            self._publish_waking(device_id)
+        self._note_command_sent(device_id, driver, command)
         return result
 
-    @staticmethod
-    def _check_command_declared(
-        driver: BaseDriver, device_id: str, command: str
-    ) -> None:
-        """Refuse a command the driver's own ``commands`` block never declares.
+    def _offline_refusal(self, device_id: str) -> ConnectionError:
+        """Why a command to this device cannot go out now.
 
-        Nothing checked this, and the two driver formats failed differently
-        while looking the same from outside: a YAML driver logged
-        ``Unknown command: <name>`` and returned success, and a Python driver
-        raised whatever its handler raised — usually a ValueError, which the
-        REST layer above turned into ``Device '<id>' not found`` on a device
-        that was connected and rendering. Either way the author was pointed
-        away from the typo. A Quick Action is the common route in, because an
-        ``actions`` entry may name a command that does not exist (the catalog
-        rejects that now; a driver dropped straight into ``driver_repo/`` only
-        warns at load, so the button still renders).
-
-        Reads the *instance* DRIVER_INFO, so a driver that builds its command
-        set at runtime — discovered controls, channel strips, the inline
-        protocol generics merging a device's own configured commands — is
-        judged on what it actually declares by the time the command is sent.
-
-        Enforced only when that set is a **non-empty dict**: 20 of the 92
-        shipped drivers declare no literal ``commands`` block at all and hand
-        every name straight to their own dispatch, and an empty set means
-        "this driver did not tell us", not "this driver has no commands".
+        Inside a commanded-restart window the refusal is the same refusal but a
+        different sentence: "not connected" sends the reader to look at the
+        device, and the honest instruction there is to wait. The same for a
+        device we put to sleep, which its wake command brings back.
         """
-        info = getattr(driver, "DRIVER_INFO", {}) or {}
-        commands = info.get("commands")
-        if not isinstance(commands, dict) or not commands:
-            return
-        if command not in commands:
-            raise UnknownCommandError(
-                f"Command '{command}' not found on device '{device_id}'"
-            )
-
-    @staticmethod
-    def _check_file_door(
-        driver: BaseDriver,
-        command: str,
-        params: dict[str, Any] | None,
-        files_allowed: bool,
-    ) -> dict[str, Any] | None:
-        """Refuse a file command from a door that cannot give or take a file,
-        and a file param given anything but a file.
-
-        Returns the command's definition when it is a file command (the send
-        then holds the traffic recorder for it), None otherwise. Reads the
-        instance DRIVER_INFO, like the other gates.
-        """
-        info = getattr(driver, "DRIVER_INFO", {}) or {}
-        cmd_def = (info.get("commands") or {}).get(command)
-        if not isinstance(cmd_def, dict):
-            return None
-        file_params = file_param_names(cmd_def)
-        returns_file = cmd_def.get("returns_file") is True
-        if not file_params and not returns_file:
-            return None
-        label = str(cmd_def.get("label") or command)
-        if not files_allowed:
-            raise FileCommandError(
-                takes_file_sentence(label) if file_params else returns_file_sentence(label)
-            )
-        supplied = params if isinstance(params, dict) else {}
-        for name in file_params:
-            value = supplied.get(name)
-            if value is not None and not isinstance(value, CommandFile):
-                pdef = (cmd_def.get("params") or {}).get(name) or {}
-                raise FileCommandError(
-                    f"'{label}': {param_label(name, pdef)} takes a file chosen "
-                    "on the device's page."
-                )
-        return cmd_def
-
-    @staticmethod
-    async def _send_file_command(
-        driver: BaseDriver,
-        device_id: str,
-        command: str,
-        params: dict[str, Any] | None,
-        cmd_def: dict[str, Any],
-    ) -> Any:
-        """Run a file command with the traffic recorder holding the file's
-        direction: what the device is sent while a file goes to it, what it
-        answers while a file comes back. One note entry names each file and
-        its size instead (core/device_traffic.py)."""
-        recorder = get_traffic_recorder()
-        label = str(cmd_def.get("label") or command)
-        sent = [
-            value for value in (params or {}).values() if isinstance(value, CommandFile)
-        ]
-        returns_file = cmd_def.get("returns_file") is True
-        for file in sent:
-            recorder.record_note(device_id, TX, file=file.name, size=file.size, command=label)
-        with recorder.hold(device_id, tx=bool(sent), rx=returns_file):
-            result = await driver.send_command(command, params)
-        if returns_file:
-            if not isinstance(result, DeviceFile):
-                raise FileCommandError(f"'{label}' finished without sending back a file.")
-            recorder.record_note(
-                device_id, RX, file=result.name, size=result.size, command=label,
-            )
-        return result
-
-    @staticmethod
-    def _command_available_offline(driver: BaseDriver, command: str) -> bool:
-        """True when the command declares ``available_offline`` — it may run
-        with no live connection.
-
-        Reads the instance-level DRIVER_INFO so runtime-populated command sets
-        are covered too. An unknown command, or one without the flag, is not
-        offline-capable (the connected-gate applies).
-        """
-        info = getattr(driver, "DRIVER_INFO", {}) or {}
-        cmd_def = (info.get("commands") or {}).get(command)
-        return isinstance(cmd_def, dict) and bool(cmd_def.get("available_offline"))
+        remaining = self.restart_seconds_left(device_id)
+        if remaining is not None:
+            return device_restarting(device_id, remaining)
+        sleep = self._sleep.get(device_id)
+        if sleep is not None and sleep.asleep:
+            return device_asleep(device_id, sleep.wake_label)
+        return not_connected(device_id)
 
     def command_works_offline(self, device_id: str, command: Any) -> bool:
         """Whether ``command`` goes out to ``device_id`` with no live
@@ -823,7 +698,7 @@ class DeviceManager(
         driver = self._devices.get(device_id)
         if driver is None or not isinstance(command, str):
             return False
-        return self._command_available_offline(driver, command)
+        return available_offline(driver, command)
 
     def accepts_commands(self, device_id: str) -> bool:
         """Whether a command sent to this device now would go out.
@@ -858,108 +733,7 @@ class DeviceManager(
         if self.accepts_commands(device_id):
             return True
         driver = self._devices.get(device_id)
-        return driver is not None and self._command_available_offline(driver, command)
-
-    @staticmethod
-    def _validate_command_params(
-        driver: BaseDriver, command: str, params: dict[str, Any] | None
-    ) -> dict[str, Any] | None:
-        """Run every command's params through the declared-schema gate,
-        regardless of driver format.
-
-        ConfigurableDriver has validated internally since the pickers work
-        (and still does, covering direct-call paths like the Driver Builder
-        test harness); Python drivers' declared ``min``/``max``/``pattern``
-        were cosmetic until this dispatch-path gate. Reads the instance-level
-        DRIVER_INFO so runtime-populated command sets (qsc_qrc's discovered
-        controls, toa_9000m2's built commands) are gated too. Commands or
-        params without a schema entry pass through untouched.
-
-        Runs when the caller supplied no params at all, not only when it
-        supplied some: a command invoked with nothing is precisely the case a
-        missing ``required`` param has to be caught in, and the early return on
-        falsy params is why it never was.
-        """
-        info = getattr(driver, "DRIVER_INFO", {}) or {}
-        cmd_def = (info.get("commands") or {}).get(command)
-        if not isinstance(cmd_def, dict):
-            return params
-        pdefs = cmd_def.get("params")
-        if not isinstance(pdefs, dict):
-            return params
-        return normalize_and_validate_command_params(command, pdefs, params)
-
-    @staticmethod
-    def _coerce_child_id_params(
-        driver: BaseDriver, command: str, params: dict[str, Any] | None
-    ) -> dict[str, Any] | None:
-        """Coerce ``child_id`` param values to the child type's declared id
-        type before they reach the driver.
-
-        The UI, macros, and REST supply the id as a string (often the padded
-        form, e.g. "003"); an integer-id child type needs an int. Drivers
-        used to hand-convert each param — now the platform does it, so a
-        driver can pass ``params["outlet"]`` straight to the child API
-        (``int(int)`` keeps hand-converting drivers working). String-id
-        types pass through untouched — the driver receives what the caller
-        sent, and only the integer kind has a wire form to normalize.
-
-        The coercion rule itself lives in ``drivers/child_ids``; this method
-        owns which params it applies to and what a failure means here.
-        """
-        if not params:
-            return params
-        info = getattr(driver, "DRIVER_INFO", {}) or {}
-        cmd_def = (info.get("commands") or {}).get(command)
-        if not isinstance(cmd_def, dict):
-            return params
-        pdefs = cmd_def.get("params")
-        if not isinstance(pdefs, dict):
-            return params
-        child_types = info.get("child_entity_types") or {}
-        out = dict(params)
-        for name, pdef in pdefs.items():
-            if not isinstance(pdef, dict) or pdef.get("type") != "child_id":
-                continue
-            value = out.get(name)
-            if value is None:
-                continue
-            declared_type = pdef.get("child_type")
-            # A child_type naming a type the driver never defined used to fall
-            # through to the default integer kind and be reported as a bad
-            # VALUE — "'component' must be a child id number, got 'Pgm_Gain'"
-            # — when the value was fine and the driver's own declaration was
-            # the typo. Say which declaration is wrong, in the same sentence
-            # the catalog, the file checker, openavc.simulator.validate and the loader
-            # already use for the static form of this fault.
-            if isinstance(declared_type, str) and declared_type not in child_types:
-                raise CommandParamError(
-                    f"'{command}': '{name}': "
-                    + undeclared_child_type_reason(declared_type, child_types)
-                )
-            type_def = child_types.get(declared_type)
-            if child_id_kind(type_def) != "integer":
-                continue
-            coerced = coerce_child_local_id(type_def, value)
-            if coerced is None:
-                raise CommandParamError(
-                    f"'{command}': '{name}' must be a child id number, "
-                    f"got {value!r}"
-                )
-            # Coercion proves the id is the right KIND; the declared range is
-            # a separate fact and used to go unchecked. An out-of-range id
-            # reached the wire and the command reported success — the device
-            # answered with its own error and nothing surfaced it. Enforced
-            # here beside the min/max checks the same gate already runs for
-            # ordinary numeric params, so a child id is no longer the one
-            # parameter kind whose declared bounds mean nothing.
-            range_error = child_id_range_error(type_def, coerced)
-            if range_error is not None:
-                raise CommandParamError(
-                    f"'{command}': '{name}' {range_error}, got {coerced}"
-                )
-            out[name] = coerced
-        return out
+        return driver is not None and available_offline(driver, command)
 
     def get_device_info(self, device_id: str) -> dict[str, Any]:
         """Return device metadata, status, and capabilities.

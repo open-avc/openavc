@@ -409,7 +409,7 @@ async def test_undeclared_params_pass_through(core):
 
     (This used to assert that an undeclared *command* passed through too. It
     no longer does: a driver that declares a command set is taken at its word,
-    and a name outside it is refused by ``_check_command_declared``.)
+    and a name outside it is refused by ``check_command_declared``.)
     """
     dm, driver = await _bounded(core, "amp4")
 

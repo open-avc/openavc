@@ -972,9 +972,9 @@ async def test_osc_child_id_param_pads_via_format_spec():
 
     # OSC commands require the OSCTransport type; substitute the encoder
     # check by calling the substitution path directly.
-    from openavc.core.device_manager import DeviceManager
+    from openavc.core.command_gates import coerce_child_id_params
 
-    params = DeviceManager._coerce_child_id_params(
+    params = coerce_child_id_params(
         driver, "set_channel_fader", {"channel": "02", "level": 0.5}
     )
     assert params["channel"] == 2

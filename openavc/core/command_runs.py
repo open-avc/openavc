@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from openavc.core.client_origin import request_client_id
+from openavc.core.command_gates import command_definition, command_label
 from openavc.core.file_staging import FileStaging, HeldFile, StagingError
 from openavc.drivers.command_files import CommandFile, DeviceFile
 from openavc.drivers.spec import file_param_names, is_file_command
@@ -168,9 +169,8 @@ class CommandRuns:
         driver = self._engine.devices.get_driver(device_id)
         if driver is None:
             raise DeviceNotFoundError(f"Device '{device_id}' not found")
-        info = getattr(driver, "DRIVER_INFO", {}) or {}
-        cmd_def = (info.get("commands") or {}).get(command)
-        label = str((cmd_def or {}).get("label") or command) if isinstance(cmd_def, dict) else command
+        cmd_def = command_definition(driver, command)
+        label = command_label(cmd_def, command)
         if not is_file_command(cmd_def):
             raise ValueError(
                 f"'{label}' takes no file. Send it with Send Command as usual."

@@ -28,6 +28,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
+from openavc.core.command_gates import command_definition
 from openavc.core.connection_fault import (
     BRIDGE_OFFLINE,
     NO_RESPONSE,
@@ -196,6 +197,15 @@ class DeviceAwayMixin:
                 return True
         return False
 
+    def _note_command_sent(self, device_id: str, driver: BaseDriver, command: str) -> None:
+        """After a send that did not raise: arm what the command declares (a
+        sleep, a restart window), and when it was the wake command that ended
+        a sleep, say the device is waking."""
+        woke = self._note_sleep_command(device_id, driver, command)
+        self._arm_restart_window(device_id, driver, command)
+        if woke:
+            self._publish_waking(device_id)
+
     def _publish_waking(self, device_id: str) -> None:
         """Right after the wake command: the sleep is over, and the device is
         coming back for as long as the wake command's window says."""
@@ -229,12 +239,11 @@ class DeviceAwayMixin:
     ) -> None:
         """Open the commanded-restart window for a command that declares one.
 
-        Reads the instance-level DRIVER_INFO, like the ``available_offline``
-        gate above, so a runtime-populated command set is covered too.
+        Reads the instance-level DRIVER_INFO (core/command_gates.py), so a
+        runtime-populated command set is covered too.
         """
-        info = getattr(driver, "DRIVER_INFO", {}) or {}
-        cmd_def = (info.get("commands") or {}).get(command)
-        if not isinstance(cmd_def, dict):
+        cmd_def = command_definition(driver, command)
+        if cmd_def is None:
             return
         try:
             seconds = float(cmd_def.get("restarts_device_for") or 0)

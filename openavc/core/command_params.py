@@ -151,7 +151,7 @@ def file_command_reason(
     A command that takes a file or hands one back runs only from Send Command
     on the device page and from a Device Audit, where a person can give or take
     the file; from a macro step or a panel binding the runtime refuses it, in
-    this same sentence (``DeviceManager._check_file_door``). A group step says
+    this same sentence (``core/command_gates.check_file_door``). A group step says
     so when any member's command is one. None for no opinion, as above.
     """
     if not isinstance(action, Mapping):
