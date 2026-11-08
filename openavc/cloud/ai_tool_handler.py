@@ -1,10 +1,13 @@
 """
 OpenAVC Cloud — AI tool call handler.
 
-Handles AI_TOOL_CALL messages from the cloud platform. Each tool call
-is dispatched to the appropriate local function — reading project state,
-controlling devices, modifying configurations, installing drivers, etc.
-Results are sent back as AI_TOOL_RESULT messages.
+Handles AI_TOOL_CALL messages from the cloud platform: looks the tool up in
+``TOOLS`` (every tool the cloud may call, and whether it runs under the
+project lock), runs it as a background task, and sends the result back as an
+AI_TOOL_RESULT. A tool that returned an error or raised is answered as a
+failure, and what a raised exception may say is ``describe_tool_failure``'s
+call, because the answer is kept in the cloud chat history. The tools
+themselves are the mixins under ``cloud/tools/``, one per area.
 """
 
 from __future__ import annotations
@@ -19,6 +22,16 @@ from typing import Any, TYPE_CHECKING
 from openavc.cloud.protocol import (
     AI_TOOL_RESULT, build_ai_tool_result_payload, extract_payload,
 )
+from openavc.cloud.tools.catalog_tools import CatalogToolsMixin
+from openavc.cloud.tools.custom_ui_tools import CustomUIToolsMixin
+from openavc.cloud.tools.device_tools import DeviceToolsMixin
+from openavc.cloud.tools.driver_tools import DriverToolsMixin
+from openavc.cloud.tools.macro_tools import MacroToolsMixin
+from openavc.cloud.tools.plugin_tools import PluginToolsMixin
+from openavc.cloud.tools.project_tools import ProjectToolsMixin
+from openavc.cloud.tools.script_tools import ScriptToolsMixin
+from openavc.cloud.tools.system_tools import SystemToolsMixin
+from openavc.cloud.tools.ui_tools import UIToolsMixin
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -122,16 +135,120 @@ def describe_tool_failure(exc: Exception) -> str:
     return TOOL_FAILED
 
 
-from openavc.cloud.tools.catalog_tools import CatalogToolsMixin
-from openavc.cloud.tools.custom_ui_tools import CustomUIToolsMixin
-from openavc.cloud.tools.device_tools import DeviceToolsMixin
-from openavc.cloud.tools.driver_tools import DriverToolsMixin
-from openavc.cloud.tools.macro_tools import MacroToolsMixin
-from openavc.cloud.tools.plugin_tools import PluginToolsMixin
-from openavc.cloud.tools.project_tools import ProjectToolsMixin
-from openavc.cloud.tools.script_tools import ScriptToolsMixin
-from openavc.cloud.tools.system_tools import SystemToolsMixin
-from openavc.cloud.tools.ui_tools import UIToolsMixin
+
+# How a tool runs. READ changes nothing: it runs beside any other tool,
+# without the project lock. UNLOCKED changes something other than the project
+# and runs without the lock too. LOCKED takes the project lock, so two tools
+# never interleave on engine.project, and the one pre-AI backup of the
+# conversation is made under it before the first such tool. A name missing from
+# TOOLS is answered "Unknown tool".
+READ, UNLOCKED, LOCKED = "read", "unlocked", "locked"
+
+#: Every tool the cloud may call, and how it runs. Tool ``x`` is the handler's
+#: method ``_x``, defined in one of the mixins.
+TOOLS: dict[str, str] = {
+    # Reading / Searching
+    "get_project_summary": READ,
+    "get_project_state": READ,
+    "get_state_value": READ,
+    "get_state_history": READ,
+    "list_devices": READ,
+    "get_device_info": READ,
+    "list_drivers": READ,
+    "search_community_drivers": READ,
+    "get_community_driver_detail": READ,
+    "find_driver_for_device": READ,
+    "get_installed_drivers": READ,
+    "get_driver_definition": READ,
+    "get_script_source": READ,
+    "get_script_health": READ,
+    "get_logs": READ,
+    "list_triggers": READ,
+    "get_macro": READ,
+    "get_ui_page": READ,
+    # Writing / Creating
+    "update_project_metadata": LOCKED,
+    "update_device": LOCKED,
+    "delete_device": LOCKED,
+    "add_device": LOCKED,
+    "add_device_group": LOCKED,
+    "update_device_group": LOCKED,
+    "delete_device_group": LOCKED,
+    "add_variable": LOCKED,
+    "update_variable": LOCKED,
+    "delete_variable": LOCKED,
+    "add_macro": LOCKED,
+    "update_macro": LOCKED,
+    "delete_macro": LOCKED,
+    "add_ui_page": LOCKED,
+    "update_ui_page": LOCKED,
+    "delete_ui_page": LOCKED,
+    "add_ui_elements": LOCKED,
+    "update_ui_element": LOCKED,
+    "delete_ui_elements": LOCKED,
+    "add_master_element": LOCKED,
+    "update_master_element": LOCKED,
+    "delete_master_element": LOCKED,
+    "install_community_driver": LOCKED,
+    "create_driver_definition": LOCKED,
+    "update_driver_definition": LOCKED,
+    "create_script": LOCKED,
+    "update_script_source": LOCKED,
+    "delete_script": LOCKED,
+    # Plugins
+    "list_plugins": READ,
+    "browse_community_plugins": READ,
+    "install_plugin": LOCKED,
+    "uninstall_plugin": LOCKED,
+    "enable_plugin": LOCKED,
+    "disable_plugin": LOCKED,
+    "get_plugin_config": READ,
+    "update_plugin_config": LOCKED,
+    # Discovery
+    "start_discovery_scan": LOCKED,
+    "get_discovery_results": READ,
+    # Themes
+    "list_themes": READ,
+    "get_theme": READ,
+    "apply_theme": LOCKED,
+    # Assets
+    "list_assets": READ,
+    "delete_asset": LOCKED,
+    # ISC
+    "get_isc_status": READ,
+    "list_isc_peers": READ,
+    "send_isc_command": LOCKED,
+    # Device settings
+    "get_device_settings": READ,
+    "set_device_setting": LOCKED,
+    # Custom UI: the project's own ui/ folder, and the stylesheet that
+    # restyles the built-in controls. The three writers are LOCKED, so they
+    # ride the one-time pre-AI backup that already covers ui/.
+    "list_ui_files": READ,
+    "read_ui_file": READ,
+    "write_ui_file": LOCKED,
+    "delete_ui_file": LOCKED,
+    "get_project_stylesheet": READ,
+    "set_project_stylesheet": LOCKED,
+    "review_custom_ui": LOCKED,
+    # UI simulation
+    "simulate_ui_action": LOCKED,
+    "review_ui": LOCKED,
+    # Impact checking
+    "check_references": READ,
+    # Async / Waiting
+    "wait": READ,
+    # Actions
+    "send_device_command": LOCKED,
+    "test_device_connection": LOCKED,
+    "test_driver_command": LOCKED,
+    # It waits on a macro run (bounded, but tens of seconds) and never
+    # changes engine.project, so holding the lock would block project edits.
+    "execute_macro": UNLOCKED,
+    "cancel_macro": LOCKED,
+    "set_state_value": LOCKED,
+    "test_trigger": LOCKED,
+}
 
 
 class AIToolHandler(
@@ -153,34 +270,13 @@ class AIToolHandler(
     ensuring the AI has the same capabilities as the Programmer IDE.
 
     Tool handler methods are organized into domain-specific mixins under
-    cloud/tools/ — this class provides the dispatch table and execution
-    infrastructure.
+    cloud/tools/; this class runs them, as ``TOOLS`` says each one runs.
     """
 
-    # Tools that only read data and never modify the project
-    _READ_ONLY_TOOLS: set[str] = {
-        "get_project_summary", "get_project_state", "get_state_value",
-        "get_state_history", "list_devices", "get_device_info",
-        "list_drivers", "search_community_drivers", "get_community_driver_detail",
-        "find_driver_for_device", "get_installed_drivers",
-        "get_driver_definition", "get_script_source", "get_script_health",
-        "get_logs",
-        "list_triggers", "get_macro", "get_ui_page",
-        "list_plugins", "browse_community_plugins", "get_plugin_config",
-        "list_themes", "get_theme", "list_assets",
-        "get_isc_status", "list_isc_peers",
-        "get_device_settings", "check_references",
-        "get_discovery_results", "wait",
-        "list_ui_files", "read_ui_file", "get_project_stylesheet",
-    }
-
-    # Tools that may run without the project-serialization lock: every
-    # read-only tool, plus execute_macro — it waits on a macro run (bounded
-    # now, but still tens of seconds) and never mutates engine.project, so
-    # holding the lock would needlessly block project edits. Everything else
-    # (all project-mutating tools, and unclassified tools) takes the lock by
-    # default, so a new write tool is serialized automatically.
-    _CONCURRENT_SAFE_TOOLS = _READ_ONLY_TOOLS | {"execute_macro"}
+    # From TOOLS: the tools that change nothing, and every tool that runs
+    # without the project lock (what _execute_tool asks).
+    _READ_ONLY_TOOLS: set[str] = {name for name, run in TOOLS.items() if run == READ}
+    _CONCURRENT_SAFE_TOOLS: set[str] = {name for name, run in TOOLS.items() if run != LOCKED}
 
     # Idle timeout before resetting the AI backup flag (seconds)
     _AI_BACKUP_IDLE_TIMEOUT = 300  # 5 minutes
@@ -208,109 +304,8 @@ class AIToolHandler(
         self._project_lock = asyncio.Lock()
         self._pending_tasks: set[asyncio.Task] = set()
 
-        # Tool dispatch table
-        self._tools: dict[str, Any] = {
-            # Reading / Searching
-            "get_project_summary": self._get_project_summary,
-            "get_project_state": self._get_project_state,
-            "get_state_value": self._get_state_value,
-            "get_state_history": self._get_state_history,
-            "list_devices": self._list_devices,
-            "get_device_info": self._get_device_info,
-            "list_drivers": self._list_drivers,
-            "search_community_drivers": self._search_community_drivers,
-            "get_community_driver_detail": self._get_community_driver_detail,
-            "find_driver_for_device": self._find_driver_for_device,
-            "get_installed_drivers": self._get_installed_drivers,
-            "get_driver_definition": self._get_driver_definition,
-            "get_script_source": self._get_script_source,
-            "get_script_health": self._get_script_health,
-            "get_logs": self._get_logs,
-            "list_triggers": self._list_triggers,
-            "get_macro": self._get_macro,
-            "get_ui_page": self._get_ui_page,
-            # Writing / Creating
-            "update_project_metadata": self._update_project_metadata,
-            "update_device": self._update_device,
-            "delete_device": self._delete_device,
-            "add_device": self._add_device,
-            "add_device_group": self._add_device_group,
-            "update_device_group": self._update_device_group,
-            "delete_device_group": self._delete_device_group,
-            "add_variable": self._add_variable,
-            "update_variable": self._update_variable,
-            "delete_variable": self._delete_variable,
-            "add_macro": self._add_macro,
-            "update_macro": self._update_macro,
-            "delete_macro": self._delete_macro,
-            "add_ui_page": self._add_ui_page,
-            "update_ui_page": self._update_ui_page,
-            "delete_ui_page": self._delete_ui_page,
-            "add_ui_elements": self._add_ui_elements,
-            "update_ui_element": self._update_ui_element,
-            "delete_ui_elements": self._delete_ui_elements,
-            "add_master_element": self._add_master_element,
-            "update_master_element": self._update_master_element,
-            "delete_master_element": self._delete_master_element,
-            "install_community_driver": self._install_community_driver,
-            "create_driver_definition": self._create_driver_definition,
-            "update_driver_definition": self._update_driver_definition,
-            "create_script": self._create_script,
-            "update_script_source": self._update_script_source,
-            "delete_script": self._delete_script,
-            # Plugins
-            "list_plugins": self._list_plugins,
-            "browse_community_plugins": self._browse_community_plugins,
-            "install_plugin": self._install_plugin,
-            "uninstall_plugin": self._uninstall_plugin,
-            "enable_plugin": self._enable_plugin,
-            "disable_plugin": self._disable_plugin,
-            "get_plugin_config": self._get_plugin_config,
-            "update_plugin_config": self._update_plugin_config,
-            # Discovery
-            "start_discovery_scan": self._start_discovery_scan,
-            "get_discovery_results": self._get_discovery_results,
-            # Themes
-            "list_themes": self._list_themes,
-            "get_theme": self._get_theme,
-            "apply_theme": self._apply_theme,
-            # Assets
-            "list_assets": self._list_assets,
-            "delete_asset": self._delete_asset,
-            # ISC
-            "get_isc_status": self._get_isc_status,
-            "list_isc_peers": self._list_isc_peers,
-            "send_isc_command": self._send_isc_command,
-            # Device settings
-            "get_device_settings": self._get_device_settings,
-            "set_device_setting": self._set_device_setting,
-            # Custom UI: the project's own ui/ folder, and the stylesheet that
-            # restyles the built-in controls. The three writers are deliberately
-            # outside _CONCURRENT_SAFE_TOOLS, so they take the project lock and
-            # ride the one-time pre-AI backup that already covers ui/.
-            "list_ui_files": self._list_ui_files,
-            "read_ui_file": self._read_ui_file,
-            "write_ui_file": self._write_ui_file,
-            "delete_ui_file": self._delete_ui_file,
-            "get_project_stylesheet": self._get_project_stylesheet,
-            "set_project_stylesheet": self._set_project_stylesheet,
-            "review_custom_ui": self._review_custom_ui,
-            # UI simulation
-            "simulate_ui_action": self._simulate_ui_action,
-            "review_ui": self._review_ui,
-            # Impact checking
-            "check_references": self._check_references,
-            # Async / Waiting
-            "wait": self._wait,
-            # Actions
-            "send_device_command": self._send_device_command,
-            "test_device_connection": self._test_device_connection,
-            "test_driver_command": self._test_driver_command,
-            "execute_macro": self._execute_macro,
-            "cancel_macro": self._cancel_macro,
-            "set_state_value": self._set_state_value,
-            "test_trigger": self._test_trigger,
-        }
+        # This handler's own copy: a test swaps one entry for a stand-in.
+        self._tools: dict[str, Any] = {name: getattr(self, f"_{name}") for name in TOOLS}
 
     async def handle(self, msg: dict[str, Any]) -> None:
         """Route an incoming AI_TOOL_CALL message to the appropriate handler.

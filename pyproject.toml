@@ -117,4 +117,3 @@ target-version = "py311"
 "openavc/main.py" = ["E402"]
 "openavc/api/rest.py" = ["E402"]
 "openavc/core/project_loader.py" = ["E402"]
-"openavc/cloud/ai_tool_handler.py" = ["E402"]
