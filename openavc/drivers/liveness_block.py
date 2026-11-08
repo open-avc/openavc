@@ -16,7 +16,8 @@ The rules worth knowing before changing anything here:
 * **A bad block is off, with one warning.** An ``expect`` that is not a regex,
   or a number that is not one, turns the watchdog off and keeps whichever
   numbers were read before the bad one. The loader validates the block; this
-  stays defensive so a hand-installed file cannot crash the driver.
+  stays defensive about those two mistakes, so a hand-installed file with one
+  still leaves the driver running.
 * **The probe** follows ``polling.queries``' conventions: on OSC an address,
   ``{config}`` filled, with its ``args``; on any other link a raw line,
   ``{config}`` filled, escape-decoded and inside the ``send_frame`` header,

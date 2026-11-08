@@ -23,6 +23,9 @@ The rules worth knowing before changing anything here:
   (``_line_bytes``), unlike a raw line on UDP.
 * **A ``udp:`` side-send** takes none of it: that channel speaks a protocol
   of its own (``_unframed_bytes``).
+* **The ``auth:`` sign-in's credential lines** take none of it either: each
+  goes as typed with the sign-in's own line ending (``sign_in``), before the
+  device reads connected.
 * ``send_frame`` is a ``length_prefix`` header whose length field is
   computed per message, so a protocol whose header carries the data length
   (eISCP's 16 bytes) is declared once; ``compiled_protocol`` builds and
@@ -54,6 +57,9 @@ class SendFraming:
     config: dict[str, Any]
     DRIVER_INFO: dict[str, Any]
     _definition: dict[str, Any]
+    # The commands the device authored itself, set by the inline-protocol
+    # merge (ConfigurableDriver._merge_config_protocol); read with a default.
+    _inline_command_names: set[str]
     _push_params: Callable[[], dict[str, Any]]
     _substitute_for_wire: Callable[[str, str, dict[str, Any]], str]
 
@@ -126,13 +132,17 @@ class SendFraming:
         )
         return self._line_bytes(formatted)
 
-    def _framed_send(self, command: str, cmd_def: dict[str, Any], send: str) -> str:
-        """A file command's send string inside the prefix and suffix (each
-        "" when not declared), or as written when the command is exempt."""
+    def _framed_send(self, command: str, cmd_def: dict[str, Any], send: Any) -> Any:
+        """A file command's send string inside the prefix and suffix, or as
+        written when the command is exempt or the driver declares neither (so
+        a ``send`` that is not text, ``send: 123``, is refused by the
+        substitution rather than turned into text here)."""
         if self._exempt_from_framing(command, cmd_def):
             return send
         prefix = getattr(self, "_command_prefix", "")
         suffix = getattr(self, "_command_suffix", "")
+        if not prefix and not suffix:
+            return send
         return f"{prefix}{send}{suffix}"
 
     def _exempt_from_framing(self, command: str, cmd_def: dict[str, Any]) -> bool:

@@ -168,6 +168,18 @@ def test_a_file_command_goes_inside_the_send_frame_header_after_its_framing() ->
     assert drv.build_wire("power", {"v": 1}) == b"HD\x05PWR1\r"
 
 
+def test_a_send_that_is_not_text_is_refused_unless_a_prefix_or_suffix_frames_it() -> None:
+    unit = _with(UNIT)
+    unit["commands"]["num"] = {"label": "Num", "send": 123}
+    unit["commands"]["flag"] = {"label": "Flag", "send": True, "raw": True}
+    with pytest.raises(TypeError):
+        _driver(unit).build_wire("num")
+    framed = _driver(_with(unit, command_prefix="<"))
+    assert framed.build_wire("num") == b"<123"
+    with pytest.raises(TypeError):
+        framed.build_wire("flag")
+
+
 def test_an_unknown_command_or_one_with_no_send_string_builds_nothing(caplog) -> None:
     drv = _driver(UNIT)
     with caplog.at_level(logging.WARNING, logger=LOGGER):
