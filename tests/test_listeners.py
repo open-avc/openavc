@@ -483,3 +483,23 @@ def test_a_port_that_cannot_be_bound_stops_the_start_and_says_why(
     assert recorded["error"] == started.bind_error.error_type
     assert recorded["message"] == expected
     assert started.calls == []
+
+
+def test_a_supervisor_listener_is_adopted_for_the_same_plan(started, monkeypatch):
+    from openavc import listen_sockets
+
+    adopted = []
+
+    def inherited(value, plan, port):
+        adopted.append((value, plan, port))
+        return ["inherited-sock"]
+
+    monkeypatch.setattr(listen_sockets, "inherited_for_plan", inherited)
+    monkeypatch.setenv("OPENAVC_LISTEN_FD", "7")
+    main.main()
+
+    assert adopted == [("7", started.plan, 8080)]
+    assert started.binds == []
+    assert started.calls[0] == ("set_current", started.plan)
+    assert started.served == [(8080, ["inherited-sock"])]
+    assert started.calls[-1] == ("close", ["inherited-sock"])
