@@ -418,3 +418,48 @@ async def test_a_load_that_changed_the_project_but_moved_no_login_keeps_the_cras
     assert json.loads(crash_copy_path(project_path).read_text(encoding="utf-8"))["project"][
         "name"
     ] == "Before"
+
+
+def test_a_device_login_saved_here_is_not_one_of_the_projects_secrets(tmp_path):
+    """The redaction's project secrets are the mesh key and plugin logins; a
+    device's login is masked under that device, never as the project's."""
+    eng = Engine(str(_project_path(tmp_path)))
+    eng.project = eng._move_logins(_project_with_a_login(), typed=False)
+    assert eng.project.devices[0].config["password"] == SAVED_LOGIN
+
+    eng._register_project_secrets()
+
+    assert "Widget-Pass-1" not in get_secret_registry()._project
+
+
+# --- the services at shutdown -----------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_shutdown_leaves_the_isc_endpoint_and_proxy_on_the_stopped_mesh(tmp_path):
+    """Today's shutdown: the mesh is stopped and its slot emptied, but the ISC
+    WebSocket endpoint and the scripts' isc proxy keep the stopped manager
+    (a reload that turns ISC off hands them None). A change here is a change
+    in behaviour, not a refactor."""
+    from openavc.api import isc_ws
+    from openavc.core.script_api import isc as isc_proxy
+
+    stopped: list[str] = []
+
+    async def stop():
+        stopped.append("isc")
+
+    mesh = SimpleNamespace(stop=stop)
+    eng = Engine(str(_project_path(tmp_path)))
+    eng.isc = mesh
+    isc_ws.set_isc_manager(mesh)
+    isc_proxy._bind(mesh)
+    try:
+        await eng._stop_network_services()
+        assert stopped == ["isc"]
+        assert eng.isc is None
+        assert isc_ws._isc_manager is mesh
+        assert isc_proxy._manager is mesh
+    finally:
+        isc_ws.set_isc_manager(None)
+        isc_proxy._bind(None)
