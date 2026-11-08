@@ -39,12 +39,16 @@ from openavc.updater.rollback import (
 
 MAIN_PY = Path(__file__).resolve().parent.parent / "openavc" / "main.py"
 ENGINE_PY = Path(__file__).resolve().parent.parent / "openavc" / "core" / "engine.py"
-# The engine's start and stop (Engine inherits them).
+# The engine's start and stop, and the services it starts (Engine inherits them).
 ENGINE_LIFECYCLE_PY = ENGINE_PY.with_name("engine_lifecycle.py")
+RUNTIME_SERVICES_PY = ENGINE_PY.with_name("runtime_services.py")
 
 
 def _engine_source() -> str:
-    return "".join(p.read_text(encoding="utf-8") for p in (ENGINE_PY, ENGINE_LIFECYCLE_PY))
+    return "".join(
+        p.read_text(encoding="utf-8")
+        for p in (ENGINE_PY, ENGINE_LIFECYCLE_PY, RUNTIME_SERVICES_PY)
+    )
 
 
 # ===========================================================================

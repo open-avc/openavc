@@ -1,12 +1,16 @@
 """The services that run beside the project: the ISC mesh, the mDNS
-advertiser, panel software updates and the cloud agent. Each is started once
-in a start (core/engine_lifecycle.py names the order), and the ISC mesh and
-the advertiser follow a settings change without a restart
+advertiser, the cloud agent, the update manager and panel software updates.
+Each slot is declared in ``_init_runtime_services``, started once in a start
+and stopped here (core/engine_lifecycle.py names when in each direction), and
+the ISC mesh and the advertiser follow a settings change without a restart
 (``reconcile_runtime_services``, which ``PATCH /system/config`` calls; a
 project edit that touches ISC reloads it through the reconcile).
 
 Every one isolates its own failure: a service that cannot start is logged and
-left as ``None``, and the engine runs on without it. The ISC and advertise
+left as ``None``, and the engine runs on without it. The two updaters start
+after the cloud agent, so a running agent's command handler is handed each as
+it starts (``_cloud_command_handler``); a system paired while running hands
+them over when the agent is built. The ISC and advertise
 switches are read from the system config live, never an import-time copy, so a
 toggle is honored on the next reconcile; the cloud agent's pairing, and the
 advertiser's ports and TLS, come from the ``openavc.config`` mirror. ISC runs
@@ -38,6 +42,32 @@ def _plug_in_isc(manager) -> None:
 
 class RuntimeServicesMixin:
     """Starting, reconciling and stopping the services beside the project."""
+
+    def _init_runtime_services(self) -> None:
+        self.isc = None  # ISCManager, when both switches are on
+        self.cloud_agent = None  # CloudAgent, when the system is paired
+        self.mdns_advertiser = None  # MDNSAdvertiser, when advertise is on
+        # UpdateManager and PanelSoftwareUpdates, both made in a start.
+        self.update_manager = self.panel_software = None
+
+    async def _start_network_services(self) -> None:
+        """Inter-System Communication, the mDNS advertisement, then the cloud
+        agent (its saved pairing applied first)."""
+        await self._start_isc()
+        await self._start_mdns_advertiser()
+        from openavc.cloud.config import apply_saved_cloud_config
+        apply_saved_cloud_config()
+        await self._start_cloud_agent()
+
+    async def _stop_network_services(self) -> None:
+        """The cloud agent, the mDNS advertiser, then ISC."""
+        await self._stop_cloud_agent()
+        await self._stop_mdns_advertiser()
+        if self.isc:
+            # Unlike _stop_isc, the shutdown leaves the ISC endpoint and the
+            # scripts' isc proxy holding the stopped mesh.
+            await self.isc.stop()
+            self.isc = None
 
     def isc_gates(self) -> tuple[bool, bool]:
         """The two switches ISC runs behind: (system config, this project).
@@ -158,7 +188,11 @@ class RuntimeServicesMixin:
         should_run = self._mdns_wanted()
         if should_run and not self.mdns_advertiser:
             await self._start_mdns_advertiser()
-        elif not should_run and self.mdns_advertiser:
+        elif not should_run:
+            await self._stop_mdns_advertiser()
+
+    async def _stop_mdns_advertiser(self) -> None:
+        if self.mdns_advertiser:
             await self.mdns_advertiser.stop()
             self.mdns_advertiser = None
 
@@ -185,8 +219,9 @@ class RuntimeServicesMixin:
                 ),
             )
             await self.panel_software.start()
-            if self.cloud_agent and getattr(self.cloud_agent, "_command_handler", None):
-                self.cloud_agent._command_handler._panel_software = self.panel_software
+            handler = self._cloud_command_handler()
+            if handler:
+                handler._panel_software = self.panel_software
         except Exception:
             log.exception("Panel software updates failed to start — continuing without them")
             self.panel_software = None
@@ -194,6 +229,29 @@ class RuntimeServicesMixin:
     async def _stop_panel_software(self) -> None:
         if self.panel_software:
             await self.panel_software.stop()
+
+    async def _start_update_manager(self) -> None:
+        """Check for updates and schedule the auto-check; a cloud agent
+        already running is handed the manager for cloud-triggered updates."""
+        try:
+            from openavc.updater.manager import UpdateManager
+            self.update_manager = UpdateManager(state_store=self.state)
+            await self.update_manager.start_auto_check()
+            handler = self._cloud_command_handler()
+            if handler:
+                handler._update_manager = self.update_manager
+        except Exception:
+            log.exception("Update manager failed to start — continuing without updates")
+            self.update_manager = None
+
+    async def _stop_update_manager(self) -> None:
+        if self.update_manager:
+            await self.update_manager.stop_auto_check()
+
+    def _cloud_command_handler(self):
+        """The running cloud agent's command handler, the one that runs
+        cloud-triggered updates; None with no agent."""
+        return getattr(self.cloud_agent, "_command_handler", None)
 
     async def _start_cloud_agent(self) -> None:
         """Initialize the cloud agent if enabled in system config."""
@@ -276,4 +334,9 @@ class RuntimeServicesMixin:
             log.info("Cloud agent: initialized and connecting")
         except Exception:  # Catch-all: isolates cloud subsystem errors from core startup
             log.exception("Cloud agent: failed to start — continuing without cloud")
+            self.cloud_agent = None
+
+    async def _stop_cloud_agent(self) -> None:
+        if self.cloud_agent:
+            await self.cloud_agent.stop()
             self.cloud_agent = None

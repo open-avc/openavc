@@ -151,11 +151,8 @@ class Engine(
             )
         )
         self.persister: StatePersister | None = None
-        self.isc = None  # ISCManager, initialized in start() if enabled
-        self.cloud_agent = None  # CloudAgent, initialized in start() if enabled
-        # UpdateManager and PanelSoftwareUpdates, both initialized in start()
-        self.update_manager = self.panel_software = None
-        self.mdns_advertiser = None  # MDNSAdvertiser, initialized in start() if enabled
+        # ISC, the cloud agent, mDNS and the two updaters, all made in a start.
+        self._init_runtime_services()
 
         # Setup-action runner (driver-declared provisioning wizards)
         from openavc.core.setup_actions import SetupActionRunner

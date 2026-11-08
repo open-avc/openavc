@@ -213,8 +213,9 @@ class EngineLifecycleMixin:
     ``Engine.__init__``, the project load and the login moves
     (core/project_logins.py), the device
     add/bring-up, the variable runtime (core/project_variables.py), the
-    runtime services (ISC, mDNS, cloud, panel software) and the background
-    loops.
+    runtime services (core/runtime_services.py: ISC, mDNS, the cloud agent,
+    the update manager and panel software, each started and stopped there)
+    and the background loops.
     """
 
     async def start(self) -> None:
@@ -397,15 +398,6 @@ class EngineLifecycleMixin:
             startup_errors.append(f"Scripts: {e}")
             log.exception("Script engine failed to load scripts")
 
-    async def _start_network_services(self) -> None:
-        """Inter-System Communication, the mDNS advertisement, then the cloud
-        agent (its saved pairing applied first)."""
-        await self._start_isc()
-        await self._start_mdns_advertiser()
-        from openavc.cloud.config import apply_saved_cloud_config
-        apply_saved_cloud_config()
-        await self._start_cloud_agent()
-
     def _start_background_tasks(self) -> None:
         # Periodic backup (every 30 min if project has changed)
         self._periodic_backup_task = _in_background(self._periodic_backup_loop())
@@ -427,20 +419,6 @@ class EngineLifecycleMixin:
         self.state.set("system.startup_errors", len(startup_errors), source="system")
         if startup_errors:
             log.warning(f"Engine started with {len(startup_errors)} error(s): {'; '.join(startup_errors)}")
-
-    async def _start_update_manager(self) -> None:
-        """Check for updates and schedule the auto-check; a cloud agent
-        already running is handed the manager for cloud-triggered updates."""
-        try:
-            from openavc.updater.manager import UpdateManager
-            self.update_manager = UpdateManager(state_store=self.state)
-            await self.update_manager.start_auto_check()
-            handler = getattr(self.cloud_agent, "_command_handler", None)
-            if handler:
-                handler._update_manager = self.update_manager
-        except Exception:
-            log.exception("Update manager failed to start — continuing without updates")
-            self.update_manager = None
 
     async def stop(self) -> None:
         """Stop the engine gracefully."""
@@ -465,8 +443,7 @@ class EngineLifecycleMixin:
 
     async def _stop_inner(self) -> None:
         """Tear down all subsystems. Caller holds _reload_lock."""
-        if self.update_manager:
-            await self.update_manager.stop_auto_check()
+        await self._stop_update_manager()
         await self._stop_panel_software()
         self.learned_config.stop()
         # Unsubscribe all event/state handlers to prevent leaks on reload
@@ -510,18 +487,6 @@ class EngineLifecycleMixin:
         for sub_id in self._event_sub_ids:
             self.events.off(sub_id)
         self._event_sub_ids.clear()
-
-    async def _stop_network_services(self) -> None:
-        """The cloud agent, the mDNS advertiser, then ISC."""
-        if self.cloud_agent:
-            await self.cloud_agent.stop()
-            self.cloud_agent = None
-        if self.mdns_advertiser:
-            await self.mdns_advertiser.stop()
-            self.mdns_advertiser = None
-        if self.isc:
-            await self.isc.stop()
-            self.isc = None
 
     async def _stop_background_tasks(self) -> None:
         """The periodic backup, the panel sweep and the programs installer.
