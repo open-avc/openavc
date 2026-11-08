@@ -10,6 +10,12 @@ Usage:
     driver_def = load_yaml("extron_switcher.avcdriver")
     DriverClass = create_configurable_driver_class(driver_def)
     register_driver(DriverClass)
+
+Reading the device's replies lives in mixins ``ConfigurableDriver``
+inherits, so every name stays on the driver object: the regex rules over a
+line of text (``text_replies``), the JSON-body rules and the ``json_path``
+walk (``json_replies``), OSC commands and reply rules (``osc_wire``), and what
+a reply's value becomes and which child it belongs to (``reply_values``).
 """
 
 from __future__ import annotations
@@ -21,13 +27,10 @@ import time
 from typing import Any
 
 from openavc.core.condition_eval import eval_operator, reads_as_on
-from openavc.core.state_store import VALID_KEY_PREFIXES, is_flat_primitive
+from openavc.core.state_store import VALID_KEY_PREFIXES
 from openavc.drivers import compiled_protocol
 from openavc.drivers.base import (
-    CHILD_UNREGISTERED,
-    COERCION_FAILURE,
     UNKNOWN_COMMAND,
-    UNMATCHED_RESPONSE,
     WAKE_ON_LAN_PORT,
     BaseDriver,
     ConnectionFaultError,
@@ -36,13 +39,17 @@ from openavc.drivers.base import (
     normalize_and_validate_command_params as _normalize_and_validate_command_params,
     normalize_mac,
 )
-from openavc.drivers.child_ids import coerce_child_local_id, page_starts
+from openavc.drivers.child_ids import page_starts
 from openavc.drivers.param_labels import param_label
 from openavc.drivers.spec import (
     DEFAULT_LINE_GAP_S,
     FOLLOW_UP_SETTLE_S,
     LINE_GAP_TRANSPORTS,
 )
+from openavc.drivers.json_replies import JsonReplies
+from openavc.drivers.osc_wire import OscWire
+from openavc.drivers.reply_values import ReplyValues
+from openavc.drivers.text_replies import TextReplies
 from openavc.drivers.inline_protocol import (
     declare_command_params,
     derive_state_vars_from_responses,
@@ -107,11 +114,6 @@ _HTTP_CREDENTIAL_REFUSED_STATUS = frozenset({401, 407})
 _HTTP_REFUSALS_BEFORE_ANY_ANSWER = 3
 
 
-# Sentinel returned by _extract_json_path when a JSON string can't be parsed
-# or the requested path doesn't exist — distinct from a legitimately-extracted
-# None so the caller can skip the mapping instead of writing a wrong value.
-_JSON_PATH_MISSING = object()
-
 
 def _build_commands_meta(commands_def: dict[str, Any]) -> dict[str, Any]:
     """Build the DRIVER_INFO ``commands`` UI metadata from a commands map.
@@ -171,7 +173,7 @@ _CHILD_ID_TOKEN = re.compile(r"\{child_id(?::[^{}]*)?\}")
 # over LINE_GAP_TRANSPORTS when no ``inter_command_delay`` is set.
 
 
-class ConfigurableDriver(BaseDriver):
+class ConfigurableDriver(TextReplies, JsonReplies, OscWire, ReplyValues, BaseDriver):
     """
     A driver that interprets a YAML (.avcdriver) definition at runtime.
 
@@ -537,51 +539,6 @@ class ConfigurableDriver(BaseDriver):
         self._drop_follow_ups()
         self._drop_read_backs()
         await super()._close_session()
-
-    @staticmethod
-    def _throttle_scope(
-        child_mappings: list[dict[str, Any]], match: re.Match[str]
-    ) -> str:
-        """Throttle bucket for a regex rule: the child ids it routes to, so a
-        rule serving N children throttles each independently. Flat rules (no
-        child_set) return "" — one shared bucket, as before."""
-        if not child_mappings:
-            return ""
-        parts = []
-        for cm in child_mappings:
-            if "list" in cm:
-                # One reply writes a whole list, so a list is one scope; a
-                # device that answers a page at a time gets one per page.
-                parts.append(
-                    f"{cm['type']}:list:"
-                    f"{ConfigurableDriver._list_page(cm['list'], match)}"
-                )
-                continue
-            id_kind, id_val = cm["id"]
-            raw: Any = id_val
-            if id_kind == "group":
-                try:
-                    raw = match.group(id_val)
-                except (IndexError, re.error):
-                    raw = None
-            parts.append(f"{cm['type']}:{raw}")
-        return "|".join(parts)
-
-    @staticmethod
-    def _list_page(spec: dict[str, Any], match: re.Match[str]) -> str:
-        """Where a list reply's page begins: the start capture, else the first
-        item's id, else the fixed start."""
-        kind, value = spec["start"]
-        try:
-            if spec["id_group"] is not None:
-                text = match.group(spec["group"]) or ""
-                first = spec["element"].search(text)
-                return str(first.group(spec["id_group"])) if first else ""
-            if kind == "group":
-                return str(match.group(value))
-        except (IndexError, re.error):
-            return ""
-        return str(value)
 
     def _merge_config_protocol(self) -> None:
         """Merge device-config-authored ``commands`` / ``responses`` /
@@ -1549,14 +1506,6 @@ class ConfigurableDriver(BaseDriver):
         self._read_back_tasks.clear()
         self._read_back_waiting.clear()
 
-    def _coerce_child_local_id(self, child_type: str, raw: Any) -> int | str | None:
-        """Coerce a routed child id (regex capture or literal) to the type's
-        declared ``id_format``. Returns None when it can't be coerced — the
-        callers here skip such an update rather than raise, as a REST route
-        would 404 on the same input."""
-        child_types = self._definition.get("child_entity_types") or {}
-        return coerce_child_local_id(child_types.get(child_type), raw)
-
     def _resolve_instance_ids(
         self, ctype: str, tdef: dict[str, Any], inst: dict[str, Any]
     ) -> list[int | str] | None:
@@ -2362,99 +2311,6 @@ class ConfigurableDriver(BaseDriver):
                 out[name] = compiled_protocol.value_to_wire(params[name], pdef)
         return out
 
-    def _is_osc_command(self, cmd_def: dict[str, Any]) -> bool:
-        """Check if a command definition uses OSC-style fields."""
-        return "address" in cmd_def
-
-    async def _send_osc_command(
-        self, command: str, cmd_def: dict[str, Any], params: dict[str, Any]
-    ) -> Any:
-        """Send an OSC command: encode address + typed args and send."""
-        from openavc.transport.osc import OSCTransport
-        from openavc.transport.osc_codec import osc_encode_message
-
-        # Guard against silently emitting OSC bytes on a non-OSC socket when a
-        # command's declared shape (an `address`) doesn't match the active
-        # transport. Mirrors the HTTP path's isinstance check.
-        if not isinstance(self.transport, OSCTransport):
-            log.error(
-                f"[{self.device_id}] Command '{command}' uses OSC fields "
-                f"but transport is not OSC"
-            )
-            return None
-
-        all_params = {**self.config, **params}
-
-        raw_address = cmd_def.get("address", "")
-        address = self._substitute_for_wire(
-            f"commands.{command}.address", raw_address, all_params
-        )
-
-        args = self._build_osc_args(cmd_def.get("args", []), all_params)
-        data = osc_encode_message(address, args)
-        await self.transport.send(data)
-        log.debug(f"[{self.device_id}] Sent OSC command '{command}': {address}")
-        return True
-
-    @staticmethod
-    def _osc_num(tag: str, value: str, converter: Any) -> Any:
-        """Coerce an OSC arg value to a number, raising a clear error.
-
-        A missing/unresolved value (e.g. ``float("")`` or an unmatched
-        ``{placeholder}``) would otherwise surface as a bare ValueError with no
-        context. Turn it into an actionable message naming the OSC type tag.
-        """
-        try:
-            return converter(value)
-        except (ValueError, TypeError) as e:
-            raise ValueError(
-                f"OSC arg of type '{tag}' requires a numeric value, got {value!r}"
-            ) from e
-
-    @staticmethod
-    def _build_osc_args(
-        arg_defs: list[dict[str, Any]], params: dict[str, Any]
-    ) -> list[tuple[str, Any]]:
-        """Build a list of typed OSC args from definition, substituting params."""
-        args: list[tuple[str, Any]] = []
-        for arg_def in arg_defs:
-            tag = arg_def.get("type", "f")
-            raw_value = str(arg_def.get("value", ""))
-
-            # Substitute {param} placeholders
-            if "{" in raw_value:
-                resolved = ConfigurableDriver._safe_substitute(raw_value, params)
-            else:
-                resolved = raw_value
-
-            if tag == "f":
-                args.append(("f", ConfigurableDriver._osc_num("f", resolved, float)))
-            elif tag == "i":
-                args.append(("i", int(ConfigurableDriver._osc_num("i", resolved, float))))
-            elif tag == "s":
-                args.append(("s", resolved))
-            elif tag == "h":
-                args.append(("h", ConfigurableDriver._osc_num("h", resolved, int)))
-            elif tag == "d":
-                args.append(("d", ConfigurableDriver._osc_num("d", resolved, float)))
-            elif tag == "T":
-                args.append(("T", True))
-            elif tag == "F":
-                args.append(("F", False))
-            elif tag == "N":
-                args.append(("N", None))
-            else:
-                # Unsupported tag (e.g. 'b'/blob, or a typo). The loader rejects
-                # these at load time; warn rather than silently drop the arg and
-                # emit a malformed (short-by-one) OSC message on any path that
-                # bypasses the loader.
-                log.warning(
-                    "OSC arg type %r is not supported (expected one of "
-                    "f/i/s/h/d/T/F/N); arg dropped",
-                    tag,
-                )
-        return args
-
     def _is_http_command(self, cmd_def: dict[str, Any]) -> bool:
         """Check if a command definition uses HTTP-style fields."""
         return "path" in cmd_def or "method" in cmd_def
@@ -2764,753 +2620,33 @@ class ConfigurableDriver(BaseDriver):
         waiter.set_result(None)
 
     async def on_data_received(self, data: bytes) -> None:
-        """Match response against pre-compiled patterns, update state."""
-        # During the login handshake, capture all bytes raw and let the
-        # handshake state machine decide when to send credentials. Skip
-        # the normal response-matching path entirely.
+        """One frame from the device: the sign-in's while it runs, else the
+        reply rules' (OSC by address, anything else as a line of text)."""
         if self._auth_mode:
-            self._auth_buffer.extend(data)
-            if len(self._auth_buffer) > _AUTH_MAX_BUFFER:
-                # Pre-auth flood: stop accumulating and signal _auth_wait_for to
-                # abort the handshake. Keeps memory and per-chunk re-scan bounded
-                # on this unauthenticated path.
-                self._auth_overflow = True
-            self._auth_event.set()
+            self._take_sign_in_bytes(data)
             return
-
         # A waiting liveness probe is satisfied by any qualifying inbound
         # frame; the data still flows through normal dispatch below.
         self._liveness_note_data(data)
-
         if self._definition.get("transport") == "osc":
             await self._handle_osc_response(data)
             return
-
         text = data.decode("utf-8", errors="replace").strip()
         if not text:
             return
         self._framed_messages += 1
+        self._read_text_reply(text)
 
-        # JSON-body responses (multi-field): parse once, apply every json rule
-        # key-scoped. Additive — if the body isn't a JSON object or none of the
-        # declared keys are present, fall through to regex matching below.
-        # A body a json rule read is normally finished with: the json rules are
-        # the ones that understand this device's replies, and letting the regex
-        # table loose on the same text afterwards would double-write.
-        # `after_json` is the opt-in for the case that breaks — a body carrying
-        # values AND something no json key reads (an error field beside the
-        # readings), where exactly one regex rule has to see it. Only those
-        # rules are eligible then, so first-match-wins is decided among them
-        # and no other rule in the driver moves.
-        eligible = self._compiled_responses
-        if self._json_responses and self._apply_json_responses(text):
-            self._parsed_messages += 1
-            if not self._after_json_responses:
-                return
-            eligible = self._after_json_responses
-            read_by_json = True
-        else:
-            read_by_json = False
-
-        for rule in eligible:
-            pattern, mappings, child_mappings, tstate, condition, follow_ups = rule
-            match = pattern.search(text)
-            if match:
-                # Before anything is written, and before the throttle: a rule
-                # that does not apply right now has not consumed this frame,
-                # and a later rule may still want it.
-                if not self._rule_applies(condition):
-                    continue
-                flat: list[tuple[str, Any]] = []
-                for mapping in mappings:
-                    state_key = mapping.get("state")
-                    if not state_key:
-                        continue
-
-                    # Static value mapping (no regex group needed)
-                    if "value" in mapping:
-                        static = mapping["value"]
-                        coerced = self._convert_declared(static, mapping.get("type", "string"))
-                        flat.append((state_key, coerced))
-                        continue
-
-                    # Regex group mapping
-                    group = mapping.get("group", 0)
-                    value_type = mapping.get("type", "string")
-                    value_map = mapping.get("map")
-                    json_path = mapping.get("json_path")
-
-                    try:
-                        raw_value = match.group(group)
-                    except (IndexError, re.error):
-                        continue
-
-                    if raw_value is None:
-                        continue
-
-                    # Optional: the captured group is a JSON string; pull the
-                    # value at json_path before mapping/coercion (parity with
-                    # the OSC path — benefits HTTP/TCP JSON replies too).
-                    # Absent json_path = today's behavior exactly.
-                    if json_path is not None:
-                        extracted = self._extract_json_path(raw_value, json_path)
-                        if extracted is _JSON_PATH_MISSING:
-                            continue
-                        raw_value = str(extracted)
-
-                    # Apply value map if defined. Coerce the mapped value too
-                    # (parity with the OSC path): without this the same map+type
-                    # stores "5" on TCP but 5 on OSC.
-                    if value_map and raw_value in value_map:
-                        coerced = self._convert_declared(value_map[raw_value], value_type)
-                    else:
-                        coerced = self._read_converted(
-                            raw_value, value_type, mapping, self._convert_value
-                        )
-
-                    flat.append((state_key, coerced))
-
-                children = (
-                    self._resolve_child_mappings(match, child_mappings)
-                    if child_mappings else []
-                )
-                if not read_by_json:
-                    self._parsed_messages += 1
-                # A throttled rule consumes its frame either way — falling
-                # through would let a later rule match the same frame. Inside
-                # its window the writes are held, not applied. Scoped per
-                # routed child so one rule can serve N children.
-                if self._throttle_hold(
-                    tstate, self._throttle_scope(child_mappings, match),
-                    flat, children,
-                ):
-                    log.debug(
-                        f"[{self.device_id}] Response throttled: "
-                        f"{pattern.pattern}"
-                    )
-                    return
-                self._apply_writes(flat, children)
-
-                log.debug(
-                    f"[{self.device_id}] Response matched: {pattern.pattern}"
-                )
-                if follow_ups:
-                    self._follow_up(
-                        rule, follow_ups,
-                        self._throttle_scope(child_mappings, match), children,
-                    )
-                return  # Stop at first match
-
-        # A body a json rule read was read, whether or not an after_json rule
-        # also wanted it.
-        if read_by_json:
-            return
-        log.debug(f"[{self.device_id}] Unmatched response: {text!r}")
-        self._last_unread = text[:80]
-        self._observe(UNMATCHED_RESPONSE, text=text)
-
-    def _resolve_child_mappings(
-        self, match: re.Match[str], child_mappings: list[dict[str, Any]]
-    ) -> list[tuple[str, Any, dict[str, Any]]]:
-        """Read a matched response's captures for child-entity state
-        (``child_set:``): one ``(child type, local id, updates)`` per child,
-        written by the caller with ``set_child_state_batch``. Each entry
-        resolves its child id (capture ref or literal) and coerces each prop by
-        the child schema's declared type. Unregistered ids are skipped quietly
-        — devices legitimately answer for ports beyond a user-configured
-        roster."""
-        writes: list[tuple[str, Any, dict[str, Any]]] = []
-        for cm in child_mappings:
-            if "list" in cm:
-                writes.extend(self._resolve_child_list(match, cm))
-                continue
-            ctype = cm["type"]
-            id_kind, id_val = cm["id"]
-            if id_kind == "group":
-                try:
-                    raw_id = match.group(id_val)
-                except (IndexError, re.error):
-                    continue
-                if raw_id is None:
-                    continue
-            else:
-                raw_id = id_val
-            write = self._child_write(ctype, raw_id, cm, match, "child_set")
-            if write is not None:
-                writes.append(write)
-        return writes
-
-    def _child_write(
-        self,
-        ctype: str,
-        raw_id: Any,
-        cm: dict[str, Any],
-        match: re.Match[str],
-        form: str,
-    ) -> tuple[str, Any, dict[str, Any]] | None:
-        """One child's ``(child type, local id, updates)`` from a wire id and
-        the match its props read their captures from (the rule's match for
-        ``child_set``, one item's for ``child_list``). None when the id cannot
-        be placed (outside the id map, not that kind of id, not registered) or
-        nothing was read."""
-        id_map = cm.get("id_map")
-        if id_map is not None:
-            mapped_id = id_map.get(str(raw_id).strip())
-            if mapped_id is None:
-                log.debug(
-                    f"[{self.device_id}] {form}: {ctype} wire id "
-                    f"{raw_id!r} not in the id map — skipping"
-                )
-                return None
-            raw_id = mapped_id
-        local_id = self._coerce_child_local_id(ctype, raw_id)
-        if local_id is None:
-            return None
-        if not self.is_child_registered(ctype, local_id):
-            log.debug(
-                f"[{self.device_id}] {form}: {ctype} {local_id!r} not "
-                f"registered — skipping"
-            )
-            self._observe(CHILD_UNREGISTERED, child_type=ctype, local_id=local_id)
-            return None
-        updates: dict[str, Any] = {}
-        for pm in cm["props"]:
-            value_type = pm.get("type", "string")
-            if "value" in pm:
-                updates[pm["prop"]] = self._convert_declared(
-                    pm["value"], value_type
-                )
-                continue
-            try:
-                raw_value = match.group(pm.get("group", 0))
-            except (IndexError, re.error):
-                continue
-            if raw_value is None:
-                continue
-            value_map = pm.get("map")
-            if value_map and raw_value in value_map:
-                updates[pm["prop"]] = self._convert_declared(
-                    value_map[raw_value], value_type
-                )
-            else:
-                updates[pm["prop"]] = self._read_converted(
-                    raw_value, value_type, pm, self._convert_value
-                )
-        return (ctype, local_id, updates) if updates else None
-
-    def _resolve_child_list(
-        self, match: re.Match[str], cm: dict[str, Any]
-    ) -> list[tuple[str, Any, dict[str, Any]]]:
-        """Spread one reply's list across children (``child_list:``).
-
-        With a separator the list is split on it and every item, trimmed, has
-        to match the element whole; an item that does not still holds its
-        place, so the items after it keep their children. Without one the
-        element is found along the list one after another. An item names its
-        child by its own id capture, or by its place counted from ``start``
-        (a number, or the rule's capture when the reply says where its page
-        begins). Each item is then written exactly as a ``child_set`` entry
-        would be: id map, id coercion, unregistered ids skipped."""
-        spec = cm["list"]
-        ctype = cm["type"]
-        try:
-            text = match.group(spec["group"])
-        except (IndexError, re.error):
-            return []
-        if not text:
-            return []
-        element: re.Pattern[str] = spec["element"]
-        items: list[re.Match[str] | None]
-        if spec["separator"] is not None:
-            items = [
-                element.fullmatch(part.strip())
-                for part in text.split(spec["separator"])
-            ]
-        else:
-            # An empty match places nothing and is not a place in the list.
-            items = [m for m in element.finditer(text) if m.end() > m.start()]
-        id_group = spec["id_group"]
-        start = 0
-        if id_group is None:
-            kind, value = spec["start"]
-            if kind == "group":
-                try:
-                    start = int(str(match.group(value)).strip())
-                except (IndexError, re.error, TypeError, ValueError):
-                    # The reply does not say where its list begins: placing
-                    # it anyway could write one page over another.
-                    return []
-            else:
-                start = value
-        writes: list[tuple[str, Any, dict[str, Any]]] = []
-        for place, item in enumerate(items):
-            if item is None:
-                continue
-            if id_group is None:
-                raw_id: Any = start + place
-            else:
-                try:
-                    raw_id = item.group(id_group)
-                except (IndexError, re.error):
-                    continue
-                if raw_id is None:
-                    continue
-            write = self._child_write(ctype, raw_id, cm, item, "child_list")
-            if write is not None:
-                writes.append(write)
-        return writes
-
-    def _read_converted(
-        self, raw: Any, value_type: str, mapping: dict[str, Any], coerce: Any
-    ) -> Any:
-        """``coerce(raw, value_type)``, unless the mapping carries its state
-        variable's conversion (``convert``: scale / offset / unknown, attached
-        at compile time) and that decides the value."""
-        conversion = mapping.get("convert")
-        if conversion:
-            handled, value = compiled_protocol.reading_from_wire(
-                raw, conversion, value_type
-            )
-            if handled:
-                return value
-        return coerce(raw, value_type)
-
-    async def _handle_osc_response(self, data: bytes) -> None:
-        """Decode incoming OSC data and match against address-based responses."""
-        import fnmatch
-        import struct
-        from openavc.transport.osc_codec import osc_decode_bundle
-
-        try:
-            messages = osc_decode_bundle(data)
-        except (ValueError, struct.error) as e:
-            log.warning(f"[{self.device_id}] Failed to decode OSC message: {e}")
-            return
-
-        for address, args in messages:
-            self._framed_messages += 1
-            matched = False
-            for (
-                addr_pattern, mappings, child_mappings, tstate, condition,
-            ) in self._osc_responses:
-                if not fnmatch.fnmatch(address, addr_pattern):
-                    continue
-                if not self._rule_applies(condition):
-                    continue
-                matched = True
-                self._parsed_messages += 1
-                flat: list[tuple[str, Any]] = []
-                for mapping in mappings:
-                    state_key = mapping.get("state")
-                    if not state_key:
-                        continue
-
-                    arg_index = mapping.get("arg", 0)
-                    value_type = mapping.get("type", "string")
-                    value_map = mapping.get("map")
-                    json_path = mapping.get("json_path")
-
-                    if arg_index >= len(args):
-                        continue
-
-                    _, raw_value = args[arg_index]
-
-                    # Optional: the arg is a JSON string (QLab /reply ...);
-                    # pull the value at json_path before mapping/coercion.
-                    # Absent json_path = positional behavior exactly as before.
-                    if json_path is not None:
-                        extracted = self._extract_json_path(raw_value, json_path)
-                        if extracted is _JSON_PATH_MISSING:
-                            continue
-                        raw_value = extracted
-
-                    if value_map and str(raw_value) in value_map:
-                        coerced = self._convert_declared(
-                            value_map[str(raw_value)], value_type
-                        )
-                    else:
-                        coerced = self._read_converted(
-                            raw_value, value_type, mapping, self._convert_osc_value
-                        )
-
-                    flat.append((state_key, coerced))
-
-                children = (
-                    self._resolve_osc_child_mappings(address, args, child_mappings)
-                    if child_mappings else []
-                )
-                # An OSC child_set rule matches a wildcard address pattern
-                # (/ch/*/mix/fader), so the concrete address IS the per-child
-                # scope — same reason as the regex path above.
-                if self._throttle_hold(
-                    tstate, address if child_mappings else "", flat, children,
-                ):
-                    log.debug(
-                        f"[{self.device_id}] OSC response throttled: "
-                        f"{addr_pattern}"
-                    )
-                    break
-                self._apply_writes(flat, children)
-
-                log.debug(f"[{self.device_id}] OSC matched: {addr_pattern}")
-                break
-
-            if not matched:
-                log.debug(f"[{self.device_id}] Unmatched OSC: {address}")
-                self._last_unread = address[:80]
-                self._observe(
-                    UNMATCHED_RESPONSE, address=address,
-                    args=[value if is_flat_primitive(value) else repr(value)
-                          for _tag, value in args],
-                )
-
-    def _resolve_osc_child_mappings(
-        self,
-        address: str,
-        args: list[tuple[str, Any]],
-        child_mappings: list[dict[str, Any]],
-    ) -> list[tuple[str, Any, dict[str, Any]]]:
-        """Read an address-matched OSC message for child-entity state
-        (``child_set:``): one ``(child type, local id, updates)`` per child.
-        The child id comes from an address segment or a literal; prop values
-        from positional args or literals. Coercion, id-map unmapped-skip, and
-        the unregistered-id guard mirror ``_resolve_child_mappings`` exactly."""
-        segments = address.strip("/").split("/")
-        writes: list[tuple[str, Any, dict[str, Any]]] = []
-        for cm in child_mappings:
-            ctype = cm["type"]
-            id_kind, id_val = cm["id"]
-            if id_kind == "segment":
-                if not 0 <= id_val < len(segments):
-                    continue
-                raw_id: Any = segments[id_val]
-            else:
-                raw_id = id_val
-            id_map = cm.get("id_map")
-            if id_map is not None:
-                mapped_id = id_map.get(str(raw_id).strip())
-                if mapped_id is None:
-                    log.debug(
-                        f"[{self.device_id}] child_set: {ctype} wire id "
-                        f"{raw_id!r} not in the id map — skipping"
-                    )
-                    continue
-                raw_id = mapped_id
-            local_id = self._coerce_child_local_id(ctype, raw_id)
-            if local_id is None:
-                continue
-            if not self.is_child_registered(ctype, local_id):
-                log.debug(
-                    f"[{self.device_id}] child_set: {ctype} {local_id!r} not "
-                    f"registered — skipping"
-                )
-                self._observe(CHILD_UNREGISTERED, child_type=ctype, local_id=local_id)
-                continue
-            updates: dict[str, Any] = {}
-            for pm in cm["props"]:
-                value_type = pm.get("type", "string")
-                if "value" in pm:
-                    updates[pm["prop"]] = self._convert_declared(
-                        pm["value"], value_type
-                    )
-                    continue
-                arg_index = pm.get("arg", 0)
-                if not 0 <= arg_index < len(args):
-                    continue
-                _, raw_value = args[arg_index]
-                value_map = pm.get("map")
-                if value_map is not None and str(raw_value) in value_map:
-                    updates[pm["prop"]] = self._convert_declared(
-                        value_map[str(raw_value)], value_type
-                    )
-                else:
-                    updates[pm["prop"]] = self._read_converted(
-                        raw_value, value_type, pm, self._convert_osc_value
-                    )
-            if updates:
-                writes.append((ctype, local_id, updates))
-        return writes
-
-    @staticmethod
-    def _extract_json_path(raw_value: Any, path: Any, collapse: bool = True) -> Any:
-        """Parse a JSON string and walk a dotted path to a primitive.
-
-        Used by response mappings that declare ``json_path`` — common for OSC
-        devices (QLab's ``/reply/...`` carries a single string arg holding JSON
-        like ``{"status":"ok","data":"Intro Music"}``; ``json_path: data``
-        extracts the useful value).
-
-        Path syntax is dot-separated keys and integer list indices, e.g.
-        ``data``, ``data.name``, ``data.0``. An empty path returns the whole
-        parsed value. A path that lands on a list or dict yields its length —
-        keeping the state store's flat-primitive invariant and making a
-        ``data`` array usable as a boolean "anything?" or an integer count.
-
-        Returns ``_JSON_PATH_MISSING`` when the string isn't valid JSON or the
-        path doesn't resolve, so the caller skips the mapping rather than
-        writing a wrong value. ``collapse=False`` returns the node itself
-        (list or object included) for a caller that asks a question of it
-        rather than storing it -- a ``contains`` mapping.
-        """
-        if isinstance(raw_value, (dict, list)):
-            obj: Any = raw_value
-        else:
-            try:
-                obj = compiled_protocol.parse_json_reply(raw_value)
-            except (ValueError, TypeError):
-                return _JSON_PATH_MISSING
-
-        if path:
-            for seg in str(path).split("."):
-                if seg == "":
-                    continue
-                if isinstance(obj, dict):
-                    if seg not in obj:
-                        return _JSON_PATH_MISSING
-                    obj = obj[seg]
-                elif isinstance(obj, list):
-                    try:
-                        obj = obj[int(seg)]
-                    except (ValueError, IndexError):
-                        return _JSON_PATH_MISSING
-                else:
-                    return _JSON_PATH_MISSING
-
-        if collapse and isinstance(obj, (list, dict)):
-            return len(obj)
-        return obj
-
-    @classmethod
-    def _read_json_mapping(cls, obj: Any, mapping: dict[str, Any]) -> Any:
-        """Resolve one json mapping against a parsed body: the value at its
-        ``key``, or with ``contains`` the answer to "does the value at key
-        hold this?" -- membership for a list, a key for an object, a
-        substring for a string, equality otherwise. That is how a resource
-        that reports flags as an array (``["NoLink", "LowBattery"]``) becomes
-        one boolean per flag. Missing key -> ``_JSON_PATH_MISSING``."""
-        key = mapping.get("key")
-        if "contains" not in mapping:
-            return cls._extract_json_path(obj, key)
-        node = cls._extract_json_path(obj, key, collapse=False)
-        if node is _JSON_PATH_MISSING:
-            return node
-        needle = mapping["contains"]
-        if isinstance(node, list):
-            return needle in node or str(needle) in [str(v) for v in node]
-        if isinstance(node, dict):
-            return str(needle) in node
-        if isinstance(node, str):
-            return str(needle) in node
-        return node == needle or str(node) == str(needle)
-
-    def _apply_json_responses(self, text: str) -> bool:
-        """Apply all JSON-body response rules to one response/message body.
-
-        Parses ``text`` as a JSON object and, for every json rule mapping whose
-        key resolves, coerces and stores the value. A rule's ``child_set:``
-        entries are resolved from the same parsed body and written to their
-        children in the same pass. Returns True if at least one state was set
-        (so the caller stops before regex matching, unless a rule declares
-        ``after_json``). json rules are additive: a rule whose keys are absent
-        from this body just sets nothing.
-
-        A single-element top-level array (``[{...}]``) is unwrapped to its one
-        object — several device protocols wrap every reply that way (per-unit
-        addressing with one unit per datagram). Multi-element arrays are
-        ambiguous and still fall through to regex matching.
-
-        An object that repeats a name keeps the values under every copy
-        (``compiled_protocol.parse_json_reply``): a device that bundles several
-        addresses under one name loses none of them.
-        """
-        try:
-            obj = compiled_protocol.parse_json_reply(text)
-        except (ValueError, TypeError):
-            return False
-        if isinstance(obj, list) and len(obj) == 1 and isinstance(obj[0], dict):
-            obj = obj[0]
-        if not isinstance(obj, dict):
-            return False
-        applied = False
-        throttled = False
-        for (
-            mappings, tstate, require, condition, child_mappings,
-        ) in self._json_responses:
-            if not self._rule_applies(condition):
-                continue
-            # A rule scoped by `require:` applies only to bodies carrying all
-            # of the named keys — without the scope, endpoints that reuse a
-            # field name (a paired peripheral's `status` vs the main unit's)
-            # would cross-write each other's state.
-            if require and not all(
-                self._extract_json_path(obj, key) is not _JSON_PATH_MISSING
-                for key in require
-            ):
-                continue
-            # Resolve first so a body without this rule's keys neither applies
-            # nor stamps the rule's throttle window.
-            resolved: list[tuple[dict[str, Any], Any]] = []
-            for mapping in mappings:
-                state_key = mapping.get("state")
-                key = mapping.get("key")
-                if not state_key or not key:
-                    continue
-                value = self._read_json_mapping(obj, mapping)
-                if value is _JSON_PATH_MISSING:
-                    continue
-                resolved.append((mapping, value))
-            child_writes = self._resolve_json_child_mappings(obj, child_mappings)
-            if not resolved and not child_writes:
-                continue
-            flat: list[tuple[str, Any]] = []
-            for mapping, value in resolved:
-                value_map = mapping.get("map")
-                if value_map and str(value) in value_map:
-                    coerced = self._convert_declared(
-                        value_map[str(value)], mapping.get("type", "string")
-                    )
-                else:
-                    coerced = self._read_converted(
-                        value, mapping.get("type", "string"), mapping,
-                        self._convert_json_value,
-                    )
-                flat.append((mapping["state"], coerced))
-            if self._throttle_hold(
-                tstate, self._json_throttle_scope(child_mappings),
-                flat, child_writes,
-            ):
-                # Matched but inside the throttle window: consume the body
-                # (return True below); the writes are held for the window's end.
-                throttled = True
-                continue
-            self._apply_writes(flat, child_writes)
-            applied = True
-        if applied:
-            log.debug(
-                f"[{self.device_id}] JSON response applied "
-                f"({len(self._json_responses)} rule(s))"
-            )
-        return applied or throttled
-
-    @staticmethod
-    def _json_throttle_scope(child_mappings: list[dict[str, Any]]) -> str:
-        """Throttle bucket for a json rule, the regex path's rule read against
-        literal ids: the children this rule routes to. A json rule's ids are
-        fixed, so the bucket is constant — but a rule that routes to children
-        and one that only writes flat state are then not sharing a window,
-        which is what the scope is for."""
-        if not child_mappings:
-            return ""
-        return "|".join(
-            f"{cm['type']}:{cm['id'][1]}" for cm in child_mappings
-        )
-
-    def _resolve_json_child_mappings(
-        self, obj: Any, child_mappings: list[dict[str, Any]]
-    ) -> list[tuple[str, Any, dict[str, Any]]]:
-        """Read a json rule's ``child_set:`` entries out of one parsed body.
-
-        Resolved, not written: a body that carries none of a rule's paths must
-        neither apply nor stamp the rule's throttle window, so the caller
-        decides after seeing what came back. Unregistered ids are skipped — a
-        device legitimately answers for units beyond a user-configured roster —
-        and told to a contract observer only when the body carried a value for
-        one: a smaller unit's reply has nothing at the paths of the ids it
-        does not have."""
-        writes: list[tuple[str, Any, dict[str, Any]]] = []
-        for cm in child_mappings:
-            ctype = cm["type"]
-            local_id = self._coerce_child_local_id(ctype, cm["id"][1])
-            if local_id is None:
-                continue
-            if not self.is_child_registered(ctype, local_id):
-                if any(
-                    self._read_json_mapping(obj, pm) is not _JSON_PATH_MISSING
-                    for pm in cm["props"]
-                ):
-                    log.debug(
-                        f"[{self.device_id}] child_set: {ctype} {local_id!r} "
-                        f"not registered — skipping"
-                    )
-                    self._observe(
-                        CHILD_UNREGISTERED, child_type=ctype, local_id=local_id
-                    )
-                continue
-            updates: dict[str, Any] = {}
-            for pm in cm["props"]:
-                value = self._read_json_mapping(obj, pm)
-                if value is _JSON_PATH_MISSING:
-                    continue
-                value_map = pm.get("map")
-                value_type = pm.get("type", "string")
-                if value_map and str(value) in value_map:
-                    updates[pm["prop"]] = self._convert_declared(
-                        value_map[str(value)], value_type
-                    )
-                else:
-                    updates[pm["prop"]] = self._read_converted(
-                        value, value_type, pm, self._convert_json_value
-                    )
-            if updates:
-                writes.append((ctype, local_id, updates))
-        return writes
-
-    # Shared coercers (see compiled_protocol module docs). Non-primitive JSON
-    # values have already been collapsed to a length by ``_extract_json_path``
-    # before ``_coerce_json_value`` sees them.
-    _coerce_json_value = staticmethod(compiled_protocol.coerce_json_value)
-    _coerce_osc_value = staticmethod(compiled_protocol.coerce_osc_value)
-
-    # What the response paths call: the shared coercers, plus a word to a
-    # contract observer when a value did not convert. The coercers keep the
-    # value as it came (a number) or read it as False (a flag), which is right
-    # for the room and invisible to the author.
-    def _convert_value(self, raw: str, value_type: str) -> Any:
-        coerced = self._coerce_value(raw, value_type)
-        if self.contract_observer is not None:
-            self._note_coercion(raw, value_type, coerced)
-        return coerced
-
-    def _convert_declared(self, literal: Any, value_type: str) -> Any:
-        """A value the definition wrote itself: a rule's ``value:`` (or a
-        ``set:`` literal) or a ``map:`` target, rather than one the device sent.
-
-        ``null`` there means no reading, so it is empty (None) whatever the
-        declared type; read as text it would be the string "None", or False
-        on a boolean. Anything else is read as text first, as a capture is,
-        which also collapses a list or dict target to one flat value before
-        it reaches the state store.
-        """
-        if literal is None:
-            return None
-        return self._convert_value(str(literal), value_type)
-
-    def _convert_json_value(self, value: Any, value_type: str) -> Any:
-        coerced = self._coerce_json_value(value, value_type)
-        if self.contract_observer is not None:
-            self._note_coercion(value, value_type, coerced)
-        return coerced
-
-    def _convert_osc_value(self, value: Any, value_type: str) -> Any:
-        coerced = self._coerce_osc_value(value, value_type)
-        if self.contract_observer is not None:
-            self._note_coercion(value, value_type, coerced)
-        return coerced
-
-    def _note_coercion(self, raw: Any, value_type: str, coerced: Any) -> None:
-        if raw is None:
-            return
-        failed = (
-            (value_type == "integer" and not isinstance(coerced, int))
-            or (value_type in ("float", "number") and not isinstance(coerced, (int, float)))
-            or (value_type == "boolean" and not isinstance(raw, bool)
-                and not compiled_protocol.is_bool_token(raw))
-        )
-        if failed:
-            self._observe(
-                COERCION_FAILURE, raw=raw if is_flat_primitive(raw) else repr(raw),
-                type=value_type, stored=coerced if is_flat_primitive(coerced) else repr(coerced),
-            )
+    def _take_sign_in_bytes(self, data: bytes) -> None:
+        """During the login handshake, capture all bytes raw and let the
+        handshake state machine decide when to send credentials."""
+        self._auth_buffer.extend(data)
+        if len(self._auth_buffer) > _AUTH_MAX_BUFFER:
+            # Pre-auth flood: stop accumulating and signal _auth_wait_for to
+            # abort the handshake. Keeps memory and per-chunk re-scan bounded
+            # on this unauthenticated path.
+            self._auth_overflow = True
+        self._auth_event.set()
 
     async def set_device_setting(self, key: str, value: Any) -> Any:
         """
@@ -3795,9 +2931,6 @@ class ConfigurableDriver(BaseDriver):
         if not parser_config:
             return None
         return build_frame_parser(parser_config)
-
-    # Shared string-to-type coercion (see compiled_protocol module docs).
-    _coerce_value = staticmethod(compiled_protocol.coerce_value)
 
 
 def create_configurable_driver_class(

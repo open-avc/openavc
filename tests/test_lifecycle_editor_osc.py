@@ -4,7 +4,7 @@
 The Driver Builder's `on_connect` editor was string-only: an OSC device whose
 bring-up message needs arguments could not have its `{address, args}` item
 authored — the item was shown read-only (a disabled input holding the JSON),
-even though the runtime (`configurable.py::_build_osc_args`) accepts it and the
+even though the runtime (`osc_wire.build_osc_args`) accepts it and the
 save round-trip preserves it (`DriverDefinitionRequest` is `extra='allow'`; the
 loader validates the object form with `allow_osc_dict=True`). A backend
 capability the UI couldn't reach. The editor now renders the shared
