@@ -7,7 +7,8 @@ about a device's address. The address is the one the device manager dials:
 the project's connections table, then the bridge and USB rewrites, and
 ``transport/endpoint`` supplies a transport's fallback port and the
 control-interface bind. Each probe opens what that transport opens in
-``BaseDriver._create_transport``, without speaking the protocol:
+``BaseDriver._create_transport`` (drivers/transport_ladder.py), without
+speaking the protocol:
 
 - tcp, ssh, mqtt, OSC over TCP: a TCP connection, closed at once.
 - http: a HEAD request to the URL the transport builds from host, port and

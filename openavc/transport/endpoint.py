@@ -4,7 +4,7 @@ A device's resolved config names a host and usually a port. Two things about
 the connection its driver opens are not in that config: the port a transport
 falls back to when the config names none, and the local address the socket is
 bound to when Settings names a control interface. ``BaseDriver._create_transport``
-asks here for both, and so does anything that has to report or test where a
+(drivers/transport_ladder.py) asks here for both, and so does anything that has to report or test where a
 device really connects (``core/device_config.connection_of``,
 ``core/device_reachability``), so the answer cannot drift from the dial.
 

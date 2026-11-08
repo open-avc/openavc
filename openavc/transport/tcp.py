@@ -115,8 +115,9 @@ class TCPTransport:
         # An empty delimiter is the same statement as None ("this protocol has
         # no framing"), so it selects raw mode rather than building a parser
         # DelimiterFrameParser would reject. Drivers normalise this in
-        # BaseDriver._resolve_delimiter; the check is repeated here because a
-        # caller that builds a transport directly gets the same answer.
+        # BaseDriver._resolve_delimiter (drivers/transport_ladder.py); the check
+        # is repeated here because a caller that builds a transport directly
+        # gets the same answer.
         if frame_parser is not None:
             self._frame_parser: FrameParser | None = frame_parser
         elif delimiter:
