@@ -272,7 +272,12 @@ def _type_mismatch(
     Python's ``bool`` is an ``int``. The contract observer reports ``True``
     written to a numeric variable; the debug log has always accepted it
     (``bool_is_number``).
+
+    A declaration that is not a type name at all (a list, a dict) checks
+    nothing either: the validator reports it, and the write still lands.
     """
+    if not isinstance(declared, str):
+        return False
     if declared == "enum":
         return "values" in var_def and str(value) not in [str(v) for v in var_def["values"]]
     if declared == "boolean":

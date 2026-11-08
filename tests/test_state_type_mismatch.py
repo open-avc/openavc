@@ -77,6 +77,10 @@ _CASES = [
     ({"label": "Volume"}, 5, None, None),
     ({"type": "integer"}, None, None, None),
     ({"type": "acme_unknown"}, 5, None, None),
+    # A declaration that is not a type name at all (the validator reports it)
+    # checks nothing, and the write still lands.
+    ({"type": ["integer", "null"]}, 1, None, None),
+    ({"type": {"integer": True}}, "x", None, None),
 ]
 
 
