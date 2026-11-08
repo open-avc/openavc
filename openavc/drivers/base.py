@@ -55,13 +55,16 @@ from openavc.drivers.contract_events import (  # noqa: F401
     UNKNOWN_COMMAND,
     UNMATCHED_RESPONSE,
 )
-# The runtime gate for command params and setting values lives in its own
-# module; these names stay importable from here, the path drivers use.
-# The push channel lives in its own module; these two helpers stay importable
-# from here, the path core/push_ports.py and drivers use.
 from openavc.drivers.liveness import LivenessWatch
 from openavc.drivers.polling import PollLoop
+# The push channel lives in its own module; these two helpers stay importable
+# from here, the path core/push_ports.py and drivers use.
 from openavc.drivers.push import PushChannel, push_port, resolve_push_value  # noqa: F401
+# Building a device's transport from its config lives in its own module;
+# _ssh_option_list stays importable from here.
+from openavc.drivers.transport_ladder import TransportLadder, _ssh_option_list  # noqa: F401
+# The runtime gate for command params and setting values lives in its own
+# module; these names stay importable from here, the path drivers use.
 from openavc.drivers.param_validation import (  # noqa: F401
     CommandParamError,
     DeviceSettingValueError,
@@ -71,7 +74,6 @@ from openavc.drivers.param_validation import (  # noqa: F401
     validate_device_setting_value,
 )
 from openavc.core.state_store import StateStore, is_flat_primitive
-from openavc.transport.frame_parsers import FrameParser
 from openavc.transport.http_client import capture_driver_clients, capture_driver_websockets
 from openavc.transport.udp import UDPTransport
 from openavc.utils.log_redaction import (
@@ -300,25 +302,6 @@ def _type_problem(declared: str, value: Any, var_def: dict[str, Any]) -> str:
     return f"declared {declared}, got {type(value).__name__}"
 
 
-def _ssh_option_list(value: object) -> list[str]:
-    """Normalise a device's ``extra_ssh_options`` into ssh ``-o`` arguments.
-
-    A driver can declare a list; the SSH options field every SSH device gets
-    (drivers/registry.py) is text, one option per line. Both reach here: a
-    string splits on line breaks only, and blanks drop out. Never on commas,
-    which separate the entries of an algorithm list inside ONE option
-    (``Ciphers=+aes128-cbc,3des-cbc``). Nothing is validated beyond that --
-    an option ssh will not take is ssh's to report (connection_fault.py
-    reads its words), and an allowlist of our own would be a second thing
-    to keep current.
-    """
-    if value is None or value == "":
-        return []
-    if isinstance(value, (list, tuple)):
-        return [str(v).strip() for v in value if str(v).strip()]
-    return [line.strip() for line in str(value).splitlines() if line.strip()]
-
-
 #: The port a Wake-on-LAN magic packet is sent to unless a driver says otherwise
 #: (the "discard" port; 7 is the other convention, and a listener honours both).
 WAKE_ON_LAN_PORT = 9
@@ -390,7 +373,7 @@ def _verify_failure_error(
     return not_responding
 
 
-class BaseDriver(ChildEntities, PushChannel, LivenessWatch, PollLoop, ABC):
+class BaseDriver(ChildEntities, PushChannel, LivenessWatch, PollLoop, TransportLadder, ABC):
     """Abstract base class for all device drivers."""
 
     # Subclasses MUST override this with their metadata dict
@@ -1107,313 +1090,6 @@ class BaseDriver(ChildEntities, PushChannel, LivenessWatch, PollLoop, ABC):
         if self._health_enabled():
             self._start_health_loop()
 
-    def local_address(self, host: str | None = None) -> str | None:
-        """The local IP a connection this driver opens to ``host`` leaves
-        from, or None to let the operating system choose.
-
-        Settings > Network > Reach devices through can pin device traffic to
-        one network adapter. Every connection the platform builds for a driver
-        follows it, and so does an ``httpx.AsyncClient`` the driver builds
-        itself. A socket, WebSocket or datagram endpoint the driver opens
-        itself asks here and binds to the answer::
-
-            ip = self.local_address()
-            local_addr = (ip, 0) if ip else None
-            await asyncio.open_connection(host, port, local_addr=local_addr)
-            await websockets.connect(url, local_addr=local_addr)
-            await loop.create_datagram_endpoint(
-                factory, remote_addr=(host, port), local_addr=local_addr)
-            sock.bind((ip, 0))  # a raw socket, only when ip is not None
-
-        ``host`` defaults to this device's host; pass another when the
-        driver also talks to a second address. None when no adapter is
-        chosen, and for a host on this computer (a simulator, a local
-        service), which a socket bound to an adapter cannot reach. Raises
-        :class:`ConnectionFaultError` (``unreachable``) while the chosen
-        adapter has no address at all: let it fail the connect, and the
-        device card says which adapter and where to change it.
-        """
-        from openavc.transport.endpoint import control_bind_address
-
-        return control_bind_address(self.config.get("host", "") if host is None else host)
-
-    async def _create_transport(self, transport_type: str) -> None:
-        """Build ``self.transport`` for the resolved transport type.
-
-        The platform ladder covers every declarative transport; each
-        constructor's keyword arguments pass through _transport_kwargs()
-        so a driver can adjust them (drop the delimiter for a raw byte
-        stream, raise a timeout) without re-implementing the ladder.
-        Override this method wholesale only when the driver owns its
-        session outright (a raw httpx client, a websocket library) —
-        set up the session here and leave ``self.transport`` as None,
-        then override _link_alive() and _close_session() so the
-        connected property, the health loop, and every teardown path
-        see the driver-owned session instead of a platform transport.
-        """
-        frame_parser = self._create_frame_parser()
-        delimiter = self._resolve_delimiter()
-
-        # Reach devices through (if an adapter is chosen); never for a
-        # loopback host. The rule, and each transport's fallback port below,
-        # are in transport/endpoint.py so a connection test dials the same way.
-        from openavc.transport.endpoint import implied_port
-
-        control_ip = self.local_address()
-
-        if transport_type == "tcp":
-            from openavc.transport.tcp import TCPTransport
-
-            host = self.config.get("host", "")
-            port = self._required_port()
-            delay = self.config.get("inter_command_delay", 0.0)
-
-            # Forward TLS + connect-timeout from config so a declarative driver
-            # can talk to a device on TLS-wrapped TCP with `ssl: true` instead
-            # of overriding connect(). Same config vocabulary as the http
-            # branch (`ssl` to enable, `verify_ssl` for cert checking); the
-            # defaults match TCPTransport.create() so plain-TCP devices that
-            # set none of these are unaffected.
-            kwargs = dict(
-                host=host,
-                port=port,
-                on_data=self.on_data_received,
-                on_disconnect=self._handle_transport_disconnect,
-                delimiter=delimiter,
-                frame_parser=frame_parser,
-                inter_command_delay=delay,
-                name=self.device_id,
-                local_addr=(control_ip, 0) if control_ip else None,
-                timeout=self.config.get("timeout", 5.0),
-                ssl=self.config.get("ssl", False),
-                ssl_verify=self.config.get("verify_ssl", True),
-                keepalive=bool(self.config.get("tcp_keepalive", False)),
-            )
-            self.transport = await TCPTransport.create(
-                **self._transport_kwargs(transport_type, kwargs)
-            )
-        elif transport_type == "serial":
-            from openavc.transport.serial_transport import SerialTransport
-
-            serial_port = self.config.get("port", "")
-            delay = self.config.get("inter_command_delay", 0.0)
-            baudrate, bytesize, parity, stopbits, rtscts, xonxoff = (
-                self._coerce_serial_params(self.config)
-            )
-
-            kwargs = dict(
-                port=serial_port,
-                baudrate=baudrate,
-                on_data=self.on_data_received,
-                on_disconnect=self._handle_transport_disconnect,
-                delimiter=delimiter,
-                frame_parser=frame_parser,
-                inter_command_delay=delay,
-                bytesize=bytesize,
-                parity=parity,
-                stopbits=stopbits,
-                rtscts=rtscts,
-                xonxoff=xonxoff,
-                name=self.device_id,
-            )
-            self.transport = await SerialTransport.create(
-                **self._transport_kwargs(transport_type, kwargs)
-            )
-        elif transport_type == "udp":
-            from openavc.transport.udp import UDPTransport
-
-            host = self.config.get("host", "")
-            port = self._required_port()
-            delay = self.config.get("inter_command_delay", 0.0)
-
-            kwargs = dict(
-                host=host,
-                port=port,
-                on_data=self.on_data_received,
-                on_disconnect=self._handle_transport_disconnect,
-                inter_command_delay=delay,
-                name=self.device_id,
-            )
-            self.transport = UDPTransport(
-                **self._transport_kwargs(transport_type, kwargs)
-            )
-            await self.transport.open(
-                local_addr=control_ip or None,
-            )
-        elif transport_type == "osc":
-            from openavc.transport.osc import OSCTransport
-
-            host = self.config.get("host", "")
-            port = self._required_port()
-            listen_port = self.config.get("listen_port", 0)
-            delay = self.config.get("inter_command_delay", 0.0)
-            # OSC over TCP+SLIP when the device opts in (e.g. QLab's reliable
-            # large-reply path). Defaults to UDP, so existing OSC drivers that
-            # don't set transport_mode are unaffected.
-            osc_tcp = str(
-                self.config.get("transport_mode", "udp")
-            ).lower() == "tcp"
-
-            kwargs = dict(
-                host=host,
-                port=port,
-                listen_port=listen_port,
-                on_data=self.on_data_received,
-                on_disconnect=self._handle_transport_disconnect,
-                inter_command_delay=delay,
-                name=self.device_id,
-                tcp=osc_tcp,
-            )
-            self.transport = OSCTransport(
-                **self._transport_kwargs(transport_type, kwargs)
-            )
-            await self.transport.open(
-                local_addr=control_ip or None,
-            )
-        elif transport_type == "http":
-            from openavc.transport.http_client import HTTPClientTransport
-
-            host = self.config.get("host", "")
-            # Don't use .get("port", 80) — the sentinel-default makes an
-            # explicit `port: 80, ssl: true` indistinguishable from "not set",
-            # so the next branch silently rewrites it to 443 (A66). Read
-            # without a default and apply the scheme-appropriate fallback only
-            # when port is genuinely missing.
-            port = self.config.get("port")
-            use_ssl = self.config.get("ssl", False)
-            scheme = "https" if use_ssl else "http"
-            if port is None:
-                port = implied_port("http", self.config)
-            base_url = f"{scheme}://{host}:{port}"
-
-            # Build credentials from config
-            auth_type = self.config.get("auth_type", "none")
-            credentials = {}
-            if auth_type in ("basic", "digest"):
-                credentials["username"] = self.config.get("username", "")
-                credentials["password"] = self.config.get("password", "")
-            elif auth_type == "bearer":
-                credentials["token"] = self.config.get("token", "")
-            elif auth_type == "api_key":
-                credentials["header"] = self.config.get("api_key_header", "X-API-Key")
-                credentials["key"] = self.config.get("api_key", "")
-
-            kwargs = dict(
-                base_url=base_url,
-                auth_type=auth_type,
-                credentials=credentials,
-                verify_ssl=self.config.get("verify_ssl", True),
-                default_headers=self.config.get("default_headers", {}),
-                timeout=self.config.get("timeout", 10.0),
-                name=self.device_id,
-                local_address=control_ip or None,
-                max_response_bytes=self._http_max_response_bytes(),
-                inter_command_delay=self.config.get("inter_command_delay", 0.0),
-            )
-            self.transport = HTTPClientTransport(
-                **self._transport_kwargs(transport_type, kwargs)
-            )
-            await self.transport.open()
-        elif transport_type == "ssh":
-            from openavc.transport.ssh import SSHTransport
-
-            host = self.config.get("host", "")
-            port = int(self.config.get("port") or implied_port("ssh", self.config))
-            username = self.config.get("username", "")
-            auth_method = self.config.get("ssh_auth_method", "key")
-            known_hosts = self.config.get("known_hosts_path")
-            if not known_hosts:
-                from openavc.system_config import get_data_dir
-                known_hosts = str(get_data_dir() / "ssh" / "known_hosts")
-            key_path = await self._ssh_key_path(auth_method)
-
-            kwargs = dict(
-                host=host,
-                port=port,
-                username=username,
-                on_data=self.on_data_received,
-                on_disconnect=self._handle_transport_disconnect,
-                auth_method=auth_method,
-                password=self.config.get("password") or None,
-                key_path=key_path,
-                known_hosts_path=known_hosts,
-                host_key_policy=self.config.get("host_key_policy", "accept-new"),
-                connect_timeout=float(self.config.get("connect_timeout", 15.0)),
-                inter_command_delay=self.config.get("inter_command_delay", 0.0),
-                name=self.device_id,
-                extra_ssh_options=_ssh_option_list(
-                    self.config.get("extra_ssh_options")),
-                legacy_algorithms=self.config.get(
-                    "ssh_legacy_algorithms", True) is not False,
-                local_address=control_ip or None,
-            )
-            self.transport = await SSHTransport.create(
-                **self._transport_kwargs(transport_type, kwargs)
-            )
-        elif transport_type == "mqtt":
-            from openavc.transport.mqtt import MQTTTransport
-
-            host = self.config.get("host", "")
-            port = int(self.config.get("port") or implied_port("mqtt", self.config))
-
-            # Pub/sub, not a byte stream: inbound messages arrive topic-tagged
-            # via on_mqtt_message (subscribe in _post_connect). TLS vocabulary
-            # matches the tcp/http branches (`ssl`, `verify_ssl`); MQTT also
-            # accepts a client certificate for devices that require one.
-            kwargs = dict(
-                host=host,
-                port=port,
-                client_id=self.config.get("client_id") or None,
-                username=self.config.get("username") or None,
-                password=self.config.get("password") or None,
-                use_tls=bool(
-                    self.config.get("ssl", self.config.get("use_tls", False))
-                ),
-                verify_ssl=bool(self.config.get("verify_ssl", True)),
-                client_cert=self.config.get("client_cert") or None,
-                client_key=self.config.get("client_key") or None,
-                ca_cert=self.config.get("ca_cert") or None,
-                ciphers=self.config.get("ciphers") or None,
-                keepalive=int(self.config.get("keepalive", 60) or 60),
-                protocol_version=str(self.config.get("mqtt_version", "3.1.1")),
-                on_message=self.on_mqtt_message,
-                on_disconnect=self._handle_transport_disconnect,
-                name=self.device_id,
-                local_address=control_ip or None,
-            )
-            self.transport = await MQTTTransport.create(
-                **self._transport_kwargs(transport_type, kwargs)
-            )
-        elif transport_type == "snmp":
-            from openavc.transport.snmp import SNMPTransport
-
-            host = self.config.get("host", "")
-            port = int(self.config.get("port") or implied_port("snmp", self.config))
-
-            # Request/response only: SNMP has no inbound byte stream, so
-            # there is no on_data. A device that also sends traps needs a
-            # push listener, which is a separate channel from this one.
-            # `write_community` defaults to the read community inside the
-            # transport, because most agents ship them separate and a driver
-            # that only reads should not have to declare both.
-            kwargs = dict(
-                host=host,
-                port=port,
-                community=self.config.get("community", "public"),
-                write_community=self.config.get("write_community") or None,
-                timeout=float(self.config.get("timeout", 2.0) or 2.0),
-                retries=int(self.config.get("retries", 1) or 0),
-                on_disconnect=self._handle_transport_disconnect,
-                inter_command_delay=self.config.get("inter_command_delay", 0.0),
-                name=self.device_id,
-            )
-            self.transport = SNMPTransport(
-                **self._transport_kwargs(transport_type, kwargs)
-            )
-            await self.transport.open(local_addr=control_ip or None)
-        else:
-            raise ValueError(f"Unsupported transport type: {transport_type}")
-
     async def disconnect(self) -> None:
         """
         Gracefully close the connection.
@@ -1898,50 +1574,6 @@ class BaseDriver(ChildEntities, PushChannel, LivenessWatch, PollLoop, ABC):
         config before the first byte flows. Default: no-op.
         """
 
-    async def _ssh_key_path(self, auth_method: str) -> str | None:
-        """The private key an SSH connection signs in with.
-
-        The device's own Key Path when it has one. Otherwise, for key sign-in,
-        OpenAVC's own key (``transport/ssh_identity.py``), made on first use,
-        so key sign-in works on an install where nobody can place a key file.
-        Password sign-in takes no key. If the key cannot be made (a read-only
-        data folder), the connection goes ahead without one and the device's
-        refusal names the sign-in problem.
-        """
-        configured = str(self.config.get("key_path") or "").strip()
-        if configured:
-            return configured
-        if str(auth_method or "key").lower() == "password":
-            return None
-        from openavc.transport import ssh_identity
-
-        try:
-            key = await asyncio.to_thread(ssh_identity.ensure_platform_key)
-        except Exception as exc:  # any failure falls back to signing in without it
-            log.warning(
-                "[%s] Could not prepare OpenAVC's SSH key: %s", self.device_id, exc,
-            )
-            return None
-        return str(key.path)
-
-    def _transport_kwargs(
-        self, transport_type: str, kwargs: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Hook: adjust the platform transport's constructor arguments.
-
-        Called by _create_transport() with the resolved transport type and the
-        fully-assembled keyword arguments just before the transport is built.
-        Override to tweak them — drop the delimiter for a raw byte-stream
-        protocol (``kwargs["delimiter"] = None``), raise a timeout, force a
-        frame parser — while keeping the rest of the platform's construction
-        (disconnect wiring, control-interface binding, TLS vocabulary) intact.
-        Mutate and return ``kwargs``. Covers constructor arguments only; the
-        udp/osc ``open(local_addr=...)`` call is fixed — override
-        _create_transport() wholesale if you need to change that. Default:
-        returns ``kwargs`` unchanged.
-        """
-        return kwargs
-
     async def _post_connect(self) -> None:
         """Hook for device-specific session setup after the transport opens and
         before the device is marked connected.
@@ -2108,164 +1740,6 @@ class BaseDriver(ChildEntities, PushChannel, LivenessWatch, PollLoop, ABC):
         while its polls are held. Default: never.
         """
         return False
-
-    @staticmethod
-    def _coerce_serial_params(
-        config: dict[str, Any],
-    ) -> tuple[int, int, str, int | float, bool, bool]:
-        """Coerce + validate serial params from untyped project config.
-
-        Project config is untyped JSON, so an integrator / AI tool / hand-edit
-        can store ``bytesize: "8"`` or ``stopbits: "1.5"`` as strings, or a
-        flat-out invalid value. pyserial does exact membership tests and raises
-        a bare ValueError at connect that the device manager then buries under
-        ~120 generic reconnect attempts. Coerce string forms to the right type
-        and raise a clear, actionable error for genuinely invalid values.
-
-        Returns ``(baudrate, bytesize, parity, stopbits, rtscts, xonxoff)``.
-        """
-        try:
-            baudrate = int(config.get("baudrate", 9600))
-        except (TypeError, ValueError):
-            raise ValueError(
-                f"Invalid baudrate {config.get('baudrate')!r} (must be an integer)"
-            )
-        try:
-            bytesize = int(config.get("bytesize", 8))
-        except (TypeError, ValueError):
-            raise ValueError(
-                f"Invalid bytesize {config.get('bytesize')!r} (must be 5, 6, 7, or 8)"
-            )
-        if bytesize not in (5, 6, 7, 8):
-            raise ValueError(f"Invalid bytesize {bytesize} (must be 5, 6, 7, or 8)")
-
-        parity = str(config.get("parity", "N")).upper()
-        if parity not in ("N", "E", "O", "M", "S"):
-            raise ValueError(
-                f"Invalid parity {config.get('parity')!r} (must be one of N, E, O, M, S)"
-            )
-
-        raw_stopbits = config.get("stopbits", 1)
-        try:
-            stopbits_f = float(raw_stopbits)
-        except (TypeError, ValueError):
-            raise ValueError(
-                f"Invalid stopbits {raw_stopbits!r} (must be 1, 1.5, or 2)"
-            )
-        # pyserial wants ints for 1/2 and the float 1.5 for one-and-a-half.
-        stopbits: int | float
-        if stopbits_f == 1.0:
-            stopbits = 1
-        elif stopbits_f == 2.0:
-            stopbits = 2
-        elif stopbits_f == 1.5:
-            stopbits = 1.5
-        else:
-            raise ValueError(
-                f"Invalid stopbits {raw_stopbits!r} (must be 1, 1.5, or 2)"
-            )
-        # Flow control: the UI offers none / hardware (RTS/CTS); accept the
-        # software (XON/XOFF) spelling too for forward-compat. An unrecognised
-        # value falls back to no flow control rather than raising — a stray
-        # value shouldn't make the device unconnectable.
-        flow = str(config.get("flow_control", "none")).strip().lower()
-        rtscts = flow in ("hardware", "rtscts", "rts/cts")
-        xonxoff = flow in ("software", "xonxoff", "xon/xoff")
-        return baudrate, bytesize, parity, stopbits, rtscts, xonxoff
-
-    def _required_port(self) -> int:
-        """Return ``config['port']`` for TCP/UDP/OSC, or raise a clear error.
-
-        Driver ``default_config.port`` is layered in by
-        ``Engine.resolved_device_config`` before instantiation, so a
-        properly-declared driver always has a port here. A missing port
-        means the driver definition skipped declaring one — surface that
-        as a config error instead of silently dialing port 23.
-        """
-        port = self.config.get("port")
-        if port is None or port == "":
-            driver_id = self.DRIVER_INFO.get("id", "?")
-            raise ConnectionError(
-                f"Device '{self.device_id}': missing 'port' in config "
-                f"(driver '{driver_id}' must declare default_config.port "
-                f"or the device must override it)"
-            )
-        try:
-            return int(port)
-        except (TypeError, ValueError) as e:
-            driver_id = self.DRIVER_INFO.get("id", "?")
-            raise ConnectionError(
-                f"Device '{self.device_id}': invalid port {port!r} "
-                f"(driver '{driver_id}')"
-            ) from e
-
-    def _http_max_response_bytes(self) -> int:
-        """Resolve the HTTP response-body cap from config.
-
-        The 32 MB default clears any realistic device payload; a driver whose
-        device legitimately returns a larger body (a firmware or log export)
-        raises it via the ``max_response_bytes`` config key. A missing,
-        non-numeric, or non-positive value falls back to the default rather
-        than handing the transport a nonsense cap.
-        """
-        from openavc.transport.http_client import DEFAULT_MAX_RESPONSE_BYTES
-
-        raw = self.config.get("max_response_bytes")
-        if raw is None:
-            return DEFAULT_MAX_RESPONSE_BYTES
-        try:
-            value = int(raw)
-        except (TypeError, ValueError):
-            log.warning(
-                f"[{self.device_id}] Ignoring invalid max_response_bytes "
-                f"{raw!r}; using default {DEFAULT_MAX_RESPONSE_BYTES}"
-            )
-            return DEFAULT_MAX_RESPONSE_BYTES
-        if value <= 0:
-            log.warning(
-                f"[{self.device_id}] Ignoring non-positive max_response_bytes "
-                f"{raw!r}; using default {DEFAULT_MAX_RESPONSE_BYTES}"
-            )
-            return DEFAULT_MAX_RESPONSE_BYTES
-        return value
-
-    def _create_frame_parser(self) -> FrameParser | None:
-        """
-        Hook: return a custom FrameParser for this driver.
-
-        Override for binary protocols that need length-prefix or callable
-        parsing. Return None to use delimiter-based framing (the default).
-        """
-        return None
-
-    def _resolve_delimiter(self) -> bytes | None:
-        """
-        Hook: resolve the message delimiter for this driver.
-
-        Checks DRIVER_INFO["delimiter"] first, then self.config["delimiter"],
-        then falls back to b"\\r". Override for custom logic.
-
-        An **empty** delimiter means "no delimiter", not "a delimiter of zero
-        bytes", and resolves to None like any other raw byte-stream protocol.
-        The device page's Line ending control stores its None option as "",
-        and a YAML driver may declare ``delimiter: ""`` for the same reason;
-        both used to reach the transport as b"", which is not None, so the
-        transport built a DelimiterFrameParser on it and that constructor
-        rejects an empty delimiter. The device then failed at transport
-        construction on every attempt, before any socket work.
-        """
-        from openavc.transport.binary_helpers import encode_escape_sequences
-
-        for source in (self.DRIVER_INFO, self.config):
-            delim = source.get("delimiter")
-            if delim is None:
-                continue
-            raw = delim if isinstance(delim, bytes) else encode_escape_sequences(delim)
-            # "" and b"" both mean no framing, not a zero-length delimiter.
-            return raw or None
-
-        # Default
-        return b"\r"
 
     async def send_raw(self, data: str) -> None:
         """Send a raw command string to the device immediately.
