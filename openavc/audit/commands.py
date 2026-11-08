@@ -85,6 +85,7 @@ from typing import TYPE_CHECKING, Any
 from openavc.audit.changes import changed_values, current_values, moved_values
 from openavc.audit.command_catalog import command_catalog
 from openavc.audit.command_text import ANSWERS, params_text, trial_sentence
+from openavc.audit.command_window import DONE, SENDING, WATCHING, WindowListener
 from openavc.audit.effects import (
     Readout,
     declared_effects,
@@ -115,8 +116,6 @@ MAX_WINDOW_SECONDS = 120.0
 # this much more, and ended this long after the driver is back.
 RESTART_MARGIN_SECONDS = 60.0
 AFTER_RECONNECT_SECONDS = 10.0
-# State changes a window keeps.
-CHANGES_KEPT = 500
 # How often the wizard hears about a command being watched.
 FLUSH_SECONDS = 0.5
 # Traffic entries and state changes each command shows live (the report
@@ -130,10 +129,6 @@ LIVE_CHANGES = 20
 # command was sent was already moving (a meter, a clock): its changes in the
 # command's window are shown apart from what the command moved.
 ALREADY_MOVING_SECONDS = 60.0
-
-SENDING = "sending"
-WATCHING = "watching"
-DONE = "done"
 
 NOT_CONNECTED_YET = "Connect the driver first, on the Connect and listen step."
 BUSY = "Wait for {label} to finish before sending another command."
@@ -645,67 +640,9 @@ class CommandPass:
         declared = trial.declared.get("restarts_device_for") or 0
         return float(declared) + self.restart_margin_seconds if declared else 0.0
 
-    def _watch(self, trial: CommandTrial, sandbox: Any) -> tuple[str, list[str]]:
-        """Start hearing what the device does while ``trial`` is open."""
-        prefix = f"device.{sandbox.device_id}."
-
-        def on_state(key: str, old: Any, new: Any, _source: str = "") -> None:
-            if trial.status == DONE or len(trial.changes) >= CHANGES_KEPT:
-                return
-            trial.changes.append({
-                "t": time.time(), "key": key[len(prefix):] if key.startswith(prefix) else key,
-                "old": recorded(old), "new": recorded(new),
-            })
-
-        def on_error(_event: str, payload: Any = None) -> None:
-            if trial.status != DONE:
-                error = (payload or {}).get("error") if isinstance(payload, dict) else payload
-                trial.device_errors.append({
-                    "t": time.time(), "error": str(error or ""),
-                    "position": len(sandbox.observer.traffic),
-                })
-
-        def on_gone(_event: str, _payload: Any = None) -> None:
-            if trial.status == DONE:
-                return
-            now = time.time()
-            if trial.went_away_at is None:
-                trial.went_away_at = now
-            if not trial.gone_and_back or trial.gone_and_back[-1][1] is not None:
-                trial.gone_and_back.append([now, None])
-
-        def on_back(_event: str, _payload: Any = None) -> None:
-            if trial.status == DONE or not trial.gone_and_back:
-                return
-            if trial.gone_and_back[-1][1] is None:
-                trial.gone_and_back[-1][1] = time.time()
-            if trial.back_at is not None:
-                return
-            trial.back_at = time.time()
-            if trial.declared.get("restarts_device_for") and trial.ends_at is not None:
-                trial.ends_at = min(trial.ends_at, trial.back_at + self.after_reconnect_seconds)
-
-        device_id = sandbox.device_id
-        sub = sandbox.state.subscribe(f"{prefix}*", on_state)
-        handlers = [
-            sandbox.events.on(f"device.error.{device_id}", on_error),
-            sandbox.events.on(f"device.disconnected.{device_id}", on_gone),
-            sandbox.events.on(f"device.connected.{device_id}", on_back),
-        ]
-        return sub, handlers
-
-    @staticmethod
-    def _unwatch(sandbox: Any, handles: tuple[str, list[str]]) -> None:
-        sub, handlers = handles
-        sandbox.state.unsubscribe(sub)
-        for handler in handlers:
-            sandbox.events.off(handler)
-
     async def _send_and_watch(self, trial: CommandTrial, *, window: float | None = None) -> None:
         sandbox = self.run.listen.sandbox
-        handles = self._watch(trial, sandbox)
-        error_writes = getattr(sandbox.state, "error_writes", [])
-        errors_from = len(error_writes)
+        listener = WindowListener(trial, sandbox, after_reconnect_seconds=self.after_reconnect_seconds)
         trial.mark(sandbox.observer, trial.marks)
         try:
             try:
@@ -767,14 +704,7 @@ class CommandPass:
                     waiting_for_readback = False
                 self._publish(trial)
         finally:
-            # Every last_error the driver wrote while it was watched, with
-            # when, a rewrite of the same text included.
-            own_key = f"device.{sandbox.device_id}.last_error"
-            trial.error_writes = [
-                {"t": t, "error": recorded(value), "position": position}
-                for t, key, value, position in error_writes[errors_from:] if key == own_key
-            ]
-            self._unwatch(sandbox, handles)
+            listener.close()
             self._finish(trial)
 
     def _finish(self, trial: CommandTrial) -> None:
