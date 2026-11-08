@@ -254,20 +254,45 @@ class UndeclaredStateError(ValueError):
     """
 
 
+# The Python types a numeric state variable's value may be.
+_NUMERIC_TYPES: dict[str, type | tuple[type, ...]] = {
+    "integer": int,
+    "number": (int, float),
+    "float": (int, float),
+}
+
+
+def _type_mismatch(
+    declared: str, value: Any, var_def: dict[str, Any], *, bool_is_number: bool = False,
+) -> bool:
+    """True when ``value`` is not of its ``declared`` type. A type this does
+    not check (string, a type it does not know) never mismatches, and nor
+    does an enum that declares no values.
+
+    Python's ``bool`` is an ``int``. The contract observer reports ``True``
+    written to a numeric variable; the debug log has always accepted it
+    (``bool_is_number``).
+    """
+    if declared == "enum":
+        return "values" in var_def and str(value) not in [str(v) for v in var_def["values"]]
+    if declared == "boolean":
+        return not isinstance(value, bool)
+    numeric = _NUMERIC_TYPES.get(declared)
+    if numeric is None:
+        return False
+    if isinstance(value, bool):
+        return not bool_is_number
+    return not isinstance(value, numeric)
+
+
 def _type_problem(declared: str, value: Any, var_def: dict[str, Any]) -> str:
-    """Why ``value`` is not of its ``declared`` type, or "" when it is."""
-    if declared == "integer" and (isinstance(value, bool) or not isinstance(value, int)):
-        return f"declared integer, got {type(value).__name__}"
-    if declared in ("number", "float") and (
-        isinstance(value, bool) or not isinstance(value, (int, float))
-    ):
-        return f"declared {declared}, got {type(value).__name__}"
-    if declared == "boolean" and not isinstance(value, bool):
-        return f"declared boolean, got {type(value).__name__}"
-    if declared == "enum" and "values" in var_def:
-        if str(value) not in [str(v) for v in var_def["values"]]:
-            return "not one of the declared values"
-    return ""
+    """Why ``value`` is not of its ``declared`` type, for the contract
+    observer, or "" when it is."""
+    if not _type_mismatch(declared, value, var_def):
+        return ""
+    if declared == "enum":
+        return "not one of the declared values"
+    return f"declared {declared}, got {type(value).__name__}"
 
 
 def _ssh_option_list(value: object) -> list[str]:
@@ -2499,42 +2524,40 @@ class BaseDriver(ChildEntities, PushChannel, LivenessWatch, PollLoop, ABC):
     def _warn_on_type_mismatch(
         self, prop_label: str, value: Any, var_def: dict | None
     ) -> None:
-        """Log a debug message when a state value doesn't match its declared
-        type. Helps catch driver bugs without being load-bearing — listeners
-        still receive the value as written.
+        """Report a state value that doesn't match its declared type: to the
+        contract observer when there is one, and in a debug message. Helps
+        catch driver bugs without being load-bearing — listeners still
+        receive the value as written.
         """
         if not var_def or value is None:
             return
         declared = var_def.get("type", "string")
         if self.contract_observer is not None:
-            problem = _type_problem(declared, value, var_def)
-            if problem:
-                self._observe(
-                    TYPE_MISMATCH, state=prop_label, declared=declared,
-                    value=value if is_flat_primitive(value) else repr(value),
-                    problem=problem,
-                )
-        if declared == "integer" and not isinstance(value, int):
+            self._observe_type_mismatch(prop_label, value, var_def, declared)
+        if not _type_mismatch(declared, value, var_def, bool_is_number=True):
+            return
+        if declared == "enum":
             log.debug(
-                f"[{self.device_id}] State '{prop_label}' declared as "
-                f"integer but got {type(value).__name__}: {value!r}"
+                f"[{self.device_id}] State '{prop_label}' value "
+                f"{value!r} not in declared enum values {var_def['values']}"
             )
-        elif declared in ("number", "float") and not isinstance(value, (int, float)):
+        else:
             log.debug(
                 f"[{self.device_id}] State '{prop_label}' declared as "
                 f"{declared} but got {type(value).__name__}: {value!r}"
             )
-        elif declared == "boolean" and not isinstance(value, bool):
-            log.debug(
-                f"[{self.device_id}] State '{prop_label}' declared as "
-                f"boolean but got {type(value).__name__}: {value!r}"
+
+    def _observe_type_mismatch(
+        self, prop_label: str, value: Any, var_def: dict[str, Any], declared: str,
+    ) -> None:
+        """Tell the contract observer about a value not of its declared type."""
+        problem = _type_problem(declared, value, var_def)
+        if problem:
+            self._observe(
+                TYPE_MISMATCH, state=prop_label, declared=declared,
+                value=value if is_flat_primitive(value) else repr(value),
+                problem=problem,
             )
-        elif declared == "enum" and "values" in var_def:
-            if str(value) not in [str(v) for v in var_def["values"]]:
-                log.debug(
-                    f"[{self.device_id}] State '{prop_label}' value "
-                    f"{value!r} not in declared enum values {var_def['values']}"
-                )
 
     def set_states(self, updates: dict[str, Any]) -> None:
         """Set multiple state values atomically (listeners see all changes at once)."""
