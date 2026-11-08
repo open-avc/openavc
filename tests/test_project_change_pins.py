@@ -379,6 +379,28 @@ async def test_a_plugin_config_that_cannot_be_saved_says_which_plugin(tmp_path, 
 
 
 @pytest.mark.asyncio
+async def test_a_deferred_plugin_save_that_fails_after_the_plugin_left_still_says_so(
+    tmp_path, monkeypatch,
+):
+    """The undo finds the plugin gone and leaves the project as it is; the
+    failure is still reported."""
+    eng = _engine(tmp_path, plugins={"plug1": {"enabled": False, "config": {"x": 1}}})
+    sent = _capture_broadcasts(eng)
+
+    async def boom(path, project):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("openavc.core.project_changes.save_project_async", boom)
+    async with eng._reload_lock:
+        await eng._save_plugin_config("plug1", {"x": 2})
+        del eng.project.plugins["plug1"]
+    await eng._bookkeeping_task
+
+    assert "plug1" not in eng.project.plugins
+    assert {"type": "error", "message": "Failed to save plugin config for 'plug1'"} in sent
+
+
+@pytest.mark.asyncio
 async def test_a_plugin_save_refreshes_the_log_redaction(tmp_path, monkeypatch):
     eng = _engine(tmp_path, plugins={"plug1": {"enabled": False, "config": {"x": 1}}})
     _capture_broadcasts(eng)
