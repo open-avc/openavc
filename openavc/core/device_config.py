@@ -88,6 +88,25 @@ def resolve_device_config(device, project) -> dict:
     return cfg
 
 
+def split_connection_fields(config: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """``config`` as the project stores it: (protocol config, connection fields).
+
+    THE rule for where a device setting lives. Connection fields
+    (``CONNECTION_FIELDS`` in ``drivers/spec.py``: host, port, credentials,
+    serial line, bridge, USB id) go in ``project.connections[device_id]``,
+    everything else in the device's ``config``. Each half keeps the order the
+    keys came in, and a ``None`` stays in its half: whether it removes a field
+    is the caller's rule.
+    """
+    from openavc.drivers.spec import CONNECTION_FIELDS
+
+    protocol: dict[str, Any] = {}
+    connection: dict[str, Any] = {}
+    for key, value in config.items():
+        (connection if key in CONNECTION_FIELDS else protocol)[key] = value
+    return protocol, connection
+
+
 def apply_config_delta(project, device_id: str, delta: dict[str, Any]) -> bool:
     """Write a config delta for one device into ``project`` in place.
 
@@ -102,18 +121,12 @@ def apply_config_delta(project, device_id: str, delta: dict[str, Any]) -> bool:
     moving the live driver too (``DeviceManager.merge_live_config``) so the next
     reconcile does not read the change as an edit.
     """
-    from openavc.core.project_migration import CONNECTION_FIELDS
-
     dev = next((d for d in project.devices if d.id == device_id), None)
     if dev is None:
         return False
-    conn = dict(project.connections.get(device_id, {}))
-    protocol = dict(dev.config)
-    for key, value in delta.items():
-        if key in CONNECTION_FIELDS:
-            conn[key] = value
-        else:
-            protocol[key] = value
+    protocol_delta, connection_delta = split_connection_fields(delta)
+    conn = {**project.connections.get(device_id, {}), **connection_delta}
+    protocol = {**dev.config, **protocol_delta}
     if conn:
         project.connections[device_id] = conn
     else:

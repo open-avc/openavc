@@ -25,7 +25,7 @@ from openavc.api.models import (
 from openavc.core.device_manager import DeviceNotFoundError
 from openavc.reach_devices import AdapterUnavailable
 from openavc.core.project_loader import ChildEntityConfig, DeviceConfig
-from openavc.core.project_migration import CONNECTION_FIELDS
+from openavc.core.device_config import split_connection_fields
 from openavc.core.required_config import (
     gaps_an_edit_makes,
     merged_device_config,
@@ -322,15 +322,10 @@ async def update_device(device_id: str, body: DeviceUpdateRequest) -> dict[str, 
         )
 
         if body.config is not None:
-            # Split incoming config: connection fields → connections table, rest → device.config
-            protocol_config = {}
-            conn_overrides = dict(project.connections.get(device_id, {}))
-            for key, value in body.config.items():
-                if key in CONNECTION_FIELDS:
-                    conn_overrides[key] = value
-                else:
-                    protocol_config[key] = value
-            new_config = protocol_config
+            # Connection fields merge into the connections table; the rest
+            # replaces device.config (the IDE sends the whole config).
+            new_config, sent_connection = split_connection_fields(body.config)
+            conn_overrides = {**project.connections.get(device_id, {}), **sent_connection}
             # Remove None values from connection overrides
             conn_overrides = {k: v for k, v in conn_overrides.items() if v is not None}
             if conn_overrides:

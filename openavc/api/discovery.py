@@ -544,7 +544,7 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
     # Empty-string / None defaults are dropped so we don't write blanks
     # over fields the user can fill later (mirrors the manual Add Device
     # dialog's prefill behavior).
-    from openavc.core.project_migration import CONNECTION_FIELDS
+    from openavc.core.device_config import split_connection_fields
 
     driver_defaults = {
         k: v for k, v in get_driver_default_config(req.driver_id).items()
@@ -564,14 +564,7 @@ async def add_device(req: AddDeviceRequest) -> dict[str, Any]:
             config["port"] = port
     config.update(_sanitize_add_device_config(req.config))
 
-    # Split config into connection fields and protocol fields
-    protocol_config = {}
-    conn_overrides = {}
-    for key, value in config.items():
-        if key in CONNECTION_FIELDS:
-            conn_overrides[key] = value
-        else:
-            protocol_config[key] = value
+    protocol_config, conn_overrides = split_connection_fields(config)
 
     # A required setting the scan cannot supply (a password, an API key) is
     # refused, as Add and Edit Device refuse it; the card asks for it and
