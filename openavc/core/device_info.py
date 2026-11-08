@@ -1,6 +1,8 @@
 """What the device manager says about its devices: one device's details
-(``get_device_info``), the listing (``list_devices``) and where each connected
-device connects (``live_connections``). Read-only: nothing here changes a device.
+(``get_device_info``), its settings with their current values
+(``get_device_settings``), the listing (``list_devices``) and where each
+connected device connects (``live_connections``). Read-only: nothing here
+changes a device.
 
 Three kinds of device are described: one with a live driver, one waiting for its
 driver to be installed (an orphan, core/device_orphans.py) and one that is
@@ -75,12 +77,13 @@ def _orphan_config(config: dict[str, Any]) -> dict[str, Any]:
 
 
 class DeviceInfoMixin:
-    """The device details, the listing and the live connections.
+    """The device details, its settings, the listing and the live connections.
 
     Holds no state of its own. From its host (DeviceManager) it reads
     ``state``, ``installed_equipment``, ``real_connection``, ``_devices``,
     ``_device_configs``, ``_orphaned_devices`` (core/device_orphans.py) and
-    ``_detected_web_ui_urls`` (core/device_web_ui.py).
+    ``_detected_web_ui_urls`` (core/device_web_ui.py), and asks
+    ``_live_driver``.
     """
 
     state: StateStore
@@ -103,6 +106,21 @@ class DeviceInfoMixin:
         if self.installed_equipment:
             info.update(self.installed_equipment.information(device_id))
         return info
+
+    def get_device_settings(self, device_id: str) -> dict[str, Any]:
+        """Return device settings metadata with current values from state."""
+        driver = self._live_driver(device_id)
+
+        settings_def = driver.DRIVER_INFO.get("device_settings", {})
+        result: dict[str, Any] = {}
+        for key, setting in settings_def.items():
+            state_key = setting.get("state_key", key)
+            current_value = driver.get_state(state_key)
+            result[key] = {
+                **setting,
+                "current_value": current_value,
+            }
+        return result
 
     def _device_info(self, device_id: str) -> dict[str, Any]:
         """Build metadata for active, disabled and missing-driver devices."""

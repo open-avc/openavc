@@ -1,7 +1,13 @@
-"""Device settings queued while a device is away, and proof that they landed.
+"""Writing a device's settings: live, or queued while the device is away, and
+proof that they landed.
 
-A setting written while a device is offline is queued in the device's config
-(``pending_settings``, saved with the project) and sent on its next connect.
+The doors are ``set_device_setting`` (a live write), ``await_setting_readback``
+(the wait for a live write to read back) and ``store_pending_settings`` (the
+queue). A setting written while a device is offline is queued in the device's
+config (``pending_settings``, saved with the project) and sent on its next
+connect. A live write and the queue's intake are checked against the driver's
+declaration whoever the caller (``_checked_value``), and a live write settles
+the queue's entry for that setting.
 
 The rule worth knowing before changing it: a send that does not raise is not
 proof the device got it. On UDP, or on a socket being redirected under the
@@ -13,9 +19,7 @@ Anything else stays queued for the next connect and says so on
 ``device.error.<id>``. A clear only ever drops the entry the pass took, never a
 newer value queued since.
 
-Mixed into DeviceManager (core/device_manager.py), which keeps the doors that
-take a device id from outside: ``set_device_setting``,
-``await_setting_readback`` and ``store_pending_settings``. Logs under the device
+Mixed into DeviceManager (core/device_manager.py). Logs under the device
 manager's name, which is how the log view files a line as the device's.
 """
 
@@ -26,6 +30,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
 
+from openavc.core.device_errors import DeviceNotFoundError, not_connected
 from openavc.core.device_reconnect import _log_task_exception
 from openavc.drivers.base import UnknownDeviceSettingError, validate_device_setting_value
 from openavc.utils.logger import get_logger
@@ -146,12 +151,27 @@ class _ReadbackWatch:
                 self.outstanding.pop(key, None)
 
 
+def _checked_value(driver: BaseDriver, device_id: str, key: str, value: Any) -> Any:
+    """``value`` for setting ``key`` checked against the driver's declaration
+    and coerced to its declared type, for a live write and for the queue's
+    intake, whoever the caller. A key the driver does not declare is refused,
+    naming the setting and the device."""
+    defs = driver.DRIVER_INFO.get("device_settings", {})
+    if key not in defs:
+        raise UnknownDeviceSettingError(
+            f"Unknown device setting '{key}' for device '{device_id}'"
+        )
+    return validate_device_setting_value(key, defs[key], value)
+
+
 class PendingSettingsMixin:
-    """The queue of device settings waiting for a device, from intake to clear.
+    """The setting doors, and the queue of settings waiting for a device, from
+    intake to clear.
 
     Its state is set up by ``_init_pending``. From its host (DeviceManager) it
     reads ``events``, ``_devices`` and ``_device_configs`` and asks
-    ``_require_control_target``.
+    ``_live_driver``, ``_require_control_target`` and ``accepts_commands``
+    (core/device_commands.py).
     """
 
     events: EventBus
@@ -163,6 +183,61 @@ class PendingSettingsMixin:
         # watcher that decides whether a queued write actually landed before
         # the queue is cleared (see _confirm_pending_settings).
         self._pending_confirm_tasks: dict[str, asyncio.Task] = {}
+
+    async def set_device_setting(
+        self, device_id: str, key: str, value: Any
+    ) -> Any:
+        """Set a device setting value on a device by ID."""
+        driver = self._live_driver(device_id)
+        self._require_control_target(device_id)
+        if not self.accepts_commands(device_id):
+            raise not_connected(device_id)
+
+        # Runtime value gate — the IDE editor's min/max/values/regex checks
+        # are an authoring aid; scripts, macros, cloud, and raw REST bypass
+        # them, so the write is validated (and coerced to the declared type)
+        # here regardless of caller.
+        value = _checked_value(driver, device_id, key, value)
+
+        result = await driver.set_device_setting(key, value)
+        # A live write settles the question the queue was holding. Without
+        # this, a queued value the device never confirmed stays in the project
+        # and is re-sent on the next connect — overwriting what was just set
+        # here, days later, for no reason anyone could see.
+        await self._clear_applied_pending(device_id, [key], {})
+        return result
+
+    async def await_setting_readback(
+        self, device_id: str, key: str, expected: Any, *, timeout: float | None = None,
+    ) -> tuple[bool, Any]:
+        """Wait for a device setting just written to read back.
+
+        The rule a queued write is confirmed by (:func:`_readback_confirms`
+        within :meth:`_confirm_window`), for a caller that wrote the setting
+        live and wants to know the same thing: ``(True, value)`` once the
+        device reports ``expected`` (in its own form, if it likes), else
+        ``(False, last value)`` when the window closes, the device drops or it
+        goes. ``expected`` is the value as written, after
+        ``validate_device_setting_value``. ``timeout`` shortens the window.
+
+        A setting whose ``state_key`` is not a declared state variable has
+        nothing to read back: ``(False, None)`` at once.
+        """
+        self._live_driver(device_id)
+        return await self._wait_for_readback(device_id, key, expected, timeout)
+
+    async def store_pending_settings(
+        self, device_id: str, settings: dict[str, Any]
+    ) -> None:
+        """Store pending settings for a device (will be applied on next connect).
+
+        Validated against the driver's schema when it is installed; an
+        orphaned device stores them as given (``_queue_pending``).
+        """
+        config = self._device_configs.get(device_id)
+        if config is None:
+            raise DeviceNotFoundError(f"Device '{device_id}' not found")
+        self._queue_pending(device_id, config, settings)
 
     def _cancel_pending_confirm(self, device_id: str) -> None:
         """Stop a device's read-back watcher, if one is running."""
@@ -179,8 +254,8 @@ class PendingSettingsMixin:
     def _queue_pending(
         self, device_id: str, config: dict[str, Any], settings: dict[str, Any]
     ) -> None:
-        """Add ``settings`` to the queue in ``config`` (DeviceManager's
-        ``store_pending_settings``, for a device it holds a config for).
+        """Add ``settings`` to the queue in ``config`` (``store_pending_settings``,
+        for a device the manager holds a config for).
 
         Validated at intake when the driver is available: a typo'd key or an
         out-of-range value used to sit in the queue and fail on every
@@ -189,15 +264,10 @@ class PendingSettingsMixin:
         """
         driver = self._devices.get(device_id)
         if driver is not None:
-            defs = driver.DRIVER_INFO.get("device_settings", {})
-            validated: dict[str, Any] = {}
-            for key, value in settings.items():
-                if key not in defs:
-                    raise UnknownDeviceSettingError(
-                        f"Unknown device setting '{key}' for device '{device_id}'"
-                    )
-                validated[key] = validate_device_setting_value(key, defs[key], value)
-            settings = validated
+            settings = {
+                key: _checked_value(driver, device_id, key, value)
+                for key, value in settings.items()
+            }
 
         if "pending_settings" not in config:
             config["pending_settings"] = {}
@@ -249,7 +319,8 @@ class PendingSettingsMixin:
             # Coerce against the schema before the value reaches the driver.
             # store_pending_settings coerces at intake, but a value can
             # enter the queue by a path that bypasses it (a project reload of
-            # a hand-edited file), and set_device_setting doesn't validate.
+            # a hand-edited file), and the driver's own set_device_setting
+            # doesn't validate.
             if key in run.defs:
                 value = validate_device_setting_value(key, run.defs[key], value)
             self._require_control_target(device_id)
@@ -467,7 +538,7 @@ class PendingSettingsMixin:
     async def _wait_for_readback(
         self, device_id: str, key: str, expected: Any, timeout: float | None,
     ) -> tuple[bool, Any]:
-        """DeviceManager's ``await_setting_readback``, for a device it holds."""
+        """``await_setting_readback``, for a device the manager holds."""
         driver = self._devices[device_id]
         sdef = driver.DRIVER_INFO.get("device_settings", {}).get(key)
         state_key = readback_state_key(
