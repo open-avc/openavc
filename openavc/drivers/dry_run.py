@@ -21,7 +21,6 @@ Two callers:
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -257,10 +256,8 @@ async def preview_connect(driver: Any) -> ConnectPreview:
             steps.append({"stage": "sign_in", "kind": "wait", "pattern": target.pattern})
 
         driver._auth_wait_for = answered
-        driver._auth_buffer = bytearray()
-        driver._auth_event = asyncio.Event()
+        driver._arm_sign_in()
         driver._auth_event.set()  # no post-password quiet period to sit out
-        driver._auth_mode = True
         try:
             await driver._perform_auth_handshake()
         except Exception as exc:

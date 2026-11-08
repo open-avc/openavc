@@ -534,7 +534,8 @@ class ConfigurableDriver(
         # Enable auth-buffering BEFORE the TCP connect so any prompt the
         # device emits the moment the connection opens lands in the auth
         # buffer instead of being run through the normal response matcher.
-        # _perform_auth_handshake() turns this back off when it's done.
+        # The sign-in turns this back off when it's done, and an attempt that
+        # fails before then turns it off below.
         self._arm_sign_in()
 
         try:
@@ -564,12 +565,7 @@ class ConfigurableDriver(
         start-up (_judge_http_answer) is raised from here, which fails the
         connect attempt.
         """
-        try:
-            self._register_declared_children()
-        except Exception:
-            log.exception(
-                f"[{self.device_id}] Failed to register declared children"
-            )
+        self._build_declared_roster()
 
         await self._run_on_connect()
 

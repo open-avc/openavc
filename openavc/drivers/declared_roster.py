@@ -34,8 +34,10 @@ reported count).
 
 ``DeclaredRoster`` is a mixin ``ConfigurableDriver`` inherits, so every name
 stays on the driver object. From its host it needs ``device_id``,
-``_definition``, ``config``, ``_connected``, ``_project_child_entities`` and
-the child-entity methods ``BaseDriver`` provides.
+``_definition``, ``config``, ``_connected``, ``_project_child_entities``,
+``get_state`` and the child-entity methods ``BaseDriver`` provides; the host
+calls ``_init_declared_roster()`` in ``__init__`` once its definition is
+final, and ``_build_declared_roster()`` at connect.
 """
 
 from __future__ import annotations
@@ -105,6 +107,11 @@ class DeclaredRoster:
         idempotent by design).
         """
         super().set_project_child_entities(child_entities)
+        self._build_declared_roster()
+
+    def _build_declared_roster(self) -> None:
+        """Register the declared rosters, a failure logged rather than raised:
+        a roster is never worth failing a connect or a project load over."""
         try:
             self._register_declared_children()
         except Exception:

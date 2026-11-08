@@ -9,7 +9,9 @@ The rules worth knowing before changing anything here:
   flapping the device online and offline.
 * **The line is read raw.** Many prompts arrive without the protocol's
   delimiter (a bare ``Login: ``), so the frame parser comes off the
-  transport for the sign-in and goes back on afterwards, on every path.
+  transport for the sign-in and goes back on afterwards, on every path once
+  the sign-in has started (an ``auth:`` block that does not read fails the
+  connect before that, and the connect closes the transport).
   Bytes the parser had already buffered move into the sign-in's buffer.
   Raw mode is switched on before the TCP connect, so a prompt sent the
   moment the connection opens is never run through the reply rules.
@@ -32,11 +34,16 @@ The rules worth knowing before changing anything here:
   matched.
 
 ``SignIn`` is a mixin ``ConfigurableDriver`` inherits, so every name stays
-on the driver object. ``drivers/dry_run.py`` runs ``_perform_auth_handshake``
-with its own ``_auth_wait_for`` standing in, so every stage waits through
-that method. From its host it needs ``device_id``, ``_definition``,
+on the driver object. From its host it needs ``device_id``, ``_definition``,
 ``config``, ``transport``, ``on_data_received``, ``redact_in_log`` and
-``_effective_transport``.
+``_effective_transport``; the host calls ``_init_sign_in()`` in
+``__init__`` and ``_arm_sign_in()`` before each dial, and hands every byte
+to ``_take_sign_in_bytes`` while ``_auth_mode`` is on.
+
+``drivers/dry_run.py`` previews the sign-in without a device: it arms it
+with ``_arm_sign_in()``, sets ``_auth_event`` so the drain after the
+password does not wait, and runs ``_perform_auth_handshake`` with its own
+``_auth_wait_for`` standing in. So every stage waits through that method.
 """
 
 from __future__ import annotations
