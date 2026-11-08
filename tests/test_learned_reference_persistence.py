@@ -85,7 +85,7 @@ async def test_queued_report_cannot_modify_replacement(tmp_path, acme_widget, ch
                 replacement.project.id = 'different-project'
             replacement.devices[0].enabled = False
             replacement.connections['w1'] = {'host': 'different-equipment.invalid'}
-            await engine._apply_project_locked(replacement, None, ProjectOrigin.LOAD, True)
+            await engine._apply_project_locked(replacement, ProjectOrigin.LOAD, True)
         await engine._bookkeeping_task
         assert not _disk_config(engine).get('model')
         assert not engine.project.devices[0].config.get('model')

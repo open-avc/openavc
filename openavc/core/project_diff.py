@@ -74,6 +74,20 @@ class ProjectDiff:
         )
 
     @property
+    def devices_to_sync(self) -> bool:
+        """True when the running devices must be synced to the project: a
+        device changed, or a connection, which changes where every device
+        bound through it dials."""
+        return self.devices or self.connections
+
+    @property
+    def panel_definition(self) -> bool:
+        """True when what the panels draw changed: the UI, or the macros and
+        groups each element's ``action_devices`` are worked out from, so a
+        press's unavailable mark follows a macro edit."""
+        return self.ui or self.macros or self.device_groups
+
+    @property
     def any_dirty(self) -> bool:
         return (
             self.devices or self.connections or self.device_groups

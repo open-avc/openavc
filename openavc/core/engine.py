@@ -260,9 +260,7 @@ class Engine(EngineLifecycleMixin, ProjectVariablesMixin):
         """
         async with self._reload_lock:
             new_project = load_project(self.project_path)
-            await self._apply_project_locked(
-                new_project, None, ProjectOrigin.LOAD, persist=False
-            )
+            await self._apply_project_locked(new_project, ProjectOrigin.LOAD, persist=False)
 
     async def apply_project(
         self,
@@ -286,9 +284,27 @@ class Engine(EngineLifecycleMixin, ProjectVariablesMixin):
         :class:`ProjectRevisionConflictError` on mismatch.
         """
         async with self._reload_lock:
-            return await self._apply_project_locked(
-                new_project, expected_revision, origin, persist
+            self._check_revision(expected_revision)
+            return await self._apply_project_locked(new_project, origin, persist)
+
+    def _check_revision(self, expected_revision: str | None) -> None:
+        """Refuse a save made against a revision this run has moved past;
+        ``None`` skips the check. Caller holds ``_reload_lock``."""
+        if expected_revision is None or expected_revision == self._project_revision:
+            return
+        if self._revision_counter == 0:
+            # Nothing has been saved since this process started, so no
+            # other writer can have invalidated the caller's token — it
+            # is from an earlier run. "Another session" would send them
+            # looking for a colleague who was never there.
+            raise ProjectRevisionConflictError(
+                "The system restarted since this page loaded the project. "
+                "Reload to see the latest changes."
             )
+        raise ProjectRevisionConflictError(
+            "Project was modified by another session. "
+            "Reload to see the latest changes."
+        )
 
     def _new_revision(self) -> str:
         """Mint the next revision token: this run's id plus a save count."""
@@ -313,9 +329,7 @@ class Engine(EngineLifecycleMixin, ProjectVariablesMixin):
         async with self._reload_lock:
             new_project = self.project.model_copy(deep=True)
             mutate(new_project)
-            return await self._apply_project_locked(
-                new_project, None, ProjectOrigin.EDIT, persist=True
-            )
+            return await self._apply_project_locked(new_project, ProjectOrigin.EDIT, persist=True)
 
     async def reassign_installed_equipment(self, device_id, *, name=None, enabled=None) -> str:
         """Explicitly apply a product's product hardware to existing programming."""
@@ -334,37 +348,46 @@ class Engine(EngineLifecycleMixin, ProjectVariablesMixin):
                 values["enabled"] = enabled
             proposed.devices[proposed.devices.index(selected)] = type(selected).model_validate(values)
             return await self._apply_project_locked(
-                proposed, None, ProjectOrigin.EDIT, persist=True,
+                proposed, ProjectOrigin.EDIT, persist=True,
                 reassigned_equipment=previous_id,
             )
 
     async def _apply_project_locked(
         self,
         new_project: ProjectConfig,
-        expected_revision: str | None,
         origin: ProjectOrigin,
         persist: bool,
         reassigned_equipment: str | None = None,
     ) -> str:
-        """Body of :meth:`apply_project`. Caller holds ``_reload_lock``."""
-        if (
-            expected_revision is not None
-            and expected_revision != self._project_revision
-        ):
-            if self._revision_counter == 0:
-                # Nothing has been saved since this process started, so no
-                # other writer can have invalidated the caller's token — it
-                # is from an earlier run. "Another session" would send them
-                # looking for a colleague who was never there.
-                raise ProjectRevisionConflictError(
-                    "The system restarted since this page loaded the project. "
-                    "Reload to see the latest changes."
-                )
-            raise ProjectRevisionConflictError(
-                "Project was modified by another session. "
-                "Reload to see the latest changes."
-            )
+        """Body of :meth:`apply_project` once any revision is checked; caller
+        holds ``_reload_lock``. The project is taken in (and saved), compared
+        with the running one, swapped in and reconciled (all of it undone on
+        a failure), and then announced. Returns the new revision."""
+        as_given, new_project = await self._take_in(
+            new_project, origin, persist, reassigned_equipment
+        )
+        if origin is ProjectOrigin.LOAD:
+            diff = ProjectDiff.all_dirty()
+        else:
+            # Against the project as it was given: a login typed over the
+            # marker leaves the marker in place, and the device still has to
+            # reconnect with the new login.
+            diff = ProjectDiff.compute(self.project, as_given)
+        await self._swap_in(new_project, diff, origin)
+        await self._announce_applied(diff, origin)
+        return self._project_revision
 
+    async def _take_in(
+        self,
+        new_project: ProjectConfig,
+        origin: ProjectOrigin,
+        persist: bool,
+        reassigned_equipment: str | None,
+    ) -> tuple[ProjectConfig, ProjectConfig]:
+        """The project as this system will run it, saved: ``(as_given,
+        project)``, where ``as_given`` has the installed equipment composed in
+        and ``project`` also has its logins moved out (the same object when
+        none moved)."""
         if persist:
             # Every door that saves a device's settings ends here, so this is
             # where a stray space typed around an address or a login comes off
@@ -374,7 +397,7 @@ class Engine(EngineLifecycleMixin, ProjectVariablesMixin):
         if origin is ProjectOrigin.EDIT:
             self.installed_equipment.validate_edit(self.project, new_project, reassigned=reassigned_equipment)
         loaded_project = new_project
-        new_project = self.installed_equipment.compose(new_project, for_load=origin is ProjectOrigin.LOAD)
+        as_given = self.installed_equipment.compose(new_project, for_load=origin is ProjectOrigin.LOAD)
         # Every project that comes in ends here, so this is where a login it
         # holds in the clear moves into this system's login file and the
         # marker takes its place (core/device_logins). A login somebody typed
@@ -383,35 +406,31 @@ class Engine(EngineLifecycleMixin, ProjectVariablesMixin):
         # start: the copy that came in is still where it came from (the
         # backup restored, the library, the cloud), and its logins are in the
         # file, read back, before the marker is written.
-        as_given = new_project
-        new_project = self._move_logins(new_project, typed=origin is ProjectOrigin.EDIT)
+        project = self._move_logins(as_given, typed=origin is ProjectOrigin.EDIT)
         # A file reload can insert host equipment too. Preserve that reference
         # on disk even when the caller did not request another project save.
-        if persist or new_project != loaded_project:
+        if persist or project != loaded_project:
             # save_project stamps the derived dependency lists onto the
-            # object in place, so after this await new_project matches the
+            # object in place, so after this await the project matches the
             # bytes on disk exactly — no re-read or re-validation needed.
-            await save_project_async(self.project_path, new_project)
+            await save_project_async(self.project_path, project)
             # The crash copy is the file this save replaced, which held the
             # logins just moved when they came in on disk (a backup restored,
             # a bare push).
-            if new_project is not as_given:
+            if project is not as_given:
                 await asyncio.to_thread(refresh_crash_copy, self.project_path)
+        return as_given, project
 
-        if origin is ProjectOrigin.LOAD:
-            diff = ProjectDiff.all_dirty()
-        else:
-            # Against the project as it was given: a login typed over the
-            # marker leaves the marker in place, and the device still has to
-            # reconnect with the new login.
-            diff = ProjectDiff.compute(self.project, as_given)
-
-        # Snapshot for rollback on reconcile failure
-        prev_project = self.project
-        prev_revision = self._project_revision
-        prev_counter = self._revision_counter
-        prev_dirty = self._dirty_since_backup
-
+    async def _swap_in(
+        self, new_project: ProjectConfig, diff: ProjectDiff, origin: ProjectOrigin
+    ) -> None:
+        """Make ``new_project`` the running project under a new revision and
+        reconcile to it; a reconcile that fails puts the runtime back on the
+        project it ran before, and raises."""
+        previous = (
+            self.project, self._project_revision, self._revision_counter,
+            self._dirty_since_backup,
+        )
         # Swapping self.project IS the UI reload: UI dispatch looks elements
         # up at event time, so a UI-only change needs nothing beyond this
         # swap and the ui.definition broadcast below.
@@ -425,52 +444,42 @@ class Engine(EngineLifecycleMixin, ProjectVariablesMixin):
         except Exception:
             log.error("Project reconcile failed, rolling back to previous "
                       "project state", exc_info=True)
-            self.project = prev_project
-            self._apply_project_settings()
-            # The counter goes back too, so it stays a count of COMMITTED
-            # saves. The token minted above never left the process (nothing
-            # is broadcast or returned until the reconcile succeeds), so the
-            # next save may safely mint it again.
-            self._project_revision = prev_revision
-            self._revision_counter = prev_counter
-            self._dirty_since_backup = prev_dirty
-
-            # The new bytes stay on disk deliberately: the file is the source
-            # of truth and the user's edit must survive a runtime hiccup.
-            # Rollback restores the RUNTIME to the previous project.
-            try:
-                await self._rollback_reconcile(diff)
-            except Exception:
-                log.error("Rollback re-sync also failed", exc_info=True)
-
+            await self._roll_back(previous, diff)
             raise
 
-        # Clean apply succeeded — zero the startup-error count so a stale
-        # count from the initial start (now fixed) doesn't linger in the store
-        # and cloud relay.
+    async def _roll_back(self, previous: tuple, diff: ProjectDiff) -> None:
+        """The runtime back on the project it ran before a failed reconcile."""
+        self.project, revision, counter, dirty = previous
+        self._apply_project_settings()
+        # The counter goes back too, so it stays a count of COMMITTED
+        # saves. The token minted above never left the process (nothing
+        # is broadcast or returned until the reconcile succeeds), so the
+        # next save may safely mint it again.
+        self._project_revision = revision
+        self._revision_counter = counter
+        self._dirty_since_backup = dirty
+
+        # The new bytes stay on disk deliberately: the file is the source
+        # of truth and the user's edit must survive a runtime hiccup.
+        # Rollback restores the RUNTIME to the previous project.
+        try:
+            await self._rollback_reconcile(diff)
+        except Exception:
+            log.error("Rollback re-sync also failed", exc_info=True)
+
+    async def _announce_applied(self, diff: ProjectDiff, origin: ProjectOrigin) -> None:
+        """What a clean apply tells the rest of the system."""
+        # Zero the startup-error count so a stale count from the initial
+        # start (now fixed) doesn't linger in the store and cloud relay.
         self.state.set("system.startup_errors", 0, source="system")
-        if diff.devices or diff.connections:
+        if diff.devices_to_sync:
             self._record_push_ports()
         if diff.project_meta:
             self.state.set("system.project_name", self.project.project.name,
                            source="system")
             if self.mdns_advertiser:
                 self.mdns_advertiser.update_name(self.project.project.name)
-
-        # Push the new UI definition to connected panels — only when what it
-        # carries changed (panels re-render on every ui.definition): the UI, or
-        # the macros and groups its per-element action_devices are worked out
-        # from, so a press's unavailable mark follows a macro edit.
-        if diff.ui:
-            # The bindings are new, so an action the runtime could not run
-            # before is worth saying again -- somebody editing a project is
-            # trying to fix something, and silence reads as having fixed it.
-            self.ui_events.forget_undispatched_actions()
-        if diff.ui or diff.macros or diff.device_groups:
-            await self.broadcast_ws({
-                "type": "ui.definition",
-                "ui": self.panel_ui(),
-            })
+        await self._announce_panel_definition(diff)
 
         # Notify the Programmer IDE to refetch project data. Always sent:
         # external editors need to learn the new revision even for changes
@@ -484,7 +493,20 @@ class Engine(EngineLifecycleMixin, ProjectVariablesMixin):
         await self.events.emit("system.project.reloaded")
         log.info(f"Project applied (origin={origin.value}, "
                  f"revision={self._project_revision})")
-        return self._project_revision
+
+    async def _announce_panel_definition(self, diff: ProjectDiff) -> None:
+        """Push the new UI definition to connected panels, only when what it
+        carries changed (panels re-render on every ui.definition)."""
+        if diff.ui:
+            # The bindings are new, so an action the runtime could not run
+            # before is worth saying again -- somebody editing a project is
+            # trying to fix something, and silence reads as having fixed it.
+            self.ui_events.forget_undispatched_actions()
+        if diff.panel_definition:
+            await self.broadcast_ws({
+                "type": "ui.definition",
+                "ui": self.panel_ui(),
+            })
 
     async def _reconcile(self, diff: ProjectDiff, origin: ProjectOrigin) -> None:
         """Reconcile the running subsystems to ``self.project``, touching only
@@ -544,7 +566,7 @@ class Engine(EngineLifecycleMixin, ProjectVariablesMixin):
         """Variables, devices, plugins, then the macro and group definitions."""
         if diff.variables:
             self._reconcile_variables()
-        if diff.devices or diff.connections:
+        if diff.devices_to_sync:
             await self._reconcile_devices()
         if diff.plugins:
             await self._sync_plugins()
@@ -625,7 +647,7 @@ class Engine(EngineLifecycleMixin, ProjectVariablesMixin):
         persister keys, scripts, ISC, and mDNS are not restored, and the new
         bytes stay on disk.
         """
-        if diff.devices or diff.connections:
+        if diff.devices_to_sync:
             await self._sync_devices(defer_connect=True)
             self._schedule_device_bringup()
         if diff.plugins:

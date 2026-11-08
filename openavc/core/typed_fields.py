@@ -27,7 +27,7 @@ only letters, numbers and underscores in one).
 
 It is applied in two places, so no door needs code of its own:
 
-- where a project is written (``Engine._apply_project_locked``), which every
+- where a project is written (``Engine._take_in``), which every
   door that saves a device's settings ends in: ``PATCH /api/devices/{id}``,
   the connection routes, the whole-project save, a device added from
   Discovery and the AI device tools. The stored value is clean.
