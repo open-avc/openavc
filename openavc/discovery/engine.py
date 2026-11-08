@@ -27,7 +27,7 @@ from openavc.discovery.hints import (
     build_signal_index,
     load_discovery_hints,
 )
-from openavc.discovery.community_index import CommunityDevicesCache, CommunityIndexCache
+from openavc.discovery.community_index import CommunityIndexCache
 from openavc.discovery.mdns_scanner import (
     BASELINE_SERVICE_TYPES,
     MDNSScanner,
@@ -420,7 +420,6 @@ class DiscoveryEngine(DriverProbes):
         # load_discovery_companions_from_dirs().
         self._discovery_companions: dict[str, CompanionProbe] = {}
         self.community_index = CommunityIndexCache()
-        self.community_devices = CommunityDevicesCache()
         self.results: dict[str, DiscoveredDevice] = {}
         # Passive-source flood guard (see _get_or_create_passive).
         self._passive_sources_created = 0
@@ -1159,11 +1158,8 @@ class DiscoveryEngine(DriverProbes):
                 if net.prefixlen < min_prefix:
                     continue
                 ping_total += host_count(net)
-            ping_done = 0
 
             async def on_ping_progress(completed: int, total: int) -> None:
-                nonlocal ping_done
-                ping_done = completed
                 if total > 0:
                     await self._update_intra_progress(completed / total)
 
