@@ -490,6 +490,34 @@ def test_send_udp_defaults_to_the_device_host_and_needs_a_port():
         asyncio.run(drv2.send_udp(b"hi", port=7000))
 
 
+def test_send_udp_refuses_a_port_of_zero_or_below_and_sends_nothing():
+    drv, cap = _python_driver()
+    for port in (0, -1, "0"):
+        with pytest.raises(ValueError, match="needs a port"):
+            asyncio.run(drv.send_udp(b"hi", port=port))
+    assert cap.sent == []
+
+
+def test_send_udp_trims_the_host_it_is_given_and_the_devices_own():
+    drv, cap = _python_driver({"host": " 10.0.0.9 "})
+    assert asyncio.run(drv.send_udp(b"hi", port=7000)) == [("10.0.0.9", 7000)]
+    assert asyncio.run(drv.send_udp(b"hi", host="  10.0.0.44\t", port="7001")) == [
+        ("10.0.0.44", 7001)
+    ]
+    assert cap.sent == [(b"hi", "10.0.0.9", 7000), (b"hi", "10.0.0.44", 7001)]
+
+
+def test_send_udp_answers_where_the_datagram_really_went():
+    drv, cap = _python_driver()
+    drv.udp_redirect = ("127.0.0.1", 19123)
+    assert asyncio.run(drv.send_udp(b"hi", host="10.9.9.9", port=7000)) == [
+        ("127.0.0.1", 19123)
+    ]
+    assert asyncio.run(drv.send_udp(b"hi", port=7000, broadcast=True)) == [
+        ("127.0.0.1", 19123)
+    ]
+
+
 def test_wake_on_lan_broadcasts_then_sends_to_the_host_and_normalizes():
     drv, cap = _python_driver()
     assert asyncio.run(drv.wake_on_lan("AA-BB-CC-DD-EE-FF")) == MAC
