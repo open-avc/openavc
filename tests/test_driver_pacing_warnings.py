@@ -18,7 +18,7 @@ import pytest
 
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
-from openavc.drivers import configurable
+from openavc.drivers import start_up_and_poll
 from openavc.drivers.avcdriver_semantic import (
     _poll_lines,
     validate_driver_warnings,
@@ -86,7 +86,7 @@ def _silence_warnings(definition: dict[str, Any]) -> list[str]:
 
 
 def test_the_runtime_and_the_validator_read_the_same_numbers():
-    assert configurable.DEFAULT_LINE_GAP_S is DEFAULT_LINE_GAP_S
+    assert start_up_and_poll.DEFAULT_LINE_GAP_S is DEFAULT_LINE_GAP_S
     assert _SILENCE_CHECK_TRANSPORTS == frozenset(SILENCE_CHECK_TRANSPORTS)
 
 

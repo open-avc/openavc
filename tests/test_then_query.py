@@ -21,7 +21,7 @@ import pytest
 
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
-from openavc.drivers import configurable
+from openavc.drivers import rereads
 from openavc.drivers.avcdriver_semantic import validate_driver_definition
 from openavc.drivers.compiled_protocol import follow_up_queries
 from openavc.drivers.configurable import create_configurable_driver_class
@@ -213,7 +213,7 @@ async def test_a_rule_its_own_replies_match_reads_once(matrix, monkeypatch) -> N
     """VOL 30 is both the notice and the reply to VOL?. The reply arrives
     inside the settle window and sends nothing; a notice after the window
     reads again."""
-    monkeypatch.setattr(configurable, "FOLLOW_UP_SETTLE_S", 0.3)
+    monkeypatch.setattr(rereads, "FOLLOW_UP_SETTLE_S", 0.3)
     port, dev = matrix
     drv = _build(_acme(), port)
     await drv.connect()

@@ -437,9 +437,9 @@ async def test_the_first_read_back_keeps_a_line_gap_from_the_command(monkeypatch
         return None
 
     drv._pace_line = no_pace
-    import openavc.drivers.configurable as configurable_mod
+    import openavc.drivers.rereads as rereads_mod
 
-    monkeypatch.setattr(configurable_mod, "sleep_at_least", sleep)
+    monkeypatch.setattr(rereads_mod, "sleep_at_least", sleep)
     drv._read_back("set_level", drv._definition["commands"]["set_level"], {"level": 1}, {"level": "A"})
     await _settle(drv)
     assert slept == [DEFAULT_LINE_GAP_S]

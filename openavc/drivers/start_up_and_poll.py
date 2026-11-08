@@ -10,12 +10,17 @@ The rules worth knowing before changing anything here:
   address on OSC, the protocol bytes on TCP, serial and UDP (TCP and serial
   ones inside the ``send_frame`` header, a no-op unless declared).
   ``_dispatch_query`` is that rule for every transport but OSC; a response
-  rule's ``then_query`` sends through it too. Every answer it gets on HTTP
-  is weighed against the credential (``http_credential``).
-* **Spacing** is ``_pace_line``'s (``configurable.py``, shared with a
-  rule's follow-ups and a command's read-backs). It spaces TCP and serial
-  lines when no ``inter_command_delay`` is set; with one, the transport waits
-  that long after every write instead.
+  rule's ``then_query`` sends through it too, and a command's ``read_back``
+  builds its raw queries with the same two halves (``_raw_bytes``,
+  ``_read_path``). Every answer ``_dispatch_query`` gets on HTTP is weighed
+  against the credential (``http_credential``); a read-back's is not.
+* **Spacing** is ``_pace_line``'s, for every line the driver sends on its
+  own: start-up, the poll, a rule's follow-ups and a command's read-backs
+  (``rereads``). It spaces TCP and serial lines by ``DEFAULT_LINE_GAP_S``
+  (``spec.py`` says why that value) when no ``inter_command_delay`` is set;
+  with one, the transport waits that long after every write instead. A
+  connection preview turns it off (``_pace_lines``): it records what would be
+  sent and must not sit out the gaps.
 * **The first poll skips what start-up just asked.** Every start-up line
   that went out is noted in ``_start_up_lines``; a connect that polls hands
   them to the first poll, which follows at once, as lines not to send again.
@@ -47,7 +52,9 @@ import asyncio
 from typing import Any, Callable
 
 from openavc.drivers.base import ConnectionFaultError
+from openavc.drivers.spec import DEFAULT_LINE_GAP_S, LINE_GAP_TRANSPORTS
 from openavc.transport.binary_helpers import encode_escape_sequences as _safe_encode_escapes
+from openavc.transport.pacing import pacing_clock, sleep_at_least
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which
@@ -88,7 +95,6 @@ class StartUpAndPoll:
     events: Any
     _definition: dict[str, Any]
     _osc_responses: list[Any]
-    _pace_line: Callable[[], Any]
     _expand_query: Callable[[Any], list[str]]
     _query_enabled: Callable[[dict[str, Any]], bool]
     _line_gate_shut: Callable[..., Any]
@@ -105,6 +111,10 @@ class StartUpAndPoll:
     _apply_send_frame: Callable[[bytes], bytes]
 
     def _init_start_up_and_poll(self) -> None:
+        # When the next of the driver's own lines may go, and whether to pace
+        # them at all (_pace_line).
+        self._next_line_at: float = 0.0
+        self._pace_lines: bool = True
         # The on_connect lines the latest start-up sent, and those the first
         # poll after a connect skips because start-up has just sent them.
         self._start_up_lines: set[str] = set()
@@ -120,6 +130,48 @@ class StartUpAndPoll:
         """An OSC address the driver sends on its own, its {config}
         placeholders filled."""
         return self._safe_substitute(template, self.config) if "{" in template else template
+
+    # --- spacing ---
+
+    def _line_gap(self) -> float:
+        """Seconds _pace_line() keeps between two lines, 0 for no pacing.
+
+        Only a tcp or serial link with no ``inter_command_delay`` is paced
+        here. With a delay set, the transport already waits that long after
+        every write; datagram and HTTP links are not paced by this.
+        """
+        if not self._pace_lines:
+            return 0.0
+        transport = self.config.get("transport") or self._definition.get("transport")
+        if transport not in LINE_GAP_TRANSPORTS:
+            return 0.0
+        try:
+            if float(self.config.get("inter_command_delay") or 0) > 0:
+                return 0.0
+        except (TypeError, ValueError):
+            pass
+        return DEFAULT_LINE_GAP_S
+
+    async def _pace_line(self) -> None:
+        """Wait until the next on_connect or poll line may go.
+
+        The wait sits here, between sends, never inside the transport's send
+        lock: a command somebody presses meanwhile goes straight out, behind
+        at most the one line being written, never behind the rest of a poll.
+        The spacing runs from the previous line whichever of the two sent it,
+        so the last start-up line and the first poll line are spaced as well.
+        A response rule's follow-up queries (_send_follow_ups) can go out
+        while a poll is under way; each sender waits again after its sleep
+        until the slot is its own, so the two never share one.
+        """
+        gap = self._line_gap()
+        if gap <= 0:
+            return
+        wait = self._next_line_at - pacing_clock()
+        while wait > 0:
+            await sleep_at_least(wait)
+            wait = self._next_line_at - pacing_clock()
+        self._next_line_at = pacing_clock() + gap
 
     # --- start-up ---
 
@@ -243,14 +295,24 @@ class StartUpAndPoll:
         """A line that names no command, as the transport takes it; on HTTP,
         the answer (read by the reply rules, as a command's is)."""
         if transport_type == "http":
-            response = await self.transport.get(text)
-            await self._process_http_response(text, response)
-            return response
+            return await self._read_path(text)
+        await self.transport.send(self._raw_bytes(transport_type, text))
+        return None
+
+    def _raw_bytes(self, transport_type: Any, text: str) -> bytes:
+        """A raw line's protocol bytes: escape-decoded, and on any link but
+        UDP inside the ``send_frame`` header (a no-op unless declared)."""
         data = _safe_encode_escapes(text)
         if transport_type != "udp":
             data = self._apply_send_frame(data)
-        await self.transport.send(data)
-        return None
+        return data
+
+    async def _read_path(self, path: str) -> Any:
+        """GET a path and read its answer with the reply rules, as a
+        command's is; the answer."""
+        response = await self.transport.get(path)
+        await self._process_http_response(path, response)
+        return response
 
     # --- the poll ---
 

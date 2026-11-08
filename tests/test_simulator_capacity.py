@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
-from openavc.drivers import configurable
+from openavc.drivers import start_up_and_poll
 from openavc.drivers.avcdriver_semantic import validate_driver_definition
 from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.drivers.spec import platform_requirements
@@ -599,7 +599,7 @@ async def test_a_paced_poll_fills_every_output_of_a_device_that_cannot_keep_up()
 
 async def test_the_same_poll_unpaced_overflows_it(monkeypatch):
     """The same 40 lines with no gap: most of them never reach the device."""
-    monkeypatch.setattr(configurable, "DEFAULT_LINE_GAP_S", 0)
+    monkeypatch.setattr(start_up_and_poll, "DEFAULT_LINE_GAP_S", 0)
     outputs = 20
     sim = await _matrix_sim(outputs)
     drv = _matrix_driver(sim.port, outputs)
@@ -622,7 +622,7 @@ async def managed_matrix(monkeypatch):
     from openavc.core.device_manager import DeviceManager
     from openavc.drivers.registry import register_driver, unregister_driver
 
-    monkeypatch.setattr(configurable, "DEFAULT_LINE_GAP_S", 0)
+    monkeypatch.setattr(start_up_and_poll, "DEFAULT_LINE_GAP_S", 0)
     monkeypatch.setattr(
         DeviceManager, "_reconnect_delay", lambda self, device_id, attempt: 0.05
     )
