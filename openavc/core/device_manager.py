@@ -180,6 +180,31 @@ PAUSED_FOR_AUDIT = "audit"
 _redact_config = redact_config
 
 
+# What every listing gives each device, live or not.
+_SUMMARY_KEYS = ("id", "name", "driver", "connected", "connection")
+
+
+def _summary_without_driver(device_id: str, config: dict[str, Any]) -> dict[str, Any]:
+    """The summary of a device with no live driver (disabled, or its driver
+    not installed): never connected, and where it would connect."""
+    return {
+        "id": device_id,
+        "name": config.get("name", device_id),
+        "driver": config.get("driver", ""),
+        "connected": False,
+        "connection": connection_of(config).address(),
+    }
+
+
+def _orphan_summary(device_id: str, config: dict[str, Any]) -> dict[str, Any]:
+    """The summary of a device waiting for its driver, and why."""
+    return {
+        **_summary_without_driver(device_id, config),
+        "orphaned": True,
+        "orphan_reason": missing_driver_reason(config.get("driver", "")),
+    }
+
+
 def _orphan_config(config: dict[str, Any]) -> dict[str, Any]:
     """An orphaned device's config with every credential masked by name, and
     each login saved on this system shown as the marker rather than masked."""
@@ -746,13 +771,7 @@ class DeviceManager(
         if device_id in self._orphaned_devices:
             config = self._orphaned_devices[device_id]
             return {
-                "id": device_id,
-                "name": config.get("name", device_id),
-                "driver": config.get("driver", ""),
-                "connected": False,
-                "connection": connection_of(config).address(),
-                "orphaned": True,
-                "orphan_reason": missing_driver_reason(config.get("driver", "")),
+                **_orphan_summary(device_id, config),
                 "state": self.state.get_namespace(f"device.{device_id}"),
                 "commands": {},
                 "driver_info": {},
@@ -766,20 +785,15 @@ class DeviceManager(
 
         driver = self._devices.get(device_id)
         if driver is None:
-            # Check disabled devices
-            if device_id in self._device_configs:
-                config = self._device_configs[device_id]
-                return {
-                    "id": device_id,
-                    "name": config.get("name", device_id),
-                    "driver": config.get("driver", ""),
-                    "connected": False,
-                    "connection": connection_of(config).address(),
-                    "state": self.state.get_namespace(f"device.{device_id}"),
-                    "commands": {},
-                    "driver_info": {},
-                }
-            raise DeviceNotFoundError(f"Device '{device_id}' not found")
+            # A disabled device
+            if device_id not in self._device_configs:
+                raise DeviceNotFoundError(f"Device '{device_id}' not found")
+            return {
+                **_summary_without_driver(device_id, self._device_configs[device_id]),
+                "state": self.state.get_namespace(f"device.{device_id}"),
+                "commands": {},
+                "driver_info": {},
+            }
 
         from openavc.drivers.actions import resolve_device_actions
 
@@ -864,56 +878,31 @@ class DeviceManager(
 
     def _list_devices(self) -> list[dict[str, Any]]:
         """List all devices with summary info (including orphaned and disabled)."""
-        result = []
-        seen = set()
-
-        # Active devices
-        for device_id in self._devices:
-            seen.add(device_id)
-            try:
-                info = self.get_device_info(device_id)
-                entry: dict[str, Any] = {
-                    "id": info["id"],
-                    "name": info["name"],
-                    "driver": info["driver"],
-                    "connected": info["connected"],
-                    "connection": info["connection"],
-                }
-                # Include command names so callers don't need get_device_info per device
-                if info.get("commands"):
-                    entry["commands"] = list(info["commands"].keys())
-                result.append(entry)
-            except Exception:
-                result.append({"id": device_id, "name": device_id, "connected": False})
-
-        # Orphaned devices (driver not found)
+        result = [self._live_summary(device_id) for device_id in self._devices]
+        seen = set(self._devices)
         for device_id, config in self._orphaned_devices.items():
             if device_id not in seen:
                 seen.add(device_id)
-                result.append({
-                    "id": device_id,
-                    "name": config.get("name", device_id),
-                    "driver": config.get("driver", ""),
-                    "connected": False,
-                    "connection": connection_of(config).address(),
-                    "orphaned": True,
-                    "orphan_reason": missing_driver_reason(config.get("driver", "")),
-                })
-
-        # Disabled devices
+                result.append(_orphan_summary(device_id, config))
+        # What is left has no driver because it is disabled.
         for device_id, config in self._device_configs.items():
             if device_id not in seen:
                 seen.add(device_id)
-                result.append({
-                    "id": device_id,
-                    "name": config.get("name", device_id),
-                    "driver": config.get("driver", ""),
-                    "connected": False,
-                    "connection": connection_of(config).address(),
-                    "enabled": False,
-                })
-
+                result.append({**_summary_without_driver(device_id, config), "enabled": False})
         return result
+
+    def _live_summary(self, device_id: str) -> dict[str, Any]:
+        """A device with a live driver, as the listing gives it: the summary,
+        and its command names so callers need no get_device_info per device.
+        One whose info cannot be read is listed by its bare id, offline."""
+        try:
+            info = self.get_device_info(device_id)
+            entry = {key: info[key] for key in _SUMMARY_KEYS}
+            if info.get("commands"):
+                entry["commands"] = list(info["commands"].keys())
+            return entry
+        except Exception:
+            return {"id": device_id, "name": device_id, "connected": False}
 
     def get_device_configs(self) -> dict[str, dict[str, Any]]:
         """Return a shallow copy of the device config dict (device_id → config)."""
