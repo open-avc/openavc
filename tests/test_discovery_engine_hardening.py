@@ -23,7 +23,9 @@ from unittest.mock import patch, AsyncMock, MagicMock
 import pytest
 
 from openavc.discovery import engine as engine_mod
-from openavc.discovery.engine import DiscoveryEngine, _ip_in_subnets
+from openavc.discovery import probe_phase
+from openavc.discovery.engine import DiscoveryEngine
+from openavc.discovery.scan_scope import ip_in_subnets
 from openavc.discovery.result import (
     DiscoveredDevice,
     Evidence,
@@ -235,12 +237,12 @@ class TestEvidenceResetOnScanStart:
 class TestCompanionSubnetGuard:
     def test_ip_in_subnets(self):
         nets = ["10.77.0.0/24", "192.168.5.0/25"]
-        assert _ip_in_subnets("10.77.0.42", nets)
-        assert _ip_in_subnets("192.168.5.10", nets)
-        assert not _ip_in_subnets("8.8.8.8", nets)
-        assert not _ip_in_subnets("192.168.5.200", nets)  # outside the /25
-        assert not _ip_in_subnets("not-an-ip", nets)
-        assert not _ip_in_subnets("10.77.0.1", ["garbage/99"])  # bad CIDR skipped
+        assert ip_in_subnets("10.77.0.42", nets)
+        assert ip_in_subnets("192.168.5.10", nets)
+        assert not ip_in_subnets("8.8.8.8", nets)
+        assert not ip_in_subnets("192.168.5.200", nets)  # outside the /25
+        assert not ip_in_subnets("not-an-ip", nets)
+        assert not ip_in_subnets("10.77.0.1", ["garbage/99"])  # bad CIDR skipped
 
     async def test_companion_offsubnet_host_ignored(self):
         engine = DiscoveryEngine()
@@ -291,7 +293,7 @@ class TestScanContactsOnlyItsSubnets:
             return []
 
         assert engine._count_probe_jobs(["10.77.0.5/32"])[0] == 1
-        with patch.object(engine_mod, "observe_port_probes", fake_port_probes):
+        with patch.object(probe_phase, "observe_port_probes", fake_port_probes):
             await engine._run_custom_probes(["10.77.0.5/32"], "")
         assert probed == ["10.77.0.5"]
         assert "192.168.9.12" in engine.results  # still listed
@@ -319,7 +321,7 @@ class TestScanContactsOnlyItsSubnets:
     async def test_upnp_description_fetched_only_in_scope(self):
         from openavc.discovery.ssdp_scanner import SSDPResult, SSDPScanner
 
-        scanner = SSDPScanner(fetch_scope=lambda ip: _ip_in_subnets(ip, ["10.77.0.0/24"]))
+        scanner = SSDPScanner(fetch_scope=lambda ip: ip_in_subnets(ip, ["10.77.0.0/24"]))
         for ip in ("10.77.0.30", "192.168.9.12"):
             scanner._results[ip] = SSDPResult(ip=ip, location=f"http://{ip}:49152/d.xml")
         fetched: list[str] = []
@@ -533,7 +535,7 @@ class TestTcpProbeRateLimit:
             captured["rate_limiter"] = rate_limiter
             return []
 
-        with patch.object(engine_mod, "observe_port_probes", fake_port_probes):
+        with patch.object(probe_phase, "observe_port_probes", fake_port_probes):
             await engine._run_custom_probes(["10.77.0.0/24"], "10.77.0.1")
 
         # Before the fix this was None (no limiter threaded through the TCP

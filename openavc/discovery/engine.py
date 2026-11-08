@@ -18,6 +18,8 @@ from openavc.discovery.network_scanner import (
     ping_sweep,
 )
 from openavc.discovery.port_guard import PortGuard, held_ports
+from openavc.discovery.probe_phase import DriverProbes
+from openavc.discovery.scan_scope import host_count, ip_in_subnets
 from openavc.discovery.port_scanner import scan_host_ports, grab_banners, BASELINE_PORTS
 from openavc.discovery.oui_database import OUIDatabase
 from openavc.discovery.hints import (
@@ -33,19 +35,9 @@ from openavc.discovery.mdns_scanner import (
 from openavc.discovery.ssdp_scanner import SSDPScanner
 from openavc.discovery.snmp_scanner import SNMPScanner
 from openavc.discovery.amx_ddp_scanner import AMXDDPScanner
-from openavc.discovery.probe_runner import (
-    RateLimiter,
-    ReplyPortUnavailable,
-    observe_port_probes,
-    port_probe_seconds,
-    run_udp_broadcast_probe,
-)
 from openavc.discovery.companion import (
     CompanionProbe,
-    DEFAULT_PROBE_TIMEOUT_SECONDS,
-    ProbeContext,
     load_discovery_companions,
-    run_companion,
 )
 from openavc.discovery.tier_matcher import (
     KIND_HOSTNAME,
@@ -63,7 +55,6 @@ from openavc.discovery.result import (
     DeviceState,
     DiscoveredDevice,
     Evidence,
-    device_info_from_evidence,
     merge_device_info,
 )
 from openavc.discovery import scan_budget as budgeting
@@ -367,79 +358,7 @@ class ScanBlocked(RuntimeError):
     """
 
 
-def _ip_in_subnets(ip: str, subnets: list[str]) -> bool:
-    """True if ``ip`` parses as an address inside one of ``subnets``.
-
-    A scan contacts only addresses inside the subnets it was asked to scan.
-    The passive listeners hear devices anywhere on the attached networks, and
-    those are listed from what they announced, but nothing is sent to them: no
-    port scan, no driver probe, no UPnP description fetch. Without that, a scan
-    aimed at one address would probe every device that announced itself while
-    it listened, and a device that serves one control connection at a time
-    would lose its controller's. This also keeps community
-    Python discovery companions from fabricating device records for IPs
-    outside the scanned ranges (see ``_run_custom_probes``).
-    A malformed ``ip`` or CIDR is treated as "not in range" — the parse is
-    guarded so one bad value can't raise into the probe path.
-    """
-    try:
-        addr = ipaddress.ip_address(ip)
-    except ValueError:
-        return False
-    for cidr in subnets:
-        try:
-            if addr in ipaddress.ip_network(cidr, strict=False):
-                return True
-        except ValueError:
-            continue
-    return False
-
-
-def _broadcast_addresses_for(subnets: list[str]) -> list[str]:
-    """Return the directed broadcast address for each CIDR.
-
-    Skips invalid CIDRs and prefixes with no meaningful broadcast
-    address (/31 and /32).
-    """
-    out: list[str] = []
-    for cidr in subnets:
-        try:
-            net = ipaddress.IPv4Network(cidr, strict=False)
-        except ValueError:
-            continue
-        if net.prefixlen >= 31:
-            continue
-        out.append(str(net.broadcast_address))
-    return out
-
-
-def _udp_probe_targets_for(subnets: list[str]) -> list[str]:
-    """Where a driver's UDP probe goes for these subnets.
-
-    The directed broadcast address where a subnet has one. A /31 or /32 has
-    none: its addresses are hosts (a /32 is a single-device scan), so the
-    probe goes to each of them unicast instead.
-    """
-    out = _broadcast_addresses_for(subnets)
-    for cidr in subnets:
-        try:
-            net = ipaddress.IPv4Network(cidr, strict=False)
-        except ValueError:
-            continue
-        if net.prefixlen >= 31:
-            out.extend(str(ip) for ip in net.hosts() if str(ip) not in out)
-    return out
-
-
-def _host_count(net: ipaddress.IPv4Network) -> int:
-    """Addresses a sweep of ``net`` pings: all of them from /31 up, since a
-    /31 or /32 has no network or broadcast address to leave out."""
-    if net.prefixlen >= 31:
-        return net.num_addresses
-    return max(0, net.num_addresses - 2)
-
-
-class DiscoveryEngine:
+class DiscoveryEngine(DriverProbes):
     """Orchestrates device discovery across all scanning methods."""
 
     def __init__(self) -> None:
@@ -1144,7 +1063,7 @@ class DiscoveryEngine:
         mdns_scanner = MDNSScanner(service_types=mdns_service_types, control_ip=control_ip)
         ssdp_scanner = SSDPScanner(
             control_ip=control_ip,
-            fetch_scope=lambda ip: _ip_in_subnets(ip, subnets),
+            fetch_scope=lambda ip: ip_in_subnets(ip, subnets),
         )
         amx_ddp_scanner = AMXDDPScanner(control_ip=control_ip)
 
@@ -1195,7 +1114,7 @@ class DiscoveryEngine:
                     continue
                 if net.prefixlen < min_prefix:
                     continue
-                ping_total += _host_count(net)
+                ping_total += host_count(net)
             ping_done = 0
 
             async def on_ping_progress(completed: int, total: int) -> None:
@@ -1504,7 +1423,7 @@ class DiscoveryEngine:
             ip for ip in arp_table
             if ip not in self.results
             and ip not in edges
-            and _ip_in_subnets(ip, self.scan_status.subnets)
+            and ip_in_subnets(ip, self.scan_status.subnets)
         ]
         if candidates and self._ping_method not in ("", icmp.METHOD_NONE):
             recovered: set[str] = set()
@@ -1695,12 +1614,12 @@ class DiscoveryEngine:
         # the test, not "no open ports": an mDNS SRV port already sits in
         # open_ports, and a device that drops ping but advertises one
         # service must still have its other ports found and probed. Only
-        # inside the scanned subnets (``_ip_in_subnets``).
+        # inside the scanned subnets (``ip_in_subnets``).
         ping_found = set(alive_ips) if alive_ips else set()
         passive_only = [
             ip for ip, dev in self.results.items()
             if dev.alive and ip not in ping_found and ip not in self._port_scanned
-            and _ip_in_subnets(ip, self.scan_status.subnets)
+            and ip_in_subnets(ip, self.scan_status.subnets)
         ]
         if passive_only:
             log.info(
@@ -1715,46 +1634,6 @@ class DiscoveryEngine:
         # Pick up a MAC + OUI for passive-discovered devices the phase-4
         # ARP harvest missed (found via mDNS/SSDP on a ping-skipped subnet).
         await self._late_arp_harvest()
-
-    def _count_probe_jobs(
-        self, subnets: list[str],
-    ) -> tuple[int, int, int, float, float]:
-        """(tcp probe jobs, udp broadcast sends, companions, udp listen
-        seconds, tcp wait seconds) for this scan.
-
-        Counted before ``_run_custom_probes`` runs so the phase can be budgeted
-        from real work rather than a guess. The TCP expression mirrors the job
-        list that method builds — same spec/port test, so the projection and
-        the execution can't disagree about what the phase is about to do.
-
-        The two waits come from the probes that will run: the longest UDP
-        listen window, and the longest one port's TCP checks can take
-        (``probe_runner.port_probe_seconds``): a port's checks run one after
-        another, so a port many drivers probe is the slowest. Writing the few
-        bytes a probe sends never waits on a fresh connection, so the drains
-        are left out.
-        """
-        udp_targets = len(_udp_probe_targets_for(subnets))
-        udp_specs = [h.udp_probe for h in self.discovery_hints if h.udp_probe is not None]
-        udp_sends = udp_targets * len(udp_specs)
-        udp_listen = 0.0
-        if udp_sends:
-            udp_listen = max(spec.timeout_ms for spec in udp_specs) / 1000.0
-        tcp_jobs = 0
-        by_port: dict[tuple[str, int], list] = {}
-        for hint in self.discovery_hints:
-            spec = hint.tcp_probe
-            if spec is None:
-                continue
-            for ip, dev in self.results.items():
-                if spec.port in (dev.open_ports or []) and _ip_in_subnets(ip, subnets):
-                    tcp_jobs += 1
-                    by_port.setdefault((ip, spec.port), []).append(spec)
-        tcp_wait = max((port_probe_seconds(specs) for specs in by_port.values()), default=0.0)
-        return (
-            tcp_jobs, udp_sends, len(self._discovery_companions),
-            udp_listen, tcp_wait,
-        )
 
     def _apply_plan(self, key: str, warnings: list[str]) -> None:
         """Record a phase plan: its granted deadline, and any narrowing.
@@ -2067,45 +1946,6 @@ class DiscoveryEngine:
 
         return merged
 
-    async def merge_probe_results(self) -> int:
-        """Merge every driver probe that has matched into ``self.results``.
-
-        A probe's evidence is held from the moment it matches, not from when
-        its phase ends. The probe phase runs under its own deadline, and when
-        the last few probes outran it the phase used to drop every probe that
-        had already answered too, because the merge ran only once all of them
-        returned: on a busy subnet nothing was identified from a probe at all.
-        Called when each kind of probe has run, and again by ``_run_scan``
-        before matching, which is what keeps the answered ones after a cut.
-
-        Merged in the order the probes were started, not the order they
-        answered, so the fields a probe fills in on a device come out the same
-        whichever answered first. Idempotent per probe.
-
-        Returns the number of probes merged by this call.
-        """
-        merged = 0
-        for at in sorted(self._probe_finished):
-            if at in self._probe_merged:
-                continue
-            self._probe_merged.add(at)
-            for ip, ev, source in self._probe_finished[at]:
-                device = self._get_or_create(ip)
-                device.alive = True
-                device.evidence_log.append(ev)
-                # Lift extracted hostname/model/firmware/etc. onto the device
-                # record so the card and the export report show them. Passive
-                # listeners do this; probes need to too. fill_only: a probe runs
-                # after passive collection, so it enriches empty fields but
-                # never clobbers an authoritative passive/SNMP identity by
-                # being longer.
-                info = device_info_from_evidence(ev)
-                if info:
-                    merge_device_info(device, info, source, fill_only=True)
-                await self._emit_device_update(device, source)
-            merged += 1
-        return merged
-
     def _claim_passive_merge(self, source: str, ip: str) -> bool:
         """True the first time this (source, ip) is merged in the current scan."""
         key = (source, ip)
@@ -2163,233 +2003,6 @@ class DiscoveryEngine:
 
         if snmp_results:
             log.info("SNMP enriched %d devices", len(snmp_results))
-
-    async def _run_custom_probes(
-        self,
-        subnets: list[str],
-        control_ip: str,
-        max_tcp_jobs: int | None = None,
-    ) -> None:
-        """Dispatch driver-declared probes.
-
-        Walks ``self.discovery_hints`` for any declared
-        ``udp_probe:`` / ``tcp_probe:`` / ``python:`` specs:
-
-        - **UDP probes** fire once per scan against every subnet's
-          directed broadcast address (unicast to each address of a /31
-          or /32, which have none), sharing a single 10/sec
-          ``RateLimiter``.
-        - **TCP probes** run against every host whose port-scan results
-          include the spec's port, one port at a time
-          (``probe_runner.observe_port_probes``: the greeting read first,
-          a login prompt sent only the checks that expect it, then each
-          check in turn), the ports staggered 20 ms apart and sharing the
-          same 10/sec ``RateLimiter`` as the UDP probes so the global send
-          cap bounds the connect rate too.
-        - **Python companions** are invoked with a ``ProbeContext``
-          carrying the engine's port-scan map so the companion can
-          consume already-discovered hosts instead of re-iterating
-          subnets, and the scan's port guard behind ``ctx.hold_port``.
-
-        Resulting Evidence is appended to each device's ``evidence_log``
-        for the matcher to consume in phase 8.
-
-        ``max_tcp_jobs`` caps the per-host TCP probes when the scan budget
-        could not afford them all (the UDP broadcasts and companions are kept
-        — one send each covers a whole subnet, so they are the cheapest
-        identification per packet). The caller warns about the shortfall.
-        """
-        udp_specs = [
-            h.udp_probe for h in self.discovery_hints
-            if h.udp_probe is not None
-        ]
-        tcp_specs = [
-            h.tcp_probe for h in self.discovery_hints
-            if h.tcp_probe is not None
-        ]
-        if (
-            not udp_specs
-            and not tcp_specs
-            and not self._discovery_companions
-        ):
-            return
-
-        rate_limiter = RateLimiter(rate_per_sec=10.0)
-        # Each probe keeps its evidence in _probe_finished, under the position
-        # it was started in, as soon as it answers; merge_probe_results moves
-        # it onto the devices. A phase cut short therefore loses only the
-        # probes still waiting, never the ones that already answered.
-        position = 0
-
-        if udp_specs:
-            udp_targets = _udp_probe_targets_for(subnets)
-            if udp_targets:
-                async def _run_one_udp(at, spec):
-                    result = await run_udp_broadcast_probe(
-                        spec,
-                        targets=udp_targets,
-                        source_ip=control_ip,
-                        rate_limiter=rate_limiter,
-                        accept_from=subnets,
-                    )
-                    if isinstance(result, dict) and result:
-                        self._probe_finished[at] = [
-                            (ip, ev, "broadcast_probe") for ip, ev in result.items()
-                        ]
-
-                udp_tasks = []
-                for spec in udp_specs:
-                    udp_tasks.append(_run_one_udp(position, spec))
-                    position += 1
-                udp_results = await asyncio.gather(
-                    *udp_tasks, return_exceptions=True,
-                )
-                unheard: dict[int, tuple[list[str], str]] = {}
-                names_by_id = {
-                    h.driver_id: h.driver_name or h.driver_id
-                    for h in self.discovery_hints
-                }
-                for spec, result in zip(udp_specs, udp_results):
-                    if isinstance(result, ReplyPortUnavailable):
-                        names, _ = unheard.setdefault(result.port, ([], result.reason))
-                        names.append(names_by_id.get(spec.driver_id, spec.driver_id))
-                    elif isinstance(result, BaseException):
-                        log.debug(
-                            "Custom UDP probe %s failed",
-                            spec.probe_id, exc_info=result,
-                        )
-                # Like a listener that could not start (the collect phase's
-                # env_error): said, but not a partial scan. Everything else
-                # ran, and the devices these checks would have named still
-                # appear by their other signals.
-                for port, (names, reason) in sorted(unheard.items()):
-                    self.scan_status.warnings.append(
-                        f"Could not listen on UDP port {port} for the "
-                        f"{', '.join(names)} identification check ({reason}). "
-                        "Another program on this computer may be using it."
-                    )
-                await self.merge_probe_results()
-
-        if tcp_specs:
-            # Every (spec, host) pair, in the order _count_probe_jobs counts
-            # them, each with the position its evidence is kept under; the
-            # budget's cap cuts this list, then the survivors run by port.
-            jobs: list[tuple[int, Any, str]] = []
-            for spec in tcp_specs:
-                for ip, dev in self.results.items():
-                    if spec.port in (dev.open_ports or []) and _ip_in_subnets(ip, subnets):
-                        jobs.append((position, spec, ip))
-                        position += 1
-            if max_tcp_jobs is not None:
-                jobs = jobs[:max_tcp_jobs]
-            by_port: dict[tuple[str, int], list[tuple[int, Any]]] = {}
-            for at, spec, ip in jobs:
-                by_port.setdefault((ip, spec.port), []).append((at, spec))
-
-            async def _probe_port(idx, host, port, entries):
-                if idx:
-                    await asyncio.sleep(idx * 0.020)  # spread the first connects
-
-                def _answered(i: int, obs) -> None:
-                    if obs.evidence is not None:
-                        self._probe_finished[entries[i][0]] = [
-                            (host, obs.evidence, "protocol_probe"),
-                        ]
-
-                await observe_port_probes(
-                    host, port, [spec for _, spec in entries],
-                    source_ip=control_ip, guard=self._guard,
-                    rate_limiter=rate_limiter, on_observation=_answered,
-                )
-
-            if by_port:
-                tcp_results = await asyncio.gather(
-                    *(
-                        _probe_port(idx, host, port, entries)
-                        for idx, ((host, port), entries) in enumerate(by_port.items())
-                    ),
-                    return_exceptions=True,
-                )
-                for r in tcp_results:
-                    if isinstance(r, BaseException):
-                        log.debug(
-                            "Custom TCP probe failed", exc_info=r,
-                        )
-                await self.merge_probe_results()
-
-        if self._discovery_companions:
-            async def _emit_for_host(host: str, ev) -> None:
-                # Companion code is community-trust (same tier as a Python
-                # driver) and passes the host string verbatim. Enforce the
-                # engine-wide invariant that every result is a host on a
-                # scanned subnet: without this a buggy or hostile companion
-                # could fabricate a record — even an IDENTIFIED one — for an IP
-                # that was never scanned. Built-in probes are already
-                # constrained (UDP keys off the recorded sender; TCP only
-                # targets hosts already in results).
-                if not _ip_in_subnets(host, subnets):
-                    log.warning(
-                        "Discovery companion emitted host %r outside the "
-                        "scanned subnets; ignoring", host,
-                    )
-                    return
-                device = self._get_or_create(host)
-                device.alive = True
-                device.evidence_log.append(ev)
-                info = device_info_from_evidence(ev)
-                if info:
-                    merge_device_info(device, info, "companion", fill_only=True)
-                await self._emit_device_update(device, "broadcast_probe")
-
-            # Build the port -> hosts map once and share it across
-            # every companion invocation — companions consume the
-            # engine's existing port-scan results instead of
-            # re-iterating subnets to rediscover live hosts. A port a
-            # connected project device holds is left out (an mDNS SRV
-            # record can put one in open_ports without a port scan).
-            hosts_by_open_port: dict[int, list[str]] = {}
-            for ip, dev in self.results.items():
-                for port in dev.open_ports or ():
-                    if self._guard.held_by(ip, port) is not None:
-                        self._guard.note_in_use(ip, port)
-                        continue
-                    hosts_by_open_port.setdefault(port, []).append(ip)
-            hosts_by_open_port_frozen: dict[int, tuple[str, ...]] = {
-                port: tuple(ips) for port, ips in hosts_by_open_port.items()
-            }
-
-            companion_logger = logging.getLogger("discovery.companion.run")
-            companion_tasks = []
-            companion_ids = []
-            for driver_id, probe_fn in self._discovery_companions.items():
-                ctx = ProbeContext(
-                    driver_id=driver_id,
-                    source_ip=control_ip,
-                    target_subnets=tuple(subnets),
-                    timeout_seconds=DEFAULT_PROBE_TIMEOUT_SECONDS,
-                    log=companion_logger,
-                    _emit_for_host=_emit_for_host,
-                    hosts_by_open_port=hosts_by_open_port_frozen,
-                    _guard=self._guard,
-                )
-                companion_tasks.append(run_companion(driver_id, probe_fn, ctx))
-                companion_ids.append(driver_id)
-            if companion_tasks:
-                # run_companion isolates a companion's own failures internally;
-                # an exception surfacing HERE is a runner-level fault (e.g. the
-                # worker thread failed to start). Read the results so it's
-                # logged, not swallowed by return_exceptions.
-                outcomes = await asyncio.gather(
-                    *companion_tasks, return_exceptions=True
-                )
-                for cid, outcome in zip(companion_ids, outcomes):
-                    if isinstance(outcome, BaseException) and not isinstance(
-                        outcome, asyncio.CancelledError
-                    ):
-                        log.warning(
-                            "Discovery companion %s runner failed: %r",
-                            cid, outcome,
-                        )
 
     async def _reping(self, ips: list[str], alive: set[str]) -> None:
         """Ping a short list again, unhurried, recording what answers.

@@ -14,31 +14,28 @@ import ipaddress
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from openavc.discovery import icmp
-from openavc.discovery.engine import (
-    DiscoveryEngine,
-    _host_count,
-    _udp_probe_targets_for,
-)
+from openavc.discovery.engine import DiscoveryEngine
 from openavc.discovery.probe_runner import ProbeObservation
 from openavc.discovery.result import Evidence, SignalTier
 from openavc.discovery.scan_budget import ScanBudget, resolve_policy
+from openavc.discovery.scan_scope import host_count, udp_probe_targets_for
 
 TARGET = "10.77.0.9"
 
 
 class TestHelpers:
     def test_udp_targets_broadcast_below_31_unicast_from_31(self):
-        assert _udp_probe_targets_for(["10.77.0.0/24"]) == ["10.77.0.255"]
-        assert _udp_probe_targets_for([f"{TARGET}/32"]) == [TARGET]
-        assert _udp_probe_targets_for(["10.77.0.8/31"]) == ["10.77.0.8", "10.77.0.9"]
-        assert _udp_probe_targets_for(["10.77.0.0/24", f"{TARGET}/32", "bogus"]) == [
+        assert udp_probe_targets_for(["10.77.0.0/24"]) == ["10.77.0.255"]
+        assert udp_probe_targets_for([f"{TARGET}/32"]) == [TARGET]
+        assert udp_probe_targets_for(["10.77.0.8/31"]) == ["10.77.0.8", "10.77.0.9"]
+        assert udp_probe_targets_for(["10.77.0.0/24", f"{TARGET}/32", "bogus"]) == [
             "10.77.0.255", TARGET,
         ]
 
     def test_host_count(self):
-        assert _host_count(ipaddress.IPv4Network("10.77.0.0/24")) == 254
-        assert _host_count(ipaddress.IPv4Network("10.77.0.8/31")) == 2
-        assert _host_count(ipaddress.IPv4Network(f"{TARGET}/32")) == 1
+        assert host_count(ipaddress.IPv4Network("10.77.0.0/24")) == 254
+        assert host_count(ipaddress.IPv4Network("10.77.0.8/31")) == 2
+        assert host_count(ipaddress.IPv4Network(f"{TARGET}/32")) == 1
 
 
 def _instant(method: str):
@@ -114,8 +111,8 @@ class TestSingleHostScan:
              patch("openavc.discovery.engine.netbios_sweep", new_callable=AsyncMock, return_value={}), \
              patch("openavc.discovery.engine.scan_host_ports", side_effect=fake_scan), \
              patch("openavc.discovery.engine.grab_banners", new_callable=AsyncMock, return_value={}), \
-             patch("openavc.discovery.engine.observe_port_probes", side_effect=fake_port_probes), \
-             patch("openavc.discovery.engine.run_udp_broadcast_probe", side_effect=fake_udp), \
+             patch("openavc.discovery.probe_phase.observe_port_probes", side_effect=fake_port_probes), \
+             patch("openavc.discovery.probe_phase.run_udp_broadcast_probe", side_effect=fake_udp), \
              patch.object(engine.community_index, "get_drivers", new_callable=AsyncMock, return_value=[]), \
              patch("openavc.discovery.engine.MDNSScanner", _instant("start")), \
              patch("openavc.discovery.engine.SSDPScanner", _instant("scan")), \

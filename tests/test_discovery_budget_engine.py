@@ -386,7 +386,7 @@ class TestProbesThatMatchedSurviveACut:
             )
 
         engine.scan_status.started_at = 0.0
-        with patch("openavc.discovery.engine.observe_port_probes", fake_port_probes), \
+        with patch("openavc.discovery.probe_phase.observe_port_probes", fake_port_probes), \
              patch.object(engine, "_scan_pipeline", side_effect=fake_pipeline):
             await engine._run_scan(["10.77.0.0/24"], timeout=60.0)
 
@@ -418,7 +418,7 @@ class TestProbesThatMatchedSurviveACut:
         async def fake_port_probes(host, port, specs, *, on_observation=None, **kwargs):
             return _answer_every_check(host, port, specs, on_observation)
 
-        with patch("openavc.discovery.engine.observe_port_probes", fake_port_probes):
+        with patch("openavc.discovery.probe_phase.observe_port_probes", fake_port_probes):
             await engine._run_custom_probes(["10.77.0.0/24"], "")
 
         # Nothing left for the recovery pass: the normal path merged it all.

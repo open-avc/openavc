@@ -18,7 +18,7 @@ from unittest.mock import patch
 
 import pytest
 
-from openavc.discovery import engine as probes_mod
+from openavc.discovery import probe_phase as probes_mod
 from openavc.discovery.engine import DiscoveryEngine
 from openavc.discovery.hints import parse_driver_discovery
 from openavc.discovery.probe_runner import ReplyPortUnavailable

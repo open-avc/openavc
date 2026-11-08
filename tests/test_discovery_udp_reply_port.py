@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 import pytest
 
-from openavc.discovery import engine as engine_mod
+from openavc.discovery import probe_phase
 from openavc.discovery import probe_runner as probe_runner_mod
 from openavc.discovery.engine import DiscoveryEngine
 from openavc.discovery.explain import _declared_probe
@@ -261,6 +261,6 @@ async def test_the_scan_keeps_only_answers_from_the_networks_it_scanned():
         seen.update(kwargs)
         return {}
 
-    with patch.object(engine_mod, "run_udp_broadcast_probe", fake_runner):
+    with patch.object(probe_phase, "run_udp_broadcast_probe", fake_runner):
         await engine._run_custom_probes(["10.77.0.0/24"], "10.77.0.1")
     assert seen["accept_from"] == ["10.77.0.0/24"]
