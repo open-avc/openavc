@@ -275,3 +275,27 @@ def test_a_reported_count_of_zero_is_not_yet_reported_and_the_config_field_count
     driver.set_state("num_outputs", 0)
     assert sorted(driver.list_children("output")) == [1, 2]
     assert driver._register_declared_children() == {"output": 2}
+
+
+def test_a_reported_roster_registered_offline_says_not_fitted_not_parent_offline():
+    driver = _driver({"slot": _type({"count": 2, "presence": "reported"})})
+    driver._register_declared_children()
+    assert driver.get_child_state("slot", 1)["offline_reason"] == "not_fitted"
+
+
+def test_children_registered_while_connected_take_no_offline_mark():
+    driver = _driver({"output": _type({"count_from": "outputs"})}, {"outputs": 1})
+    driver._register_declared_children()
+    assert driver.get_child_state("output", 1)["offline_reason"] == "parent_offline"
+    driver._connected = True
+    driver.config["outputs"] = 2
+    driver._register_declared_children()
+    child = driver.get_child_state("output", 2)
+    assert (child["online"], child["offline_reason"]) == (True, None)
+
+
+def test_a_count_from_field_left_blank_is_not_known_yet_and_not_warned(caplog):
+    driver = _driver({"output": _type({"count_from": "outputs"})}, {"outputs": ""})
+    caplog.clear()
+    assert driver._register_declared_children() == {}
+    assert _warnings(caplog) == []

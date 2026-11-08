@@ -445,3 +445,35 @@ async def test_bytes_then_quiet_end_the_listen_and_replay_them_whole_without_a_p
     driver._auth_buffer = bytearray(b"PWR=on")
     await driver._refuse_unanswerable_prompt()
     assert driver.get_state("power") == "on"
+
+
+async def test_arming_a_reconnect_after_a_flood_starts_the_sign_in_clean():
+    driver = _driver()
+    driver._auth_overflow = True
+    driver._auth_search_pos = 40
+    driver._auth_buffer = bytearray(b"junk")
+    old_event = driver._auth_event
+    old_event.set()
+
+    driver._arm_sign_in()
+
+    assert driver._auth_overflow is False
+    assert driver._auth_search_pos == 0
+    assert driver._auth_buffer == bytearray()
+    assert driver._auth_event is not old_event
+    assert not driver._auth_event.is_set()
+    assert (driver._auth_mode, driver._auth_pending, driver._auth_watch_blank) == (True, True, False)
+
+
+async def test_arming_with_nothing_planned_leaves_the_line_to_the_reply_rules():
+    driver = _driver({**_AUTH, "type": "other"})
+    driver._auth_buffer = bytearray(b"kept")
+    driver._arm_sign_in()
+    assert (driver._auth_mode, driver._auth_pending, driver._auth_watch_blank) == (False, False, False)
+    assert driver._auth_buffer == bytearray(b"kept")
+
+
+async def test_arming_a_blank_credential_reads_the_line_raw_for_the_listen():
+    driver = _driver(username="")
+    driver._arm_sign_in()
+    assert (driver._auth_mode, driver._auth_pending, driver._auth_watch_blank) == (True, False, True)

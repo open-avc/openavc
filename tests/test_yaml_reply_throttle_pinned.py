@@ -212,3 +212,37 @@ async def test_closing_the_session_drops_every_hold_in_every_rule_table():
     for tstate in (text_state, json_state):
         assert tstate["pending"] == {}
         assert tstate["timers"] == {}
+
+
+async def test_closing_the_session_drops_an_osc_rules_holds_too():
+    definition: dict[str, Any] = {
+        "id": "acme_meter_osc",
+        "name": "Acme Meter",
+        "manufacturer": "Acme",
+        "category": "audio",
+        "version": "1.0.0",
+        "transport": "osc",
+        "default_config": {"host": "", "port": 9000},
+        "config_schema": {},
+        "state_variables": {"level": {"type": "integer", "label": "Level"}},
+        "commands": {},
+        "responses": [
+            {"address": "/acme/level", "mappings": [{"arg": 0, "state": "level"}], "throttle": 5},
+        ],
+    }
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    driver = create_configurable_driver_class(definition)(
+        "dev1", {"host": "127.0.0.1", "port": 9000}, state, events,
+    )
+    tstate = driver._osc_responses[0][3]
+    assert driver._throttle_hold(tstate, "", [], []) is False
+    assert driver._throttle_hold(tstate, "", [("level", 3)], []) is True
+    timer = tstate["timers"][""]
+
+    driver._drop_all_held()
+
+    assert timer.cancelled()
+    assert tstate["pending"] == {}
+    assert tstate["timers"] == {}
