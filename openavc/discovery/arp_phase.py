@@ -21,8 +21,8 @@ The rules worth knowing before changing anything here:
 
 ``ArpHarvest`` is a mixin that ``DiscoveryEngine`` inherits, so every name
 stays on the engine. From its host it needs ``results``, ``scan_status``,
-``signal_index``, ``oui_db``, ``_budget``, ``_ping_method`` (the sweep sets
-it), ``_scan_source_ip``, ``_arp_provisional``, ``_set_phase()``,
+``oui_db``, ``_budget``, ``_ping_method`` (the sweep sets it),
+``_scan_source_ip``, ``_arp_provisional``, ``_set_phase()``,
 ``_apply_plan()``, ``_run_budgeted()``, ``_get_or_create()``,
 ``_refresh_device_count()`` and ``_emit_device_update()``.
 """
