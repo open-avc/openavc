@@ -629,9 +629,7 @@ class DeviceManager(
         :class:`FileCommandError`; this method is the one gate every door
         passes, so no door can run one by accident.
         """
-        driver = self._devices.get(device_id)
-        if driver is None:
-            raise DeviceNotFoundError(f"Device '{device_id}' not found")
+        driver = self._live_driver(device_id)
         # Before the connected-gate on purpose: a command name the driver does
         # not declare is wrong whether or not the device happens to be online,
         # and "Device 'x' is not connected" would send the author to look at
@@ -1042,9 +1040,7 @@ class DeviceManager(
         self, device_id: str, key: str, value: Any
     ) -> Any:
         """Set a device setting value on a device by ID."""
-        driver = self._devices.get(device_id)
-        if driver is None:
-            raise DeviceNotFoundError(f"Device '{device_id}' not found")
+        driver = self._live_driver(device_id)
         self._require_control_target(device_id)
         if not self.accepts_commands(device_id):
             raise not_connected(device_id)
@@ -1086,10 +1082,19 @@ class DeviceManager(
         A setting whose ``state_key`` is not a declared state variable has
         nothing to read back: ``(False, None)`` at once.
         """
+        self._live_driver(device_id)
+        return await self._wait_for_readback(device_id, key, expected, timeout)
+
+    def _live_driver(self, device_id: str) -> BaseDriver:
+        """The device's live driver, for a door that acts on it.
+
+        :class:`DeviceNotFoundError` when no device by that id has one: never
+        added, removed, disabled, or waiting for its driver to be installed.
+        """
         driver = self._devices.get(device_id)
         if driver is None:
             raise DeviceNotFoundError(f"Device '{device_id}' not found")
-        return await self._wait_for_readback(device_id, key, expected, timeout)
+        return driver
 
     def get_driver(self, device_id: str) -> BaseDriver | None:
         """Return the live driver instance for a device, or ``None`` if the
@@ -1104,9 +1109,7 @@ class DeviceManager(
 
     def get_device_settings(self, device_id: str) -> dict[str, Any]:
         """Return device settings metadata with current values from state."""
-        driver = self._devices.get(device_id)
-        if driver is None:
-            raise DeviceNotFoundError(f"Device '{device_id}' not found")
+        driver = self._live_driver(device_id)
 
         settings_def = driver.DRIVER_INFO.get("device_settings", {})
         result: dict[str, Any] = {}
@@ -1359,9 +1362,7 @@ class DeviceManager(
 
     async def reconnect_device(self, device_id: str) -> None:
         """Force disconnect and reconnect a device."""
-        if device_id not in self._devices:
-            raise DeviceNotFoundError(f"Device '{device_id}' not found")
-        driver = self._devices[device_id]
+        driver = self._live_driver(device_id)
         # A manual reconnect overrides a test-panel pause — clear the pause
         # bookkeeping so the flag can't go stale and the TTL backstop can't
         # fire a redundant resume later.
@@ -1426,8 +1427,7 @@ class DeviceManager(
         device's live transport (if any) is left untouched — an offline device
         is already down, and the handler doesn't use it. Pair with ``end_setup``.
         """
-        if device_id not in self._devices:
-            raise DeviceNotFoundError(f"Device '{device_id}' not found")
+        self._live_driver(device_id)
         await self._cancel_reconnect(device_id)
         self._intentional_disconnect.add(device_id)
 
@@ -1452,9 +1452,7 @@ class DeviceManager(
         setup runner owns that suppression for the whole run. Raises on connect
         failure so the handler can see it.
         """
-        driver = self._devices.get(device_id)
-        if driver is None:
-            raise DeviceNotFoundError(f"Device '{device_id}' not found")
+        driver = self._live_driver(device_id)
         self._clear_offline_reason(device_id)
         try:
             await driver.disconnect()
@@ -1477,9 +1475,7 @@ class DeviceManager(
         ``device.<id>.paused_for`` names the holder (``purpose``). Re-pausing an
         already-paused device just resets the TTL; the first holder's name stays.
         """
-        if device_id not in self._devices:
-            raise DeviceNotFoundError(f"Device '{device_id}' not found")
-        driver = self._devices[device_id]
+        driver = self._live_driver(device_id)
         await self._cancel_reconnect(device_id)
         # Add to intentional_disconnect BEFORE disconnect so the disconnected
         # event handler doesn't kick off a reconnect_loop.
@@ -1562,9 +1558,7 @@ class DeviceManager(
         Idempotent: resuming a device that isn't paused just runs reconnect.
         On connect failure the normal auto-reconnect loop takes over.
         """
-        if device_id not in self._devices:
-            raise DeviceNotFoundError(f"Device '{device_id}' not found")
-        driver = self._devices[device_id]
+        driver = self._live_driver(device_id)
         self._cancel_pause_expiry(device_id)
         self._intentional_disconnect.discard(device_id)
         self.state.set(f"device.{device_id}.paused", False, source="device_manager")
