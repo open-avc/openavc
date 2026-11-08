@@ -66,7 +66,10 @@ def osc_num(tag: str, value: str, converter: Any) -> Any:
 
 
 def _typed_arg(tag: str, resolved: str) -> tuple[str, Any] | None:
-    """One ``(tag, value)`` arg, or None for a tag OSC here does not send."""
+    """One ``(tag, value)`` arg, or None for a tag OSC here does not send
+    (a list or map written by hand among them)."""
+    if not isinstance(tag, str):
+        return None
     if tag in _NUMERIC_TAGS:
         return (tag, osc_num(tag, resolved, _NUMERIC_TAGS[tag]))
     if tag == "i":

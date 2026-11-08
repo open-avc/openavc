@@ -752,3 +752,22 @@ async def test_an_osc_command_substitutes_config_and_params_into_address_and_arg
     driver.transport = transport
     assert await driver._send_osc_command("go", definition["commands"]["go"], {"cue": "7"}) is True
     assert osc_decode_bundle(transport.send.call_args.args[0]) == [("/ws/W1/cue/7", [("s", "W1")])]
+
+
+async def test_a_type_written_as_a_list_reads_as_text_and_tells_an_observer_nothing():
+    driver, seen = _driver(_definition("tcp", [{
+        "match": r"^M (\w+)$",
+        "mappings": [{"group": 1, "state": "mode", "type": ["integer"]}],
+    }]))
+    await driver.on_data_received(b"M 5")
+    assert driver.get_state("mode") == "5"
+    assert driver._parsed_messages == 1
+    assert [kind for kind, _ in seen if kind == "coercion_failure"] == []
+
+
+@pytest.mark.parametrize("tag", [["f"], {"t": "f"}, None, 1])
+def test_an_osc_arg_whose_type_is_not_a_tag_name_is_dropped_with_a_warning(tag, caplog):
+    with caplog.at_level(logging.WARNING, logger="openavc.drivers.configurable"):
+        args = ConfigurableDriver._build_osc_args([{"type": tag, "value": "1"}, {"type": "i", "value": "2"}], {})
+    assert args == [("i", 2)]
+    assert "is not supported" in caplog.text

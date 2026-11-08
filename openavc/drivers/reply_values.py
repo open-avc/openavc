@@ -111,7 +111,9 @@ class ReplyValues:
     def _note_coercion(self, raw: Any, value_type: str, coerced: Any) -> None:
         if raw is None:
             return
-        failed = _COERCION_FAILED.get(value_type)
+        # A type that is not a name (a list or map written by hand) checks
+        # nothing, as an unknown name does.
+        failed = _COERCION_FAILED.get(value_type) if isinstance(value_type, str) else None
         if failed is not None and failed(raw, coerced):
             self._observe(
                 COERCION_FAILURE, raw=_as_reported(raw),
