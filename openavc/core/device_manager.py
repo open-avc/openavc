@@ -10,7 +10,8 @@ Handles:
 Its other jobs live in their own modules, mixed in so every name stays on the
 manager: retrying a dropped device (device_reconnect.py), saying why a device
 is away (device_away.py), queued settings (pending_settings.py), the Open Web
-UI page (device_web_ui.py) and devices on a bridge port (device_bridges.py).
+UI page (device_web_ui.py), devices on a bridge port (device_bridges.py) and
+a device paused on purpose (device_pause.py).
 The checks a command passes before its driver are core/command_gates.py, and
 what the doors raise is core/device_errors.py, whose names this module
 re-exports.
@@ -19,7 +20,6 @@ re-exports.
 from __future__ import annotations
 
 import asyncio
-import time
 from collections.abc import Callable
 from typing import Any, TYPE_CHECKING
 
@@ -46,6 +46,12 @@ from openavc.core.device_errors import (  # noqa: F401  (re-exported: the path t
     mark_failed_command,
     not_connected,
 )
+from openavc.core.device_pause import (  # noqa: F401  (the constants re-exported)
+    PAUSE_TTL,
+    PAUSED_FOR_AUDIT,
+    PAUSED_FOR_LIVE_TEST,
+    DevicePauseMixin,
+)
 from openavc.core.device_reconnect import DeviceReconnectMixin
 from openavc.core.device_web_ui import DeviceWebUiMixin
 from openavc.core.pending_settings import PendingSettingsMixin
@@ -69,19 +75,6 @@ log = get_logger(__name__)
 
 if TYPE_CHECKING:
     from openavc.drivers.base import BaseDriver
-
-
-# Backstop for a test-panel pause whose owner never resumes it (tab closed or
-# crashed, request lost). The panel refreshes the pause while it stays open,
-# so expiry only fires for genuinely abandoned pauses — without it a paused
-# production device stays offline indefinitely with auto-reconnect suppressed.
-PAUSE_TTL = 600.0
-
-# Who holds a pause, published as ``device.<id>.paused_for`` so the device page
-# can name it: the Driver Builder's Live Test (through POST /devices/{id}/pause)
-# or a device audit. Set by the first pause and kept until the device resumes.
-PAUSED_FOR_LIVE_TEST = "live_test"
-PAUSED_FOR_AUDIT = "audit"
 
 
 # Masking a device config for a caller uses the same credential-field names as
@@ -133,7 +126,7 @@ def _device_id_of(event: str) -> str | None:
 
 class DeviceManager(
     DeviceAwayMixin, DeviceReconnectMixin, PendingSettingsMixin, DeviceWebUiMixin,
-    DeviceBridgesMixin,
+    DeviceBridgesMixin, DevicePauseMixin,
 ):
     """Manages all device driver instances."""
 
@@ -154,12 +147,7 @@ class DeviceManager(
         # and bring_up(). A project save registers its devices inside the
         # request and connects them after it has answered.
         self._deferred_connects: set[str] = set()
-        self._pause_expiry_tasks: dict[str, asyncio.Task] = {}  # pause TTL backstops
-        # When each armed pause expires (monotonic). Kept beside the task
-        # because a task can't be asked how much of its sleep is left, and a
-        # pause carried across an instance replacement has to carry the time
-        # it had remaining rather than restart its term.
-        self._pause_deadlines: dict[str, float] = {}
+        self._init_pause()
         self._init_web_ui()
         self._init_pending()
         self._init_away()
@@ -279,7 +267,13 @@ class DeviceManager(
         log.info(f"Added device '{device_id}' ({name}) using {driver_label(driver_id)}")
 
         if carry_pause is not None:
-            await self._hold_carried_pause(device_id, config, carry_pause, carry_pause_for)
+            # A device re-added while paused stays paused: registered, its
+            # bridge port prepared and its web page probed, but not connected,
+            # which is the whole harm. remove_device dropped the detected page
+            # on the way through.
+            self._hold_carried_pause(device_id, carry_pause, carry_pause_for)
+            await self._prepare_bridge_for(device_id, config)
+            self._schedule_web_ui_probe(device_id)
             return
 
         if defer_connect:
@@ -325,25 +319,6 @@ class DeviceManager(
         )
         await self.events.emit("device.orphaned", {"device_id": device_id, "driver": driver_id})
 
-    async def _hold_carried_pause(
-        self, device_id: str, config: dict[str, Any], seconds_left: float, held_for: str | None,
-    ) -> None:
-        """A device re-added while paused stays paused: registered, its bridge
-        port prepared and its web page probed, but not connected, which is the
-        whole harm. Whoever holds the pause still holds the session it was
-        taken to protect, and the backstop is re-armed with the time it had
-        left. remove_device dropped the detected page on the way through."""
-        self._intentional_disconnect.add(device_id)
-        self.state.set(f"device.{device_id}.paused", True, source="device_manager")
-        self.state.set(f"device.{device_id}.paused_for", held_for, source="device_manager")
-        self.state.set(f"device.{device_id}.connected", False, source="device_manager")
-        self._schedule_pause_expiry(device_id, seconds_left)
-        log.info(
-            f"Device '{device_id}' was re-added while paused — staying "
-            f"paused ({seconds_left:.0f}s left on the backstop)"
-        )
-        await self._prepare_bridge_for(device_id, config)
-        self._schedule_web_ui_probe(device_id)
 
     async def _bring_up_device(self, device_id: str) -> None:
         """Prepare the bridge port, connect, and probe for a web UI.
@@ -1125,9 +1100,7 @@ class DeviceManager(
         """Disconnect all devices gracefully (called at shutdown)."""
         # Cancel all reconnect tasks first — await each so loops finish cleanly
         await self._cancel_all_reconnects()
-        # Cancel pause-TTL backstops so none fires a resume mid-shutdown
-        for device_id in list(self._pause_expiry_tasks.keys()):
-            self._cancel_pause_expiry(device_id)
+        self._cancel_all_pause_expiries()
         # Cancel any in-flight web-UI probes so they don't outlive shutdown.
         self._cancel_web_ui_probes()
         # Same for read-back watchers: a setting still unconfirmed at shutdown
@@ -1383,141 +1356,4 @@ class DeviceManager(
             pass
         await self._connect_driver(device_id, driver)
 
-    async def pause_device(
-        self, device_id: str, ttl: float | None = None, purpose: str = PAUSED_FOR_LIVE_TEST,
-    ) -> None:
-        """Cleanly disconnect a device and suppress auto-reconnect (A81).
 
-        Used by the driver test panel before it opens a competing TCP session
-        against the same host:port on single-session devices, and by a device
-        audit. The device stays paused until ``resume_device`` is called — or
-        until ``ttl`` seconds pass without a re-pause (the holder keeps the
-        pause alive while it runs), at which point the device auto-resumes so a
-        closed/crashed tab can't strand it offline forever.
-        ``device.<id>.paused`` is set so the UI can surface the state, and
-        ``device.<id>.paused_for`` names the holder (``purpose``). Re-pausing an
-        already-paused device just resets the TTL; the first holder's name stays.
-        """
-        driver = self._live_driver(device_id)
-        await self._cancel_reconnect(device_id)
-        # Add to intentional_disconnect BEFORE disconnect so the disconnected
-        # event handler doesn't kick off a reconnect_loop.
-        self._intentional_disconnect.add(device_id)
-        try:
-            await driver.disconnect()
-        except Exception as e:
-            log.warning(f"pause_device: disconnect raised for {device_id}: {e}")
-        if not self.state.get(f"device.{device_id}.paused_for"):
-            self.state.set(f"device.{device_id}.paused_for", purpose, source="device_manager")
-        self.state.set(f"device.{device_id}.paused", True, source="device_manager")
-        self.state.set(f"device.{device_id}.connected", False, source="device_manager")
-        self._schedule_pause_expiry(device_id, PAUSE_TTL if ttl is None else ttl)
-        log.info(f"Paused device: {device_id}")
-
-    def _schedule_pause_expiry(self, device_id: str, ttl: float) -> None:
-        """(Re)arm the auto-resume backstop for a paused device."""
-        self._cancel_pause_expiry(device_id)
-        task = asyncio.create_task(self._pause_expiry(device_id, ttl))
-        self._pause_expiry_tasks[device_id] = task
-        self._pause_deadlines[device_id] = time.monotonic() + ttl
-
-    def _cancel_pause_expiry(self, device_id: str) -> None:
-        self._pause_deadlines.pop(device_id, None)
-        task = self._pause_expiry_tasks.pop(device_id, None)
-        if task is not None:
-            task.cancel()
-
-    def is_paused(self, device_id: str) -> bool:
-        """True while this device is held disconnected by a pause.
-
-        One reader for the flag, so a caller deciding whether it may reconnect
-        a device asks the same question the pause itself answers.
-        """
-        return bool(self.state.get(f"device.{device_id}.paused"))
-
-    def _pause_to_carry(self, device_id: str) -> tuple[float | None, str | None]:
-        """The pause a device keeps across being removed and added again (an
-        edit, a driver reload): the seconds its backstop has left, and who
-        holds it. Read before the removal, which deletes both.
-
-        The pause belongs to whoever took it, still holding the competing
-        session (the Driver Builder's Live Test, an audit), and ends when they
-        release it or its backstop runs out. An edit or a driver reload is
-        neither, so reconnecting there would put a production device back on a
-        port under test without anyone asking. A driver reload is the likelier
-        of the two: saving the driver from the Builder is what the Live Test's
-        own user does next.
-        """
-        return self._pause_remaining(device_id), self.state.get(f"device.{device_id}.paused_for")
-
-    def _end_pause(self, device_id: str) -> None:
-        """The pause is over: its backstop cancelled and both flags cleared."""
-        self._cancel_pause_expiry(device_id)
-        self.state.set(f"device.{device_id}.paused", False, source="device_manager")
-        self.state.set(f"device.{device_id}.paused_for", None, source="device_manager")
-
-    def _pause_remaining(self, device_id: str) -> float | None:
-        """Seconds left on this device's pause backstop, or None if unpaused.
-
-        Never negative: a deadline already past means the backstop is mid-fire,
-        and a carried pause of zero resumes immediately — which is what would
-        have happened anyway.
-        """
-        deadline = self._pause_deadlines.get(device_id)
-        if deadline is None:
-            return None
-        return max(0.0, deadline - time.monotonic())
-
-    async def _pause_expiry(self, device_id: str, ttl: float) -> None:
-        try:
-            await asyncio.sleep(ttl)
-            # Drop our own registration BEFORE resuming, so resume_device's
-            # _cancel_pause_expiry doesn't cancel the very task running it.
-            self._pause_expiry_tasks.pop(device_id, None)
-            self._pause_deadlines.pop(device_id, None)
-            log.warning(
-                f"[{device_id}] Pause not renewed within {ttl:.0f} s; reconnecting"
-            )
-            await self.resume_device(device_id)
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            # resume_device handles connect failures itself; this guards the
-            # device-removed race (ValueError) and anything unexpected.
-            log.warning(f"[{device_id}] Pause-expiry auto-resume failed: {e}")
-        finally:
-            # current_task() raises if the loop is already gone (cancellation
-            # during shutdown/teardown) — nothing to clean up in that case.
-            try:
-                current = asyncio.current_task()
-            except RuntimeError:
-                current = None
-            if current is not None and self._pause_expiry_tasks.get(device_id) is current:
-                self._pause_expiry_tasks.pop(device_id, None)
-                self._pause_deadlines.pop(device_id, None)
-
-    async def resume_device(self, device_id: str) -> None:
-        """Resume a paused device — clear the pause flag and reconnect.
-
-        Idempotent: resuming a device that isn't paused just runs reconnect.
-        On connect failure the normal auto-reconnect loop takes over.
-        """
-        driver = self._live_driver(device_id)
-        self._intentional_disconnect.discard(device_id)
-        self._end_pause(device_id)
-        try:
-            await self._connect_driver(device_id, driver)
-            log.info(f"Resumed device: {device_id}")
-            # Mirror the reconnect-loop success path: drop the stale offline
-            # reason and flush anything queued while the device was away.
-            self._clear_offline_reason(device_id)
-            await self._apply_pending_settings(device_id)
-        except ConnectEndedError:
-            pass  # ended by a Reconnect, a pause or a removal meanwhile
-        except Exception as e:
-            self.state.set(f"device.{device_id}.connected", False, source="device_manager")
-            self._set_offline_reason(device_id, driver, exc=e)
-            log.warning(
-                f"resume_device: connect failed for {device_id}: {self._failure_text(device_id, e)}"
-            )
-            self._start_reconnect(device_id)
