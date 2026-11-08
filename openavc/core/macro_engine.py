@@ -322,22 +322,12 @@ class MacroEngine:
         self._plugin_actions[action_type] = (handler, plugin_id, label or action_type)
         log.debug(f"Registered plugin macro action: {action_type} -> {plugin_id}")
 
-    def unregister_plugin_action(self, action_type: str) -> None:
-        """Remove a plugin-registered macro action type. No-op if missing."""
-        if action_type in self._plugin_actions:
-            del self._plugin_actions[action_type]
-            log.debug(f"Unregistered plugin macro action: {action_type}")
-
     def unregister_plugin_actions(self, plugin_id: str) -> None:
         """Remove all macro actions registered by a plugin."""
         for action_type in [
             k for k, (_, pid, _) in self._plugin_actions.items() if pid == plugin_id
         ]:
             del self._plugin_actions[action_type]
-
-    def get_plugin_action(self, action_type: str) -> tuple[PluginActionHandler, str, str] | None:
-        """Look up a registered plugin action. Returns (handler, plugin_id, label) or None."""
-        return self._plugin_actions.get(action_type)
 
     def plugin_action_types(self) -> frozenset[str]:
         """Action types plugins have registered — valid steps beyond the built-ins.

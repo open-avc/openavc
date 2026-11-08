@@ -424,9 +424,9 @@ class TestMacroEngineDispatch:
         macro_engine.register_plugin_action("other.do", h, "other_plugin")
 
         macro_engine.unregister_plugin_actions("audio_player")
-        assert macro_engine.get_plugin_action("audio_player.play") is None
-        assert macro_engine.get_plugin_action("audio_player.stop") is None
-        assert macro_engine.get_plugin_action("other.do") is not None
+        assert "audio_player.play" not in macro_engine.plugin_action_types()
+        assert "audio_player.stop" not in macro_engine.plugin_action_types()
+        assert "other.do" in macro_engine.plugin_action_types()
 
 
 # ═══════════════════════════════════════════════════════════
@@ -439,21 +439,21 @@ class TestLoaderIntegration:
         register_plugin_class(AudioPluginGood)
         ok = await loader.start_plugin("audio_player")
         assert ok is True
-        assert macro_engine.get_plugin_action("audio_player.play") is not None
-        assert macro_engine.get_plugin_action("audio_player.stop") is not None
+        assert "audio_player.play" in macro_engine.plugin_action_types()
+        assert "audio_player.stop" in macro_engine.plugin_action_types()
 
     async def test_stop_unregisters_actions(self, loader, macro_engine):
         register_plugin_class(AudioPluginGood)
         await loader.start_plugin("audio_player")
         await loader.stop_plugin("audio_player")
-        assert macro_engine.get_plugin_action("audio_player.play") is None
-        assert macro_engine.get_plugin_action("audio_player.stop") is None
+        assert "audio_player.play" not in macro_engine.plugin_action_types()
+        assert "audio_player.stop" not in macro_engine.plugin_action_types()
 
     async def test_invalid_macro_actions_blocks_start(self, loader, macro_engine):
         register_plugin_class(AudioPluginBadPrefix)
         ok = await loader.start_plugin("audio_player")
         assert ok is False
-        assert macro_engine.get_plugin_action("audio.play") is None
+        assert "audio.play" not in macro_engine.plugin_action_types()
 
     async def test_macro_dispatches_through_loader(self, loader, macro_engine):
         register_plugin_class(AudioPluginGood)
