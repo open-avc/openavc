@@ -32,6 +32,7 @@ import pytest
 
 from openavc.api import rest, ws
 from openavc.cloud.ai_tool_handler import AIToolHandler
+from openavc.core.device_logins import SAVED_LOGIN
 from openavc.core.engine import Engine
 from openavc.core.project_loader import (
     DeviceConfig,
@@ -804,3 +805,18 @@ async def test_only_an_enabled_device_is_told_it_needs_a_login(setup, enabled, w
     assert ("needs_login" in answer) is waits
     if waits:
         assert answer["needs_login"] == ["password"]
+
+
+async def test_update_device_onto_a_driver_needing_a_login_leaves_it_waiting_in_the_row(setup):
+    handler, engine = setup
+    register_driver(_AcmeLocked)
+    try:
+        answer = await handler._update_device({"device_id": "dev2", "driver": "acme_locked"})
+        on_disk = _on_disk(engine)
+    finally:
+        unregister_driver("acme_locked")
+
+    assert answer["status"] == "updated"
+    assert answer["needs_login"] == ["password"]
+    assert on_disk.connections["dev2"] == {"host": "192.0.2.11", "password": SAVED_LOGIN}
+    assert "password" not in _device(on_disk, "dev2").config

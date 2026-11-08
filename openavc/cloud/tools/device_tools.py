@@ -9,9 +9,11 @@ stores it (``core.device_config.split_connection_fields``); ``update_device``
 merges what it is sent into what the device has, where the IDE replaces it,
 because a generator sends only the field it means to change.
 
-These tools never take a device login (see "device logins" below), and a
+These tools never take a device login (see "device logins" below). A
 driver's required field left blank is refused as the Add and Edit Device
-dialogs refuse it, asked only when the settings or the driver change.
+dialogs refuse it, asked only when the settings or the driver change, and
+then for every blank one: ``PATCH /api/devices/{id}`` refuses only a gap its
+own edit makes (``required_config.gaps_an_edit_makes``).
 """
 
 from typing import Any
@@ -105,7 +107,7 @@ def _wait_for_required_logins(
     """Leave each login ``driver_id`` requires and nothing fills waiting:
     the marker goes into that empty field (the connection row for the
     password), so the device is saved and asks for it under Needs login."""
-    from openavc.core.project_migration import CONNECTION_FIELDS
+    from openavc.drivers.spec import CONNECTION_FIELDS
 
     logins = login_fields(driver_id)
     for key, _label in missing_for_driver(
@@ -152,7 +154,7 @@ def _warn_not_installed(tool: str, driver_id: str) -> None:
 def _settle_required_fields(driver_id: str, protocol: dict, connection: dict) -> None:
     """A login ``driver_id`` requires is left waiting (the marker, written into
     ``protocol`` or ``connection``); any other required field left blank is
-    refused the way the Add and Edit Device dialogs and the REST door refuse it."""
+    refused with the Add and Edit Device dialogs' sentence."""
     _wait_for_required_logins(driver_id, protocol, connection)
     _refuse_missing_required(driver_id, merged_device_config(driver_id, protocol, connection))
 
@@ -345,7 +347,7 @@ def _refuse_unknown_members(project: Any, device_ids: list) -> None:
 
 
 class DeviceToolsMixin:
-    """Device, driver, and script management tools."""
+    """Devices, device groups, a device's settings, its connection test and commands."""
 
     # ===== DEVICE TOOLS =====
 

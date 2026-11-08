@@ -12,7 +12,7 @@ these are the other doors that dial a device:
 - the cloud diagnostics ``tcp_check`` and ``port_scan``
   (``cloud/command_handler.py``): a held port is reported open and in use by
   the device, without connecting;
-- the AI's ``test_driver_command`` (``cloud/tools/device_tools.py``), which
+- the AI's ``test_driver_command`` (``cloud/tools/driver_tools.py``), which
   sends raw text to an address: a held port is refused, naming the device.
 
 The device is an invented Acme Widget whose driver really connects, through

@@ -758,3 +758,17 @@ async def test_search_reads_a_limit_it_cannot_parse_as_twenty_five(monkeypatch, 
     answer = await _handler()._search_community_drivers({"limit": limit})
 
     assert (answer["returned"], answer["truncated"]) == (25, True)
+
+
+async def test_update_definition_of_a_built_in_is_refused_before_it_is_validated(driver_dirs):
+    builtin, _repo, announced = driver_dirs
+    (builtin / "acme_yaml.avcdriver").write_text("id: acme_yaml\nname: Ship\ntransport: tcp\n", encoding="utf-8")
+
+    answer = await _handler()._update_driver_definition(
+        {"driver_id": "acme_yaml", "definition": {**_definition(), "bogus": 1}},
+    )
+
+    assert answer == {
+        "error": "Driver 'acme_yaml' is a built-in and cannot be modified. Duplicate it under a new id first.",
+    }
+    announced.assert_not_awaited()
