@@ -498,6 +498,13 @@ def test_send_udp_refuses_a_port_of_zero_or_below_and_sends_nothing():
     assert cap.sent == []
 
 
+def test_send_udp_names_a_missing_port_before_a_missing_host():
+    drv, cap = _python_driver({"host": ""})
+    with pytest.raises(ValueError, match="needs a port"):
+        asyncio.run(drv.send_udp(b"hi"))
+    assert cap.sent == []
+
+
 def test_send_udp_trims_the_host_it_is_given_and_the_devices_own():
     drv, cap = _python_driver({"host": " 10.0.0.9 "})
     assert asyncio.run(drv.send_udp(b"hi", port=7000)) == [("10.0.0.9", 7000)]
