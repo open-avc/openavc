@@ -16,7 +16,7 @@ import asyncio
 import time
 from types import SimpleNamespace as NS
 
-from openavc.audit.commands import DONE, CommandTrial, commands_for
+from openavc.audit.commands import DONE, SENDING, CommandTrial, commands_for
 from openavc.audit.driver_choice import DriverChoice
 from openavc.audit.observe import AuditObserver
 from openavc.audit.passes import DriverRun
@@ -41,6 +41,9 @@ INFO = {
         },
         "reboot": {"label": "Reboot", "restarts_device_for": 5},
         "power_cycle": {"label": "Power Cycle", "sets": {"power": True}, "restarts_device_for": 1},
+        "set_code": {
+            "label": "Set Code", "params": {"pin": {"type": "string", "secret": True}},
+        },
         # A status query that also declares a value.
         "query_title": {"label": "Query Title", "query_for": "title", "sets": {"title": "Lobby"}},
     },
@@ -512,3 +515,57 @@ async def test_a_name_the_driver_does_not_declare_is_sent_under_that_name():
     commands = _pass(conn)
     trial = await _done(await commands.send("warp_drive"))
     assert (trial.command, trial.label, trial.declared) == ("warp_drive", "warp_drive", {})
+
+
+async def test_a_file_command_is_answered_as_soon_as_it_starts():
+    conn = _Connection()
+    never = asyncio.Event()
+
+    async def hang(command, params):
+        await never.wait()
+
+    conn.call = hang
+    commands = _pass(conn, window_seconds=5.0)
+    trial = await commands.send("power_on", files={"image": "fw.bin"})
+    assert trial.file_command and trial.status == SENDING
+    started = time.time()
+    await commands.stop()
+    assert time.time() - started < 1.0
+    assert trial.status == DONE
+    assert trial.returned_at is not None and trial.finished_at >= trial.returned_at
+
+
+async def test_stopping_ends_the_status_queries_and_keeps_the_command_list():
+    conn = _Connection()
+    never = asyncio.Event()
+
+    async def hang(command, params):
+        await never.wait()
+
+    conn.call = hang
+    commands = _pass(conn)
+    await commands.run_queries()
+    await _until(lambda: commands.trials)
+    await commands.stop()
+    assert commands.batch["status"] == "done"
+    names = [c["name"] for c in commands.catalog()]
+    conn.started = False
+    conn.driver = NS(DRIVER_INFO={"commands": {}}, config={}, _definition={})
+    assert [c["name"] for c in commands.catalog()] == names
+
+
+async def test_what_a_send_records_as_it_goes_out():
+    conn = _Connection()
+    commands = _pass(conn)
+    blank = await _done(await commands.send("set_code", {"pin": ""}))
+    assert commands.run.secrets == set() and conn.observer.secrets == set()
+    assert blank.secret_params == {"pin"}
+    typed = await _done(await commands.send("set_code", {"pin": "tulip-7391"}))
+    assert commands.run.secrets == {"tulip-7391"} and conn.observer.secrets == {"tulip-7391"}
+    power = await _done(await commands.send("power_on"))
+    assert power.declared == {"sets": {"power": True}}
+    assert typed.since_previous == {
+        "number": 1, "command": "set_code", "label": "Set Code",
+        "seconds": round(typed.sent_at - blank.sent_at, 3),
+    }
+    assert (blank.attempt, typed.attempt, power.attempt) == (1, 2, 1)
