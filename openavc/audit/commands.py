@@ -92,6 +92,7 @@ from openavc.audit.effects import (
     query_answer,
     same_value,
 )
+from openavc.audit.exchange import frames_in, own_send, refusals, unmatched_replies
 from openavc.audit.observe import REPLY_WINDOW_SECONDS, command_sent_nothing, recorded
 from openavc.audit.session import AuditError
 from openavc.core.device_traffic import RX, TX, serialize_entry
@@ -351,6 +352,12 @@ class CommandPass:
     def _attempt(self, trial: CommandTrial) -> Any:
         """The connect-and-listen attempt whose connection carried ``trial``."""
         return self.run.listens[trial.connect_attempt] if self.run.listens else None
+
+    def _observer(self, trial: CommandTrial) -> Any:
+        """The traffic observer of the connection that carried ``trial``; None
+        before any connection did."""
+        attempt = self._attempt(trial)
+        return attempt.sandbox.observer if attempt is not None else None
 
     def _driver(self) -> Any:
         listen = self.run.listen
@@ -797,7 +804,8 @@ class CommandPass:
         device reports now, a status query's answer, the signs of a refusal,
         whether anything was sent, and how a drop or a restart went."""
         attempt = self._attempt(trial)
-        traffic = self._window_traffic(trial)
+        observer = attempt.sandbox.observer if attempt is not None else None
+        traffic = frames_in(trial, observer)
         if not trial.error:
             readout = Readout(
                 state=current_values(attempt) if attempt is not None else {},
@@ -809,8 +817,8 @@ class CommandPass:
             if trial.declared.get("query_for"):
                 answered = any(e.direction == RX for e in traffic)
                 trial.query = query_answer(entry, trial, readout, answered)
-        trial.refusals.update(self._refusals(trial, traffic))
-        trial.refusals.update(_unmatched_replies(trial, attempt))
+        trial.refusals.update(refusals(trial, observer))
+        trial.refusals.update(unmatched_replies(trial, observer))
         if not trial.error and attempt is not None:
             trial.sent_nothing = _sent_nothing(trial, attempt)
         if trial.went_away_at and not trial.declared.get("restarts_device_for"):
@@ -820,80 +828,6 @@ class CommandPass:
             trial.drops = _drops(trial)
         if trial.declared.get("restarts_device_for") and not trial.error:
             trial.restart = _restart(trial)
-
-    def _refusals(self, trial: CommandTrial, traffic: list[Any]) -> dict[str, Any]:
-        """Which signs of a refusal (an error the driver published, a
-        ``last_error`` it wrote) answer the command, and which a request the
-        driver sent on its own after it (a poll, a follow-up query).
-
-        The command's own exchange runs from the send until its reply could
-        still be on the way, ``REPLY_WINDOW_SECONDS`` after the call returned,
-        and ends early at the driver's next request: what is refused after
-        that answers that request, so it is kept apart, with what the driver
-        had just sent, and never put on the command."""
-        from openavc.audit.report_text import traffic_text as _traffic_text
-
-        returned = trial.returned_at or trial.sent_at
-        # The window's traffic with each entry's place in the device's list,
-        # the order things happened in whatever the clock says.
-        start = trial.marks.get("traffic", 0)
-        returned_at = trial.marks.get("returned", start)
-        attempt = self._attempt(trial)
-        window = trial.traffic_in(attempt.sandbox.observer) if attempt is not None else []
-        placed = [
-            (start + i, e) for i, e in enumerate(window)
-            if e.direction == TX and not e.chunk
-        ]
-        after = [(at, e) for at, e in placed if at >= returned_at]
-        if after and len(after) == len(placed):
-            after = after[1:]  # sent once the call had returned: the command's own
-        # A refusal belongs to the command when it came before the driver's
-        # next request and while its reply could still be on the way.
-        next_request = after[0][0] if after else None
-        deadline = returned + REPLY_WINDOW_SECONDS
-
-        def own(sign: dict[str, Any]) -> bool:
-            if next_request is not None and sign.get("position", 0) > next_request:
-                return False
-            return sign["t"] <= deadline
-
-        own_errors = [e for e in trial.device_errors if own(e)]
-        own_writes = [w for w in trial.error_writes if own(w) and w.get("error")]
-        said = (
-            own_writes[-1]["error"] if own_writes
-            else next((e["error"] for e in reversed(own_errors) if e.get("error")), None)
-        )
-
-        later: dict[str, dict[str, Any]] = {}
-        redactor = self._redactor(trial) if self.run.listens else None
-        signs = sorted(
-            [(e.get("position", 0), e["t"], e.get("error") or "")
-             for e in trial.device_errors if not own(e)]
-            + [(w.get("position", 0), w["t"], w["error"]) for w in trial.error_writes
-               if not own(w) and w.get("error")],
-            key=lambda s: (s[0], s[1]),
-        )
-        for position, t, text in signs:
-            if str(text) in later:
-                later[str(text)]["count"] += 1
-                continue
-            # The request it answered: the last one sent before it.
-            request = next((e for at, e in reversed(placed) if at < position), None)
-            later[str(text)] = {
-                "error": text,
-                "after": round(t - trial.sent_at, 1),
-                "count": 1,
-                "request": (
-                    _traffic_text(serialize_entry(request, redactor), 80)
-                    if request is not None and redactor is not None else ""
-                ),
-            }
-        return {
-            "device_errors": len(own_errors),
-            "last_error_writes": len(own_writes),
-            "last_error": said,
-            "later": list(later.values()),
-        }
 
     def _params_of(self, command: str) -> dict[str, Any]:
         return dict((self.catalog_entry(command) or {}).get("params") or {})
@@ -918,41 +852,14 @@ class CommandPass:
 
     # -- reading -----------------------------------------------------------------
 
-    def _own_send(self, trial: CommandTrial, traffic: list[Any]) -> int:
-        """Where in ``traffic`` (the window without its raw chunks) the
-        command's own message went out: the last one sent before the call
-        returned, else the first after it (a command queued behind a poll goes
-        out after polling messages already on the way). 0 when none did."""
-        attempt = self._attempt(trial)
-        if attempt is None:
-            return 0
-        start = trial.marks.get("traffic", 0)
-        returned = trial.marks.get("returned", start)
-        sends = [
-            (start + i, e) for i, e in enumerate(trial.traffic_in(attempt.sandbox.observer))
-            if e.direction == TX and not e.chunk
-        ]
-        before = [e for at, e in sends if at < returned]
-        after = [e for at, e in sends if at >= returned]
-        own = before[-1] if before else (after[0] if after else None)
-        return next((i for i, e in enumerate(traffic) if e is own), 0)
-
-    def _window_traffic(self, trial: CommandTrial) -> list[Any]:
-        attempt = self._attempt(trial)
-        if attempt is None:
-            return []
-        return [e for e in trial.traffic_in(attempt.sandbox.observer) if not e.chunk]
-
-    def _redactor(self, trial: CommandTrial):
-        return self.run.listens[trial.connect_attempt].sandbox.observer.redactor()
-
     def _trial_view(self, trial: CommandTrial, *, every_entry: bool) -> dict[str, Any]:
-        traffic = self._window_traffic(trial) if self.run.listens else []
-        redactor = self._redactor(trial) if self.run.listens else None
+        observer = self._observer(trial)
+        traffic = frames_in(trial, observer)
+        redactor = observer.redactor() if observer is not None else None
         if every_entry:
             shown, gaps = traffic, []
         else:
-            shown, gaps = live_traffic(traffic, self._own_send(trial, traffic))
+            shown, gaps = live_traffic(traffic, own_send(trial, observer, traffic))
         out = trial.to_dict()
         out["traffic"] = {
             "sent": sum(1 for e in traffic if e.direction == TX),
@@ -1048,21 +955,6 @@ class CommandPass:
             **self._lists_update(),
         }
         self.session.publish({"type": "audit.commands", "run": self.run.index, "commands": update})
-
-
-def _unmatched_replies(trial: CommandTrial, attempt: Any) -> dict[str, Any]:
-    """The replies in the window no response rule matched: how many, and the
-    first few as they read."""
-    events = []
-    if attempt is not None:
-        events = [
-            e for e in trial.events_in(attempt.sandbox.observer)
-            if e.kind == "unmatched_response"
-        ]
-    return {
-        "unmatched": len(events),
-        "unmatched_examples": [str(e.detail.get("text", ""))[:200] for e in events[:5]],
-    }
 
 
 def _sent_nothing(trial: CommandTrial, attempt: Any) -> bool | None:
