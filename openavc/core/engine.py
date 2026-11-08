@@ -97,6 +97,83 @@ def _log_task_exception(task: asyncio.Task) -> None:
         log.error(f"Background task {task.get_name()!r} failed: {exc}", exc_info=exc)
 
 
+# The resolved-config fields add_device acts on, each with what a missing one
+# reads as. A change to any of them re-adds the device, not just a name, driver
+# or connection change: enabled gates connect/poll, child_entities seeds child
+# labels, and pending_settings is applied on (re)connect, so leaving one out
+# left that edit inert on the hot-reload path until a restart.
+_READD_FIELDS = {"name": None, "driver": None, "enabled": True, "config": {}}
+# The same, for the two where no map and an empty map mean the same thing.
+_READD_MAPS = ("child_entities", "pending_settings")
+
+
+def _needs_readd(old: dict, new: dict) -> bool:
+    """Whether a device running with ``old`` must be re-added to run ``new``."""
+    if any(old.get(field, missing) != new.get(field, missing)
+           for field, missing in _READD_FIELDS.items()):
+        return True
+    return any((old.get(field) or {}) != (new.get(field) or {}) for field in _READD_MAPS)
+
+
+def _log_failed_sync_add(device_id: str, error: Exception) -> None:
+    log.error(f"Failed to add device '{device_id}' during sync: {error}")
+
+
+async def add_devices(devices, device_ids, resolved, *, defer_connect, on_failure) -> None:
+    """Add ``device_ids`` to the device manager from their resolved configs:
+    bridges first, then the devices that route through them
+    (``bridge_first``), so a bridge-bound device finds its live bridge to prep
+    the port.
+
+    Each batch is added in parallel. One at a time would serialize connect
+    timeouts (5 s each), so N offline devices would hold a start for N x 5 s;
+    each add writes only its own device's keys, so gathering them is safe. A
+    device that fails goes to ``on_failure(device_id, error)`` as its batch
+    finishes, and the rest are still added.
+    """
+    for batch in bridge_first(device_ids, resolved):
+        results = await asyncio.gather(
+            *(devices.add_device(
+                resolved[did], defer_connect=defer_connect,
+            ) for did in batch),
+            return_exceptions=True,
+        )
+        for did, result in zip(batch, results):
+            if isinstance(result, Exception):
+                on_failure(did, result)
+
+
+def _delete_device_keys(state, device_id: str) -> None:
+    """Clean up a removed device's orphaned device.{id}.* state keys (14.6)."""
+    prefix = f"device.{device_id}."
+    orphaned = state.get_namespace(prefix)
+    for suffix in orphaned:
+        state.delete(f"{prefix}{suffix}")
+    if orphaned:
+        log.info(f"Cleaned up {len(orphaned)} orphaned state key(s) for removed device '{device_id}'")
+
+
+async def _update_changed_devices(devices, device_ids, project_devices, *, defer_connect) -> None:
+    """Re-add, in parallel, each of ``device_ids`` whose running config
+    differs from its project one in a field add_device acts on
+    (``_needs_readd``); ``update_device`` is remove + add."""
+    changed_ids = [
+        did for did in device_ids
+        if _needs_readd(devices.get_device_config(did) or {}, project_devices[did])
+    ]
+    if not changed_ids:
+        return
+    update_results = await asyncio.gather(
+        *(devices.update_device(
+            did, project_devices[did], defer_connect=defer_connect
+        ) for did in changed_ids),
+        return_exceptions=True,
+    )
+    for did, result in zip(changed_ids, update_results):
+        if isinstance(result, Exception):
+            log.error(f"Failed to update device '{did}' during sync: {result}")
+
+
 class Engine(ProjectVariablesMixin):
     """
     Main runtime engine. Singleton per OpenAVC instance.
@@ -459,11 +536,8 @@ class Engine(ProjectVariablesMixin):
         groups_data = [g.model_dump() for g in self.project.device_groups]
         self.macros.load_groups(groups_data)
 
-        # Add and connect devices in parallel (merge connection table into
-        # device config). Sequential await of driver.connect() would serialize
-        # TCP timeouts (5 s each) — with N offline devices, startup blocks for
-        # N x 5 s. Each add_device is independent (writes to its own device_id
-        # keys in state/config dicts), so gather is safe.
+        # Add and connect devices in parallel (add_devices), with the
+        # connection table merged into each device's config.
         startup_errors: list[str] = []
         self._sweep_device_logins()
         resolved = {
@@ -474,18 +548,15 @@ class Engine(ProjectVariablesMixin):
         # bring-up round below starts the simulator and redirects them before
         # the first connect, so none of them reaches the real equipment.
         resume_simulation = self.simulation.load_resume()
-        # Bridges first, then their dependents (see bridge_first).
-        for batch in bridge_first(list(resolved), resolved):
-            batch_results = await asyncio.gather(
-                *(self.devices.add_device(
-                    resolved[did], defer_connect=resume_simulation,
-                ) for did in batch),
-                return_exceptions=True,
-            )
-            for did, result in zip(batch, batch_results):
-                if isinstance(result, Exception):
-                    startup_errors.append(f"Device '{did}': {result}")
-                    log.error(f"Failed to add device '{did}': {result}")
+
+        def failed(device_id: str, error: Exception) -> None:
+            startup_errors.append(f"Device '{device_id}': {error}")
+            log.error(f"Failed to add device '{device_id}': {error}")
+
+        await add_devices(
+            self.devices, list(resolved), resolved,
+            defer_connect=resume_simulation, on_failure=failed,
+        )
         if resume_simulation:
             self._schedule_device_bringup()
             await self.wait_for_device_bringup()
@@ -1411,70 +1482,24 @@ class Engine(ProjectVariablesMixin):
 
         self._sweep_device_logins()
         # Build merged configs (device.config + connection table overrides)
-        project_devices: dict[str, dict] = {}
-        for d in self.project.devices:
-            project_devices[d.id] = self.resolved_device_config(d)
-
+        project_devices = {d.id: self.resolved_device_config(d) for d in self.project.devices}
         running_ids = set(self.devices.get_device_configs().keys())
         project_ids = set(project_devices.keys())
 
-        # Remove devices no longer in project and clean up orphaned state keys
         for device_id in running_ids - project_ids:
             await self.devices.remove_device(device_id)
-            # Clean up orphaned device.{id}.* state keys (14.6)
-            prefix = f"device.{device_id}."
-            orphaned = self.state.get_namespace(prefix)
-            for suffix in orphaned:
-                self.state.delete(f"{prefix}{suffix}")
-            if orphaned:
-                log.info(f"Cleaned up {len(orphaned)} orphaned state key(s) for removed device '{device_id}'")
+            _delete_device_keys(self.state, device_id)
 
-        # Add new devices in parallel — sequential awaits would serialize
-        # connect timeouts. Match the parallelization in start(). Bridges first
-        # so a bridge-bound device finds its live bridge to prep the port.
         new_device_ids = list(project_ids - running_ids)
         if new_device_ids:
-            for batch in bridge_first(new_device_ids, project_devices):
-                add_results = await asyncio.gather(
-                    *(self.devices.add_device(
-                        project_devices[did], defer_connect=defer_connect
-                    ) for did in batch),
-                    return_exceptions=True,
-                )
-                for did, result in zip(batch, add_results):
-                    if isinstance(result, Exception):
-                        log.error(f"Failed to add device '{did}' during sync: {result}")
-
-        # Update changed devices in parallel — compare raw project config AND
-        # connection table entries separately to detect IP/port changes
-        changed_ids: list[str] = []
-        for device_id in running_ids & project_ids:
-            old_config = self.devices.get_device_config(device_id) or {}
-            new_config = project_devices[device_id]
-            old_conn = old_config.get("config", {})
-            new_conn = new_config.get("config", {})
-            # Re-add (update_device does remove+add) when any field that
-            # add_device acts on changes — not just name/driver/connection.
-            # enabled gates connect/poll, child_entities seeds child labels,
-            # and pending_settings is applied on (re)connect; omitting them
-            # left those edits inert on the hot-reload path until a restart.
-            if (old_config.get("name") != new_config.get("name") or
-                    old_config.get("driver") != new_config.get("driver") or
-                    old_config.get("enabled", True) != new_config.get("enabled", True) or
-                    (old_config.get("child_entities") or {}) != (new_config.get("child_entities") or {}) or
-                    (old_config.get("pending_settings") or {}) != (new_config.get("pending_settings") or {}) or
-                    old_conn != new_conn):
-                changed_ids.append(device_id)
-        if changed_ids:
-            update_results = await asyncio.gather(
-                *(self.devices.update_device(
-                    did, project_devices[did], defer_connect=defer_connect
-                ) for did in changed_ids),
-                return_exceptions=True,
+            await add_devices(
+                self.devices, new_device_ids, project_devices,
+                defer_connect=defer_connect, on_failure=_log_failed_sync_add,
             )
-            for did, result in zip(changed_ids, update_results):
-                if isinstance(result, Exception):
-                    log.error(f"Failed to update device '{did}' during sync: {result}")
+
+        await _update_changed_devices(
+            self.devices, running_ids & project_ids, project_devices, defer_connect=defer_connect,
+        )
 
     async def _sync_plugins(self) -> None:
         """Sync running plugins with project config on hot-reload."""
