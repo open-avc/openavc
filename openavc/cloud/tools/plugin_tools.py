@@ -311,8 +311,6 @@ class PluginToolsMixin:
         from openavc.core.plugin_loader import _PLUGIN_CLASS_REGISTRY
         from openavc.core.project_loader import get_plugin_setup_fields
 
-        from openavc.cloud.ai_tool_handler import SURFACE_BUTTONS_FORMAT
-
         plugin_class = _PLUGIN_CLASS_REGISTRY.get(plugin_id)
         schema = {}
         setup_fields = []
@@ -445,3 +443,174 @@ class PluginToolsMixin:
                     f"it and is stopped. Check the config values and plugin logs."
                 )
         return result
+
+
+# Standard config format for control surface plugins (Stream Deck, X-Keys, etc.),
+# sent by get_plugin_config with any plugin that declares a SURFACE_LAYOUT. The
+# Surface Configurator writes this format; the platform documents it once so
+# the AI can configure any surface plugin without plugin-specific hardcoding.
+SURFACE_BUTTONS_FORMAT = """\
+Control surface buttons are stored in a top-level "buttons" array (NOT under "pages").
+Each entry in the array represents one physical button:
+
+{
+  "index": 0,            // Button position (0-based, left-to-right then top-to-bottom)
+  "page": 0,             // Page number (0-based, for multi-page surfaces)
+  "label": "Power",      // Text shown on the button (optional)
+  "icon": "power",       // Lucide icon name, e.g. "power", "volume-2", "play" (optional)
+  "bg_color": "#1a1a2e", // Per-button default background color, hex (optional)
+  "text_color": "#e0e0e0", // Per-button default text color, hex (optional)
+  "label_source": "var.x",   // State key whose live value replaces the label (optional)
+  "value_source": "var.lvl", // State key shown live under the label (optional)
+  "unit": "dB",              // Appended to the live value (optional)
+  "meter": { "min": 0, "max": 100, "color": "#8ab493",   // Level bar along the
+    "thresholds": [{ "above": 90, "color": "#e05341" }] }, // bottom edge (optional)
+  "bindings": {          // Action and feedback configuration
+    "press": [{            // MUST be an array of action objects
+      "action": "macro",           // Action type: "macro", "device.command", "state.set", "navigate"
+      "macro": "macro_name"        // For macro action
+      // OR for device.command:
+      // "action": "device.command", "device": "device_id", "command": "cmd", "params": {}
+      // OR for state.set:
+      // "action": "state.set", "key": "var.my_var", "value": "new_value"
+      // OR for deck-page navigation:
+      // "action": "navigate", "page": "__next_page__" (next), "__prev_page__" (previous),
+      //   or a 0-based page index, e.g. "page": 2
+
+      // Optional mode (default is "tap"):
+      // "mode": "toggle",  — requires toggle_key, toggle_value, off_action
+      // "mode": "hold_repeat", — requires hold_repeat_ms (default 200)
+      // "mode": "tap_hold", — requires hold_action, hold_threshold_ms (default 500)
+    }],
+    "feedback": {         // Visual feedback based on state (optional)
+      "source": "state",
+      "key": "device.my_device.power",   // State key to watch
+      "condition": { "equals": true },   // When this matches, button shows active style
+      "style_active": { "bg_color": "#ff0606", "text_color": "#ffffff" },
+      "style_inactive": { "bg_color": "#56aa02", "text_color": "#ffffff" },
+      "label_active": "OFF",             // Condition matches (device IS on) — show what pressing WILL DO
+      "label_inactive": "ON"            // Condition doesn't match (device is off) — show what pressing WILL DO
+    },
+    "visible_when": {     // Hide the button unless this state condition holds (optional)
+      "key": "device.projector_1.power",
+      "operator": "eq",   // eq, ne, gt, lt, gte, lte, truthy, falsy
+      "value": "on"       // omit value for truthy/falsy; use "any":[...] for OR logic
+    }
+  }
+}
+
+Color priority: feedback style > per-button defaults > global plugin config defaults.
+A hidden button (visible_when false) renders as a blank black key and ignores presses.
+Only include fields you need. Unassigned buttons can be omitted from the array.
+
+Locked buttons (optional): entries that must stay identical on every page (page
+switchers, mute-all, help) go in a top-level "global_buttons" array. Same entry shape
+as "buttons" but with NO "page" field. A global_buttons entry at an index wins over
+any per-page button at that index, on every page. A button navigating to a specific
+page index is automatically highlighted while that page is showing.
+
+Pages exist by being used (there is no page-count setting): placing a button, paging
+rule, page name, or numeric navigate target on page N creates pages 0 through N.
+
+Automatic paging (optional): add a top-level "auto_page" array alongside "buttons" to
+switch pages automatically when state changes:
+
+"auto_page": [
+  { "page": 1, "when": { "key": "device.projector_1.power", "operator": "eq", "value": "on" } },
+  { "page": 0, "when": { "key": "device.projector_1.power", "operator": "ne", "value": "on" } }
+]
+
+Each "when" uses the same operator schema (and supports "any":[...] for OR). Rules are
+evaluated in order; the first match wins, so list more specific conditions first.
+
+Dials (optional): surfaces with rotary encoders report a dial_count in their plugin
+state. Configure them with a top-level "dials" array (dials are not paged):
+
+"dials": [
+  {
+    "index": 0,            // Dial position (0-based)
+    "label": "Volume",     // Shown on the surface's display if it has one
+    "icon": "volume-2",    // Optional icon on the dial's strip readout
+    "unit": "%",           // Optional unit appended to the live value
+    "meter": {...},        // Optional level-bar override (automatic when the
+                           // adjust has min+max; false disables)
+    "adjust": {            // Optional: turn increments a numeric state value
+      "key": "var.volume", // var.* variable or the plugin's own plugin.<id>.* state
+      "step": 2,           // Added per detent turned (negative when turned back)
+      "min": 0, "max": 100 // Optional clamp
+    },
+    "cw": [{...}],         // Optional actions, fired once per detent turned
+    "ccw": [{...}],        // (capped at 8 per event for fast spins)
+    "press": [{...}],      // Optional actions on dial push
+    "long_press": [{...}], // Optional: hold then release fires these instead
+    "hold_threshold_ms": 500,
+    "pressed_adjust": {...}, // Optional: turning WHILE pushed adjusts this
+                             // (fine trim); pressed_cw/pressed_ccw also exist.
+                             // A push that turned never fires press/long_press.
+    "touch": [{...}],        // Optional: tapping the dial's strip readout
+                             // (default: tap presses the dial)
+    "long_touch": [{...}],   // Optional long-tap override
+    "fader": true            // Optional: taps/swipes on the readout jump the
+                             // adjust value to the touched position
+  }
+]
+
+Action objects use the same format as button "press" actions. A macro or trigger
+watching the adjust key turns the dial into a device control (volume, gain, pan).
+
+Touchscreen strip (optional): surfaces reporting has_touchscreen render one zone per
+dial by default — the dial's label, icon, live adjust value, and an automatic level
+bar when the adjust has bounds; tapping a dial's zone presses the dial. With nothing
+configured at all the strip shows a clock ({"touchscreen": {"idle": "blank"}} opts
+out). Take over the strip with a top-level "touchscreen" object:
+
+"touchscreen": {
+  "zones": [
+    {
+      "label": "Mics",                 // Static label (label_source state key overrides)
+      "value_source": "var.mic_gain",  // State key whose live value is displayed
+      "unit": "dB",                    // Optional unit appended to the value
+      "icon": "mic",                   // Optional Lucide icon
+      "meter": { "min": 0, "max": 100, "thresholds": [{...}] },  // Level bar
+      "feedback": {...},               // Optional state-driven colors (same
+                                       // schema as button feedback)
+      "touch": [{...}],                // Optional actions when the zone is tapped
+      "long_touch": [{...}],           // Optional actions on long-press (falls back to touch)
+      "drag_adjust": {                 // Optional: a horizontal swipe steps a value
+        "key": "var.mic_gain", "step": 1, "min": 0, "max": 100,
+        "fader": true                  // Taps/swipes jump to the touched position
+      },
+      "bg_color": "#1a1a2e", "text_color": "#e0e0e0"  // Optional colors
+    }
+  ]
+}
+
+Zones split the strip evenly; explicit "x"/"w" pixel bounds override (strip is
+800x100). Default per-dial zones wire drag_adjust to the dial's adjust
+automatically, so swiping under a dial does what turning it does. Every touch
+briefly flashes the touched zone. Custom zones replace ALL default per-dial
+zones — carry over any readouts that should stay.
+
+Touch keys (optional): surfaces reporting touch_key_count in plugin state have
+color-only keys at the indices after the LCD keys (key_count .. key_count +
+touch_key_count - 1). Configure them as ordinary "buttons" entries at those
+indices: presses and feedback work normally, but the key shows only its
+bg_color (or feedback bg colors) as an RGB glow — label and icon are ignored.
+
+Info screen (optional): surfaces reporting has_info_screen accept a top-level
+"info_strip" object that renders their small secondary screen:
+
+"info_strip": { "source": "state", "key": "var.room_temp", "label": "Temp" }
+// or static text:
+"info_strip": { "source": "text", "text": "Room A", "label": "" }
+// or two elements side by side:
+"info_strip": { "items": [
+  { "label": "Temp", "key": "var.room_temp", "unit": "F" },
+  { "source": "text", "text": "Room A" }
+] }
+
+A "state" source shows the key's live value and refreshes when it changes.
+Info elements accept the same display fields as zones (icon, unit, meter,
+feedback). With no info_strip configured the screen shows a clock;
+{"source": "clock"} asks for it explicitly, {"source": "blank"} turns it off.
+"""

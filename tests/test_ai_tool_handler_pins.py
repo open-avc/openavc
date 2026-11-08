@@ -20,12 +20,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from openavc.cloud.ai_tool_handler import (
-    TOOL_FAILED,
-    AIToolHandler,
-    _validate_variable,
-    describe_tool_failure,
-)
+from openavc.cloud.ai_tool_handler import TOOL_FAILED, AIToolHandler, describe_tool_failure
+from openavc.cloud.tools.macro_tools import _validate_variable
 from openavc.cloud.tools.ui_bindings import _validate_action, normalize_bindings, validate_bindings
 from openavc.core.ui_events import DISPATCHED_ACTIONS
 

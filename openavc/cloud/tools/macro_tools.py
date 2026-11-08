@@ -57,6 +57,27 @@ _RUN_NOTES = {
 }
 
 
+#: The types a variable may have, each with what its default may be. A boolean
+#: default passes as a number: bool is an int.
+_VARIABLE_DEFAULT_TYPES: dict[str, type | tuple[type, ...]] = {
+    "string": str,
+    "number": (int, float),
+    "boolean": bool,
+}
+
+
+def _validate_variable(var_type: str, default: Any = None) -> str | None:
+    """Validate variable type and default value. Returns error string or None."""
+    if var_type not in _VARIABLE_DEFAULT_TYPES:
+        return (
+            f"Variable type '{var_type}' is not valid. "
+            f"Use: string, number, boolean"
+        )
+    if default is not None and not isinstance(default, _VARIABLE_DEFAULT_TYPES[var_type]):
+        return f"Variable type is '{var_type}' but default '{default}' is {type(default).__name__}"
+    return None
+
+
 def _set_monitored(project: Any, variable: Any, monitored: bool) -> None:
     """Add or remove this variable's entry on the project's monitor list.
 
@@ -235,7 +256,6 @@ class MacroToolsMixin:
 
         var_type = input.get("type", "string")
         default = input.get("default")
-        from openavc.cloud.ai_tool_handler import _validate_variable
         err = _validate_variable(var_type, default)
         if err:
             return {"error": f"Variable '{var_id}': {err}"}
@@ -275,7 +295,6 @@ class MacroToolsMixin:
             return {"error": "No project loaded"}
 
         var_id = input.get("id", "")
-        from openavc.cloud.ai_tool_handler import _validate_variable
 
         # The variables reconcile then applies the change (persister keys
         # for a persist flip, seeding for a new default,
