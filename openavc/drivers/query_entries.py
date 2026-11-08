@@ -8,15 +8,17 @@ The rules worth knowing before changing anything here:
   send}`` is one line per registered child of that type, ``{child_id}``
   filled with its unpadded local id (``{child_id:02d}`` pads), or one per page
   of children with ``page_size``. Other ``{placeholders}`` are left for the
-  sender's config substitution. Anything else is skipped with a warning.
+  sender's config substitution. Anything else is skipped with a warning
+  (OSC start-up skips one silently, below).
 * **Two gates.** ``when: <config field>`` runs an entry only while that
   field reads as on (an integrator's checkbox for a chatty subscription), and
   is judged when the entry expands. ``when_state: {<var>: <value or
   values>}`` runs it only while the device's own state allows (a unit any
   message wakes from standby is left there), and ``polling.when_state`` holds
-  the whole poll the same way; both are judged when the entry expands and
-  again just before each line goes (``_line_gate_shut``), once any write
-  under way has finished, so the reply to the line before it is read first.
+  the whole poll the same way. The entry's is judged when it expands, the
+  poll's when the poll starts, and both again just before each line goes
+  (``_line_gate_shut``), once any write under way has finished, so the reply
+  to the line before it is read first.
   An OSC start-up ``each_child`` line is not judged again.
 * **OSC start-up reads entries of its own too**
   (``start_up_and_poll._osc_start_up_message``: a string, ``{send}``, and the
