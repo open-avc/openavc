@@ -5,6 +5,7 @@ import time
 
 from .api import GitHub, Unavailable
 from .evidence import Findings, Pending, verify
+from .revisions import Request
 
 
 def arguments():
@@ -31,8 +32,8 @@ def main():
     previous = None
     while True:
         try:
-            print(verify(GitHub(args.repository), args.sha, args.branch,
-                         set(args.languages.split(",")), args.after_landing), flush=True)
+            request = Request(args.sha, args.branch, frozenset(args.languages.split(",")), args.after_landing)
+            print(verify(GitHub(args.repository), request), flush=True)
             return 0
         except Pending as exc:
             message = f"CodeQL verification incomplete: {exc}"

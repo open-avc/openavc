@@ -5,6 +5,7 @@ from unittest.mock import patch
 import subprocess
 from codeql_gate.api import GitHub, Unavailable
 from codeql_gate.evidence import Findings, Pending, verify
+from codeql_gate.revisions import Request
 
 SHA, PARENT, TIP = 'a' * 40, 'b' * 40, 'c' * 40
 RUN = dict(id=10, path='dynamic/github-code-scanning/codeql', created_at='2026-01-01T00:00:00Z',
@@ -53,7 +54,7 @@ class EvidenceTests(unittest.TestCase):
         self.api = FakeGitHub()
 
     def check(self, **options):
-        return verify(self.api, SHA, 'main', {'python'}, **options)
+        return verify(self.api, Request(SHA, 'main', frozenset({'python'}), **options))
 
     def add_finding(self):
         self.api.results = [copy.deepcopy(RESULT)]
@@ -74,7 +75,7 @@ class EvidenceTests(unittest.TestCase):
 
     def test_missing_language_wrong_sha_and_stale_analysis_block(self):
         with self.assertRaises(Pending):
-            verify(self.api, SHA, 'main', {'python', 'actions'})
+            verify(self.api, Request(SHA, 'main', frozenset({'python', 'actions'})))
         self.api.analyses[0]['commit_sha'] = TIP
         with self.assertRaises(Pending):
             self.check()
