@@ -234,22 +234,50 @@ class ConnectLifecycle:
             await self.transport.close()
             self.transport = None
 
-    async def _close_transport_quietly(self) -> None:
+    async def _close_transport_quietly(self, failure_note: str = "") -> None:
+        """Forget the platform transport, then close it. A close that fails
+        is nobody's failure; ``failure_note`` is what the debug log says
+        about it (nothing, by default)."""
         transport, self.transport = self.transport, None
-        if transport is not None:
-            try:
-                await transport.close()
-            except Exception:
-                pass
+        if transport is None:
+            return
+        try:
+            await transport.close()
+        except Exception:
+            if failure_note:
+                log.debug(f"[{self.device_id}] {failure_note}", exc_info=True)
 
-    async def _close_session_quietly(self) -> None:
-        """A driver-owned session an ended connect may have built after the
-        disconnect closed it. The disconnect may still be closing it too, so
-        a second close that fails is not this connect's failure."""
+    async def _close_session_quietly(
+        self, failure_note: str = "Closing an ended connect's session",
+    ) -> None:
+        """Close a driver-owned session; a close that fails is nobody's
+        failure, and ``failure_note`` is what the debug log says about it.
+
+        The default is an ended connect's: one may have built a session after
+        the disconnect that ended it had closed it, and the disconnect may
+        still be closing it too, so a second close that fails is not this
+        connect's failure."""
         try:
             await self._close_session()
         except Exception:
-            log.debug(f"[{self.device_id}] Closing an ended connect's session", exc_info=True)
+            log.debug(f"[{self.device_id}] {failure_note}", exc_info=True)
+
+    async def _report_connection_down(self) -> None:
+        """Say the connection came down. A held one was never announced, so
+        nothing else heard it come up and nothing is emitted: the reconnect
+        loop waiting on it is told, and tries again. Any other emits
+        ``device.disconnected.<id>``; a bus that refuses it fails nothing."""
+        if self._held:
+            self._held = False
+            self._settle_answer(False)
+            return
+        try:
+            await self.events.emit(f"device.disconnected.{self.device_id}")
+        except Exception:
+            log.debug(
+                f"[{self.device_id}] Failed to emit disconnect event",
+                exc_info=True,
+            )
 
     async def _unwind_ended_connect(self) -> None:
         """Take down what an ended connect started after the disconnect that
@@ -544,18 +572,7 @@ class ConnectLifecycle:
         await self._close_session()
         self._connected = False
         self.set_state("connected", False)
-        if self._held:
-            # Never announced, so there is nothing to take back.
-            self._held = False
-            self._settle_answer(False)
-            return
-        try:
-            await self.events.emit(f"device.disconnected.{self.device_id}")
-        except Exception:
-            log.debug(
-                f"[{self.device_id}] Failed to emit disconnect event",
-                exc_info=True,
-            )
+        await self._report_connection_down()
 
     async def _connect_start_watching(self, attempt: object) -> None:
         """The tail: polling if configured, then the liveness watchdog if the
@@ -730,34 +747,6 @@ class ConnectLifecycle:
         # DeviceManager can classify the offline reason from the event handler
         # (which runs after this teardown).
         self._stash_transport_error()
-        transport = self.transport
-        self.transport = None
-        if transport is not None:
-            try:
-                await transport.close()
-            except Exception:
-                log.debug(
-                    f"[{self.device_id}] Error closing transport on disconnect",
-                    exc_info=True,
-                )
-        try:
-            await self._close_session()
-        except Exception:
-            log.debug(
-                f"[{self.device_id}] Error closing driver session on "
-                f"disconnect",
-                exc_info=True,
-            )
-        if self._held:
-            # This connection was never announced, so nothing else heard it
-            # come up; the reconnect loop waiting on it tries again.
-            self._held = False
-            self._settle_answer(False)
-            return
-        try:
-            await self.events.emit(f"device.disconnected.{self.device_id}")
-        except Exception:
-            log.debug(
-                f"[{self.device_id}] Failed to emit disconnect event",
-                exc_info=True,
-            )
+        await self._close_transport_quietly("Error closing transport on disconnect")
+        await self._close_session_quietly("Error closing driver session on disconnect")
+        await self._report_connection_down()
