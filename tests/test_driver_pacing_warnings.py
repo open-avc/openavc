@@ -23,8 +23,8 @@ from openavc.drivers.avcdriver_semantic import (
     _poll_lines,
     validate_driver_warnings,
 )
-from openavc.drivers.base import _SILENCE_CHECK_TRANSPORTS
 from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.drivers.polling import _SILENCE_CHECK_TRANSPORTS
 from openavc.drivers.spec import (
     DEFAULT_LINE_GAP_S,
     SILENCE_CHECK_TRANSPORTS,

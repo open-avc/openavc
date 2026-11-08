@@ -24,11 +24,9 @@ import re
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from typing import Any
 
 from openavc.core.connection_fault import (
-    AUTH_FAILED,
     INVALID_CONFIG,
     LOGIN_MISSING,
     NO_RESPONSE,
@@ -44,9 +42,8 @@ from openavc.core.connection_fault import (
 )
 from openavc.core.device_logins import SAVED_LOGIN, marked_fields
 from openavc.core.device_traffic import record_traffic
-from openavc.core.event_bus import EventBus, detach_emit_chain
+from openavc.core.event_bus import EventBus
 from openavc.drivers.child_entities import ChildEntities
-from openavc.drivers.compiled_protocol import state_var_default
 # What a contract observer can be told lives in its own module; these names
 # stay importable from here, the path drivers use.
 from openavc.drivers.contract_events import (  # noqa: F401
@@ -62,6 +59,8 @@ from openavc.drivers.contract_events import (  # noqa: F401
 # module; these names stay importable from here, the path drivers use.
 # The push channel lives in its own module; these two helpers stay importable
 # from here, the path core/push_ports.py and drivers use.
+from openavc.drivers.liveness import LivenessWatch
+from openavc.drivers.polling import PollLoop
 from openavc.drivers.push import PushChannel, push_port, resolve_push_value  # noqa: F401
 from openavc.drivers.param_validation import (  # noqa: F401
     CommandParamError,
@@ -71,7 +70,6 @@ from openavc.drivers.param_validation import (  # noqa: F401
     normalize_and_validate_command_params,
     validate_device_setting_value,
 )
-from openavc.drivers.spec import SILENCE_CHECK_TRANSPORTS
 from openavc.core.state_store import StateStore, is_flat_primitive
 from openavc.transport.frame_parsers import FrameParser
 from openavc.transport.http_client import capture_driver_clients, capture_driver_websockets
@@ -101,15 +99,6 @@ log = get_logger(__name__)
 
 # The transports that dial a network address of their own (``config["host"]``).
 _ADDRESSED_TRANSPORTS = frozenset({"tcp", "udp", "osc", "http", "ssh", "mqtt", "snmp"})
-
-# The transports BaseDriver._poll_loop watches for a peer that answers no poll
-# (_watches_for_silence). The list and the reason for each one left out live
-# in spec.py, where the driver validator reads them too.
-_SILENCE_CHECK_TRANSPORTS = frozenset(SILENCE_CHECK_TRANSPORTS)
-
-# How often a held connection (BaseDriver._held) looks for the device's first
-# answer between polls.
-_HELD_CHECK_S = 0.5
 
 # An httpx client a driver creates for itself is recorded for its device like
 # the platform's own transports, with nothing in the driver; it and a
@@ -371,84 +360,11 @@ def _verify_failure_error(
     return not_responding
 
 
-def _httpx_errors() -> tuple[type[BaseException], ...]:
-    """The errors a poll's HTTP failure raises: httpx's, when it imports."""
-    try:
-        import httpx
-    except ImportError:
-        return ()
-    return (httpx.HTTPError,)
-
-
-def _probe_miss_reason(exc: BaseException, deadline: float) -> str:
-    """Why a liveness probe missed, for the log. The probe's deadline raises
-    a timeout with no text of its own."""
-    return str(exc) or (
-        f"no answer within {deadline:g} s"
-        if isinstance(exc, (asyncio.TimeoutError, TimeoutError))
-        else type(exc).__name__
-    )
-
-
-@dataclass
-class _ProbeWatch:
-    """What BaseDriver._health_loop carries from one probe to the next, and
-    the probe in flight: whether it went out on a held connection, its
-    deadline, and when it started."""
-
-    interval: float
-    timeout: float
-    max_failures: int
-    wait: float = 0.0  # seconds before the next probe
-    paused: bool = False  # the device's state holds the probe back
-    held: bool = False
-    deadline: float = 0.0
-    started: float = 0.0
-
-
-@dataclass
-class _PollWatch:
-    """What BaseDriver._poll_loop carries from one cycle to the next.
-
-    ``pending`` is the last poll, for the silence check: its transport,
-    whether it sent anything, and the connection's receive count when it
-    began. ``parse_pending`` is the same poll for the unread-replies check:
-    its transport, receive count, parsed count and framed-message count when
-    it began. Each is judged when the next poll is due.
-    """
-
-    max_missed: int
-    watching: bool  # the silence check runs (_watches_for_silence)
-    reading: bool  # the unread-replies check runs (_parsed_count)
-    dry_polls: int = 0
-    last_exc: BaseException | None = None
-    silent_polls: int = 0
-    heard_cycles: int = 0
-    pending: tuple[Any, bool, int] | None = None
-    unread_cycles: int = 0
-    parse_pending: tuple[Any, int, int, int | None] | None = None
-
-
-class BaseDriver(ChildEntities, PushChannel, ABC):
+class BaseDriver(ChildEntities, PushChannel, LivenessWatch, PollLoop, ABC):
     """Abstract base class for all device drivers."""
 
     # Subclasses MUST override this with their metadata dict
     DRIVER_INFO: dict[str, Any] = {}
-
-    # Liveness watchdog knobs (see _liveness_probe). Class attributes so a
-    # driver can tune them wholesale (`HEALTH_INTERVAL_S = 20.0`) or per
-    # instance; the defaults suit most request/response protocols. INTERVAL is
-    # the gap between probes, TIMEOUT the per-probe reply deadline (INTERVAL on
-    # a reconnect held offline, see _health_loop), and after
-    # MAX_FAILURES consecutive misses the transport is torn down with a typed
-    # ``no_response`` fault (FAULT_MESSAGE) so the platform reconnects and the
-    # device card shows the real cause.
-    HEALTH_INTERVAL_S: float = 30.0
-    HEALTH_TIMEOUT_S: float = 5.0
-    HEALTH_MAX_FAILURES: int = 2
-    HEALTH_FAULT_MESSAGE: str = (
-        "The device stopped answering keep-alive probes."
-    )
 
     #: Told about contract faults as they happen: ``observer(kind, detail)``,
     #: ``kind`` one of ``CONTRACT_EVENTS``. None in production, where each
@@ -505,7 +421,8 @@ class BaseDriver(ChildEntities, PushChannel, ABC):
         self.state = state
         self.events = events
         self.transport: Any = None
-        self._poll_task: asyncio.Task | None = None
+        # The poll loop and its checks (drivers/polling.py).
+        self._init_polling()
         self._connected = False
         # When the current connect() began, and when the latest poll() that
         # returned began (stamped by __init_subclass__'s wrapper). Together
@@ -518,15 +435,6 @@ class BaseDriver(ChildEntities, PushChannel, ABC):
         # cannot, because a fault that persists writes the identical string
         # every cycle and would look untouched.
         self._last_error_writes: int = 0
-        # True while the poll loop's unread-replies check holds: polls in a
-        # row brought replies and the driver's rules read none of them
-        # (_parsed_count). The loop owns `last_error` meanwhile, so the
-        # stale-error clear leaves its sentence alone.
-        self._unread_replies_hold: bool = False
-        # The sentence the check last wrote (it clears only its own), and the
-        # framed-message count when the current run of unread cycles began.
-        self._unread_sentence: str = ""
-        self._unread_run_framed_from: int | None = None
         # For a device that routes its commands through a bridge (e.g. an IR
         # device bound to a bridge's emitter port): a callable the DeviceManager
         # injects to reach the live bridge instance. None for a direct device.
@@ -549,33 +457,11 @@ class BaseDriver(ChildEntities, PushChannel, ABC):
         # Strong refs to fire-and-forget tasks (disconnect cleanup) so the GC
         # can't collect them mid-run — a bare create_task is only weakly held.
         self._bg_tasks: set[asyncio.Task] = set()
-        # Liveness watchdog task + consecutive-miss counter (see
-        # _liveness_probe). Started by connect() when the driver supplies a
-        # probe; stopped on disconnect / transport drop.
-        self._health_task: asyncio.Task | None = None
-        self._health_failures = 0
         # The push channel, closed (drivers/push.py).
         self._init_push()
-        # A connection dropped because the device stopped answering (no poll
-        # drew an answer, or the liveness probe missed HEALTH_MAX_FAILURES
-        # times) stays offline on the automatic reconnect until the device
-        # answers a poll or a probe (_hold_next_connect, _announce_held,
-        # _wait_for_answer): without that, a device that never answers reads
-        # connected for most of every reconnect and the card flickers.
-        # `_dropped_for_silence` is that verdict, kept until an answer; the
-        # reconnect loop sets `_hold_next_connect` from it; `_held` is a
-        # connection that is up but not yet announced.
-        self._dropped_for_silence = False
-        # The sentence the silence drop gave ("The device stopped answering:
-        # 3 polls in a row ..."), kept until the device answers. A reconnect
-        # that gets no answer either reads only as a generic no_response (an
-        # HTTP device's connect check fails "is not responding"), whose advice
-        # to check the driver, transport and port is wrong for a device that
-        # was working; the device manager shows this sentence instead.
-        self._silence_verdict: ConnectionFault | None = None
-        self._hold_next_connect = False
-        self._held = False
-        self._answer_waiter: asyncio.Future[bool] | None = None
+        # The liveness probe and the hold after a device stopped answering
+        # (drivers/liveness.py).
+        self._init_liveness()
         # Set while connect() builds its transport, verifies it and runs the
         # handshake. A drop in that window resolves it instead of starting the
         # usual teardown: the connect is still running, so its failure is the
@@ -1925,6 +1811,15 @@ class BaseDriver(ChildEntities, PushChannel, ABC):
         Default: no-op.
         """
 
+    def _reads_replies(self) -> bool:
+        """True when this driver does something with what the device sends.
+
+        Default: the subclass overrides on_data_received. ConfigurableDriver
+        answers from its response rules instead (it always overrides the
+        handler, but a definition with no rules reads nothing).
+        """
+        return type(self).on_data_received is not BaseDriver.on_data_received
+
     async def on_mqtt_message(self, topic: str, payload: bytes) -> None:
         """
         Called by the MQTT transport when a message arrives on a subscribed
@@ -2173,314 +2068,6 @@ class BaseDriver(ChildEntities, PushChannel, ABC):
             return False
         return bool(getattr(self.transport, "connected", False))
 
-    # --- Liveness watchdog (opt-in awaited probe) ---
-
-    async def _liveness_probe(self) -> None:
-        """Optional hook: send a cheap request and await the device's reply.
-
-        Override in drivers whose link can die silently where polling cannot
-        tell: push/receive-mostly TCP that is not polled (no FIN when the
-        device vanishes), serial, a device that streams data on its own, or
-        a driver-owned session. A polled driver that reads replies over the
-        platform's tcp/udp/osc transport is already watched for silence by
-        the poll loop (_watches_for_silence); overriding this turns that
-        check off, so the probe alone decides. Return normally when the
-        device answered; raise when it did not. _health_loop runs it (see
-        the HEALTH_* attributes). Overriding this is the whole opt-in:
-        connect() starts the loop, disconnect and the transport-drop cleanup
-        stop it.
-
-        - Ask something every unit answers however it is set up (a firmware
-          or model query, a no-op, the protocol's keep-alive), never an
-          address from the device's configuration. Report a wrong setting
-          as a child's fault, ``last_error`` or ``invalid_config``.
-        - Any reply means the link is up, an error included: catch the
-          protocol's error reply (a NAK, an exception response, an error
-          frame) and return.
-        - When every message is addressed to something configured (a
-          display ID on a shared bus), ask the address that answered most
-          recently on this connection, then the rest; raise only when none
-          answers.
-        - Never log back in from here. Log in again on the connection you
-          have when the refusal arrives; a rejected credential is
-          ``auth_failed``.
-        """
-        raise NotImplementedError
-
-    def _health_enabled(self) -> bool:
-        """True when this driver supplies a liveness probe.
-
-        Default: the subclass overrides _liveness_probe. ConfigurableDriver
-        overrides this to key off the YAML ``liveness:`` block instead (it
-        always overrides the probe, but only some definitions declare one).
-        """
-        return type(self)._liveness_probe is not BaseDriver._liveness_probe
-
-    async def _liveness_held(self) -> bool:
-        """True when the device's own state holds the liveness probe back now
-        (a unit in standby that any message would wake).
-
-        Asked just before each probe goes out, the first on a held reconnect
-        included; nothing yields between a False and the probe's start. A
-        held probe sends nothing and is neither a miss nor an answer: the
-        count of misses in a row is left as it was. On a held connection it
-        is announced instead once the device has answered anything on it, as
-        the poll loop does for a held poll (_poll_waits_on_device). Default:
-        never.
-        """
-        return False
-
-    def _start_health_loop(self) -> None:
-        """Start the liveness watchdog (idempotent while one is running)."""
-        if self._health_task is None or self._health_task.done():
-            self._health_failures = 0
-            self._health_task = asyncio.ensure_future(self._health_loop())
-
-    def _stop_health_loop(self) -> None:
-        if self._health_task and not self._health_task.done():
-            self._health_task.cancel()
-        self._health_task = None
-
-    async def _health_loop(self) -> None:
-        """Probe the device every HEALTH_INTERVAL_S and force a reconnect when
-        it stops answering.
-
-        The probe is awaited under HEALTH_TIMEOUT_S so a hung implementation
-        can't stall the loop. Any exception (timeout, transport failure,
-        protocol error) counts as a miss; a clean return resets the counter.
-        So a probe whose request the device answered with an error returns
-        instead of raising (see _liveness_probe): the device answered.
-
-        The exception is a typed ``auth_failed``: the device answered by
-        refusing the credential, so the connection drops on the first one and
-        keeps that code, which pauses reconnecting rather than starting it.
-
-        A drop for HEALTH_MAX_FAILURES misses holds the automatic reconnect
-        offline until a probe is answered (connect(), _announce_held), as the
-        poll loop's silence check does. A held connection is probed at once
-        rather than an interval later: every stage of connect() has run by
-        the time this loop starts, and the hold exists to ask whether the
-        device is back.
-
-        A held connection's probe waits for its answer up to HEALTH_INTERVAL_S
-        rather than HEALTH_TIMEOUT_S. The device is shown offline already, so
-        nothing is lost by waiting, and a unit still starting up (one that
-        answers its first queries seconds late, then everything) is announced
-        when its answer arrives instead of at the next probe. The probes still
-        go out every interval: a miss there is followed by the next probe at
-        once. The probe stays the judge, so its own rules still decide what
-        counts as an answer (a YAML ``expect`` keeps a banner or unrelated
-        chatter from announcing a device that never answers the probe).
-
-        While the device's own state holds the probe back (_liveness_held),
-        nothing goes out and nothing is counted; the log says so once when
-        the probe pauses and once when it resumes.
-        """
-        detach_emit_chain()  # a device-lifetime loop is a root, not a continuation
-        probe = _ProbeWatch(
-            interval=float(self.HEALTH_INTERVAL_S),
-            timeout=float(self.HEALTH_TIMEOUT_S),
-            max_failures=max(int(self.HEALTH_MAX_FAILURES), 1),
-        )
-        # Seconds before the next probe: none on a held connection, which
-        # exists to ask whether the device is back.
-        probe.wait = 0.0 if self._held else probe.interval
-        try:
-            while self._link_alive():
-                # Even at 0 this yields, so a probe that never awaits cannot
-                # hold the event loop.
-                await asyncio.sleep(probe.wait)
-                probe.wait = probe.interval
-                if not self._link_alive():
-                    return
-                held = await self._probe_held_back()
-                if not self._link_alive():
-                    return
-                self._note_probe_pause(probe, held)
-                if held:
-                    await self._announce_if_answered_while_probe_held()
-                    continue
-                if await self._probe_once(probe):
-                    return
-        except asyncio.CancelledError:
-            return
-
-    async def _probe_held_back(self) -> bool:
-        """_liveness_held, read as "not held" when the hook fails: a driver's
-        own hook failing must not end the watchdog."""
-        try:
-            return await self._liveness_held()
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            log.exception(
-                f"[{self.device_id}] Could not tell whether the "
-                f"device's state holds the liveness probe back; "
-                f"probing"
-            )
-            return False
-
-    def _note_probe_pause(self, probe: _ProbeWatch, held: bool) -> None:
-        """Say once in the log when the probe pauses, and once when it resumes."""
-        if held != probe.paused:
-            probe.paused = held
-            log.info(
-                f"[{self.device_id}] Liveness probe paused: the "
-                f"device's state holds it back"
-                if held else f"[{self.device_id}] Liveness probe resumed"
-            )
-
-    async def _announce_if_answered_while_probe_held(self) -> None:
-        """Announce a held connection whose probe the device's state holds
-        back, once the device has answered anything on it: nothing goes out
-        to answer until that state changes."""
-        counts = self._io_counts()
-        if not self._held or counts is None:
-            return
-        if counts[2] > 0:
-            await self._announce_held()
-
-    async def _probe_once(self, probe: _ProbeWatch) -> bool:
-        """Send one liveness probe and judge it. True when that dropped the
-        connection."""
-        probe.held = self._held
-        probe.deadline = max(probe.interval, probe.timeout) if probe.held else probe.timeout
-        probe.started = time.monotonic()
-        try:
-            # asyncio.timeout, not wait_for: on Python 3.11 wait_for
-            # starts the probe as a task, which yields first, and a
-            # command sent in that gap would go out between the
-            # decision above and the probe.
-            async with asyncio.timeout(probe.deadline):
-                await self._liveness_probe()
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            return self._probe_missed(probe, exc)
-        self._health_failures = 0
-        await self._announce_held()
-        return False
-
-    def _probe_missed(self, probe: _ProbeWatch, exc: Exception) -> bool:
-        """Count a probe that raised. True when that dropped the connection:
-        a refused credential drops it at once, HEALTH_MAX_FAILURES misses in
-        a row drop it as ``no_response``."""
-        refused = self._refused_credential(exc)
-        if refused is not None:
-            log.warning(
-                f"[{self.device_id}] Liveness probe refused the "
-                f"credential; dropping the connection: {exc}"
-            )
-            self._force_disconnect(AUTH_FAILED, refused.message)
-            return True
-        self._health_failures += 1
-        if probe.held:
-            # The next probe is due an interval after this one
-            # went out, however much of it the wait used.
-            probe.wait = max(0.0, probe.interval - (time.monotonic() - probe.started))
-        why = _probe_miss_reason(exc, probe.deadline)
-        # A held device is already shown offline: its misses are
-        # expected, and a device that stays down for hours would
-        # otherwise warn twice on every retry.
-        (log.debug if self._held else log.warning)(
-            f"[{self.device_id}] Liveness probe failed "
-            f"({self._health_failures}/{probe.max_failures}): {why}"
-        )
-        if self._health_failures < probe.max_failures:
-            return False
-        self._drop_for_unanswered_probes()
-        return True
-
-    def _drop_for_unanswered_probes(self) -> None:
-        """Drop a connection whose device stopped answering the liveness
-        probe, as ``no_response``. The automatic reconnect then holds it
-        offline until a probe is answered (connect(), _announce_held)."""
-        if self._held:
-            log.info(
-                f"[{self.device_id}] Still no answer to the "
-                f"liveness probe; closing the connection to "
-                f"try again"
-            )
-        else:
-            log.warning(
-                f"[{self.device_id}] Device stopped answering "
-                f"liveness probes; disconnecting"
-            )
-        self._dropped_for_silence = True
-        self._force_disconnect(
-            NO_RESPONSE, self._probe_fault_message()
-        )
-        self._silence_verdict = self._last_fault
-
-    # --- Silence check (a peer that takes every poll and answers none) ---
-
-    def _reads_replies(self) -> bool:
-        """True when this driver does something with what the device sends.
-
-        Default: the subclass overrides on_data_received. ConfigurableDriver
-        answers from its response rules instead (it always overrides the
-        handler, but a definition with no rules reads nothing).
-        """
-        return type(self).on_data_received is not BaseDriver.on_data_received
-
-    def _io_counts(self) -> tuple[Any, int, int] | None:
-        """``(transport, sends, receives)`` for the live connection, or None
-        when its transport keeps no counts (a driver-owned session, a test
-        double, serial). Push deliveries count as receives."""
-        transport = self.transport
-        sent = getattr(transport, "send_count", None)
-        received = getattr(transport, "receive_count", None)
-        if type(sent) is not int or type(received) is not int:
-            return None
-        return transport, sent, received + self._push_receives
-
-    def _watches_for_silence(self) -> bool:
-        """Whether the poll loop drops a connection that answers no poll.
-
-        A fire-and-forget poll over a byte stream returns as soon as its
-        bytes are written, so without this a peer that accepts the
-        connection and never answers (the wrong device at the address,
-        something else on the port, a unit that has hung) reads connected
-        for as long as the socket stays open. On when all of these hold:
-
-        - the transport is one of _SILENCE_CHECK_TRANSPORTS and keeps counts;
-        - the driver supplies no liveness probe (that watchdog already
-          decides when to drop, with the driver's own knowledge of the
-          protocol; the reconnect after its drop is held the same way);
-        - the driver reads replies (_reads_replies): a device that is only
-          ever told things has nothing to answer with.
-        """
-        if self._effective_transport() not in _SILENCE_CHECK_TRANSPORTS:
-            return False
-        if self._health_enabled() or not self._reads_replies():
-            return False
-        return self._io_counts() is not None
-
-    def _silence_expected(self) -> bool:
-        """True while the device may answer nothing at all and still be fine.
-
-        Asked each time the silence check judges a poll that drew no reply:
-        while it is True, that poll does not count toward dropping the
-        connection (nor does it reset the count). Override it in a driver
-        that knows the device is in such a state, e.g. a display the driver
-        knows is off whose manual only promises replies when it is on.
-        Default: never.
-        """
-        return False
-
-    def _poll_waits_on_device(self) -> bool:
-        """True when the poll that just ran sent nothing because the device's
-        own state holds polling back (a unit in standby that any command
-        would wake).
-
-        Asked while a connection is held after a drop for silence: no poll
-        goes out until that state changes, so waiting for a poll to be
-        answered would keep the device offline for good. It is announced
-        instead once it has answered anything on this connection. Default:
-        never.
-        """
-        return False
-
     def _connect_check_held(self) -> bool:
         """True when the device's own state holds polling back, so connect()
         skips the transport's check (an OSC ``/info``, an HTTP HEAD) as well:
@@ -2491,235 +2078,6 @@ class BaseDriver(ChildEntities, PushChannel, ABC):
         while its polls are held. Default: never.
         """
         return False
-
-    def _silence_fault(self, cycles: int) -> ConnectionFault:
-        """The no_response fault for ``cycles`` polls in a row that drew
-        nothing back: one sentence for a connection that has never answered
-        (the address or the driver is the likely cause), another for a device
-        that answered and then stopped."""
-        counts = self._io_counts()
-        if counts is not None and counts[2] == 0:
-            return ConnectionFault(
-                NO_RESPONSE,
-                f"Nothing has answered on this connection: {cycles} polls in "
-                f"a row got no reply. Check the address and port, and that "
-                f"this driver matches the device.",
-            )
-        return ConnectionFault(
-            NO_RESPONSE,
-            f"The device stopped answering: {cycles} polls in a row got no "
-            f"reply.",
-        )
-
-    def _parsed_count(self) -> int | None:
-        """How many received messages this driver's own rules have read on
-        this connection, or None when the platform cannot tell (the default:
-        a Python driver parses in its own code).
-
-        The poll loop compares it with the transport's receive count
-        (_io_counts): polls in a row that brought replies and moved this
-        count not at all mean something answers that the driver does not
-        understand, the wrong port or the wrong driver. Never a disconnect:
-        many drivers leave some replies unread by design (an acknowledgement,
-        a reply a rule does not need), so only "none at all" is a finding,
-        and it is reported, not acted on.
-        """
-        return None
-
-    def _framed_count(self) -> int | None:
-        """How many complete messages have reached this driver's response
-        rules on this connection, read or not; None when the platform cannot
-        tell. Bytes that arrive and never end the way the driver frames a
-        message (the wrong line ending, another protocol) count as received
-        but never as a message, which is how the unread-replies check tells
-        its two findings apart."""
-        return None
-
-    def _unread_replies_message(self, cycles: int, framed: bool = True) -> str:
-        """The ``last_error`` sentence while the unread-replies check holds:
-        ``framed`` False when no reply in the run ended the way this driver
-        frames a message."""
-        if not framed:
-            return (
-                f"Something is answering on this connection, but none of its "
-                f"replies ends the way this driver expects: {cycles} polls in "
-                f"a row. Check the port, and that this driver matches the "
-                f"device."
-            )
-        return (
-            f"Something is answering on this connection, but this driver reads "
-            f"none of it: {cycles} polls in a row. Check the port, and that "
-            f"this driver matches the device."
-        )
-
-    def _probe_fault_message(self) -> str:
-        """What the card says when the liveness probe takes the device
-        offline. A probe that goes unanswered while the unread-replies check
-        holds on a connection that did receive replies is a device answering
-        in a language this driver does not read (the wrong port or the wrong
-        driver), so the check's sentence names the cause better than "stopped
-        answering" does."""
-        counts = self._io_counts()
-        if (
-            self._unread_replies_hold and self._unread_sentence
-            and counts is not None and counts[2] > 0
-        ):
-            return self._unread_sentence
-        return self.HEALTH_FAULT_MESSAGE
-
-    def _judge_reading(
-        self, parse_pending: tuple[Any, int, int, int | None], cycles: int,
-        limit: int,
-    ) -> int:
-        """Judge one poll cycle for the unread-replies check and return the
-        new count of cycles in a row that heard replies and read none.
-
-        A cycle that heard nothing says nothing about reading (that is the
-        silence check's business) and leaves the count as it was. At
-        ``limit`` the check holds: a warning in the log once, the sentence in
-        ``last_error`` every cycle while it holds (when the driver declares
-        the property). The first cycle that reads anything ends it. When no
-        reply in the run ended the way the driver frames a message
-        (_framed_count did not move), both say so instead of naming a reply.
-        """
-        transport, heard_before, parsed_before, framed_before = parse_pending
-        now = self._io_counts()
-        parsed = self._parsed_count()
-        if now is None or now[0] is not transport or parsed is None:
-            return cycles
-        if now[2] <= heard_before:
-            return cycles
-        if parsed > parsed_before:
-            if self._unread_replies_hold:
-                self._unread_replies_hold = False
-                log.info(
-                    f"[{self.device_id}] The device's replies are read again"
-                )
-                if self.get_state(self.LAST_ERROR_PROPERTY) == (
-                    self._unread_sentence
-                ):
-                    self._clear_stale_last_error()
-            return 0
-        if cycles == 0:
-            self._unread_run_framed_from = framed_before
-        cycles += 1
-        if cycles >= limit:
-            framed_now = self._framed_count()
-            framed = not (
-                framed_now is not None
-                and self._unread_run_framed_from is not None
-                and framed_now <= self._unread_run_framed_from
-            )
-            self._unread_sentence = self._unread_replies_message(limit, framed)
-            if not self._unread_replies_hold:
-                self._unread_replies_hold = True
-                sample = self._unread_sample() if framed else ""
-                if framed:
-                    finding = "no response rule reads any of them"
-                else:
-                    finding = (
-                        "none of them ends the way this driver expects, so no "
-                        "response rule can read them"
-                    )
-                log.warning(
-                    f"[{self.device_id}] Replies arrive but {finding} "
-                    f"({cycles} polls in a row)"
-                    + (f"; the last one was {sample!r}" if sample else "")
-                    + ". Check the port, and that this driver matches the "
-                    "device."
-                )
-            if self.LAST_ERROR_PROPERTY in self.DRIVER_INFO.get(
-                "state_variables", {}
-            ):
-                self.set_state(self.LAST_ERROR_PROPERTY, self._unread_sentence)
-        return cycles
-
-    def _unread_sample(self) -> str:
-        """The last reply no rule read, for the log line (empty: none kept)."""
-        return ""
-
-    def _settle_answer(self, answered: bool) -> None:
-        """Tell a reconnect loop waiting on a held connection how it ended."""
-        waiter = self._answer_waiter
-        if waiter is not None and not waiter.done():
-            waiter.set_result(answered)
-
-    async def _announce_held(self) -> None:
-        """A held connection's device answered a poll or a liveness probe:
-        announce it now, the way connect() announces any other connection."""
-        if not self._held:
-            return
-        self._held = False
-        self._dropped_for_silence = False
-        self._silence_verdict = None
-        self.set_state("connected", True)
-        log.info(f"[{self.device_id}] The device answered; connected")
-        self._settle_answer(True)
-        await self.events.emit(f"device.connected.{self.device_id}")
-
-    async def _wait_for_answer(self) -> bool:
-        """For the reconnect loop, after a connect() that was held: True once
-        the device answers a poll or a liveness probe (it is announced by
-        then), False when the connection closes first (a silent verdict or
-        missed probes again, or the link failing).
-
-        A device that nothing asks (no poll running, no liveness probe) has
-        nothing to answer, so it is announced on the open connection, as any
-        connection is.
-        """
-        waiter = self._answer_waiter
-        if waiter is None:
-            return self.get_state("connected") is True
-        try:
-            unasked = (
-                (self._poll_task is None or self._poll_task.done())
-                and (self._health_task is None or self._health_task.done())
-            )
-            if not waiter.done() and unasked:
-                await self._announce_held()
-            return await waiter
-        finally:
-            if self._answer_waiter is waiter:
-                self._answer_waiter = None
-
-    async def _wait_out_interval(
-        self, interval: float, pending: tuple[Any, bool, int] | None, heard_earlier: bool
-    ) -> None:
-        """Sleep until the next poll is due.
-
-        While a connection is held, an earlier cycle heard something
-        (``heard_earlier``) and this cycle's poll went out, look for an answer
-        every _HELD_CHECK_S on the way, so a device that answers is announced
-        within a moment rather than at the next poll. One cycle that hears
-        something is not enough: a banner sent to every new connection (a
-        telnet prompt) lands in the first one, from a device that may answer
-        nothing after it.
-        """
-        if not self._held or pending is None or not heard_earlier:
-            await asyncio.sleep(interval)
-            return
-        transport, _sent, heard_before = pending
-        deadline = time.monotonic() + interval
-        while (left := deadline - time.monotonic()) > 0:
-            await asyncio.sleep(min(_HELD_CHECK_S, left))
-            now = self._io_counts()
-            if self._held and now is not None and now[0] is transport and now[2] > heard_before:
-                await self._announce_held()
-
-    def _force_disconnect(self, code: str = NO_RESPONSE, message: str = "") -> None:
-        """Tear down a dead transport and fire the disconnect path so the
-        DeviceManager auto-reconnects / classifies the device offline.
-
-        Callable from inside the health loop, so the task ref is dropped
-        first — the disconnect cleanup would otherwise cancel the still-running
-        loop out from under us. The typed fault is stashed because this
-        disconnect carries no exception: a silently-dead device leaves no
-        transport error, so without the stash the device card would show the
-        generic "connection dropped".
-        """
-        self._health_task = None
-        self._stash_fault(code, message)
-        self._handle_transport_disconnect()
 
     @staticmethod
     def _coerce_serial_params(
@@ -3027,384 +2385,6 @@ class BaseDriver(ChildEntities, PushChannel, ABC):
                 f"[{self.device_id}] Failed to emit disconnect event",
                 exc_info=True,
             )
-
-    # --- Polling ---
-
-    async def start_polling(self, interval: float) -> None:
-        """Start a background polling loop at the given interval (seconds)."""
-        if interval <= 0:
-            return
-        await self.stop_polling()
-        self._poll_task = asyncio.create_task(self._poll_loop(interval))
-        log.debug(f"[{self.device_id}] Polling started (every {interval}s)")
-
-    async def stop_polling(self) -> None:
-        """Cancel the polling background task."""
-        if self._poll_task and not self._poll_task.done():
-            self._poll_task.cancel()
-            try:
-                await self._poll_task
-            except asyncio.CancelledError:
-                pass
-            self._poll_task = None
-            log.debug(f"[{self.device_id}] Polling stopped")
-
-    def _clear_stale_last_error(self) -> None:
-        """Drop a ``last_error`` the device has stopped reporting.
-
-        Called after a poll that finished cleanly **and** wrote nothing to the
-        property: a fault that is still happening rewrites it on the way past,
-        so what survives to here is an error from before — and an error from
-        before, sitting under a device that is answering normally, is the thing
-        that made the field unreadable.
-
-        Only for a driver that declares the property. The platform does not
-        invent the convention for a driver that never opted into it, and it
-        clears to the value the declaration implies rather than to ``None``:
-        this is a device that just answered cleanly, so "no error" is something
-        we know, not something nobody has said.
-        """
-        var_def = self.DRIVER_INFO.get("state_variables", {}).get(
-            self.LAST_ERROR_PROPERTY
-        )
-        if var_def is None:
-            return
-        current = self.get_state(self.LAST_ERROR_PROPERTY)
-        cleared = state_var_default(var_def)
-        if current == cleared or current in (None, ""):
-            return
-        self.set_state(self.LAST_ERROR_PROPERTY, cleared)
-
-    async def _poll_loop(self, interval: float) -> None:
-        """Background loop that calls self.poll() periodically.
-
-        Tracks whether each poll() returned cleanly. When N consecutive polls
-        raise a transport-level error (ConnectionError, TimeoutError, OSError,
-        or any httpx HTTP error), marks the device disconnected and exits.
-        Protocol-level errors (e.g., ValueError on unexpected response shape)
-        are logged via device.error.<id> but do not penalize the watchdog —
-        the device is reachable, just misbehaving.
-
-        Drivers MUST propagate transport errors from poll(). Swallowing
-        httpx.ConnectError and friends in a driver's poll() causes connected
-        state to lie.
-
-        A typed ``auth_failed`` is not a missed poll: the device answered by
-        refusing the credential, and every further poll would send it again,
-        which is what trips a device's lockout. The connection drops on the
-        first one. Untyped text that only reads like a refusal ("401
-        Unauthorized") still takes the count, since an expired session looks
-        the same and the classifier is guessing.
-
-        The first poll runs at once, unless this connect has already polled
-        (an _initial_sync that reads state): that was the first cycle, so the
-        loop waits out the rest of its interval before polling again, and a
-        device is not sent every read twice back to back on each connect.
-
-        A poll that returned cleanly is judged again when the next one is
-        due (the silence check, _watches_for_silence): it sent something and
-        nothing came back since it began, while the driver did not expect
-        silence (_silence_expected). ``max_missed_polls`` of those in a
-        row drop the connection as ``no_response``, and the automatic
-        reconnect then holds the device offline until a poll is answered
-        (connect(), _announce_held), or, while the device's own state holds
-        the poll back, until it has answered anything on the new connection
-        (_poll_waits_on_device). Only cycles this loop ran are judged; a
-        connect-time poll is not.
-
-        The same judgement, for a driver that reports what its own rules read
-        (_parsed_count), also asks whether a cycle that brought replies had
-        any of them read. ``max_missed_polls`` cycles in a row that read none
-        put a warning in the log and a sentence in ``last_error``
-        (_judge_reading), and nothing else: the connection stays up.
-        """
-        detach_emit_chain()  # a device-lifetime loop is a root, not a continuation
-        httpx_errors = _httpx_errors()
-        watch = _PollWatch(
-            max_missed=self._max_missed_polls(),
-            watching=self._watches_for_silence(),
-            reading=self._parsed_count() is not None,
-        )
-        # A verdict lasts while the automatic reconnect holds the device
-        # offline (the warning is logged once an episode, and the sentence
-        # stays in last_error); any other connection starts again, and the
-        # sentence a held check left behind clears after its first clean poll.
-        if not self._held:
-            self._unread_replies_hold = False
-        try:
-            await self._wait_after_connect_poll(interval)
-            while True:
-                self._judge_last_reading(watch)
-                if await self._judge_last_silence(watch):
-                    return
-                if await self._poll_once(watch, httpx_errors):
-                    return
-                if watch.dry_polls >= watch.max_missed:
-                    self._drop_for_failed_polls(watch)
-                    return
-                await self._wait_out_interval(interval, watch.pending, watch.heard_cycles >= 1)
-        except asyncio.CancelledError:
-            return
-
-    def _max_missed_polls(self) -> int:
-        """The device's ``max_missed_polls``, at least 1.
-
-        A value of 0 (or negative, or non-numeric) would drop a healthy device
-        after its first poll: the watchdog cannot be turned off that way, and
-        the minimum is one missed poll.
-        """
-        try:
-            return max(int(self.config.get("max_missed_polls", 3)), 1)
-        except (TypeError, ValueError):
-            return 3
-
-    async def _wait_after_connect_poll(self, interval: float) -> None:
-        """Wait out the rest of the interval when this connect has polled
-        already: an _initial_sync that reads state was the first cycle."""
-        polled_at = self._last_poll_started_at
-        began_at = self._connect_began_at
-        if polled_at is None or began_at is None:
-            return
-        if polled_at < began_at:
-            return
-        remaining = interval - (time.monotonic() - polled_at)
-        if remaining > 0:
-            await asyncio.sleep(remaining)
-
-    def _judge_last_reading(self, watch: _PollWatch) -> None:
-        """The unread-replies check on the poll before this one (_judge_reading)."""
-        if watch.parse_pending is None:
-            return
-        watch.unread_cycles = self._judge_reading(
-            watch.parse_pending, watch.unread_cycles, watch.max_missed,
-        )
-        watch.parse_pending = None
-
-    async def _judge_last_silence(self, watch: _PollWatch) -> bool:
-        """The silence check on the poll before this one. True when it
-        dropped the connection: ``max_missed_polls`` polls in a row that
-        sent something heard nothing back."""
-        pending = watch.pending
-        if pending is None:
-            return False
-        watch.pending = None
-        await self._count_silence(watch, pending)
-        if watch.silent_polls < watch.max_missed:
-            return False
-        self._drop_for_silence(watch.silent_polls)
-        return True
-
-    async def _count_silence(self, watch: _PollWatch, pending: tuple[Any, bool, int]) -> None:
-        """Count one poll toward the silence check.
-
-        An answer since it began resets the count, and the second cycle in a
-        row that heard one announces a held connection. A poll that sent
-        something and heard nothing adds one, unless the driver expects
-        silence now (_silence_expected). A poll judged on another connection
-        than the one it went out on counts for nothing.
-        """
-        transport, sent, heard_before = pending
-        now = self._io_counts()
-        if now is None or now[0] is not transport:
-            return
-        if now[2] > heard_before:
-            watch.silent_polls = 0
-            watch.heard_cycles += 1
-            if watch.heard_cycles >= 2:
-                await self._announce_held()
-        elif sent and not self._silence_expected():
-            watch.silent_polls += 1
-
-    def _drop_for_silence(self, cycles: int) -> None:
-        """Drop a connection whose polls drew no answer, as ``no_response``.
-        The automatic reconnect then holds the device offline until it
-        answers (connect(), _announce_held)."""
-        if self._held:
-            log.info(
-                f"[{self.device_id}] Still nothing back from "
-                f"{cycles} poll cycles; closing the "
-                f"connection to try again"
-            )
-        else:
-            log.warning(
-                f"[{self.device_id}] Nothing came back from "
-                f"{cycles} poll cycles in a row; marking "
-                f"disconnected"
-            )
-        self._last_fault = self._silence_fault(cycles)
-        self._silence_verdict = self._last_fault
-        self._dropped_for_silence = True
-        self._handle_transport_disconnect()
-
-    async def _poll_once(
-        self, watch: _PollWatch, httpx_errors: tuple[type[BaseException], ...],
-    ) -> bool:
-        """Run one poll() and count what it says about the device. True when
-        that dropped the connection: the device refused the credential.
-
-        A transport-level failure (a connection error, a timeout, an OS error
-        or an httpx HTTP error) is a missed poll. Anything else is a device
-        that is reachable and misbehaving: logged and emitted as
-        ``device.error``, never counted. The bookkeeping after a clean poll
-        runs inside the same handlers, so a failure there is judged the way
-        a failing poll is.
-        """
-        try:
-            await self._poll_and_note(watch)
-        except (ConnectionError, TimeoutError, OSError) as exc:
-            if self._poll_refused_credential(exc):
-                return True
-            log.warning(
-                f"[{self.device_id}] Poll failed (connection): {exc}"
-            )
-            watch.dry_polls += 1
-            watch.last_exc = exc
-        except httpx_errors as exc:
-            log.warning(
-                f"[{self.device_id}] Poll failed (HTTP): {exc}"
-            )
-            watch.dry_polls += 1
-            watch.last_exc = exc
-        except Exception as exc:
-            log.exception(
-                f"[{self.device_id}] Unexpected error during poll"
-            )
-            await self._emit_poll_error(exc)
-        return False
-
-    async def _poll_and_note(self, watch: _PollWatch) -> None:
-        """poll(), then what a clean one leaves: the missed-poll count reset,
-        a stale last_error cleared, and its traffic kept for the next cycle's
-        silence and unread-replies checks."""
-        errors_before = self._last_error_writes
-        before = self._io_counts() if watch.watching or watch.reading else None
-        read_before = (
-            (self._parsed_count(), self._framed_count()) if watch.reading else (None, None)
-        )
-        await self.poll()
-        watch.dry_polls = 0
-        watch.last_exc = None
-        if (
-            self._last_error_writes == errors_before
-            and not self._unread_replies_hold
-        ):
-            self._clear_stale_last_error()
-        if before is not None:
-            await self._note_poll_traffic(watch, before, read_before)
-
-    async def _note_poll_traffic(
-        self, watch: _PollWatch, before: tuple[Any, int, int],
-        read_before: tuple[int | None, int | None],
-    ) -> None:
-        """Keep a clean poll's traffic for the checks the next cycle runs,
-        when it went out on the connection it began on."""
-        after = self._io_counts()
-        if after is None or after[0] is not before[0]:
-            return
-        if self._answered_while_poll_held(before, after):
-            # Nothing goes out to answer until the device's state changes,
-            # and the device has answered on this connection already.
-            await self._announce_held()
-        if watch.watching:
-            watch.pending = (before[0], after[1] > before[1], before[2])
-        parsed_before, framed_before = read_before
-        if parsed_before is not None:
-            watch.parse_pending = (before[0], before[2], parsed_before, framed_before)
-
-    def _answered_while_poll_held(
-        self, before: tuple[Any, int, int], after: tuple[Any, int, int],
-    ) -> bool:
-        """Whether a held connection's poll sent nothing because the device's
-        own state holds polling back (_poll_waits_on_device), from a device
-        that has answered on this connection already."""
-        if not (self._held and self._connected):
-            return False
-        if after[1] != before[1] or after[2] <= 0:
-            return False
-        return self._poll_waits_on_device()
-
-    def _poll_refused_credential(self, exc: BaseException) -> bool:
-        """Drop the connection when a poll failed by the device refusing the
-        credential; True when it did."""
-        refused = self._refused_credential(exc)
-        if refused is None:
-            return False
-        log.warning(
-            f"[{self.device_id}] Poll refused the credential; "
-            f"dropping the connection: {exc}"
-        )
-        self._last_fault = refused
-        self._handle_transport_disconnect()
-        return True
-
-    def _refused_credential(self, exc: BaseException) -> ConnectionFault | None:
-        """The typed ``auth_failed`` fault ``exc`` carries, or None.
-
-        A poll or a liveness probe drops the connection on the first one: the
-        device answered by refusing the credential, and asking again is what
-        trips its lockout. Untyped text that only reads like a refusal ("401
-        Unauthorized") is not one, since an expired session looks the same.
-        """
-        refused = typed_fault_from_exc(
-            exc, host=self.config.get("host", ""), port=self.config.get("port"),
-        )
-        if refused is not None and refused.code == AUTH_FAILED:
-            return refused
-        return None
-
-    async def _emit_poll_error(self, exc: BaseException) -> None:
-        """``device.error`` for a poll that failed with the device reachable."""
-        try:
-            await self.events.emit(
-                f"device.error.{self.device_id}",
-                {"device_id": self.device_id, "error": str(exc)},
-            )
-        except Exception:
-            log.exception(
-                f"[{self.device_id}] Failed to emit device.error"
-            )
-
-    def _drop_for_failed_polls(self, watch: _PollWatch) -> None:
-        """Drop the connection after ``max_missed_polls`` failed polls in a row."""
-        log.warning(
-            f"[{self.device_id}] No response for "
-            f"{watch.dry_polls} poll cycles — marking disconnected"
-        )
-        fault = self._failed_polls_fault(watch.dry_polls, watch.last_exc)
-        self._last_fault = fault
-        if fault.code == NO_RESPONSE:
-            self._silence_verdict = fault
-        self._handle_transport_disconnect()
-
-    def _failed_polls_fault(
-        self, count: int, last_exc: BaseException | None,
-    ) -> ConnectionFault:
-        """Why ``count`` failed polls in a row dropped the connection.
-
-        Recorded for the fault classifier: the disconnect event carries no
-        exception, and a silently dead peer leaves no transport error, so
-        without this the card shows the generic "connection dropped". The last
-        poll's error decides when it says more than the generic codes do (a
-        typed fault poll() raised, or a plain ConnectionError that really means
-        "connection refused"). Those generic codes, no_response and
-        transport_disconnected, give way to a sentence saying the device WAS
-        answering and then stopped, which reads better than either.
-        """
-        if last_exc is not None:
-            classified = classify_connection_fault(
-                last_error=None,
-                exc=last_exc,
-                host=self.config.get("host", ""),
-                port=self.config.get("port"),
-                transport=self.config.get("transport", ""),
-            )
-            if classified.code not in (NO_RESPONSE, TRANSPORT_DISCONNECTED):
-                return classified
-        return ConnectionFault(
-            NO_RESPONSE,
-            f"The device stopped answering: {count} polls "
-            f"in a row failed.",
-        )
 
     # --- Convenience helpers ---
 

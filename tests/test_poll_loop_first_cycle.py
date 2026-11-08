@@ -8,7 +8,7 @@ one waits out the rest of the interval. A driver whose start-up reads nothing
 is unchanged: its loop polls at once.
 
 Driven through the real ``connect()`` with an invented device and a link that
-opens nothing. ``asyncio.sleep`` inside the driver module is recorded, and any
+opens nothing. ``asyncio.sleep`` inside the poll loop's module is recorded, and any
 pause of a second or more parks, so each test reads where the loop stopped.
 """
 
@@ -23,7 +23,7 @@ import pytest
 
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
-from openavc.drivers import base as base_mod
+from openavc.drivers import polling as polling_mod
 from openavc.drivers.base import BaseDriver
 
 INTERVAL = 10.0
@@ -87,7 +87,7 @@ class _AcmeWidget(BaseDriver):
 @pytest.fixture
 def log(monkeypatch: pytest.MonkeyPatch) -> list[tuple[Any, ...]]:
     entries: list[tuple[Any, ...]] = []
-    monkeypatch.setattr(base_mod, "asyncio", _RecordingAsyncio(entries))
+    monkeypatch.setattr(polling_mod, "asyncio", _RecordingAsyncio(entries))
     return entries
 
 

@@ -21,7 +21,9 @@ import pytest
 from openavc.core.connection_fault import NO_RESPONSE
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
-from openavc.drivers.base import BaseDriver, _PollWatch, _ProbeWatch
+from openavc.drivers.base import BaseDriver
+from openavc.drivers.liveness import _ProbeWatch
+from openavc.drivers.polling import _PollWatch
 
 _LOGGER = "openavc.drivers.base"
 _READ_SENTENCE = (
