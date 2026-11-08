@@ -96,10 +96,7 @@ class DriverRun:
     def watching(self) -> bool:
         """A command, the status queries or a setting is being sent or watched."""
         commands, settings = self.commands, self.settings
-        if commands is not None and (
-            commands.current() is not None
-            or (commands.batch or {}).get("status") == "running"
-        ):
+        if commands is not None and commands.busy_with() is not None:
             return True
         return settings is not None and settings.current() is not None
 

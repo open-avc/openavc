@@ -474,7 +474,7 @@ async def send_command(session_id: str, name: str, body: AuditCommandRequest) ->
     run = _listening_run(session)
     commands = commands_for(session, run)
     try:
-        entry = next((c for c in commands.catalog() if c["name"] == name), None) or {}
+        entry = commands.catalog_entry(name) or {}
         if body.again is not None:
             await commands.send_again(body.again, name)
         elif body.files or entry.get("takes_file") or entry.get("returns_file"):

@@ -280,11 +280,9 @@ class SettingsPass:
         if busy is not None:
             raise AuditError(BUSY.format(label=busy.label))
         commands = self.run.commands
-        if commands is not None:
-            if commands.batch is not None and commands.batch.get("status") == "running":
-                raise AuditError(BUSY.format(label="the status queries"))
-            if commands.current() is not None:
-                raise AuditError(BUSY.format(label=commands.current().label))
+        label = commands.busy_with() if commands is not None else None
+        if label is not None:
+            raise AuditError(BUSY.format(label=label))
 
     @staticmethod
     def _half() -> dict[str, Any]:

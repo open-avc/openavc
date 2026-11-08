@@ -718,11 +718,9 @@ def start_outage(
     if current is not None:
         raise AuditError(TEST_RUNNING)
     commands = run.commands
-    if commands is not None:
-        if commands.batch is not None and commands.batch.get("status") == "running":
-            raise AuditError(BUSY.format(label="the status queries"))
-        if commands.current() is not None:
-            raise AuditError(BUSY.format(label=commands.current().label))
+    label = commands.busy_with() if commands is not None else None
+    if label is not None:
+        raise AuditError(BUSY.format(label=label))
     settings = run.settings
     if settings is not None and settings.current() is not None:
         raise AuditError(BUSY.format(label=settings.current().label))

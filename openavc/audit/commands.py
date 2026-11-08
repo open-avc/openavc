@@ -136,7 +136,8 @@ DONE = "done"
 
 NOT_CONNECTED_YET = "Connect the driver first, on the Connect and listen step."
 BUSY = "Wait for {label} to finish before sending another command."
-BATCH_BUSY = "Wait for the status queries to finish before sending another command."
+# What the status queries are called while they run, in every step's refusal.
+QUERIES_LABEL = "the status queries"
 NO_QUERIES = "{driver} has no status queries that can run without a value."
 NOT_WATCHING = "No command is being watched."
 WATCH_CAP = "A command is watched for {span} at most."
@@ -366,6 +367,11 @@ class CommandPass:
             return self._final_catalog
         return command_catalog(self._driver())
 
+    def catalog_entry(self, name: str) -> dict[str, Any] | None:
+        """The command list's entry for ``name``; None for a name the driver
+        does not declare."""
+        return next((c for c in self.catalog() if c["name"] == name), None)
+
     def picker_state(self) -> dict[str, Any]:
         """The status values the command list's parameter pickers read
         (``options_state``), from the device as it reports them now."""
@@ -388,14 +394,25 @@ class CommandPass:
             return self.trials[-1]
         return None
 
-    def _refuse_if_busy(self) -> None:
-        if self.batch is not None and self.batch.get("status") == "running":
-            raise AuditError(BATCH_BUSY)
+    def _batch_running(self) -> bool:
+        return self.batch is not None and self.batch.get("status") == "running"
+
+    def busy_with(self) -> str | None:
+        """What this step is sending or watching, as a refusal elsewhere names
+        it: the status queries while they run, else the command; None when
+        nothing is. Each step that waits for it says so in its own words."""
+        if self._batch_running():
+            return QUERIES_LABEL
         busy = self.current()
-        if busy is None and self.run.settings is not None:
-            busy = self.run.settings.current()
-        if busy is not None:
-            raise AuditError(BUSY.format(label=busy.label))
+        return busy.label if busy is not None else None
+
+    def _refuse_if_busy(self) -> None:
+        label = self.busy_with()
+        if label is None and self.run.settings is not None:
+            setting = self.run.settings.current()
+            label = setting.label if setting is not None else None
+        if label is not None:
+            raise AuditError(BUSY.format(label=label))
 
     # -- sending ----------------------------------------------------------------
 
@@ -422,11 +439,9 @@ class CommandPass:
             if on_finished is not None:
                 on_finished()
             raise
-        entry = next((c for c in self.catalog() if c["name"] == name), None)
-        if entry is None:
-            # Still sent: the manager's own refusal is part of what the
-            # audit records about how the driver treats an unknown name.
-            entry = {"name": name, "label": name}
+        # A name the driver does not declare is still sent: the manager's own
+        # refusal is part of what the audit records about the driver.
+        entry = self.catalog_entry(name) or {"name": name, "label": name}
         listen.end_window_now("A command was sent")
         self.session.enter_step("commands")
         values = dict(params or {})
@@ -881,8 +896,7 @@ class CommandPass:
         }
 
     def _params_of(self, command: str) -> dict[str, Any]:
-        entry = next((c for c in self.catalog() if c["name"] == command), None)
-        return dict((entry or {}).get("params") or {})
+        return dict((self.catalog_entry(command) or {}).get("params") or {})
 
     async def stop(self) -> None:
         """End what is being sent or watched; keep every record."""
