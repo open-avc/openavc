@@ -21,9 +21,10 @@ The rules worth knowing before changing anything here:
 
 ``ArpHarvest`` is a mixin that ``DiscoveryEngine`` inherits, so every name
 stays on the engine. From its host it needs ``results``, ``scan_status``,
-``signal_index``, ``oui_db``, ``_ping_method``, ``_scan_source_ip``,
-``_arp_provisional``, ``_get_or_create()``, ``_refresh_device_count()`` and
-``_emit_device_update()``.
+``signal_index``, ``oui_db``, ``_budget``, ``_ping_method`` (the sweep sets
+it), ``_scan_source_ip``, ``_arp_provisional``, ``_set_phase()``,
+``_apply_plan()``, ``_run_budgeted()``, ``_get_or_create()``,
+``_refresh_device_count()`` and ``_emit_device_update()``.
 """
 
 from __future__ import annotations
@@ -35,7 +36,8 @@ import socket as _socket
 from openavc.discovery import icmp
 from openavc.discovery.network_scanner import harvest_arp_table, netbios_sweep
 from openavc.discovery.result import merge_device_info
-from openavc.discovery.scan_budget import ArpPlan
+from openavc.discovery import scan_budget as budgeting
+from openavc.discovery.scan_budget import ArpPlan, DepthPolicy
 from openavc.discovery.scan_evidence import mac_info_and_evidence, names_and_mac
 from openavc.discovery.scan_scope import ip_in_subnets, network_edges_for
 
@@ -92,6 +94,26 @@ async def _resolve_hostnames(
 
 class ArpHarvest:
     """Phase 4 and the late ARP read, for ``DiscoveryEngine``."""
+
+    async def _arp_harvest_phase(self, alive_ips: list[str], policy: DepthPolicy) -> None:
+        """Phase 4, budgeted from the alive count: the first number the scan
+        knows that predicts what everything downstream costs.
+
+        Runs even when the sweep heard nobody: the ARP table can still name
+        hosts that drop ping, and the second look in _arp_phase is how they
+        reach the port scan. A single-device scan of a device that ignores
+        ping is exactly that case.
+        """
+        await self._set_phase(4, "arp_harvest", "Reading MAC addresses and hostnames...")
+        arp_plan = budgeting.plan_arp_phase(self._budget, len(alive_ips), policy.netbios)
+        self._apply_plan(budgeting.PHASE_ARP, arp_plan.warnings)
+        await self._run_budgeted(
+            budgeting.PHASE_ARP, arp_plan.budget,
+            self._arp_phase(alive_ips, arp_plan),
+            "Reading MAC addresses and hostnames ran out of its share "
+            "of the scan time. Some devices are missing their vendor "
+            "or hostname.",
+        )
 
     async def _arp_phase(self, alive_ips: list[str], plan: ArpPlan) -> None:
         """Phase 4 body: the ARP table, the second look, the names, and what

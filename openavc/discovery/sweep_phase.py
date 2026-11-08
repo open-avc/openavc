@@ -14,8 +14,9 @@ The rules worth knowing before changing anything here:
   (``network_scanner.sweep_size``), or the budget's cap.
 
 ``HostSweep`` is a mixin that ``DiscoveryEngine`` inherits, so every name
-stays on the engine. From its host it needs ``config``, ``scan_status``,
-``_budget``, ``_ping_method``, ``_scan_source_ip``, ``_set_phase()``, ``_apply_plan()``,
+stays on the engine. It sets ``_ping_method`` for the ARP phase. From its host
+it needs ``config``, ``scan_status``, ``_budget``, ``_scan_source_ip``,
+``_set_phase()``, ``_apply_plan()``,
 ``_run_budgeted()``, ``_alive_ips()``, ``_get_or_create()``,
 ``_emit_device_update()`` and ``_update_intra_progress()``.
 """

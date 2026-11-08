@@ -148,7 +148,7 @@ _INTRA_EMIT_INTERVAL: float = 1.0
 @dataclass(frozen=True)
 class _SnmpLaunch:
     """What phase 6 asks SNMP with: read from the discovery settings as the
-    scan starts, like the rest of the scan's settings."""
+    scan starts."""
 
     enabled: bool
     community: str
@@ -939,12 +939,9 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
             self._start_listeners(listeners, background)
             alive_ips = await self._sweep_phase(subnets, gentle)
             await self._arp_harvest_phase(alive_ips, policy)
-            port_list = await self._port_phase(alive_ips, policy, gentle)
+            followup = await self._port_phase(alive_ips, policy, gentle)
             await self._launch_snmp(background, alive_ips, snmp)
-            await self._passive_collect_phase(
-                background, alive_ips,
-                PortScanSettings(port_list, policy.port_host_concurrency, gentle),
-            )
+            await self._passive_collect_phase(background, alive_ips, followup)
             self._report_listener_failures(listeners)
             await self._driver_probe_phase(subnets, control_ip)
             # Phase 8 (the matcher) deliberately does NOT run here — it runs
@@ -1000,26 +997,6 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
             timeout=600.0, fetch_descriptions=True,
         ))
         background.amx_ddp = asyncio.create_task(amx_ddp_scanner.start(duration=600.0))
-
-    async def _arp_harvest_phase(self, alive_ips: list[str], policy: DepthPolicy) -> None:
-        """Phase 4, budgeted from the alive count: the first number the scan
-        knows that predicts what everything downstream costs.
-
-        Runs even when the sweep heard nobody: the ARP table can still name
-        hosts that drop ping, and the second look in _arp_phase is how they
-        reach the port scan. A single-device scan of a device that ignores
-        ping is exactly that case.
-        """
-        await self._set_phase(4, "arp_harvest", "Reading MAC addresses and hostnames...")
-        arp_plan = budgeting.plan_arp_phase(self._budget, len(alive_ips), policy.netbios)
-        self._apply_plan(budgeting.PHASE_ARP, arp_plan.warnings)
-        await self._run_budgeted(
-            budgeting.PHASE_ARP, arp_plan.budget,
-            self._arp_phase(alive_ips, arp_plan),
-            "Reading MAC addresses and hostnames ran out of its share "
-            "of the scan time. Some devices are missing their vendor "
-            "or hostname.",
-        )
 
     def _snmp_launch_settings(self, control_ip: str, gentle: bool) -> _SnmpLaunch:
         """What phase 6 asks SNMP with, read from the settings as the scan starts."""
@@ -1083,42 +1060,6 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         for listener in listeners:
             if listener.env_error:
                 self.scan_status.warnings.append(listener.env_error)
-
-    async def _driver_probe_phase(self, subnets: list[str], control_ip: str) -> None:
-        """The driver-declared probes, once the full host inventory is known.
-
-        UDP broadcasts, TCP probes against every host whose port scan found
-        the probe's port, and Python companions; their evidence lands in each
-        device's evidence_log before the matcher runs in phase 8. Its cost is
-        the least predictable of any phase and it runs last, so its budget is
-        reserved up front: the point of budgeting by share rather than in
-        pipeline order.
-        """
-        (
-            tcp_jobs, udp_sends, companions, udp_listen, tcp_wait,
-        ) = self._count_probe_jobs(subnets)
-        probe_plan = budgeting.plan_probes(
-            self._budget, tcp_jobs, udp_sends, companions,
-            udp_listen=udp_listen, tcp_wait=tcp_wait,
-        )
-        self._apply_plan(budgeting.PHASE_PROBE, probe_plan.warnings)
-        log.info(
-            "Driver probes: %d TCP, %d UDP send(s), %d companion(s); %.1fs allowed",
-            tcp_jobs, udp_sends, companions, probe_plan.budget,
-        )
-        probes_began = time.monotonic()
-        await self._run_budgeted(
-            budgeting.PHASE_PROBE, probe_plan.budget,
-            self._run_custom_probes(
-                subnets, control_ip, max_tcp_jobs=probe_plan.max_tcp_jobs,
-            ),
-            "Driver probes ran out of their share of the scan time. Some "
-            "devices may show as possible rather than identified.",
-        )
-        log.info(
-            "Driver probes: %d matched, %.1fs taken",
-            len(self._probe_finished), time.monotonic() - probes_began,
-        )
 
     def _alive_ips(self) -> list[str]:
         """Hosts marked alive so far this scan, in address order.

@@ -35,18 +35,20 @@ The rules worth knowing before changing anything here:
 
 ``DriverProbes`` is a mixin that ``DiscoveryEngine`` inherits, so every name
 stays on the engine. From its host it needs ``discovery_hints``, ``results``,
-``scan_status``, ``_discovery_companions``, ``_probe_finished``,
-``_probe_merged``, ``_guard``, ``_get_or_create()`` and
-``_emit_device_update()``.
+``scan_status``, ``_budget``, ``_discovery_companions``, ``_probe_finished``,
+``_probe_merged``, ``_guard``, ``_apply_plan()``, ``_run_budgeted()``,
+``_get_or_create()`` and ``_emit_device_update()``.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any
 
+from openavc.discovery import scan_budget as budgeting
 from openavc.discovery.companion import (
     DEFAULT_PROBE_TIMEOUT_SECONDS,
     ProbeContext,
@@ -89,6 +91,42 @@ def _runner_failed(outcome: object) -> bool:
 
 class DriverProbes:
     """The driver probe phase (see the module docstring)."""
+
+    async def _driver_probe_phase(self, subnets: list[str], control_ip: str) -> None:
+        """The driver-declared probes, once the full host inventory is known.
+
+        UDP broadcasts, TCP probes against every host whose port scan found
+        the probe's port, and Python companions; their evidence lands in each
+        device's evidence_log before the matcher runs in phase 8. Its cost is
+        the least predictable of any phase and it runs last, so its budget is
+        reserved up front: the point of budgeting by share rather than in
+        pipeline order.
+        """
+        (
+            tcp_jobs, udp_sends, companions, udp_listen, tcp_wait,
+        ) = self._count_probe_jobs(subnets)
+        probe_plan = budgeting.plan_probes(
+            self._budget, tcp_jobs, udp_sends, companions,
+            udp_listen=udp_listen, tcp_wait=tcp_wait,
+        )
+        self._apply_plan(budgeting.PHASE_PROBE, probe_plan.warnings)
+        log.info(
+            "Driver probes: %d TCP, %d UDP send(s), %d companion(s); %.1fs allowed",
+            tcp_jobs, udp_sends, companions, probe_plan.budget,
+        )
+        probes_began = time.monotonic()
+        await self._run_budgeted(
+            budgeting.PHASE_PROBE, probe_plan.budget,
+            self._run_custom_probes(
+                subnets, control_ip, max_tcp_jobs=probe_plan.max_tcp_jobs,
+            ),
+            "Driver probes ran out of their share of the scan time. Some "
+            "devices may show as possible rather than identified.",
+        )
+        log.info(
+            "Driver probes: %d matched, %.1fs taken",
+            len(self._probe_finished), time.monotonic() - probes_began,
+        )
 
     def _udp_probe_specs(self) -> list[Any]:
         return [h.udp_probe for h in self.discovery_hints if h.udp_probe is not None]

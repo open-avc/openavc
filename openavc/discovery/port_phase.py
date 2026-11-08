@@ -110,9 +110,10 @@ class PortScan:
 
     async def _port_phase(
         self, alive_ips: list[str], policy: DepthPolicy, gentle: bool,
-    ) -> list[int]:
-        """Port-scan the live hosts; the port list phase 7's follow-up scans
-        with (the budget's narrowed one, when there were hosts to plan for)."""
+    ) -> PortScanSettings:
+        """Port-scan the live hosts; what phase 7's follow-up scans with: the
+        port list (the budget's narrowed one, when there were hosts to plan
+        for) at the policy's width."""
         await self._set_phase(5, "port_scan", "Probing device ports...")
         community_drivers = await self.community_index.get_drivers()
         core_port_list, port_list = self.port_scan_lists(
@@ -123,7 +124,7 @@ class PortScan:
             len(port_list), len(BASELINE_PORTS),
         )
         if not alive_ips:
-            return port_list
+            return PortScanSettings(port_list, policy.port_host_concurrency, gentle)
 
         plan = budgeting.plan_port_scan(
             self._budget, len(alive_ips), port_list, core_port_list,
@@ -138,7 +139,7 @@ class PortScan:
             ),
             _OVERRUN,
         )
-        return plan.ports
+        return PortScanSettings(plan.ports, policy.port_host_concurrency, gentle)
 
     async def _port_scan_hosts(
         self,
