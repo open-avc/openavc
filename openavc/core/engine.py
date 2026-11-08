@@ -8,8 +8,10 @@ start, stop, and hot-reload.
 Runtimes it owns but does not implement, each in its own module:
 ``ws_hub`` (client fan-out + batched state push), ``ui_events`` (what a
 panel interaction does), and ``device_config`` (what a device dials). Parts
-of Engine itself live in mixins it inherits: ``project_variables`` (the
-``var.*`` runtime).
+of Engine itself live in mixins it inherits: ``engine_lifecycle`` (start and
+stop, one method per stage) and ``project_variables`` (the ``var.*``
+runtime). How the project's devices reach the device manager is
+``device_sync``.
 """
 
 from __future__ import annotations
@@ -28,7 +30,13 @@ from typing import Any
 
 from openavc import config, runtime_flags
 from openavc.core.client_origin import reload_origin
-from openavc.core.device_config import bridge_first, resolve_device_config
+from openavc.core.device_config import resolve_device_config
+from openavc.core.device_sync import (
+    add_devices,
+    delete_device_keys,
+    log_failed_sync_add,
+    update_changed_devices,
+)
 from openavc.core.device_logins import (
     DEVICE,
     SAVED_LOGIN,
@@ -57,6 +65,7 @@ from openavc.core.panel_devices import (
 )
 from openavc.core.plugin_loader import PluginLoader
 from openavc.core.project_diff import ProjectDiff, ProjectOrigin
+from openavc.core.engine_lifecycle import EngineLifecycleMixin
 from openavc.core.project_variables import ProjectVariablesMixin
 from openavc.core.project_loader import (
     ProjectConfig,
@@ -88,93 +97,7 @@ class ProjectRevisionConflictError(Exception):
     """A revision-checked save found a newer project revision on the server."""
 
 
-def _log_task_exception(task: asyncio.Task) -> None:
-    """Done-callback to log unhandled exceptions from fire-and-forget tasks."""
-    if task.cancelled():
-        return
-    exc = task.exception()
-    if exc:
-        log.error(f"Background task {task.get_name()!r} failed: {exc}", exc_info=exc)
-
-
-# The resolved-config fields add_device acts on, each with what a missing one
-# reads as. A change to any of them re-adds the device, not just a name, driver
-# or connection change: enabled gates connect/poll, child_entities seeds child
-# labels, and pending_settings is applied on (re)connect, so leaving one out
-# left that edit inert on the hot-reload path until a restart.
-_READD_FIELDS = {"name": None, "driver": None, "enabled": True, "config": {}}
-# The same, for the two where no map and an empty map mean the same thing.
-_READD_MAPS = ("child_entities", "pending_settings")
-
-
-def _needs_readd(old: dict, new: dict) -> bool:
-    """Whether a device running with ``old`` must be re-added to run ``new``."""
-    if any(old.get(field, missing) != new.get(field, missing)
-           for field, missing in _READD_FIELDS.items()):
-        return True
-    return any((old.get(field) or {}) != (new.get(field) or {}) for field in _READD_MAPS)
-
-
-def _log_failed_sync_add(device_id: str, error: Exception) -> None:
-    log.error(f"Failed to add device '{device_id}' during sync: {error}")
-
-
-async def add_devices(devices, device_ids, resolved, *, defer_connect, on_failure) -> None:
-    """Add ``device_ids`` to the device manager from their resolved configs:
-    bridges first, then the devices that route through them
-    (``bridge_first``), so a bridge-bound device finds its live bridge to prep
-    the port.
-
-    Each batch is added in parallel. One at a time would serialize connect
-    timeouts (5 s each), so N offline devices would hold a start for N x 5 s;
-    each add writes only its own device's keys, so gathering them is safe. A
-    device that fails goes to ``on_failure(device_id, error)`` as its batch
-    finishes, and the rest are still added.
-    """
-    for batch in bridge_first(device_ids, resolved):
-        results = await asyncio.gather(
-            *(devices.add_device(
-                resolved[did], defer_connect=defer_connect,
-            ) for did in batch),
-            return_exceptions=True,
-        )
-        for did, result in zip(batch, results):
-            if isinstance(result, Exception):
-                on_failure(did, result)
-
-
-def _delete_device_keys(state, device_id: str) -> None:
-    """Clean up a removed device's orphaned device.{id}.* state keys (14.6)."""
-    prefix = f"device.{device_id}."
-    orphaned = state.get_namespace(prefix)
-    for suffix in orphaned:
-        state.delete(f"{prefix}{suffix}")
-    if orphaned:
-        log.info(f"Cleaned up {len(orphaned)} orphaned state key(s) for removed device '{device_id}'")
-
-
-async def _update_changed_devices(devices, device_ids, project_devices, *, defer_connect) -> None:
-    """Re-add, in parallel, each of ``device_ids`` whose running config
-    differs from its project one in a field add_device acts on
-    (``_needs_readd``); ``update_device`` is remove + add."""
-    changed_ids = [
-        did for did in device_ids
-        if _needs_readd(devices.get_device_config(did) or {}, project_devices[did])
-    ]
-    if not changed_ids:
-        return
-    update_results = await asyncio.gather(
-        *(devices.update_device(
-            did, project_devices[did], defer_connect=defer_connect
-        ) for did in changed_ids),
-        return_exceptions=True,
-    )
-    for did, result in zip(changed_ids, update_results):
-        if isinstance(result, Exception):
-            log.error(f"Failed to update device '{did}' during sync: {result}")
-
-
-class Engine(ProjectVariablesMixin):
+class Engine(EngineLifecycleMixin, ProjectVariablesMixin):
     """
     Main runtime engine. Singleton per OpenAVC instance.
     Coordinates all subsystems and manages the lifecycle.
@@ -327,521 +250,6 @@ class Engine(ProjectVariablesMixin):
         # change, so compute once. Stays None until a detection finds an
         # address -- see _detect_network_info.
         self._network_info: tuple[str, str, list[str]] | None = None
-
-    async def start(self) -> None:
-        """
-        Start the engine:
-        1. Start state batch push (first: clients can already be connected)
-        2. Load project.avc
-        3. Initialize user variables
-        4. Connect all devices
-        5. Load macros
-        6. Register UI bindings
-        7. Emit system.started
-
-        This is a deliberately separate inline sequence from
-        :meth:`_reconcile` — it also builds one-time infrastructure (state
-        persister, script engine install, plugin scan, permanent
-        subscriptions, ISC/cloud/mDNS startup) that a reconcile never
-        touches. The subsystem ORDERING constraints are shared, though:
-        macros load before triggers, scripts load after variables and
-        devices. A change to the reconcile ordering must be checked against
-        this sequence too, and vice versa.
-        """
-        log.info("Engine starting...")
-        self._start_time = time.time()
-
-        # The WebSocket hub listens to the state store and pushes from here
-        # on, before the first state write. /ws admits a client as soon as the
-        # engine exists, not when start() returns: a Programmer tab or a panel
-        # reconnecting into a restart is registered and snapshotted while the
-        # project loads and devices come up, and is owed every change after
-        # its snapshot (ws_hub.add_client). A write made before the hub
-        # listens (the simulation resuming, a device's first connect) never
-        # reaches a client that was already connected.
-        self._state_sub_ids.append(
-            self.state.subscribe("*", self.ws.on_state_change)
-        )
-        self.ws.start_state_flush()
-
-        # Ensure system.json exists in data directory
-        from openavc.system_config import (
-            get_system_config,
-            migrate_legacy_project_dir,
-            migrate_legacy_repos,
-        )
-        sys_config = get_system_config()
-
-        # Decide Panel access for a system that has never had it written
-        # down, BEFORE anything can save system.json on this release: a save
-        # writes the shipped default into the file, and the question (was this
-        # system running before approval existed?) can no longer be asked.
-        # core/panel_devices.settle_access_default has the rule.
-        try:
-            from openavc.core.panel_devices import settle_access_default
-
-            settle_access_default(sys_config, self.project_path.parent / ".instance_id")
-        except Exception:  # never block startup on the decision
-            log.exception("Could not settle the Panel access default")
-
-        # Same for who can connect: the install type's default is written
-        # before the first save can write an empty choice. main() has normally
-        # settled it already, before binding; this covers a server started
-        # some other way. The rule is openavc/listen.py.
-        try:
-            from openavc import listen
-
-            listen.current()
-        except Exception:  # never block startup on the decision
-            log.exception("Could not settle who can connect")
-
-        # And write it down, so an earlier release rolled back onto this data
-        # reads the current mirror (openavc/listen.py, "Rollback"). After the
-        # Panel access decision above, which a save would otherwise pre-empt.
-        try:
-            from openavc import listen
-
-            listen.save_settled(sys_config)
-        except Exception:  # never block startup on the write
-            log.exception("Could not save who can connect")
-
-        sys_config.ensure_file()
-
-        # A forgotten Programmer password: a reset file in the data folder
-        # clears the login, so this start comes up on the setup screen.
-        # openavc/api/auth.py apply_reset_request.
-        try:
-            from openavc.api.auth import apply_reset_request
-            apply_reset_request()
-        except Exception:  # never block startup on the reset
-            log.exception("Could not apply the Programmer login reset")
-
-        # Convert an admin password or API key stored as typed (an install
-        # predating the hashing, or a hand-provisioned system.json) into a
-        # digest. Before the plugin and script engines below on purpose: those
-        # run in-process as the service user, so until this has happened,
-        # installing a community plugin means handing it the admin password —
-        # and on an appliance that is the OS login too — or the API key, which
-        # is admin access on its own. No-op once converted, and neither
-        # credential changes: the same password and the same key still
-        # authenticate afterwards. Separately, so a failure to convert one
-        # cannot leave the other as typed.
-        try:
-            sys_config.migrate_admin_password()
-        except Exception:  # never block startup on the conversion
-            log.exception("Could not convert the stored admin password to a hash")
-        try:
-            sys_config.migrate_api_key()
-        except Exception:  # never block startup on the conversion
-            log.exception("Could not convert the stored API key to a hash")
-
-        # An API key with no password beside it leaves this box unopenable in
-        # any browser. PATCH /api/system/config refuses to create that state,
-        # but OPENAVC_API_KEY and a hand-provisioned system.json both reach it
-        # without a save, so those get a line in the log instead.
-        try:
-            from openavc.api.auth import warn_if_api_key_is_sole_credential
-            warn_if_api_key_is_sole_credential()
-        except Exception:  # never block startup on a warning
-            log.exception("Could not check the admin credential posture")
-
-        # One-shot migration of plugin_repo/driver_repo from the pre-data_dir
-        # layout (APP_DIR/{plugin,driver}_repo). Runs before driver and plugin
-        # loading so the moved content is picked up on the same startup. No-op
-        # when the new locations already have content.
-        try:
-            migrate_legacy_repos()
-        except Exception:  # never block startup on the migration
-            log.exception("migrate_legacy_repos failed")
-
-        # Same one-shot treatment for the legacy default project location
-        # (APP_DIR/projects). Must run before the project load, cloud config
-        # read, and ISC instance-id read below so they all see the moved
-        # directory. No-op when OPENAVC_PROJECT or OPENAVC_DATA_DIR is set.
-        try:
-            migrate_legacy_project_dir()
-        except Exception:  # never block startup on the migration
-            log.exception("migrate_legacy_project_dir failed")
-
-        # Register every driver on disk — built-in definitions and anything
-        # installed into driver_repo/. Has to happen here: after the repo
-        # migration above (so drivers left in the old layout are seen on this
-        # same startup) and before the project loads, since resolving a
-        # device's config and reporting its driver dependencies both ask the
-        # registry what exists.
-        from openavc.drivers.driver_loader import load_builtin_drivers
-        load_builtin_drivers()
-
-        # Set system state keys
-        from openavc.updater.platform import detect_deployment_type
-        self.state.set("system.version", __version__, source="system")
-        self.state.set("system.update_available", "", source="system")
-        self.state.set("system.update_channel", sys_config.get("updates", "channel", "stable"), source="system")
-        self.state.set("system.update_status", "idle", source="system")
-        self.state.set("system.update_progress", 0, source="system")
-        self.state.set("system.update_error", "", source="system")
-        self.state.set("system.deployment_type", detect_deployment_type().value, source="system")
-        # A zone the panel on this computer's screen reported before, applied
-        # before the first schedule is read.
-        from openavc.core import time_zone
-        time_zone.restore()
-        self.state.set("system.time_zone", time_zone.current_name(), source="system")
-        # Publish the idle help state so a panel bound to it draws something on
-        # a quiet day rather than a blank that reads as a broken binding.
-        self.help.declare_keys()
-
-        # Load project — with corruption recovery
-        loaded_project = self._load_project_safe()
-        self.project = self.installed_equipment.compose(loaded_project, for_load=True)
-        # A login the project still holds in the clear (every login, on the
-        # first start of a version that keeps them in this system's login
-        # file) moves into that file before anything dials, and the project
-        # keeps the marker. This file may exist nowhere else (an update that
-        # took no backup of its own, an installer run by hand), so it is
-        # backed up first; a move that cannot finish changes nothing. A
-        # plugin's logins move later in this start, once the plugins are
-        # loaded and can say which settings hold one (_move_logins_at_start).
-        self._logins_backed_up_at_start = False
-        moved = self._move_logins(self.project, typed=False)
-        logins_moved = moved is not self.project and await self._back_up_before_moving_logins()
-        if logins_moved:
-            self._logins_backed_up_at_start = True
-            self.project = moved
-        # Exports and backups read the saved project. Materialize a newly
-        # inserted host reference before any hardware or programming starts.
-        if self.project != loaded_project:
-            await save_project_async(self.project_path, self.project)
-            if logins_moved:
-                await asyncio.to_thread(refresh_crash_copy, self.project_path)
-        # Whatever that had to do to get a project, say so. Published from the
-        # record on disk rather than from this boot, so a notice nobody has
-        # dismissed survives the restart that would otherwise bury it.
-        from openavc.core import project_recovery
-        project_recovery.publish(self.state, self.project_path.parent)
-        self._apply_project_settings()
-        self.state.set("system.project_name", self.project.project.name, source="system")
-
-        # Publish project asset catalog so plugins (e.g. audio_player) can
-        # subscribe to project.assets and pick up uploaded files.
-        from openavc.api.assets import publish_assets_state
-        publish_assets_state(self)
-
-        # The persister reads state.json, every variable is seeded, the
-        # bindings follow their sources and the rules are watched.
-        self._start_variables()
-
-        # Load macros and device groups
-        self._load_macro_definitions(macros=True, groups=True)
-
-        # Add and connect devices in parallel (add_devices), with the
-        # connection table merged into each device's config.
-        startup_errors: list[str] = []
-        self._sweep_device_logins()
-        resolved = {
-            d.id: self.resolved_device_config(d) for d in self.project.devices
-        }
-        # A simulation that was on when the server stopped comes back
-        # (core/simulation.py). Its devices register undialed, and the
-        # bring-up round below starts the simulator and redirects them before
-        # the first connect, so none of them reaches the real equipment.
-        resume_simulation = self.simulation.load_resume()
-
-        def failed(device_id: str, error: Exception) -> None:
-            startup_errors.append(f"Device '{device_id}': {error}")
-            log.error(f"Failed to add device '{device_id}': {error}")
-
-        await add_devices(
-            self.devices, list(resolved), resolved,
-            defer_connect=resume_simulation, on_failure=failed,
-        )
-        if resume_simulation:
-            self._schedule_device_bringup()
-            await self.wait_for_device_bringup()
-        self._record_push_ports()
-
-        # Plugin System — scan and start plugins
-        try:
-            self.plugin_loader.set_save_config_fn(self._save_plugin_config)
-            self.plugin_loader.scan_plugins()
-            # The plugins now say which of their settings are logins: those
-            # move before any plugin starts, and the Project Library's copies
-            # with every login they still hold.
-            await self._move_logins_at_start()
-            if self.project.plugins:
-                plugins_dict = {
-                    pid: pc.model_dump() if hasattr(pc, "model_dump") else pc
-                    for pid, pc in self.project.plugins.items()
-                }
-                await self.plugin_loader.start_plugins(plugins_dict)
-        except Exception as e:  # Catch-all: isolates plugin system errors from core startup
-            startup_errors.append(f"Plugins: {e}")
-            log.exception("Plugin system failed to start")
-
-        # Script Engine
-        project_dir = self.project_path.parent
-        self.scripts = ScriptEngine(self.state, self.events, self.devices, project_dir, self.macros)
-        self.scripts.install()
-        try:
-            scripts_data = [s.model_dump() for s in self.project.scripts]
-            self.scripts.load_scripts(scripts_data)
-        except Exception as e:  # Catch-all: isolates script loading errors from core startup
-            startup_errors.append(f"Scripts: {e}")
-            log.exception("Script engine failed to load scripts")
-
-        # Trigger engine (automatic macro triggers)
-        self._load_triggers()
-
-        # Bridge macro events to WebSocket for live progress tracking
-        self._event_sub_ids.append(self.events.on("macro.started.*", self._on_macro_event))
-        self._event_sub_ids.append(self.events.on("macro.progress.*", self._on_macro_event))
-        self._event_sub_ids.append(self.events.on("macro.completed.*", self._on_macro_event))
-        self._event_sub_ids.append(self.events.on("macro.cancelled.*", self._on_macro_event))
-        self._event_sub_ids.append(self.events.on("macro.error.*", self._on_macro_event))
-        self._event_sub_ids.append(self.events.on("macro.step_error.*", self._on_macro_event))
-        self._event_sub_ids.append(self.events.on("macro.skipped.*", self._on_macro_event))
-
-        # Bridge trigger events to WebSocket
-        self._event_sub_ids.append(self.events.on("trigger.fired", self._on_trigger_event))
-        self._event_sub_ids.append(self.events.on("trigger.skipped", self._on_trigger_event))
-        self._event_sub_ids.append(self.events.on("trigger.pending", self._on_trigger_event))
-        self._event_sub_ids.append(self.events.on("trigger.queued", self._on_trigger_event))
-        self._event_sub_ids.append(self.events.on("trigger.completed", self._on_trigger_event))
-
-        # Bridge script error events to WebSocket
-        self._event_sub_ids.append(self.events.on("script.error", self._on_script_error))
-
-        # Bridge plugin lifecycle events to WebSocket
-        self._event_sub_ids.append(self.events.on("plugin.started", self._on_plugin_event))
-        self._event_sub_ids.append(self.events.on("plugin.stopped", self._on_plugin_event))
-        self._event_sub_ids.append(self.events.on("plugin.error", self._on_plugin_event))
-        self._event_sub_ids.append(self.events.on("plugin.missing", self._on_plugin_event))
-
-        # Persist project file when pending device settings are applied
-        self._event_sub_ids.append(self.events.on(
-            "device.pending_settings_applied",
-            self._on_pending_settings_applied,
-        ))
-
-        # Save a value a device reports into a config field that asks for it
-        self.learned_config.start()
-
-        # Inter-System Communication
-        await self._start_isc()
-
-        # mDNS Service Advertisement
-        await self._start_mdns_advertiser()
-
-        # Cloud Agent (apply saved pairing config before starting)
-        from openavc.cloud.config import apply_saved_cloud_config
-        apply_saved_cloud_config()
-        await self._start_cloud_agent()
-
-        # Start periodic backup timer (every 30 min if project has changed)
-        self._periodic_backup_task = asyncio.create_task(self._periodic_backup_loop())
-        self._periodic_backup_task.add_done_callback(_log_task_exception)
-
-        # Forget panel requests nobody answered (every minute), so a tablet
-        # that walked away leaves the Programmer's list on its own.
-        self._panel_sweep_task = asyncio.create_task(self._panel_devices_sweep_loop())
-        self._panel_sweep_task.add_done_callback(_log_task_exception)
-
-        # Appliance hardware installs the programs a transport runs (the SSH
-        # client) when its system lacks them, then retries the devices that
-        # were waiting. Returns at once on every other install type.
-        from openavc.system.os_programs import ensure_programs_loop
-        self._os_programs_task = asyncio.create_task(
-            ensure_programs_loop(self._retry_client_missing_devices)
-        )
-        self._os_programs_task.add_done_callback(_log_task_exception)
-
-        # Files staged for a command by an earlier run are gone with it.
-        self.file_staging.start()
-
-        self._running = True
-
-        # Pre-warm the network-info cache off the event loop so the first
-        # status/health poll never blocks on socket / gethostname syscalls.
-        prime_task = asyncio.create_task(asyncio.to_thread(self._detect_network_info))
-        prime_task.add_done_callback(_log_task_exception)
-
-        # Record startup error count for UI visibility. Always set it (0 when
-        # clean) so a previous run's count can't linger in the store / cloud
-        # relay after the project is fixed and reloaded.
-        self.state.set("system.startup_errors", len(startup_errors), source="system")
-        if startup_errors:
-            log.warning(f"Engine started with {len(startup_errors)} error(s): {'; '.join(startup_errors)}")
-
-        # System state
-        self.state.set("system.started", True, source="system")
-        await self.events.emit("system.started")
-
-        # Start trigger engine after system.started (so startup triggers work)
-        await self.triggers.start()
-
-        # Update Manager — check for updates and schedule auto-check
-        try:
-            from openavc.updater.manager import UpdateManager
-            self.update_manager = UpdateManager(state_store=self.state)
-            await self.update_manager.start_auto_check()
-            # Wire into cloud command handler for cloud-triggered updates
-            handler = getattr(self.cloud_agent, "_command_handler", None)
-            if handler:
-                handler._update_manager = self.update_manager
-        except Exception:
-            log.exception("Update manager failed to start — continuing without updates")
-            self.update_manager = None
-
-        # Panel software updates on appliance hardware, through the update manager
-        await self._start_panel_software()
-
-        log.info(
-            f'Engine started — project "{self.project.project.name}" '
-            f"({len(self.project.devices)} devices, "
-            f"{len(self.project.macros)} macros)"
-        )
-
-    async def stop(self) -> None:
-        """Stop the engine gracefully."""
-        log.info("Engine stopping...")
-        self._running = False
-        # Stop bringing devices up. Nothing is lost: a device that never got
-        # dialed is registered and offline, which is what shutdown makes of
-        # every device anyway, and _stop_inner disconnects the rest.
-        self._bringup_requested = False
-        bringup = self._bringup_task
-        if bringup is not None:
-            bringup.cancel()
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await bringup
-            # A task cancelled before it ever ran never reaches its own
-            # cleanup, so clear the slot here rather than relying on it.
-            self._bringup_task = None
-        # Drain any queued bookkeeping persist before teardown so a
-        # just-applied pending-settings clear or plugin-config save isn't
-        # lost when the loop closes.
-        task = self._bookkeeping_task
-        if task and not task.done():
-            try:
-                await asyncio.wait_for(task, timeout=5)
-            except Exception:
-                log.warning("Bookkeeping persist did not finish before shutdown")
-        # Serialize teardown against an in-flight reload_project (reachable
-        # from REST, the cloud command handler, and AI tools). Tearing
-        # subsystems down while a hot-reload runs interleaves trigger and
-        # subscription start/stop. Wait for any reload to finish first.
-        async with self._reload_lock:
-            await self._stop_inner()
-        # A bookkeeping write scheduled DURING teardown (e.g. a plugin
-        # on_stop calling save_config) spawned a flush task that queued
-        # behind the lock held above. Drain it now that the lock is free so
-        # the write persists before the process exits.
-        task = self._bookkeeping_task
-        if task and not task.done():
-            try:
-                await asyncio.wait_for(task, timeout=5)
-            except Exception:
-                log.warning("Bookkeeping persist did not finish after shutdown")
-
-    async def _stop_inner(self) -> None:
-        """Tear down all subsystems. Caller holds _reload_lock."""
-        # Stop update manager
-        if self.update_manager:
-            await self.update_manager.stop_auto_check()
-        await self._stop_panel_software()
-
-        self.learned_config.stop()
-
-        # Unsubscribe all event/state handlers to prevent leaks on reload
-        for sub_id in self._state_sub_ids:
-            self.state.unsubscribe(sub_id)
-        self._state_sub_ids.clear()
-        for sub_id in self._event_sub_ids:
-            self.events.off(sub_id)
-        self._event_sub_ids.clear()
-
-        # Flush and stop state persister
-        if self.persister:
-            self.persister.stop()
-
-        await self.events.emit("system.stopping")
-
-        # Stop trigger engine
-        await self.triggers.stop()
-
-        # Stop Cloud Agent
-        if self.cloud_agent:
-            await self.cloud_agent.stop()
-            self.cloud_agent = None
-
-        # Stop mDNS advertiser
-        if self.mdns_advertiser:
-            await self.mdns_advertiser.stop()
-            self.mdns_advertiser = None
-
-        # Stop ISC
-        if self.isc:
-            await self.isc.stop()
-            self.isc = None
-
-        # Unload scripts
-        if self.scripts:
-            self.scripts.unload_all()
-
-        # Stop all plugins
-        await self.plugin_loader.stop_all()
-
-        # Stop batch task (its unwind flushes what is still batched)
-        await self.ws.stop_state_flush()
-
-        # Stop periodic backup task
-        if self._periodic_backup_task and not self._periodic_backup_task.done():
-            self._periodic_backup_task.cancel()
-            try:
-                await self._periodic_backup_task
-            except asyncio.CancelledError:
-                pass
-
-        if self._panel_sweep_task and not self._panel_sweep_task.done():
-            self._panel_sweep_task.cancel()
-            try:
-                await self._panel_sweep_task
-            except asyncio.CancelledError:
-                pass
-            self._panel_sweep_task = None
-
-        if self._os_programs_task and not self._os_programs_task.done():
-            self._os_programs_task.cancel()
-            try:
-                await self._os_programs_task
-            except asyncio.CancelledError:
-                pass
-        self._os_programs_task = None
-
-        # Cancel in-flight macros (with the engine's grace drain) before the
-        # devices they command are torn down — a macro racing disconnect_all
-        # would error its remaining steps into a half-stopped engine. Late on
-        # purpose: every subsystem that can fire a macro (triggers, scripts,
-        # plugins) is already stopped, so nothing restarts one after this.
-        await self.macros.cancel_all()
-
-        # Stop file commands still running, then delete every staged file.
-        await self.command_runs.stop()
-        await self.file_staging.stop()
-
-        # Disconnect all devices
-        await self.devices.disconnect_all()
-
-        # Then end the simulator, without handing the devices back to the real
-        # equipment and without forgetting that simulation is on: it comes
-        # back when the server starts again.
-        await self.simulation.shutdown()
-
-        # Drain any in-flight state.changed EventBus emissions so they aren't
-        # silently dropped mid-shutdown.
-        await self.state.flush_pending_events()
-
-        self.state.set("system.started", False, source="system")
-        log.info("Engine stopped")
 
     async def reload_project(self) -> None:
         """Hot-reload project.avc from disk (LOAD origin — full reconcile).
@@ -1466,6 +874,20 @@ class Engine(ProjectVariablesMixin):
             # nothing will ever look at again.
             self._bringup_task = None
 
+    async def _stop_bringup(self) -> None:
+        # Stop bringing devices up. Nothing is lost: a device that never got
+        # dialed is registered and offline, which is what shutdown makes of
+        # every device anyway, and _stop_inner disconnects the rest.
+        self._bringup_requested = False
+        bringup = self._bringup_task
+        if bringup is not None:
+            bringup.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await bringup
+            # A task cancelled before it ever ran never reaches its own
+            # cleanup, so clear the slot here rather than relying on it.
+            self._bringup_task = None
+
     async def wait_for_device_bringup(self) -> None:
         """Block until no bring-up round is pending or running.
 
@@ -1496,16 +918,16 @@ class Engine(ProjectVariablesMixin):
 
         for device_id in running_ids - project_ids:
             await self.devices.remove_device(device_id)
-            _delete_device_keys(self.state, device_id)
+            delete_device_keys(self.state, device_id)
 
         new_device_ids = list(project_ids - running_ids)
         if new_device_ids:
             await add_devices(
-                self.devices, new_device_ids, project_devices,
-                defer_connect=defer_connect, on_failure=_log_failed_sync_add,
+                self.devices, {did: project_devices[did] for did in new_device_ids},
+                defer_connect=defer_connect, on_failure=log_failed_sync_add,
             )
 
-        await _update_changed_devices(
+        await update_changed_devices(
             self.devices, running_ids & project_ids, project_devices, defer_connect=defer_connect,
         )
 
@@ -2008,6 +1430,41 @@ class Engine(ProjectVariablesMixin):
             raise
         except Exception:
             log.exception("Panel device sweep stopped")
+
+    def _bridge_events_to_ws(self) -> None:
+        """Subscribe the forwarders below to the engine events they carry to
+        the WebSocket clients, and the persist after pending settings apply.
+        Once, at a start, after everything that raises them exists."""
+        # Bridge macro events to WebSocket for live progress tracking
+        self._event_sub_ids.append(self.events.on("macro.started.*", self._on_macro_event))
+        self._event_sub_ids.append(self.events.on("macro.progress.*", self._on_macro_event))
+        self._event_sub_ids.append(self.events.on("macro.completed.*", self._on_macro_event))
+        self._event_sub_ids.append(self.events.on("macro.cancelled.*", self._on_macro_event))
+        self._event_sub_ids.append(self.events.on("macro.error.*", self._on_macro_event))
+        self._event_sub_ids.append(self.events.on("macro.step_error.*", self._on_macro_event))
+        self._event_sub_ids.append(self.events.on("macro.skipped.*", self._on_macro_event))
+
+        # Bridge trigger events to WebSocket
+        self._event_sub_ids.append(self.events.on("trigger.fired", self._on_trigger_event))
+        self._event_sub_ids.append(self.events.on("trigger.skipped", self._on_trigger_event))
+        self._event_sub_ids.append(self.events.on("trigger.pending", self._on_trigger_event))
+        self._event_sub_ids.append(self.events.on("trigger.queued", self._on_trigger_event))
+        self._event_sub_ids.append(self.events.on("trigger.completed", self._on_trigger_event))
+
+        # Bridge script error events to WebSocket
+        self._event_sub_ids.append(self.events.on("script.error", self._on_script_error))
+
+        # Bridge plugin lifecycle events to WebSocket
+        self._event_sub_ids.append(self.events.on("plugin.started", self._on_plugin_event))
+        self._event_sub_ids.append(self.events.on("plugin.stopped", self._on_plugin_event))
+        self._event_sub_ids.append(self.events.on("plugin.error", self._on_plugin_event))
+        self._event_sub_ids.append(self.events.on("plugin.missing", self._on_plugin_event))
+
+        # Persist project file when pending device settings are applied
+        self._event_sub_ids.append(self.events.on(
+            "device.pending_settings_applied",
+            self._on_pending_settings_applied,
+        ))
 
     async def _on_pending_settings_applied(
         self, event: str, payload: dict[str, Any]

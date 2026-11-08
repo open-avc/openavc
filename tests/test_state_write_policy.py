@@ -364,7 +364,8 @@ def test_the_platform_writes_its_own_keys_without_the_door():
     ``check_state_write`` first, this refusal would empty the platform's own
     status keys and the symptom would be a Programmer showing no version.
     """
-    for rel in (("core", "engine.py"), ("core", "help_requests.py"), ("updater", "manager.py")):
+    for rel in (("core", "engine.py"), ("core", "engine_lifecycle.py"),
+                ("core", "help_requests.py"), ("updater", "manager.py")):
         source = (_SERVER.joinpath(*rel)).read_text(encoding="utf-8")
         assert "check_state_write" not in source, rel
 

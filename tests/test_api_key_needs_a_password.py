@@ -342,7 +342,7 @@ class TestTheStartupWarning:
         call site — re-running `Engine.start` here would cost a server."""
         from pathlib import Path
 
-        source = (Path(_repo_root()) / "openavc/core/engine.py").read_text(
+        source = (Path(_repo_root()) / "openavc/core/engine_lifecycle.py").read_text(
             encoding="utf-8"
         )
         assert "warn_if_api_key_is_sole_credential()" in source

@@ -39,6 +39,12 @@ from openavc.updater.rollback import (
 
 MAIN_PY = Path(__file__).resolve().parent.parent / "openavc" / "main.py"
 ENGINE_PY = Path(__file__).resolve().parent.parent / "openavc" / "core" / "engine.py"
+# The engine's start and stop (Engine inherits them).
+ENGINE_LIFECYCLE_PY = ENGINE_PY.with_name("engine_lifecycle.py")
+
+
+def _engine_source() -> str:
+    return "".join(p.read_text(encoding="utf-8") for p in (ENGINE_PY, ENGINE_LIFECYCLE_PY))
 
 
 # ===========================================================================
@@ -132,7 +138,7 @@ class TestTheEngineStartingIsWhatConfirmsAnUpdate:
         The engine's 60-second sleep is gone; the updater is the only thing
         that decides an update is good.
         """
-        source = ENGINE_PY.read_text(encoding="utf-8")
+        source = _engine_source()
         assert "_confirm_startup_after_delay" not in source
         assert "confirm_startup" not in source
 
@@ -148,7 +154,7 @@ class TestTheEngineStartingIsWhatConfirmsAnUpdate:
         from openavc.updater import rollback
 
         assert not hasattr(rollback, "reset_marker_attempts")
-        assert "reset_marker_attempts" not in ENGINE_PY.read_text(encoding="utf-8")
+        assert "reset_marker_attempts" not in _engine_source()
 
     def test_the_confirmation_runs_after_the_engine_is_up(self):
         """Order is the whole fix: confirming before a successful start would
