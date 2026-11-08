@@ -46,7 +46,7 @@ pytest.importorskip("playwright.sync_api")
 EXPECT_TIMEOUT = 15_000
 ANY_NETWORK = {"network": {"accept_connections_from": "any", "accept_connections_adapter": {}}}
 
-# Nothing here restarts the server but the server itself (main._is_service_managed).
+# Nothing here restarts the server but the server itself (restart.is_service_managed).
 DEV_RUN = {"INVOCATION_ID": "", "OPENAVC_SERVICE_MANAGED": "0"}
 
 

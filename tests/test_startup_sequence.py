@@ -654,6 +654,8 @@ async def test_a_graceful_restart_waits_arms_the_watchdog_stops_and_exits(restar
     assert watchdog.value.code == 0
     assert restart.order == ["stop"]
     assert "Restart requested (source=settings, mode=graceful); exiting in 2s" in _messages(caplog)
+    # Filed where these lines have always been, whichever module logs them.
+    assert {r.name for r in caplog.records} == {"openavc.main"}
 
 
 @pytest.mark.parametrize("data", [None, {}])

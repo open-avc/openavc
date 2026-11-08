@@ -162,13 +162,29 @@ def test_startup_cleans_up_before_the_automatic_rollback_can_schedule():
     """A cleanup after it would delete the rollback's own task, leaving the
     server exited with nothing scheduled to install."""
     source = MAIN.read_text(encoding="utf-8")
-    calls = [
-        node for node in ast.walk(ast.parse(source))
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-        and node.func.id in {"remove_leftover_update_tasks", "check_rollback_needed"}
+    functions = {
+        node.name: node for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.FunctionDef)
+    }
+
+    def names_called(function):
+        return {
+            node.func.id for node in ast.walk(function)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
+
+    # The order is the order of the steps the pre-start update work calls.
+    steps = [
+        statement.value.func.id
+        for statement in functions["_settle_updates_before_start"].body
+        if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call)
+        and isinstance(statement.value.func, ast.Name)
     ]
-    order = [call.func.id for call in sorted(calls, key=lambda c: c.lineno)]
-    assert order == ["remove_leftover_update_tasks", "check_rollback_needed"]
+
+    def step_calling(name):
+        return next(i for i, step in enumerate(steps) if name in names_called(functions[step]))
+
+    assert step_calling("remove_leftover_update_tasks") < step_calling("check_rollback_needed")
     gate = source[:source.index("remove_leftover_update_tasks()")]
     assert gate.rstrip().endswith("from openavc.updater.rollback import remove_leftover_update_tasks")
     assert "detect_deployment_type() == DeploymentType.WINDOWS_INSTALLER" in gate[-600:]

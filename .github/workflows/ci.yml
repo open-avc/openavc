@@ -55,7 +55,7 @@ jobs:
           # What the browser tests drive: the IDE and panel bundles, the API
           # they call, the UI model the server resolves for them, the themes,
           # the entrypoint, the tests themselves, and what installs them all.
-          if printf '%s\n' "$files" | grep -qE '^(openavc/web/|openavc/api/|openavc/ui/|openavc/themes/|openavc/main\.py$|tests/e2e/|pyproject\.toml$|requirements\.txt$|\.github/workflows/ci\.yml$)'; then
+          if printf '%s\n' "$files" | grep -qE '^(openavc/web/|openavc/api/|openavc/ui/|openavc/themes/|openavc/(main|restart|redirects|status_folder)\.py$|openavc/middleware/|tests/e2e/|pyproject\.toml$|requirements\.txt$|\.github/workflows/ci\.yml$)'; then
             echo "ide=true" >> "$GITHUB_OUTPUT"
           else
             echo "No IDE or panel path changed; the browser tests wait for the nightly run."
