@@ -31,23 +31,24 @@ class _ForwardCompatModel(BaseModel):
 
 from openavc.utils.logger import get_logger
 from openavc.core.project_migration import CURRENT_VERSION
+from openavc.core.state_store import GLOB_CHARS
 from openavc.drivers.registry import get_driver_class
 
 log = get_logger(__name__)
 
 
-# fnmatch metacharacters. An id carrying one of these becomes part of a state
-# key (var.<id>, ui.<id>.<prop>, device.<id>.*) and then a per-key
-# `state.changed.<key>` event name; fnmatch-based subscription dispatch
-# (event_bus, state_store) would mis-route or drop notifications for it
-# (e.g. a key `var.a[1]` never matches an exact subscription to itself, and
-# `var.a1` wrongly matches a subscription to `var.a[1]`).
-_GLOB_METACHARS = "*?["
-
-
 def _reject_glob_metachars(value: str, label: str) -> None:
-    """Raise if ``value`` contains an fnmatch metacharacter."""
-    bad = [c for c in _GLOB_METACHARS if c in value]
+    """Raise if ``value`` contains an fnmatch metacharacter (the store's
+    ``GLOB_CHARS``).
+
+    An id carrying one of these becomes part of a state key (var.<id>,
+    ui.<id>.<prop>, device.<id>.*) and then a per-key `state.changed.<key>`
+    event name; fnmatch-based subscription dispatch (event_bus, state_store)
+    would mis-route or drop notifications for it (e.g. a key `var.a[1]` never
+    matches an exact subscription to itself, and `var.a1` wrongly matches a
+    subscription to `var.a[1]`).
+    """
+    bad = [c for c in GLOB_CHARS if c in value]
     if bad:
         raise ValueError(
             f"{label} '{value}' must not contain glob metacharacters "

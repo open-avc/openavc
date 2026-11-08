@@ -88,7 +88,11 @@ class _Sub:
     bulk: bool
 
 
-_GLOB_CHARS = "*?["
+# The characters that make a subscription pattern a glob (fnmatch) rather than
+# one key or a "prefix.*" namespace. Anything that has to be one concrete key
+# (a variable's source_key, a config id that becomes part of a key) is checked
+# against this set.
+GLOB_CHARS = "*?["
 
 
 def is_flat_primitive(value: Any) -> bool:
@@ -549,10 +553,10 @@ class StateStore:
         """
         if pattern == "*":
             return ("universal", "")
-        has_glob = any(c in pattern for c in _GLOB_CHARS)
+        has_glob = any(c in pattern for c in GLOB_CHARS)
         if not has_glob:
             return ("exact", pattern)
-        if pattern.endswith(".*") and not any(c in pattern[:-2] for c in _GLOB_CHARS):
+        if pattern.endswith(".*") and not any(c in pattern[:-2] for c in GLOB_CHARS):
             return ("prefix", pattern[:-1])  # keep the trailing dot
         return ("glob", pattern)
 

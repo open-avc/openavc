@@ -7,7 +7,9 @@ start, stop, and hot-reload.
 
 Runtimes it owns but does not implement, each in its own module:
 ``ws_hub`` (client fan-out + batched state push), ``ui_events`` (what a
-panel interaction does), and ``device_config`` (what a device dials).
+panel interaction does), and ``device_config`` (what a device dials). Parts
+of Engine itself live in mixins it inherits: ``project_variables`` (the
+``var.*`` runtime).
 """
 
 from __future__ import annotations
@@ -55,6 +57,7 @@ from openavc.core.panel_devices import (
 )
 from openavc.core.plugin_loader import PluginLoader
 from openavc.core.project_diff import ProjectDiff, ProjectOrigin
+from openavc.core.project_variables import ProjectVariablesMixin
 from openavc.core.project_loader import (
     ProjectConfig,
     ProjectMeta,
@@ -65,7 +68,7 @@ from openavc.core.project_loader import (
 )
 from openavc.core.script_engine import ScriptEngine
 from openavc.core.state_persister import StatePersister
-from openavc.core.state_store import StateStore, coerce_flat_primitive
+from openavc.core.state_store import StateStore
 from openavc.core.trigger_engine import TriggerEngine
 from openavc.core.typed_fields import trim_device_settings
 from openavc.core.ui_events import UIEventRuntime
@@ -94,13 +97,7 @@ def _log_task_exception(task: asyncio.Task) -> None:
         log.error(f"Background task {task.get_name()!r} failed: {exc}", exc_info=exc)
 
 
-# Glob metacharacters that turn a single-key subscription into a multi-key
-# fan-in (see StateStore pattern grammar). A variable source_key must be one
-# concrete key, never a pattern.
-_GLOB_METACHARS = "*?["
-
-
-class Engine:
+class Engine(ProjectVariablesMixin):
     """
     Main runtime engine. Singleton per OpenAVC instance.
     Coordinates all subsystems and manages the lifecycle.
@@ -204,13 +201,7 @@ class Engine:
         # Wire StateStore -> EventBus
         self.state.set_event_bus(self.events)
 
-        # Variable-to-state binding subscriptions
-        self._var_binding_subs: list[str] = []
-        self._var_validation_subs: list[str] = []
-        # Keys currently mid-propagation in a variable-binding cascade. A
-        # re-entrancy guard so chained bindings (var bound to another var's
-        # key) propagate while genuine cycles (A<->B) terminate.
-        self._var_binding_active: set[str] = set()
+        self._init_variable_runtime()
         # The project's revision, as an OPAQUE token — compared for equality
         # and nothing else. It was a counter from 0, which meant every run
         # handed out the same values: a Builder tab left open across a restart
@@ -458,22 +449,9 @@ class Engine:
         from openavc.api.assets import publish_assets_state
         publish_assets_state(self)
 
-        # Initialize state persister and load saved values
-        state_file = self.project_path.parent / "state.json"
-        self.persister = StatePersister(state_file, self.state)
-        persisted_values = self.persister.load()
-
-        # Initialize user variables from defaults / persisted values.
-        persistent_keys = self._init_variable_values(persisted_values)
-
-        # Start watching persistent variables for changes
-        self.persister.start(persistent_keys)
-
-        # Bind variable sources (auto-sync from device state)
-        self._bind_variable_sources()
-
-        # Register validation listener for variables with rules
-        self._register_variable_validation()
+        # The persister reads state.json, every variable is seeded, the
+        # bindings follow their sources and the rules are watched.
+        self._start_variables()
 
         # Load macros and device groups
         macros_data = [m.model_dump() for m in self.project.macros]
@@ -885,31 +863,6 @@ class Engine:
                 reassigned_equipment=previous_id,
             )
 
-    def reload_persisted_state(self) -> None:
-        """Re-apply state.json to the store and restart the persister.
-
-        Called after a backup restore. A plain reload only re-subscribes the
-        persister (via ``update_keys``); it never re-reads state.json, so the
-        running store would keep the stale pre-restore values and the persister
-        would write them straight back over the just-restored file. This reloads
-        the restored values into the store — falling back to each persistent
-        variable's default when the backup carried no value for it — then
-        restarts the persister so it tracks the restored state cleanly.
-        """
-        if not self.persister or not self.project:
-            return
-        persisted = self.persister.load()
-        for var in self.project.variables:
-            if not var.persist:
-                continue
-            key = f"var.{var.id}"
-            self.state.set(key, persisted.get(key, var.default), source="system")
-        persistent_keys = {f"var.{v.id}" for v in self.project.variables if v.persist}
-        # stop() clears any prior subscriptions + the _stopped flag the caller's
-        # pre-restore stop() set; start() re-subscribes with _stopped cleared.
-        self.persister.stop()
-        self.persister.start(persistent_keys)
-
     async def _apply_project_locked(
         self,
         new_project: ProjectConfig,
@@ -1090,26 +1043,7 @@ class Engine:
             await self.macros.cancel_all()
 
         if diff.variables:
-            # Seed new defaults, then clean up orphaned var.* keys
-            project_var_ids = {v.id for v in self.project.variables}
-            for var in self.project.variables:
-                key = f"var.{var.id}"
-                if self.state.get(key) is None:
-                    self.state.set(key, var.default, source="system")
-            all_var_keys = self.state.get_namespace("var.")
-            orphaned_vars = [
-                vid for vid in all_var_keys if vid not in project_var_ids
-            ]
-            for vid in orphaned_vars:
-                self.state.delete(f"var.{vid}")
-            if orphaned_vars:
-                log.info(f"Cleaned up {len(orphaned_vars)} orphaned variable state key(s)")
-
-            if self.persister:
-                persistent_keys = {
-                    f"var.{v.id}" for v in self.project.variables if v.persist
-                }
-                self.persister.update_keys(persistent_keys)
+            self._reconcile_variables()
 
         if diff.devices or diff.connections:
             # Always the whole sync, never a per-device diff: a bridge edit
@@ -1160,8 +1094,7 @@ class Engine:
             )
 
         if diff.variables:
-            self._bind_variable_sources()
-            self._register_variable_validation()
+            self._rebind_variables()
 
         if diff.scripts and self.scripts:
             if origin is ProjectOrigin.LOAD:
@@ -1224,8 +1157,7 @@ class Engine:
             await self.triggers.start(fire_startup=False)
 
         if diff.variables:
-            self._bind_variable_sources()
-            self._register_variable_validation()
+            self._rebind_variables()
 
     def monitors(self) -> list[dict]:
         """The readings this project says matter, as plain dicts.
@@ -1960,148 +1892,6 @@ class Engine:
             loaded = load_all_drivers([driver_repo])
             if loaded:
                 log.info(f"Loaded {loaded} driver(s) from {driver_repo}")
-
-    def _init_variable_values(self, persisted_values: dict[str, Any]) -> set[str]:
-        """Seed ``var.*`` state from defaults / persisted values.
-
-        Returns the set of currently-persistent var keys (for the persister to
-        watch). A still-persistent variable's saved value wins over its
-        default; a variable whose persist flag was turned OFF reverts to its
-        default even if state.json still holds a stale value — the restore is
-        gated on the *current* persist flag, not merely on the key's presence
-        in the file.
-        """
-        persistent_keys: set[str] = set()
-        if not self.project:
-            return persistent_keys
-        for var in self.project.variables:
-            key = f"var.{var.id}"
-            if var.persist:
-                persistent_keys.add(key)
-            if var.persist and key in persisted_values:
-                self.state.set(key, persisted_values[key], source="system")
-            else:
-                self.state.set(key, var.default, source="system")
-        return persistent_keys
-
-    def _bind_variable_sources(self) -> None:
-        """
-        Set up auto-sync subscriptions for variables with source_key.
-        When the source state key changes, the variable's value is updated
-        automatically, optionally mapped through source_map.
-        """
-        # Unsubscribe existing bindings
-        for sub_id in self._var_binding_subs:
-            self.state.unsubscribe(sub_id)
-        self._var_binding_subs.clear()
-        self._var_binding_active.clear()
-
-        if not self.project:
-            return
-
-        def _map_value(raw: Any, sm: dict | None, vk: str) -> Any:
-            """Apply source_map then enforce the flat-primitive invariant.
-
-            source_map values are typed Any in the schema, so an author can
-            map to a list/dict; flatten those rather than letting a nested
-            value into the store and out to WS / ISC / the cloud relay.
-            """
-            mapped = sm.get(str(raw), raw) if sm else raw
-            value, was_coerced = coerce_flat_primitive(mapped)
-            if was_coerced:
-                log.warning(
-                    "Variable binding %s: mapped value for source %r is not a "
-                    "flat primitive; coerced to a JSON string", vk, mapped,
-                )
-            return value
-
-        for var in self.project.variables:
-            if not var.source_key:
-                continue
-
-            var_key = f"var.{var.id}"
-            source_key = var.source_key
-            source_map = var.source_map
-
-            # A source_key must be one concrete state key. Glob metacharacters
-            # would register a multi-key fan-in (no defined value, last-writer-
-            # wins thrash), so reject rather than silently binding a pattern.
-            if any(c in source_key for c in _GLOB_METACHARS):
-                log.warning(
-                    "Variable '%s' source_key %r contains glob metacharacters; "
-                    "skipping binding (source_key must be a single state key)",
-                    var.id, source_key,
-                )
-                continue
-
-            # Initial sync: read current source value and apply
-            current = self.state.get(source_key)
-            if current is not None:
-                self.state.set(var_key, _map_value(current, source_map, var_key),
-                               source="variable_binding")
-
-            # Subscribe to changes. The re-entrancy guard keys on the variable
-            # being written, not on the source string: chained bindings (var B
-            # bound to var A's key) propagate when A updates, while a genuine
-            # cycle (A<->B) terminates after one hop. The previous blanket
-            # "ignore variable_binding source" guard froze every chain.
-            def make_handler(vk: str, sm: dict | None):
-                def handler(key: str, old_value: Any, new_value: Any, source: str):
-                    if vk in self._var_binding_active:
-                        return  # cycle — this var is already mid-propagation
-                    value = _map_value(new_value, sm, vk)
-                    self._var_binding_active.add(vk)
-                    try:
-                        self.state.set(vk, value, source="variable_binding")
-                    finally:
-                        self._var_binding_active.discard(vk)
-                return handler
-
-            sub_id = self.state.subscribe(
-                source_key, make_handler(var_key, source_map)
-            )
-            self._var_binding_subs.append(sub_id)
-            log.debug(f"Variable binding: {var_key} ← {source_key}"
-                      f"{' (with map)' if source_map else ''}")
-
-    def _register_variable_validation(self) -> None:
-        """Register state listeners that warn when validation rules are violated."""
-        for sub_id in self._var_validation_subs:
-            self.state.unsubscribe(sub_id)
-        self._var_validation_subs.clear()
-
-        if not self.project:
-            return
-
-        for var in self.project.variables:
-            if not var.validation:
-                continue
-            var_key = f"var.{var.id}"
-            val = var.validation
-
-            def make_handler(vk: str, vid: str, vtype: str, v_rules):
-                def handler(key: str, old_value, new_value, source: str):
-                    if source == "system":
-                        return  # Don't warn on init
-                    if new_value is None:
-                        return
-                    warnings = []
-                    if vtype == "number" and isinstance(new_value, (int, float)):
-                        if v_rules.min is not None and new_value < v_rules.min:
-                            warnings.append(f"value {new_value} is below minimum {v_rules.min}")
-                        if v_rules.max is not None and new_value > v_rules.max:
-                            warnings.append(f"value {new_value} exceeds maximum {v_rules.max}")
-                    if vtype == "string" and v_rules.allowed and isinstance(new_value, str):
-                        if new_value not in v_rules.allowed:
-                            warnings.append(f"value '{new_value}' is not in allowed values: {v_rules.allowed}")
-                    for w in warnings:
-                        log.warning(f"Variable validation: var.{vid} — {w} (source={source})")
-                return handler
-
-            sub_id = self.state.subscribe(
-                var_key, make_handler(var_key, var.id, var.type, val)
-            )
-            self._var_validation_subs.append(sub_id)
 
     # --- WebSocket Management ---
 
