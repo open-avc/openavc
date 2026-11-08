@@ -523,9 +523,9 @@ def test_clearing_the_registry_clears_the_mesh_key(clean_registry):
 
 def test_device_manager_masks_configs_with_the_shared_rule():
     """A second credential-name list is what this consolidation removed."""
-    from openavc.core import device_manager
+    from openavc.core import device_info
 
-    assert device_manager._redact_config is redact_config
+    assert device_info._redact_config is redact_config
 
 
 def test_the_cloud_log_tool_masks_with_the_shared_rule():
