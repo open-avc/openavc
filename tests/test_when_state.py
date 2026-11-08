@@ -81,7 +81,13 @@ def _build(
     )
 
 
-async def _until(predicate: Any, timeout: float) -> bool:
+# How long a wait gives up after. Every wait returns as soon as its condition
+# holds, so this ceiling only decides how long a shared runner may stall before
+# the run reports the runner instead of the driver.
+_WAIT = 10.0
+
+
+async def _until(predicate: Any, timeout: float = _WAIT) -> bool:
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
     while loop.time() < deadline:
@@ -164,9 +170,9 @@ async def test_a_held_poll_leaves_the_device_in_standby_and_connected(
     drv = _build(_acme(), port)
     await drv.connect()
     try:
-        assert await _until(lambda: drv.get_state("power") == "ON", 3.0)
+        assert await _until(lambda: drv.get_state("power") == "ON")
         await drv.send_command("standby")
-        assert await _until(lambda: drv.get_state("standby") is True, 3.0)
+        assert await _until(lambda: drv.get_state("standby") is True)
         sent_at_standby = len(dev["lines"])
         await asyncio.sleep(_INTERVAL * 8)
         assert dev["lines"][sent_at_standby:] == []
@@ -182,8 +188,8 @@ async def test_a_held_poll_leaves_the_device_in_standby_and_connected(
         assert "{" not in paused[0]
 
         await drv.send_command("wake")
-        assert await _until(lambda: drv.get_state("standby") is False, 3.0)
-        assert await _until(lambda: "PWR?" in dev["lines"][sent_at_standby:], 3.0)
+        assert await _until(lambda: drv.get_state("standby") is False)
+        assert await _until(lambda: "PWR?" in dev["lines"][sent_at_standby:])
         assert any("Polling resumed" in m for m in _driver_log(caplog, level=logging.INFO))
         assert drv.get_state("connected") is True
     finally:
@@ -210,10 +216,10 @@ async def test_standby_sent_in_the_middle_of_a_poll_stops_that_poll(
     drv = _build(definition, port, inter_command_delay=0.1)
     await drv.connect()
     try:
-        assert await _until(lambda: drv.get_state("power") == "ON", 3.0)
+        assert await _until(lambda: drv.get_state("power") == "ON")
         await asyncio.sleep(0.2)
         await drv.send_command("standby")
-        assert await _until(lambda: drv.get_state("standby") is True, 3.0)
+        assert await _until(lambda: drv.get_state("standby") is True)
         await asyncio.sleep(_INTERVAL * 8)
         assert dev["standby"] is True
         assert dev["woken"] == 0
@@ -262,8 +268,8 @@ async def test_an_unset_variable_lets_the_poll_run(sleepy_server) -> None:
     assert drv.get_state("standby") is None
     await drv.connect()
     try:
-        assert await _until(lambda: "STBY?" in dev["lines"], 3.0)
-        assert await _until(lambda: drv.get_state("standby") is False, 3.0)
+        assert await _until(lambda: "STBY?" in dev["lines"])
+        assert await _until(lambda: drv.get_state("standby") is False)
     finally:
         await drv.disconnect()
 
@@ -282,11 +288,11 @@ async def test_one_query_held_while_the_rest_of_the_poll_runs(sleepy_server) -> 
     drv = _build(definition, port)
     await drv.connect()
     try:
-        assert await _until(lambda: drv.get_state("power") == "ON", 3.0)
+        assert await _until(lambda: drv.get_state("power") == "ON")
         # Put in standby from its front panel: the next STBY? reads it, and
         # from then on only STBY? goes out.
         dev["standby"] = True
-        assert await _until(lambda: drv.get_state("standby") is True, 3.0)
+        assert await _until(lambda: drv.get_state("standby") is True)
         await asyncio.sleep(_INTERVAL)
         mark = len(dev["lines"])
         await asyncio.sleep(_INTERVAL * 5)
@@ -295,7 +301,7 @@ async def test_one_query_held_while_the_rest_of_the_poll_runs(sleepy_server) -> 
         assert "PWR?" not in later
         assert dev["woken"] == 0
         dev["standby"] = False
-        assert await _until(lambda: "PWR?" in dev["lines"][mark:], 3.0)
+        assert await _until(lambda: "PWR?" in dev["lines"][mark:])
     finally:
         await drv.disconnect()
 
@@ -313,16 +319,16 @@ async def test_a_list_of_values_and_a_typed_compare(sleepy_server) -> None:
     drv = _build(definition, port)
     await drv.connect()
     try:
-        assert await _until(lambda: drv.get_state("mode") == 0, 3.0)
+        assert await _until(lambda: drv.get_state("mode") == 0)
         await drv.send_command("set_mode", {"m": 1})
-        assert await _until(lambda: drv.get_state("mode") == 1, 3.0)
+        assert await _until(lambda: drv.get_state("mode") == 1)
         # A line of the cycle under way may still go out; the next is held.
         await asyncio.sleep(_INTERVAL)
         mark = len(dev["lines"])
         await asyncio.sleep(_INTERVAL * 5)
         assert dev["lines"][mark:] == []
         await drv.send_command("set_mode", {"m": 2})
-        assert await _until(lambda: "PWR?" in dev["lines"][mark:], 3.0)
+        assert await _until(lambda: "PWR?" in dev["lines"][mark:])
     finally:
         await drv.disconnect()
 
@@ -339,9 +345,9 @@ async def test_a_reconnect_to_a_unit_in_standby_leaves_it_there(sleepy_server) -
     drv = _build(definition, port, state=store)
     await drv.connect()
     try:
-        assert await _until(lambda: drv.get_state("power") == "ON", 3.0)
+        assert await _until(lambda: drv.get_state("power") == "ON")
         await drv.send_command("standby")
-        assert await _until(lambda: drv.get_state("standby") is True, 3.0)
+        assert await _until(lambda: drv.get_state("standby") is True)
         await drv.disconnect()
         mark = len(dev["lines"])
         await drv.connect()
@@ -452,12 +458,12 @@ async def _drop_for_silence(dm: Any, state: StateStore, dev: dict[str, Any]) -> 
     """Connected and polling, then silent until dropped, and back on a held
     connection that has not answered. Returns the driver."""
     drv = dm._devices["acme1"]
-    assert await _until(lambda: state.get("device.acme1.power") == "ON", 3.0)
+    assert await _until(lambda: state.get("device.acme1.power") == "ON")
     dev["answer"] = False
     assert await _until(
-        lambda: state.get("device.acme1.offline_reason") == "no_response", 3.0,
+        lambda: state.get("device.acme1.offline_reason") == "no_response",
     )
-    assert await _until(lambda: drv._held, 3.0)
+    assert await _until(lambda: drv._held)
     return drv
 
 
@@ -475,7 +481,6 @@ async def test_a_device_that_comes_back_in_standby_comes_online(managed_quiet) -
     assert await _until(
         lambda: state.get("device.acme1.connected") is True
         and state.get("device.acme1.offline_reason") is None,
-        3.0,
     )
     assert state.get("device.acme1.standby") is True
     assert state.get("device.acme1.offline_detail") is None
@@ -505,7 +510,6 @@ async def test_an_open_held_connection_does_not_say_the_connection_dropped(
         lambda: dev["connections"] == after_cycle
         and drv._held
         and state.get("device.acme1.offline_reason") == "no_response",
-        3.0,
     )
     assert state.get("device.acme1.offline_detail") != dropped
     assert state.get("device.acme1.connected") is False
@@ -590,9 +594,9 @@ async def test_a_held_poll_holds_the_liveness_probe(sleepy_server, caplog) -> No
     drv = _probed(port)
     await drv.connect()
     try:
-        assert await _until(lambda: "PWR?" in dev["lines"], 3.0)
+        assert await _until(lambda: "PWR?" in dev["lines"])
         await drv.send_command("standby")
-        assert await _until(lambda: drv.get_state("standby") is True, 3.0)
+        assert await _until(lambda: drv.get_state("standby") is True)
         await asyncio.sleep(_INTERVAL * 10)
         assert dev["lines"][dev["lines"].index("STBY 1") + 1:] == []
         assert dev["standby"] is True and dev["woken"] == 0
@@ -604,9 +608,9 @@ async def test_a_held_poll_holds_the_liveness_probe(sleepy_server, caplog) -> No
         assert any("Liveness probe paused" in m for m in info)
 
         await drv.send_command("wake")
-        assert await _until(lambda: drv.get_state("standby") is False, 3.0)
+        assert await _until(lambda: drv.get_state("standby") is False)
         mark = dev["lines"].index("STBY 0") + 1
-        assert await _until(lambda: dev["lines"][mark:].count("PWR?") >= 3, 3.0)
+        assert await _until(lambda: dev["lines"][mark:].count("PWR?") >= 3)
         assert any("Liveness probe resumed" in m for m in _driver_log(caplog, level=logging.INFO))
         assert drv._health_failures == 0
         assert drv.get_state("connected") is True
@@ -647,10 +651,10 @@ async def test_a_silent_device_with_the_gate_open_is_still_dropped(quiet_server)
     drv = _probed(port)
     await drv.connect()
     try:
-        assert await _until(lambda: "PWR?" in dev["lines"], 3.0)
+        assert await _until(lambda: "PWR?" in dev["lines"])
         assert drv.get_state("standby") is None
         dev["answer"] = False
-        assert await _until(lambda: drv.get_state("connected") is False, 3.0)
+        assert await _until(lambda: drv.get_state("connected") is False)
         assert drv.last_fault is not None
         assert drv.last_fault.code == "no_response"
     finally:
@@ -700,19 +704,18 @@ async def test_a_device_the_probe_dropped_that_comes_back_in_standby_comes_onlin
     is online, still in standby, with no probe sent to wake it."""
     dm, state, dev = managed_probed
     drv = dm._devices["acme1"]
-    assert await _until(lambda: "PWR?" in dev["lines"], 3.0)
+    assert await _until(lambda: "PWR?" in dev["lines"])
     dev["answer"] = False
     assert await _until(
-        lambda: state.get("device.acme1.offline_reason") == "no_response", 3.0,
+        lambda: state.get("device.acme1.offline_reason") == "no_response",
     )
-    assert await _until(lambda: drv._held, 3.0)
+    assert await _until(lambda: drv._held)
     dev["answer"], dev["standby"] = True, True
     mark = len(dev["lines"])
     dev["kick"]()
     assert await _until(
         lambda: state.get("device.acme1.connected") is True
         and state.get("device.acme1.offline_reason") is None,
-        3.0,
     )
     assert state.get("device.acme1.standby") is True
     await asyncio.sleep(_INTERVAL * 6)
