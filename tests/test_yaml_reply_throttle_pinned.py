@@ -86,7 +86,10 @@ async def test_a_flush_stamps_the_scope_and_clears_its_timer():
     driver = _driver()
     tstate: dict[str, Any] = {"window": 10.0, "last": {}}
     _hold(driver, tstate, "", [("power", "on")], [])
-    stamped = tstate["last"][""]
+    # Back-dated well past a clock tick: Windows' monotonic clock can read
+    # the same value twice in a row, so a fresh stamp is not always larger.
+    stamped = tstate["last"][""] - 60.0
+    tstate["last"][""] = stamped
 
     driver._flush_held(tstate, "")
 

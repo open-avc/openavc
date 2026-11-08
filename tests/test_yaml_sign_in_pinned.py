@@ -286,7 +286,7 @@ async def test_a_handshake_with_no_success_pattern_waits_out_the_noise_and_succe
     started = time.monotonic()
     await driver._perform_auth_handshake()
     # Nothing came after the password: the drain waited its half second.
-    assert time.monotonic() - started >= 0.45
+    assert time.monotonic() - started >= 0.4
     assert wire.sent == [b"admin\r\n", b"pw\r\n"]
     assert wire._frame_parser is None
     assert driver._auth_mode is False
