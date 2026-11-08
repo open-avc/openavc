@@ -148,9 +148,9 @@ def _is_worded_os_error(exc: Exception) -> bool:
 
 # How a tool runs. LOCKED is the default: the tool runs under the project lock,
 # so two tools never interleave on engine.project, and the conversation's one
-# pre-AI backup is made under it before the first LOCKED tool. Tools that drive
-# a device or write state are LOCKED too, and so are review_ui and
-# review_custom_ui, which only read: one needless backup was preferred to two
+# pre-AI backup is made under it before the first LOCKED tool. Tools that reach
+# a device (send to it, test its connection, start a scan) or write state are
+# LOCKED too, and so are review_ui and review_custom_ui, which only read: one needless backup was preferred to two
 # reviews that run differently. READ is a tool that only reads; it runs beside
 # any other, without the lock. UNLOCKED is execute_macro alone: it waits on a
 # macro run for tens of seconds and never changes engine.project, so holding

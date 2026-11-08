@@ -12,8 +12,9 @@ interactions are page_references' ``ACTION_SLOTS``, the actions
 ``ui_events.DISPATCHED_ACTIONS``, and the visible_when operators the canonical
 condition operators, ``macro_validation.CANONICAL_CONDITION_OPS`` (without the
 aliases the panel also evaluates). The panel evaluates a visible_when in
-``_evalConditionOp`` in ``panel.js``, a hand mirror of those operators, so a new
-operator goes there too. The sentences listing the operators and the press
+``_evalConditionOp`` in ``panel.js``, and the Builder offers the operators from
+``OPERATORS`` in ``components/macros/ConditionEditor.tsx``; both mirror them by
+hand, so a new operator goes there too. The sentences listing the operators and the press
 modes are written out, and a test holds each to its set. The sentences go back
 to the cloud and into the chat.
 """
