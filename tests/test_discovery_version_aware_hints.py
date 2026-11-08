@@ -12,7 +12,8 @@ collision logic, not any specific device.
 
 from __future__ import annotations
 
-from openavc.discovery.engine import DiscoveryEngine, _driver_version_tuple
+from openavc.discovery.engine import DiscoveryEngine
+from openavc.discovery.known_drivers import driver_version_tuple as _driver_version_tuple
 
 
 def _entry(version: str, *, with_probe: bool) -> dict:

@@ -574,7 +574,7 @@ class TestSignalIndexFallback:
                 raise ValueError("two rules collide")
             return installed_index
 
-        with patch("openavc.discovery.engine.build_signal_index", side_effect=_build), \
+        with patch("openavc.discovery.known_drivers.build_signal_index", side_effect=_build), \
              patch("openavc.discovery.engine.load_discovery_hints",
                    side_effect=lambda drivers: [_named_hint(d["id"]) for d in drivers]), \
              caplog.at_level(logging.ERROR, logger="discovery"):
@@ -594,7 +594,7 @@ class TestSignalIndexFallback:
 
     def test_an_installed_index_rejected_too_leaves_an_empty_one(self, caplog):
         engine = DiscoveryEngine()
-        with patch("openavc.discovery.engine.build_signal_index",
+        with patch("openavc.discovery.known_drivers.build_signal_index",
                    side_effect=ValueError("bad")), \
              caplog.at_level(logging.ERROR, logger="discovery"):
             engine._rebuild_signal_index([])
@@ -623,7 +623,7 @@ class TestSignalIndexFallback:
         ]
         with patch("openavc.discovery.engine.load_discovery_hints",
                    side_effect=[hints, []]), \
-             patch("openavc.discovery.engine.build_signal_index", return_value=SignalIndex()), \
+             patch("openavc.discovery.known_drivers.build_signal_index", return_value=SignalIndex()), \
              caplog.at_level(logging.INFO, logger="discovery"):
             engine._rebuild_signal_index([])
         assert engine.oui_db.lookup("00:11:22:33:44:55") is not None

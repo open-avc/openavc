@@ -51,10 +51,12 @@ from openavc.discovery.port_phase import (  # noqa: F401 -- THOROUGH_EXTRA_PORTS
 from openavc.discovery.probe_phase import DriverProbes
 from openavc.discovery.sweep_phase import HostSweep
 from openavc.discovery.oui_database import OUIDatabase
-from openavc.discovery.hints import (
-    DiscoveryHint,
-    build_signal_index,
-    load_discovery_hints,
+from openavc.discovery.hints import DiscoveryHint, load_discovery_hints
+from openavc.discovery.known_drivers import (
+    driver_categories,
+    driver_copies,
+    driver_profiles,
+    signal_index_from,
 )
 from openavc.discovery.community_index import CommunityIndexCache
 from openavc.discovery.companion import (
@@ -63,7 +65,6 @@ from openavc.discovery.companion import (
 )
 from openavc.discovery.scan_evidence import banner_texts, derived_evidence
 from openavc.discovery.tier_matcher import (
-    DriverProfile,
     SignalIndex,
     TierMatcher,
     evidence_connected,
@@ -78,103 +79,6 @@ from openavc.discovery import scan_budget as budgeting
 from openavc.discovery.scan_budget import DepthPolicy, ScanBudget
 
 log = logging.getLogger("discovery")
-
-
-def _driver_version_tuple(version: object) -> tuple[int, int, int]:
-    """Comparable (major, minor, patch) from a driver version string like
-    ``'1.2.0'``. Unparseable or missing versions sort lowest, so a real catalog
-    version supersedes a driver that declares no usable version. Stdlib-only
-    (no regex) and never raises.
-    """
-    nums: list[int] = []
-    for part in str(version or "").split(".")[:3]:
-        digits = ""
-        for ch in part.strip():
-            if ch.isdigit():
-                digits += ch
-            else:
-                break
-        nums.append(int(digits) if digits else 0)
-    while len(nums) < 3:
-        nums.append(0)
-    return (nums[0], nums[1], nums[2])
-
-
-def _catalog_copy_is_read(entry: Any, installed_by_id: dict[str, dict[str, Any]]) -> bool:
-    """Whether discovery reads a catalog entry's copy of its driver: nothing
-    installed has its id, or the catalog's version is newer than the
-    installed one's. An element that is not an object, or has no id, is not
-    read."""
-    if not isinstance(entry, dict) or not entry.get("id"):
-        return False
-    installed = installed_by_id.get(str(entry["id"]))
-    return installed is None or _driver_version_tuple(
-        entry.get("version")
-    ) > _driver_version_tuple(installed.get("version"))
-
-
-def _driver_copies(
-    installed: list[dict[str, Any]], catalog: list[Any],
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """The one copy of each driver discovery reads, as (the installed copies
-    kept, the catalog copies read).
-
-    For a driver both installed and in the catalog, the NEWER copy is
-    authoritative for discovery hints. The installed copy usually wins (it
-    may carry local corrections, and it wins a tie), but a STALE install must
-    not mask a newer catalog's improved fingerprints -- otherwise a device
-    that a clean machine would identify outright shows here only as a weak
-    "possible" just because an older copy happens to be installed. The
-    superseded installed copy is dropped so its hints can't shadow the
-    catalog's stronger signal.
-
-    The cache filters non-object entries at the fetch boundary; one here
-    anyway (or one with no id) is left out, so a malformed element from any
-    caller degrades that one rule rather than aborting the whole scan.
-    """
-    installed_by_id = {str(d.get("id") or ""): d for d in installed if d.get("id")}
-    catalog_read = [d for d in catalog if _catalog_copy_is_read(d, installed_by_id)]
-    superseded = {str(d["id"]) for d in catalog_read} & installed_by_id.keys()
-    installed_kept = [d for d in installed if str(d.get("id") or "") not in superseded]
-    return installed_kept, catalog_read
-
-
-def _driver_categories_of(drivers: list[dict[str, Any]]) -> dict[str, str]:
-    """driver id -> the category that driver declares, for every driver that
-    names one. An identified device with no category takes its driver's (see
-    ``DiscoveryEngine._fill_category_from_match``)."""
-    return {
-        str(d["id"]): str(d["category"])
-        for d in drivers
-        if d.get("id") and isinstance(d.get("category"), str) and d["category"]
-    }
-
-
-def _driver_profiles_of(drivers: list[dict[str, Any]]) -> dict[str, DriverProfile]:
-    """driver id -> what it says about its equipment, which the matcher asks
-    only to break a tie."""
-    return {str(d["id"]): DriverProfile.of(d) for d in drivers if d.get("id")}
-
-
-def _signal_index_from(
-    all_hints: list[DiscoveryHint], installed_hints: list[DiscoveryHint],
-) -> SignalIndex:
-    """The signal index for every hint; else, if that is rejected, for the
-    installed drivers' hints alone; else an empty one.
-
-    ``build_signal_index`` isolates colliding rules itself (drops the rule,
-    keeps the rest), so a rejection is something unexpected. Installed-only is
-    the last line of defense.
-    """
-    try:
-        return build_signal_index(all_hints)
-    except ValueError as exc:
-        log.error("Discovery signal index rejected with catalog: %s; falling back to installed-only", exc)
-    try:
-        return build_signal_index(installed_hints)
-    except ValueError as exc:
-        log.error("Installed-only signal index also rejected: %s", exc)
-        return SignalIndex()
 
 
 # Phase weights per scan depth — proportional to expected wall-clock time.
@@ -505,26 +409,26 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
     ) -> None:
         """Rebuild the SignalIndex from installed registry + community catalog.
 
-        One copy of each driver is read (``_driver_copies``: the newer one, an
-        installed copy on a tie). Catalog drivers with no installed
+        One copy of each driver is read (``known_drivers.driver_copies``: the
+        newer one, an installed copy on a tie). Catalog drivers with no installed
         counterpart fill in coverage for devices not yet installed -- that's
         how discovery surfaces "Install & Add" candidates. The matcher gets
         each driver's profile for breaking ties, an identification its
         driver's category, and the OUI database each hint's ``oui:`` prefixes.
         """
-        installed, catalog = _driver_copies(self._installed_registry, community_drivers)
+        installed, catalog = driver_copies(self._installed_registry, community_drivers)
         installed_hints = load_discovery_hints(installed)
         community_hints = load_discovery_hints(catalog)
 
         # Every driver that can identify a device, with or without a
         # discovery: block (a companion identifies without one).
         drivers = installed + catalog
-        self._driver_categories = _driver_categories_of(drivers)
-        profiles = _driver_profiles_of(drivers)
+        self._driver_categories = driver_categories(drivers)
+        profiles = driver_profiles(drivers)
 
         all_hints = installed_hints + community_hints
         self.discovery_hints = all_hints
-        self.signal_index = _signal_index_from(all_hints, installed_hints)
+        self.signal_index = signal_index_from(all_hints, installed_hints)
         self.tier_matcher = TierMatcher(self.signal_index, profiles=profiles)
         added = self._add_oui_prefixes(all_hints)
 
