@@ -786,3 +786,142 @@ def test_ir_codes_alone_make_commands() -> None:
 def test_an_inline_placeholder_prompts_unless_config_fills_it() -> None:
     drv = _driver(LINE_UNIT, Capture(), zone="Z", commands={"go": {"send": "GO{zone}{level}"}})
     assert set(drv._definition["commands"]["go"]["params"]) == {"level"}
+
+
+# ── what the deliberate breaks found unwatched ──
+
+
+def test_an_http_command_with_no_path_reads_back_the_root() -> None:
+    unit = _with(LINE_UNIT, transport="http")
+    unit["commands"]["ping"] = {"label": "Ping", "method": "GET", "read_back": True}
+    drv = _driver(unit, Capture())
+    assert _sends(drv, "ping") == [("http /", ("http", "/"))]
+
+
+@pytest.mark.parametrize("value", ["", False, 0, []])
+async def test_an_empty_read_back_sends_nothing(value: Any) -> None:
+    unit = _with(LINE_UNIT)
+    unit["commands"]["hello"]["read_back"] = value
+    cap = Capture()
+    drv = _driver(unit, cap)
+    assert await drv.send_command("hello") is True
+    assert drv._read_back_tasks == set()
+    await _settle(drv)
+    assert cap.sent == [b"HELLO\r"]
+
+
+async def test_a_poll_gate_that_shuts_mid_read_back_ends_it_even_if_it_opens_again() -> None:
+    unit = _with(LINE_UNIT, polling={"queries": [], "when_state": {"standby": False}})
+    unit["commands"]["set_level"]["read_back"] = ["GA\r", "GB\r"]
+    cap = Capture()
+    drv = _driver(unit, cap)
+    standby = iter([True, False, False])
+
+    async def gate_moves() -> None:
+        drv.state.set("device.dev1.standby", next(standby))
+
+    drv._pace_line = gate_moves
+    drv._read_back("set_level", drv._definition["commands"]["set_level"], {"level": 1}, {"level": "A"})
+    await _settle(drv)
+    assert cap.sent == []
+    assert drv._read_back_waiting == set()
+
+
+async def test_a_press_while_its_read_back_is_going_out_queues_another() -> None:
+    cap = Capture()
+    drv = _driver(LINE_UNIT, cap)
+    cmd_def = drv._definition["commands"]["set_level"]
+    pressed: list[bool] = []
+
+    def press_again() -> None:
+        if not pressed:
+            pressed.append(True)
+            drv._read_back("set_level", cmd_def, {"level": 2}, {"level": 2})
+
+    cap.after_send = press_again
+    drv._read_back("set_level", cmd_def, {"level": 1}, {"level": "A"})
+    await _settle(drv)
+    assert cap.sent == [b"GL\r", b"GL\r"]
+
+
+async def test_dropping_the_read_backs_forgets_the_waiting_at_once() -> None:
+    drv = _driver(LINE_UNIT, Capture())
+    gate = asyncio.Event()
+
+    async def stall() -> None:
+        await gate.wait()
+
+    drv._pace_line = stall
+    drv._read_back("set_level", drv._definition["commands"]["set_level"], {"level": 1}, {"level": "A"})
+    (task,) = drv._read_back_tasks
+    drv._drop_read_backs()
+    assert drv._read_back_waiting == set()
+    await asyncio.gather(task, return_exceptions=True)
+
+
+async def test_the_pacer_waits_again_when_another_sender_took_its_slot(monkeypatch) -> None:
+    import openavc.drivers.start_up_and_poll as start_up_and_poll_mod
+
+    drv = _driver(LINE_UNIT, Capture())
+    drv._pace_lines = True
+    now = [100.0]
+    slept: list[float] = []
+    drv._next_line_at = 110.0
+
+    async def sleep(seconds: float) -> None:
+        slept.append(seconds)
+        now[0] += seconds
+        if len(slept) == 1:
+            drv._next_line_at = 115.0  # another sender's line went meanwhile
+
+    monkeypatch.setattr(start_up_and_poll_mod, "pacing_clock", lambda: now[0])
+    monkeypatch.setattr(start_up_and_poll_mod, "sleep_at_least", sleep)
+    await drv._pace_line()
+    assert slept == [10.0, 5.0]
+    assert drv._next_line_at == 115.0 + DEFAULT_LINE_GAP_S
+
+
+async def test_a_file_ir_command_repeats_once_unless_it_says() -> None:
+    unit = _with(LINE_UNIT)
+    unit["commands"]["power"] = {"label": "Power", "ir": {"pronto": "0000 006D"}}
+    drv = _driver(unit, None)
+    emitted: list[Any] = []
+
+    async def emit(kind: str, payload: dict[str, Any]) -> Any:
+        emitted.append(payload)
+        return True
+
+    drv.emit_via_bridge = emit
+    await drv.send_command("power")
+    assert emitted == [{"pronto": "0000 006D", "repeat": 1}]
+
+
+async def test_a_udp_side_send_puts_a_mapped_param_on_the_wire() -> None:
+    unit = _with(LINE_UNIT)
+    unit["commands"]["announce"] = {
+        "label": "Announce",
+        "udp": {"port": 9999, "payload": "N{n}"},
+        "params": {"n": {"type": "string", "label": "N", "map": {"one": "1"}}},
+    }
+    drv = _driver(unit, None)
+    sent: list[bytes] = []
+
+    async def send_udp(data: bytes, **kw: Any) -> None:
+        sent.append(data)
+
+    drv.send_udp = send_udp
+    await drv.send_command("announce", {"n": "one"})
+    assert sent == [b"N1"]
+
+
+def test_a_device_command_replaces_the_files_of_the_same_name() -> None:
+    drv = _driver(LINE_UNIT, Capture(), commands={"hello": {"send": "HI"}})
+    assert drv._definition["commands"]["hello"]["send"] == "HI\r"
+    assert drv.build_wire("hello") == b"HI\r"
+
+
+def test_the_configs_own_suffix_wins_over_the_files() -> None:
+    unit = _with(LINE_UNIT, command_suffix=">")
+    drv = _driver(unit, Capture(), command_suffix="]", commands={"ping": {"send": "PING"}})
+    assert drv._definition["commands"]["ping"]["send"] == "PING]"
+    assert drv.build_wire("hello") == b"HELLO\r]"
