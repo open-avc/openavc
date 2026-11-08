@@ -1470,6 +1470,60 @@ class ConfigurableDriver(
         return build_frame_parser(parser_config)
 
 
+# Definition fields copied onto DRIVER_INFO as written, in the order they land
+# there, because the platform reads them off a live driver rather than its
+# file (tests/test_driver_field_reaches_runtime.py fails a contract field
+# that reaches neither this table nor its list of fields read elsewhere).
+_INFO_FIELDS = (
+    "help",
+    "protocols",
+    "discovery",
+    "device_settings",
+    # So a driver installed from a file, not the catalog, still says which
+    # models it covers.
+    "compatible_models",
+    # BaseDriver validates child properties against it and adds the `online`
+    # and `label` keys; the cloud state relay reads each property's
+    # `cloud_priority`.
+    "child_entity_types",
+    # The typed ports other devices connect through (get_driver_bridge_ports,
+    # the bridge resolver in core.device_config).
+    "bridge",
+    # Read on connect to subscribe the shared listener.
+    "push",
+    # The media one protocol runs over (["tcp", "serial"]); the connection
+    # picks one, config["transport"] first.
+    "transports",
+    # The device page's Commands & Responses editor.
+    "inline_protocol",
+    # The device page's IR Codes editor.
+    "ir_codes",
+    # Where the routing lives, for the Matrix picker, which asks the live
+    # driver (ui.matrix_inference).
+    "routing",
+)
+
+# The same, landing after ``commands``.
+_INFO_FIELDS_AFTER_COMMANDS = (
+    # Promoted-command buttons and setup wizards, kept raw: the device info
+    # (resolve_device_actions) folds quick_actions into one list, for YAML
+    # and Python drivers alike.
+    "actions",
+    "quick_actions",
+    # True, or a URL template: the Open Web UI action.
+    "web_ui",
+    "delimiter",
+)
+
+
+def _copy_fields(
+    driver_info: dict[str, Any], driver_def: dict[str, Any], fields: tuple[str, ...],
+) -> None:
+    for field in fields:
+        if field in driver_def:
+            driver_info[field] = driver_def[field]
+
+
 def create_configurable_driver_class(
     driver_def: dict[str, Any],
 ) -> type[ConfigurableDriver]:
@@ -1480,8 +1534,6 @@ def create_configurable_driver_class(
     attributes, ready to be registered in the driver registry.
     """
     driver_id = driver_def.get("id", "unknown")
-
-    # Build DRIVER_INFO from the definition
     driver_info: dict[str, Any] = {
         "id": driver_id,
         "name": driver_def.get("name", driver_id),
@@ -1495,77 +1547,7 @@ def create_configurable_driver_class(
         "config_schema": driver_def.get("config_schema", {}),
         "state_variables": driver_def.get("state_variables", {}),
     }
-
-    # Copy help from driver definition
-    if "help" in driver_def:
-        driver_info["help"] = driver_def["help"]
-
-    # Copy protocol declarations from driver definition
-    if "protocols" in driver_def:
-        driver_info["protocols"] = driver_def["protocols"]
-
-    # Copy discovery hints from driver definition
-    if "discovery" in driver_def:
-        driver_info["discovery"] = driver_def["discovery"]
-
-    # Copy device_settings from driver definition
-    if "device_settings" in driver_def:
-        driver_info["device_settings"] = driver_def["device_settings"]
-
-    # Copy the models the driver lists, so a driver installed from a file
-    # (not the catalog) still says which models it covers.
-    if "compatible_models" in driver_def:
-        driver_info["compatible_models"] = driver_def["compatible_models"]
-
-    # Copy child_entity_types from the YAML definition. BaseDriver reads
-    # this on register_child / set_child_state to validate properties and
-    # platform-inject the synthetic `online` / `label` keys. The cloud
-    # state-relay also reads it to honour per-property `cloud_priority`
-    # tags (high/low) for tier selection.
-    if "child_entity_types" in driver_def:
-        driver_info["child_entity_types"] = driver_def["child_entity_types"]
-
-    # Copy the bridge declaration — typed serial/IR/relay ports that other
-    # devices connect *through*. Read by get_driver_bridge_ports() and the
-    # bridge resolver (core.device_config).
-    if "bridge" in driver_def:
-        driver_info["bridge"] = driver_def["bridge"]
-
-    # Copy the push-notification declaration (e.g. a device that multicasts
-    # state-change frames). BaseDriver reads this on connect to subscribe the
-    # shared listener; frames feed the normal response dispatch.
-    if "push" in driver_def:
-        driver_info["push"] = driver_def["push"]
-
-    # Copy the multi-transport declaration (e.g. ["tcp", "serial"]). The
-    # driver's command/response strings run identically over either medium;
-    # the connection selects the actual transport (BaseDriver.connect reads
-    # config["transport"] first). Enables "through a bridge" for serial-protocol
-    # drivers that can also speak over a raw TCP pass-through.
-    if "transports" in driver_def:
-        driver_info["transports"] = driver_def["transports"]
-
-    # Copy the inline-protocol opt-in. When true, the device page surfaces the
-    # friendly Commands & Responses editor that writes commands / responses /
-    # state_variables into the device config (the generic drivers set it).
-    if "inline_protocol" in driver_def:
-        driver_info["inline_protocol"] = driver_def["inline_protocol"]
-
-    # Copy the IR code-set opt-in. When true, the device page surfaces the IR
-    # Codes editor (learn / paste Pronto / type sendir / DB search / test emit),
-    # writing the code-set into the device config's ir_codes map. generic_ir
-    # sets it for build-your-own devices; a community IR driver sets it too and
-    # ships its codes in default_config.ir_codes.
-    if "ir_codes" in driver_def:
-        driver_info["ir_codes"] = driver_def["ir_codes"]
-
-    # Copy the routing declaration — where this driver's routing lives, in its
-    # own words, so the Matrix picker reads the device instead of guessing at
-    # it. Read by ui.matrix_inference off the LIVE driver, which is why it has
-    # to be here and not only in the file: a definition on disk is not what the
-    # picker asks.
-    if "routing" in driver_def:
-        driver_info["routing"] = driver_def["routing"]
+    _copy_fields(driver_info, driver_def, _INFO_FIELDS)
 
     # Copy help from each state variable
     state_vars = driver_info.get("state_variables", {})
@@ -1573,31 +1555,12 @@ def create_configurable_driver_class(
         if isinstance(var_def, dict) and "help" in var_def:
             state_vars[var_name] = {**var_def}
 
-    # Build commands metadata for DRIVER_INFO (shared with the inline-protocol
-    # per-instance merge so file- and config-authored commands look identical
-    # in the IDE).
+    # Shared with the inline-protocol per-instance merge, so file- and
+    # config-authored commands look identical in the IDE.
     driver_info["commands"] = _build_commands_meta(driver_def.get("commands", {}))
+    _copy_fields(driver_info, driver_def, _INFO_FIELDS_AFTER_COMMANDS)
 
-    # Copy the Quick Action declarations (promoted-command buttons + setup
-    # wizards). Stored raw on DRIVER_INFO; resolve_device_actions folds
-    # quick_actions sugar into the unified list at get_device_info time, so
-    # YAML and Python drivers share one resolution path.
-    if "actions" in driver_def:
-        driver_info["actions"] = driver_def["actions"]
-    if "quick_actions" in driver_def:
-        driver_info["quick_actions"] = driver_def["quick_actions"]
-
-    # Copy the web-interface declaration (true, or a URL template). Read by
-    # resolve_device_actions to auto-add the Open Web UI link action.
-    if "web_ui" in driver_def:
-        driver_info["web_ui"] = driver_def["web_ui"]
-
-    # Add delimiter if specified
-    if "delimiter" in driver_def:
-        driver_info["delimiter"] = driver_def["delimiter"]
-
-    # Create a new class dynamically
-    cls = type(
+    return type(
         f"ConfigurableDriver_{driver_id}",
         (ConfigurableDriver,),
         {
@@ -1605,5 +1568,3 @@ def create_configurable_driver_class(
             "_definition": driver_def,
         },
     )
-
-    return cls
