@@ -33,6 +33,7 @@ from openavc.api import plugins as plugin_routes
 from openavc.api import rest
 from openavc.core import plugin_secrets
 from openavc.core import project_library as library
+from openavc.utils.log_redaction import get_secret_registry
 from openavc.core.device_logins import (
     ISC_FIELD,
     ISC_OWNER,
@@ -129,6 +130,15 @@ def _plugin():
     _AcmeBridge.handed = []
     _AcmeBridge.starts = 0
     register_plugin_class(_AcmeBridge)
+
+
+@pytest.fixture(autouse=True)
+def _no_secrets_left_behind():
+    """The logins a project here saves go into the process-wide redaction
+    registry; clear them, so a later test on the same worker does not read
+    this file's secrets as its own."""
+    yield
+    get_secret_registry().clear()
 
 
 @pytest.fixture

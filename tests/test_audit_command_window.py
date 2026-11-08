@@ -26,6 +26,7 @@ from openavc.audit.sandbox import AuditStateStore, DriverSandbox
 from openavc.audit.session import AuditError, AuditOptions, AuditSession, AuditTarget
 from openavc.core.device_traffic import RX, TX, TrafficEntry
 from openavc.core.event_bus import EventBus
+from openavc.utils.log_redaction import get_secret_registry
 
 INFO = {
     "name": "Acme Window",
@@ -56,6 +57,15 @@ INFO = {
         "download_log": {"label": "Download Log", "query_for": "title", "returns_file": True},
     },
 }
+
+
+@pytest.fixture(autouse=True)
+def _clean_secret_registry():
+    """What a run masks includes the process-wide registry's secrets; start
+    and end each test with none, whatever ran before it on this worker."""
+    get_secret_registry().clear()
+    yield
+    get_secret_registry().clear()
 
 
 class _Connection:
