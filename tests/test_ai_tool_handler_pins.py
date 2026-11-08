@@ -474,6 +474,13 @@ class TestShowBindings:
         with pytest.raises(TypeError):
             _show(visible_when=vw)
 
+    def test_the_sentences_list_exactly_what_is_accepted(self):
+        from openavc.cloud.tools import ui_bindings
+
+        assert OPS == ui_bindings._VISIBLE_WHEN_OPS_TEXT
+        assert set(OPS.split(", ")) == ui_bindings._VALID_VISIBLE_WHEN_OPS
+        assert set(ui_bindings._MODES_TEXT.split(", ")) == ui_bindings._VALID_MODES
+
     def test_a_single_visible_when_key_and_operator_problems(self):
         assert _show(visible_when={"operator": "~"}) == _refusal(
             "show.visible_when: missing 'key' (state key to evaluate)",

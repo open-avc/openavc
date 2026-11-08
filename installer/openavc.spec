@@ -182,6 +182,7 @@ hiddenimports = [
     'openavc.cloud.tools.script_tools',
     'openavc.cloud.tools.custom_ui_tools',
     'openavc.cloud.tools.ui_tools',
+    'openavc.cloud.tools.ui_bindings',
     'openavc.cloud.tools.plugin_tools',
     'openavc.cloud.tools.macro_tools',
     'openavc.cloud.tools.system_tools',

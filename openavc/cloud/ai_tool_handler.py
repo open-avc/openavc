@@ -146,13 +146,17 @@ def _is_worded_os_error(exc: Exception) -> bool:
     return isinstance(exc, OSError) and getattr(exc, "errno", None) in _WORDED_ERRNOS
 
 
-
-# How a tool runs. READ changes nothing: it runs beside any other tool,
-# without the project lock. UNLOCKED changes something other than the project
-# and runs without the lock too. LOCKED takes the project lock, so two tools
-# never interleave on engine.project, and the one pre-AI backup of the
-# conversation is made under it before the first such tool. A name missing from
-# TOOLS is answered "Unknown tool".
+# How a tool runs. LOCKED is the default: the tool runs under the project lock,
+# so two tools never interleave on engine.project, and the conversation's one
+# pre-AI backup is made under it before the first LOCKED tool. Tools that drive
+# a device or write state are LOCKED too, and so are review_ui and
+# review_custom_ui, which only read: one needless backup was preferred to two
+# reviews that run differently. READ is a tool that only reads; it runs beside
+# any other, without the lock. UNLOCKED is execute_macro alone: it waits on a
+# macro run for tens of seconds and never changes engine.project, so holding
+# the lock would block project edits. READ and UNLOCKED run the same way;
+# _READ_ONLY_TOOLS keeps them apart. A name missing from TOOLS is answered
+# "Unknown tool".
 READ, UNLOCKED, LOCKED = "read", "unlocked", "locked"
 
 #: Every tool the cloud may call, and how it runs. Tool ``x`` is the handler's
@@ -253,8 +257,6 @@ TOOLS: dict[str, str] = {
     "send_device_command": LOCKED,
     "test_device_connection": LOCKED,
     "test_driver_command": LOCKED,
-    # It waits on a macro run (bounded, but tens of seconds) and never
-    # changes engine.project, so holding the lock would block project edits.
     "execute_macro": UNLOCKED,
     "cancel_macro": LOCKED,
     "set_state_value": LOCKED,

@@ -7,11 +7,15 @@ checks shape only. A macro or device the project lacks is logged, never
 refused, and what the bindings point at is reviewed with the write by
 ``openavc.ui.page_references``.
 
-The names it accepts are the runtime's own sets, never a copy: the
+The names it accepts come from their homes, never a copy kept here: the
 interactions are page_references' ``ACTION_SLOTS``, the actions
-``ui_events.DISPATCHED_ACTIONS``, the visible_when operators
-``macro_validation.CANONICAL_CONDITION_OPS`` (without the aliases the panel
-also evaluates). The sentences go back to the cloud and into the chat.
+``ui_events.DISPATCHED_ACTIONS``, and the visible_when operators the canonical
+condition operators, ``macro_validation.CANONICAL_CONDITION_OPS`` (without the
+aliases the panel also evaluates). The panel evaluates a visible_when in
+``_evalConditionOp`` in ``panel.js``, a hand mirror of those operators, so a new
+operator goes there too. The sentences listing the operators and the press
+modes are written out, and a test holds each to its set. The sentences go back
+to the cloud and into the chat.
 """
 
 from __future__ import annotations
@@ -72,6 +76,7 @@ _VISIBLE_WHEN_OPS_TEXT = "eq, ne, gt, lt, gte, lte, truthy, falsy"
 # "navigate": it moves the deck's own pages, not a panel page.
 _VALID_ACTION_TYPES = DISPATCHED_ACTIONS
 _VALID_MODES = frozenset(("tap", "toggle", "hold_repeat", "tap_hold"))
+_MODES_TEXT = "tap, toggle, hold_repeat, tap_hold"
 
 # Required fields per action type (beyond "action" itself)
 _ACTION_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
@@ -265,8 +270,7 @@ def _check_press_mode(first: dict, errors: list[str]) -> None:
     mode = first.get("mode", "tap")
     if mode and mode not in _VALID_MODES:
         errors.append(
-            f"do.press[0]: mode '{mode}' is not valid. "
-            f"Use: tap, toggle, hold_repeat, tap_hold"
+            f"do.press[0]: mode '{mode}' is not valid. Use: {_MODES_TEXT}"
         )
     elif mode == "toggle":
         if not first.get("toggle_key"):
