@@ -16,12 +16,14 @@ import asyncio
 import time
 from types import SimpleNamespace as NS
 
+import pytest
+
 from openavc.audit.commands import DONE, SENDING, CommandTrial, commands_for
 from openavc.audit.driver_choice import DriverChoice
 from openavc.audit.observe import AuditObserver
 from openavc.audit.passes import DriverRun
 from openavc.audit.sandbox import AuditStateStore, DriverSandbox
-from openavc.audit.session import AuditOptions, AuditSession, AuditTarget
+from openavc.audit.session import AuditError, AuditOptions, AuditSession, AuditTarget
 from openavc.core.device_traffic import RX, TX, TrafficEntry
 from openavc.core.event_bus import EventBus
 
@@ -46,6 +48,12 @@ INFO = {
         },
         # A status query that also declares a value.
         "query_title": {"label": "Query Title", "query_for": "title", "sets": {"title": "Lobby"}},
+        # Status queries the batch leaves for their own Send.
+        "query_input": {
+            "label": "Query Input", "query_for": "title",
+            "params": {"ch": {"type": "integer", "required": True}},
+        },
+        "download_log": {"label": "Download Log", "query_for": "title", "returns_file": True},
     },
 }
 
@@ -387,6 +395,7 @@ async def test_what_the_window_hears_while_it_is_open():
     first_drop = trial.went_away_at
     await conn.emit("device.disconnected")  # still away: the same drop
     await conn.emit("device.connected")
+    await asyncio.sleep(0.05)
     await conn.emit("device.connected")  # back with no drop between: nothing new
     await conn.emit("device.disconnected")
     await _done(trial)
@@ -398,7 +407,7 @@ async def test_what_the_window_hears_while_it_is_open():
     assert trial.went_away_at == first_drop
     [(went, back), (again, still_away)] = trial.gone_and_back
     assert went == first_drop and back is not None and again > back and still_away is None
-    assert back <= trial.back_at < again
+    assert back <= trial.back_at < back + 0.05 < again
     assert trial.drops[1]["back_after"] is None
 
 
@@ -417,6 +426,11 @@ async def test_nothing_is_heard_once_the_window_has_closed():
     assert (trial.changes, trial.device_errors, trial.gone_and_back, trial.back_at) == (
         [], [], [[went, None]], None,
     )
+    await commands.stop()
+    quiet = await commands.send("power_on")
+    commands._finish(quiet)
+    await conn.emit("device.disconnected")
+    assert (quiet.went_away_at, quiet.gone_and_back) == (None, [])
     await commands.stop()
 
 
@@ -569,3 +583,41 @@ async def test_what_a_send_records_as_it_goes_out():
         "seconds": round(typed.sent_at - blank.sent_at, 3),
     }
     assert (blank.attempt, typed.attempt, power.attempt) == (1, 2, 1)
+    # A second connect-and-listen attempt carries the commands sent after it.
+    again = _Connection()
+    commands.run.listens.append(again)
+    commands.run.listen = again
+    later = await _done(await commands.send("power_on"))
+    assert (power.connect_attempt, later.connect_attempt) == (0, 1)
+
+
+async def test_the_status_queries_skip_what_needs_a_value_or_a_file():
+    conn = _Connection()
+    commands = _pass(conn, query_window_seconds=0.05)
+    await commands.run_queries()
+    await _until(lambda: commands.batch["status"] == "done")
+    assert commands.batch == {
+        "status": "done", "total": 2, "sent": 2, "skipped": ["query_input", "download_log"],
+    }
+    assert [e.text for e in commands.session.timeline if e.kind == "commands.queries"] == [
+        "Running 2 status queries one after another.",
+    ]
+    assert conn.ended == ["The status queries were sent"]
+
+
+async def test_one_status_query_and_none():
+    def driver(commands):
+        return NS(DRIVER_INFO={"commands": commands}, config={}, _definition={})
+
+    one = _Connection()
+    one.driver = driver({"query_power": {"label": "Query Power", "query_for": "power"}})
+    single = _pass(one, query_window_seconds=0.05)
+    await single.run_queries()
+    await _until(lambda: single.batch["status"] == "done")
+    assert [e.text for e in single.session.timeline if e.kind == "commands.queries"] == [
+        "Running 1 status query one after another.",
+    ]
+    none = _Connection()
+    none.driver = driver({"power_on": {"label": "Power On"}})
+    with pytest.raises(AuditError, match="^Acme has no status queries that can run without a value.$"):
+        await _pass(none).run_queries()
