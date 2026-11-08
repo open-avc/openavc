@@ -20,6 +20,7 @@ from openavc.core.connection_fault import (
     no_simulator_fault,
 )
 from openavc.core.device_away import DeviceAwayMixin
+from openavc.core.device_bridges import DeviceBridgesMixin
 from openavc.core.device_reconnect import DeviceReconnectMixin
 from openavc.core.device_web_ui import DeviceWebUiMixin
 from openavc.core.pending_settings import PendingSettingsMixin
@@ -198,6 +199,7 @@ def _orphan_config(config: dict[str, Any]) -> dict[str, Any]:
 
 class DeviceManager(
     DeviceAwayMixin, DeviceReconnectMixin, PendingSettingsMixin, DeviceWebUiMixin,
+    DeviceBridgesMixin,
 ):
     """Manages all device driver instances."""
 
@@ -350,11 +352,7 @@ class DeviceManager(
         self._devices[device_id] = driver
         self._device_configs[device_id] = device_config
 
-        # A bridge-routed device (e.g. an IR device bound to an emitter port)
-        # emits through the live bridge instance; hand it the router that
-        # reaches that bridge at send time.
-        if config.get("bridge") and config.get("bridge_port"):
-            driver._bridge_router = self._route_bridge_command
+        self._attach_bridge_router(driver, config)
 
         # Set device name in state
         self.state.set(
@@ -427,17 +425,7 @@ class DeviceManager(
                 return
             # Apply pending settings after successful connect
             await self._apply_pending_settings(device_id)
-            # A bridge-routed device (IR on an emitter port) connect()s without
-            # a socket: it comes up online iff its bridge is already online. If
-            # the bridge is offline at add time, surface a bridge_offline reason
-            # on the card — the mirror handlers will clear it when the bridge
-            # comes up. (Skipped for a device that connected normally.)
-            if config.get("transport") == "bridge" and not driver.get_state(
-                "connected"
-            ):
-                bridge_id = config.get("bridge")
-                if bridge_id:
-                    self._set_bridge_offline_reason(device_id, bridge_id)
+            self._note_bridge_offline_if_down(device_id, driver, config)
         except ConnectEndedError:
             # Ended by a Reconnect, a pause or a removal while it waited: the
             # door that ended it owns the device now.
@@ -528,58 +516,6 @@ class DeviceManager(
             for did, result in zip(batch, results):
                 if isinstance(result, Exception):
                     log.error(f"Bringing up device '{did}' failed: {result}")
-
-    async def _prepare_bridge_for(
-        self, device_id: str, config: dict[str, Any]
-    ) -> None:
-        """Best-effort: ask the live bridge driver to prepare a port before a
-        bridge-bound downstream device connects.
-
-        The bridge driver instance owns the bridge's command socket; preparing
-        the port (for serial, pushing baud/parity via the bridge protocol) makes
-        the transparent pass-through carry bytes at the right line settings. A
-        missing / not-yet-live bridge is logged and skipped — bridges are
-        ordered ahead of their dependents on load, and serial config persists on
-        the hardware, so a transient miss self-heals on the next add/edit. Never
-        raises: a bridge-side failure must not strand the downstream offline.
-        """
-        bridge_id = config.get("bridge")
-        bridge_port = config.get("bridge_port")
-        if not bridge_id or not bridge_port:
-            return
-        bridge = self._devices.get(bridge_id)
-        if bridge is None or not getattr(bridge, "is_bridge", False):
-            log.debug(
-                "Device '%s' binds bridge '%s' but it isn't a live bridge "
-                "instance yet — skipping port prep", device_id, bridge_id,
-            )
-            return
-        try:
-            await bridge.prepare_bridge_port(bridge_port, config)
-        except Exception:
-            log.warning(
-                "Bridge '%s' failed to prepare port '%s' for device '%s' — "
-                "connecting anyway", bridge_id, bridge_port, device_id,
-                exc_info=True,
-            )
-
-    async def _route_bridge_command(
-        self, bridge_id: str, port_id: str, kind: str, payload: dict[str, Any]
-    ) -> Any:
-        """Route a bridge-routed downstream device's command to its live bridge.
-
-        Injected into bridge-routed drivers as their ``_bridge_router`` so a
-        command (e.g. an IR device's code) reaches the bridge instance that owns
-        the hardware socket. Raises ConnectionError with a clear message when the
-        bridge is missing, not a bridge, or offline — surfaced to the caller as a
-        command failure rather than a silent no-op.
-        """
-        bridge = self._devices.get(bridge_id)
-        if bridge is None or not getattr(bridge, "is_bridge", False):
-            raise ConnectionError(f"Bridge '{bridge_id}' is not available")
-        if not getattr(bridge, "_connected", False):
-            raise ConnectionError(f"Bridge '{bridge_id}' is offline")
-        return await bridge.bridge_emit(port_id, kind, payload)
 
     async def remove_device(self, device_id: str) -> None:
         """Disconnect and remove a device (handles both active and orphaned)."""
@@ -1548,14 +1484,9 @@ class DeviceManager(
             return
         device_id = parts[2]
 
-        # If this device is a bridge, take its bridge-routed dependents (IR
-        # devices on emitter ports) offline too — they have no transport of
-        # their own and are reachable only while the bridge is. Done before the
-        # intentional-disconnect / still-connected guards below so a bridge
-        # being removed or updated still propagates offline to its dependents.
-        deps = self._bridge_routed_dependents(device_id)
-        if deps:
-            await self._mirror_bridge_state(device_id, False, deps)
+        # Before the intentional-disconnect / still-connected guards below, so
+        # a bridge being removed or updated still takes its dependents offline.
+        await self._bridge_went_down(device_id)
 
         # Only reconnect if device still exists and isn't being removed
         driver = self._devices.get(device_id)
@@ -1622,125 +1553,14 @@ class DeviceManager(
                 and self.state.get(f"device.{device_id}.offline_reason") is not None
             ):
                 self._clear_offline_reason(device_id)
-        # A bridge only configures its ports when a downstream is ADDED, so a
-        # bridge that was down then and heals now would carry that downstream's
-        # bytes at whatever its NVRAM holds -- the factory default, or the last
-        # job's baud -- while the device reads connected and every indicator is
-        # green. Re-prepare here, the one place we know the bridge is live, and
-        # before the mirror below so the line settings are on their way before
-        # anything is told the bridge is back.
-        await self._reprepare_bridge_ports(device_id)
-        deps = self._bridge_routed_dependents(device_id)
-        if deps:
-            await self._mirror_bridge_state(device_id, True, deps)
+        # A bridge that was down when a downstream was added, and heals now,
+        # would carry that downstream's bytes at whatever its NVRAM holds -- the
+        # factory default, or the last job's baud -- while the device reads
+        # connected and every indicator is green.
+        await self._bridge_came_up(device_id)
         # A device that was unreachable at add time may only now be serving its
         # web UI; the probe's own "already detected" guard makes this idempotent.
         self._schedule_web_ui_probe(device_id)
-
-    async def _reprepare_bridge_ports(self, bridge_id: str) -> None:
-        """Re-run the port preparation for every device bound to this bridge.
-
-        A no-op unless ``bridge_id`` really is a live bridge with dependents,
-        which is what makes it safe on the connect path every device takes.
-        Each call is best-effort and never raises, exactly as at add time.
-        """
-        bridge = self._devices.get(bridge_id)
-        if bridge is None or not getattr(bridge, "is_bridge", False):
-            return
-        for dev_id in self._bridge_bound_dependents(bridge_id):
-            driver = self._devices.get(dev_id)
-            if driver is None:
-                continue
-            await self._prepare_bridge_for(dev_id, driver.config or {})
-
-    def _bridge_routed_dependents(self, bridge_id: str) -> list[str]:
-        """Live device ids that route their commands through ``bridge_id`` and
-        have no transport of their own (resolved ``transport == "bridge"``).
-
-        These are the devices whose connected state mirrors the bridge (IR
-        devices on emitter ports). A serial pass-through downstream is *not*
-        here — it dials the bridge's TCP passthrough and tracks the bridge via
-        its own socket, so it needs no mirroring.
-        """
-        out: list[str] = []
-        for dev_id, dc in self._device_configs.items():
-            if dev_id not in self._devices:
-                continue
-            cfg = dc.get("config", {})
-            if cfg.get("bridge") == bridge_id and cfg.get("transport") == "bridge":
-                out.append(dev_id)
-        return out
-
-    def _bridge_bound_dependents(self, bridge_id: str) -> list[str]:
-        """Live device ids bound to a port on ``bridge_id``, of every port kind.
-
-        Wider than ``_bridge_routed_dependents``, which is only the devices
-        whose connected state MIRRORS the bridge. This is everything the bridge
-        has to configure a port for, including the serial pass-through devices
-        that dial the bridge themselves and so are nobody's mirror.
-        """
-        out: list[str] = []
-        for dev_id, dc in self._device_configs.items():
-            if dev_id not in self._devices:
-                continue
-            cfg = dc.get("config", {})
-            if cfg.get("bridge") == bridge_id and cfg.get("bridge_port"):
-                out.append(dev_id)
-        return out
-
-    def _carrier_bridge_if_offline(self, device_id: str) -> str | None:
-        """The id of the bridge carrying ``device_id``, when that bridge is down.
-
-        A serial device bound through a bridge has its connection rewritten to
-        the bridge's transparent pass-through (``resolve_bridge_binding``), which
-        overwrites host, port and transport but keeps ``bridge`` / ``bridge_port``
-        in the resolved config. Those markers are the only thing left tying the
-        failing socket back to the bridge, because the address it failed against
-        belongs to the bridge rather than to the device.
-
-        Both markers are required, matching the rewrite's own precondition: a
-        binding with no port was never rewritten, so that device is dialling its
-        own address and the bridge has nothing to do with the failure. ``None``
-        also when the bridge is UP -- a live bridge with an unreachable device
-        downstream is the device's own fault, and saying otherwise would point
-        the integrator at the wrong box.
-        """
-        cfg = self._device_configs.get(device_id, {}).get("config", {})
-        bridge_id = cfg.get("bridge")
-        if not bridge_id or not cfg.get("bridge_port"):
-            return None
-        bridge = self._devices.get(bridge_id)
-        # A bridge that is not registered at all (its driver is not installed
-        # yet) counts as down: the downstream is certainly not reaching anything
-        # through it, and naming the bridge beats describing a socket.
-        if bridge is not None and bridge.get_state("connected"):
-            return None
-        return str(bridge_id)
-
-    async def _mirror_bridge_state(
-        self, bridge_id: str, online: bool, deps: list[str]
-    ) -> None:
-        """Set each bridge-routed dependent's connected state to ``online`` and
-        emit its lifecycle event (only on an actual transition, so triggers see
-        one edge, not a stream). On going offline, publish a ``bridge_offline``
-        reason; on coming online, clear it.
-        """
-        for dev_id in deps:
-            driver = self._devices.get(dev_id)
-            if driver is None:
-                continue
-            was = bool(driver.get_state("connected"))
-            driver._bridge_routed = True
-            driver._connected = online
-            driver.set_state("connected", online)
-            if online:
-                self._clear_offline_reason(dev_id)
-                if not was:
-                    await self.events.emit(f"device.connected.{dev_id}")
-            else:
-                self._set_bridge_offline_reason(dev_id, bridge_id)
-                if was:
-                    await self.events.emit(f"device.disconnected.{dev_id}")
 
     def _simulation_gap(self, device_id: str) -> str | None:
         return self.unsimulated_driver(device_id) if self.unsimulated_driver else None
@@ -1797,18 +1617,8 @@ class DeviceManager(
                 self._refresh_usb_serial_port(device_id, driver)
                 await self._connect_driver(device_id, driver)
                 log.info(f"Reconnected device: {device_id}")
-                # A bridge-routed device connect()s without raising even when
-                # its bridge is down — it has no transport of its own and comes
-                # up online only if the bridge is live. Mirror the add path:
-                # re-surface bridge_offline (cleared up front above) so the card
-                # and offline_reason automation stay accurate.
-                cfg = driver.config or {}
-                if cfg.get("transport") == "bridge" and not driver.get_state(
-                    "connected"
-                ):
-                    bridge_id = cfg.get("bridge")
-                    if bridge_id:
-                        self._set_bridge_offline_reason(device_id, bridge_id)
+                # The reason was cleared up front above.
+                self._note_bridge_offline_if_down(device_id, driver, driver.config or {})
                 # Flush the queue, like every other path that brings a device
                 # up. This one used to skip it, so a setting queued while the
                 # device was away survived the Reconnect button (and the
