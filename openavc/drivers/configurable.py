@@ -36,7 +36,6 @@ from openavc.drivers.base import (
     UNKNOWN_COMMAND,
     WAKE_ON_LAN_PORT,
     BaseDriver,
-    ConnectionFaultError,
     UnknownDeviceSettingError,
     WakeAddressError,
     normalize_and_validate_command_params as _normalize_and_validate_command_params,
@@ -56,6 +55,7 @@ from openavc.drivers.query_entries import QueryEntries
 from openavc.drivers.reply_throttle import ReplyThrottle
 from openavc.drivers.reply_values import ReplyValues
 from openavc.drivers.sign_in import SignIn
+from openavc.drivers.start_up_and_poll import StartUpAndPoll
 from openavc.drivers.text_replies import TextReplies
 from openavc.drivers.inline_protocol import (
     declare_command_params,
@@ -71,16 +71,6 @@ from openavc.utils.logger import get_logger
 from openavc.transport.pacing import pacing_clock, sleep_at_least
 
 log = get_logger(__name__)
-
-# httpx transport/timeout/status errors are transport-level for missed-poll
-# watchdog purposes (mirrors BaseDriver._poll_loop). poll() re-raises these so
-# an unreachable HTTP device trips the watchdog instead of looking connected.
-try:
-    import httpx as _httpx
-
-    _HTTP_TRANSPORT_ERRORS: tuple[type[BaseException], ...] = (_httpx.HTTPError,)
-except ImportError:  # pragma: no cover - httpx is a hard dependency in practice
-    _HTTP_TRANSPORT_ERRORS = ()
 
 
 def _build_commands_meta(commands_def: dict[str, Any]) -> dict[str, Any]:
@@ -142,6 +132,7 @@ _CHILD_ID_TOKEN = re.compile(r"\{child_id(?::[^{}]*)?\}")
 
 
 class ConfigurableDriver(
+    StartUpAndPoll,
     SignIn,
     HttpCredential,
     QueryEntries,
@@ -211,10 +202,7 @@ class ConfigurableDriver(
         # preview records what would be sent and must not sit out the gaps).
         self._next_line_at: float = 0.0
         self._pace_lines: bool = True
-        # The on_connect lines the latest start-up sent, and those the first
-        # poll after a connect skips because start-up has just sent them.
-        self._start_up_lines: set[str] = set()
-        self._first_poll_skips: set[str] | None = None
+        self._init_start_up_and_poll()
         # Response rules' then_query rounds (_follow_up): the tasks sending
         # them, and per (rule, routed child) when a round may go again
         # (infinity while one is going out).
@@ -519,13 +507,9 @@ class ConfigurableDriver(
             # to restore, permanently disabling polling after one bad attempt.
             self.config["poll_interval"] = saved_poll_interval
 
+        self._skip_on_first_poll(saved_poll_interval > 0)
         if saved_poll_interval > 0:
-            # The first poll follows straight on; what start-up just asked
-            # for is not asked again (see poll()).
-            self._first_poll_skips = set(self._start_up_lines)
             await self.start_polling(saved_poll_interval)
-        else:
-            self._first_poll_skips = None
 
     async def _initial_sync(self) -> None:
         """Register the declared child rosters, then send on_connect.
@@ -578,169 +562,6 @@ class ConfigurableDriver(
             await sleep_at_least(wait)
             wait = self._next_line_at - pacing_clock()
         self._next_line_at = pacing_clock() + gap
-
-    async def _run_on_connect(self) -> None:
-        """Send the declared start-up steps (``on_connect``).
-
-        Its own method so a device audit's connection preview can run exactly
-        these steps against a transport that records (``drivers/dry_run.py``).
-
-        ``inter_command_delay`` is applied by the transport after every write
-        (tcp, serial, udp, osc, which writes through one of those, and http,
-        after each response), so nothing waits for it here. Every line sent
-        is noted in ``_start_up_lines`` for connect() (see poll()).
-
-        A failed line is logged and the next one sent, except a refused
-        credential (a typed ``auth_failed``), which ends start-up and is
-        raised.
-        """
-        self._start_up_lines = set()
-        on_connect = self._definition.get("on_connect", [])
-        if on_connect and self.transport and self.transport.connected:
-            transport_type = self._definition.get("transport")
-            delay = self.config.get("inter_command_delay", 0)
-
-            if transport_type == "osc":
-                from openavc.transport.osc_codec import osc_encode_message
-                for item in on_connect:
-                    try:
-                        if isinstance(item, dict) and "each_child" in item:
-                            for expanded in self._expand_query(item):
-                                address = (
-                                    self._safe_substitute(expanded, self.config)
-                                    if "{" in expanded
-                                    else expanded
-                                )
-                                await self.transport.send(osc_encode_message(address))
-                                self._start_up_lines.add(expanded)
-                            continue
-                        line: str | None = None
-                        if isinstance(item, str):
-                            address = self._safe_substitute(item, self.config) if "{" in item else item
-                            data = osc_encode_message(address)
-                            line = item
-                        elif isinstance(item, dict):
-                            if not self._query_enabled(item):
-                                continue
-                            # The address may be keyed "address" (the {address,
-                            # args} form) or "send" (a plain {send, when} gated
-                            # entry) — accept either so a gated OSC subscription
-                            # isn't silently sent as an empty address.
-                            address = item.get("address") or item.get("send") or ""
-                            if not item.get("args"):
-                                line = address
-                            if "{" in address:
-                                address = self._safe_substitute(address, self.config)
-                            args = self._build_osc_args(item.get("args", []), self.config)
-                            data = osc_encode_message(address, args)
-                        else:
-                            continue
-                        if await self._line_gate_shut(None, item):
-                            continue
-                        await self.transport.send(data)
-                        if line:
-                            self._start_up_lines.add(line)
-                    except Exception as e:
-                        log.warning(f"[{self.device_id}] on_connect OSC command failed: {e}")
-
-                # Query all OSC state variable addresses to fetch initial state.
-                # OSC convention: sending an address with no args returns the
-                # current value. This populates state immediately on connect.
-                # With no inter_command_delay, 5 ms apart; with one, the
-                # transport's own wait spaces them. It is a poll in all but
-                # name, so polling.when_state holds it back too: any message
-                # wakes a unit that a reconnect finds in standby.
-                polling = self._definition.get("polling") or {}
-                for addr_pattern, *_rest in self._osc_responses:
-                    # A response address with fnmatch wildcards (e.g. QLab's
-                    # push-only "/update/workspace/*/...") is a match pattern,
-                    # not a queryable address — sending it literally is
-                    # meaningless. Such state arrives via push or a dedicated
-                    # on_connect/poll query instead.
-                    if any(c in addr_pattern for c in "*?["):
-                        continue
-                    if await self._line_gate_shut(polling, None):
-                        break
-                    try:
-                        addr = self._safe_substitute(addr_pattern, self.config) if "{" in addr_pattern else addr_pattern
-                        await self.transport.send(osc_encode_message(addr))
-                        self._start_up_lines.add(addr_pattern)
-                        if not delay:
-                            await asyncio.sleep(0.005)
-                    except Exception as e:
-                        log.warning(f"[{self.device_id}] OSC initial query failed: {e}")
-            else:
-                for raw in on_connect:
-                    for query in self._expand_query(raw):
-                        try:
-                            await self._pace_line()
-                            # A step's when_state gate is judged again once
-                            # the step before it has been answered.
-                            if await self._line_gate_shut(None, raw):
-                                continue
-                            await self._dispatch_query(query)
-                            self._start_up_lines.add(query)
-                        except ConnectionFaultError as e:
-                            if e.fault_code == "auth_failed":
-                                raise
-                            log.warning(f"[{self.device_id}] on_connect command failed: {e}")
-                        except Exception as e:
-                            log.warning(f"[{self.device_id}] on_connect command failed: {e}")
-
-    async def _dispatch_query(self, query: str) -> None:
-        """Send one query string for the active (non-OSC) transport.
-
-        Shared by on_connect and poll() so the two resolve queries identically.
-        For HTTP/UDP a query that names a command runs as that command, so its
-        response goes through the matcher; any other string is a raw path /
-        payload (and an HTTP raw path's response is fed to the matcher too).
-        TCP/serial resolve a command name the same way (so send-side framing
-        applies and the response is matched), else send the raw protocol string.
-        OSC is handled by the callers.
-        """
-        transport_type = self._definition.get("transport")
-        commands = self._definition.get("commands", {})
-        if transport_type == "http":
-            if query in commands:
-                response = await self._send_command(query)
-            else:
-                formatted = (
-                    self._substitute_for_wire("polling query", query, self.config)
-                    if "{" in query else query
-                )
-                response = await self.transport.get(formatted)
-                # Same handler as the command path: response matching.
-                await self._process_http_response(formatted, response)
-            # Both forms are judged against the credential: a raw path is the
-            # most common HTTP polling form, a command name the other.
-            self._judge_http_answer(query, response)
-        elif transport_type == "udp":
-            if query in commands:
-                await self._send_command(query)
-            else:
-                formatted = (
-                    self._substitute_for_wire("polling query", query, self.config)
-                    if "{" in query else query
-                )
-                await self.transport.send(_safe_encode_escapes(formatted))
-        else:  # tcp / serial
-            if query in commands:
-                # A query that names a command runs as that command, so send-side
-                # framing (command_prefix/suffix + send_frame) applies and the
-                # response goes through the matcher — matches the HTTP/UDP
-                # branches above. A raw protocol string (not a command name) is
-                # sent as authored, still wrapped in the send_frame packet header
-                # (no-op unless declared) so a length-framed protocol's raw
-                # queries reach the device correctly.
-                await self._send_command(query)
-            else:
-                formatted = (
-                    self._substitute_for_wire("polling query", query, self.config)
-                    if "{" in query else query
-                )
-                await self.transport.send(
-                    self._apply_send_frame(_safe_encode_escapes(formatted))
-                )
 
     def _follow_up(
         self,
@@ -1739,126 +1560,6 @@ class ConfigurableDriver(
         raise NotImplementedError(
             f"Device setting '{key}' write definition has no path or send"
         )
-
-    async def poll(self) -> None:
-        """
-        Send query strings from definition at configured interval.
-
-        A query that names a declared command runs as that command on every
-        transport, so its reply goes through response matching and send-side
-        framing applies. Anything else is a raw string for the transport: a URL
-        path on HTTP, an OSC address on OSC, the protocol bytes on TCP/serial/UDP.
-
-        TCP and serial lines are spaced by ``inter_command_delay`` (in the
-        transport) or, when none is set, by DEFAULT_LINE_GAP_S (_pace_line).
-        UDP, OSC and HTTP lines are spaced only by ``inter_command_delay``
-        (on HTTP, from one response to the next request).
-        """
-        if not self.transport or not self.transport.connected:
-            return
-
-        polling = self._definition.get("polling", {})
-        queries = polling.get("queries", [])
-
-        # The whole poll waits while the device's own state says so
-        # (polling.when_state): a unit that any command wakes is left in
-        # standby. A cycle that sends nothing is neither silent nor unread to
-        # BaseDriver._poll_loop, so the connection stays up meanwhile.
-        if self._poll_gate_shut(polling):
-            self._first_poll_skips = None
-            return
-
-        transport_type = self._definition.get("transport")
-        is_osc = transport_type == "osc"
-        is_http = transport_type == "http"
-
-        # Count this cycle's HTTP answers for the whole-cycle verdict
-        # (http_credential).
-        self._open_http_cycle(is_http)
-
-        # The first poll after a connect follows on_connect at once, so a line
-        # start-up has just sent is not sent again. A line whose send failed
-        # was not noted (_run_on_connect), so it is asked again here.
-        skips = self._first_poll_skips
-        self._first_poll_skips = None
-
-        cycle_held = False
-        for raw_query in queries:
-            if cycle_held:
-                break
-            # each_child entries expand to one query per registered child.
-            for query in self._expand_query(raw_query):
-                if skips and query in skips:
-                    continue
-                try:
-                    if is_osc:
-                        # A reply read since the cycle began can shut a
-                        # when_state gate: judged again before each line.
-                        gate = await self._line_gate_shut(polling, raw_query)
-                        if gate == "poll":
-                            cycle_held = True
-                            break
-                        if gate:
-                            continue
-                        commands = self._definition.get("commands", {})
-                        if query in commands:
-                            await self._send_command(query)
-                        else:
-                            from openavc.transport.osc_codec import osc_encode_message
-                            address = self._safe_substitute(query, self.config) if "{" in query else query
-                            msg = osc_encode_message(address)
-                            await self.transport.send(msg)
-                    else:
-                        # Every transport resolves a command name (so framing
-                        # applies and the response is matched) and falls back to
-                        # the raw string. Shared with on_connect via
-                        # _dispatch_query so the two paths can't drift apart.
-                        await self._pace_line()
-                        # A reply read since the cycle began (Enter Standby's
-                        # answer, or the gated query's own) can shut a
-                        # when_state gate, and every line sent after it would
-                        # undo it: judged again just before each line goes out.
-                        gate = await self._line_gate_shut(polling, raw_query)
-                        if gate == "poll":
-                            cycle_held = True
-                            break
-                        if gate:
-                            continue
-                        await self._dispatch_query(query)
-                except (ConnectionError, TimeoutError, OSError) as exc:
-                    # Transport-level failure: propagate so BaseDriver._poll_loop's
-                    # missed-poll watchdog counts it and can eventually mark the
-                    # device disconnected. Swallowing this is what let HTTP/OSC/UDP
-                    # devices report connected while unreachable. (HTTP connect
-                    # errors arrive here as builtin ConnectionError — http_client
-                    # translates httpx.ConnectError before it propagates.) A
-                    # refused credential (_judge_http_answer) ends the cycle the
-                    # same way and drops the connection at once.
-                    if getattr(exc, "fault_code", None) != "auth_failed":
-                        log.warning(f"[{self.device_id}] Poll query failed (transport)")
-                    self._drop_http_cycle()
-                    raise
-                except _HTTP_TRANSPORT_ERRORS as exc:
-                    # httpx timeout / status / other transport errors are also
-                    # transport-level for the watchdog — re-raise, don't swallow.
-                    log.warning(f"[{self.device_id}] Poll query failed (HTTP): {exc}")
-                    self._drop_http_cycle()
-                    raise
-                except Exception as exc:  # Template substitution, encoding, parse errors
-                    # Protocol-level: the device answered but the query/response was
-                    # malformed. Surface device.error, don't penalize the watchdog,
-                    # and continue to the next query.
-                    log.exception(f"[{self.device_id}] Poll query error")
-                    try:
-                        await self.events.emit(
-                            f"device.error.{self.device_id}",
-                            {"device_id": self.device_id, "error": str(exc)},
-                        )
-                    except Exception:
-                        log.exception(f"[{self.device_id}] Failed to emit device.error")
-
-        # Every request this cycle refused is the credentials themselves.
-        self._close_http_cycle()
 
     # Shared send_frame framing (see compiled_protocol module docs).
     _build_send_frame = staticmethod(compiled_protocol.build_send_frame)

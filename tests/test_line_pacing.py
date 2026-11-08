@@ -30,6 +30,7 @@ from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.drivers import base as base_mod
 from openavc.drivers import configurable as configurable_mod
+from openavc.drivers import start_up_and_poll
 from openavc.drivers.configurable import (
     DEFAULT_LINE_GAP_S,
     create_configurable_driver_class,
@@ -91,6 +92,7 @@ def wire_log(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, Any]]:
     clock = _Clock()
     recorder = _RecordingAsyncio(clock, log)
     monkeypatch.setattr(configurable_mod, "asyncio", recorder)
+    monkeypatch.setattr(start_up_and_poll, "asyncio", recorder)
     monkeypatch.setattr(configurable_mod, "time", clock)
     # The line gap is measured and slept through the pacing helpers.
     monkeypatch.setattr(configurable_mod, "pacing_clock", clock.monotonic)
