@@ -44,7 +44,7 @@ from openavc.drivers.spec import (
     LINE_GAP_TRANSPORTS,
 )
 from openavc.drivers.inline_protocol import (
-    derive_command_params,
+    declare_command_params,
     derive_state_vars_from_responses,
     normalize_config_commands,
     normalize_config_responses,
@@ -665,17 +665,8 @@ class ConfigurableDriver(BaseDriver):
 
         # Auto-declare params for {placeholder} tokens so parameterized commands
         # prompt in the Send Command card. config_keys are excluded — a {host}
-        # token resolves from config, not a prompt. Scans the send string
-        # (byte-stream) plus path/body (HTTP) where placeholders can appear.
-        config_keys = set(self.config.keys())
-        for cmd in norm_commands.values():
-            ph_src = " ".join(
-                str(cmd[f]) for f in ("send", "path", "body") if isinstance(cmd.get(f), str)
-            )
-            if "{" in ph_src:
-                cmd["params"] = derive_command_params(
-                    ph_src, config_keys, cmd.get("params")
-                )
+        # token resolves from config, not a prompt.
+        declare_command_params(norm_commands, set(self.config.keys()))
 
         merged = dict(self._definition)
         file_commands = merged.get("commands") or {}

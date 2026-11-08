@@ -11,11 +11,12 @@ Pure and stdlib-only on purpose: both the driver runtime
 (``openavc.simulator.yaml_auto``) import these, so they must not pull in the driver
 runtime or transport stack.
 
-The six public names below are that shared surface — ``normalize_config_*``,
-``derive_command_params``, ``derive_state_vars_from_responses`` and
-``normalize_ir_codes``. Everything underscore-prefixed is internal to this
-module and free to change: sharing is the whole reason this file exists, so
-"private" has to mean something narrower here than "not imported yet".
+The seven public names below are that shared surface — ``normalize_config_*``,
+``derive_command_params``, ``declare_command_params``,
+``derive_state_vars_from_responses`` and ``normalize_ir_codes``. Everything
+underscore-prefixed is internal to this module and free to change: sharing is
+the whole reason this file exists, so "private" has to mean something narrower
+here than "not imported yet".
 """
 
 from __future__ import annotations
@@ -125,6 +126,20 @@ def derive_command_params(
             continue
         params[ph] = {"type": "string"}
     return params
+
+
+def declare_command_params(
+    commands: dict[str, dict[str, Any]], config_keys: set[str],
+) -> None:
+    """Give every command a param for each ``{placeholder}`` it carries, in
+    place: its send string (byte-stream) plus its path and body (HTTP), where
+    placeholders can appear. ``derive_command_params`` decides which."""
+    for cmd in commands.values():
+        source = " ".join(
+            str(cmd[f]) for f in ("send", "path", "body") if isinstance(cmd.get(f), str)
+        )
+        if "{" in source:
+            cmd["params"] = derive_command_params(source, config_keys, cmd.get("params"))
 
 
 def normalize_ir_codes(raw: Any) -> dict[str, Any]:
