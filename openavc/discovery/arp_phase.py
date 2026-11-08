@@ -297,7 +297,6 @@ class ArpHarvest:
                 "MAC/OUI", enriched,
             )
 
-
     @staticmethod
     def _answered_for_itself(device: DiscoveredDevice) -> bool:
         """Did the DEVICE answer something, rather than a cache or a DNS?

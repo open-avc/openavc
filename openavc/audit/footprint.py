@@ -79,7 +79,7 @@ from openavc.discovery.explain import (
     explain_matches,
 )
 from openavc.discovery.http_fetch import HttpExchange, http_get, same_origin_redirect
-from openavc.discovery.mdns_scanner import BASELINE_SERVICE_TYPES, MDNSScanner
+from openavc.discovery.mdns_scanner import MDNSScanner
 from openavc.discovery.network_scanner import (
     get_local_subnets,
     get_network_adapters,
@@ -551,11 +551,8 @@ class NetworkCheck:
             self._listeners_started = asyncio.get_running_loop().time()
             return
         ip = self.footprint.ip
-        types = list(BASELINE_SERVICE_TYPES)
-        for hint in self.discovery.discovery_hints:
-            types.extend(fp.service for fp in hint.mdns if fp.service)
         self._mdns = MDNSScanner(
-            control_ip=self._listen_ip, service_types=types,
+            control_ip=self._listen_ip, service_types=self.discovery.mdns_service_types(),
             query_enumerated_types=True, enumerated_from=[ip] if ip else [],
             on_message=self._hear("mdns"),
         )

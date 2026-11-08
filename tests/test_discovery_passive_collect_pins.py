@@ -96,3 +96,31 @@ async def test_the_collect_window_gets_the_wait_its_plan_granted():
     assert seen == [(3.0, ["10.77.0.5"], followup)]
     assert engine.scan_status.warnings == ["Listened 3s."]
     assert engine._narrowed is True
+
+
+async def test_the_audits_mdns_listener_asks_for_what_a_scans_does():
+    from openavc.audit.footprint import NetworkCheck
+
+    engine = DiscoveryEngine()
+    engine.load_driver_hints_from_registry([{
+        "id": "acme_widget", "name": "Acme Widget", "manufacturer": "Acme",
+        "category": "display", "transport": "tcp",
+        "discovery": {"mdns": "_acmewidget._tcp.local."},
+    }])
+    asked: list[list[str]] = []
+
+    def record_mdns(**kwargs):
+        asked.append(list(kwargs["service_types"]))
+        return MagicMock(start=MagicMock(return_value=asyncio.sleep(0)))
+
+    check = NetworkCheck(engine, "192.0.2.5", "192.0.2.5", source_ip="192.0.2.9")
+    with patch("openavc.audit.footprint.MDNSScanner", side_effect=record_mdns), \
+         patch("openavc.audit.footprint.SSDPScanner",
+               return_value=MagicMock(scan=MagicMock(return_value=asyncio.sleep(0)))), \
+         patch("openavc.audit.footprint.AMXDDPScanner",
+               return_value=MagicMock(start=MagicMock(return_value=asyncio.sleep(0)))):
+        await check.start_listeners()
+        await asyncio.gather(*check._listener_tasks)
+
+    assert asked == [engine.mdns_service_types()]
+    assert asked[0][-1] == "_acmewidget._tcp.local."

@@ -77,8 +77,8 @@ _PASSIVE_COLLECT_DEFAULT_WAIT_SECONDS: float = 15.0
 # Ceiling on the wait after the listeners are told to stop: mDNS and AMX DDP
 # exit within half a second, and SSDP fetches description XML ten at a time
 # with a 3 s timeout each, so this covers two full rounds of slow fetches.
-# The phase's budget already covers it: SNMP, which the budget allows 5 s
-# after the window, has usually finished during the window itself.
+# The phase's budget already covers it: SNMP, which the budget allows
+# SNMP_COLLECT_SECONDS after the window, has usually finished during the window itself.
 _LISTENER_DRAIN_SECONDS: float = 6.0
 
 
@@ -160,10 +160,11 @@ class PassiveCollection:
     """The listeners and SNMP from phase 2 to phase 7's collection, and the
     merge a truncated scan repeats; a mixin ``DiscoveryEngine`` inherits."""
 
-    def _mdns_service_types(self) -> list[str]:
+    def mdns_service_types(self) -> list[str]:
         """What the mDNS listener asks for: a small consumer baseline, then
         each loaded driver's ``mdns:`` service. The scanner adds the DNS-SD
-        meta-query itself, so unknown types surface for catalog growth."""
+        meta-query itself, so unknown types surface for catalog growth. A
+        device audit's listener asks for the same."""
         driver_service_types = [
             fp.service for hint in self.discovery_hints for fp in hint.mdns if fp.service
         ]
@@ -179,7 +180,7 @@ class PassiveCollection:
         task results but not the scanners' own accumulated state.
         """
         await self._set_phase(2, "passive_listen", "Starting mDNS, SSDP, and AMX DDP listeners...")
-        mdns_scanner = MDNSScanner(service_types=self._mdns_service_types(), control_ip=control_ip)
+        mdns_scanner = MDNSScanner(service_types=self.mdns_service_types(), control_ip=control_ip)
         ssdp_scanner = SSDPScanner(
             control_ip=control_ip,
             fetch_scope=lambda ip: ip_in_subnets(ip, subnets),

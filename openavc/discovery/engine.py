@@ -315,7 +315,8 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         self._scan_source_ip: str = ""
         # Hosts the ARP table vouched for that answered no ping. They are
         # scanned like any other host but must EARN their place; anything
-        # still mute at the end is dropped in _finalize_scan.
+        # still mute at the end is dropped as the matcher finishes
+        # (arp_phase's _settle_arp_only_hosts).
         self._arp_provisional: set[str] = set()
         # Hosts this scan has port-scanned, whatever the result. Phase 7's
         # follow-up decides which passive-only hosts still need a scan from
@@ -390,7 +391,10 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
 
         Discovery's job is to suggest what driver to install, so the
         catalog (un-installed drivers) must contribute rules just like
-        the installed registry does. Installed wins on collisions.
+        the installed registry does. For a driver both installed and in
+        the catalog, the newer copy is read (``known_drivers.driver_copies``);
+        where two drivers claim the same signal, the installed driver's
+        claim registers first and wins.
 
         Called at scan start so a freshly-fetched catalog takes effect
         without a server restart. ``force_catalog`` fetches the catalog now
@@ -1130,7 +1134,8 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         its place. A panel has no way to un-see a device -- results arrive
         over the wire and are never reconciled against a final list -- so
         announcing one that may be dropped at the end would leave it on
-        screen for good. _finalize_scan announces the ones that survive.
+        screen for good. The ones that survive are announced as the matcher
+        finishes (``_settle_arp_only_hosts``).
         """
         if device.ip in self._arp_provisional:
             return
