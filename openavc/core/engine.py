@@ -95,6 +95,12 @@ from openavc.version import __version__
 log = get_logger(__name__)
 
 
+def _set_plugin_config(project: ProjectConfig, plugin_id: str, config: dict) -> None:
+    """``config`` as the plugin's config in ``project``, if it still has it."""
+    if plugin_id in project.plugins:
+        project.plugins[plugin_id].config = config
+
+
 class Engine(EngineLifecycleMixin, ProjectChangesMixin, ProjectVariablesMixin):
     """
     Main runtime engine. Singleton per OpenAVC instance.
@@ -682,44 +688,42 @@ class Engine(EngineLifecycleMixin, ProjectChangesMixin, ProjectVariablesMixin):
         old_plugins = self.plugin_loader.get_known_plugin_ids()
         new_plugins = set(self.project.plugins.keys())
 
-        # Plugins removed from project
         for plugin_id in old_plugins - new_plugins:
-            if self.plugin_loader.is_running(plugin_id):
-                await self.plugin_loader.stop_plugin(plugin_id)
-            self.plugin_loader.remove_plugin_tracking(plugin_id)
-
-        # Plugins added to project
+            await self._drop_plugin(plugin_id)
         for plugin_id in new_plugins - old_plugins:
             entry = self.project.plugins[plugin_id]
-            config = entry.config if hasattr(entry, "config") else entry.get("config", {})
-            enabled = entry.enabled if hasattr(entry, "enabled") else entry.get("enabled", False)
-            if enabled:
-                await self.plugin_loader.start_plugin(plugin_id, config)
-
-        # Plugins with changed config or enable/disable
+            if entry.enabled:
+                await self.plugin_loader.start_plugin(plugin_id, entry.config)
         for plugin_id in old_plugins & new_plugins:
-            entry = self.project.plugins[plugin_id]
-            new_config = entry.config if hasattr(entry, "config") else entry.get("config", {})
-            new_enabled = entry.enabled if hasattr(entry, "enabled") else entry.get("enabled", False)
+            await self._follow_plugin_entry(plugin_id, self.project.plugins[plugin_id])
 
-            was_running = self.plugin_loader.is_running(plugin_id)
+    async def _drop_plugin(self, plugin_id: str) -> None:
+        """A plugin the project no longer has: stopped, and forgotten."""
+        if self.plugin_loader.is_running(plugin_id):
+            await self.plugin_loader.stop_plugin(plugin_id)
+        self.plugin_loader.remove_plugin_tracking(plugin_id)
 
-            if was_running and not new_enabled:
-                await self.plugin_loader.stop_plugin(plugin_id)
-            elif not was_running and new_enabled:
-                await self.plugin_loader.start_plugin(plugin_id, new_config)
-            elif was_running and self.plugin_loader.config_differs(plugin_id, new_config):
-                # Same path as every other config write (REST, cloud AI):
-                # try the plugin's on_config_changed hot-apply hook first,
-                # fall back to a restart.
-                outcome = await self.plugin_loader.restart_or_apply(
-                    plugin_id, new_config
-                )
-                if outcome == "start_failed":
-                    log.error(
-                        f"Plugin '{plugin_id}' failed to restart after a "
-                        f"config change and is stopped"
-                    )
+    async def _follow_plugin_entry(self, plugin_id: str, entry) -> None:
+        """A plugin the project still has: stopped, started, or handed its
+        new config, as its entry now says."""
+        was_running = self.plugin_loader.is_running(plugin_id)
+        if was_running and not entry.enabled:
+            await self.plugin_loader.stop_plugin(plugin_id)
+        elif not was_running and entry.enabled:
+            await self.plugin_loader.start_plugin(plugin_id, entry.config)
+        elif was_running and self.plugin_loader.config_differs(plugin_id, entry.config):
+            await self._hand_plugin_config(plugin_id, entry.config)
+
+    async def _hand_plugin_config(self, plugin_id: str, config: dict) -> None:
+        # Same path as every other config write (REST, cloud AI):
+        # try the plugin's on_config_changed hot-apply hook first,
+        # fall back to a restart.
+        outcome = await self.plugin_loader.restart_or_apply(plugin_id, config)
+        if outcome == "start_failed":
+            log.error(
+                f"Plugin '{plugin_id}' failed to restart after a "
+                f"config change and is stopped"
+            )
 
     async def _save_plugin_config(self, plugin_id: str, config: dict) -> None:
         """Save updated plugin config to the project file (callback for PluginAPI).
@@ -743,50 +747,53 @@ class Engine(EngineLifecycleMixin, ProjectChangesMixin, ProjectVariablesMixin):
         # project keeps the marker.
         config = move_plugin_logins(plugin_id, config, self.device_logins, current=previous)
 
-        def mutate(project) -> None:
-            if plugin_id in project.plugins:
-                project.plugins[plugin_id].config = config
-
-        async def on_error() -> None:
-            # Revert the in-memory project so it matches disk. Otherwise a
-            # bad/unwritable config lingers in the shared project model and
-            # the next save of ANYTHING re-serializes it and fails too.
-            if plugin_id in self.project.plugins:
-                self.project.plugins[plugin_id].config = previous
-            await self.broadcast_ws({
-                "type": "error",
-                "message": f"Failed to save plugin config for '{plugin_id}'",
-            })
+        def on_error():
+            return self._plugin_config_not_saved(plugin_id, previous)
 
         if self._reload_lock.locked():
             # Possibly our own call chain holds the lock (a plugin hook run
             # by the reconciler) — awaiting it would deadlock. The plugin's
             # live config is already current; only the persist is deferred.
-            mutate(self.project)
-
-            def persist_current(project) -> None:
-                # Runs after the reconcile, by which time another save of this
-                # plugin may have landed (its own save_config, the settings
-                # form, the assistant). Writing ``config`` as captured above
-                # would put the older one back over it, so the config the
-                # plugin runs with when this runs is the one written.
-                if plugin_id not in project.plugins or not self.plugin_loader.is_running(plugin_id):
-                    return
-                running = copy.deepcopy(self.plugin_loader.get_running_config(plugin_id))
-                project.plugins[plugin_id].config = move_plugin_logins(
-                    plugin_id, running, self.device_logins,
-                    current=project.plugins[plugin_id].config,
-                )
-
-            self.schedule_bookkeeping_change(persist_current, on_error=on_error)
+            _set_plugin_config(self.project, plugin_id, config)
+            self.schedule_bookkeeping_change(
+                lambda project: self._write_running_plugin_config(project, plugin_id),
+                on_error=on_error,
+            )
         else:
             try:
-                await self.persist_bookkeeping_change(mutate, on_error=on_error)
+                await self.persist_bookkeeping_change(
+                    lambda project: _set_plugin_config(project, plugin_id, config),
+                    on_error=on_error,
+                )
             except Exception as e:
                 log.error(f"Failed to save plugin config for '{plugin_id}': {e}")
                 raise
         # A login the plugin made or changed is masked in the log from now on.
         self._register_project_secrets()
+
+    async def _plugin_config_not_saved(self, plugin_id: str, previous: dict) -> None:
+        # Revert the in-memory project so it matches disk. Otherwise a
+        # bad/unwritable config lingers in the shared project model and
+        # the next save of ANYTHING re-serializes it and fails too.
+        _set_plugin_config(self.project, plugin_id, previous)
+        await self.broadcast_ws({
+            "type": "error",
+            "message": f"Failed to save plugin config for '{plugin_id}'",
+        })
+
+    def _write_running_plugin_config(self, project: ProjectConfig, plugin_id: str) -> None:
+        """The deferred half of a plugin's save, run after the reconcile."""
+        # By then another save of this plugin may have landed (its own
+        # save_config, the settings form, the assistant). Writing the config
+        # as it was captured would put the older one back over it, so the
+        # config the plugin runs with when this runs is the one written.
+        if plugin_id not in project.plugins or not self.plugin_loader.is_running(plugin_id):
+            return
+        running = copy.deepcopy(self.plugin_loader.get_running_config(plugin_id))
+        project.plugins[plugin_id].config = move_plugin_logins(
+            plugin_id, running, self.device_logins,
+            current=project.plugins[plugin_id].config,
+        )
 
     # --- UI Event Handling ---
 
