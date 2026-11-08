@@ -6,6 +6,12 @@ Handles:
 - Connection lifecycle (connect, reconnect on failure, disconnect)
 - Routing commands to the correct device
 - Exposing device metadata
+
+Its other jobs live in their own modules, mixed in so every name stays on the
+manager: retrying a dropped device (device_reconnect.py), saying why a device
+is away (device_away.py), queued settings (pending_settings.py), the Open Web
+UI page (device_web_ui.py) and devices on a bridge port (device_bridges.py).
+The checks a command passes before its driver are core/command_gates.py.
 """
 
 from __future__ import annotations
