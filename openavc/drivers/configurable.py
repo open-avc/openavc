@@ -36,7 +36,6 @@ from openavc.drivers.base import (
     UNKNOWN_COMMAND,
     WAKE_ON_LAN_PORT,
     BaseDriver,
-    UnknownDeviceSettingError,
     WakeAddressError,
     normalize_and_validate_command_params as _normalize_and_validate_command_params,
     normalize_mac,
@@ -54,6 +53,7 @@ from openavc.drivers.osc_wire import OscWire
 from openavc.drivers.query_entries import QueryEntries
 from openavc.drivers.reply_throttle import ReplyThrottle
 from openavc.drivers.reply_values import ReplyValues
+from openavc.drivers.setting_writes import SettingWrites
 from openavc.drivers.sign_in import SignIn
 from openavc.drivers.start_up_and_poll import StartUpAndPoll
 from openavc.drivers.text_replies import TextReplies
@@ -133,6 +133,7 @@ _CHILD_ID_TOKEN = re.compile(r"\{child_id(?::[^{}]*)?\}")
 
 class ConfigurableDriver(
     StartUpAndPoll,
+    SettingWrites,
     SignIn,
     HttpCredential,
     QueryEntries,
@@ -1441,125 +1442,6 @@ class ConfigurableDriver(
             return
         self._framed_messages += 1
         self._read_text_reply(text)
-
-    async def set_device_setting(self, key: str, value: Any) -> Any:
-        """
-        Write a device setting using the write definition from the driver YAML.
-
-        Supports HTTP (method/path/body) and TCP/serial (send) write formats.
-        """
-        settings = self._definition.get("device_settings", {})
-        setting_def = settings.get(key)
-        if not setting_def:
-            raise UnknownDeviceSettingError(f"Unknown device setting: {key}")
-
-        write_def = setting_def.get("write")
-        if not write_def:
-            raise NotImplementedError(
-                f"Device setting '{key}' has no write definition"
-            )
-
-        # A setting's map names the device's own word for the value (ON for
-        # true) and is written as declared. Otherwise the setting writes its
-        # state variable's real value: the variable's scale / offset turn it
-        # back into the device's own number.
-        word = compiled_protocol.map_word(value, setting_def.get("map"))
-        if word is None:
-            state_var = self._definition.get("state_variables", {}).get(
-                setting_def.get("state_key") or key
-            )
-            wire_value = compiled_protocol.value_to_wire(value, state_var)
-        else:
-            wire_value = word
-        all_params = {**self.config, "value": wire_value}
-
-        # OSC write
-        if "address" in write_def:
-            from openavc.transport.osc import OSCTransport
-            from openavc.transport.osc_codec import osc_encode_message
-
-            if not self.transport or not self.transport.connected:
-                raise ConnectionError(f"[{self.device_id}] Not connected")
-
-            # Don't emit OSC bytes on a non-OSC socket — mirrors the HTTP guard.
-            if not isinstance(self.transport, OSCTransport):
-                raise ConnectionError(
-                    f"[{self.device_id}] Setting '{key}' uses OSC write "
-                    f"but transport is not OSC"
-                )
-
-            raw_address = write_def.get("address", "")
-            address = self._safe_substitute(raw_address, all_params)
-            args = self._build_osc_args(write_def.get("args", []), all_params)
-            data = osc_encode_message(address, args)
-            await self.transport.send(data)
-            log.debug(
-                f"[{self.device_id}] Set device setting '{key}' = {value!r}"
-            )
-            return True
-
-        # HTTP write
-        if "path" in write_def or "method" in write_def:
-            from openavc.transport.http_client import HTTPClientTransport
-
-            if not isinstance(self.transport, HTTPClientTransport):
-                raise ConnectionError(
-                    f"[{self.device_id}] Setting '{key}' uses HTTP write "
-                    f"but transport is not HTTP"
-                )
-
-            method = write_def.get("method", "POST").upper()
-            raw_path = write_def.get("path", "/")
-            raw_body = write_def.get("body")
-            headers = self._build_http_headers(
-                write_def.get("headers"), all_params
-            )
-
-            path = self._safe_substitute(raw_path, all_params)
-
-            json_body = None
-            if raw_body:
-                import json as _json
-                body_str = self._safe_substitute(raw_body, all_params)
-                try:
-                    json_body = _json.loads(body_str)
-                except (ValueError, _json.JSONDecodeError):
-                    response = await self.transport.request(
-                        method, path, content=body_str.encode("utf-8"),
-                        headers=headers,
-                    )
-                    return response
-
-            response = await self.transport.request(
-                method, path, json_body=json_body, headers=headers
-            )
-
-            # Run response through pattern matching
-            if hasattr(response, "text") and response.text:
-                await self.on_data_received(response.text.encode("utf-8"))
-
-            log.debug(
-                f"[{self.device_id}] Set device setting '{key}' = {value!r}"
-            )
-            return response
-
-        # TCP/serial write
-        raw_send = write_def.get("send", "")
-        if raw_send:
-            if not self.transport or not self.transport.connected:
-                raise ConnectionError(f"[{self.device_id}] Not connected")
-
-            formatted = self._safe_substitute(raw_send, all_params)
-            data = self._apply_send_frame(_safe_encode_escapes(formatted))
-            await self.transport.send(data)
-            log.debug(
-                f"[{self.device_id}] Set device setting '{key}' = {value!r}"
-            )
-            return True
-
-        raise NotImplementedError(
-            f"Device setting '{key}' write definition has no path or send"
-        )
 
     # Shared send_frame framing (see compiled_protocol module docs).
     _build_send_frame = staticmethod(compiled_protocol.build_send_frame)
