@@ -6,11 +6,12 @@ the advertiser follow a settings change without a restart
 project edit that touches ISC reloads it through the reconcile).
 
 Every one isolates its own failure: a service that cannot start is logged and
-left as ``None``, and the engine runs on without it. Each reads the system
-config live, never an import-time copy, so a toggle is honored on the next
-reconcile. ISC runs behind two switches, the system's and the project's, and
-``isc_gates`` is the one place both are read (``/api/isc/status`` asks it which
-one is down).
+left as ``None``, and the engine runs on without it. The ISC and advertise
+switches are read from the system config live, never an import-time copy, so a
+toggle is honored on the next reconcile; the cloud agent's pairing, and the
+advertiser's ports and TLS, come from the ``openavc.config`` mirror. ISC runs
+behind two switches, the system's and the project's, and ``isc_gates`` is the
+one place both are read (``/api/isc/status`` asks it which one is down).
 
 Mixed into Engine (core/engine.py). Logs under the engine's name.
 """

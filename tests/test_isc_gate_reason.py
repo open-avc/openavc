@@ -79,9 +79,16 @@ class TestTheGateReadingItself:
     def test_no_second_copy_of_the_gate_expression(self):
         from pathlib import Path
 
-        engine_src = (
-            Path(__file__).resolve().parents[1] / "openavc" / "core" / "runtime_services.py"
-        ).read_text(encoding="utf-8")
+        # The engine and every part of it that a start, a stop or a
+        # reconcile runs.
+        core = Path(__file__).resolve().parents[1] / "openavc" / "core"
+        engine_src = "".join(
+            (core / name).read_text(encoding="utf-8")
+            for name in (
+                "engine.py", "engine_lifecycle.py", "project_changes.py",
+                "project_reconcile.py", "runtime_services.py",
+            )
+        )
         # The expression used to be spelled at both start paths. It lives in
         # the helper now and nowhere else; a second copy is how the reported
         # reason and the rule that actually stops ISC would part.
