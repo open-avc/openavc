@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import time
 from typing import Any
+from unittest.mock import AsyncMock
 
 from openavc.core.connection_fault import BRIDGE_OFFLINE, ConnectionFaultError
 from openavc.core.device_manager import DeviceManager
@@ -250,3 +251,64 @@ def test_every_bound_port_kind_is_prepared_not_just_the_mirrored_ones():
 
     assert sorted(dm._bridge_bound_dependents("b1")) == ["tv1", "w1"]
     assert dm._bridge_routed_dependents("b1") == ["tv1"]
+
+
+# --- which devices a bridge carries, and what it prepares for them ---
+
+
+def test_a_device_naming_the_bridge_without_a_port_is_not_bound_to_it():
+    dm, _bridge, _widget = _rig()
+    dm._devices["w2"] = _AcmeWidget("w2", {"bridge": "b1"}, dm.state, dm.events)
+    dm._device_configs["w2"] = {"id": "w2", "driver": "acme_widget", "config": {"bridge": "b1"}}
+
+    assert dm._bridge_bound_dependents("b1") == ["w1"]
+
+
+def test_a_device_with_no_live_driver_is_carried_by_nobody():
+    # A disabled or orphaned device keeps its config and has no instance.
+    dm, _bridge, _widget = _rig()
+    dm._device_configs["tv2"] = {
+        "id": "tv2", "driver": "acme_widget",
+        "config": {"transport": "bridge", "bridge": "b1", "bridge_port": "ir:1"},
+    }
+
+    assert dm._bridge_bound_dependents("b1") == ["w1"]
+    assert dm._bridge_routed_dependents("b1") == []
+
+
+def test_preparing_a_port_needs_both_markers():
+    dm, bridge, _widget = _rig()
+
+    asyncio.run(dm._prepare_bridge_for("w2", {"bridge": "b1", "baudrate": 9600}))
+
+    assert bridge.prepared == []
+
+
+def test_a_binding_that_names_a_device_that_is_no_bridge_prepares_nothing():
+    dm, _bridge, widget = _rig()
+    widget.prepare_bridge_port = AsyncMock()
+
+    asyncio.run(dm._prepare_bridge_for("w2", {"bridge": "w1", "bridge_port": "serial:1"}))
+
+    widget.prepare_bridge_port.assert_not_awaited()
+
+
+def test_a_healed_bridge_prepares_its_ports_before_it_announces_its_dependents():
+    dm, bridge, _widget = _rig(bridge_online=True)
+    routed = {"transport": "bridge", "bridge": "b1", "bridge_port": "ir:1"}
+    ir = _AcmeWidget("tv1", dict(routed), dm.state, dm.events)
+    ir._bridge_routed = True
+    ir.set_state("connected", False)
+    dm._devices["tv1"] = ir
+    dm._device_configs["tv1"] = {"id": "tv1", "driver": "acme_widget", "config": routed}
+    order: list[str] = []
+
+    async def prepare(port_id: str, params: dict) -> None:
+        order.append(f"prepare {port_id}")
+
+    bridge.prepare_bridge_port = prepare
+    dm.events.on("device.connected.tv1", lambda e, p: order.append("tv1 online"))
+
+    asyncio.run(dm._on_device_connected("device.connected.b1", {}))
+
+    assert order == ["prepare serial:1", "prepare ir:1", "tv1 online"]

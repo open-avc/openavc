@@ -268,3 +268,140 @@ def test_mirror_emits_lifecycle_events_only_on_transition():
     # A second connect with no state change -> no duplicate event.
     asyncio.run(dm._on_device_connected("device.connected.b1", {}))
     assert events == ["device.connected.tv1"]
+
+
+def test_bringing_up_a_bridge_routed_device_under_a_down_bridge_names_the_bridge():
+    """Added while its bridge is down, a bridge-routed device connects without
+    raising and stays offline; the card says the bridge is why."""
+    dm, _bridge, ir = _dm_with_bridge_and_ir()
+
+    asyncio.run(dm._bring_up_device("tv1"))
+
+    assert ir.get_state("connected") is False
+    assert dm.state.get("device.tv1.offline_reason") == BRIDGE_OFFLINE
+    detail = dm.state.get("device.tv1.offline_detail")
+    assert detail and "Acme Bridge" in detail
+    assert "tv1" not in dm._reconnect_tasks
+
+
+def test_bringing_up_a_bridge_routed_device_under_a_live_bridge_leaves_no_reason():
+    dm, bridge, ir = _dm_with_bridge_and_ir()
+    bridge._connected = True
+    bridge.set_state("connected", True)
+
+    asyncio.run(dm._bring_up_device("tv1"))
+
+    assert ir.get_state("connected") is True
+    assert dm.state.get("device.tv1.offline_reason") is None
+
+
+def test_mirror_skips_a_dependent_removed_meanwhile():
+    dm, _bridge, ir = _dm_with_bridge_and_ir()
+    ir.set_state("connected", False)
+    ir._connected = False
+
+    asyncio.run(dm._mirror_bridge_state("b1", True, ["gone", "tv1"]))
+
+    assert ir.get_state("connected") is True
+    assert dm.state.get("device.gone.connected") is None
+
+
+def test_a_dependent_already_offline_gets_the_reason_but_no_second_drop_event():
+    dm, _bridge, ir = _dm_with_bridge_and_ir()
+    events: list[str] = []
+    dm.events.on("device.disconnected.tv1", lambda e, p: events.append(e))
+    ir.set_state("connected", False)
+    ir._connected = False
+
+    asyncio.run(dm._on_device_disconnected("device.disconnected.b1", {}))
+
+    assert events == []
+    assert dm.state.get("device.tv1.offline_reason") == BRIDGE_OFFLINE
+
+
+def test_a_dependent_going_down_is_announced_once_and_coming_back_once():
+    dm, _bridge, ir = _dm_with_bridge_and_ir()
+    events: list[str] = []
+    dm.events.on("device.connected.tv1", lambda e, p: events.append(e))
+    dm.events.on("device.disconnected.tv1", lambda e, p: events.append(e))
+    ir.set_state("connected", True)
+    ir._connected = True
+
+    asyncio.run(dm._on_device_disconnected("device.disconnected.b1", {}))
+    asyncio.run(dm._on_device_disconnected("device.disconnected.b1", {}))
+    asyncio.run(dm._on_device_connected("device.connected.b1", {}))
+
+    assert events == ["device.disconnected.tv1", "device.connected.tv1"]
+    assert ir._bridge_routed is True
+
+
+def test_a_bridge_coming_up_clears_the_reason_on_a_dependent_already_online():
+    dm, _bridge, ir = _dm_with_bridge_and_ir()
+    ir.set_state("connected", True)
+    ir._connected = True
+    ir._bridge_routed = False
+    dm.state.set("device.tv1.offline_reason", BRIDGE_OFFLINE)
+
+    asyncio.run(dm._mirror_bridge_state("b1", True, ["tv1"]))
+
+    assert dm.state.get("device.tv1.offline_reason") is None
+    assert ir._bridge_routed is True
+
+
+def test_reconnecting_a_bridge_routed_device_under_a_live_bridge_leaves_no_reason():
+    dm, bridge, ir = _dm_with_bridge_and_ir()
+    bridge._connected = True
+    bridge.set_state("connected", True)
+
+    asyncio.run(dm.reconnect_device("tv1"))
+
+    assert ir.get_state("connected") is True
+    assert dm.state.get("device.tv1.offline_reason") is None
+
+
+def test_a_bridge_routed_device_dropping_starts_no_reconnect_loop():
+    """Checked inside the loop: a reconnect task started here would be gone by
+    the time asyncio.run returns."""
+    dm, _bridge, ir = _dm_with_bridge_and_ir()
+    ir.set_state("connected", False)
+    ir._connected = False
+
+    async def run() -> bool:
+        await dm._on_device_disconnected("device.disconnected.tv1", {})
+        return "tv1" in dm._reconnect_tasks
+
+    assert asyncio.run(run()) is False
+
+
+class _AcmeRoutedPin(BaseDriver):
+    DRIVER_INFO: dict[str, Any] = {
+        "id": "acme_routed_pin",
+        "name": "Acme Routed",
+        "category": "utility",
+        "transport": "bridge",
+        "state_variables": {},
+        "commands": {},
+    }
+
+    async def send_command(self, command: str, params: dict | None = None) -> Any:
+        return None
+
+
+def test_only_a_device_bound_to_a_bridge_port_is_handed_the_router():
+    from openavc.drivers.registry import register_driver, unregister_driver
+
+    register_driver(_AcmeRoutedPin)
+    try:
+        dm = DeviceManager(StateStore(), EventBus())
+        bound = {"transport": "bridge", "bridge": "b1", "bridge_port": "ir:1"}
+        asyncio.run(dm.add_device(
+            {"id": "tv9", "driver": "acme_routed_pin", "config": bound}, defer_connect=True,
+        ))
+        asyncio.run(dm.add_device(
+            {"id": "tv8", "driver": "acme_routed_pin", "config": {"bridge": "b1"}},
+            defer_connect=True,
+        ))
+        assert dm.get_driver("tv9")._bridge_router == dm._route_bridge_command
+        assert dm.get_driver("tv8")._bridge_router is None
+    finally:
+        unregister_driver("acme_routed_pin")
