@@ -1368,38 +1368,9 @@ class DeviceManager(
         self.state.set(f"device.{device_id}.reconnect_attempt", None, source="device_manager")
         # Suppress auto-reconnect during intentional disconnect
         self._intentional_disconnect.add(device_id)
-        # Reconnect is "try again" with nothing changed: a device dropped for
-        # its silence still stopped answering if this attempt gets no answer
-        # either, so its sentence outlives the disconnect, which forgets it.
-        silence = getattr(driver, "_silence_verdict", None)
         try:
-            try:
-                await driver.disconnect()
-            except Exception:
-                pass
-            if silence is not None:
-                driver._silence_verdict = silence
-            try:
-                self._refresh_usb_serial_port(device_id, driver)
-                await self._connect_driver(device_id, driver)
-                log.info(f"Reconnected device: {device_id}")
-                # The reason was cleared up front above.
-                self._note_bridge_offline_if_down(device_id, driver, driver.config or {})
-                # Flush the queue, like every other path that brings a device
-                # up. This one used to skip it, so a setting queued while the
-                # device was away survived the Reconnect button (and the
-                # simulator's redirect, which reconnects through here) and
-                # waited for some later connect nobody was going to ask for.
-                await self._apply_pending_settings(device_id)
-            except ConnectEndedError:
-                pass  # ended by a newer press, a pause or a removal
-            except Exception as e:
-                self.state.set(f"device.{device_id}.connected", False, source="device_manager")
-                code = self._set_offline_reason(device_id, driver, exc=e)
-                log.warning(f"Reconnect failed for {device_id}: {self._failure_text(device_id, e)}")
-                # The manual attempt was this action's one try.
-                if not self._paused_for_refused_login(device_id, code):
-                    self._start_reconnect(device_id)
+            await self._disconnect_keeping_silence(driver)
+            await self._reconnect_once(device_id, driver)
             # Probed whether or not the control protocol connected, as at
             # bring-up. Stopping simulation hands a device back through here,
             # and one added while simulating has not been probed at its own
@@ -1407,6 +1378,44 @@ class DeviceManager(
             self._schedule_web_ui_probe(device_id)
         finally:
             self._intentional_disconnect.discard(device_id)
+
+    @staticmethod
+    async def _disconnect_keeping_silence(driver: BaseDriver) -> None:
+        """Close the driver for Reconnect. Reconnect is "try again" with
+        nothing changed: a device dropped for its silence still stopped
+        answering if this attempt gets no answer either, so its sentence
+        outlives the disconnect, which forgets it."""
+        silence = getattr(driver, "_silence_verdict", None)
+        try:
+            await driver.disconnect()
+        except Exception:
+            pass
+        if silence is not None:
+            driver._silence_verdict = silence
+
+    async def _reconnect_once(self, device_id: str, driver: BaseDriver) -> None:
+        """Reconnect's one attempt. A failure is published and, unless the
+        device refused its login, handed to the reconnect loop."""
+        try:
+            self._refresh_usb_serial_port(device_id, driver)
+            await self._connect_driver(device_id, driver)
+            log.info(f"Reconnected device: {device_id}")
+            # The reason was cleared up front by reconnect_device.
+            self._note_bridge_offline_if_down(device_id, driver, driver.config or {})
+            # Flush the queue, like every other path that brings a device up,
+            # or a setting queued while the device was away survives the
+            # Reconnect button (and the simulator's redirect, which reconnects
+            # through here) and waits for some later connect nobody asks for.
+            await self._apply_pending_settings(device_id)
+        except ConnectEndedError:
+            pass  # ended by a newer press, a pause or a removal
+        except Exception as e:
+            self.state.set(f"device.{device_id}.connected", False, source="device_manager")
+            code = self._set_offline_reason(device_id, driver, exc=e)
+            log.warning(f"Reconnect failed for {device_id}: {self._failure_text(device_id, e)}")
+            # The manual attempt was this action's one try.
+            if not self._paused_for_refused_login(device_id, code):
+                self._start_reconnect(device_id)
 
     async def begin_setup(self, device_id: str) -> None:
         """Suppress auto-reconnect for the duration of a setup action.
