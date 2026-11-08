@@ -71,6 +71,14 @@ def _step(node: Any, seg: str) -> Any:
     return JSON_PATH_MISSING
 
 
+def _segments(path: Any) -> list[str]:
+    """A dotted path's keys and indices (empty segments dropped); none for
+    an empty path."""
+    if not path:
+        return []
+    return [seg for seg in str(path).split(".") if seg]
+
+
 def extract_json_path(raw_value: Any, path: Any, collapse: bool = True) -> Any:
     """Parse a JSON string (or take a parsed node) and walk a dotted path.
 
@@ -84,8 +92,7 @@ def extract_json_path(raw_value: Any, path: Any, collapse: bool = True) -> Any:
     question of it rather than storing it -- a ``contains`` mapping.
     """
     node = _parsed(raw_value)
-    segments = [seg for seg in str(path).split(".") if seg] if path else []
-    for seg in segments:
+    for seg in _segments(path):
         if node is JSON_PATH_MISSING:
             break
         node = _step(node, seg)
