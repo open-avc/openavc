@@ -1,11 +1,17 @@
 """What a discovery scan hears without asking: the mDNS, SSDP and AMX DDP
-listeners, collected together with the SNMP scan that runs beside them.
+listeners, collected together with the SNMP scan that runs beside them, from
+the moment each starts to the merge of what it heard.
 
-The listeners start as a scan begins and listen through every active phase.
-Phase 7 keeps them listening for late answers (``_listen_out_window``), tells
-them to stop, waits a bounded time for SSDP's description fetches, and merges
-what each one heard into the scan's results; the SNMP scan, launched in phase
-6, is collected the same way.
+Phase 2 builds the listeners and starts them (``_open_listeners``,
+``_start_listeners``); they listen through every active phase. Phase 6
+launches the SNMP scan of the live hosts in the background
+(``_launch_snmp``), with the settings read as the scan starts
+(``_snmp_launch_settings``). Phase 7, under its own budget
+(``_passive_collect_phase``), keeps the listeners listening for late answers
+(``_listen_out_window``), tells them to stop, waits a bounded time for SSDP's
+description fetches, merges what each one heard, collects SNMP, port-scans
+the hosts only the listeners found and reads the ARP table again for them
+(``_collect_phase``).
 
 The rules worth knowing before changing anything here:
 
@@ -19,13 +25,18 @@ The rules worth knowing before changing anything here:
   already found keeps updating.
 * A listener that could not open its socket ends the collect window early
   only when every listener has exited: nothing is left to hear anything.
+* The SNMP scan is waited for ``scan_budget.SNMP_COLLECT_SECONDS``, the
+  figure phase 7's budget counts for it.
 
 ``PassiveCollection`` is a mixin that ``DiscoveryEngine`` inherits, so every
-name stays on the engine. From its host it needs ``results``, ``scan_status``,
-``signal_index``, ``_passive_scanners``, ``_passive_merged``,
-``_passive_sources_created``, ``_passive_cap_warned``, ``_get_or_create()``,
-``_cancel_background_tasks()``, ``_update_intra_progress()``,
-``_emit_progress()`` and ``_emit_device_update()``.
+name stays on the engine. From its host it needs ``config``, ``results``,
+``scan_status``, ``signal_index``, ``discovery_hints``, ``_budget``,
+``_passive_scanners``, ``_passive_merged``, ``_passive_sources_created``,
+``_passive_cap_warned``, ``_get_or_create()``, ``_set_phase()``,
+``_apply_plan()``, ``_run_budgeted()``, ``_cancel_background_tasks()``,
+``_update_intra_progress()``, ``_emit_progress()`` and
+``_emit_device_update()``; and from the port and ARP phases, the follow-ups
+phase 7 runs (``_port_scan_passive_only()``, ``_late_arp_harvest()``).
 """
 
 from __future__ import annotations
@@ -33,13 +44,17 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Iterable
+from typing import Any, Callable, Iterable
 
+from openavc.discovery import scan_budget as budgeting
+from openavc.discovery.amx_ddp_scanner import AMXDDPScanner
+from openavc.discovery.mdns_scanner import BASELINE_SERVICE_TYPES, MDNSScanner
+from openavc.discovery.port_phase import PortScanSettings
 from openavc.discovery.result import DiscoveredDevice, merge_device_info
 from openavc.discovery.scan_evidence import mdns_hostname_evidence
-
-if TYPE_CHECKING:
-    from openavc.discovery.snmp_scanner import SNMPScanner
+from openavc.discovery.scan_scope import ip_in_subnets
+from openavc.discovery.snmp_scanner import SNMPScanner
+from openavc.discovery.ssdp_scanner import SSDPScanner
 
 # The discovery engine's own log, which the IDE's log view files these lines under.
 log = logging.getLogger("discovery")
@@ -78,11 +93,23 @@ class BackgroundScans:
     ssdp: asyncio.Task | None = None
     amx_ddp: asyncio.Task | None = None
     snmp: asyncio.Task | None = None
-    snmp_scanner: "SNMPScanner | None" = None
+    snmp_scanner: SNMPScanner | None = None
 
     def tasks(self) -> tuple[asyncio.Task | None, ...]:
         """Every task, started or not, in the order they start."""
         return (self.mdns, self.ssdp, self.amx_ddp, self.snmp)
+
+
+@dataclass(frozen=True)
+class _SnmpLaunch:
+    """What phase 6 asks SNMP with: read from the discovery settings as the
+    scan starts."""
+
+    enabled: bool
+    community: str
+    source_ip: str
+    concurrency: int
+    entity_mib: bool
 
 
 def _add_ssdp_evidence(device: DiscoveredDevice, result: Any) -> None:
@@ -107,7 +134,7 @@ def _log_listener_failures(listeners: Iterable[tuple[asyncio.Task, str]]) -> Non
                 log.debug("%s listener failed", label, exc_info=exc)
 
 
-def _snmp_results(snmp_task: asyncio.Task, snmp_scanner: "SNMPScanner | None") -> dict:
+def _snmp_results(snmp_task: asyncio.Task, snmp_scanner: SNMPScanner | None) -> dict:
     """What the SNMP scan found: its result when it finished, else (it
     overran its window and was cancelled) everything its scanner identified
     before the cutoff, since the scanner fills its results as it goes. A
@@ -130,8 +157,137 @@ def _snmp_results(snmp_task: asyncio.Task, snmp_scanner: "SNMPScanner | None") -
 
 
 class PassiveCollection:
-    """Phase 7's collection of the listeners and SNMP, and the merge a
-    truncated scan repeats; a mixin ``DiscoveryEngine`` inherits."""
+    """The listeners and SNMP from phase 2 to phase 7's collection, and the
+    merge a truncated scan repeats; a mixin ``DiscoveryEngine`` inherits."""
+
+    def _mdns_service_types(self) -> list[str]:
+        """What the mDNS listener asks for: a small consumer baseline, then
+        each loaded driver's ``mdns:`` service. The scanner adds the DNS-SD
+        meta-query itself, so unknown types surface for catalog growth."""
+        driver_service_types = [
+            fp.service for hint in self.discovery_hints for fp in hint.mdns if fp.service
+        ]
+        return list(BASELINE_SERVICE_TYPES) + driver_service_types
+
+    async def _open_listeners(
+        self, subnets: list[str], control_ip: str,
+    ) -> tuple[MDNSScanner, SSDPScanner, AMXDDPScanner]:
+        """Phase 2: the passive listeners, built for this scan.
+
+        Kept where _run_scan can reach them, so a truncated scan can still
+        merge what they heard: their tasks get cancelled, which zeroes the
+        task results but not the scanners' own accumulated state.
+        """
+        await self._set_phase(2, "passive_listen", "Starting mDNS, SSDP, and AMX DDP listeners...")
+        mdns_scanner = MDNSScanner(service_types=self._mdns_service_types(), control_ip=control_ip)
+        ssdp_scanner = SSDPScanner(
+            control_ip=control_ip,
+            fetch_scope=lambda ip: ip_in_subnets(ip, subnets),
+        )
+        amx_ddp_scanner = AMXDDPScanner(control_ip=control_ip)
+        self._passive_scanners = (mdns_scanner, ssdp_scanner, amx_ddp_scanner)
+        return self._passive_scanners
+
+    @staticmethod
+    def _start_listeners(
+        listeners: tuple[MDNSScanner, SSDPScanner, AMXDDPScanner], background: BackgroundScans,
+    ) -> None:
+        """Start each listener's task on ``background``, one by one, so a task
+        already started is there for the pipeline's finally to cancel. The
+        600s cap is a safety net; phase 7 stops them much sooner."""
+        mdns_scanner, ssdp_scanner, amx_ddp_scanner = listeners
+        background.mdns = asyncio.create_task(mdns_scanner.start(duration=600.0))
+        background.ssdp = asyncio.create_task(ssdp_scanner.scan(
+            timeout=600.0, fetch_descriptions=True,
+        ))
+        background.amx_ddp = asyncio.create_task(amx_ddp_scanner.start(duration=600.0))
+
+    def _snmp_launch_settings(self, control_ip: str, gentle: bool) -> _SnmpLaunch:
+        """What phase 6 asks SNMP with, read from the settings as the scan starts."""
+        return _SnmpLaunch(
+            enabled=bool(self.config.get("snmp_enabled", True)),
+            community=self.config.get("snmp_community", "public"),
+            source_ip=control_ip,
+            concurrency=10 if gentle else 20,
+            entity_mib=self._budget.policy.snmp_entity_mib,
+        )
+
+    async def _launch_snmp(
+        self, background: BackgroundScans, alive_ips: list[str], snmp: _SnmpLaunch,
+    ) -> None:
+        """Phase 6: start the SNMP scan of the live hosts in the background,
+        so its wait overlaps phase 7's collection window.
+
+        The driver probes run in phase 7, after the passive collection, since
+        they need the full host inventory (passive-only devices included).
+        """
+        await self._set_phase(6, "protocol_probe", "Identifying device protocols...")
+        if not (snmp.enabled and alive_ips):
+            return
+        background.snmp_scanner = SNMPScanner(source_ip=snmp.source_ip)
+        background.snmp = asyncio.create_task(
+            background.snmp_scanner.scan_devices(
+                alive_ips,
+                community=snmp.community,
+                timeout=2.0,
+                concurrency=snmp.concurrency,
+                entity_mib=snmp.entity_mib,
+            )
+        )
+
+    async def _passive_collect_phase(
+        self, background: BackgroundScans, alive_ips: list[str], followup: PortScanSettings,
+    ) -> None:
+        """Phase 7's collection, under its own budget.
+
+        It narrows by waiting less rather than by dropping work: the
+        announcements it gathers are the strongest identification signal a
+        scan gets, so shortening the window beats skipping it. The listeners
+        keep running through the window and are stopped at its end (see
+        _collect_passive_results).
+        """
+        await self._set_phase(7, "passive_collect", "Collecting passive and SNMP results...")
+        collect_plan = budgeting.plan_passive_collect(self._budget)
+        self._apply_plan(budgeting.PHASE_PASSIVE, collect_plan.warnings)
+        await self._run_budgeted(
+            budgeting.PHASE_PASSIVE, collect_plan.budget,
+            self._collect_phase(background, collect_plan.wait_seconds, alive_ips, followup),
+            "Collecting device announcements ran out of its share of the "
+            "scan time. Some announcements may be missing.",
+        )
+
+    async def _collect_phase(
+        self,
+        background: BackgroundScans,
+        passive_wait: float,
+        alive_ips: list[str],
+        followup: PortScanSettings,
+    ) -> None:
+        """Phase 7's collection half: gather everything already observed.
+
+        Passive announcements, SNMP, a port-scan follow-up for hosts only the
+        listeners saw, and a second ARP read for the MACs that follow-up just
+        put in the cache. All of it feeds the probe pass that comes next.
+        """
+        await self._collect_passive_results(
+            background.mdns, background.ssdp, background.amx_ddp,
+            wait_seconds=passive_wait,
+        )
+        await self._collect_snmp_results(background.snmp, background.snmp_scanner)
+        await self._port_scan_passive_only(alive_ips, followup)
+
+        # Pick up a MAC + OUI for passive-discovered devices the phase-4
+        # ARP harvest missed (found via mDNS/SSDP on a ping-skipped subnet).
+        await self._late_arp_harvest()
+
+    def _report_listener_failures(self, listeners: Iterable[Any]) -> None:
+        """A listener that could not work (multicast join failed on every
+        interface, socket unavailable, ...) becomes a scan warning: a silent
+        {} from a listener that never ran reads as "no devices on the
+        network", which is the wrong story."""
+        for listener in listeners:
+            if listener.env_error:
+                self.scan_status.warnings.append(listener.env_error)
 
     async def _collect_passive_results(
         self,
@@ -296,12 +452,12 @@ class PassiveCollection:
     async def _collect_snmp_results(
         self,
         snmp_task: asyncio.Task | None,
-        snmp_scanner: "SNMPScanner | None" = None,
+        snmp_scanner: SNMPScanner | None = None,
     ) -> None:
         """Wait for the SNMP scan, up to its window, and merge what it found."""
         if snmp_task is None:
             return
-        await asyncio.wait([snmp_task], timeout=5.0)
+        await asyncio.wait([snmp_task], timeout=budgeting.SNMP_COLLECT_SECONDS)
         await self._cancel_background_tasks(snmp_task)
         snmp_results = _snmp_results(snmp_task, snmp_scanner)
         for ip, snmp_info in snmp_results.items():

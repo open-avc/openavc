@@ -114,9 +114,9 @@ class TestSingleHostScan:
              patch("openavc.discovery.probe_phase.observe_port_probes", side_effect=fake_port_probes), \
              patch("openavc.discovery.probe_phase.run_udp_broadcast_probe", side_effect=fake_udp), \
              patch.object(engine.community_index, "get_drivers", new_callable=AsyncMock, return_value=[]), \
-             patch("openavc.discovery.engine.MDNSScanner", _instant("start")), \
-             patch("openavc.discovery.engine.SSDPScanner", _instant("scan")), \
-             patch("openavc.discovery.engine.AMXDDPScanner", _instant("start")):
+             patch("openavc.discovery.passive_phase.MDNSScanner", _instant("start")), \
+             patch("openavc.discovery.passive_phase.SSDPScanner", _instant("scan")), \
+             patch("openavc.discovery.passive_phase.AMXDDPScanner", _instant("start")):
             engine.scan_status.subnets = subnets
             await engine._scan_pipeline_inner(subnets)
             await engine._finalize_scan()

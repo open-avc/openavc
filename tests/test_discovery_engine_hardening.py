@@ -108,10 +108,10 @@ class TestBackgroundTaskCleanup:
                    new_callable=AsyncMock, return_value={}), \
              patch.object(engine.community_index, "get_drivers",
                           new_callable=AsyncMock, return_value=[]), \
-             patch("openavc.discovery.engine.MDNSScanner", mdns_cls), \
-             patch("openavc.discovery.engine.SSDPScanner", ssdp_cls), \
-             patch("openavc.discovery.engine.AMXDDPScanner", amx_cls), \
-             patch("openavc.discovery.engine.SNMPScanner", snmp_cls), \
+             patch("openavc.discovery.passive_phase.MDNSScanner", mdns_cls), \
+             patch("openavc.discovery.passive_phase.SSDPScanner", ssdp_cls), \
+             patch("openavc.discovery.passive_phase.AMXDDPScanner", amx_cls), \
+             patch("openavc.discovery.passive_phase.SNMPScanner", snmp_cls), \
              patch.object(engine, "_collect_passive_results",
                           side_effect=RuntimeError("boom")):
             with pytest.raises(RuntimeError, match="boom"):
@@ -132,10 +132,10 @@ class TestBackgroundTaskCleanup:
             raise RuntimeError("ping failed")
 
         with patch("openavc.discovery.sweep_phase.ping_sweep", side_effect=ping_boom), \
-             patch("openavc.discovery.engine.MDNSScanner", mdns_cls), \
-             patch("openavc.discovery.engine.SSDPScanner", ssdp_cls), \
-             patch("openavc.discovery.engine.AMXDDPScanner", amx_cls), \
-             patch("openavc.discovery.engine.SNMPScanner", snmp_cls):
+             patch("openavc.discovery.passive_phase.MDNSScanner", mdns_cls), \
+             patch("openavc.discovery.passive_phase.SSDPScanner", ssdp_cls), \
+             patch("openavc.discovery.passive_phase.AMXDDPScanner", amx_cls), \
+             patch("openavc.discovery.passive_phase.SNMPScanner", snmp_cls):
             with pytest.raises(RuntimeError, match="ping failed"):
                 await engine._scan_pipeline_inner(["10.77.0.0/24"])
 
@@ -255,10 +255,10 @@ class TestEvidenceResetOnScanStart:
                        new_callable=AsyncMock, return_value={}), \
                  patch.object(engine.community_index, "get_drivers",
                               new_callable=AsyncMock, return_value=[]), \
-                 patch("openavc.discovery.engine.MDNSScanner", mdns_cls), \
-                 patch("openavc.discovery.engine.SSDPScanner", ssdp_cls), \
-                 patch("openavc.discovery.engine.AMXDDPScanner", amx_cls), \
-                 patch("openavc.discovery.engine.SNMPScanner", snmp_cls):
+                 patch("openavc.discovery.passive_phase.MDNSScanner", mdns_cls), \
+                 patch("openavc.discovery.passive_phase.SSDPScanner", ssdp_cls), \
+                 patch("openavc.discovery.passive_phase.AMXDDPScanner", amx_cls), \
+                 patch("openavc.discovery.passive_phase.SNMPScanner", snmp_cls):
                 await engine.start_scan(subnets=["10.77.0.0/24"])
                 await engine._scan_task  # run the inline pipeline to completion
 
@@ -558,10 +558,10 @@ class TestMergePriority:
                           new_callable=AsyncMock, return_value=[]), \
              patch.object(engine.oui_db, "lookup",
                           return_value=("ASUSTek COMPUTER INC.", "networking")), \
-             patch("openavc.discovery.engine.MDNSScanner", mdns_cls), \
-             patch("openavc.discovery.engine.SSDPScanner", ssdp_cls), \
-             patch("openavc.discovery.engine.AMXDDPScanner", amx_cls), \
-             patch("openavc.discovery.engine.SNMPScanner", snmp_cls):
+             patch("openavc.discovery.passive_phase.MDNSScanner", mdns_cls), \
+             patch("openavc.discovery.passive_phase.SSDPScanner", ssdp_cls), \
+             patch("openavc.discovery.passive_phase.AMXDDPScanner", amx_cls), \
+             patch("openavc.discovery.passive_phase.SNMPScanner", snmp_cls):
             await engine._scan_pipeline_inner(["10.77.0.0/24"])
 
         d = engine.results["10.77.0.61"]
@@ -633,10 +633,10 @@ class TestPingTotalAccounting:
                    new_callable=AsyncMock, return_value=[]) as mock_ping, \
              patch.object(engine.community_index, "get_drivers",
                           new_callable=AsyncMock, return_value=[]), \
-             patch("openavc.discovery.engine.MDNSScanner", mdns_cls), \
-             patch("openavc.discovery.engine.SSDPScanner", ssdp_cls), \
-             patch("openavc.discovery.engine.AMXDDPScanner", amx_cls), \
-             patch("openavc.discovery.engine.SNMPScanner", snmp_cls), \
+             patch("openavc.discovery.passive_phase.MDNSScanner", mdns_cls), \
+             patch("openavc.discovery.passive_phase.SSDPScanner", ssdp_cls), \
+             patch("openavc.discovery.passive_phase.AMXDDPScanner", amx_cls), \
+             patch("openavc.discovery.passive_phase.SNMPScanner", snmp_cls), \
              patch("openavc.discovery.arp_phase._resolve_hostnames",
                    new_callable=AsyncMock, return_value={}):
             # Must NOT raise on the malformed CIDR.

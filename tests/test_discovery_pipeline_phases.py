@@ -25,10 +25,10 @@ from openavc.discovery.scan_budget import ScanBudget, resolve_policy
 from openavc.discovery.tier_matcher import SignalIndex
 
 # Where each phase looks its scanners up.
-LISTENERS = "openavc.discovery.engine"
+LISTENERS = "openavc.discovery.passive_phase"
 SWEEP = "openavc.discovery.sweep_phase"
 PORTS = "openavc.discovery.port_phase"
-SNMP = "openavc.discovery.engine"
+SNMP = "openavc.discovery.passive_phase"
 
 
 def _listener(start_attr: str, env_error: str | None = None) -> MagicMock:

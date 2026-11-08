@@ -67,10 +67,10 @@ class TestScanWarnings:
     async def _run_pipeline(self, fake_ping, scanner_mocks):
         mdns_cls, ssdp_cls, amx_cls, snmp_cls = scanner_mocks
         with patch("openavc.discovery.sweep_phase.ping_sweep", side_effect=fake_ping), \
-             patch("openavc.discovery.engine.MDNSScanner", mdns_cls), \
-             patch("openavc.discovery.engine.SSDPScanner", ssdp_cls), \
-             patch("openavc.discovery.engine.AMXDDPScanner", amx_cls), \
-             patch("openavc.discovery.engine.SNMPScanner", snmp_cls), \
+             patch("openavc.discovery.passive_phase.MDNSScanner", mdns_cls), \
+             patch("openavc.discovery.passive_phase.SSDPScanner", ssdp_cls), \
+             patch("openavc.discovery.passive_phase.AMXDDPScanner", amx_cls), \
+             patch("openavc.discovery.passive_phase.SNMPScanner", snmp_cls), \
              patch("openavc.discovery.arp_phase._resolve_hostnames",
                    new_callable=AsyncMock, return_value={}):
             await self.engine._scan_pipeline_inner(["192.168.1.0/30"])

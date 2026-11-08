@@ -5,11 +5,14 @@ A scan starts its passive listeners, sweeps for live hosts, reads MAC
 addresses and names, port-scans, launches SNMP, collects what the listeners
 heard, runs the drivers' own probes, and finally matches every device's
 evidence against the drivers (``_scan_pipeline_inner`` lists the phases).
-The sweep (phase 3) is ``sweep_phase.HostSweep``, phase 4 is
-``arp_phase.ArpHarvest``, the port scan (phase 5) is ``port_phase.PortScan``,
-the driver probes are ``probe_phase.DriverProbes`` and the listeners'
-collection is ``passive_phase.PassiveCollection``, mixins this class
-inherits; the records each phase adds are built in ``scan_evidence``.
+The listeners and SNMP, from opening them (phase 2) and launching SNMP
+(phase 6) to collecting both (phase 7), are ``passive_phase.PassiveCollection``;
+the sweep (phase 3) is ``sweep_phase.HostSweep``, phase 4 is
+``arp_phase.ArpHarvest``, the port scan (phase 5) is ``port_phase.PortScan``
+and the driver probes are ``probe_phase.DriverProbes``, mixins this class
+inherits; the records each phase adds are built in ``scan_evidence``. What
+stays here is the pipeline itself, a scan's status and progress, and the
+matcher (phase 8).
 
 The rules worth knowing before changing anything here:
 
@@ -31,7 +34,6 @@ import asyncio
 import ipaddress
 import logging
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Awaitable, Iterable
 
@@ -39,13 +41,12 @@ from openavc.discovery.arp_phase import ArpHarvest
 from openavc.discovery.network_scanner import get_local_subnets
 from openavc.discovery.passive_phase import BackgroundScans, PassiveCollection
 from openavc.discovery.port_guard import PortGuard, held_ports
-from openavc.discovery.port_phase import (  # noqa: F401 -- THOROUGH_EXTRA_PORTS: re-exported, imported from here
+from openavc.discovery.port_phase import (  # noqa: F401 -- THOROUGH_EXTRA_PORTS and PortScanSettings: re-exported, imported from here
     THOROUGH_EXTRA_PORTS,
     PortScan,
     PortScanSettings,
 )
 from openavc.discovery.probe_phase import DriverProbes
-from openavc.discovery.scan_scope import ip_in_subnets
 from openavc.discovery.sweep_phase import HostSweep
 from openavc.discovery.oui_database import OUIDatabase
 from openavc.discovery.hints import (
@@ -54,13 +55,6 @@ from openavc.discovery.hints import (
     load_discovery_hints,
 )
 from openavc.discovery.community_index import CommunityIndexCache
-from openavc.discovery.mdns_scanner import (
-    BASELINE_SERVICE_TYPES,
-    MDNSScanner,
-)
-from openavc.discovery.ssdp_scanner import SSDPScanner
-from openavc.discovery.snmp_scanner import SNMPScanner
-from openavc.discovery.amx_ddp_scanner import AMXDDPScanner
 from openavc.discovery.companion import (
     CompanionProbe,
     load_discovery_companions,
@@ -143,18 +137,6 @@ PHASE_WEIGHTS: dict[str, dict[str, float]] = {
 # once per host; the bar only needs to look alive, so one message a second is
 # plenty and keeps a 1022-host sweep off the WS send queue.
 _INTRA_EMIT_INTERVAL: float = 1.0
-
-
-@dataclass(frozen=True)
-class _SnmpLaunch:
-    """What phase 6 asks SNMP with: read from the discovery settings as the
-    scan starts."""
-
-    enabled: bool
-    community: str
-    source_ip: str
-    concurrency: int
-    entity_mib: bool
 
 
 class ScanStatus:
@@ -900,14 +882,15 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
 
         Phase layout:
           1: Subnet detection (already done)
-          2: Start passive listeners (mDNS + SSDP + AMX DDP)
+          2: Start passive listeners (mDNS + SSDP + AMX DDP) (``passive_phase``)
           3: Ping sweep (``sweep_phase``)
           4: ARP harvest + OUI lookup + hostname resolution (``arp_phase``)
           5: Port scan + banner grab (``port_phase``)
-          6: Launch SNMP scan in the background
+          6: Launch SNMP scan in the background (``passive_phase``)
           7: Collect passive listener results + SNMP results, port-scan
-             passive-only hosts, then run driver-declared probes (UDP
-             broadcasts, TCP probes, Python companions)
+             passive-only hosts (``passive_phase``), then run driver-declared
+             probes (UDP broadcasts, TCP probes, Python companions;
+             ``probe_phase``)
           8: Run the deterministic matcher per device + finalize —
              NOT part of this coroutine. It lives in _finalize_scan and is
              driven by _run_scan outside the scan deadline, so a scan that
@@ -956,111 +939,6 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
             # scan that binds the same SO_REUSEADDR ports.
             await self._cancel_background_tasks(*background.tasks())
 
-    def _mdns_service_types(self) -> list[str]:
-        """What the mDNS listener asks for: a small consumer baseline, then
-        each loaded driver's ``mdns:`` service. The scanner adds the DNS-SD
-        meta-query itself, so unknown types surface for catalog growth."""
-        driver_service_types = [
-            fp.service for hint in self.discovery_hints for fp in hint.mdns if fp.service
-        ]
-        return list(BASELINE_SERVICE_TYPES) + driver_service_types
-
-    async def _open_listeners(
-        self, subnets: list[str], control_ip: str,
-    ) -> tuple[MDNSScanner, SSDPScanner, AMXDDPScanner]:
-        """Phase 2: the passive listeners, built for this scan.
-
-        Kept where _run_scan can reach them, so a truncated scan can still
-        merge what they heard: their tasks get cancelled, which zeroes the
-        task results but not the scanners' own accumulated state.
-        """
-        await self._set_phase(2, "passive_listen", "Starting mDNS, SSDP, and AMX DDP listeners...")
-        mdns_scanner = MDNSScanner(service_types=self._mdns_service_types(), control_ip=control_ip)
-        ssdp_scanner = SSDPScanner(
-            control_ip=control_ip,
-            fetch_scope=lambda ip: ip_in_subnets(ip, subnets),
-        )
-        amx_ddp_scanner = AMXDDPScanner(control_ip=control_ip)
-        self._passive_scanners = (mdns_scanner, ssdp_scanner, amx_ddp_scanner)
-        return self._passive_scanners
-
-    @staticmethod
-    def _start_listeners(
-        listeners: tuple[MDNSScanner, SSDPScanner, AMXDDPScanner], background: BackgroundScans,
-    ) -> None:
-        """Start each listener's task on ``background``, one by one, so a task
-        already started is there for the pipeline's finally to cancel. The
-        600s cap is a safety net; phase 7 stops them much sooner."""
-        mdns_scanner, ssdp_scanner, amx_ddp_scanner = listeners
-        background.mdns = asyncio.create_task(mdns_scanner.start(duration=600.0))
-        background.ssdp = asyncio.create_task(ssdp_scanner.scan(
-            timeout=600.0, fetch_descriptions=True,
-        ))
-        background.amx_ddp = asyncio.create_task(amx_ddp_scanner.start(duration=600.0))
-
-    def _snmp_launch_settings(self, control_ip: str, gentle: bool) -> _SnmpLaunch:
-        """What phase 6 asks SNMP with, read from the settings as the scan starts."""
-        return _SnmpLaunch(
-            enabled=bool(self.config.get("snmp_enabled", True)),
-            community=self.config.get("snmp_community", "public"),
-            source_ip=control_ip,
-            concurrency=10 if gentle else 20,
-            entity_mib=self._budget.policy.snmp_entity_mib,
-        )
-
-    async def _launch_snmp(
-        self, background: BackgroundScans, alive_ips: list[str], snmp: _SnmpLaunch,
-    ) -> None:
-        """Phase 6: start the SNMP scan of the live hosts in the background,
-        so its wait overlaps phase 7's collection window.
-
-        The driver probes run in phase 7, after the passive collection, since
-        they need the full host inventory (passive-only devices included).
-        """
-        await self._set_phase(6, "protocol_probe", "Identifying device protocols...")
-        if not (snmp.enabled and alive_ips):
-            return
-        background.snmp_scanner = SNMPScanner(source_ip=snmp.source_ip)
-        background.snmp = asyncio.create_task(
-            background.snmp_scanner.scan_devices(
-                alive_ips,
-                community=snmp.community,
-                timeout=2.0,
-                concurrency=snmp.concurrency,
-                entity_mib=snmp.entity_mib,
-            )
-        )
-
-    async def _passive_collect_phase(
-        self, background: BackgroundScans, alive_ips: list[str], followup: PortScanSettings,
-    ) -> None:
-        """Phase 7's collection, under its own budget.
-
-        It narrows by waiting less rather than by dropping work: the
-        announcements it gathers are the strongest identification signal a
-        scan gets, so shortening the window beats skipping it. The listeners
-        keep running through the window and are stopped at its end (see
-        _collect_passive_results).
-        """
-        await self._set_phase(7, "passive_collect", "Collecting passive and SNMP results...")
-        collect_plan = budgeting.plan_passive_collect(self._budget)
-        self._apply_plan(budgeting.PHASE_PASSIVE, collect_plan.warnings)
-        await self._run_budgeted(
-            budgeting.PHASE_PASSIVE, collect_plan.budget,
-            self._collect_phase(background, collect_plan.wait_seconds, alive_ips, followup),
-            "Collecting device announcements ran out of its share of the "
-            "scan time. Some announcements may be missing.",
-        )
-
-    def _report_listener_failures(self, listeners: Iterable[Any]) -> None:
-        """A listener that could not work (multicast join failed on every
-        interface, socket unavailable, ...) becomes a scan warning: a silent
-        {} from a listener that never ran reads as "no devices on the
-        network", which is the wrong story."""
-        for listener in listeners:
-            if listener.env_error:
-                self.scan_status.warnings.append(listener.env_error)
-
     def _alive_ips(self) -> list[str]:
         """Hosts marked alive so far this scan, in address order.
 
@@ -1078,30 +956,6 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         return sorted(
             (ip for ip, dev in self.results.items() if dev.alive), key=_key,
         )
-
-    async def _collect_phase(
-        self,
-        background: BackgroundScans,
-        passive_wait: float,
-        alive_ips: list[str],
-        followup: PortScanSettings,
-    ) -> None:
-        """Phase 7's collection half: gather everything already observed.
-
-        Passive announcements, SNMP, a port-scan follow-up for hosts only the
-        listeners saw, and a second ARP read for the MACs that follow-up just
-        put in the cache. All of it feeds the probe pass that comes next.
-        """
-        await self._collect_passive_results(
-            background.mdns, background.ssdp, background.amx_ddp,
-            wait_seconds=passive_wait,
-        )
-        await self._collect_snmp_results(background.snmp, background.snmp_scanner)
-        await self._port_scan_passive_only(alive_ips, followup)
-
-        # Pick up a MAC + OUI for passive-discovered devices the phase-4
-        # ARP harvest missed (found via mDNS/SSDP on a ping-skipped subnet).
-        await self._late_arp_harvest()
 
     def _apply_plan(self, key: str, warnings: list[str]) -> None:
         """Record a phase plan: its granted deadline, and any narrowing.

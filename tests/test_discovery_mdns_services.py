@@ -317,9 +317,9 @@ class TestPassiveOnlyFollowUp:
              patch("openavc.discovery.arp_phase.harvest_arp_table", new_callable=AsyncMock, return_value={}), \
              patch("openavc.discovery.probe_phase.observe_port_probes", side_effect=fake_port_probes), \
              patch.object(engine.community_index, "get_drivers", new_callable=AsyncMock, return_value=[]), \
-             patch("openavc.discovery.engine.MDNSScanner", mdns_cls), \
-             patch("openavc.discovery.engine.SSDPScanner", ssdp_cls), \
-             patch("openavc.discovery.engine.AMXDDPScanner", amx_cls):
+             patch("openavc.discovery.passive_phase.MDNSScanner", mdns_cls), \
+             patch("openavc.discovery.passive_phase.SSDPScanner", ssdp_cls), \
+             patch("openavc.discovery.passive_phase.AMXDDPScanner", amx_cls):
             engine.scan_status.subnets = ["10.77.0.0/24"]
             await engine._scan_pipeline_inner(["10.77.0.0/24"])
 

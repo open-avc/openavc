@@ -109,10 +109,10 @@ class _Pipeline:
              patch.object(engine, "_run_custom_probes", side_effect=self._fake_probes), \
              patch.object(engine.community_index, "get_drivers",
                           new_callable=AsyncMock, return_value=[]), \
-             patch("openavc.discovery.engine.MDNSScanner", mdns_cls), \
-             patch("openavc.discovery.engine.SSDPScanner", ssdp_cls), \
-             patch("openavc.discovery.engine.AMXDDPScanner", amx_cls), \
-             patch("openavc.discovery.engine.SNMPScanner", snmp_cls):
+             patch("openavc.discovery.passive_phase.MDNSScanner", mdns_cls), \
+             patch("openavc.discovery.passive_phase.SSDPScanner", ssdp_cls), \
+             patch("openavc.discovery.passive_phase.AMXDDPScanner", amx_cls), \
+             patch("openavc.discovery.passive_phase.SNMPScanner", snmp_cls):
             await engine._scan_pipeline_inner(list(subnets))
 
 

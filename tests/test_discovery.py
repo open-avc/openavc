@@ -302,10 +302,10 @@ class TestDiscoveryEngine:
                         # catalog fetch so the signal index is deterministically
                         # empty — otherwise the live GitHub fetch leaks 50+
                         # drivers into the index.
-                        with patch("openavc.discovery.engine.MDNSScanner") as mock_mdns_cls, \
-                             patch("openavc.discovery.engine.SSDPScanner") as mock_ssdp_cls, \
-                             patch("openavc.discovery.engine.AMXDDPScanner") as mock_amx_cls, \
-                             patch("openavc.discovery.engine.SNMPScanner") as mock_snmp_cls, \
+                        with patch("openavc.discovery.passive_phase.MDNSScanner") as mock_mdns_cls, \
+                             patch("openavc.discovery.passive_phase.SSDPScanner") as mock_ssdp_cls, \
+                             patch("openavc.discovery.passive_phase.AMXDDPScanner") as mock_amx_cls, \
+                             patch("openavc.discovery.passive_phase.SNMPScanner") as mock_snmp_cls, \
                              patch.object(self.engine.community_index, "get_drivers", new_callable=AsyncMock, return_value=[]), \
                              patch("openavc.discovery.arp_phase._resolve_hostnames", new_callable=AsyncMock, return_value={}):
                             mock_mdns = MagicMock()

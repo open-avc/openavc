@@ -151,11 +151,11 @@ class TestEngineWiring:
              patch("openavc.discovery.arp_phase.netbios_sweep", netbios), \
              patch("openavc.discovery.port_phase.scan_host_ports", ports), \
              patch("openavc.discovery.port_phase.grab_banners", banners), \
-             patch("openavc.discovery.engine.SNMPScanner", snmp_cls), \
+             patch("openavc.discovery.passive_phase.SNMPScanner", snmp_cls), \
              patch.object(engine.community_index, "get_drivers", new_callable=AsyncMock, return_value=[]), \
-             patch("openavc.discovery.engine.MDNSScanner", listener("start")), \
-             patch("openavc.discovery.engine.SSDPScanner", listener("scan")), \
-             patch("openavc.discovery.engine.AMXDDPScanner", listener("start")):
+             patch("openavc.discovery.passive_phase.MDNSScanner", listener("start")), \
+             patch("openavc.discovery.passive_phase.SSDPScanner", listener("scan")), \
+             patch("openavc.discovery.passive_phase.AMXDDPScanner", listener("start")):
             engine.scan_status.subnets = ["10.77.0.0/24"]
             await engine._scan_pipeline_inner(["10.77.0.0/24"])
 

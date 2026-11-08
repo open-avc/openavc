@@ -34,7 +34,7 @@ async def test_snmp_reads_the_entity_mib_only_when_the_depth_says_to(depth, enti
     scanner = MagicMock()
     scanner.scan_devices = MagicMock(return_value=asyncio.sleep(0, result={}))
     background = BackgroundScans()
-    with patch("openavc.discovery.engine.SNMPScanner", return_value=scanner):
+    with patch("openavc.discovery.passive_phase.SNMPScanner", return_value=scanner):
         await engine._launch_snmp(background, ["10.77.0.5"], settings)
         await background.snmp
     assert scanner.scan_devices.call_args.kwargs["entity_mib"] is entity_mib
