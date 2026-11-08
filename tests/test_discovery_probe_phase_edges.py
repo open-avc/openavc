@@ -361,3 +361,23 @@ def test_the_count_projects_the_udp_sends_and_the_slowest_waits() -> None:
     assert (tcp_jobs, udp_sends, companions) == (2, 6, 2)
     assert udp_listen == 1.5
     assert tcp_wait > 0
+
+
+async def test_the_tcp_probes_are_the_drivers_installed_when_the_phase_began() -> None:
+    # A driver installed or removed while the UDP probes wait for answers
+    # changes nothing about the TCP probes this phase runs.
+    engine = _engine(_hint("acme_a", udp_probe=_udp()), _hint("acme_b", tcp_probe=_tcp(23)),
+                     hosts=("10.77.0.5",), port=23)
+    probed: list[str] = []
+
+    async def fake_udp(spec, **kwargs):
+        engine.discovery_hints = [_hint("acme_a", udp_probe=_udp()), _hint("acme_c", tcp_probe=_tcp(23))]
+        return {}
+
+    async def fake_port_probes(host, port, specs, **kwargs):
+        probed.extend(s.driver_id for s in specs)
+
+    with patch.object(probes_mod, "run_udp_broadcast_probe", fake_udp), \
+            patch.object(probes_mod, "observe_port_probes", fake_port_probes):
+        await engine._run_custom_probes(["10.77.0.0/24"], "")
+    assert probed == ["acme_b"]

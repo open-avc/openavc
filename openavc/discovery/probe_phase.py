@@ -23,9 +23,11 @@ The rules worth knowing before changing anything here:
   (``merge_probe_results``). The phase runs under its own deadline, so one
   cut short loses only the probes still waiting, and the fields a probe fills
   in come out the same whichever answered first.
-* The phase is budgeted before it runs (``_count_probe_jobs``) from the same
-  TCP job list it then runs (``_tcp_probe_jobs``), so the projection and the
-  execution cannot disagree about what the phase is about to do.
+* The phase is budgeted before it runs (``_count_probe_jobs``) by the same
+  rule it then runs its TCP probes by (``_tcp_probe_jobs``: driver by driver,
+  every scanned host with the port open), so the projection and the
+  execution agree about what the phase is about to do. The phase reads the
+  drivers once, as it begins.
 * A probe enriches the device's empty fields and never replaces what the
   passive listeners or SNMP already said (``fill_only``).
 * Every record names a host on a scanned subnet (discovery/scan_scope.py): a
@@ -101,13 +103,15 @@ class DriverProbes:
             if port in (dev.open_ports or []) and ip_in_subnets(ip, subnets)
         ]
 
-    def _tcp_probe_jobs(self, subnets: list[str]) -> list[tuple[Any, str]]:
+    def _tcp_probe_jobs(
+        self, tcp_specs: list[Any], subnets: list[str],
+    ) -> list[tuple[Any, str]]:
         """Every (spec, host) pair a TCP probe runs against, in the order the
         phase runs them and the budget counts them: driver by driver, then
         host by host."""
         return [
             (spec, ip)
-            for spec in self._tcp_probe_specs()
+            for spec in tcp_specs
             for ip in self._hosts_with_port_open(spec.port, subnets)
         ]
 
@@ -132,7 +136,7 @@ class DriverProbes:
         udp_listen = 0.0
         if udp_sends:
             udp_listen = max(spec.timeout_ms for spec in udp_specs) / 1000.0
-        jobs = self._tcp_probe_jobs(subnets)
+        jobs = self._tcp_probe_jobs(self._tcp_probe_specs(), subnets)
         by_port: dict[tuple[str, int], list] = {}
         for spec, ip in jobs:
             by_port.setdefault((ip, spec.port), []).append(spec)
@@ -157,6 +161,8 @@ class DriverProbes:
         — one send each covers a whole subnet, so they are the cheapest
         identification per packet). The caller warns about the shortfall.
         """
+        # The drivers are read once, as the phase begins: one installed or
+        # removed while the UDP probes wait for answers changes nothing here.
         udp_specs = self._udp_probe_specs()
         tcp_specs = self._tcp_probe_specs()
         run = _ProbeRun(subnets, control_ip, RateLimiter(rate_per_sec=10.0))
@@ -164,7 +170,7 @@ class DriverProbes:
         if udp_specs:
             position = await self._run_udp_probes(run, udp_specs)
         if tcp_specs:
-            await self._run_tcp_probes(run, position, max_tcp_jobs)
+            await self._run_tcp_probes(run, tcp_specs, position, max_tcp_jobs)
         if self._discovery_companions:
             await self._run_companions(run)
 
@@ -233,13 +239,14 @@ class DriverProbes:
     # --- TCP probes ---
 
     async def _run_tcp_probes(
-        self, run: _ProbeRun, first: int, max_tcp_jobs: int | None,
+        self, run: _ProbeRun, tcp_specs: list[Any], first: int,
+        max_tcp_jobs: int | None,
     ) -> None:
         """Run the TCP probes, port by port, numbering them from ``first``;
         the budget's cap cuts the job list before it is grouped by port."""
         jobs = [
             (first + i, spec, ip)
-            for i, (spec, ip) in enumerate(self._tcp_probe_jobs(run.subnets))
+            for i, (spec, ip) in enumerate(self._tcp_probe_jobs(tcp_specs, run.subnets))
         ]
         if max_tcp_jobs is not None:
             jobs = jobs[:max_tcp_jobs]
