@@ -1,0 +1,38 @@
+name: CodeQL gate checks
+on:
+  push:
+    branches: [main]
+    paths: ['.github/actions/codeql-gate/**', '.github/workflows/codeql-gate-check.yml']
+  pull_request:
+    paths: ['.github/actions/codeql-gate/**', '.github/workflows/codeql-gate-check.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tests -v
+        working-directory: .github/actions/codeql-gate
+  verify:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      security-events: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/codeql-gate
+        with:
+          sha: ${{ github.sha }}
+          languages: actions,python,javascript-typescript
+        env:
+          GH_TOKEN: ${{ github.token }}

@@ -1,0 +1,26 @@
+name: Verify CodeQL evidence
+description: Require a completed scan of the source being shipped and triaged findings.
+inputs:
+  sha:
+    description: Full commit SHA being shipped
+    required: true
+  branch:
+    description: Default branch analyzed by CodeQL
+    required: true
+    default: main
+  languages:
+    description: Comma-separated required CodeQL language identifiers
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - shell: bash
+      env:
+        PYTHONPATH: ${{ github.action_path }}
+        GATE_SHA: ${{ inputs.sha }}
+        GATE_BRANCH: ${{ inputs.branch }}
+        GATE_LANGUAGES: ${{ inputs.languages }}
+      run: python -m codeql_gate --repository "$GITHUB_REPOSITORY" --sha "$GATE_SHA" --branch "$GATE_BRANCH" --languages "$GATE_LANGUAGES"

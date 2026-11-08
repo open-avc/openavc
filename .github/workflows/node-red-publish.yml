@@ -27,7 +27,25 @@ permissions:
   contents: read
 
 jobs:
+  security:
+    name: Verify CodeQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      security-events: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/codeql-gate
+        with:
+          sha: ${{ github.sha }}
+          languages: actions,python,javascript-typescript
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   publish:
+    needs: security
     name: Stage @open-avc/node-red-openavc
     runs-on: ubuntu-latest
     timeout-minutes: 15

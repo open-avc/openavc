@@ -15,6 +15,23 @@ env:
   NODE_VERSION: "22"
 
 jobs:
+  security:
+    name: Verify CodeQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      security-events: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/codeql-gate
+        with:
+          sha: ${{ github.sha }}
+          languages: actions,python,javascript-typescript
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   # ── Gate: run full test suite before building anything ──────────────
   test:
     name: Tests (${{ matrix.os }})
@@ -78,7 +95,7 @@ jobs:
   # ── Windows installer (.exe) ────────────────────────────────────────
   windows:
     name: Windows installer
-    needs: [test, version]
+    needs: [test, version, security]
     runs-on: windows-latest
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -188,7 +205,7 @@ jobs:
   # still produces a working *unsigned* .pkg (pre-enrollment / fork builds).
   macos:
     name: macOS installer (${{ matrix.arch }})
-    needs: [test, version]
+    needs: [test, version, security]
     runs-on: ${{ matrix.runner }}
     # Backstop against a stalled Apple-service call hanging the job for
     # GitHub's 6-hour default. The productbuild key-auth hang that bit
@@ -297,7 +314,7 @@ jobs:
   # ── Linux archive (amd64) ──────────────────────────────────────────
   linux-amd64:
     name: Linux archive (amd64)
-    needs: [test, version]
+    needs: [test, version, security]
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -364,7 +381,7 @@ jobs:
   # ── Linux archive (arm64) ──────────────────────────────────────────
   linux-arm64:
     name: Linux archive (arm64)
-    needs: [test, version]
+    needs: [test, version, security]
     runs-on: ubuntu-24.04-arm
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -431,7 +448,7 @@ jobs:
   # ── Docker image (multi-arch) ──────────────────────────────────────
   docker:
     name: Docker image
-    needs: [test, version]
+    needs: [test, version, security]
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.version.outputs.version }}

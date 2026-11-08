@@ -16,7 +16,34 @@ env:
   NODE_VERSION: "22"
 
 jobs:
+  security:
+    name: Verify CodeQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      security-events: read
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_TAG: ${{ inputs.tag }}
+        run: |
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$SOURCE_TAG" --jq .sha)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/codeql-gate
+        with:
+          sha: ${{ steps.source.outputs.sha }}
+          languages: actions,python,javascript-typescript
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   pi-image:
+    needs: security
     name: Build Pi image
     runs-on: ubuntu-latest
     timeout-minutes: 150
@@ -25,7 +52,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ needs.security.outputs.sha }}
 
       - uses: actions/setup-node@v4
         with:
