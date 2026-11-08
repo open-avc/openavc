@@ -169,9 +169,9 @@ export function collectWildcardMatches(pattern: string, candidateKeys: Iterable<
 // Built-in macro action types whose step `params` the runtime does NOT resolve
 // `$var` references in. Every OTHER action — `device.command`, `group.command`,
 // and any plugin-registered action — has its `params` passed through the macro
-// engine's `_resolve_params` (openavc/core/macro_engine.py: device.command,
-// group.command, and the plugin-action `else` branch), so a `$var.<name>` inside
-// those params is live at runtime.
+// engine's `_resolve_params` (openavc/core/macro_steps.py: the device.command,
+// group.command and plugin-action steps), so a `$var.<name>` inside those
+// params is live at runtime.
 const NON_PARAM_MACRO_ACTIONS = new Set([
   "delay",
   "state.set",

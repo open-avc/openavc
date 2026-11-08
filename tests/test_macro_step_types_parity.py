@@ -1,10 +1,12 @@
 """The macro editor offers exactly the steps the runtime runs.
 
 ``STEP_TYPES`` in the IDE's ``macroHelpers.ts`` is the list both Add Step
-menus draw from, and ``macro_validation.BUILTIN_STEP_ACTIONS`` is the list the
-runtime, the validator and the AI accept. They are two copies of one fact. A
-step the runtime has and the editor lacks can only be written by hand, and a
-step the editor offers that the runtime lacks saves and then fails on every run.
+menus draw from, ``macro_validation.BUILTIN_STEP_ACTIONS`` is the list the
+validator and the AI accept, and ``MacroSteps.STEP_HANDLERS`` is what the
+runtime actually runs. They are three copies of one fact. A step the runtime
+has and the editor lacks can only be written by hand, and a step the editor
+offers or the validator accepts that the runtime lacks saves and then fails on
+every run as an unknown action.
 
 Reading TypeScript with a regex is coarse on purpose: it fails loud when the
 array's shape changes, and the fix is then to teach the parse.
@@ -15,6 +17,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from openavc.core.macro_steps import MacroSteps
 from openavc.core.macro_validation import BUILTIN_STEP_ACTIONS
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
@@ -43,4 +46,12 @@ def test_the_editor_offers_every_step_the_runtime_runs() -> None:
     assert set(actions) == set(BUILTIN_STEP_ACTIONS), (
         f"editor only: {sorted(set(actions) - BUILTIN_STEP_ACTIONS)}; "
         f"runtime only: {sorted(BUILTIN_STEP_ACTIONS - set(actions))}"
+    )
+
+
+def test_the_runtime_runs_every_step_the_validator_accepts() -> None:
+    runs = set(MacroSteps.STEP_HANDLERS)
+    assert runs == set(BUILTIN_STEP_ACTIONS), (
+        f"runtime only: {sorted(runs - BUILTIN_STEP_ACTIONS)}; "
+        f"validator only: {sorted(BUILTIN_STEP_ACTIONS - runs)}"
     )

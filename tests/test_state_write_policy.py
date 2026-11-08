@@ -381,7 +381,8 @@ def test_authored_writers_are_not_held_to_the_door_either():
     closing the namespace at the door takes nothing away from a project that
     legitimately drives a system.* key.
     """
-    for rel in (("core", "macro_engine.py"), ("core", "ui_events.py"), ("core", "script_api.py")):
+    for rel in (("core", "macro_engine.py"), ("core", "macro_steps.py"),
+                ("core", "ui_events.py"), ("core", "script_api.py")):
         source = (_SERVER.joinpath(*rel)).read_text(encoding="utf-8")
         assert "check_state_write" not in source, rel
 
