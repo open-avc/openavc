@@ -65,6 +65,7 @@ class _Run:
         self.scanned: list[tuple[str, list[int]]] = []
         self.open_ports: dict[str, list[int]] = {}
         self.collect_args: tuple | None = None
+        self.probe_warning: str | None = None
         self.env_errors: dict[str, str | None] = {"mdns": None, "ssdp": None, "amx": None}
         self.mdns_cls = MagicMock()
         self.ssdp_cls = MagicMock()
@@ -92,6 +93,10 @@ class _Run:
         self.scanned.append((ip, list(ports)))
         return list(self.open_ports.get(ip, []))
 
+    async def _probes(self, subnets, control_ip, max_tcp_jobs=None):
+        if self.probe_warning:
+            self.engine.scan_status.warnings.append(self.probe_warning)
+
     async def _collect(self, background, wait, alive_ips, followup):
         self.collect_args = (wait, list(alive_ips), followup)
 
@@ -110,7 +115,7 @@ class _Run:
                   new_callable=AsyncMock, return_value={}),
             patch("openavc.discovery.arp_phase._resolve_hostnames",
                   new_callable=AsyncMock, return_value={}),
-            patch.object(engine, "_run_custom_probes", new_callable=AsyncMock),
+            patch.object(engine, "_run_custom_probes", side_effect=self._probes),
             patch.object(engine.community_index, "get_drivers",
                          new_callable=AsyncMock, return_value=[]),
             patch(f"{LISTENERS}.MDNSScanner", self.mdns_cls),
@@ -189,6 +194,15 @@ class TestListeners:
         assert warnings.index("mDNS could not join") < warnings.index("AMX could not bind")
         assert sum(1 for w in warnings if "could not" in w) == 2
 
+    async def test_listener_warnings_come_before_the_driver_probes_warnings(self):
+        engine = _engine()
+        run = _Run(engine)
+        run.env_errors = {"mdns": "mDNS could not join", "ssdp": None, "amx": None}
+        run.probe_warning = "A driver probe could not run."
+        await run.run()
+        warnings = engine.scan_status.warnings
+        assert warnings.index("mDNS could not join") < warnings.index("A driver probe could not run.")
+
 
 # --- Phase 3: the host sweep ---------------------------------------------
 
@@ -245,6 +259,15 @@ class TestSweep:
         assert planner.call_args.args[1] == expected
         expanded = sum(len(_parse_cidr(s, min_prefix=min_prefix)) for s in subnets)
         assert expanded == expected
+
+    async def test_counting_the_sweep_logs_nothing_the_sweep_itself_says(self, caplog):
+        # The sweep warns once per subnet it skips (network_scanner._parse_cidr);
+        # counting it beforehand stays quiet, or each warning would appear twice.
+        engine = _engine()
+        run = _Run(engine)
+        with caplog.at_level(logging.WARNING, logger="discovery"):
+            await run.run(subnets=["garbage", "10.60.0.0/16", "10.77.0.0/24"])
+        assert not any("Invalid CIDR" in m or "too large" in m for m in caplog.messages)
 
     async def test_a_capped_sweep_reports_the_cap_as_hosts_scanned(self):
         engine = _engine()
