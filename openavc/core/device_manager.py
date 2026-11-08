@@ -574,12 +574,7 @@ class DeviceManager(
 
         Handles both active devices and orphaned devices (driver reassignment).
 
-        A pause survives the swap. The pause is owned by whoever took it — the
-        driver test panel, still holding the competing session — and is released
-        by them or by its own TTL. A project save is neither, so reconnecting
-        here would drop a production device back onto a port under test without
-        anyone asking for it, which is the collision the pause exists to
-        prevent. Captured before the removal, which deletes the state key.
+        A pause survives the swap (:meth:`_pause_to_carry`).
 
         Args:
             device_id: The existing device ID.
@@ -587,8 +582,7 @@ class DeviceManager(
             defer_connect: Passed through to :meth:`add_device` — leave the
                 re-added device for :meth:`bring_up` to dial.
         """
-        carry_pause = self._pause_remaining(device_id)
-        carry_pause_for = self.state.get(f"device.{device_id}.paused_for")
+        carry_pause, carry_pause_for = self._pause_to_carry(device_id)
         if device_id in self._devices or device_id in self._orphaned_devices:
             await self.remove_device(device_id)
         elif device_id in self._device_configs:
@@ -986,14 +980,15 @@ class DeviceManager(
         # guess (``/api/simulation/start`` refuses, "already active"; a
         # reconnect re-dials the real address). Same rule as reload_driver,
         # for the same reason.
-        defer = defer_connect or self.request_bringup is not None
+        #
+        # A caller that asked for the deferral owns its own round (the engine's
+        # reconcile does); one that did not gets it asked for here, or the
+        # device would sit registered and never dialed.
+        ask_for_round = not defer_connect and self.request_bringup is not None
         await self.remove_device(device_id)
-        await self.add_device(config, defer_connect=defer)
+        await self.add_device(config, defer_connect=defer_connect or ask_for_round)
         activated = device_id not in self._orphaned_devices
-        if activated and defer and not defer_connect:
-            # A caller that asked for the deferral owns its own round (the
-            # engine's reconcile does); one that did not gets it asked for
-            # here, or the device would sit registered and never dialed.
+        if activated and ask_for_round:
             self.request_bringup()
         return activated
 
@@ -1005,25 +1000,35 @@ class DeviceManager(
         driver wasn't loaded yet come online without a server restart.
         Returns the list of device IDs that successfully activated.
         """
+        return await self._activate_orphans(
+            is_driver_registered, defer_connect=defer_connect,
+            note="(driver '{driver}' now installed)",
+        )
+
+    async def _activate_orphans(
+        self, wanted: Callable[[str], bool], *, defer_connect: bool = False, note: str,
+    ) -> list[str]:
+        """Activate every orphan waiting for a driver id ``wanted`` accepts.
+
+        The ids activated. One that fails is logged and the rest still run.
+        ``note`` ends each "Activated" log line, with ``{driver}`` filled in.
+        """
         activated: list[str] = []
         # Snapshot before iterating — retry_orphaned_device mutates the dict
         for device_id, config in list(self._orphaned_devices.items()):
             driver_id = config.get("driver", "")
-            if not is_driver_registered(driver_id):
-                continue
-            try:
-                ok = await self.retry_orphaned_device(
-                    device_id, defer_connect=defer_connect
-                )
-                if ok:
-                    activated.append(device_id)
-                    log.info(
-                        f"Activated orphaned device '{device_id}' "
-                        f"(driver '{driver_id}' now installed)"
-                    )
-            except Exception:
-                log.exception(f"Failed to activate orphaned device '{device_id}'")
+            if wanted(driver_id) and await self._try_orphan(device_id, defer_connect):
+                activated.append(device_id)
+                log.info(f"Activated orphaned device '{device_id}' " + note.format(driver=driver_id))
         return activated
+
+    async def _try_orphan(self, device_id: str, defer_connect: bool) -> bool:
+        """:meth:`retry_orphaned_device`, with a failure logged as False."""
+        try:
+            return await self.retry_orphaned_device(device_id, defer_connect=defer_connect)
+        except Exception:
+            log.exception(f"Failed to activate orphaned device '{device_id}'")
+            return False
 
     def get_missing_drivers(self) -> list[str]:
         """Return the unique driver IDs that orphaned devices are waiting for."""
@@ -1136,33 +1141,44 @@ class DeviceManager(
         if is_reserved_driver(driver_id):
             from openavc.core.installed_equipment import InstalledEquipmentError
             raise InstalledEquipmentError("The manufacturer manages this integration. Use Reconnect to restore its connection.")
-        reconnected: list[str] = []
+        reconnected = await self._readd_for_new_driver(driver_id)
+        if reconnected:
+            if self.request_bringup is not None:
+                self.request_bringup()
+            else:
+                await self.bring_up()
+        reconnected += await self._activate_orphans(
+            lambda waiting_for: waiting_for == driver_id, note="after driver reload",
+        )
+        if self.on_driver_reloaded is not None:
+            self.on_driver_reloaded()
+        return reconnected
 
-        # Find active devices using this driver
+    async def _readd_for_new_driver(self, driver_id: str) -> list[str]:
+        """Remove and re-add every live device on ``driver_id`` so it picks up
+        the reloaded class, a paused one staying paused. The ids re-added; a
+        device that fails is logged and the rest still run.
+
+        Registered, not dialed: the caller asks for the bring-up round, which
+        the engine runs after re-applying any simulation redirect to the new
+        instance. Dialing here sent a simulated device to its REAL address on
+        every driver update.
+        """
         affected = [
             (did, cfg)
             for did, cfg in self._device_configs.items()
             if cfg.get("driver") == driver_id and did in self._devices
         ]
-
+        readded: list[str] = []
         for device_id, config in affected:
             try:
-                # Same rule as update_device: a driver save must not reconnect a
-                # device the test panel has paused. This is the likelier of the
-                # two collisions — saving the driver from the Builder is what
-                # the panel's own user does next.
-                carry_pause = self._pause_remaining(device_id)
-                carry_pause_for = self.state.get(f"device.{device_id}.paused_for")
+                carry_pause, carry_pause_for = self._pause_to_carry(device_id)
                 await self.remove_device(device_id)
-                # Registered, not dialed: the bring-up round below opens the
-                # connection, after the engine has re-applied any simulation
-                # redirect to the new instance. Dialing here sent a simulated
-                # device to its REAL address on every driver update.
                 await self.add_device(
                     config, carry_pause=carry_pause, carry_pause_for=carry_pause_for,
                     defer_connect=True,
                 )
-                reconnected.append(device_id)
+                readded.append(device_id)
                 log.info(
                     f"Reconnected device '{device_id}' after driver reload"
                     if carry_pause is None
@@ -1171,30 +1187,7 @@ class DeviceManager(
                 )
             except Exception:
                 log.exception(f"Failed to reconnect '{device_id}' after driver reload")
-
-        if reconnected:
-            if self.request_bringup is not None:
-                self.request_bringup()
-            else:
-                await self.bring_up()
-
-        # Retry orphaned devices that were waiting for this driver
-        orphaned_for_driver = [
-            did for did, cfg in self._orphaned_devices.items()
-            if cfg.get("driver") == driver_id
-        ]
-        for device_id in orphaned_for_driver:
-            try:
-                activated = await self.retry_orphaned_device(device_id)
-                if activated:
-                    reconnected.append(device_id)
-                    log.info(f"Activated orphaned device '{device_id}' after driver reload")
-            except Exception:
-                log.exception(f"Failed to activate orphaned device '{device_id}'")
-
-        if self.on_driver_reloaded is not None:
-            self.on_driver_reloaded()
-        return reconnected
+        return readded
 
     def get_devices_using_driver(self, driver_id: str) -> list[str]:
         """Return list of device IDs that use the given driver."""
@@ -1366,10 +1359,8 @@ class DeviceManager(
         # A manual reconnect overrides a test-panel pause — clear the pause
         # bookkeeping so the flag can't go stale and the TTL backstop can't
         # fire a redundant resume later.
-        if self.state.get(f"device.{device_id}.paused"):
-            self._cancel_pause_expiry(device_id)
-            self.state.set(f"device.{device_id}.paused", False, source="device_manager")
-            self.state.set(f"device.{device_id}.paused_for", None, source="device_manager")
+        if self.is_paused(device_id):
+            self._end_pause(device_id)
         # Cancel any existing auto-reconnect task first
         await self._cancel_reconnect(device_id)
         self.state.set(f"device.{device_id}.reconnect_failed", None, source="device_manager")
@@ -1512,6 +1503,27 @@ class DeviceManager(
         """
         return bool(self.state.get(f"device.{device_id}.paused"))
 
+    def _pause_to_carry(self, device_id: str) -> tuple[float | None, str | None]:
+        """The pause a device keeps across being removed and added again (an
+        edit, a driver reload): the seconds its backstop has left, and who
+        holds it. Read before the removal, which deletes both.
+
+        The pause belongs to whoever took it, still holding the competing
+        session (the Driver Builder's Live Test, an audit), and ends when they
+        release it or its backstop runs out. An edit or a driver reload is
+        neither, so reconnecting there would put a production device back on a
+        port under test without anyone asking. A driver reload is the likelier
+        of the two: saving the driver from the Builder is what the Live Test's
+        own user does next.
+        """
+        return self._pause_remaining(device_id), self.state.get(f"device.{device_id}.paused_for")
+
+    def _end_pause(self, device_id: str) -> None:
+        """The pause is over: its backstop cancelled and both flags cleared."""
+        self._cancel_pause_expiry(device_id)
+        self.state.set(f"device.{device_id}.paused", False, source="device_manager")
+        self.state.set(f"device.{device_id}.paused_for", None, source="device_manager")
+
     def _pause_remaining(self, device_id: str) -> float | None:
         """Seconds left on this device's pause backstop, or None if unpaused.
 
@@ -1559,10 +1571,8 @@ class DeviceManager(
         On connect failure the normal auto-reconnect loop takes over.
         """
         driver = self._live_driver(device_id)
-        self._cancel_pause_expiry(device_id)
         self._intentional_disconnect.discard(device_id)
-        self.state.set(f"device.{device_id}.paused", False, source="device_manager")
-        self.state.set(f"device.{device_id}.paused_for", None, source="device_manager")
+        self._end_pause(device_id)
         try:
             await self._connect_driver(device_id, driver)
             log.info(f"Resumed device: {device_id}")
