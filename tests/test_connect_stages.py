@@ -491,3 +491,12 @@ async def test_a_bridge_routed_device_follows_its_bridge(bridge_port, bridge_up,
     assert driver.emitted == ([CONNECTED] if online else [])
     assert driver.transport is None
     assert driver.sessions_closed == 1
+
+
+async def test_a_hold_asked_of_a_driver_that_cannot_see_an_answer_is_announced():
+    driver = _AcmeLink()
+    driver._hold_next_connect = True
+    await driver.connect()
+    assert driver._held is False
+    assert driver.get_state("connected") is True
+    assert driver.emitted == [CONNECTED]
