@@ -173,7 +173,13 @@ def test_startup_cleans_up_before_the_automatic_rollback_can_schedule():
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
         }
 
-    # The order is the order of the steps the pre-start update work calls.
+    # The order is the order of the steps the pre-start update work calls,
+    # and the boot is what runs that work.
+    initialize = next(
+        node for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "_initialize_engine"
+    )
+    assert "_settle_updates_before_start" in names_called(initialize)
     steps = [
         statement.value.func.id
         for statement in functions["_settle_updates_before_start"].body
