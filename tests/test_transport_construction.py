@@ -212,6 +212,20 @@ async def test_serial_settings_the_port_cannot_take(monkeypatch, control_ip):
     create.assert_not_awaited()
 
 
+@pytest.mark.parametrize(
+    ("config", "first_complaint"),
+    [
+        ({"baudrate": "fast", "bytesize": 9}, "Invalid baudrate 'fast'"),
+        ({"bytesize": 9, "parity": "Q"}, "Invalid bytesize 9"),
+        ({"parity": "Q", "stopbits": 3}, "Invalid parity 'Q'"),
+        ({"stopbits": "one", "flow_control": "sideways"}, "Invalid stopbits 'one'"),
+    ],
+)
+def test_serial_settings_are_checked_in_order(config, first_complaint):
+    with pytest.raises(ValueError, match=f"^{first_complaint}"):
+        BaseDriver._coerce_serial_params(config)
+
+
 # --- udp ---------------------------------------------------------------------
 
 
