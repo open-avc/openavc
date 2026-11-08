@@ -280,7 +280,7 @@ class TestDiscoveryEngine:
     @pytest.mark.asyncio
     async def test_scan_pipeline_with_mocked_network(self):
         """Full pipeline test with mocked network calls."""
-        with patch("openavc.discovery.engine.ping_sweep", new_callable=AsyncMock) as mock_ping:
+        with patch("openavc.discovery.sweep_phase.ping_sweep", new_callable=AsyncMock) as mock_ping:
             mock_ping.return_value = ["192.168.1.50", "192.168.1.72"]
 
             with patch("openavc.discovery.arp_phase.harvest_arp_table", new_callable=AsyncMock) as mock_arp:
@@ -289,13 +289,13 @@ class TestDiscoveryEngine:
                     "192.168.1.72": "04:fe:31:aa:bb:cc",
                 }
 
-                with patch("openavc.discovery.engine.scan_host_ports", new_callable=AsyncMock) as mock_ports:
+                with patch("openavc.discovery.port_phase.scan_host_ports", new_callable=AsyncMock) as mock_ports:
                     mock_ports.side_effect = lambda ip, *a, **kw: {
                         "192.168.1.50": [23],
                         "192.168.1.72": [4352, 80],
                     }.get(ip, [])
 
-                    with patch("openavc.discovery.engine.grab_banners", new_callable=AsyncMock) as mock_banners:
+                    with patch("openavc.discovery.port_phase.grab_banners", new_callable=AsyncMock) as mock_banners:
                         mock_banners.return_value = {}
 
                         # Mock passive listeners + SNMP. Mock the community

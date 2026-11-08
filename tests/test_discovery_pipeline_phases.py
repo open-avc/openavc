@@ -26,8 +26,8 @@ from openavc.discovery.tier_matcher import SignalIndex
 
 # Where each phase looks its scanners up.
 LISTENERS = "openavc.discovery.engine"
-SWEEP = "openavc.discovery.engine"
-PORTS = "openavc.discovery.engine"
+SWEEP = "openavc.discovery.sweep_phase"
+PORTS = "openavc.discovery.port_phase"
 SNMP = "openavc.discovery.engine"
 
 

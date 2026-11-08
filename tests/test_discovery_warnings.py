@@ -66,7 +66,7 @@ class TestScanWarnings:
 
     async def _run_pipeline(self, fake_ping, scanner_mocks):
         mdns_cls, ssdp_cls, amx_cls, snmp_cls = scanner_mocks
-        with patch("openavc.discovery.engine.ping_sweep", side_effect=fake_ping), \
+        with patch("openavc.discovery.sweep_phase.ping_sweep", side_effect=fake_ping), \
              patch("openavc.discovery.engine.MDNSScanner", mdns_cls), \
              patch("openavc.discovery.engine.SSDPScanner", ssdp_cls), \
              patch("openavc.discovery.engine.AMXDDPScanner", amx_cls), \

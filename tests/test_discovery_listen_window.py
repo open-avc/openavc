@@ -72,9 +72,9 @@ class TestListenWindow:
         engine._budget = ScanBudget(policy, 60.0)
         listener = LateBeaconListener(engine)
 
-        with patch("openavc.discovery.engine.ping_sweep", new_callable=AsyncMock, return_value=[]), \
+        with patch("openavc.discovery.sweep_phase.ping_sweep", new_callable=AsyncMock, return_value=[]), \
              patch("openavc.discovery.arp_phase.harvest_arp_table", new_callable=AsyncMock, return_value={}), \
-             patch("openavc.discovery.engine.scan_host_ports", new_callable=AsyncMock, return_value=[]), \
+             patch("openavc.discovery.port_phase.scan_host_ports", new_callable=AsyncMock, return_value=[]), \
              patch.object(engine.community_index, "get_drivers", new_callable=AsyncMock, return_value=[]), \
              patch("openavc.discovery.engine.MDNSScanner", _instant_listener("start")), \
              patch("openavc.discovery.engine.SSDPScanner", _instant_listener("scan")), \

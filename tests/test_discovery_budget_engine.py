@@ -95,10 +95,10 @@ class _Pipeline:
     async def run(self, subnets=("10.77.0.0/24",)):
         mdns_cls, ssdp_cls, amx_cls, snmp_cls = _mock_passive_scanners()
         engine = self.engine
-        with patch("openavc.discovery.engine.ping_sweep", side_effect=self._fake_ping), \
-             patch("openavc.discovery.engine.scan_host_ports",
+        with patch("openavc.discovery.sweep_phase.ping_sweep", side_effect=self._fake_ping), \
+             patch("openavc.discovery.port_phase.scan_host_ports",
                    side_effect=self._fake_scan_host_ports), \
-             patch("openavc.discovery.engine.grab_banners",
+             patch("openavc.discovery.port_phase.grab_banners",
                    new_callable=AsyncMock, return_value={}), \
              patch("openavc.discovery.arp_phase.harvest_arp_table",
                    new_callable=AsyncMock, return_value={}), \

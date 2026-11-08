@@ -13,6 +13,7 @@ import subprocess
 from typing import Any, Awaitable, Callable
 
 from openavc.discovery import icmp
+from openavc.discovery.scan_scope import host_count
 from openavc.utils.spawn import CREATE_NO_WINDOW
 
 log = logging.getLogger("discovery.network")
@@ -513,6 +514,42 @@ def get_local_subnets(interface_ip: str | None = None) -> list[str]:
     return subnets
 
 
+def _swept_network(
+    cidr: str, min_prefix: int, *, warn: bool,
+) -> ipaddress.IPv4Network | None:
+    """The network a ping sweep covers for ``cidr``, or None when it covers
+    nothing there: an invalid CIDR, or a subnet larger than ``min_prefix``
+    allows (a smaller prefix number). ``warn`` logs why one is skipped; the
+    sweep says so once, so the count taken before it stays quiet."""
+    try:
+        network = ipaddress.IPv4Network(cidr, strict=False)
+    except ValueError:
+        if warn:
+            log.warning("Invalid CIDR: %s", cidr)
+        return None
+    if network.prefixlen < min_prefix:
+        if warn:
+            log.warning(
+                "Subnet %s too large (/%d), skipping (limit is /%d). "
+                "Increase 'Max subnet size' in Discovery Settings, or choose one "
+                "adapter in Settings > Network > Reach devices through.",
+                cidr, network.prefixlen, min_prefix,
+            )
+        return None
+    return network
+
+
+def sweep_size(subnets: list[str], min_prefix: int) -> int:
+    """How many addresses ``ping_sweep`` pings across ``subnets``, before any
+    cap: the same subnets it expands, counted without listing them."""
+    total = 0
+    for cidr in subnets:
+        network = _swept_network(cidr, min_prefix, warn=False)
+        if network is not None:
+            total += host_count(network)
+    return total
+
+
 def _parse_cidr(cidr: str, min_prefix: int = 20) -> list[str]:
     """Expand a CIDR range to a list of host IPs (excluding network and broadcast).
 
@@ -520,22 +557,9 @@ def _parse_cidr(cidr: str, min_prefix: int = 20) -> list[str]:
         min_prefix: Minimum prefix length allowed. Subnets larger than this
             (smaller prefix number) are skipped. Default /20 (~4K hosts).
     """
-    try:
-        network = ipaddress.IPv4Network(cidr, strict=False)
-    except ValueError:
-        log.warning("Invalid CIDR: %s", cidr)
+    network = _swept_network(cidr, min_prefix, warn=True)
+    if network is None:
         return []
-
-    # Safety: skip subnets larger than the configured limit
-    if network.prefixlen < min_prefix:
-        log.warning(
-            "Subnet %s too large (/%d), skipping (limit is /%d). "
-            "Increase 'Max subnet size' in Discovery Settings, or choose one "
-            "adapter in Settings > Network > Reach devices through.",
-            cidr, network.prefixlen, min_prefix,
-        )
-        return []
-
     return [str(ip) for ip in network.hosts()]
 
 

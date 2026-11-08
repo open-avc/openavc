@@ -145,12 +145,12 @@ class TestEngineWiring:
             return cls
 
         with patch.object(engine, "_get_control_interface", return_value="10.77.0.2"), \
-             patch("openavc.discovery.engine.ping_sweep", side_effect=sweep), \
+             patch("openavc.discovery.sweep_phase.ping_sweep", side_effect=sweep), \
              patch("openavc.discovery.arp_phase.harvest_arp_table", new_callable=AsyncMock, return_value={}), \
              patch("openavc.discovery.arp_phase._resolve_hostnames", new_callable=AsyncMock, return_value={}), \
              patch("openavc.discovery.arp_phase.netbios_sweep", netbios), \
-             patch("openavc.discovery.engine.scan_host_ports", ports), \
-             patch("openavc.discovery.engine.grab_banners", banners), \
+             patch("openavc.discovery.port_phase.scan_host_ports", ports), \
+             patch("openavc.discovery.port_phase.grab_banners", banners), \
              patch("openavc.discovery.engine.SNMPScanner", snmp_cls), \
              patch.object(engine.community_index, "get_drivers", new_callable=AsyncMock, return_value=[]), \
              patch("openavc.discovery.engine.MDNSScanner", listener("start")), \

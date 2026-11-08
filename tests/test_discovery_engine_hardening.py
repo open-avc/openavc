@@ -94,15 +94,15 @@ class TestBackgroundTaskCleanup:
         captured = _spy_on_cleanup(engine)
         mdns_cls, ssdp_cls, amx_cls, snmp_cls = _hanging_scanner_mocks()
 
-        with patch("openavc.discovery.engine.ping_sweep",
+        with patch("openavc.discovery.sweep_phase.ping_sweep",
                    new_callable=AsyncMock, return_value=["10.77.0.10"]), \
              patch("openavc.discovery.arp_phase.harvest_arp_table",
                    new_callable=AsyncMock, return_value={}), \
              patch("openavc.discovery.arp_phase.netbios_sweep",
                    new_callable=AsyncMock, return_value={}), \
-             patch("openavc.discovery.engine.scan_host_ports",
+             patch("openavc.discovery.port_phase.scan_host_ports",
                    new_callable=AsyncMock, return_value=[]), \
-             patch("openavc.discovery.engine.grab_banners",
+             patch("openavc.discovery.port_phase.grab_banners",
                    new_callable=AsyncMock, return_value={}), \
              patch("openavc.discovery.arp_phase._resolve_hostnames",
                    new_callable=AsyncMock, return_value={}), \
@@ -131,7 +131,7 @@ class TestBackgroundTaskCleanup:
         async def ping_boom(*a, **kw):
             raise RuntimeError("ping failed")
 
-        with patch("openavc.discovery.engine.ping_sweep", side_effect=ping_boom), \
+        with patch("openavc.discovery.sweep_phase.ping_sweep", side_effect=ping_boom), \
              patch("openavc.discovery.engine.MDNSScanner", mdns_cls), \
              patch("openavc.discovery.engine.SSDPScanner", ssdp_cls), \
              patch("openavc.discovery.engine.AMXDDPScanner", amx_cls), \
@@ -240,16 +240,16 @@ class TestEvidenceResetOnScanStart:
 
         async def run_one():
             with patch.object(engine, "_run_scan", fake_run_scan), \
-                 patch("openavc.discovery.engine.ping_sweep",
+                 patch("openavc.discovery.sweep_phase.ping_sweep",
                        side_effect=fake_ping), \
                  patch("openavc.discovery.arp_phase.harvest_arp_table",
                        new_callable=AsyncMock,
                        return_value={"10.77.0.7": "aa:bb:cc:dd:ee:ff"}), \
                  patch("openavc.discovery.arp_phase.netbios_sweep",
                        new_callable=AsyncMock, return_value={}), \
-                 patch("openavc.discovery.engine.scan_host_ports",
+                 patch("openavc.discovery.port_phase.scan_host_ports",
                        new_callable=AsyncMock, return_value=[]), \
-                 patch("openavc.discovery.engine.grab_banners",
+                 patch("openavc.discovery.port_phase.grab_banners",
                        new_callable=AsyncMock, return_value={}), \
                  patch("openavc.discovery.arp_phase._resolve_hostnames",
                        new_callable=AsyncMock, return_value={}), \
@@ -540,16 +540,16 @@ class TestMergePriority:
         amx_cls.return_value.start = AsyncMock(return_value={})
         snmp_cls.return_value.scan_devices = AsyncMock(return_value={})
 
-        with patch("openavc.discovery.engine.ping_sweep",
+        with patch("openavc.discovery.sweep_phase.ping_sweep",
                    new_callable=AsyncMock, return_value=["10.77.0.61"]), \
              patch("openavc.discovery.arp_phase.harvest_arp_table",
                    new_callable=AsyncMock,
                    return_value={"10.77.0.61": "AA:BB:CC:DD:EE:FF"}), \
              patch("openavc.discovery.arp_phase.netbios_sweep",
                    new_callable=AsyncMock, return_value={}), \
-             patch("openavc.discovery.engine.scan_host_ports",
+             patch("openavc.discovery.port_phase.scan_host_ports",
                    new_callable=AsyncMock, return_value=[]), \
-             patch("openavc.discovery.engine.grab_banners",
+             patch("openavc.discovery.port_phase.grab_banners",
                    new_callable=AsyncMock, return_value={}), \
              patch("openavc.discovery.arp_phase._resolve_hostnames",
                    new_callable=AsyncMock,
@@ -629,7 +629,7 @@ class TestPingTotalAccounting:
 
         subnets = ["10.77.0.0/24", "10.0.0.0/16", "garbage/99"]
 
-        with patch("openavc.discovery.engine.ping_sweep",
+        with patch("openavc.discovery.sweep_phase.ping_sweep",
                    new_callable=AsyncMock, return_value=[]) as mock_ping, \
              patch.object(engine.community_index, "get_drivers",
                           new_callable=AsyncMock, return_value=[]), \
