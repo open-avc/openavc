@@ -110,8 +110,8 @@ class OUIDatabase:
                 return prefix, manufacturer, category
         return None
 
-    def add_prefix(self, prefix: str, manufacturer: str, category: str) -> None:
-        """Add a MAC OUI prefix to the lookup table.
+    def add_prefix(self, prefix: str, manufacturer: str, category: str) -> bool:
+        """Add a MAC OUI prefix to the lookup table; True when it was added.
 
         The prefix is canonicalized (any separator style, a bare 3-octet OUI,
         a 28- or 36-bit IEEE block, or a full MAC) so a hint written as
@@ -126,9 +126,11 @@ class OUIDatabase:
             log.warning(
                 "Ignoring unparseable OUI prefix %r (%s)", prefix, manufacturer
             )
-            return
-        if normalized not in self._table:
-            self._table[normalized] = (manufacturer, category)
+            return False
+        if normalized in self._table:
+            return False
+        self._table[normalized] = (manufacturer, category)
+        return True
 
     @staticmethod
     def _normalize_mac(mac: str) -> str | None:
