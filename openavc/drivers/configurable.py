@@ -20,9 +20,10 @@ over a line of text (``text_replies``), the JSON-body rules and the
 connection: the ``auth:`` sign-in (``sign_in``), the children an
 ``instances:`` block declares (``declared_roster``), whether an HTTP device
 is refusing the credentials (``http_credential``), and the ``liveness:``
-watchdog (``liveness_block``). The framing of
-every byte the device's protocol puts on the wire, from every place that
-sends: ``send_framing``. The lines the driver sends on its own: start-up, the poll and the spacing between their
+watchdog (``liveness_block``). What goes out: the framing of every byte the
+device's protocol puts on the wire, from every place that sends
+(``send_framing``), and an HTTP command's request (``http_commands``). The
+lines the driver sends on its own: start-up, the poll and the spacing between their
 lines (``start_up_and_poll``), what a poll or start-up entry sends and
 whether its gates let it go now (``query_entries``), and reading the device
 again after a change, a reply rule's ``then_query`` and a command's
@@ -31,7 +32,6 @@ again after a change, a reply rule's ``then_query`` and a command's
 
 from __future__ import annotations
 
-import json
 import re
 from typing import Any
 
@@ -48,6 +48,7 @@ from openavc.drivers.base import (
 )
 from openavc.drivers.param_labels import param_label
 from openavc.drivers.declared_roster import DeclaredRoster
+from openavc.drivers.http_commands import HttpCommands
 from openavc.drivers.http_credential import HttpCredential
 from openavc.drivers.json_replies import JsonReplies
 from openavc.drivers.liveness_block import LivenessBlock
@@ -142,6 +143,7 @@ class ConfigurableDriver(
     StartUpAndPoll,
     Rereads,
     SettingWrites,
+    HttpCommands,
     SendFraming,
     LivenessBlock,
     SignIn,
@@ -717,100 +719,6 @@ class ConfigurableDriver(
                 out[name] = compiled_protocol.value_to_wire(params[name], pdef)
         return out
 
-    def _is_http_command(self, cmd_def: dict[str, Any]) -> bool:
-        """Check if a command definition uses HTTP-style fields."""
-        return "path" in cmd_def or "method" in cmd_def
-
-    async def _send_http_command(
-        self, command: str, cmd_def: dict[str, Any], params: dict[str, Any]
-    ) -> Any:
-        """
-        Send an HTTP command using the HTTPClientTransport.
-
-        HTTP commands in .avcdriver files use these fields:
-            method: GET, POST, PUT, DELETE (default: GET)
-            path: URL path (e.g., "/api/power")
-            body: JSON body string with {param} substitution
-            query_params: Query parameters dict with {param} substitution
-            headers: Per-request headers dict with {param} substitution.
-                     Use to set Content-Type for non-JSON bodies (e.g.
-                     "text/xml" for XML APIs like Cisco xAPI), or any
-                     other custom header the device requires.
-
-        Parameter substitution uses a safe approach: only {name} tokens
-        where name matches a known parameter or config key are replaced.
-        Literal JSON braces are preserved.
-        """
-        from openavc.transport.http_client import HTTPClientTransport
-
-        if not isinstance(self.transport, HTTPClientTransport):
-            log.error(
-                f"[{self.device_id}] Command '{command}' uses HTTP fields "
-                f"but transport is not HTTP"
-            )
-            return None
-
-        all_params = {**self.config, **self._push_params(), **params}
-
-        method = cmd_def.get("method", "GET").upper()
-        raw_path = cmd_def.get("path", "/")
-        raw_body = cmd_def.get("body")
-        headers = self._build_http_headers(cmd_def.get("headers"), all_params)
-
-        # Substitute params in path using safe substitution
-        path = self._substitute_for_wire(f"commands.{command}.path", raw_path, all_params)
-
-        # Substitute params in body. A body that parses as JSON is sent as
-        # JSON; anything else (XML, form text, a bare token) goes out as raw
-        # content. Both are decided here rather than in two separate sends —
-        # a second send site is how query_params came to be dropped from the
-        # raw-content path while the JSON path kept them.
-        json_body = None
-        content = None
-        if raw_body:
-            body_str = self._substitute_for_wire(
-                f"commands.{command}.body", raw_body, all_params
-            )
-            try:
-                json_body = json.loads(body_str)
-            except (json.JSONDecodeError, ValueError):
-                log.debug(
-                    f"[{self.device_id}] Body for '{command}' is not JSON, "
-                    f"sending as raw content"
-                )
-                content = body_str.encode("utf-8")
-
-        # Build query params if specified
-        query_params = None
-        raw_query = cmd_def.get("query_params")
-        if raw_query and isinstance(raw_query, dict):
-            query_params = {}
-            for k, v in raw_query.items():
-                if isinstance(v, str):
-                    query_params[k] = self._safe_substitute(v, all_params)
-                else:
-                    query_params[k] = v
-
-        response = await self.transport.request(
-            method, path, params=query_params, json_body=json_body,
-            content=content, headers=headers,
-        )
-        return await self._process_http_response(command, response)
-
-    def _build_http_headers(
-        self, raw_headers: Any, params: dict[str, Any]
-    ) -> dict[str, str] | None:
-        """Substitute {param} placeholders in YAML-defined HTTP headers."""
-        if not raw_headers or not isinstance(raw_headers, dict):
-            return None
-        out: dict[str, str] = {}
-        for k, v in raw_headers.items():
-            if isinstance(v, str):
-                out[k] = self._safe_substitute(v, params)
-            else:
-                out[k] = str(v)
-        return out
-
     def _push_params(self) -> dict[str, Any]:
         """Platform-provided substitution values for command templates.
 
@@ -871,28 +779,6 @@ class ConfigurableDriver(
                 self.device_id, where, name,
             )
         return out
-
-    async def _process_http_response(
-        self, command: str, response: Any
-    ) -> Any:
-        """
-        Process an HTTP response: check status and match response patterns.
-
-        ``command`` is the command name, or the raw path when a polling query
-        addressed one directly — it only labels the log line. Returns the
-        HTTPResponse object for the caller.
-        """
-        log.debug(
-            f"[{self.device_id}] HTTP command '{command}' -> "
-            f"status={response.status_code}"
-        )
-
-        # Run response text through the standard regex-based response matching
-        # so .avcdriver response patterns work with HTTP responses too
-        if response.text:
-            await self.on_data_received(response.text.encode("utf-8"))
-
-        return response
 
     def _reads_replies(self) -> bool:
         """A definition reads what the device sends when it declares a

@@ -19,7 +19,8 @@ The rules worth knowing before changing anything here:
 * **What each returns.** True for an OSC message or a line, the HTTP answer
   for a request. A body that parses as JSON goes as JSON and its answer is
   read by the reply rules; any other body goes as raw content and its answer
-  is returned unread.
+  is returned unread. Which body is which is a command's rule too
+  (``http_commands.body_parts``).
 
 ``SettingWrites`` is a mixin ``ConfigurableDriver`` inherits, so every name
 stays on the driver object; it answers ``BaseDriver``'s
@@ -29,11 +30,11 @@ for a queued one when the device connects.
 
 from __future__ import annotations
 
-import json
 from typing import Any, Callable
 
 from openavc.drivers import compiled_protocol
 from openavc.drivers.base import UnknownDeviceSettingError
+from openavc.drivers.http_commands import body_parts
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which
@@ -158,11 +159,7 @@ class SettingWrites:
         parses, else the text as raw content; neither with no body."""
         if not raw_body:
             return None, None
-        body_str = self._safe_substitute(raw_body, params)
-        try:
-            return json.loads(body_str), None
-        except (ValueError, json.JSONDecodeError):
-            return None, body_str.encode("utf-8")
+        return body_parts(self._safe_substitute(raw_body, params))
 
     async def _write_setting_line(
         self, key: str, value: Any, write_def: dict[str, Any], params: dict[str, Any],
