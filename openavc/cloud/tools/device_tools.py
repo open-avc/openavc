@@ -1,39 +1,39 @@
-"""Mixin for AI tool handlers that manage devices, drivers, and scripts."""
+"""The AI's device tools: the project's devices and device groups, a device's
+settings, its connection test and its commands.
+
+An edit lands through ``apply_tool_edit``: the change is made to a copy of
+the project (``_edit_device``, ``_append_device``, ``_remove_device``,
+``_add_group``, ``_edit_group``), and a ``ToolEditError`` raised there aborts
+it with the tool's answer. A device's config is stored the way every door
+stores it (``core.device_config.split_connection_fields``); ``update_device``
+merges what it is sent into what the device has, where the IDE replaces it,
+because a generator sends only the field it means to change.
+
+These tools never take a device login (see "device logins" below), and a
+driver's required field left blank is refused as the Add and Edit Device
+dialogs refuse it, asked only when the settings or the driver change.
+"""
 
 from typing import Any
-
-import httpx
 
 from openavc.cloud.state_relay import cloud_state_value
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
 from openavc.core.device_logins import SAVED_LOGIN, login_fields, login_settings_in, marked_fields
+from openavc.core.device_config import split_connection_fields
 from openavc.core.device_manager import DeviceNotFoundError
-from openavc.core.event_references import dead_listeners, project_script_sources
 from openavc.core.required_config import (
     merged_device_config,
     missing_for_driver,
     required_sentence,
 )
 from openavc.core.state_store import is_flat_primitive
-from openavc.utils.paths import is_safe_script_filename, safe_path_within
 from openavc.drivers.param_labels import param_label
 from openavc.drivers.registry import (
     get_driver_class,
     is_driver_registered,
-    list_registered_drivers,
-    register_driver,
 )
 from openavc.drivers.spec import is_secret_setting
-from openavc.utils.outbound import internet_client
-
-
-#: Said once per reply that carries one, at the moment it is broken rather
-#: than in the standing prompt.
-_DEAD_LISTENER_NOTE = (
-    "The write landed -- these are warnings, not failures. A handler for a custom. event "
-    "nothing sends can never fire, and nothing else will report it. Emit it from a macro "
-    "step, a control action or another script, or listen for the event that does happen."
-)
+from openavc.utils.logger import get_logger
 
 
 def _refuse_missing_required(driver_id: str, merged: dict) -> None:
@@ -115,13 +115,18 @@ def _wait_for_required_logins(
             (connection if key in CONNECTION_FIELDS else protocol_config)[key] = SAVED_LOGIN
 
 
+def _can_wait_for_login(device: Any) -> bool:
+    """A device the device list can show under Needs login: enabled, on a loaded driver."""
+    return device is not None and device.enabled and is_driver_registered(device.driver)
+
+
 def _needs_login(engine: Any, device_id: str) -> dict[str, Any]:
     """What to tell the person when the device waits for a login after an
     edit (the device list's Needs login, as ``Engine.logins_needed`` reads
     it): the settings by name, and where they are entered. Empty otherwise."""
     project = getattr(engine, "project", None)
     device = next((d for d in getattr(project, "devices", None) or [] if d.id == device_id), None)
-    if device is None or not device.enabled or not is_driver_registered(device.driver):
+    if not _can_wait_for_login(device):
         return {}
     waiting = marked_fields(engine.resolved_device_config(device).get("config"))
     if not waiting:
@@ -135,21 +140,208 @@ def _needs_login(engine: Any, device_id: str) -> dict[str, Any]:
     }
 
 
-def _dead_listener_warnings(engine: Any, script_id: str, source: str) -> list[str]:
-    """Handlers in the script just written that nothing in the project can reach.
+def _warn_not_installed(tool: str, driver_id: str) -> None:
+    """Log a driver the registry does not have; the device is saved anyway
+    (its driver may not be loaded yet)."""
+    if not is_driver_registered(driver_id):
+        get_logger(__name__).warning(
+            "%s: driver '%s' not in registry (may not be loaded yet)", tool, driver_id,
+        )
 
-    The same check the IDE's script lint runs, at the other door that writes a
-    script. A generator is told in the reply it is already reading, which is
-    the round trip that would otherwise be spent shipping a handler that never
-    runs -- the exact shape a starter template shipped with for months.
+
+def _settle_required_fields(driver_id: str, protocol: dict, connection: dict) -> None:
+    """A login ``driver_id`` requires is left waiting (the marker, written into
+    ``protocol`` or ``connection``); any other required field left blank is
+    refused the way the Add and Edit Device dialogs and the REST door refuse it."""
+    _wait_for_required_logins(driver_id, protocol, connection)
+    _refuse_missing_required(driver_id, merged_device_config(driver_id, protocol, connection))
+
+
+def _has_device(project: Any, device_id: str) -> bool:
+    return any(d.id == device_id for d in project.devices)
+
+
+def _device_index(project: Any, device_id: str) -> int:
+    for index, device in enumerate(project.devices):
+        if device.id == device_id:
+            return index
+    raise ToolEditError({"error": f"Device '{device_id}' not found"})
+
+
+def _selects_product_hardware(policy: Any, device_id: str, input: dict) -> bool:
+    """The edit puts a device other than the product's own onto its hardware driver."""
+    return bool(
+        policy and policy.manifest
+        and input.get("driver") == policy.driver_id
+        and not policy.owns(device_id)
+    )
+
+
+async def _reassign_product_hardware(engine: Any, device_id: str, input: dict) -> dict:
+    """Product hardware keeps its manufacturer connection: selected under
+    another device id it is reassigned there, never given a connection."""
+    if input.get("config"):
+        return {"error": "Product hardware uses its manufacturer connection. Select it without connection overrides."}
+    try:
+        await engine.reassign_installed_equipment(device_id, name=input.get("name"), enabled=input.get("enabled"))
+    except ValueError as error:
+        return {"error": str(error)}
+    return {"status": "updated", "device_id": device_id}
+
+
+def _merge_sent_config(project: Any, existing: Any, driver_id: str, sent: dict | None) -> dict:
+    """``update_device``'s config, merged into what the device has.
+
+    Both halves merge (connection fields into ``project.connections``, the rest
+    into the protocol config, as ``split_connection_fields`` places them), and
+    a field sent as null is removed, back to the driver's default. The REST
+    editor replaces the protocol half because the IDE always sends the whole
+    config; a generator sends the field it means to change, and replacing
+    would read ``{"host": ...}`` as "and drop every other setting". Writes the
+    connections row; answers the protocol config.
     """
-    project = getattr(engine, "project", None)
-    if project is None:
-        return []
-    scripts_dir = engine.project_path.parent / "scripts"
-    sources = project_script_sources(project, scripts_dir)
-    sources[script_id] = source
-    return [issue["message"] for issue in dead_listeners(sources, project).get(script_id, [])]
+    device_id = existing.id
+    raw_config = sent or {}
+    _refuse_logins([driver_id, existing.driver], [str(k) for k in raw_config], adding=False)
+    protocol_sent, connection_sent = split_connection_fields(raw_config)
+    protocol = {**existing.config, **protocol_sent}
+    connection = {**project.connections.get(device_id, {}), **connection_sent}
+    connection = {k: v for k, v in connection.items() if v is not None}
+    if connection:
+        project.connections[device_id] = connection
+    else:
+        project.connections.pop(device_id, None)
+    return {k: v for k, v in protocol.items() if v is not None}
+
+
+def _settle_on_driver(project: Any, device_id: str, driver_id: str, config: dict) -> dict:
+    """``config`` and the connections row with the required fields of
+    ``driver_id`` settled (``_settle_required_fields``)."""
+    config = dict(config)
+    connection = dict(project.connections.get(device_id, {}))
+    _settle_required_fields(driver_id, config, connection)
+    if connection:
+        project.connections[device_id] = connection
+    return config
+
+
+def _edited_record(existing: Any, input: dict, driver_id: str, config: dict) -> Any:
+    """The device record after an edit, re-validated from the existing record's
+    full dump rather than rebuilt from the tool input: the model allows extra
+    fields, so a rebuild would drop a field a newer platform wrote, and with it
+    the pending settings and the child entities' labels and settings."""
+    from openavc.core.project_loader import DeviceConfig
+
+    merged = existing.model_dump()
+    merged.update({
+        "driver": driver_id,
+        "name": input.get("name", existing.name),
+        "config": config,
+        "enabled": input.get("enabled", existing.enabled),
+    })
+    return DeviceConfig.model_validate(merged)
+
+
+def _edit_device(project: Any, device_id: str, input: dict) -> None:
+    """Apply an ``update_device`` edit to ``project`` (a copy), or raise
+    ToolEditError. The required fields are asked only when the settings or
+    the driver change: a rename never stops on an older device's blank field."""
+    index = _device_index(project, device_id)
+    existing = project.devices[index]
+    driver_id = input.get("driver", existing.driver)
+    if "driver" in input and input["driver"] != existing.driver:
+        _warn_not_installed("update_device", input["driver"])
+    config = existing.config
+    if "config" in input:
+        config = _merge_sent_config(project, existing, driver_id, input.get("config"))
+    if "config" in input or "driver" in input:
+        config = _settle_on_driver(project, device_id, driver_id, config)
+    project.devices[index] = _edited_record(existing, input, driver_id, config)
+
+
+def _new_device(device_id: str, input: dict) -> tuple[Any, dict]:
+    """``add_device``'s record and its connections row, or ToolEditError for
+    a login sent in its config."""
+    from openavc.core.project_loader import DeviceConfig
+
+    driver_id = input.get("driver", "")
+    raw_config = input.get("config") or {}
+    _refuse_logins([driver_id], [str(k) for k in raw_config], adding=True)
+    protocol, connection = split_connection_fields(raw_config)
+    record = DeviceConfig(
+        id=device_id,
+        driver=driver_id,
+        name=input.get("name", device_id),
+        config=protocol,
+        enabled=input.get("enabled", True),
+    )
+    return record, connection
+
+
+def _append_device(project: Any, new_device: Any, connection: dict) -> None:
+    """Add ``new_device`` to ``project`` (a copy) with its connections row, or
+    raise ToolEditError: its id taken meanwhile, or a required field blank."""
+    if _has_device(project, new_device.id):
+        raise ToolEditError({"error": f"Device '{new_device.id}' already exists"})
+    protocol = new_device.config
+    _settle_required_fields(new_device.driver, protocol, connection)
+    new_device.config = protocol
+    project.devices.append(new_device)
+    if connection:
+        project.connections[new_device.id] = connection
+
+
+def _remove_device(project: Any, device_id: str) -> None:
+    """Take ``device_id`` out of ``project`` (a copy), with everything that
+    names it by id alone, or raise ToolEditError."""
+    from openavc.core.device_references import drop_device_from_groups
+    from openavc.core.monitors import drop_monitors_for_device
+
+    original_count = len(project.devices)
+    project.devices = [d for d in project.devices if d.id != device_id]
+    if len(project.devices) == original_count:
+        raise ToolEditError({"error": f"Device '{device_id}' not found"})
+    # Its connections row: left behind, it hands a stale host/port to any
+    # device later added with the same id.
+    project.connections.pop(device_id, None)
+    project.monitors = drop_monitors_for_device(project.monitors, device_id)
+    # Its group memberships, as the REST door drops them: a dangling member
+    # can only be removed, and until it is the group calls it an offline
+    # device forever.
+    project.device_groups = drop_device_from_groups(project.device_groups, device_id)
+
+
+def _add_group(project: Any, group_id: str, input: dict) -> None:
+    """Add ``add_device_group``'s group to ``project`` (a copy), or raise ToolEditError."""
+    from openavc.core.project_loader import DeviceGroup
+
+    if any(g.id == group_id for g in project.device_groups):
+        raise ToolEditError({"error": f"Group '{group_id}' already exists"})
+    device_ids = input.get("device_ids", [])
+    if device_ids:
+        _refuse_unknown_members(project, device_ids)
+    project.device_groups.append(
+        DeviceGroup(id=group_id, name=input.get("name", group_id), device_ids=device_ids),
+    )
+
+
+def _edit_group(project: Any, group_id: str, input: dict) -> None:
+    """Apply ``update_device_group``'s edit to ``project`` (a copy), or raise ToolEditError."""
+    existing = next((g for g in project.device_groups if g.id == group_id), None)
+    if existing is None:
+        raise ToolEditError({"error": f"Group '{group_id}' not found"})
+    if "device_ids" in input:
+        _refuse_unknown_members(project, input["device_ids"])
+        existing.device_ids = input["device_ids"]
+    if "name" in input:
+        existing.name = input["name"]
+
+
+def _refuse_unknown_members(project: Any, device_ids: list) -> None:
+    known = {d.id for d in project.devices}
+    unknown = [did for did in device_ids if did not in known]
+    if unknown:
+        raise ToolEditError({"error": f"Device(s) not found in project: {', '.join(unknown)}"})
 
 
 class DeviceToolsMixin:
@@ -181,107 +373,13 @@ class DeviceToolsMixin:
         if not engine or not engine.project:
             return {"error": "No project loaded"}
         device_id = input.get("device_id", "")
-        from openavc.core.project_loader import DeviceConfig
-
-        policy = getattr(engine, "installed_equipment", None)
-        if policy and policy.manifest and input.get("driver") == policy.driver_id and not policy.owns(device_id):
-            if input.get("config"):
-                return {"error": "Product hardware uses its manufacturer connection. Select it without connection overrides."}
-            try:
-                await engine.reassign_installed_equipment(device_id, name=input.get("name"), enabled=input.get("enabled"))
-            except ValueError as error:
-                return {"error": str(error)}
-            return {"status": "updated", "device_id": device_id}
-
-        # The edit is diffed against the live project, and the devices
-        # reconcile hot-swaps the runtime device from the resolved
-        # (connection-table-merged) config.
-        def mutate(project):
-            device_idx = None
-            for i, d in enumerate(project.devices):
-                if d.id == device_id:
-                    device_idx = i
-                    break
-            if device_idx is None:
-                raise ToolEditError({"error": f"Device '{device_id}' not found"})
-            existing = project.devices[device_idx]
-            if "driver" in input and input["driver"] != existing.driver:
-                if not is_driver_registered(input["driver"]):
-                    from openavc.utils.logger import get_logger
-                    log = get_logger(__name__)
-                    log.warning("update_device: driver '%s' not in registry (may not be loaded yet)", input["driver"])
-
-            # Split an incoming config the same way _add_device and the REST editor
-            # do: connection fields (host/port/...) live in project.connections, not
-            # device.config. Without this the AI's host/port edits land in the wrong
-            # place and the IDE can't edit them consistently (v0.5.0 layout).
-            #
-            # Both halves MERGE into what the device has, and a field sent as null
-            # is removed (back to the driver's default). The REST editor replaces
-            # the protocol half because the IDE always sends the whole config; a
-            # generator sends the field it means to change, and replacing would
-            # take `{"host": ...}` as "and drop every other setting".
-            if "config" in input:
-                from openavc.core.project_migration import CONNECTION_FIELDS
-                raw_config = input.get("config") or {}
-                _refuse_logins(
-                    [input.get("driver", existing.driver), existing.driver],
-                    [str(k) for k in raw_config], adding=False,
-                )
-                protocol_config: dict = dict(existing.config)
-                conn_overrides = dict(project.connections.get(device_id, {}))
-                for key, value in raw_config.items():
-                    if key in CONNECTION_FIELDS:
-                        conn_overrides[key] = value
-                    else:
-                        protocol_config[key] = value
-                new_config = {k: v for k, v in protocol_config.items() if v is not None}
-                conn_overrides = {k: v for k, v in conn_overrides.items() if v is not None}
-                if conn_overrides:
-                    project.connections[device_id] = conn_overrides
-                elif device_id in project.connections:
-                    del project.connections[device_id]
-            else:
-                new_config = existing.config
-
-            # A login the driver requires is left waiting for the device page;
-            # any other required field left blank gets the same refusal as the
-            # Edit Device dialog and the REST door. Asked only when the
-            # settings or the driver change.
-            if "config" in input or "driver" in input:
-                driver_id = input.get("driver", existing.driver)
-                new_config = dict(new_config)
-                connection = dict(project.connections.get(device_id, {}))
-                _wait_for_required_logins(driver_id, new_config, connection)
-                if connection:
-                    project.connections[device_id] = connection
-                _refuse_missing_required(
-                    driver_id, merged_device_config(driver_id, new_config, connection),
-                )
-
-            # Re-validate the existing record's full dump instead of building a
-            # fresh DeviceConfig from scratch. The base model is extra='allow', so
-            # a from-scratch rebuild drops any forward-compat top-level field a
-            # newer platform version wrote (__pydantic_extra__) on every AI edit.
-            # Dumping then re-validating preserves those and keeps pending_settings
-            # + child-entity metadata (user labels / per-child config) — rebuilding
-            # from the tool input alone would drop them on disk and in the
-            # re-seeded live driver. Honor an `enabled` toggle (the schema declares
-            # it); the old code pinned existing.enabled so disable/enable no-op'd.
-            merged = existing.model_dump()
-            merged.update({
-                "driver": input.get("driver", existing.driver),
-                "name": input.get("name", existing.name),
-                "config": new_config,
-                "enabled": input.get("enabled", existing.enabled),
-            })
-            updated = DeviceConfig.model_validate(merged)
-            project.devices[device_idx] = updated
+        if _selects_product_hardware(getattr(engine, "installed_equipment", None), device_id, input):
+            return await _reassign_product_hardware(engine, device_id, input)
 
         # The devices reconcile hot-swaps the runtime device with the new
         # resolved config, and the revision bump means a stale IDE PUT gets
         # a 409 instead of silently reverting this edit.
-        err = await apply_tool_edit(engine, mutate)
+        err = await apply_tool_edit(engine, lambda project: _edit_device(project, device_id, input))
         if err:
             return err
         return {"status": "updated", "device_id": device_id, **_needs_login(engine, device_id)}
@@ -298,26 +396,10 @@ class DeviceToolsMixin:
         # Collect impact before deleting
         impact = self._find_references("device", device_id)
 
-        def mutate(project):
-            original_count = len(project.devices)
-            project.devices = [d for d in project.devices if d.id != device_id]
-            if len(project.devices) == original_count:
-                raise ToolEditError({"error": f"Device '{device_id}' not found"})
-            # Drop the connections-table entry too — leaving it behind hands a
-            # stale host/port to any future device re-added with the same id.
-            project.connections.pop(device_id, None)
-            from openavc.core.monitors import drop_monitors_for_device
-            project.monitors = drop_monitors_for_device(project.monitors, device_id)
-            # And the id out of every device group, for the same reason the
-            # REST door does it: a dangling member can only be removed, and
-            # until it is the group calls it an offline device forever.
-            from openavc.core.device_references import drop_device_from_groups
-            project.device_groups = drop_device_from_groups(project.device_groups, device_id)
-
         # The devices reconcile removes the runtime device and sweeps its
         # orphaned device.<id>.* state keys; the revision bump means a stale
         # tab can't resurrect the deleted device on its next save.
-        err = await apply_tool_edit(engine, mutate)
+        err = await apply_tool_edit(engine, lambda project: _remove_device(project, device_id))
         if err:
             return err
         result: dict = {"status": "deleted", "device_id": device_id}
@@ -333,56 +415,20 @@ class DeviceToolsMixin:
         device_id = input.get("id", "")
         if not device_id:
             return {"error": "Device ID is required"}
-        if any(d.id == device_id for d in engine.project.devices):
+        if _has_device(engine.project, device_id):
             return {"error": f"Device '{device_id}' already exists"}
 
         driver_id = input.get("driver", "")
         if driver_id:
-            if not is_driver_registered(driver_id):
-                from openavc.utils.logger import get_logger
-                log = get_logger(__name__)
-                log.warning("add_device: driver '%s' not in registry (may not be loaded yet)", driver_id)
-
-        from openavc.core.project_loader import DeviceConfig
-        from openavc.core.project_migration import CONNECTION_FIELDS
-
-        # Split config into connection fields and protocol fields
-        raw_config = input.get("config") or {}
+            _warn_not_installed("add_device", driver_id)
         try:
-            _refuse_logins([driver_id], [str(k) for k in raw_config], adding=True)
+            new_device, conn_overrides = _new_device(device_id, input)
         except ToolEditError as refused:
             return refused.result
-        protocol_config = {}
-        conn_overrides = {}
-        for key, value in raw_config.items():
-            if key in CONNECTION_FIELDS:
-                conn_overrides[key] = value
-            else:
-                protocol_config[key] = value
-
-        new_device = DeviceConfig(
-            id=device_id,
-            driver=driver_id,
-            name=input.get("name", device_id),
-            config=protocol_config,
-            enabled=input.get("enabled", True),
-        )
 
         # The devices reconcile hot-adds the runtime device from the
         # resolved (driver-defaults + connection-table) config.
-        def mutate(project):
-            if any(d.id == device_id for d in project.devices):
-                raise ToolEditError({"error": f"Device '{device_id}' already exists"})
-            _wait_for_required_logins(driver_id, protocol_config, conn_overrides)
-            _refuse_missing_required(
-                driver_id, merged_device_config(driver_id, protocol_config, conn_overrides),
-            )
-            new_device.config = protocol_config
-            project.devices.append(new_device)
-            if conn_overrides:
-                project.connections[device_id] = conn_overrides
-
-        err = await apply_tool_edit(engine, mutate)
+        err = await apply_tool_edit(engine, lambda project: _append_device(project, new_device, conn_overrides))
         if err:
             return err
 
@@ -395,27 +441,9 @@ class DeviceToolsMixin:
         group_id = input.get("id", "")
         if not group_id:
             return {"error": "Group ID is required"}
-        device_ids = input.get("device_ids", [])
 
         # The device_groups reconcile reloads the macro engine's group table.
-        def mutate(project):
-            if any(g.id == group_id for g in project.device_groups):
-                raise ToolEditError({"error": f"Group '{group_id}' already exists"})
-            if device_ids:
-                project_device_ids = {d.id for d in project.devices}
-                unknown = [did for did in device_ids if did not in project_device_ids]
-                if unknown:
-                    raise ToolEditError({"error": f"Device(s) not found in project: {', '.join(unknown)}"})
-
-            from openavc.core.project_loader import DeviceGroup
-            new_group = DeviceGroup(
-                id=group_id,
-                name=input.get("name", group_id),
-                device_ids=device_ids,
-            )
-            project.device_groups.append(new_group)
-
-        err = await apply_tool_edit(engine, mutate)
+        err = await apply_tool_edit(engine, lambda project: _add_group(project, group_id, input))
         if err:
             return err
         return {"status": "created", "id": group_id}
@@ -426,23 +454,7 @@ class DeviceToolsMixin:
             return {"error": "No project loaded"}
         group_id = input.get("id", "")
 
-        def mutate(project):
-            existing = next(
-                (g for g in project.device_groups if g.id == group_id), None
-            )
-            if existing is None:
-                raise ToolEditError({"error": f"Group '{group_id}' not found"})
-            if "device_ids" in input:
-                project_device_ids = {d.id for d in project.devices}
-                unknown = [did for did in input["device_ids"] if did not in project_device_ids]
-                if unknown:
-                    raise ToolEditError({"error": f"Device(s) not found in project: {', '.join(unknown)}"})
-            if "name" in input:
-                existing.name = input["name"]
-            if "device_ids" in input:
-                existing.device_ids = input["device_ids"]
-
-        err = await apply_tool_edit(engine, mutate)
+        err = await apply_tool_edit(engine, lambda project: _edit_group(project, group_id, input))
         if err:
             return err
         return {"status": "updated", "id": group_id}
@@ -562,689 +574,3 @@ class DeviceToolsMixin:
                 driver=engine.devices.get_driver(device_id),
             )}
         return {"success": True, "device_id": device_id, "key": setting_key, "value": value}
-
-    # ===== DRIVER TOOLS =====
-
-    async def _list_drivers(self, input: dict) -> Any:
-        return list_registered_drivers()
-
-    async def _search_community_drivers(self, input: dict) -> Any:
-        """Search the community driver catalog with filters and ranking.
-
-        Inputs (all optional):
-          query        - free-text matched against id, name, manufacturer,
-                         description, tags, and compatible model names
-          category     - exact category filter (projector, display, switcher,
-                         audio, camera, lighting, video, streaming, power,
-                         utility)
-          manufacturer - case-insensitive manufacturer match
-          transport    - tcp | http | osc | serial | udp
-          limit        - cap on result count (default 25, max 100)
-
-        Returns lean entries (omits help and compatible_models — call
-        get_community_driver_detail for those). Results are ranked: exact id
-        and manufacturer matches first, then name matches, then description /
-        tag hits.
-        """
-        drivers = await self._fetch_community_index()
-        if drivers is None:
-            return {"drivers": [], "total": 0, "error": "Failed to fetch community index"}
-
-        query = (input.get("query") or "").strip().lower()
-        category = (input.get("category") or "").strip().lower()
-        manufacturer = (input.get("manufacturer") or "").strip().lower()
-        transport = (input.get("transport") or "").strip().lower()
-        try:
-            limit = max(1, min(int(input.get("limit", 25)), 100))
-        except (TypeError, ValueError):
-            limit = 25
-
-        results: list[tuple[int, dict]] = []
-        for drv in drivers:
-            if category and (drv.get("category") or "").lower() != category:
-                continue
-            if manufacturer and (drv.get("manufacturer") or "").lower() != manufacturer:
-                continue
-            if transport and (drv.get("transport") or "").lower() != transport:
-                continue
-
-            score = self._score_driver_match(drv, query) if query else 1
-            if query and score == 0:
-                continue
-            results.append((score, drv))
-
-        results.sort(key=lambda pair: (-pair[0], pair[1].get("id", "")))
-        total = len(results)
-        trimmed = [self._lean_driver_entry(d) for _, d in results[:limit]]
-        return {
-            "drivers": trimmed,
-            "total": total,
-            "returned": len(trimmed),
-            "truncated": total > len(trimmed),
-            "error": None,
-        }
-
-    async def _get_community_driver_detail(self, input: dict) -> Any:
-        """Return the full community catalog entry for a single driver.
-
-        Includes help.overview, help.setup, compatible_models, and other heavy
-        fields stripped from search results. Use this after search to read a
-        driver's setup notes or check whether a specific model is supported.
-        """
-        driver_id = (input.get("driver_id") or "").strip()
-        if not driver_id:
-            return {"error": "driver_id is required"}
-
-        drivers = await self._fetch_community_index()
-        if drivers is None:
-            return {"error": "Failed to fetch community index"}
-
-        for drv in drivers:
-            if drv.get("id") == driver_id:
-                base_url = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main"
-                if "file" in drv and "download_url" not in drv:
-                    drv = {**drv, "download_url": f"{base_url}/{drv['file']}"}
-                return drv
-        return {"error": f"Driver '{driver_id}' not found in community catalog"}
-
-    async def _find_driver_for_device(self, input: dict) -> Any:
-        """Look up community drivers that control a specific device by exact
-        manufacturer + model match using the curated devices.json catalog.
-
-        Use this when the user names specific hardware (e.g. "Sharp NEC
-        NP-PA853UL"). Returns matching driver entries with confidence
-        ('verified', 'tested', 'untested'). Empty list when no exact match —
-        fall back to search_community_drivers in that case.
-        """
-        manufacturer = (input.get("manufacturer") or "").strip()
-        model = (input.get("model") or "").strip()
-        if not manufacturer or not model:
-            return {"matches": [], "error": "manufacturer and model are required"}
-
-        base_url = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main"
-        try:
-            async with internet_client(timeout=10.0) as client:
-                resp = await client.get(f"{base_url}/devices.json")
-                resp.raise_for_status()
-                data = resp.json()
-        except (httpx.HTTPError, OSError, ValueError) as e:
-            # The library's text is not for the cloud chat history.
-            from openavc.utils.logger import get_logger
-            get_logger(__name__).warning(f"Community device catalog fetch failed: {e}")
-            return {"matches": [], "error": "Failed to fetch the community device catalog"}
-
-        devices = data.get("devices", []) if isinstance(data, dict) else data
-        mfr_lower = manufacturer.lower()
-        model_lower = model.lower()
-        matches: list[dict] = []
-        for dev in devices:
-            if (dev.get("manufacturer") or "").lower() != mfr_lower:
-                continue
-            if (dev.get("model") or "").lower() != model_lower:
-                continue
-            for drv in dev.get("drivers", []) or []:
-                matches.append({
-                    "driver_id": drv.get("id"),
-                    "confidence": drv.get("confidence", "untested"),
-                    "notes": drv.get("notes"),
-                })
-        return {
-            "manufacturer": manufacturer,
-            "model": model,
-            "matches": matches,
-            "error": None,
-        }
-
-    # --- helpers for community catalog tools ---
-
-    async def _fetch_community_index(self) -> list[dict] | None:
-        """Fetch and cache the community index.json. Returns None on failure."""
-        cache = getattr(self, "_community_index_cache", None)
-        import time
-        now = time.time()
-        if cache and (now - cache["fetched_at"]) < 600:
-            return cache["drivers"]
-
-        base_url = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main"
-        try:
-            async with internet_client(timeout=10.0) as client:
-                resp = await client.get(f"{base_url}/index.json")
-                resp.raise_for_status()
-                data = resp.json()
-        except (httpx.HTTPError, OSError):
-            return cache["drivers"] if cache else None
-
-        drivers = data.get("drivers", []) if isinstance(data, dict) else data
-        for drv in drivers:
-            if "file" in drv:
-                drv["download_url"] = f"{base_url}/{drv['file']}"
-        self._community_index_cache = {"drivers": drivers, "fetched_at": now}
-        return drivers
-
-    @staticmethod
-    def _score_driver_match(drv: dict, query: str) -> int:
-        """Rank a driver against a free-text query. Higher score = better match."""
-        if not query:
-            return 1
-        score = 0
-        drv_id = (drv.get("id") or "").lower()
-        name = (drv.get("name") or "").lower()
-        manufacturer = (drv.get("manufacturer") or "").lower()
-        description = (drv.get("description") or "").lower()
-        tags = [t.lower() for t in (drv.get("tags") or []) if isinstance(t, str)]
-        compat_models = []
-        for entry in drv.get("compatible_models") or []:
-            for m in entry.get("models") or []:
-                if isinstance(m, str):
-                    compat_models.append(m.lower())
-
-        if query == drv_id or query == manufacturer:
-            score += 100
-        if query in drv_id:
-            score += 30
-        if query in manufacturer:
-            score += 30
-        if query in name:
-            score += 20
-        if any(query == t for t in tags):
-            score += 15
-        if any(query in t for t in tags):
-            score += 5
-        if any(query in m for m in compat_models):
-            score += 25
-        if query in description:
-            score += 3
-        return score
-
-    @staticmethod
-    def _lean_driver_entry(drv: dict) -> dict:
-        """Return only the fields needed to pick a driver. Drops help, compatible_models, and source_url."""
-        keep = (
-            "id", "name", "manufacturer", "category", "version", "author",
-            "transport", "description", "file", "format", "ports", "protocols",
-            "tags", "simulated", "verified", "deprecated", "replacement_id",
-            "min_platform_version", "download_url",
-        )
-        return {k: drv[k] for k in keep if k in drv}
-
-    async def _get_installed_drivers(self, input: dict) -> Any:
-        engine = self._get_engine()
-        if not engine:
-            return {"drivers": []}
-        driver_repo = self._get_driver_repo_dir()
-        if not driver_repo.exists():
-            return {"drivers": []}
-
-        installed = []
-        for filepath in sorted(driver_repo.glob("*.avcdriver")):
-            try:
-                import yaml
-                data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
-                if isinstance(data, dict):
-                    installed.append({
-                        "id": data.get("id", filepath.stem),
-                        "name": data.get("name", filepath.stem),
-                        "format": "avcdriver",
-                        "filename": filepath.name,
-                    })
-            except (OSError, yaml.YAMLError, ValueError):
-                installed.append({"id": filepath.stem, "name": filepath.stem, "format": "avcdriver", "filename": filepath.name})
-
-        for filepath in sorted(driver_repo.glob("*.py")):
-            if filepath.name.startswith("_"):
-                continue
-            installed.append({"id": filepath.stem, "name": filepath.stem.replace("_", " ").title(), "format": "python", "filename": filepath.name})
-
-        return {"drivers": installed}
-
-    async def _get_driver_definition(self, input: dict) -> Any:
-        """The driver's surface, from its .avcdriver file where it has one.
-
-        Two formats reach this door and only one of them is a *file*. A
-        declarative driver is YAML on disk, so the whole point of the tool is
-        the raw protocol strings, response parsers and polling block that
-        never survive into ``DRIVER_INFO`` — and it round-trips through
-        ``update_driver_definition``. A Python driver has no such file at all,
-        so the file lookup misses for a driver that is installed, loaded,
-        connected and serving devices. Answering that with "not found" reads
-        as "not installed", which has sent callers off to reinstall, install
-        something else, or author a duplicate for hardware that already works.
-
-        So the miss falls back to the loaded class: same projection
-        ``list_drivers`` returns, marked ``editable: false`` because there is
-        no definition file to edit and no shape to save back. Only an id that
-        is genuinely not registered gets an error, and it says so.
-        """
-        from openavc.drivers.driver_loader import list_driver_definitions
-        driver_id = input.get("driver_id", "")
-        dirs = self._get_driver_dirs()
-        for d in list_driver_definitions(dirs):
-            if d.get("id") == driver_id:
-                d.pop("_source_file", None)
-                d["format"] = "avcdriver"
-                d["editable"] = True
-                return d
-
-        introspected = next(
-            (d for d in list_registered_drivers() if d.get("id") == driver_id),
-            None,
-        )
-        if introspected is not None:
-            introspected["format"] = "python"
-            introspected["editable"] = False
-            introspected["note"] = (
-                f"'{driver_id}' is a Python-format driver, so it has no declarative "
-                ".avcdriver definition file and no raw protocol strings, response "
-                "parsers or polling block to read. Everything below is introspected "
-                "from the loaded driver class and is the same surface list_drivers "
-                "returns. It cannot be edited with update_driver_definition, and it "
-                "must not be re-authored as a YAML definition; a definition sharing "
-                "this id would shadow the working driver."
-            )
-            return introspected
-
-        return {
-            "error": (
-                f"No driver '{driver_id}' is installed. Use get_installed_drivers to see "
-                "what is on this system, or search_community_drivers to find one to install."
-            )
-        }
-
-    async def _install_community_driver(self, input: dict) -> Any:
-        """Install a community driver through the canonical REST install path.
-
-        Delegating (rather than reimplementing) is the whole point: the shared
-        ``/api/drivers/install`` handler also fetches a YAML driver's declared
-        Python companion and a Python driver's ``_sim.py`` / ``_discovery.py``
-        siblings, refreshes device matches, and promotes any devices that were
-        orphaned waiting on this driver — none of which the old forked copy did,
-        so an AI-chat install looked complete but wasn't. The REST layer raises
-        ``HTTPException`` on every failure (bad host, min-version gate,
-        id-mismatch guard, download/load errors); the tool layer returns
-        ``{"error": ...}`` dicts, so translate at the boundary.
-        """
-        from fastapi import HTTPException
-
-        from openavc.api.models import CommunityDriverInstallRequest
-        from openavc.api.routes.drivers import install_community_driver
-
-        if not input.get("file_url"):
-            return {"error": "No file_url provided"}
-
-        try:
-            body = CommunityDriverInstallRequest(
-                driver_id=input.get("driver_id", ""),
-                file_url=input.get("file_url", ""),
-                min_platform_version=input.get("min_platform_version"),
-            )
-        except Exception as e:
-            return {"error": f"Invalid install request: {e}"}
-
-        try:
-            return await install_community_driver(body)
-        except HTTPException as e:
-            return {"error": str(e.detail)}
-
-    async def _create_driver_definition(self, input: dict) -> Any:
-        from openavc.drivers.driver_loader import list_driver_definitions, save_driver_definition, validate_driver_definition
-        from openavc.drivers.configurable import create_configurable_driver_class
-
-        definition = input.get("definition", {})
-        if not definition.get("id"):
-            return {"error": "Driver definition must have an 'id' field"}
-
-        dirs = self._get_driver_dirs()
-        existing = list_driver_definitions(dirs)
-        if any(d.get("id") == definition["id"] for d in existing):
-            return {"error": f"Driver definition '{definition['id']}' already exists"}
-
-        # No YAML file for the id but something is registered under it means a
-        # Python driver already owns it. Writing a definition here would load
-        # over the top of working hardware, and the usual reason to try is
-        # having read the introspected surface get_driver_definition returns
-        # for a Python driver and mistaken it for something to save back.
-        if is_driver_registered(definition["id"]):
-            return {"error": (
-                f"Driver '{definition['id']}' is already installed as a Python-format "
-                "driver. A YAML definition sharing its id would shadow it. Pick a "
-                "different id, or use the driver that is already there."
-            )}
-
-        # strict: the AI is authoring here, and an undeclared key it invented
-        # would otherwise land in a saved driver and silently do nothing.
-        errors = validate_driver_definition(definition, strict=True)
-        if errors:
-            return {"error": "; ".join(errors)}
-
-        save_dir = dirs[1] if len(dirs) > 1 else dirs[0]
-        save_driver_definition(definition, save_dir)
-        driver_class = create_configurable_driver_class(definition)
-        register_driver(driver_class)
-        from openavc.api.routes.drivers import announce_drivers_changed
-        await announce_drivers_changed(definition["id"])
-        return {"status": "created", "id": definition["id"]}
-
-    async def _update_driver_definition(self, input: dict) -> Any:
-        from pathlib import Path
-
-        from openavc.drivers.driver_loader import (
-            list_driver_definitions,
-            restore_driver_registration,
-            save_driver_definition,
-            validate_driver_definition,
-        )
-        from openavc.drivers.configurable import create_configurable_driver_class
-        from openavc.system_config import DRIVER_DEFINITIONS_DIR
-
-        driver_id = input.get("driver_id", "")
-        definition = input.get("definition", {})
-        if not definition.get("id"):
-            return {"error": "Driver definition must have an 'id' field"}
-        dirs = self._get_driver_dirs()
-
-        existing = list_driver_definitions(dirs)
-        match = next((d for d in existing if d.get("id") == driver_id), None)
-        if match is None:
-            return {"error": f"Driver definition '{driver_id}' not found"}
-
-        # Source guard: never modify a shipped built-in (the IDE enforces this
-        # with a read-only gate; the AI path must too). Built-ins live in the
-        # read-only DRIVER_DEFINITIONS_DIR; user drivers live in driver_repo.
-        builtin_root = str(Path(DRIVER_DEFINITIONS_DIR).resolve())
-        src = match.get("_source_file")
-        old_path = Path(src) if src else None
-        if old_path and str(old_path.resolve()).startswith(builtin_root):
-            return {"error": f"Driver '{driver_id}' is a built-in and cannot be modified. Duplicate it under a new id first."}
-
-        # strict: the AI is authoring here, and an undeclared key it invented
-        # would otherwise land in a saved driver and silently do nothing.
-        errors = validate_driver_definition(definition, strict=True)
-        if errors:
-            return {"error": "; ".join(errors)}
-
-        # A rename onto an id owned by a DIFFERENT driver would clobber it.
-        new_id = definition["id"]
-        if new_id != driver_id and any(d.get("id") == new_id for d in existing):
-            return {"error": f"A driver definition with id '{new_id}' already exists"}
-
-        # Save the replacement FIRST (save_driver_definition is an atomic
-        # temp-write + os.replace), then drop the old file only when the id
-        # changed (different filename). The previous delete-then-save could leave
-        # the user with no driver file at all if the save failed.
-        save_dir = dirs[1] if len(dirs) > 1 else dirs[0]
-        new_path = save_driver_definition(definition, save_dir)
-        if old_path and old_path.resolve() != new_path.resolve():
-            old_path.unlink(missing_ok=True)
-        driver_class = create_configurable_driver_class(definition)
-        register_driver(driver_class)
-        if new_id != driver_id:
-            # The rename removed the user file for the old id. If it was
-            # overriding a shipped built-in, re-register the built-in so the
-            # old id keeps working; otherwise drop the stale registration.
-            restore_driver_registration(driver_id, dirs)
-        from openavc.api.routes.drivers import announce_drivers_changed
-        await announce_drivers_changed(new_id)
-        return {"status": "updated", "id": new_id}
-
-    async def _test_driver_command(self, input: dict) -> Any:
-        import asyncio
-        from openavc.transport.tcp import TCPTransport
-
-        host = input.get("host", "")
-        port = input.get("port", 23)
-        command_string = input.get("command_string", "")
-        delimiter = input.get("delimiter", "\\r\\n")
-        timeout = input.get("timeout", 5)
-
-        if not host or not command_string:
-            return {"success": False, "error": "host and command_string are required", "response": None}
-
-        # A delimiter routinely carries backslash escapes (\r\n); a truncated one
-        # like '\x' raises here, outside the connection try/except below — catch
-        # it and return an actionable message instead of an opaque codec crash.
-        try:
-            delimiter_bytes = delimiter.encode().decode("unicode_escape").encode()
-        except (UnicodeDecodeError, UnicodeEncodeError) as e:
-            return {"success": False, "error": f"Invalid delimiter escape sequence {delimiter!r}: {e}", "response": None}
-
-        # A port a connected project device's driver holds is never opened
-        # (discovery/port_guard.py): a device that serves one connection at a
-        # time gives the port to the newest one, and its driver keeps a socket
-        # that never answers again.
-        holder = await self._raw_port_holder(host, port)
-        if holder is not None:
-            return {
-                "success": False,
-                "error": (
-                    f"{holder} is connected to {host}:{port} now, and a second connection "
-                    f"can take the device from its driver. Send it one of its own commands "
-                    f"with send_device_command instead. To send raw text, ask the user to "
-                    f"disable {holder} on its device page first and enable it again after."
-                ),
-                "response": None,
-                "in_use_by": holder,
-            }
-
-        try:
-            transport = await TCPTransport.create(
-                host=host, port=port,
-                on_data=lambda d: None, on_disconnect=lambda: None,
-                delimiter=delimiter_bytes, timeout=timeout,
-            )
-        except ConnectionError as e:
-            return {"success": False, "error": str(e), "response": None}
-
-        try:
-            cmd_data = command_string.encode().decode("unicode_escape").encode()
-            response = await transport.send_and_wait(cmd_data, timeout=timeout)
-            response_text = response.decode("ascii", errors="replace")
-            return {"success": True, "error": None, "response": response_text}
-        except asyncio.TimeoutError:
-            return {"success": False, "error": "Timeout waiting for response", "response": None}
-        except (OSError, ConnectionError) as e:
-            return {"success": False, "error": str(e), "response": None}
-        finally:
-            await transport.close()
-
-    async def _raw_port_holder(self, host: str, port: Any) -> str | None:
-        """The connected project device whose driver holds ``host:port``, or
-        None. The same list a Discovery scan and Test Connection leave alone
-        (``port_guard.held_ports`` over ``DeviceManager.live_connections``)."""
-        from openavc.discovery.network_scanner import resolve_address
-        from openavc.discovery.port_guard import held_ports
-
-        try:
-            port = int(port)
-        except (TypeError, ValueError):
-            return None
-        engine = self._get_engine()
-        live = getattr(getattr(engine, "devices", None), "live_connections", None)
-        if live is None:
-            return None
-        try:
-            held, _unresolved = await held_ports(live())
-        except Exception:
-            from openavc.utils.logger import get_logger
-            get_logger(__name__).exception("Could not read the project's connected devices")
-            return None
-        if not held:
-            return None
-        conn = held.get((await resolve_address(host) or host, port))
-        return conn.name if conn is not None else None
-
-    # ===== SCRIPT TOOLS =====
-
-    async def _get_script_source(self, input: dict) -> Any:
-        script_id = input.get("script_id", "")
-        engine = self._get_engine()
-        if not engine or not engine.project:
-            return {"error": "No project loaded"}
-        for s in engine.project.scripts:
-            if s.id == script_id:
-                scripts_dir = engine.project_path.parent / "scripts"
-                path = safe_path_within(scripts_dir, s.file)
-                if path is None:
-                    return {"error": "Invalid script filename"}
-                if path.exists():
-                    source = path.read_text(encoding="utf-8")
-                    return {"id": script_id, "file": s.file, "source": source}
-                return {"error": f"Script file not found: {s.file}"}
-        return {"error": f"Script '{script_id}' not found"}
-
-    async def _get_script_health(self, input: dict) -> Any:
-        """Which scripts are failing right now, in the three ways they can.
-
-        The same three stores ``GET /api/scripts/errors`` answers the Scripts
-        view from, and for the same reason: "the button does nothing" is asked
-        of the assistant at least as often as it is looked up in the view, and
-        until this the assistant's only route to the answer was the raw log --
-        which is the state that door was built to end.
-
-        ``script_id`` narrows it to one script; without it the whole project is
-        reported. A healthy project answers with three empty maps rather than
-        an error, because "nothing is broken" is the answer to the question.
-        """
-        engine = self._get_engine()
-        if not engine:
-            return {"error": "No project loaded"}
-        if not engine.scripts:
-            return {"errors": {}, "abandoned": {}, "runtime": {}}
-
-        health = {
-            "errors": engine.scripts.get_load_errors(),
-            "abandoned": engine.scripts.get_abandoned_loads(),
-            "runtime": engine.scripts.get_runtime_errors(),
-        }
-        script_id = str(input.get("script_id", "") or "")
-        if script_id:
-            health = {
-                kind: {script_id: found[script_id]}
-                for kind, found in health.items()
-                if script_id in found
-            } or {"errors": {}, "abandoned": {}, "runtime": {}}
-        return health
-
-    async def _create_script(self, input: dict) -> Any:
-        engine = self._get_engine()
-        if not engine or not engine.project:
-            return {"error": "No project loaded"}
-
-        script_id = input.get("id", "")
-        filename = input.get("file", f"{script_id}.py")
-        source = input.get("source", "")
-        description = input.get("description", "")
-        enabled = input.get("enabled", True)
-
-        for s in engine.project.scripts:
-            if s.id == script_id:
-                return {"error": f"Script '{script_id}' already exists"}
-
-        if source:
-            from openavc.cloud.ai_tool_handler import _validate_script_syntax
-            err = _validate_script_syntax(source, filename)
-            if err:
-                return {"error": f"Script '{script_id}': {err}"}
-
-        scripts_dir = engine.project_path.parent / "scripts"
-        if not is_safe_script_filename(filename):
-            return {"error": f"Invalid script filename '{filename}': must be a plain .py name with no path separators"}
-        path = safe_path_within(scripts_dir, filename)
-        if path is None:
-            return {"error": "Invalid script filename"}
-        scripts_dir.mkdir(parents=True, exist_ok=True)
-        path.write_text(source, encoding="utf-8")
-
-        from openavc.core.project_loader import ScriptConfig
-        new_script = ScriptConfig(id=script_id, file=filename, enabled=enabled, description=description)
-
-        # The scripts reconcile loads just this script (per-script reload,
-        # not the old full-project reload).
-        def mutate(project):
-            for s in project.scripts:
-                if s.id == script_id:
-                    raise ToolEditError({"error": f"Script '{script_id}' already exists"})
-            project.scripts.append(new_script)
-
-        err = await apply_tool_edit(engine, mutate)
-        if err:
-            return err
-        result: dict[str, Any] = {"status": "created", "id": script_id}
-        warnings = _dead_listener_warnings(engine, script_id, source)
-        if warnings:
-            result["warnings"] = warnings
-            result["warning_note"] = _DEAD_LISTENER_NOTE
-        return result
-
-    async def _update_script_source(self, input: dict) -> Any:
-        engine = self._get_engine()
-        if not engine or not engine.project:
-            return {"error": "No project loaded"}
-        script_id = input.get("script_id", "")
-        source = input.get("source", "")
-        for s in engine.project.scripts:
-            if s.id == script_id:
-                if source:
-                    from openavc.cloud.ai_tool_handler import _validate_script_syntax
-                    err = _validate_script_syntax(source, s.file)
-                    if err:
-                        return {"error": f"Script '{script_id}': {err}"}
-                scripts_dir = engine.project_path.parent / "scripts"
-                path = safe_path_within(scripts_dir, s.file)
-                if path is None:
-                    return {"error": "Invalid script filename"}
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(source, encoding="utf-8")
-                # A source write alone is inert — reload the running script
-                # like the IDE reload button. reload_script imports the new
-                # version before unloading the old, so a broken edit leaves
-                # the previous version active (reported in the result).
-                result: dict[str, Any] = {"status": "saved"}
-                if engine.scripts:
-                    result["reload"] = engine.scripts.reload_script(s.model_dump())
-                warnings = _dead_listener_warnings(engine, script_id, source)
-                if warnings:
-                    result["warnings"] = warnings
-                    result["warning_note"] = _DEAD_LISTENER_NOTE
-                return result
-        return {"error": f"Script '{script_id}' not found"}
-
-    async def _delete_script(self, input: dict) -> Any:
-        engine = self._get_engine()
-        if not engine or not engine.project:
-            return {"error": "No project loaded"}
-        script_id = input.get("script_id", "")
-        cfg = None
-        for s in engine.project.scripts:
-            if s.id == script_id:
-                cfg = s
-                break
-        if not cfg:
-            return {"error": f"Script '{script_id}' not found"}
-
-        scripts_dir = engine.project_path.parent / "scripts"
-        path = safe_path_within(scripts_dir, cfg.file)
-        if path is None:
-            return {"error": "Invalid script filename"}
-
-        # Read before the file goes: what is about to be stranded, in the same
-        # shape delete_device / delete_macro / delete_variable hand back. The
-        # delete still succeeds -- the impact is what to tell the user to fix.
-        impact = self._find_references("script", script_id)
-
-        if path.exists():
-            path.unlink()
-
-        # The scripts reconcile unloads just this script.
-        def mutate(project):
-            original_count = len(project.scripts)
-            project.scripts = [s for s in project.scripts if s.id != script_id]
-            if len(project.scripts) == original_count:
-                raise ToolEditError({"error": f"Script '{script_id}' not found"})
-
-        err = await apply_tool_edit(engine, mutate)
-        if err:
-            return err
-        result: dict[str, Any] = {"status": "deleted"}
-        if impact:
-            result["impact"] = impact
-        return result

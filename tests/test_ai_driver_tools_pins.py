@@ -31,6 +31,7 @@ import httpx
 import pytest
 
 from openavc.cloud.ai_tool_handler import AIToolHandler
+from openavc.cloud.tools.catalog_tools import _lean_driver_entry, _score_driver_match
 from openavc.drivers.base import BaseDriver
 from openavc.drivers.registry import (
     is_driver_registered,
@@ -123,18 +124,18 @@ DRV = INDEX["drivers"][0]
     ("zzz", 0),
 ])
 def test_how_a_query_scores_an_entry(query, score):
-    assert AIToolHandler._score_driver_match(DRV, query) == score
+    assert _score_driver_match(DRV, query) == score
 
 
 def test_an_entry_with_no_fields_scores_nothing():
-    assert AIToolHandler._score_driver_match({}, "acme") == 0
-    assert AIToolHandler._score_driver_match(
+    assert _score_driver_match({}, "acme") == 0
+    assert _score_driver_match(
         {"id": None, "tags": None, "compatible_models": [{"models": None}]}, "acme",
     ) == 0
 
 
 def test_the_lean_entry_keeps_what_picks_a_driver():
-    lean = AIToolHandler._lean_driver_entry({**DRV, "download_url": "u", "ports": [23], "deprecated": True})
+    lean = _lean_driver_entry({**DRV, "download_url": "u", "ports": [23], "deprecated": True})
     assert lean == {
         "id": "acme_widget", "name": "Acme Widget Pro", "manufacturer": "Acme", "category": "switcher",
         "version": "1.0.0", "transport": "tcp", "description": "Controls the widget line",
@@ -160,7 +161,7 @@ async def test_search_with_no_query_lists_by_id(monkeypatch):
 
     assert [d["id"] for d in answer["drivers"]] == ["acme_gadget", "acme_widget", "nofile_widget", "zeta_widget"]
     assert (answer["total"], answer["returned"], answer["truncated"], answer["error"]) == (4, 4, False, None)
-    assert answer["drivers"][1] == AIToolHandler._lean_driver_entry(
+    assert answer["drivers"][1] == _lean_driver_entry(
         {**DRV, "download_url": f"{BASE}/utility/acme_widget.avcdriver"},
     )
 
@@ -733,8 +734,8 @@ async def test_list_drivers_answers_the_registry():
 
 
 def test_tags_and_models_that_are_not_text_never_match():
-    assert AIToolHandler._score_driver_match(DRV, "5") == 0
-    assert AIToolHandler._score_driver_match(DRV, "7") == 0
+    assert _score_driver_match(DRV, "5") == 0
+    assert _score_driver_match(DRV, "7") == 0
 
 
 async def test_search_filters_compare_whole_values_in_any_case(monkeypatch):

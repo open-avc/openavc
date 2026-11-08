@@ -36,6 +36,7 @@ from openavc.cloud.command_handler import (
 )
 from openavc.cloud.protocol import DIAGNOSTIC_RESULT
 from openavc.cloud.tools.device_tools import DeviceToolsMixin
+from openavc.cloud.tools.driver_tools import DriverToolsMixin
 from openavc.core.device_manager import DeviceManager
 from openavc.core.device_reachability import run_connection_test
 from openavc.core.event_bus import EventBus
@@ -384,8 +385,8 @@ class TestCloudDiagnostics:
 
 class TestRawCommand:
 
-    def _tools(self, manager: DeviceManager) -> DeviceToolsMixin:
-        tools = DeviceToolsMixin()
+    def _tools(self, manager: DeviceManager) -> DriverToolsMixin:
+        tools = DriverToolsMixin()
         tools._get_engine = lambda: _engine(manager)
         return tools
 

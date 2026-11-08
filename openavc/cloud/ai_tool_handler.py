@@ -557,18 +557,6 @@ def _validate_variable(var_type: str, default: Any = None) -> str | None:
     return None
 
 
-# --- Script syntax validation ---
-
-def _validate_script_syntax(source: str, filename: str = "<script>") -> str | None:
-    """Validate Python script syntax. Returns error string or None."""
-    try:
-        compile(source, filename, "exec")
-    except SyntaxError as e:
-        line_info = f" (line {e.lineno})" if e.lineno else ""
-        return f"Python syntax error{line_info}: {e.msg}"
-    return None
-
-
 # --- Plugin config schema validation ---
 # Moved to openavc/core/plugin_config.py so the REST config endpoint and the
 # cloud AI tool accept/reject identical shapes.
@@ -674,11 +662,14 @@ def describe_tool_failure(exc: Exception) -> str:
     return TOOL_FAILED
 
 
+from openavc.cloud.tools.catalog_tools import CatalogToolsMixin
 from openavc.cloud.tools.custom_ui_tools import CustomUIToolsMixin
 from openavc.cloud.tools.device_tools import DeviceToolsMixin
+from openavc.cloud.tools.driver_tools import DriverToolsMixin
 from openavc.cloud.tools.macro_tools import MacroToolsMixin
 from openavc.cloud.tools.plugin_tools import PluginToolsMixin
 from openavc.cloud.tools.project_tools import ProjectToolsMixin
+from openavc.cloud.tools.script_tools import ScriptToolsMixin
 from openavc.cloud.tools.system_tools import SystemToolsMixin
 from openavc.cloud.tools.ui_tools import UIToolsMixin
 
@@ -686,6 +677,9 @@ from openavc.cloud.tools.ui_tools import UIToolsMixin
 class AIToolHandler(
     ProjectToolsMixin,
     DeviceToolsMixin,
+    DriverToolsMixin,
+    CatalogToolsMixin,
+    ScriptToolsMixin,
     UIToolsMixin,
     CustomUIToolsMixin,
     PluginToolsMixin,
@@ -967,7 +961,10 @@ class AIToolHandler(
 
     # Tool handler methods are defined in the domain-specific mixins:
     # - ProjectToolsMixin: project state, metadata
-    # - DeviceToolsMixin: devices, drivers, scripts
+    # - DeviceToolsMixin: devices, device groups, settings, commands
+    # - DriverToolsMixin: installed drivers, definitions, the raw command test
+    # - CatalogToolsMixin: the community driver catalog
+    # - ScriptToolsMixin: scripts
     # - UIToolsMixin: UI pages, elements
     # - PluginToolsMixin: plugin management
     # - MacroToolsMixin: macros, triggers, variables
