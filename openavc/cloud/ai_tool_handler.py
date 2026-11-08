@@ -108,12 +108,7 @@ def describe_tool_failure(exc: Exception) -> str:
     from openavc.utils.community_integrity import CommunityArtifactError
 
     if isinstance(exc, ValidationError):
-        problems = [
-            f"{'.'.join(str(part) for part in error.get('loc', ())) or 'value'}: "
-            f"{error.get('msg', '')}"
-            for error in exc.errors(include_url=False, include_input=False)
-        ]
-        return "; ".join(problems) or TOOL_FAILED
+        return _field_problems(exc)
     if isinstance(exc, WakeAddressError):
         return friendly_error(exc)
     if isinstance(exc, (
@@ -128,11 +123,27 @@ def describe_tool_failure(exc: Exception) -> str:
         if getattr(exc, "device_id", None) is not None:
             return str(exc)
         return friendly_error(exc) if isinstance(exc, _WORDED_CONNECTION_ERRORS) else TOOL_FAILED
-    if isinstance(exc, PermissionError) or (
-        isinstance(exc, OSError) and getattr(exc, "errno", None) in _WORDED_ERRNOS
-    ):
+    if _is_worded_os_error(exc):
         return friendly_error(exc)
     return TOOL_FAILED
+
+
+def _field_problems(exc: Any) -> str:
+    """A validation error as each field and its message, never the input."""
+    problems = [
+        f"{'.'.join(str(part) for part in error.get('loc', ())) or 'value'}: "
+        f"{error.get('msg', '')}"
+        for error in exc.errors(include_url=False, include_input=False)
+    ]
+    return "; ".join(problems) or TOOL_FAILED
+
+
+def _is_worded_os_error(exc: Exception) -> bool:
+    """An operating system error friendly_error answers with a fixed sentence
+    of its own: a refused permission, or one of the errnos it words."""
+    if isinstance(exc, PermissionError):
+        return True
+    return isinstance(exc, OSError) and getattr(exc, "errno", None) in _WORDED_ERRNOS
 
 
 
