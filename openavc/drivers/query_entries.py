@@ -9,22 +9,29 @@ The rules worth knowing before changing anything here:
   filled with its unpadded local id (``{child_id:02d}`` pads), or one per page
   of children with ``page_size``. Other ``{placeholders}`` are left for the
   sender's config substitution. Anything else is skipped with a warning.
-* **Two gates, each judged twice.** ``when: <config field>`` runs an entry
-  only while that field reads as on (an integrator's checkbox for a chatty
-  subscription); ``when_state: {<var>: <value or values>}`` only while the
-  device's own state allows (a unit any message wakes from standby is left
-  there), and ``polling.when_state`` holds the whole poll the same way. They
-  are judged when the entry expands and again just before each line goes
-  (``_line_gate_shut``), once any write under way has finished, so the reply
-  to the line before it is read first.
+* **Two gates.** ``when: <config field>`` runs an entry only while that
+  field reads as on (an integrator's checkbox for a chatty subscription), and
+  is judged when the entry expands. ``when_state: {<var>: <value or
+  values>}`` runs it only while the device's own state allows (a unit any
+  message wakes from standby is left there), and ``polling.when_state`` holds
+  the whole poll the same way; both are judged when the entry expands and
+  again just before each line goes (``_line_gate_shut``), once any write
+  under way has finished, so the reply to the line before it is read first.
+  An OSC start-up ``each_child`` line is not judged again.
+* **OSC start-up reads entries of its own too**
+  (``start_up_and_poll._osc_start_up_message``: a string, ``{send}``, and the
+  ``{address, args}`` message only start-up takes), so a new entry form is
+  added there as well as here.
 * **A variable not reported yet holds nothing back**, so a first connect
   still asks for the state a gate reads. Values compare in the variable's
   declared type, and a gate that is not a mapping opens, as a malformed
   ``only_when`` does.
 * **The poll's pause is said once.** ``_poll_gate_shut`` logs when the poll
-  pauses and when it resumes, and keeps ``_poll_held`` for the poll loop.
-  Every other reader of the poll's gate (a follow-up, a read-back, the
-  liveness probe, the connect check) judges it quietly and leaves that alone.
+  pauses and when it resumes, and keeps ``_poll_held`` for the poll loop. The
+  poll judges its gate through it, and so does OSC start-up's ask of every
+  reply address, a poll in all but name. Every other reader (a follow-up, a
+  read-back, the liveness probe, the connect check) judges the gate quietly
+  and leaves that alone.
 
 ``QueryEntries`` is a mixin ``ConfigurableDriver`` inherits, so every name
 stays on the driver object. It answers three ``BaseDriver`` hooks:

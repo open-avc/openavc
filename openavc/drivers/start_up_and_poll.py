@@ -1,5 +1,5 @@
-"""The lines a YAML driver sends on its own: its start-up steps
-(``on_connect``) and its poll (``polling.queries``).
+"""A YAML driver's start-up steps (``on_connect``) and its poll
+(``polling.queries``).
 
 The rules worth knowing before changing anything here:
 
@@ -10,12 +10,12 @@ The rules worth knowing before changing anything here:
   address on OSC, the protocol bytes on TCP, serial and UDP (TCP and serial
   ones inside the ``send_frame`` header, a no-op unless declared).
   ``_dispatch_query`` is that rule for every transport but OSC; a response
-  rule's ``then_query`` sends through it too. Every start-up and poll answer
-  on HTTP is weighed against the credential (``http_credential``).
-* **Spacing.** TCP and serial lines are spaced by ``inter_command_delay``
-  (the transport waits it after every write) or, with none set, by
-  ``_pace_line``. UDP, OSC and HTTP lines are spaced only by
-  ``inter_command_delay``; on HTTP, from one response to the next request.
+  rule's ``then_query`` sends through it too. Every answer it gets on HTTP
+  is weighed against the credential (``http_credential``).
+* **Spacing** is ``_pace_line``'s (``configurable.py``, shared with a
+  rule's follow-ups and a command's read-backs). It spaces TCP and serial
+  lines when no ``inter_command_delay`` is set; with one, the transport waits
+  that long after every write instead.
 * **The first poll skips what start-up just asked.** Every start-up line
   that went out is noted in ``_start_up_lines``; a connect that polls hands
   them to the first poll, which follows at once, as lines not to send again.

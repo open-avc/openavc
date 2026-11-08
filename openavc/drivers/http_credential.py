@@ -29,9 +29,13 @@ The rules worth knowing before changing anything here:
 ``HttpCredential`` is a mixin ``ConfigurableDriver`` inherits, so every name
 stays on the driver object. The host calls ``_init_http_credential()`` in
 ``__init__`` and ``_reset_http_credential()`` before each dial, hands every
-start-up and poll answer to ``_judge_http_answer``, and brackets a poll with
-``_open_http_cycle`` and ``_close_http_cycle``, calling ``_drop_http_cycle``
-when a line fails and ends it.
+answer ``_dispatch_query`` gets to ``_judge_http_answer``, and brackets a poll
+with ``_open_http_cycle`` and ``_close_http_cycle``, calling
+``_drop_http_cycle`` when a line fails and ends it. That is start-up, the
+poll, and a response rule's ``then_query`` lines, which send through
+``_dispatch_query`` too: one sent while a poll is under way counts in that
+poll's tally, and a refusal it settles ends only its own round (the poll
+that follows judges the connection).
 """
 
 from __future__ import annotations
