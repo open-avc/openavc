@@ -433,3 +433,82 @@ async def test_a_restart_window_ends_soon_after_the_driver_is_back():
     await conn.emit("device.connected")
     assert blip.ends_at == ends
     await _done(blip)
+
+
+async def test_the_window_hears_no_return_before_a_drop():
+    conn = _Connection()
+    commands = _pass(conn)
+    trial = await commands.send("power_on")
+    await conn.emit("device.connected")
+    assert (trial.back_at, trial.gone_and_back) == (None, [])
+    await _done(trial)
+
+
+# -- what the wizard is shown ------------------------------------------------------
+
+
+async def test_a_known_secret_is_masked_wherever_the_live_view_shows_it():
+    conn = _Connection()
+    conn.observer.add_secrets({"tulip-7391"})
+    commands = _pass(conn)
+
+    async def leaks(command, params):
+        conn.sent("TITLE tulip-7391\r")
+        conn.report("title", "tulip-7391")
+        await conn.emit("device.error", {"error": "bad tulip-7391"})
+        conn.report("last_error", "no tulip-7391")
+
+    conn.call = leaks
+    trial = await _done(await commands.send("set_title", {"title": "tulip-7391"}))
+    view = commands.to_dict()["trials"][0]
+    assert view["params"] == {"title": "***"}
+    assert [c["new"] for c in view["changes"] if c["key"] == "title"] == ["***"]
+    assert [e["error"] for e in view["device_errors"]] == ["bad ***"]
+    assert view["refusals"]["last_error"] == "no ***"
+    # The record keeps what the device did; only what is shown is masked.
+    assert trial.refusals["last_error"] == "no tulip-7391"
+
+
+async def test_the_live_view_keeps_the_newest_and_the_report_keeps_every_one():
+    conn = _Connection()
+    commands = _pass(conn, window_seconds=5.0)
+
+    async def chatty(command, params):
+        conn.sent("PWR 1\r")
+        for i in range(25):
+            conn.report("meter", i)
+            await conn.emit("device.error", {"error": f"e{i}"})
+
+    conn.call = chatty
+    trial = await commands.send("power_on")
+    watching = commands.to_dict()["trials"][0]
+    assert watching["summary"] == ""
+    assert [c["new"] for c in watching["changes"]] == list(range(5, 25))
+    assert [e["error"] for e in watching["device_errors"]] == [f"e{i}" for i in range(5, 25)]
+    commands.end_now()
+    await _done(trial)
+    assert commands.to_dict()["trials"][0]["summary"]
+    kept = commands.report_record()["trials"][0]
+    assert len(kept["changes"]) == 25 and len(kept["device_errors"]) == 25
+
+
+# -- sending -----------------------------------------------------------------------
+
+
+async def test_a_refused_send_still_lets_its_staged_files_go():
+    conn = _Connection()
+    commands = _pass(conn)
+    released = []
+    conn.started = False
+    try:
+        await commands.send("power_on", on_finished=lambda: released.append("gone"))
+    except Exception as exc:
+        assert "Connect the driver first" in str(exc)
+    assert released == ["gone"] and commands.trials == []
+
+
+async def test_a_name_the_driver_does_not_declare_is_sent_under_that_name():
+    conn = _Connection()
+    commands = _pass(conn)
+    trial = await _done(await commands.send("warp_drive"))
+    assert (trial.command, trial.label, trial.declared) == ("warp_drive", "warp_drive", {})
