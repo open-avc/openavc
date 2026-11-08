@@ -212,6 +212,12 @@ def _orphan_config(config: dict[str, Any]) -> dict[str, Any]:
     return {k: (SAVED_LOGIN if config.get(k) == SAVED_LOGIN else v) for k, v in masked.items()}
 
 
+def _device_id_of(event: str) -> str | None:
+    """The device id that ends a ``device.<what>.<id>`` event name."""
+    parts = event.split(".", 2)
+    return parts[2] if len(parts) == 3 else None
+
+
 class DeviceManager(
     DeviceAwayMixin, DeviceReconnectMixin, PendingSettingsMixin, DeviceWebUiMixin,
     DeviceBridgesMixin,
@@ -331,30 +337,12 @@ class DeviceManager(
         # for the device added under that id next.
         self._intentional_disconnect.discard(device_id)
 
-        enabled = device_config.get("enabled", True)
-        if not enabled:
-            self._device_configs[device_id] = device_config
-            self.state.set(f"device.{device_id}.name", name, source="config")
-            self.state.set(f"device.{device_id}.connected", False, source="config")
-            self.state.set(f"device.{device_id}.enabled", False, source="config")
-            log.info(f"Device {device_id} is disabled, skipping connection")
+        if not device_config.get("enabled", True):
+            self._register_disabled(device_id, device_config, name)
             return
-
-        # Look up driver class
         driver_class = get_driver_class(driver_id)
         if driver_class is None:
-            log.warning(f"Device '{device_id}' is orphaned: {missing_driver_reason(driver_id)}")
-            self._orphaned_devices[device_id] = device_config
-            self._device_configs[device_id] = device_config
-            self.state.set(f"device.{device_id}.name", name, source="config")
-            self.state.set(f"device.{device_id}.connected", False, source="config")
-            self.state.set(f"device.{device_id}.orphaned", True, source="config")
-            self.state.set(
-                f"device.{device_id}.orphan_reason",
-                missing_driver_reason(driver_id),
-                source="config",
-            )
-            await self.events.emit("device.orphaned", {"device_id": device_id, "driver": driver_id})
+            await self._register_orphan(device_id, device_config, name)
             return
 
         # Create driver instance, then hand it the project-side
@@ -377,28 +365,8 @@ class DeviceManager(
         self.state.set(f"device.{device_id}.enabled", True, source="config")
         log.info(f"Added device '{device_id}' ({name}) using {driver_label(driver_id)}")
 
-        # A pause carried across the instance swap: the registration above still
-        # runs (and bring_up still preps the bridge port for whenever it
-        # resumes) — only the connect is suppressed, which is the whole harm.
-        # Whoever holds the pause still holds the session it was taken to
-        # protect. The backstop is re-armed with the time the pause had left.
         if carry_pause is not None:
-            self._intentional_disconnect.add(device_id)
-            self.state.set(f"device.{device_id}.paused", True, source="device_manager")
-            self.state.set(
-                f"device.{device_id}.paused_for", carry_pause_for, source="device_manager"
-            )
-            self.state.set(f"device.{device_id}.connected", False, source="device_manager")
-            self._schedule_pause_expiry(device_id, carry_pause)
-            log.info(
-                f"Device '{device_id}' was re-added while paused — staying "
-                f"paused ({carry_pause:.0f}s left on the backstop)"
-            )
-            # The bridge port is prepared and the web UI probed even while
-            # paused: the pause is about the control session, and
-            # remove_device dropped the detected URL on the way through.
-            await self._prepare_bridge_for(device_id, config)
-            self._schedule_web_ui_probe(device_id)
+            await self._hold_carried_pause(device_id, config, carry_pause, carry_pause_for)
             return
 
         if defer_connect:
@@ -414,6 +382,55 @@ class DeviceManager(
             return
 
         await self._bring_up_device(device_id)
+
+    def _register_disabled(
+        self, device_id: str, device_config: dict[str, Any], name: str,
+    ) -> None:
+        """Keep a disabled device's record and publish it, connecting nothing."""
+        self._device_configs[device_id] = device_config
+        self.state.set(f"device.{device_id}.name", name, source="config")
+        self.state.set(f"device.{device_id}.connected", False, source="config")
+        self.state.set(f"device.{device_id}.enabled", False, source="config")
+        log.info(f"Device {device_id} is disabled, skipping connection")
+
+    async def _register_orphan(
+        self, device_id: str, device_config: dict[str, Any], name: str,
+    ) -> None:
+        """Keep a device whose driver is not installed, and say why it waits.
+        It activates when the driver arrives (retry_all_orphans)."""
+        driver_id = device_config["driver"]
+        log.warning(f"Device '{device_id}' is orphaned: {missing_driver_reason(driver_id)}")
+        self._orphaned_devices[device_id] = device_config
+        self._device_configs[device_id] = device_config
+        self.state.set(f"device.{device_id}.name", name, source="config")
+        self.state.set(f"device.{device_id}.connected", False, source="config")
+        self.state.set(f"device.{device_id}.orphaned", True, source="config")
+        self.state.set(
+            f"device.{device_id}.orphan_reason",
+            missing_driver_reason(driver_id),
+            source="config",
+        )
+        await self.events.emit("device.orphaned", {"device_id": device_id, "driver": driver_id})
+
+    async def _hold_carried_pause(
+        self, device_id: str, config: dict[str, Any], seconds_left: float, held_for: str | None,
+    ) -> None:
+        """A device re-added while paused stays paused: registered, its bridge
+        port prepared and its web page probed, but not connected, which is the
+        whole harm. Whoever holds the pause still holds the session it was
+        taken to protect, and the backstop is re-armed with the time it had
+        left. remove_device dropped the detected page on the way through."""
+        self._intentional_disconnect.add(device_id)
+        self.state.set(f"device.{device_id}.paused", True, source="device_manager")
+        self.state.set(f"device.{device_id}.paused_for", held_for, source="device_manager")
+        self.state.set(f"device.{device_id}.connected", False, source="device_manager")
+        self._schedule_pause_expiry(device_id, seconds_left)
+        log.info(
+            f"Device '{device_id}' was re-added while paused — staying "
+            f"paused ({seconds_left:.0f}s left on the backstop)"
+        )
+        await self._prepare_bridge_for(device_id, config)
+        self._schedule_web_ui_probe(device_id)
 
     async def _bring_up_device(self, device_id: str) -> None:
         """Prepare the bridge port, connect, and probe for a web UI.
@@ -878,18 +895,20 @@ class DeviceManager(
 
     def _list_devices(self) -> list[dict[str, Any]]:
         """List all devices with summary info (including orphaned and disabled)."""
-        result = [self._live_summary(device_id) for device_id in self._devices]
-        seen = set(self._devices)
-        for device_id, config in self._orphaned_devices.items():
-            if device_id not in seen:
-                seen.add(device_id)
-                result.append(_orphan_summary(device_id, config))
+        live = [self._live_summary(device_id) for device_id in self._devices]
+        orphans = [
+            _orphan_summary(device_id, config)
+            for device_id, config in self._orphaned_devices.items()
+            if device_id not in self._devices
+        ]
         # What is left has no driver because it is disabled.
-        for device_id, config in self._device_configs.items():
-            if device_id not in seen:
-                seen.add(device_id)
-                result.append({**_summary_without_driver(device_id, config), "enabled": False})
-        return result
+        listed = set(self._devices) | set(self._orphaned_devices)
+        disabled = [
+            {**_summary_without_driver(device_id, config), "enabled": False}
+            for device_id, config in self._device_configs.items()
+            if device_id not in listed
+        ]
+        return live + orphans + disabled
 
     def _live_summary(self, device_id: str) -> dict[str, Any]:
         """A device with a live driver, as the listing gives it: the summary,
@@ -941,17 +960,8 @@ class DeviceManager(
         the bring-up round asked for below, not before this returns, so a
         caller that needs the device on the wire awaits
         ``Engine.wait_for_device_bringup``.
-
-        The two ways this can be asked about the wrong device are separate
-        answers, because the door above them is: an id nobody has is not found,
-        while a device that is running perfectly well has nothing to retry.
         """
-        if device_id not in self._orphaned_devices:
-            if device_id not in self._device_configs:
-                raise DeviceNotFoundError(f"Device '{device_id}' not found")
-            raise ValueError(f"Device '{device_id}' is not orphaned")
-
-        config = self._orphaned_devices[device_id]
+        config = self._orphan_record(device_id)
         driver_id = config.get("driver", "")
 
         # Check if the driver is now available
@@ -980,6 +990,19 @@ class DeviceManager(
         if activated and ask_for_round:
             self.request_bringup()
         return activated
+
+    def _orphan_record(self, device_id: str) -> dict[str, Any]:
+        """An orphaned device's record.
+
+        The two ways to ask about the wrong device are separate answers,
+        because the door above them is: an id nobody has is not found, while a
+        device that is running perfectly well has nothing to retry.
+        """
+        if device_id in self._orphaned_devices:
+            return self._orphaned_devices[device_id]
+        if device_id not in self._device_configs:
+            raise DeviceNotFoundError(f"Device '{device_id}' not found")
+        raise ValueError(f"Device '{device_id}' is not orphaned")
 
     async def retry_all_orphans(self, *, defer_connect: bool = False) -> list[str]:
         """Promote every orphan whose driver is now in the registry.
@@ -1237,11 +1260,9 @@ class DeviceManager(
 
     async def _on_device_disconnected(self, event: str, payload: dict[str, Any]) -> None:
         """Handle device.disconnected.* events — trigger auto-reconnect."""
-        # Extract device_id from event name: "device.disconnected.<id>"
-        parts = event.split(".", 2)
-        if len(parts) < 3:
+        device_id = _device_id_of(event)
+        if device_id is None:
             return
-        device_id = parts[2]
 
         # Before the intentional-disconnect / still-connected guards below, so
         # a bridge being removed or updated still takes its dependents offline.
@@ -1287,6 +1308,13 @@ class DeviceManager(
         log.info(f"[{device_id}] Transport disconnected — starting auto-reconnect")
         self._start_reconnect(device_id)
 
+    def _reason_outlived(self, device_id: str) -> bool:
+        """Connected, and still publishing why it was not."""
+        driver = self._devices.get(device_id)
+        if driver is None or driver.get_state("connected") is not True:
+            return False
+        return self.state.get(f"device.{device_id}.offline_reason") is not None
+
     async def _on_device_connected(self, event: str, payload: dict[str, Any]) -> None:
         """Handle device.connected.* events — mirror a bridge coming online onto
         the bridge-routed devices bound to it.
@@ -1296,22 +1324,15 @@ class DeviceManager(
         a bridge connects *after* its dependents were added; the add-time seed
         in ``BaseDriver.connect`` covers the reverse order.
         """
-        parts = event.split(".", 2)
-        if len(parts) < 3:
+        device_id = _device_id_of(event)
+        if device_id is None:
             return
-        device_id = parts[2]
         # A held connection (see _reconnect_loop) is announced by the driver
         # when the device answers, and the loop that opened it clears the
         # offline reason. If that loop was stopped meanwhile (a setup action
         # cancels it and leaves the connection up), nothing else would.
-        if device_id not in self._reconnect_tasks:
-            driver = self._devices.get(device_id)
-            if (
-                driver is not None
-                and driver.get_state("connected") is True
-                and self.state.get(f"device.{device_id}.offline_reason") is not None
-            ):
-                self._clear_offline_reason(device_id)
+        if device_id not in self._reconnect_tasks and self._reason_outlived(device_id):
+            self._clear_offline_reason(device_id)
         # A bridge that was down when a downstream was added, and heals now,
         # would carry that downstream's bytes at whatever its NVRAM holds -- the
         # factory default, or the last job's baud -- while the device reads
