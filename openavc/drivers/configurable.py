@@ -23,11 +23,12 @@ is refusing the credentials (``http_credential``), and the ``liveness:``
 watchdog (``liveness_block``). What goes out: the framing of every byte the
 device's protocol puts on the wire, from every place that sends
 (``send_framing``), and an HTTP command's request (``http_commands``). The
-lines the driver sends on its own: start-up, the poll and the spacing between their
-lines (``start_up_and_poll``), what a poll or start-up entry sends and
-whether its gates let it go now (``query_entries``), and reading the device
-again after a change, a reply rule's ``then_query`` and a command's
-``read_back:`` (``rereads``). Writing a device setting: ``setting_writes``.
+lines the driver sends on its own: start-up, the poll and the spacing
+between their lines (``start_up_and_poll``), what a poll or start-up entry
+sends and whether its gates let it go now (``query_entries``), and reading
+the device again after a change, a reply rule's ``then_query`` and a
+command's ``read_back:`` (``rereads``). Writing a device setting:
+``setting_writes``.
 """
 
 from __future__ import annotations
@@ -101,23 +102,57 @@ def _build_commands_meta(commands_def: dict[str, Any]) -> dict[str, Any]:
     (the device page and its promoted buttons, the device audit), which asks
     first.
     """
-    commands_meta: dict[str, Any] = {}
-    for cmd_name, cmd_def in (commands_def or {}).items():
-        if not isinstance(cmd_def, dict):
-            continue
-        cmd_meta: dict[str, Any] = {
-            "label": cmd_def.get("label", cmd_name),
-            "params": cmd_def.get("params", {}),
-        }
-        for key in (
-            "method", "path", "body", "address", "args", "help",
-            "available_offline", "restarts_device_for", "sleeps_device", "sets", "query_for",
-            "confirm",
-        ):
-            if key in cmd_def:
-                cmd_meta[key] = cmd_def[key]
-        commands_meta[cmd_name] = cmd_meta
-    return commands_meta
+    return {
+        name: _command_meta(name, cmd_def)
+        for name, cmd_def in (commands_def or {}).items()
+        if isinstance(cmd_def, dict)
+    }
+
+
+# The command fields _build_commands_meta copies as written, in the order they
+# land after the label and params.
+_COMMAND_META_FIELDS = (
+    "method", "path", "body", "address", "args", "help",
+    "available_offline", "restarts_device_for", "sleeps_device", "sets", "query_for",
+    "confirm",
+)
+
+
+def _command_meta(name: str, cmd_def: dict[str, Any]) -> dict[str, Any]:
+    """One command's entry: its label (else its name), its params, then the
+    fields it declares of ``_COMMAND_META_FIELDS``."""
+    meta: dict[str, Any] = {
+        "label": cmd_def.get("label", name),
+        "params": cmd_def.get("params", {}),
+    }
+    _copy_fields(meta, cmd_def, _COMMAND_META_FIELDS)
+    return meta
+
+
+def _param_wire_value(name: str, value: Any, pdef: dict[str, Any]) -> dict[str, Any]:
+    """A parameter as it goes on the wire, when its declaration translates
+    it: its ``map:`` word, else through its ``scale`` / ``offset`` (the real
+    value back to the device's own number); nothing when it declares
+    neither. Only a declared conversion converts: a None with no scale stays
+    None even if ``unknown`` names a code for it."""
+    mapped = compiled_protocol.map_word(value, pdef.get("map"))
+    if mapped is not None:
+        return {name: mapped}
+    if pdef.get("scale") is not None or pdef.get("offset") is not None:
+        return {name: compiled_protocol.value_to_wire(value, pdef)}
+    return {}
+
+
+def _udp_port_number(where: str, text: str) -> int:
+    """A ``udp:`` block's port text as a port number, or the refusal; ``where``
+    leads the message."""
+    try:
+        port = int(str(text).strip())
+    except ValueError:
+        raise ValueError(f"{where}: port {text!r} is not a number") from None
+    if not 1 <= port <= 65535:
+        raise ValueError(f"{where}: port {port} is not between 1 and 65535")
+    return port
 
 
 def _inline_poll_queries(commands: dict[str, Any]) -> list[str]:
@@ -669,24 +704,14 @@ class ConfigurableDriver(
         all_params: dict[str, Any],
         default: int | None = None,
     ) -> int:
-        """The port a ``udp:`` block names: a number, or a {config} placeholder."""
+        """The port a ``udp:`` block names: a number, or a {config} placeholder;
+        ``default`` when it names none."""
         if raw is None or raw == "":
-            if default is not None:
-                return default
-            raise ValueError(f"[{self.device_id}] {where}: no port to send to")
+            if default is None:
+                raise ValueError(f"[{self.device_id}] {where}: no port to send to")
+            return default
         text = self._substitute_for_wire(f"{where}.port", str(raw), all_params)
-        try:
-            port = int(str(text).strip())
-        except ValueError:
-            raise ValueError(
-                f"[{self.device_id}] {where}: port {text!r} is not a number"
-            ) from None
-        if not 1 <= port <= 65535:
-            raise ValueError(
-                f"[{self.device_id}] {where}: port {port} is not between 1 and "
-                f"65535"
-            )
-        return port
+        return _udp_port_number(f"[{self.device_id}] {where}", text)
 
     @staticmethod
     def _apply_param_wire_maps(
@@ -704,20 +729,11 @@ class ConfigurableDriver(
         re-coerce)."""
         if not isinstance(param_defs, dict) or not params:
             return params
-        out = params
+        changed: dict[str, Any] = {}
         for name, pdef in param_defs.items():
-            if not isinstance(pdef, dict) or name not in params:
-                continue
-            mapped = compiled_protocol.map_word(params[name], pdef.get("map"))
-            if mapped is not None:
-                if out is params:
-                    out = dict(params)
-                out[name] = mapped
-            elif pdef.get("scale") is not None or pdef.get("offset") is not None:
-                if out is params:
-                    out = dict(params)
-                out[name] = compiled_protocol.value_to_wire(params[name], pdef)
-        return out
+            if isinstance(pdef, dict) and name in params:
+                changed.update(_param_wire_value(name, params[name], pdef))
+        return {**params, **changed} if changed else params
 
     def _push_params(self) -> dict[str, Any]:
         """Platform-provided substitution values for command templates.
