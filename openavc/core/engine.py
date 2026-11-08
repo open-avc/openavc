@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import copy
+import functools
 import hmac
 import json
 import shutil
@@ -95,7 +96,7 @@ from openavc.version import __version__
 log = get_logger(__name__)
 
 
-def _set_plugin_config(project: ProjectConfig, plugin_id: str, config: dict) -> None:
+def _replace_plugin_config(project: ProjectConfig, plugin_id: str, config: dict) -> None:
     """``config`` as the plugin's config in ``project``, if it still has it."""
     if plugin_id in project.plugins:
         project.plugins[plugin_id].config = config
@@ -691,9 +692,7 @@ class Engine(EngineLifecycleMixin, ProjectChangesMixin, ProjectVariablesMixin):
         for plugin_id in old_plugins - new_plugins:
             await self._drop_plugin(plugin_id)
         for plugin_id in new_plugins - old_plugins:
-            entry = self.project.plugins[plugin_id]
-            if entry.enabled:
-                await self.plugin_loader.start_plugin(plugin_id, entry.config)
+            await self._add_plugin(plugin_id, self.project.plugins[plugin_id])
         for plugin_id in old_plugins & new_plugins:
             await self._follow_plugin_entry(plugin_id, self.project.plugins[plugin_id])
 
@@ -702,6 +701,11 @@ class Engine(EngineLifecycleMixin, ProjectChangesMixin, ProjectVariablesMixin):
         if self.plugin_loader.is_running(plugin_id):
             await self.plugin_loader.stop_plugin(plugin_id)
         self.plugin_loader.remove_plugin_tracking(plugin_id)
+
+    async def _add_plugin(self, plugin_id: str, entry) -> None:
+        """A plugin the project gained: started, if its entry enables it."""
+        if entry.enabled:
+            await self.plugin_loader.start_plugin(plugin_id, entry.config)
 
     async def _follow_plugin_entry(self, plugin_id: str, entry) -> None:
         """A plugin the project still has: stopped, started, or handed its
@@ -747,14 +751,12 @@ class Engine(EngineLifecycleMixin, ProjectChangesMixin, ProjectVariablesMixin):
         # project keeps the marker.
         config = move_plugin_logins(plugin_id, config, self.device_logins, current=previous)
 
-        def on_error():
-            return self._plugin_config_not_saved(plugin_id, previous)
-
+        on_error = functools.partial(self._plugin_config_not_saved, plugin_id, previous)
         if self._reload_lock.locked():
             # Possibly our own call chain holds the lock (a plugin hook run
             # by the reconciler) — awaiting it would deadlock. The plugin's
             # live config is already current; only the persist is deferred.
-            _set_plugin_config(self.project, plugin_id, config)
+            _replace_plugin_config(self.project, plugin_id, config)
             self.schedule_bookkeeping_change(
                 lambda project: self._write_running_plugin_config(project, plugin_id),
                 on_error=on_error,
@@ -762,7 +764,7 @@ class Engine(EngineLifecycleMixin, ProjectChangesMixin, ProjectVariablesMixin):
         else:
             try:
                 await self.persist_bookkeeping_change(
-                    lambda project: _set_plugin_config(project, plugin_id, config),
+                    lambda project: _replace_plugin_config(project, plugin_id, config),
                     on_error=on_error,
                 )
             except Exception as e:
@@ -775,7 +777,7 @@ class Engine(EngineLifecycleMixin, ProjectChangesMixin, ProjectVariablesMixin):
         # Revert the in-memory project so it matches disk. Otherwise a
         # bad/unwritable config lingers in the shared project model and
         # the next save of ANYTHING re-serializes it and fails too.
-        _set_plugin_config(self.project, plugin_id, previous)
+        _replace_plugin_config(self.project, plugin_id, previous)
         await self.broadcast_ws({
             "type": "error",
             "message": f"Failed to save plugin config for '{plugin_id}'",

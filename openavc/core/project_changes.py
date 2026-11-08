@@ -344,7 +344,7 @@ class ProjectChangesMixin:
                 "ui": self.panel_ui(),
             })
 
-    async def persist_bookkeeping_change(self, mutate, *, on_error=None) -> int:
+    async def persist_bookkeeping_change(self, mutate, *, on_error=None) -> str:
         """Persist an in-place project mutation whose runtime effect is
         already applied — no reconcile, just save + revision bump +
         ``project.reloaded`` broadcast (so an open IDE's stale ETag gets a
