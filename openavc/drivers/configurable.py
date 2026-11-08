@@ -11,11 +11,14 @@ Usage:
     DriverClass = create_configurable_driver_class(driver_def)
     register_driver(DriverClass)
 
-Reading the device's replies lives in mixins ``ConfigurableDriver``
-inherits, so every name stays on the driver object: the regex rules over a
-line of text (``text_replies``), the JSON-body rules and the ``json_path``
-walk (``json_replies``), OSC commands and reply rules (``osc_wire``), and what
-a reply's value becomes and which child it belongs to (``reply_values``).
+Whole jobs live in mixins ``ConfigurableDriver`` inherits, so every name
+stays on the driver object. Reading the device's replies: the regex rules
+over a line of text (``text_replies``), the JSON-body rules and the
+``json_path`` walk (``json_replies``), OSC commands and reply rules
+(``osc_wire``), what a reply's value becomes and which child it belongs to
+(``reply_values``), and a rule's throttle (``reply_throttle``). Around the
+connection: the ``auth:`` sign-in (``sign_in``) and the children an
+``instances:`` block declares (``declared_roster``).
 """
 
 from __future__ import annotations
@@ -46,9 +49,12 @@ from openavc.drivers.spec import (
     FOLLOW_UP_SETTLE_S,
     LINE_GAP_TRANSPORTS,
 )
+from openavc.drivers.declared_roster import DeclaredRoster
 from openavc.drivers.json_replies import JsonReplies
 from openavc.drivers.osc_wire import OscWire
+from openavc.drivers.reply_throttle import ReplyThrottle
 from openavc.drivers.reply_values import ReplyValues
+from openavc.drivers.sign_in import SignIn
 from openavc.drivers.text_replies import TextReplies
 from openavc.drivers.inline_protocol import (
     declare_command_params,
@@ -59,7 +65,7 @@ from openavc.drivers.inline_protocol import (
     normalize_ir_codes,
 )
 from openavc.transport.binary_helpers import encode_escape_sequences as _safe_encode_escapes
-from openavc.transport.frame_parsers import DEFAULT_MAX_BUFFER, FrameParser
+from openavc.transport.frame_parsers import FrameParser
 from openavc.utils.logger import get_logger
 from openavc.transport.pacing import pacing_clock, sleep_at_least
 
@@ -74,23 +80,6 @@ try:
     _HTTP_TRANSPORT_ERRORS: tuple[type[BaseException], ...] = (_httpx.HTTPError,)
 except ImportError:  # pragma: no cover - httpx is a hard dependency in practice
     _HTTP_TRANSPORT_ERRORS = ()
-
-# Hard cap on bytes buffered during the pre-auth login handshake. The handshake
-# runs in raw mode (no frame parser), so without a cap a device — or anything
-# spoofing its IP — could stream forever before any prompt match, growing memory
-# and forcing an O(n^2) re-scan per chunk on an unauthenticated path. Reuse the
-# frame parser's buffer ceiling; a login banner + prompts never approach it.
-_AUTH_MAX_BUFFER = DEFAULT_MAX_BUFFER
-
-# A TCP sign-in skipped because the credential it types first is blank still
-# listens for the device's first prompt for up to this long after connect, so
-# a device that wants one fails as auth_failed instead of taking the start-up
-# lines as its password. It stops early once bytes have arrived and the line
-# has been quiet for _BLANK_SIGN_IN_QUIET_S with no prompt among them. Sized
-# from a measured unit that prints its banner up to a second after connect and
-# its prompt as a separate write straight after it.
-_BLANK_SIGN_IN_WINDOW_S = 2.5
-_BLANK_SIGN_IN_QUIET_S = 0.5
 
 # HTTP statuses that mean "the device refused this request's credentials": 401
 # from the device itself, 407 from a proxy in front of it, 403 for the devices
@@ -173,7 +162,16 @@ _CHILD_ID_TOKEN = re.compile(r"\{child_id(?::[^{}]*)?\}")
 # over LINE_GAP_TRANSPORTS when no ``inter_command_delay`` is set.
 
 
-class ConfigurableDriver(TextReplies, JsonReplies, OscWire, ReplyValues, BaseDriver):
+class ConfigurableDriver(
+    SignIn,
+    DeclaredRoster,
+    ReplyThrottle,
+    TextReplies,
+    JsonReplies,
+    OscWire,
+    ReplyValues,
+    BaseDriver,
+):
     """
     A driver that interprets a YAML (.avcdriver) definition at runtime.
 
@@ -206,18 +204,9 @@ class ConfigurableDriver(TextReplies, JsonReplies, OscWire, ReplyValues, BaseDri
         self._merge_config_protocol()
 
         # Child rosters can size themselves from a device-reported state var
-        # (`instances.count_from_state`, e.g. num_outputs) instead of only a
-        # static config field, so a driver's channel count tracks what the
-        # hardware reports. Collect those state keys now; set_state() reconciles
-        # the roster whenever one of them updates.
-        self._roster_state_deps: set[str] = {
-            str(tdef["instances"]["count_from_state"])
-            for tdef in (self._definition.get("child_entity_types") or {}).values()
-            if isinstance(tdef, dict)
-            and isinstance(tdef.get("instances"), dict)
-            and tdef["instances"].get("count_from_state")
-        }
-        self._reconciling_roster = False
+        # (`instances.count_from_state`, e.g. num_outputs) as well as a config
+        # field, so a driver's channel count tracks what the hardware reports.
+        self._init_declared_roster()
 
         # Compute declarative derived config values (e.g. an optional address
         # prefix) into self.config, so every downstream substitution path —
@@ -263,26 +252,9 @@ class ConfigurableDriver(TextReplies, JsonReplies, OscWire, ReplyValues, BaseDri
         self._read_back_tasks: set[asyncio.Task[None]] = set()
         self._read_back_waiting: set[str] = set()
 
-        # Telnet/serial login handshake state. Active only during
-        # _perform_auth_handshake() — outside that window on_data_received
-        # falls through to normal response matching.
-        self._auth_mode: bool = False
-        self._auth_buffer: bytearray = bytearray()
-        self._auth_event: asyncio.Event = asyncio.Event()
-        # Set by on_data_received when _auth_buffer exceeds _AUTH_MAX_BUFFER so
-        # _auth_wait_for can abort the handshake instead of growing unbounded.
-        self._auth_overflow: bool = False
-        # Decoded-text offset of the last stage's match: each handshake stage
-        # searches only bytes AFTER the previous stage's match, so a banner
-        # containing "password" or an echoed credential can't satisfy a later
-        # stage.
-        self._auth_search_pos: int = 0
-        # Computed by connect() (auth block present + _auth_should_run);
-        # consumed by _post_connect to run the handshake pre-`connected`.
-        self._auth_pending: bool = False
-        # Set by connect() instead when the sign-in is skipped for a blank
-        # credential: _post_connect then listens for the device's prompt.
-        self._auth_watch_blank: bool = False
+        # The `auth:` sign-in's state. Raw mode only during a sign-in;
+        # outside it on_data_received goes to the reply rules.
+        self._init_sign_in()
 
         # Declarative liveness watchdog (`liveness:` block): "send X every N,
         # await a reply within T, reconnect after K misses". Backs the
@@ -324,43 +296,6 @@ class ConfigurableDriver(TextReplies, JsonReplies, OscWire, ReplyValues, BaseDri
         self._osc_responses = compiled.osc_responses
         self._json_responses = compiled.json_responses
         self._after_json_responses = compiled.after_json_responses
-
-    def set_project_child_entities(
-        self, child_entities: dict[str, dict[str, dict[str, Any]]] | None,
-    ) -> None:
-        """Take the project's child metadata, then build the declared roster.
-
-        A declarative roster is knowable without the device — ``count: 7`` is
-        seven whether anything answers or not — so it does not have to wait for
-        a first successful connect, and waiting is what made a mixer that had
-        never been reachable read "Inputs 0 / Outputs 0 — no inputs registered
-        yet" with every panel binding under it pointing at a key that did not
-        exist. Rooms get commissioned before the gear is racked; a page built
-        against ``input.1.level`` should not depend on the device having
-        answered once.
-
-        This is the same rule :meth:`BaseDriver._init_state_variables` follows
-        one level up: the keys exist so a binding picker, the live-state list
-        and a ``$device.…`` reference all know the reading is on offer, while
-        the values stay unknown until the device speaks. The children register
-        OFFLINE, carrying ``parent_offline`` — nothing has been reached, and
-        claiming presence here would be the exact fault this contract exists to
-        remove.
-
-        Here rather than in ``__init__`` because this is the moment the roster
-        has all of its inputs: the DeviceManager hands the project's labels
-        over immediately after construction, and registering before them would
-        seed every child with the driver's ``instances.label`` template and
-        then never take the integrator's own name (register_child is
-        idempotent by design).
-        """
-        super().set_project_child_entities(child_entities)
-        try:
-            self._register_declared_children()
-        except Exception:
-            log.exception(
-                f"[{self.device_id}] Failed to register declared children"
-            )
 
     def _condition_key(self, key: str) -> str:
         """One condition key, as a state-store key.
@@ -408,131 +343,6 @@ class ConfigurableDriver(TextReplies, JsonReplies, OscWire, ReplyValues, BaseDri
                     return True
                 return all(results) if require_all else any(results)
         return self._condition_holds(condition)
-
-    def _throttle_hold(
-        self,
-        tstate: dict[str, Any] | None,
-        scope: str,
-        flat: list[tuple[str, Any]],
-        children: list[tuple[str, Any, dict[str, Any]]],
-    ) -> bool:
-        """The response throttle, trailing-edge. False when the rule may apply
-        its writes now (outside its window: now is stamped as the scope's
-        last fire). True when it fired inside the window: the writes are held
-        and the caller applies nothing.
-
-        A held write is not dropped. The newest one per scope is written when
-        the window lapses, so a value that stops changing inside a window (a
-        talker's final position, a fader that came to rest) still lands, and
-        the rate stays at one write per window. A drop-style throttle lost
-        exactly that last value until the next change.
-
-        The scope is what keeps ONE rule serving MANY children honest. A
-        per-channel meter is a single `child_set` rule matching every channel,
-        so a rule-wide window would let whichever channel arrived first consume
-        it and starve the rest — the meter would appear to update only channel
-        1. Throttling per routed child gives each child its own window, which is
-        what the cap is meant to express (N writes/sec per meter, not per
-        driver). Flat rules share the single "" scope, unchanged."""
-        if not tstate:
-            return False
-        now = time.monotonic()
-        window = tstate["window"]
-        last: dict[str, float] = tstate["last"]
-        if now - last.get(scope, float("-inf")) >= window:
-            # A hold still waiting for its timer is older than this frame.
-            self._drop_held(tstate, scope)
-            last[scope] = now
-            return False
-        pending = tstate.setdefault("pending", {})
-        timers = tstate.setdefault("timers", {})
-        # What each key holds now, so a write that lands before the flush
-        # (a polled reply, another rule) is not overwritten by this older one.
-        flat_before = {key: self.get_state(key) for key, _ in flat}
-        child_before: dict[tuple[str, Any], dict[str, Any]] = {}
-        for ctype, local_id, updates in children:
-            current = self.get_child_state(ctype, local_id)
-            child_before[(ctype, local_id)] = {
-                prop: current.get(prop) for prop in updates
-            }
-        pending[scope] = (flat, children, flat_before, child_before)
-        if scope not in timers:
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                # No loop to flush on (a synchronous caller): drop, as a
-                # throttle without a timer has to.
-                pending.pop(scope, None)
-                return True
-            delay = window - (now - last[scope])
-            timers[scope] = loop.call_later(
-                delay, self._flush_held, tstate, scope
-            )
-        return True
-
-    def _flush_held(self, tstate: dict[str, Any], scope: str) -> None:
-        """Write a scope's held update when its window lapses. The flush counts
-        as the scope's fire, so a frame inside the next window is held again.
-        A key something else wrote since the hold keeps that newer value."""
-        tstate.get("timers", {}).pop(scope, None)
-        held = tstate.get("pending", {}).pop(scope, None)
-        if held is None:
-            return
-        flat, children, flat_before, child_before = held
-        tstate["last"][scope] = time.monotonic()
-        try:
-            for key, value in flat:
-                if self.get_state(key) == flat_before.get(key):
-                    self.set_state(key, value)
-            for ctype, local_id, updates in children:
-                if not self.is_child_registered(ctype, local_id):
-                    continue
-                current = self.get_child_state(ctype, local_id)
-                before = child_before.get((ctype, local_id), {})
-                kept = {
-                    prop: value for prop, value in updates.items()
-                    if current.get(prop) == before.get(prop)
-                }
-                if kept:
-                    self.set_child_state_batch(ctype, local_id, kept)
-        except Exception:
-            log.exception(f"[{self.device_id}] Writing a throttled response failed")
-
-    @staticmethod
-    def _drop_held(tstate: dict[str, Any], scope: str) -> None:
-        timer = tstate.get("timers", {}).pop(scope, None)
-        if timer is not None:
-            timer.cancel()
-        tstate.get("pending", {}).pop(scope, None)
-
-    def _drop_all_held(self) -> None:
-        """Cancel every held throttled write: the connection they came in on
-        is going away, and a timer must not write into a device that may have
-        been removed."""
-        json_rules = getattr(self, "_json_responses", None) or []
-        tables = (
-            (getattr(self, "_compiled_responses", None) or [], 3),
-            (getattr(self, "_osc_responses", None) or [], 3),
-            (json_rules, 1),
-        )
-        for table, slot in tables:
-            for entry in table:
-                tstate = entry[slot]
-                if not tstate:
-                    continue
-                for scope in list(tstate.get("timers", {})):
-                    self._drop_held(tstate, scope)
-                tstate.get("pending", {}).clear()
-
-    def _apply_writes(
-        self,
-        flat: list[tuple[str, Any]],
-        children: list[tuple[str, Any, dict[str, Any]]],
-    ) -> None:
-        for key, value in flat:
-            self.set_state(key, value)
-        for ctype, local_id, updates in children:
-            self.set_child_state_batch(ctype, local_id, updates)
 
     async def _close_session(self) -> None:
         self._drop_all_held()
@@ -725,16 +535,7 @@ class ConfigurableDriver(TextReplies, JsonReplies, OscWire, ReplyValues, BaseDri
         # device emits the moment the connection opens lands in the auth
         # buffer instead of being run through the normal response matcher.
         # _perform_auth_handshake() turns this back off when it's done.
-        auth_def = self._definition.get("auth")
-        plan = self._auth_plan(auth_def) if isinstance(auth_def, dict) else None
-        self._auth_pending = plan == "run"
-        self._auth_watch_blank = plan == "blank"
-        if self._auth_pending or self._auth_watch_blank:
-            self._auth_buffer = bytearray()
-            self._auth_event = asyncio.Event()
-            self._auth_overflow = False
-            self._auth_search_pos = 0
-            self._auth_mode = True
+        self._arm_sign_in()
 
         try:
             await super()._connect_once(attempt)
@@ -1506,520 +1307,6 @@ class ConfigurableDriver(TextReplies, JsonReplies, OscWire, ReplyValues, BaseDri
         self._read_back_tasks.clear()
         self._read_back_waiting.clear()
 
-    def _resolve_instance_ids(
-        self, ctype: str, tdef: dict[str, Any], inst: dict[str, Any]
-    ) -> list[int | str] | None:
-        """Resolve an ``instances:`` block to the wanted local-id list.
-        ``count`` = fixed ids 1..N; ``count_from`` = an integer config field;
-        ``ids_from`` = a comma-separated config field (sparse / string ids);
-        ``ids`` = a literal fixed list (protocol-fixed rosters — string ids
-        or sparse ints — that no config field should have to fake).
-        Returns None when the declaration can't be resolved (warned)."""
-        id_format = tdef.get("id_format") or {}
-        id_type = id_format.get("type", "integer")
-        if "ids" in inst:
-            raw_ids = inst["ids"]
-            if not isinstance(raw_ids, list):
-                log.warning(
-                    f"[{self.device_id}] instances: {ctype} ids must be a list"
-                )
-                return None
-            ids: list[int | str] = []
-            for item in raw_ids:
-                if isinstance(item, bool) or not isinstance(item, (str, int)):
-                    log.warning(
-                        f"[{self.device_id}] instances: {ctype} id {item!r} "
-                        f"is not a scalar; skipping"
-                    )
-                    continue
-                if id_type == "integer":
-                    try:
-                        ids.append(int(str(item).strip()))
-                    except ValueError:
-                        log.warning(
-                            f"[{self.device_id}] instances: {ctype} id "
-                            f"{item!r} is not an integer; skipping"
-                        )
-                else:
-                    text = str(item).strip()
-                    if text:
-                        ids.append(text)
-            return ids
-        if "count" in inst or "count_from" in inst or "count_from_state" in inst:
-            if id_type != "integer":
-                log.warning(
-                    f"[{self.device_id}] instances: count/count_from require "
-                    f"integer ids ({ctype} declares string ids — use ids_from)"
-                )
-                return None
-            if "count" in inst:
-                raw: Any = inst["count"]
-            else:
-                # Prefer a device-reported count (e.g. num_outputs from the amp)
-                # so the roster tracks the hardware; fall back to the config
-                # field while that state is still unknown (offline / pre-sync).
-                raw = None
-                state_key = inst.get("count_from_state")
-                if state_key:
-                    sval = self.get_state(str(state_key))
-                    # Only trust a POSITIVE reported count. 0 / None / blank means
-                    # "not reported yet" (e.g. the state-var's pre-connect default),
-                    # so fall back to the config field rather than build 0 children.
-                    try:
-                        if sval is not None and int(str(sval).strip()) > 0:
-                            raw = sval
-                    except (TypeError, ValueError):
-                        pass
-                if raw is None and inst.get("count_from"):
-                    cval = self.config.get(inst.get("count_from"), "")
-                    if str(cval).strip() != "":
-                        raw = cval
-                if raw is None:
-                    # No count known yet — leave the roster untouched until one
-                    # is (the count_from_state var arriving triggers a reconcile).
-                    return None
-            try:
-                n = int(str(raw).strip())
-            except (TypeError, ValueError):
-                log.warning(
-                    f"[{self.device_id}] instances: {ctype} count {raw!r} is "
-                    f"not an integer"
-                )
-                return None
-            if n < 0:
-                return None
-            return list(range(1, n + 1))
-        field = inst.get("ids_from")
-        if not isinstance(field, str) or not field:
-            return None
-        raw_list = str(self.config.get(field, "") or "")
-        ids: list[int | str] = []
-        for token in raw_list.split(","):
-            token = token.strip()
-            if not token:
-                continue
-            if id_type == "integer":
-                try:
-                    ids.append(int(token))
-                except ValueError:
-                    log.warning(
-                        f"[{self.device_id}] instances: {ctype} id {token!r} "
-                        f"from '{field}' is not an integer; skipping"
-                    )
-            else:
-                ids.append(token)
-        return ids
-
-    def set_state(self, property_name: str, value: Any) -> None:
-        """Set device-level state, and reconcile declared child rosters when a
-        state var one of them sizes from (``instances.count_from_state``, e.g.
-        num_outputs) changes — so the roster tracks what the device reports."""
-        super().set_state(property_name, value)
-        # getattr guards: set_state runs during super().__init__() (seeding
-        # state-var defaults) before these attributes are assigned — those early
-        # calls have no registered children to reconcile anyway.
-        if (
-            property_name in getattr(self, "_roster_state_deps", ())
-            and not getattr(self, "_reconciling_roster", False)
-        ):
-            self._reconciling_roster = True
-            try:
-                self._register_declared_children()
-            except Exception:
-                log.exception(
-                    f"[{self.device_id}] Failed to reconcile children after "
-                    f"'{property_name}' update"
-                )
-            finally:
-                self._reconciling_roster = False
-
-    def _register_declared_children(self) -> dict[str, int]:
-        """Register/reconcile children declared via an ``instances:`` block on
-        a ``child_entity_types`` entry. Reconcile is config-want-set: register
-        the wanted ids, deregister anything registered but no longer wanted.
-        Idempotent per connect (re-registering an existing child is a no-op).
-        An ``instances.label`` template seeds the initial label, but never
-        overrides a label the user set in the project."""
-        counts: dict[str, int] = {}
-        child_types = self._definition.get("child_entity_types") or {}
-        for ctype, tdef in child_types.items():
-            if not isinstance(tdef, dict):
-                continue
-            inst = tdef.get("instances")
-            if not isinstance(inst, dict):
-                continue
-            ids = self._resolve_instance_ids(ctype, tdef, inst)
-            if ids is None:
-                continue
-            wanted = set(ids)
-            for local_id in list(self.list_children(ctype)):
-                if local_id not in wanted:
-                    self.deregister_child(ctype, local_id)
-            label_template = inst.get("label")
-            # Registering while the device is unreachable — at construction,
-            # or on a roster that resized after a drop. A child registered here
-            # has never been seen, so it takes the same mark every other child
-            # under an offline parent carries. A `reported` roster already says
-            # "empty" for itself and is left to say it.
-            offline_seed = (
-                self._child_parent_offline_presence()
-                if not self._connected
-                and not self._child_unknown_presence(ctype)["offline_reason"]
-                else None
-            )
-            registered = 0
-            for local_id in ids:
-                initial: dict[str, Any] | None = None
-                if isinstance(label_template, str) and label_template:
-                    try:
-                        padded = self._format_child_id(ctype, local_id)
-                    except (TypeError, ValueError):
-                        padded = None
-                    project_entry = (
-                        self._project_child_entities.get(ctype, {}).get(padded)
-                        if padded is not None
-                        else None
-                    )
-                    if not (project_entry and project_entry.get("label")):
-                        initial = {
-                            "label": label_template.replace("{id}", str(local_id))
-                        }
-                if offline_seed is not None:
-                    initial = {**(initial or {}), **offline_seed}
-                try:
-                    self.register_child(ctype, local_id, initial_state=initial)
-                    registered += 1
-                except (TypeError, ValueError) as e:
-                    log.warning(
-                        f"[{self.device_id}] instances: could not register "
-                        f"{ctype} {local_id!r}: {e}"
-                    )
-            counts[ctype] = registered
-        return counts
-
-    async def refresh_children(self) -> dict[str, int]:
-        """Re-derive declared child rosters from config (the IDE's "Refresh
-        from Device" button). Only meaningful when at least one child type
-        declares ``instances:``; otherwise defer to BaseDriver (raises
-        NotImplementedError so the API reports refresh as unsupported)."""
-        child_types = self._definition.get("child_entity_types") or {}
-        has_instances = any(
-            isinstance(tdef, dict) and isinstance(tdef.get("instances"), dict)
-            for tdef in child_types.values()
-        )
-        if not has_instances:
-            return await super().refresh_children()
-        return self._register_declared_children()
-
-    async def _post_connect(self) -> None:
-        """Run the declarative `auth:` login handshake before BaseDriver
-        reports the device connected.
-
-        A raise here propagates to BaseDriver.connect(), which stashes the
-        transport error, closes the transport, and fails the attempt — so a
-        device with a rejected login never sets `connected` or emits
-        device.connected.
-        """
-        await super()._post_connect()
-        if not (self._auth_pending or self._auth_watch_blank):
-            self._auth_mode = False
-            return
-        transport = self.transport
-        if transport is None or not getattr(transport, "connected", False):
-            # Transport died between create and here; BaseDriver's failure
-            # paths own the cleanup. Nothing to authenticate against.
-            self._auth_mode = False
-            return
-        # Many login prompts arrive without the protocol's delimiter (e.g.
-        # bare "Login: "), so the transport's delimiter-based frame parser
-        # would buffer them indefinitely. Drop the parser for the duration
-        # of the handshake; _perform_auth_handshake's finally restores it
-        # on every path (success, rejection, timeout, exception).
-        saved_parser = getattr(transport, "_frame_parser", None)
-        if hasattr(transport, "_frame_parser"):
-            # If the parser had buffered any pre-auth bytes, flush them
-            # into the auth buffer so we don't lose the prompt.
-            if saved_parser is not None and hasattr(saved_parser, "_buffer"):
-                pending = bytes(saved_parser._buffer)
-                if pending:
-                    self._auth_buffer.extend(pending)
-                    self._auth_event.set()
-                    saved_parser._buffer = b""
-            transport._frame_parser = None  # type: ignore[union-attr]
-        self._saved_frame_parser = saved_parser
-        try:
-            if self._auth_pending:
-                await self._perform_auth_handshake()
-            else:
-                await self._refuse_unanswerable_prompt()
-        except Exception as e:
-            log.error(f"[{self.device_id}] Auth handshake failed: {e}")
-            raise
-
-    def _auth_plan(self, auth_def: dict[str, Any]) -> str | None:
-        """What connect() does about the `auth:` block: "run" the handshake,
-        "blank" (skipped because the credential it types first is blank, so
-        on TCP only listen for a prompt nobody can answer), or None (no
-        handshake applies). Mirrors the early-exit checks in _perform_auth_handshake
-        so the two stay aligned."""
-        if auth_def.get("type", "telnet_login") != "telnet_login":
-            return None
-        # The handshake assumes a TCP/serial byte stream — it swaps out the
-        # frame parser and buffers raw bytes. On udp/http/osc that breaks the
-        # transport's normal data path, so never run it there. The loader also
-        # rejects auth on these transports; this is the runtime backstop.
-        if self._definition.get("transport") not in ("tcp", "serial"):
-            return None
-        if not auth_def.get("username_prompt") or not auth_def.get("password_prompt"):
-            return None
-        username_field = auth_def.get("username_field", "username")
-        username = str(self.config.get(username_field, "") or "")
-        if auth_def.get("skip_if_empty", True) and not username:
-            # A serial line has no connect for a device to prompt on.
-            return "blank" if self._effective_transport() == "tcp" else None
-        return "run"
-
-    def _auth_should_run(self, auth_def: dict[str, Any]) -> bool:
-        """True when connect() runs the login handshake."""
-        return self._auth_plan(auth_def) == "run"
-
-    async def _refuse_unanswerable_prompt(self) -> None:
-        """Listen for a prompt the blank credential cannot answer.
-
-        The sign-in is skipped because the credential it types first is blank,
-        which is right for a unit with no password set. A unit that has one
-        still prompts, and without this the start-up and poll lines go into
-        that prompt and the device reads as not answering. So for a moment
-        after connect, before anything is sent, the bytes are held raw: the
-        first prompt among them fails the connection as auth_failed, naming
-        the blank setting. Otherwise they go through the normal response
-        matching, as they would have without the wait.
-        """
-        auth_def = self._definition.get("auth") or {}
-        field = auth_def.get("username_field", "username")
-        saved_parser = getattr(self, "_saved_frame_parser", None)
-        replay: list[bytes] = []
-        try:
-            try:
-                prompt = re.compile(auth_def.get("username_prompt", ""))
-            except re.error as e:
-                raise ValueError(f"Invalid auth regex pattern: {e}") from e
-            loop = asyncio.get_running_loop()
-            deadline = loop.time() + _BLANK_SIGN_IN_WINDOW_S
-            while True:
-                self._auth_event.clear()
-                text = self._auth_buffer.decode("utf-8", errors="replace")
-                if prompt.search(text):
-                    schema = (self._definition.get("config_schema") or {}).get(field)
-                    label = param_label(field, schema if isinstance(schema, dict) else None)
-                    raise ConnectionFaultError(
-                        f"The device asks for a sign-in, and the {label} setting is blank.",
-                        code="auth_failed",
-                    )
-                if self._auth_overflow:
-                    break
-                remaining = deadline - loop.time()
-                if remaining <= 0:
-                    break
-                wait = min(remaining, _BLANK_SIGN_IN_QUIET_S) if self._auth_buffer else remaining
-                try:
-                    await asyncio.wait_for(self._auth_event.wait(), timeout=wait)
-                except asyncio.TimeoutError:
-                    if self._auth_buffer:
-                        break  # bytes came, then quiet, and no prompt among them
-            # No prompt: what arrived meanwhile is the device's own traffic.
-            pending = bytes(self._auth_buffer)
-            if pending:
-                replay = saved_parser.feed(pending) if saved_parser is not None else [pending]
-        finally:
-            self._auth_mode = False
-            self._auth_buffer = bytearray()
-            if hasattr(self.transport, "_frame_parser"):
-                self.transport._frame_parser = saved_parser  # type: ignore[union-attr]
-        for frame in replay:
-            await self.on_data_received(frame)
-
-    async def _perform_auth_handshake(self) -> None:
-        """Run the Telnet-style login handshake declared in `auth:` (if any).
-
-        YAML schema (top-level `auth:` block):
-            auth:
-              type: telnet_login
-              username_prompt: "login: "        # regex
-              password_prompt: "Password: "     # regex
-              success_pattern: "GNET> "         # optional regex
-              failure_pattern: "Login incorrect" # optional regex
-              username_field: username           # config field, default "username"
-              password_field: password           # config field, default "password"
-              skip_if_empty: true                # default true — empty user => skip
-              timeout_seconds: 10
-              line_ending: "\r\n"
-
-        The handshake bypasses the transport's frame parser so partial
-        prompts like "Login: " (no trailing newline) are visible. The
-        original frame parser is restored after the handshake completes.
-        """
-        auth_def = self._definition.get("auth")
-        if not isinstance(auth_def, dict):
-            self._auth_mode = False
-            return
-
-        if not self._auth_should_run(auth_def):
-            self._auth_mode = False
-            return
-
-        username_field = auth_def.get("username_field", "username")
-        password_field = auth_def.get("password_field", "password")
-        username = str(self.config.get(username_field, "") or "")
-        password = str(self.config.get(password_field, "") or "")
-        # The field auth names is the password whatever it is called, so it is
-        # masked in this device's log lines even when its name is not one the
-        # redaction rule recognizes and the driver did not declare it secret.
-        if password:
-            self.redact_in_log(password)
-
-        username_prompt = auth_def.get("username_prompt", "")
-        password_prompt = auth_def.get("password_prompt", "")
-        success_pattern = auth_def.get("success_pattern")
-        failure_pattern = auth_def.get("failure_pattern")
-        timeout = float(auth_def.get("timeout_seconds", 10))
-        if timeout <= 0:
-            # A cleared/zero timeout (e.g. the Driver Builder box emptied to 0)
-            # would abort the handshake on the very first loop iteration and
-            # tear the transport down, so the device could never connect. Fall
-            # back to the default rather than bricking every connect.
-            timeout = 10.0
-        line_ending = auth_def.get("line_ending", "\r\n")
-
-        try:
-            user_re = re.compile(username_prompt)
-            pass_re = re.compile(password_prompt)
-            success_re = re.compile(success_pattern) if success_pattern else None
-            failure_re = re.compile(failure_pattern) if failure_pattern else None
-        except re.error as e:
-            raise ValueError(f"Invalid auth regex pattern: {e}") from e
-
-        # _post_connect() already swapped the transport to raw mode and
-        # stashed the original parser on self._saved_frame_parser. We just
-        # restore it in the finally block below.
-        saved_parser = getattr(self, "_saved_frame_parser", None)
-
-        try:
-            ending = _safe_encode_escapes(line_ending)
-            log.info(f"[{self.device_id}] Starting auth handshake")
-            self._auth_search_pos = 0
-
-            # Stage 1: wait for username prompt, send username.
-            await self._auth_wait_for(user_re, failure_re, timeout, stage="username_prompt")
-            await self.transport.send(username.encode("utf-8") + ending)
-            log.debug(f"[{self.device_id}] Auth: sent username")
-
-            # Stage 2: wait for password prompt, send password.
-            await self._auth_wait_for(pass_re, failure_re, timeout, stage="password_prompt")
-            await self.transport.send(password.encode("utf-8") + ending)
-            log.debug(f"[{self.device_id}] Auth: sent password")
-
-            # Stage 3: optionally wait for a success indicator. Without one,
-            # we assume success once the password is sent (the next command
-            # sent will fail visibly if auth was rejected).
-            if success_re is not None:
-                await self._auth_wait_for(success_re, failure_re, timeout, stage="success")
-                log.info(f"[{self.device_id}] Auth handshake complete")
-            else:
-                # Drain any post-password noise so it doesn't pollute the
-                # first real command's response window.
-                try:
-                    await asyncio.wait_for(self._auth_event.wait(), timeout=0.5)
-                except asyncio.TimeoutError:
-                    pass
-                log.info(
-                    f"[{self.device_id}] Auth handshake complete "
-                    f"(no success_pattern; assuming OK)"
-                )
-        finally:
-            self._auth_mode = False
-            self._auth_buffer = bytearray()
-            if hasattr(self.transport, "_frame_parser"):
-                self.transport._frame_parser = saved_parser  # type: ignore[union-attr]
-
-    async def _auth_wait_for(
-        self,
-        target: re.Pattern[str],
-        failure: re.Pattern[str] | None,
-        timeout: float,
-        stage: str = "prompt",
-    ) -> None:
-        """Wait until `target` regex matches the auth bytes received since
-        the previous stage's match.
-
-        Each stage searches only text AFTER the previous match
-        (self._auth_search_pos), so a banner that mentions "password", or an
-        echoed credential, can't falsely satisfy a later stage. Patterns are
-        string regexes matched against the buffer's UTF-8 decoding
-        (errors=replace).
-
-        Raises a typed ConnectionFaultError so the offline reason is
-        precise: auth_failed when the device rejected the login (failure
-        pattern matched, or silence only AFTER the credentials were sent),
-        no_response when the device never presented the expected prompt at
-        all (wrong host, port, or protocol — not a credential problem).
-        """
-        creds_sent = stage == "success"
-        deadline = asyncio.get_event_loop().time() + timeout
-        while True:
-            # Clear the event BEFORE inspecting the buffer so we don't drop
-            # a set() that arrives between check and clear. If new data
-            # arrives between clear and check, the buffer already contains
-            # it; if it arrives after the check, the set() will unblock
-            # the wait() below.
-            self._auth_event.clear()
-            if self._auth_overflow:
-                raise ConnectionFaultError(
-                    f"auth aborted: more than {_AUTH_MAX_BUFFER} bytes "
-                    f"received before matching {target.pattern!r} — wrong "
-                    f"protocol for this device?",
-                    code="no_response",
-                )
-            text = self._auth_buffer.decode("utf-8", errors="replace")[
-                self._auth_search_pos:
-            ]
-            if failure is not None and failure.search(text):
-                raise ConnectionFaultError(
-                    f"login rejected by the device "
-                    f"(matched failure pattern in {text!r})",
-                    code="auth_failed",
-                )
-            m = target.search(text)
-            if m is not None:
-                # Consume through the match so the next stage can't be
-                # satisfied by bytes that arrived before this one.
-                self._auth_search_pos += m.end()
-                return
-
-            remaining = deadline - asyncio.get_event_loop().time()
-            if remaining <= 0:
-                break
-            try:
-                await asyncio.wait_for(self._auth_event.wait(), timeout=remaining)
-            except asyncio.TimeoutError:
-                break
-
-        if creds_sent:
-            # The prompts flowed and the credentials went out, but the
-            # success indicator never came: treat as a rejected login.
-            raise ConnectionFaultError(
-                f"no login confirmation after sending credentials (timeout "
-                f"waiting for {target.pattern!r}; got {text!r}) — check the "
-                f"username and password.",
-                code="auth_failed",
-            )
-        raise ConnectionFaultError(
-            f"the device never presented the expected login prompt (timeout "
-            f"waiting for {target.pattern!r}; got {text!r}) — wrong host, "
-            f"port, or protocol for this device?",
-            code="no_response",
-        )
-
     async def send_command(
         self, command: str, params: dict[str, Any] | None = None
     ) -> Any:
@@ -2636,17 +1923,6 @@ class ConfigurableDriver(TextReplies, JsonReplies, OscWire, ReplyValues, BaseDri
             return
         self._framed_messages += 1
         self._read_text_reply(text)
-
-    def _take_sign_in_bytes(self, data: bytes) -> None:
-        """During the login handshake, capture all bytes raw and let the
-        handshake state machine decide when to send credentials."""
-        self._auth_buffer.extend(data)
-        if len(self._auth_buffer) > _AUTH_MAX_BUFFER:
-            # Pre-auth flood: stop accumulating and signal _auth_wait_for to
-            # abort the handshake. Keeps memory and per-chunk re-scan bounded
-            # on this unauthenticated path.
-            self._auth_overflow = True
-        self._auth_event.set()
 
     async def set_device_setting(self, key: str, value: Any) -> Any:
         """

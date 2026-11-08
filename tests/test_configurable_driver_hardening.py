@@ -18,10 +18,10 @@ from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.transport.http_client import HTTPClientTransport, HTTPResponse
 from openavc.drivers.configurable import (
-    _AUTH_MAX_BUFFER,
     ConfigurableDriver,
     create_configurable_driver_class,
 )
+from openavc.drivers.sign_in import _AUTH_MAX_BUFFER
 from openavc.drivers.driver_loader import validate_driver_definition
 
 
