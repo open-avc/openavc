@@ -16,7 +16,7 @@ import asyncio
 import time
 from types import SimpleNamespace as NS
 
-from openavc.audit.commands import DONE, commands_for
+from openavc.audit.commands import DONE, CommandTrial, commands_for
 from openavc.audit.driver_choice import DriverChoice
 from openavc.audit.observe import AuditObserver
 from openavc.audit.passes import DriverRun
@@ -296,3 +296,140 @@ async def test_a_command_sent_after_its_call_returned_still_owns_its_refusal():
     await _done(trial)
     assert trial.refusals["last_error"] == "refused"
     assert trial.refusals["later"] == []
+
+
+def _window(conn, *, device_errors=(), error_writes=()):
+    """Command 1, sent at 100.0 and returned at 100.5, its window already
+    over: its own message went out before the return (traffic position 0),
+    the driver's next request after it (position 2), a poll later on (4)."""
+    for t, direction, text in (
+        (100.1, TX, "PWR 1\r"), (100.2, RX, "OK"),
+        (101.0, TX, "VOLUME LEVEL QUERY NUMBER ONE?\r"), (101.1, RX, "VOL=3"),
+        (101.5, TX, "POLL?\r"),
+    ):
+        conn._wire(direction, text, t)
+    return CommandTrial(
+        number=1, command="reboot", label="Reboot", params={}, attempt=1, batch=False,
+        connect_attempt=0, sent_at=100.0, returned_at=100.5, status=DONE,
+        marks={"traffic": 0, "events": 0, "returned": 2},
+        device_errors=list(device_errors), error_writes=list(error_writes),
+    )
+
+
+def test_which_signs_of_a_refusal_are_the_commands_and_which_came_later():
+    conn = _Connection()
+    trial = _window(
+        conn,
+        device_errors=[
+            {"t": 100.3, "error": "", "position": 1},
+            # Written as the next request went out: still the command's.
+            {"t": 100.4, "error": "first", "position": 2},
+            # Before the next request, but after the reply could still come.
+            {"t": 103.0, "error": "too late", "position": 2},
+            {"t": 101.2, "error": "busy", "position": 3},
+        ],
+        error_writes=[
+            {"t": 100.35, "error": "refused", "position": 1},
+            {"t": 100.45, "error": "", "position": 2},
+            {"t": 100.46, "error": "refused again", "position": 2},
+            {"t": 101.3, "error": "busy", "position": 3},
+            {"t": 101.4, "error": "", "position": 4},
+            # Placed after the poll though its clock reads earlier.
+            {"t": 101.06, "error": "other", "position": 5},
+        ],
+    )
+    _pass(conn)._conclude(trial)
+    assert trial.refusals == {
+        "device_errors": 2,
+        "last_error_writes": 2,
+        "last_error": "refused again",
+        "later": [
+            {"error": "too late", "after": 3.0, "count": 1, "request": '"PWR 1\\r"'},
+            {"error": "busy", "after": 1.2, "count": 2,
+             "request": '"VOLUME LEVEL QUERY NUMBER ONE?\\r"'},
+            {"error": "other", "after": 1.1, "count": 1, "request": '"POLL?\\r"'},
+        ],
+        "unmatched": 0,
+        "unmatched_examples": [],
+    }
+
+
+def test_with_no_last_error_the_refusal_is_the_last_error_published_with_words():
+    conn = _Connection()
+    trial = _window(conn, device_errors=[
+        {"t": 100.3, "error": "no input", "position": 1},
+        {"t": 100.31, "error": "no signal", "position": 1},
+        {"t": 100.32, "error": "", "position": 1},
+    ])
+    _pass(conn)._conclude(trial)
+    assert (trial.refusals["device_errors"], trial.refusals["last_error"]) == (3, "no signal")
+    assert trial.refusals["later"] == []
+
+
+async def test_what_the_window_hears_while_it_is_open():
+    conn = _Connection()
+    commands = _pass(conn, window_seconds=0.5)
+
+    async def busy(command, params):
+        conn.sent("PWR 1\r")
+        for i in range(510):
+            conn.report("meter", i)
+
+    conn.call = busy
+    trial = await commands.send("power_on")
+    await conn.emit("device.error", {"error": "lamp out"})
+    await conn.emit("device.error", "plain words")
+    await conn.emit("device.error")
+    await conn.emit("device.disconnected")
+    first_drop = trial.went_away_at
+    await conn.emit("device.disconnected")  # still away: the same drop
+    await conn.emit("device.connected")
+    await conn.emit("device.connected")  # back with no drop between: nothing new
+    await conn.emit("device.disconnected")
+    await _done(trial)
+    assert len(trial.changes) == 500
+    assert {k: trial.changes[0][k] for k in ("key", "old", "new")} == {"key": "meter", "old": None, "new": 0}
+    assert [(e["error"], e["position"]) for e in trial.device_errors] == [
+        ("lamp out", 1), ("plain words", 1), ("", 1),
+    ]
+    assert trial.went_away_at == first_drop
+    [(went, back), (again, still_away)] = trial.gone_and_back
+    assert went == first_drop and back is not None and again > back and still_away is None
+    assert back <= trial.back_at < again
+    assert trial.drops[1]["back_after"] is None
+
+
+async def test_nothing_is_heard_once_the_window_has_closed():
+    """Stopping the audit can close a window before its watch unwinds."""
+    conn = _Connection()
+    commands = _pass(conn, window_seconds=5.0)
+    trial = await commands.send("power_on")
+    await conn.emit("device.disconnected")
+    [[went, _]] = trial.gone_and_back
+    commands._finish(trial)
+    conn.report("meter", 1)
+    await conn.emit("device.error", {"error": "late"})
+    await conn.emit("device.connected")
+    await conn.emit("device.disconnected")
+    assert (trial.changes, trial.device_errors, trial.gone_and_back, trial.back_at) == (
+        [], [], [[went, None]], None,
+    )
+    await commands.stop()
+
+
+async def test_a_restart_window_ends_soon_after_the_driver_is_back():
+    conn = _Connection()
+    commands = _pass(conn, restart_margin_seconds=10.0, after_reconnect_seconds=0.1)
+    restart = await commands.send("reboot")
+    assert restart.ends_at - restart.returned_at == 15.0
+    await conn.emit("device.disconnected")
+    await conn.emit("device.connected")
+    assert abs(restart.ends_at - (restart.back_at + 0.1)) < 0.001
+    await _done(restart, timeout=2.0)
+    # A command that declares no restart keeps its window when the link comes back.
+    blip = await commands.send("power_on")
+    ends = blip.ends_at
+    await conn.emit("device.disconnected")
+    await conn.emit("device.connected")
+    assert blip.ends_at == ends
+    await _done(blip)
