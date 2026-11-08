@@ -96,15 +96,15 @@ class TestBackgroundTaskCleanup:
 
         with patch("openavc.discovery.engine.ping_sweep",
                    new_callable=AsyncMock, return_value=["10.77.0.10"]), \
-             patch("openavc.discovery.engine.harvest_arp_table",
+             patch("openavc.discovery.arp_phase.harvest_arp_table",
                    new_callable=AsyncMock, return_value={}), \
-             patch("openavc.discovery.engine.netbios_sweep",
+             patch("openavc.discovery.arp_phase.netbios_sweep",
                    new_callable=AsyncMock, return_value={}), \
              patch("openavc.discovery.engine.scan_host_ports",
                    new_callable=AsyncMock, return_value=[]), \
              patch("openavc.discovery.engine.grab_banners",
                    new_callable=AsyncMock, return_value={}), \
-             patch("openavc.discovery.engine._resolve_hostnames",
+             patch("openavc.discovery.arp_phase._resolve_hostnames",
                    new_callable=AsyncMock, return_value={}), \
              patch.object(engine.community_index, "get_drivers",
                           new_callable=AsyncMock, return_value=[]), \
@@ -242,16 +242,16 @@ class TestEvidenceResetOnScanStart:
             with patch.object(engine, "_run_scan", fake_run_scan), \
                  patch("openavc.discovery.engine.ping_sweep",
                        side_effect=fake_ping), \
-                 patch("openavc.discovery.engine.harvest_arp_table",
+                 patch("openavc.discovery.arp_phase.harvest_arp_table",
                        new_callable=AsyncMock,
                        return_value={"10.77.0.7": "aa:bb:cc:dd:ee:ff"}), \
-                 patch("openavc.discovery.engine.netbios_sweep",
+                 patch("openavc.discovery.arp_phase.netbios_sweep",
                        new_callable=AsyncMock, return_value={}), \
                  patch("openavc.discovery.engine.scan_host_ports",
                        new_callable=AsyncMock, return_value=[]), \
                  patch("openavc.discovery.engine.grab_banners",
                        new_callable=AsyncMock, return_value={}), \
-                 patch("openavc.discovery.engine._resolve_hostnames",
+                 patch("openavc.discovery.arp_phase._resolve_hostnames",
                        new_callable=AsyncMock, return_value={}), \
                  patch.object(engine.community_index, "get_drivers",
                               new_callable=AsyncMock, return_value=[]), \
@@ -510,7 +510,7 @@ class TestMergePriority:
         dev.category = "projector"
         assert not dev.mac             # eligible for the late harvest
 
-        with patch("openavc.discovery.engine.harvest_arp_table",
+        with patch("openavc.discovery.arp_phase.harvest_arp_table",
                    new_callable=AsyncMock,
                    return_value={"10.77.0.61": "AA:BB:CC:DD:EE:FF"}), \
              patch.object(engine.oui_db, "lookup",
@@ -542,16 +542,16 @@ class TestMergePriority:
 
         with patch("openavc.discovery.engine.ping_sweep",
                    new_callable=AsyncMock, return_value=["10.77.0.61"]), \
-             patch("openavc.discovery.engine.harvest_arp_table",
+             patch("openavc.discovery.arp_phase.harvest_arp_table",
                    new_callable=AsyncMock,
                    return_value={"10.77.0.61": "AA:BB:CC:DD:EE:FF"}), \
-             patch("openavc.discovery.engine.netbios_sweep",
+             patch("openavc.discovery.arp_phase.netbios_sweep",
                    new_callable=AsyncMock, return_value={}), \
              patch("openavc.discovery.engine.scan_host_ports",
                    new_callable=AsyncMock, return_value=[]), \
              patch("openavc.discovery.engine.grab_banners",
                    new_callable=AsyncMock, return_value={}), \
-             patch("openavc.discovery.engine._resolve_hostnames",
+             patch("openavc.discovery.arp_phase._resolve_hostnames",
                    new_callable=AsyncMock,
                    return_value={"10.77.0.61": "projector-b.example.edu"}), \
              patch.object(engine.community_index, "get_drivers",
@@ -637,7 +637,7 @@ class TestPingTotalAccounting:
              patch("openavc.discovery.engine.SSDPScanner", ssdp_cls), \
              patch("openavc.discovery.engine.AMXDDPScanner", amx_cls), \
              patch("openavc.discovery.engine.SNMPScanner", snmp_cls), \
-             patch("openavc.discovery.engine._resolve_hostnames",
+             patch("openavc.discovery.arp_phase._resolve_hostnames",
                    new_callable=AsyncMock, return_value={}):
             # Must NOT raise on the malformed CIDR.
             await engine._scan_pipeline_inner(subnets)

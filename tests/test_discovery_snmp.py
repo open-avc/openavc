@@ -43,7 +43,8 @@ from openavc.discovery.result import (
     DiscoveredDevice,
     merge_device_info,
 )
-from openavc.discovery.engine import DiscoveryEngine, _resolve_hostnames
+from openavc.discovery.arp_phase import _resolve_hostnames
+from openavc.discovery.engine import DiscoveryEngine
 
 
 # ============================================================
@@ -587,7 +588,7 @@ class TestSNMPScanner:
 class TestResolveHostnames:
     @pytest.mark.asyncio
     async def test_resolves_known_hosts(self):
-        with patch("openavc.discovery.engine._socket.gethostbyaddr") as mock_resolve:
+        with patch("openavc.discovery.arp_phase._socket.gethostbyaddr") as mock_resolve:
             mock_resolve.side_effect = lambda ip: {
                 "192.168.1.1": ("gateway.local", [], ["192.168.1.1"]),
                 "192.168.1.50": ("extron-switch.local", [], ["192.168.1.50"]),
@@ -601,14 +602,14 @@ class TestResolveHostnames:
 
     @pytest.mark.asyncio
     async def test_handles_all_failures(self):
-        with patch("openavc.discovery.engine._socket.gethostbyaddr", side_effect=OSError):
+        with patch("openavc.discovery.arp_phase._socket.gethostbyaddr", side_effect=OSError):
             results = await _resolve_hostnames(["192.168.1.1"])
         assert results == {}
 
     @pytest.mark.asyncio
     async def test_excludes_ip_as_hostname(self):
         """If gethostbyaddr returns the IP itself, skip it."""
-        with patch("openavc.discovery.engine._socket.gethostbyaddr") as mock_resolve:
+        with patch("openavc.discovery.arp_phase._socket.gethostbyaddr") as mock_resolve:
             mock_resolve.return_value = ("192.168.1.1", [], ["192.168.1.1"])
             results = await _resolve_hostnames(["192.168.1.1"])
         assert results == {}

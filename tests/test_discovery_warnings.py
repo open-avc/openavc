@@ -71,7 +71,7 @@ class TestScanWarnings:
              patch("openavc.discovery.engine.SSDPScanner", ssdp_cls), \
              patch("openavc.discovery.engine.AMXDDPScanner", amx_cls), \
              patch("openavc.discovery.engine.SNMPScanner", snmp_cls), \
-             patch("openavc.discovery.engine._resolve_hostnames",
+             patch("openavc.discovery.arp_phase._resolve_hostnames",
                    new_callable=AsyncMock, return_value={}):
             await self.engine._scan_pipeline_inner(["192.168.1.0/30"])
 

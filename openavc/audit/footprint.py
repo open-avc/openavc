@@ -65,13 +65,14 @@ from urllib.parse import urlsplit
 
 from openavc.discovery import icmp
 from openavc.discovery.amx_ddp_scanner import AMXDDPScanner
+from openavc.discovery.arp_phase import _resolve_hostnames
 from openavc.discovery.certificates import discovery_tls_context, read_peer_certificate
 from openavc.discovery.companion import (
     DEFAULT_PROBE_TIMEOUT_SECONDS,
     ProbeContext,
     run_companion,
 )
-from openavc.discovery.engine import DiscoveryEngine, _resolve_hostnames
+from openavc.discovery.engine import DiscoveryEngine
 from openavc.discovery.explain import (
     DeviceObservations,
     evaluate_driver_signals,
@@ -111,9 +112,8 @@ from openavc.discovery.result import (
 from openavc.discovery.scan_evidence import (
     banner_texts,
     derived_evidence,
-    hostname_evidence,
-    mac_info_and_evidence,
     mdns_hostname_evidence,
+    names_and_mac,
 )
 from openavc.discovery.snmp_scanner import SNMPScanner
 from openavc.discovery.ssdp_scanner import SSDPScanner
@@ -1152,25 +1152,9 @@ class NetworkCheck:
         device = DiscoveredDevice(ip=fp.ip)
         evidence: list[Evidence] = []
 
-        info: dict[str, Any] = {}
-        hostname = fp.reverse_dns
-        if fp.netbios and fp.netbios.get("hostname"):
-            info["device_name"] = fp.netbios["hostname"]
-            if not hostname:
-                hostname = fp.netbios["hostname"]
-        if hostname:
-            info["hostname"] = hostname
-            evidence.extend(hostname_evidence(hostname, index))
-        oui_info: dict[str, Any] = {}
-        if fp.mac:
-            mac_info, oui_ev = mac_info_and_evidence(fp.mac, self.discovery.oui_db)
-            info["mac"] = mac_info.pop("mac")
-            oui_info = mac_info
-            evidence.append(oui_ev)
-        if info:
-            merge_device_info(device, info, "arp")
-        if oui_info:
-            merge_device_info(device, oui_info, "arp", fill_only=True)
+        names = names_and_mac(fp.reverse_dns, fp.netbios, fp.mac, self.discovery)
+        evidence.extend(names.evidence)
+        names.merge_into(device)
 
         open_ports = fp.open_ports()
         if open_ports:

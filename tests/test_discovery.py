@@ -283,7 +283,7 @@ class TestDiscoveryEngine:
         with patch("openavc.discovery.engine.ping_sweep", new_callable=AsyncMock) as mock_ping:
             mock_ping.return_value = ["192.168.1.50", "192.168.1.72"]
 
-            with patch("openavc.discovery.engine.harvest_arp_table", new_callable=AsyncMock) as mock_arp:
+            with patch("openavc.discovery.arp_phase.harvest_arp_table", new_callable=AsyncMock) as mock_arp:
                 mock_arp.return_value = {
                     "192.168.1.50": "00:05:a6:12:34:56",
                     "192.168.1.72": "04:fe:31:aa:bb:cc",
@@ -307,7 +307,7 @@ class TestDiscoveryEngine:
                              patch("openavc.discovery.engine.AMXDDPScanner") as mock_amx_cls, \
                              patch("openavc.discovery.engine.SNMPScanner") as mock_snmp_cls, \
                              patch.object(self.engine.community_index, "get_drivers", new_callable=AsyncMock, return_value=[]), \
-                             patch("openavc.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
+                             patch("openavc.discovery.arp_phase._resolve_hostnames", new_callable=AsyncMock, return_value={}):
                             mock_mdns = MagicMock()
                             mock_mdns.start = AsyncMock(return_value={})
                             mock_mdns_cls.return_value = mock_mdns

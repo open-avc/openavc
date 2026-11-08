@@ -551,7 +551,7 @@ class TestScanPipeline:
              patch("openavc.discovery.engine.SSDPScanner", mock_ssdp_cls), \
              patch("openavc.discovery.engine.AMXDDPScanner", mock_amx_cls), \
              patch("openavc.discovery.engine.SNMPScanner", mock_snmp_cls), \
-             patch("openavc.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
+             patch("openavc.discovery.arp_phase._resolve_hostnames", new_callable=AsyncMock, return_value={}):
             await self.engine._scan_pipeline(["192.168.1.0/30"])
 
         # Should complete without error, even with no devices
@@ -562,14 +562,14 @@ class TestScanPipeline:
         mock_mdns_cls, mock_ssdp_cls, mock_amx_cls, mock_snmp_cls = self._mock_passive_scanners()
 
         with patch("openavc.discovery.engine.ping_sweep", new_callable=AsyncMock) as mock_ping, \
-             patch("openavc.discovery.engine.harvest_arp_table", new_callable=AsyncMock) as mock_arp, \
+             patch("openavc.discovery.arp_phase.harvest_arp_table", new_callable=AsyncMock) as mock_arp, \
              patch("openavc.discovery.engine.scan_host_ports", new_callable=AsyncMock) as mock_ports, \
              patch("openavc.discovery.engine.grab_banners", new_callable=AsyncMock, return_value={}), \
              patch("openavc.discovery.engine.MDNSScanner", mock_mdns_cls), \
              patch("openavc.discovery.engine.SSDPScanner", mock_ssdp_cls), \
              patch("openavc.discovery.engine.AMXDDPScanner", mock_amx_cls), \
              patch("openavc.discovery.engine.SNMPScanner", mock_snmp_cls), \
-             patch("openavc.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
+             patch("openavc.discovery.arp_phase._resolve_hostnames", new_callable=AsyncMock, return_value={}):
 
             mock_ping.return_value = ["192.168.1.10", "192.168.1.20"]
             mock_arp.return_value = {"192.168.1.10": "00:05:A6:11:22:33"}
@@ -603,7 +603,7 @@ class TestScanPipeline:
              patch("openavc.discovery.engine.SSDPScanner", mock_ssdp_cls), \
              patch("openavc.discovery.engine.AMXDDPScanner", mock_amx_cls), \
              patch("openavc.discovery.engine.SNMPScanner", mock_snmp_cls), \
-             patch("openavc.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
+             patch("openavc.discovery.arp_phase._resolve_hostnames", new_callable=AsyncMock, return_value={}):
             await self.engine._scan_pipeline(["192.168.1.0/24"])
             # Stale removal is part of phase 8, which _run_scan drives
             # separately so it survives a deadline overrun.
@@ -644,7 +644,7 @@ class TestScanPipeline:
              patch("openavc.discovery.engine.SSDPScanner", mock_ssdp_cls), \
              patch("openavc.discovery.engine.AMXDDPScanner", mock_amx_cls), \
              patch("openavc.discovery.engine.SNMPScanner", mock_snmp_cls), \
-             patch("openavc.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}):
+             patch("openavc.discovery.arp_phase._resolve_hostnames", new_callable=AsyncMock, return_value={}):
             await self.engine._scan_pipeline(["192.168.1.0/30"])
 
         # All three constructors should have received the control_ip.
@@ -976,11 +976,11 @@ class TestBackgroundScansStartAsAsked:
         mdns_cls, ssdp_cls, amx_cls, snmp_cls = classes
         with patch.object(engine, "_get_control_interface", return_value=""), \
              patch("openavc.discovery.engine.ping_sweep", new_callable=AsyncMock, return_value=alive), \
-             patch("openavc.discovery.engine.harvest_arp_table", new_callable=AsyncMock, return_value={}), \
-             patch("openavc.discovery.engine.netbios_sweep", new_callable=AsyncMock, return_value={}), \
+             patch("openavc.discovery.arp_phase.harvest_arp_table", new_callable=AsyncMock, return_value={}), \
+             patch("openavc.discovery.arp_phase.netbios_sweep", new_callable=AsyncMock, return_value={}), \
              patch("openavc.discovery.engine.scan_host_ports", new_callable=AsyncMock, return_value=[]), \
              patch("openavc.discovery.engine.grab_banners", new_callable=AsyncMock, return_value={}), \
-             patch("openavc.discovery.engine._resolve_hostnames", new_callable=AsyncMock, return_value={}), \
+             patch("openavc.discovery.arp_phase._resolve_hostnames", new_callable=AsyncMock, return_value={}), \
              patch.object(engine.community_index, "get_drivers", new_callable=AsyncMock, return_value=[]), \
              patch("openavc.discovery.engine.MDNSScanner", mdns_cls), \
              patch("openavc.discovery.engine.SSDPScanner", ssdp_cls), \

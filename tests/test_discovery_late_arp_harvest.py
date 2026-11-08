@@ -9,7 +9,7 @@ isn't unit-testable; this exercises the harvest step in isolation with a stubbed
 ARP table.
 """
 
-from openavc.discovery import engine as engine_mod
+from openavc.discovery import arp_phase
 from openavc.discovery.engine import DiscoveryEngine
 from openavc.discovery.result import DeviceState, DiscoveredDevice
 from openavc.discovery.tier_matcher import (
@@ -42,7 +42,7 @@ async def test_late_harvest_enriches_passive_only_device(monkeypatch):
     async def fake_arp():
         return {"169.254.100.100": "28:94:01:7F:D8:F7"}
 
-    monkeypatch.setattr(engine_mod, "harvest_arp_table", fake_arp)
+    monkeypatch.setattr(arp_phase, "harvest_arp_table", fake_arp)
 
     await eng._late_arp_harvest()
 
@@ -77,7 +77,7 @@ async def test_late_harvest_noop_when_all_have_macs(monkeypatch):
         called = True
         return {}
 
-    monkeypatch.setattr(engine_mod, "harvest_arp_table", fake_arp)
+    monkeypatch.setattr(arp_phase, "harvest_arp_table", fake_arp)
 
     await eng._late_arp_harvest()
 

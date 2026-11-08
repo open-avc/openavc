@@ -2,7 +2,8 @@
 
 A Discovery scan and a device audit's network check (``audit/footprint.py``)
 both build their records here, so the two describe the same device the same
-way: a host name, a MAC address, the open ports and manufacturer strings a
+way: a host name, a MAC address (and what a host's names and MAC put on the
+device, ``names_and_mac``), the open ports and manufacturer strings a
 scan adds in its last phase, and a port's greeting keyed as the matcher reads
 it. Nothing here touches the network; each function turns an observation into
 ``Evidence`` the matcher (``tier_matcher.py``) judges.
@@ -10,9 +11,11 @@ it. Nothing here touches the network; each function turns an observation into
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from dataclasses import dataclass
+from typing import Any, Iterable, Protocol
 
 from openavc.discovery.oui_database import OUIDatabase
+from openavc.discovery.result import DiscoveredDevice, merge_device_info
 from openavc.discovery.tier_matcher import (
     KIND_HOSTNAME,
     SignalIndex,
@@ -77,6 +80,72 @@ def mac_info_and_evidence(
         info["manufacturer"] = vendor
         info["category"] = category
     return info, evidence_oui(mac, vendor=vendor, block=block)
+
+
+@dataclass
+class NamesAndMac:
+    """What an address's names and MAC address tell a scan.
+
+    ``own`` is what the scan read itself (``hostname``, ``device_name``,
+    ``mac``) and merges by the standard rule, so a re-scan refreshes a renamed
+    or reassigned host instead of showing the previous occupant. ``card_maker``
+    is the OUI registry's ``manufacturer`` and ``category``: they name the
+    network card's maker, often not the device's, so they only fill fields
+    nothing else filled. ``evidence`` is the host-name records, then the OUI
+    record.
+    """
+
+    own: dict[str, Any]
+    card_maker: dict[str, Any]
+    evidence: list
+
+    @property
+    def learned(self) -> bool:
+        """Did the names or the MAC address say anything at all?"""
+        return bool(self.own or self.card_maker)
+
+    def merge_into(self, device: DiscoveredDevice) -> None:
+        """Put the info on ``device``; the evidence is the caller's to place."""
+        if self.own:
+            merge_device_info(device, self.own, "arp")
+        if self.card_maker:
+            merge_device_info(device, self.card_maker, "arp", fill_only=True)
+
+
+class ScanLookups(Protocol):
+    """What reading a host takes from its scan: the driver host-name patterns
+    and the OUI table. The discovery engine is one."""
+
+    signal_index: SignalIndex
+    oui_db: OUIDatabase
+
+
+def names_and_mac(
+    reverse_dns: str | None,
+    netbios: dict[str, Any] | None,
+    mac: str | None,
+    lookups: ScanLookups,
+) -> NamesAndMac:
+    """Read an address's reverse-DNS name, NetBIOS answer and MAC address.
+
+    The reverse-DNS name is the host name. A NetBIOS name is the device name,
+    and the host name too when reverse DNS gave none.
+    """
+    own: dict[str, Any] = {}
+    evidence: list = []
+    netbios_name = (netbios or {}).get("hostname")
+    hostname = reverse_dns or netbios_name
+    if hostname:
+        own["hostname"] = hostname
+        evidence.extend(hostname_evidence(hostname, lookups.signal_index))
+    if netbios_name:
+        own["device_name"] = netbios_name
+    card_maker: dict[str, Any] = {}
+    if mac:
+        card_maker, oui_ev = mac_info_and_evidence(mac, lookups.oui_db)
+        own["mac"] = card_maker.pop("mac")
+        evidence.append(oui_ev)
+    return NamesAndMac(own, card_maker, evidence)
 
 
 def derived_evidence(

@@ -314,7 +314,7 @@ class TestPassiveOnlyFollowUp:
         with patch("openavc.discovery.engine.ping_sweep", new_callable=AsyncMock, return_value=[]), \
              patch("openavc.discovery.engine.scan_host_ports", side_effect=fake_scan), \
              patch("openavc.discovery.engine.grab_banners", new_callable=AsyncMock, return_value={}), \
-             patch("openavc.discovery.engine.harvest_arp_table", new_callable=AsyncMock, return_value={}), \
+             patch("openavc.discovery.arp_phase.harvest_arp_table", new_callable=AsyncMock, return_value={}), \
              patch("openavc.discovery.probe_phase.observe_port_probes", side_effect=fake_port_probes), \
              patch.object(engine.community_index, "get_drivers", new_callable=AsyncMock, return_value=[]), \
              patch("openavc.discovery.engine.MDNSScanner", mdns_cls), \

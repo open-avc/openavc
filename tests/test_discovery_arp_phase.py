@@ -24,7 +24,7 @@ from openavc.discovery.scan_budget import ArpPlan
 from openavc.discovery.tier_matcher import KIND_HOSTNAME, KIND_OUI
 
 # Where phase 4 looks up the ARP table, the names and its own ceilings.
-PHASE = "openavc.discovery.engine"
+PHASE = "openavc.discovery.arp_phase"
 
 SUBNET = "10.20.0.0/24"
 ACME_PREFIX = "02:ac:3e"

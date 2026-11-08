@@ -18,6 +18,7 @@ UDP probe goes to each one unicast.
 from __future__ import annotations
 
 import ipaddress
+from typing import Iterator
 
 
 def ip_in_subnets(ip: str, subnets: list[str]) -> bool:
@@ -39,22 +40,38 @@ def ip_in_subnets(ip: str, subnets: list[str]) -> bool:
     return False
 
 
+def _networks_with_edges(subnets: list[str]) -> Iterator[ipaddress.IPv4Network]:
+    """Each CIDR that parses and has a network and broadcast address, in
+    order: everything below /31. Invalid CIDRs are skipped."""
+    for cidr in subnets:
+        try:
+            net = ipaddress.IPv4Network(cidr, strict=False)
+        except ValueError:
+            continue
+        if net.prefixlen < 31:
+            yield net
+
+
 def broadcast_addresses_for(subnets: list[str]) -> list[str]:
     """Return the directed broadcast address for each CIDR.
 
     Skips invalid CIDRs and prefixes with no meaningful broadcast
     address (/31 and /32).
     """
-    out: list[str] = []
-    for cidr in subnets:
-        try:
-            net = ipaddress.IPv4Network(cidr, strict=False)
-        except ValueError:
-            continue
-        if net.prefixlen >= 31:
-            continue
-        out.append(str(net.broadcast_address))
-    return out
+    return [str(net.broadcast_address) for net in _networks_with_edges(subnets)]
+
+
+def network_edges_for(subnets: list[str]) -> set[str]:
+    """The network and broadcast address of each CIDR, which are not hosts.
+
+    None for a /31 or /32, whose addresses are the hosts themselves (a /32
+    is the target of a single-device scan), or for an invalid CIDR.
+    """
+    edges: set[str] = set()
+    for net in _networks_with_edges(subnets):
+        edges.add(str(net.network_address))
+        edges.add(str(net.broadcast_address))
+    return edges
 
 
 def udp_probe_targets_for(subnets: list[str]) -> list[str]:

@@ -100,11 +100,11 @@ class _Pipeline:
                    side_effect=self._fake_scan_host_ports), \
              patch("openavc.discovery.engine.grab_banners",
                    new_callable=AsyncMock, return_value={}), \
-             patch("openavc.discovery.engine.harvest_arp_table",
+             patch("openavc.discovery.arp_phase.harvest_arp_table",
                    new_callable=AsyncMock, return_value={}), \
-             patch("openavc.discovery.engine.netbios_sweep",
+             patch("openavc.discovery.arp_phase.netbios_sweep",
                    new_callable=AsyncMock, return_value={}), \
-             patch("openavc.discovery.engine._resolve_hostnames",
+             patch("openavc.discovery.arp_phase._resolve_hostnames",
                    new_callable=AsyncMock, return_value={}), \
              patch.object(engine, "_run_custom_probes", side_effect=self._fake_probes), \
              patch.object(engine.community_index, "get_drivers",

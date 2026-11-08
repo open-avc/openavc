@@ -73,7 +73,7 @@ class TestListenWindow:
         listener = LateBeaconListener(engine)
 
         with patch("openavc.discovery.engine.ping_sweep", new_callable=AsyncMock, return_value=[]), \
-             patch("openavc.discovery.engine.harvest_arp_table", new_callable=AsyncMock, return_value={}), \
+             patch("openavc.discovery.arp_phase.harvest_arp_table", new_callable=AsyncMock, return_value={}), \
              patch("openavc.discovery.engine.scan_host_ports", new_callable=AsyncMock, return_value=[]), \
              patch.object(engine.community_index, "get_drivers", new_callable=AsyncMock, return_value=[]), \
              patch("openavc.discovery.engine.MDNSScanner", _instant_listener("start")), \

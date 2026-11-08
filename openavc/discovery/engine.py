@@ -4,10 +4,11 @@ answers.
 A scan starts its passive listeners, sweeps for live hosts, reads MAC
 addresses and names, port-scans, launches SNMP, collects what the listeners
 heard, runs the drivers' own probes, and finally matches every device's
-evidence against the drivers (``_scan_pipeline_inner`` lists the phases). The
-driver probes are ``probe_phase.DriverProbes`` and the listeners' collection
-is ``passive_phase.PassiveCollection``, mixins this class inherits; the
-records each phase adds are built in ``scan_evidence``.
+evidence against the drivers (``_scan_pipeline_inner`` lists the phases).
+Phase 4 is ``arp_phase.ArpHarvest``, the driver probes are
+``probe_phase.DriverProbes`` and the listeners' collection is
+``passive_phase.PassiveCollection``, mixins this class inherits; the records
+each phase adds are built in ``scan_evidence``.
 
 The rules worth knowing before changing anything here:
 
@@ -28,19 +29,14 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import logging
-import socket as _socket
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Awaitable, Iterable
 
 from openavc.discovery import icmp
-from openavc.discovery.network_scanner import (
-    get_local_subnets,
-    harvest_arp_table,
-    netbios_sweep,
-    ping_sweep,
-)
+from openavc.discovery.arp_phase import ArpHarvest
+from openavc.discovery.network_scanner import get_local_subnets, ping_sweep
 from openavc.discovery.passive_phase import BackgroundScans, PassiveCollection
 from openavc.discovery.port_guard import PortGuard, held_ports
 from openavc.discovery.probe_phase import DriverProbes
@@ -64,12 +60,7 @@ from openavc.discovery.companion import (
     CompanionProbe,
     load_discovery_companions,
 )
-from openavc.discovery.scan_evidence import (
-    banner_texts,
-    derived_evidence,
-    hostname_evidence,
-    mac_info_and_evidence,
-)
+from openavc.discovery.scan_evidence import banner_texts, derived_evidence
 from openavc.discovery.tier_matcher import (
     DriverProfile,
     SignalIndex,
@@ -148,57 +139,10 @@ PHASE_WEIGHTS: dict[str, dict[str, float]] = {
 # plenty and keeps a 1022-host sweep off the WS send queue.
 _INTRA_EMIT_INTERVAL: float = 1.0
 
-# Second look at addresses the ARP table named and the sweep missed. Narrow
-# and unhurried where the sweep is wide and fast: the list is short and its
-# addresses are already resolved, so this costs little and is the whole
-# difference between a cold-cache scan and a warm one.
-_REPING_CONCURRENCY: int = 16
-_REPING_ATTEMPTS: int = 2
-_REPING_TIMEOUT: float = 1.5
-# Hard ceilings. Phase 4's budget was set from the sweep's host count, before
-# this pass existed, and its primary job -- a MAC, an OUI and a name for every
-# host -- must not be starved by it. So the second look is best-effort: past
-# these limits an address simply stays unproven, gets port-scanned like the
-# rest, and earns its place or is dropped.
-_REPING_MAX_HOSTS: int = 128
-_REPING_MAX_SECONDS: float = 6.0
-
 
 # Generic alternate web, streaming and management ports a thorough scan adds.
 # No vendor labels.
 THOROUGH_EXTRA_PORTS: tuple[int, ...] = (554, 3000, 4000, 5060, 8443, 8888, 9000, 10000)
-
-
-async def _resolve_hostnames(
-    ips: list[str],
-    concurrency: int = 20,
-) -> dict[str, str]:
-    """Resolve IP addresses to hostnames via reverse DNS.
-
-    Best-effort: returns only successful lookups. Timeouts are expected
-    for most IPs on a local network.
-    """
-    results: dict[str, str] = {}
-    sem = asyncio.Semaphore(concurrency)
-    loop = asyncio.get_event_loop()
-
-    async def resolve_one(ip: str) -> None:
-        async with sem:
-            try:
-                hostname, _, _ = await asyncio.wait_for(
-                    loop.run_in_executor(None, _socket.gethostbyaddr, ip),
-                    timeout=1.0,
-                )
-                if hostname and hostname != ip:
-                    results[ip] = hostname
-            except (OSError, asyncio.TimeoutError):
-                pass
-
-    await asyncio.gather(
-        *[resolve_one(ip) for ip in ips],
-        return_exceptions=True,
-    )
-    return results
 
 
 @dataclass(frozen=True)
@@ -338,7 +282,7 @@ class ScanBlocked(RuntimeError):
     """
 
 
-class DiscoveryEngine(DriverProbes, PassiveCollection):
+class DiscoveryEngine(DriverProbes, PassiveCollection, ArpHarvest):
     """Orchestrates device discovery across all scanning methods."""
 
     def __init__(self) -> None:
@@ -1339,157 +1283,6 @@ class DiscoveryEngine(DriverProbes, PassiveCollection):
             (ip for ip, dev in self.results.items() if dev.alive), key=_key,
         )
 
-    async def _arp_phase(self, alive_ips: list[str], plan) -> None:
-        """Phase 4 body: ARP table read, OUI lookup, reverse DNS + NetBIOS.
-
-        The ARP read always covers every alive host — it is one cheap exec and
-        the phase's strongest signal (MAC -> OUI -> vendor). Only the name
-        lookups are bounded by ``plan.name_lookup_hosts``, because hostnames
-        feed ``discovery.hostname`` driver hints and are worth bounding rather
-        than dropping.
-        """
-        arp_table = await harvest_arp_table()
-
-        # The ARP table is a HINT about where to look, never a discovery on
-        # its own: an entry proves an address replied at layer 2 once, which
-        # is not a piece of equipment anyone can control. So the addresses it
-        # names get a second look, and they are only kept if they answer
-        # something.
-        #
-        # The second look matters because a sweep drops hosts that are
-        # perfectly willing to answer. Each echo waits on an address lookup
-        # first, the kernel queues only a couple of packets per unresolved
-        # neighbour, and a /22 sits on its neighbour-table ceiling -- so on a
-        # COLD cache a real share of live hosts never get pinged at all.
-        # Measured here: of 18 addresses the ARP table held and the sweep did
-        # not, 5 answered immediately when asked again unhurried. That is the
-        # whole reason the first scan on a freshly provisioned box found about
-        # half what the next one found -- the first scan's real work was
-        # filling the cache.
-        #
-        # A subnet's network and broadcast addresses are not hosts and are
-        # left out, but only below /31: a /31's two addresses and a /32's one
-        # are the hosts themselves, and a /32 is the target of a
-        # single-device scan.
-        edges: set[str] = set()
-        for subnet in self.scan_status.subnets:
-            try:
-                net = ipaddress.IPv4Network(subnet, strict=False)
-            except ValueError:
-                continue
-            if net.prefixlen >= 31:
-                continue
-            edges.add(str(net.network_address))
-            edges.add(str(net.broadcast_address))
-
-        candidates = [
-            ip for ip in arp_table
-            if ip not in self.results
-            and ip not in edges
-            and ip_in_subnets(ip, self.scan_status.subnets)
-        ]
-        if candidates and self._ping_method not in ("", icmp.METHOD_NONE):
-            recovered: set[str] = set()
-            try:
-                await asyncio.wait_for(
-                    self._reping(candidates[:_REPING_MAX_HOSTS], recovered),
-                    timeout=_REPING_MAX_SECONDS,
-                )
-            except (asyncio.TimeoutError, TimeoutError):
-                log.debug("Second ping pass hit its ceiling; keeping what replied")
-            for ip in recovered:
-                self._get_or_create(ip).alive = True
-            still_quiet = [ip for ip in candidates if ip not in recovered]
-            log.info(
-                "ARP named %d host(s) the sweep missed: %d answered a second "
-                "ping, %d carried on to the port scan unproven",
-                len(candidates), len(recovered), len(still_quiet),
-            )
-            for ip in still_quiet:
-                self._get_or_create(ip).alive = True
-                self._arp_provisional.add(ip)
-            self._refresh_device_count()
-            # In place: the phases after this one take the same list, so a
-            # host found here is port-scanned and probed like any other.
-            alive_ips.extend(candidates)
-
-        named = (
-            alive_ips
-            if plan.name_lookup_hosts is None
-            else alive_ips[: plan.name_lookup_hosts]
-        )
-
-        # Resolve hostnames + NetBIOS concurrently (best-effort)
-        hostname_task = asyncio.create_task(_resolve_hostnames(named))
-        netbios_task = None
-        if plan.netbios and named:
-            netbios_task = asyncio.create_task(
-                netbios_sweep(
-                    named, concurrency=30, timeout=1.0,
-                    source_ip=self._scan_source_ip,
-                )
-            )
-
-        hostnames = await hostname_task
-        netbios_results: dict[str, dict[str, str]] = {}
-        if netbios_task:
-            try:
-                netbios_results = await netbios_task
-            except Exception:
-                log.debug("NetBIOS sweep failed", exc_info=True)
-
-        for ip in alive_ips:
-            device = self._get_or_create(ip)
-            info: dict[str, Any] = {}
-
-            # Hostname from reverse DNS / NetBIOS — both feed
-            # the hostname enrichment evidence record.
-            hostname = hostnames.get(ip)
-            if hostname:
-                info["hostname"] = hostname
-
-            nbt = netbios_results.get(ip)
-            if nbt:
-                nbt_name = nbt.get("hostname")
-                if nbt_name:
-                    info["device_name"] = nbt_name
-                    if not hostname:
-                        info["hostname"] = nbt_name
-                        hostname = nbt_name
-
-            if hostname:
-                device.evidence_log.extend(hostname_evidence(hostname, self.signal_index))
-
-            # MAC + OUI: lookup keeps the friendly vendor name
-            # visible in the UI; the matcher consumes the OUI
-            # enrichment evidence record instead.
-            mac = arp_table.get(ip)
-            if mac:
-                mac_info, oui_ev = mac_info_and_evidence(mac, self.oui_db)
-                info.update(mac_info)
-                device.evidence_log.append(oui_ev)
-
-            if info:
-                # Split the merge by trust. manufacturer/category
-                # come from the OUI registry, which names the NIC
-                # vendor (often not the device vendor) — those only
-                # fill fields nothing else populated. mac/hostname/
-                # device_name are this scan's own ARP / reverse-DNS
-                # / NetBIOS reads and keep the standard merge rule,
-                # so a re-scan can refresh a renamed or reassigned
-                # host instead of showing the previous occupant
-                # forever.
-                oui_info = {
-                    k: info.pop(k)
-                    for k in ("manufacturer", "category")
-                    if k in info
-                }
-                if info:
-                    merge_device_info(device, info, "arp")
-                if oui_info:
-                    merge_device_info(device, oui_info, "arp", fill_only=True)
-                await self._emit_device_update(device, "arp_harvest")
-
     async def _port_scan_hosts(
         self,
         hosts: list[str],
@@ -1732,34 +1525,6 @@ class DiscoveryEngine(DriverProbes, PassiveCollection):
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
 
-    async def _reping(self, ips: list[str], alive: set[str]) -> None:
-        """Ping a short list again, unhurried, recording what answers.
-
-        A host that lost its first echo to a cold address cache is not a
-        dead host, and asking once more is the cheapest way to tell the two
-        apart.
-
-        Answers go into the caller's ``alive`` set as they arrive rather than
-        being returned, so that cancelling this pass on its ceiling keeps
-        every host that had already replied.
-        """
-        semaphore = asyncio.Semaphore(_REPING_CONCURRENCY)
-
-        async def one(ip: str) -> None:
-            async with semaphore:
-                for _ in range(_REPING_ATTEMPTS):
-                    result = await icmp.ping_host(
-                        ip,
-                        timeout=_REPING_TIMEOUT,
-                        source_ip=self._scan_source_ip,
-                        method=self._ping_method,
-                    )
-                    if result == icmp.RESULT_ALIVE:
-                        alive.add(ip)
-                        return
-
-        await asyncio.gather(*(one(ip) for ip in ips), return_exceptions=True)
-
     def _connected_evidence(self) -> dict[str, list[Evidence]]:
         """Address -> one ``connected`` record per project device whose driver
         held a port there when the scan started.
@@ -1812,47 +1577,6 @@ class DiscoveryEngine(DriverProbes, PassiveCollection):
             self.results[ip] = DiscoveredDevice(ip=ip)
             self._refresh_device_count()
         return self.results[ip]
-
-    async def _late_arp_harvest(self) -> None:
-        """Harvest a MAC + OUI for alive devices the phase-4 ARP pass missed.
-
-        Passive-discovered devices (mDNS/SSDP) on a subnet the ping sweep
-        skipped — e.g. a switch at its factory-default link-local /16, which
-        exceeds ``max_subnet_size`` — never went through phase 4, so they carry
-        no MAC and thus no OUI enrichment, and an OUI-only driver hint can never
-        surface them. By now the unicast traffic from the passive-only port
-        scan (and the passive exchange) has populated the OS ARP cache for them,
-        so a second read picks up the MAC and emits the same OUI evidence +
-        vendor lookup phase 4 does. Only touches devices without a MAC, so
-        ping-swept hosts already harvested in phase 4 are left untouched.
-        """
-        mac_missing = [
-            ip for ip, dev in self.results.items()
-            if dev.alive and not dev.mac
-        ]
-        if not mac_missing:
-            return
-        arp_late = await harvest_arp_table()
-        enriched = 0
-        for ip in mac_missing:
-            mac = arp_late.get(ip)
-            if not mac:
-                continue
-            device = self._get_or_create(ip)
-            info, oui_ev = mac_info_and_evidence(mac, self.oui_db)
-            # fill_only: this runs AFTER passive collection, and OUI names
-            # the NIC vendor — a longer IEEE registrant string must not
-            # clobber the manufacturer/category a device self-reported via
-            # mDNS/SSDP/SNMP. Enrich empty fields; never overwrite.
-            merge_device_info(device, info, "arp", fill_only=True)
-            device.evidence_log.append(oui_ev)
-            enriched += 1
-            await self._emit_device_update(device, "arp_harvest")
-        if enriched:
-            log.info(
-                "Late ARP harvest enriched %d passive-only device(s) with a "
-                "MAC/OUI", enriched,
-            )
 
     def _phase_base_progress(self, phase: str) -> float:
         """Cumulative progress at the START of a phase (sum of preceding weights)."""
