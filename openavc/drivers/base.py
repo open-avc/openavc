@@ -13,6 +13,19 @@ Auto-transport: The default connect() reads DRIVER_INFO["transport"] and
 self.config to create a TCP or serial transport automatically. Drivers with
 custom connection logic (e.g., PJLink greeting handshake) can override
 connect() as before.
+
+BaseDriver is assembled from mixins, one module each, and every name stays on
+the driver object: connect, disconnect and a drop of the connection
+(connect_lifecycle.py), the transport a config builds (transport_ladder.py),
+the poll loop (polling.py), the liveness probe and the hold after a device
+stopped answering (liveness.py), the push channel (push.py), child entities
+(child_entities.py), a datagram beside the transport and Wake-on-LAN
+(udp_side.py), a bridge's ports (bridge_ports.py), setup actions
+(setup_wizard.py), and state writes with their contract checks
+(state_writes.py). What stays here is the driver object itself: its
+constructor, the hooks a driver overrides, and the faults and traffic it
+reports. The names drivers have always imported from this module stay
+importable from it.
 """
 
 from __future__ import annotations
