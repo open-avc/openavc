@@ -474,3 +474,193 @@ async def test_a_branch_past_the_nesting_limit_fails_at_the_limit(
     assert [p["error"] for _e, p in errors] == [
         "Conditional nesting depth limit (5) exceeded"
     ]
+
+
+# --- what a deliberate-break pass on the moved code found nothing else checks ---------
+
+
+async def test_a_conditional_reports_the_value_it_compared(
+    engine: MacroEngine, events: EventBus, state: StateStore,
+) -> None:
+    state.set("var.mode", 3)
+    progress = _record(events, "macro.progress.*")
+    engine.load_macros([{"id": "m", "name": "M", "steps": [
+        {"action": "conditional", "condition": {"key": "var.mode", "operator": "gt", "value": 2}},
+    ]}])
+    await engine.execute("m")
+    evaluated = [p for _e, p in progress if p.get("status") == "evaluated"]
+    assert evaluated == [{
+        "macro_id": "m", "action": "conditional", "condition_result": True,
+        "branch": "then", "condition_key": "var.mode", "condition_operator": "gt",
+        "condition_value": 2, "actual_value": 3, "status": "evaluated",
+    }]
+
+
+async def test_a_help_request_defaults_to_a_warning(engine: MacroEngine) -> None:
+    help_requests = MagicMock()
+    help_requests.raise_request = AsyncMock()
+    engine._help = help_requests
+    engine.load_macros([{"id": "m", "name": "M", "steps": [
+        {"action": "help.request", "message": "Lamp out"},
+    ]}])
+    assert await engine.execute("m") == "completed"
+    help_requests.raise_request.assert_awaited_once_with(
+        message="Lamp out", severity="warning", cooldown=None,
+    )
+
+
+async def test_a_plugin_step_is_handed_the_run_context(engine: MacroEngine) -> None:
+    seen: list[dict[str, Any]] = []
+
+    async def blink(params: dict[str, Any], context: dict[str, Any]) -> None:
+        seen.append({"params": params, "context": context})
+
+    engine.register_plugin_action("acme.blink", blink, "acme_plugin")
+    engine.load_macros([{"id": "m", "name": "M", "steps": [
+        {"action": "acme.blink", "params": {"times": 3}},
+    ]}])
+    await engine.execute("m", {"event": "custom.go", "data": 1})
+    assert seen == [{"params": {"times": 3}, "context": {"event": "custom.go", "data": 1}}]
+
+
+async def test_a_branch_of_a_run_with_no_context_gets_its_own_empty_context(
+    engine: MacroEngine, state: StateStore,
+) -> None:
+    """A plugin writing into the context inside a branch does not reach the
+    steps after the branch when the run started with no trigger context."""
+    async def write(_params: dict[str, Any], context: dict[str, Any]) -> None:
+        context["seen"] = 1
+
+    engine.register_plugin_action("acme.write", write, "acme_plugin")
+    state.set("var.a", 1)
+    engine.load_macros([{"id": "m", "name": "M", "steps": [
+        {"action": "conditional", "condition": {"key": "var.a", "value": 1},
+         "then_steps": [{"action": "acme.write"}]},
+        {"action": "state.set", "key": "var.after", "value": "$trigger.seen"},
+    ]}])
+    await engine.execute("m")
+    assert state.get("var.after") is None
+
+
+async def test_a_wait_until_already_met_says_so_once_and_never_subscribes(
+    engine: MacroEngine, events: EventBus, state: StateStore, monkeypatch,
+) -> None:
+    state.set("var.ready", True)
+    subscribed: list[str] = []
+    real_subscribe = state.subscribe
+    monkeypatch.setattr(
+        state, "subscribe", lambda p, cb: subscribed.append(p) or real_subscribe(p, cb),
+    )
+    progress = _record(events, "macro.progress.*")
+    engine.load_macros([{"id": "w", "name": "W", "steps": [
+        {"action": "wait_until", "timeout": 5,
+         "condition": {"key": "var.ready", "operator": "eq", "value": True}},
+    ]}])
+    assert await engine.execute("w") == "completed"
+    assert subscribed == []
+    frames = [p for _e, p in progress if p.get("status") != "running"]
+    assert frames == [{
+        "macro_id": "w", "action": "wait_until", "condition_key": "var.ready",
+        "condition_operator": "eq", "condition_value": True,
+        "status": "satisfied", "waited_seconds": 0.0,
+    }]
+
+
+@pytest.mark.parametrize("timeout", [-1, "5", True and "x"])
+async def test_a_wait_until_refuses_a_timeout_that_is_not_a_duration(
+    engine: MacroEngine, events: EventBus, timeout: Any,
+) -> None:
+    errors = _record(events, "macro.step_error.*")
+    engine.load_macros([{"id": "w", "name": "W", "steps": [
+        {"action": "wait_until", "timeout": timeout, "condition": {"key": "var.x", "value": 1}},
+    ]}])
+    assert await engine.execute("w") == "failed"
+    assert [p["error"] for _e, p in errors] == [
+        f"wait_until 'timeout' must be a non-negative number or null, got {timeout!r}"
+    ]
+
+
+async def test_a_missing_member_of_an_unnamed_group_names_the_group_by_its_id(
+    state: StateStore, events: EventBus, devices: MagicMock,
+) -> None:
+    engine = MacroEngine(state, events, devices, project_device_ids=lambda: {"acme1"})
+    engine.load_groups([{"id": "wall", "device_ids": ["ghost"]}])
+    progress = _record(events, "macro.progress.*")
+    engine.load_macros([{"id": "m", "name": "M", "steps": [
+        {"action": "group.command", "group": "wall", "command": "power_on"},
+    ]}])
+    await engine.execute("m")
+    results = [p["device_results"] for _e, p in progress if p.get("status") == "group_complete"]
+    assert results[0][0]["message"] == (
+        "Device 'ghost' is listed in group 'wall' but is not in this project. "
+        "Remove it from the group, or add the device back."
+    )
+
+
+async def test_a_command_field_on_another_step_is_not_named_in_its_failure(
+    engine: MacroEngine, caplog,
+) -> None:
+    lines = await _failure_line(
+        engine, [{"action": "macro", "macro": "ghost", "command": "power_on"}], caplog,
+    )
+    assert lines == ["Macro step failed: step 1/1, macro, calling 'ghost' — Macro 'ghost' not found"]
+
+
+async def test_a_step_error_frame_counts_its_own_macro_in_the_chain(
+    engine: MacroEngine, events: EventBus,
+) -> None:
+    errors = _record(events, "macro.step_error.*")
+    engine.load_macros([
+        {"id": "outer", "name": "Outer", "steps": [{"action": "macro", "macro": "inner"}]},
+        {"id": "inner", "name": "Inner", "steps": [{"action": "acme.nothing"}]},
+    ])
+    await engine.execute("outer")
+    assert [(e, p["call_chain"]) for e, p in errors] == [
+        ("macro.step_error.inner", ["inner", "outer"]),
+    ]
+    await engine.execute("inner")
+    assert errors[-1][1]["call_chain"] == ["inner"]
+
+
+async def test_a_failed_step_with_no_device_is_worded_for_the_panel(
+    engine: MacroEngine, events: EventBus,
+) -> None:
+    from openavc.api.error_messages import friendly_error
+    from openavc.reach_devices import AdapterUnavailable
+
+    async def broken(_params: dict[str, Any], _context: dict[str, Any]) -> None:
+        raise AdapterUnavailable("en9")
+
+    engine.register_plugin_action("acme.blink", broken, "acme_plugin")
+    errors = _record(events, "macro.step_error.*")
+    engine.load_macros([{"id": "m", "name": "M", "steps": [{"action": "acme.blink"}]}])
+    await engine.execute("m")
+    exc = AdapterUnavailable("en9")
+    assert friendly_error(exc, at_panel=True) != friendly_error(exc, at_panel=False)
+    assert errors[0][1]["message"] == friendly_error(exc, at_panel=True)
+
+
+async def test_a_handler_of_a_skipped_run_may_start_that_macro_again(
+    engine: MacroEngine, events: EventBus,
+) -> None:
+    """The skipped run's call chain is gone before its skip is announced, so a
+    handler that starts the same macro is not refused as a circular call."""
+    engine.load_macros([{
+        "id": "solo", "name": "Solo", "overlap": "skip",
+        "steps": [{"action": "delay", "seconds": 0.2}],
+    }])
+    refusals: list[str] = []
+
+    async def again(_event: str, _payload: dict[str, Any]) -> None:
+        try:
+            engine.start("solo")
+        except ValueError as exc:
+            refusals.append(str(exc))
+
+    events.on("macro.skipped.solo", again)
+    running = asyncio.create_task(engine.execute("solo"))
+    await asyncio.sleep(0.02)
+    assert await engine.execute("solo") == "skipped"
+    assert refusals == []
+    await running
+    await asyncio.sleep(0.25)
