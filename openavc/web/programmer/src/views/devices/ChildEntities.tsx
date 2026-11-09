@@ -13,9 +13,9 @@ import { useChildReadingDeclarations } from "../../components/shared/useChildRea
 import {
   MonitorCell,
   MonitorControl,
-  MonitorLimitsPanel,
   type DeclaredReading,
 } from "../../components/shared/MonitorControl";
+import { MonitorLimitsRow } from "../../components/shared/MonitorLimitsRow";
 import {
   childPresence,
   childStateFor,
@@ -1290,16 +1290,13 @@ function ReadingRow({
         </MonitorCell>
       </tr>
       {monitor && open && (
-        <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
-          <td colSpan={3} style={{ padding: "0 8px 8px" }}>
-            <MonitorLimitsPanel
-              monitor={monitor}
-              declared={declared}
-              monitors={monitors}
-              onChange={onMonitorsChange}
-            />
-          </td>
-        </tr>
+        <MonitorLimitsRow
+          monitor={monitor}
+          declared={declared}
+          monitors={monitors}
+          onChange={onMonitorsChange}
+          padding="0 8px 8px"
+        />
       )}
     </Fragment>
   );

@@ -12,7 +12,8 @@
 import { Fragment, useMemo, useState } from "react";
 import type { MonitorConfig } from "../../api/types";
 import { CopyButton } from "../../components/shared/CopyButton";
-import { MonitorCell, MonitorControl, MonitorLimitsPanel } from "../../components/shared/MonitorControl";
+import { MonitorCell, MonitorControl } from "../../components/shared/MonitorControl";
+import { MonitorLimitsRow } from "../../components/shared/MonitorLimitsRow";
 import type { MonitorEdit } from "../../components/shared/useMonitorEdits";
 import { parseStateOptionList } from "../../components/shared/paramOptions";
 import { sectionStyle, sectionTitleStyle, surfaceStyle } from "./deviceSectionStyles";
@@ -183,16 +184,13 @@ function StateRow({
         </MonitorCell>
       </tr>
       {monitor && open && (
-        <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
-          <td colSpan={3} style={{ padding: "0 var(--space-md) var(--space-md)" }}>
-            <MonitorLimitsPanel
-              monitor={monitor}
-              declared={declared}
-              monitors={monitors}
-              onChange={onMonitorsChange}
-            />
-          </td>
-        </tr>
+        <MonitorLimitsRow
+          monitor={monitor}
+          declared={declared}
+          monitors={monitors}
+          onChange={onMonitorsChange}
+          padding="0 var(--space-md) var(--space-md)"
+        />
       )}
     </Fragment>
   );
