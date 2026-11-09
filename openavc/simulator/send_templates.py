@@ -97,23 +97,32 @@ _DIGIT_CAPTURES = {"integer": r"(-?\d+)", "child_id": r"(\d+)", "boolean": r"(\d
 _WORD_CAPTURES = {"number": r"(-?[\d.]+)", "boolean": r"(true|false|0|1)"}
 
 
-def _goes_out_as_digits(param_type: str, spec: str) -> bool:
-    """Whether a param's placeholder puts digits on the wire: an integer or a
-    child id always, a boolean only under a numeric spec (its word spellings
-    could never match what that send produced)."""
-    if param_type == "boolean":
-        return bool(spec) and spec[-1] in "dxXob"
-    return param_type in ("integer", "child_id")
+def _of_type(table: dict[str, str], param_type: Any) -> str | None:
+    """``table``'s capture for ``param_type``, the type compared with each
+    name, never hashed: a hand-written type that is not a name (a list, an
+    object) matches nothing rather than raising."""
+    return next((capture for name, capture in table.items() if param_type == name), None)
 
 
-def _capture_for(param_type: str, spec: str) -> str:
+def _digit_capture(param_type: Any, spec: str) -> str | None:
+    """The decimal capture of a param whose placeholder puts digits on the
+    wire, or None: an integer or a child id always, a boolean only under a
+    numeric spec (its word spellings could never match what that send
+    produced)."""
+    if param_type == "boolean" and not (spec and spec[-1] in "dxXob"):
+        return None
+    return _of_type(_DIGIT_CAPTURES, param_type)
+
+
+def _capture_for(param_type: Any, spec: str) -> str:
     """The capture class one param placeholder inverts to. Digits take the
     digit set the spec's base puts on the wire ({addr:02X} emits hex, which
     (\\d+) could never match back), else the type's decimal capture."""
-    if not _goes_out_as_digits(param_type, spec):
-        return _WORD_CAPTURES.get(param_type, r"(.+)")
+    digits = _digit_capture(param_type, spec)
+    if digits is None:
+        return _of_type(_WORD_CAPTURES, param_type) or r"(.+)"
     base = spec_int_base(spec)
-    return _BASE_CAPTURES[base] if base else _DIGIT_CAPTURES[param_type]
+    return _BASE_CAPTURES[base] if base else digits
 
 
 def send_regex(template: str, params: dict[str, Any]) -> str:
