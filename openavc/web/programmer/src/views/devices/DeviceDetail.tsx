@@ -1,27 +1,14 @@
 import { InstalledEquipment } from "./InstalledEquipment";
 import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Send, Pencil, Trash2, Wifi, Power, RefreshCw, Copy, Settings, Check, X, Loader2, Search, AlertTriangle, ClipboardCheck } from "lucide-react";
+import { Pencil, Trash2, Wifi, Power, RefreshCw, Copy, Settings, Check, X, Loader2, Search, ClipboardCheck } from "lucide-react";
 import { CopyButton } from "../../components/shared/CopyButton";
 import { DeviceStatusDot } from "../../components/shared/DeviceStatusDot";
 import { useProjectStore } from "../../store/projectStore";
-import { SearchableSelect } from "../../components/shared/SearchableSelect";
-import { commandOptions } from "../../components/shared/pickerOptions";
 import { useConnectionStore } from "../../store/connectionStore";
 import * as api from "../../api/restClient";
 import { getAuditDeviceTarget } from "../../api/auditClient";
 import { useAuditStore } from "../../store/auditStore";
-import type { BridgePort, DeviceConfig, DeviceInfo, DeviceSettingValue, DriverInfo, DriverParamDef } from "../../api/types";
-import { CommandParamForm } from "../../components/shared/CommandParamForm";
-import { fileParamNames, fileParamsBlocked, isFileCommand } from "../../components/shared/commandFiles";
-import { CommandFileRunStatus, useCommandFileRun } from "./CommandFileRun";
-import {
-  commandConfirmMessage,
-  commandResultText,
-  commandParamsBlocked,
-  seedCommandParams,
-  type CommandParamDefs,
-} from "../../components/shared/commandParams";
-import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
+import type { BridgePort, DeviceConfig, DeviceInfo, DeviceSettingValue, DriverInfo } from "../../api/types";
 import {
   MonitorCell, MonitorControl, MonitorLimitsPanel, type DeclaredReading,
 } from "../../components/shared/MonitorControl";
@@ -49,13 +36,14 @@ import { useConnectionTestResult } from "./useConnectionTestResult";
 import { driverLabel } from "../../components/shared/driverLabel";
 import { DriverUpdateLine } from "./DriverUpdateLine";
 import { NeedsLoginBanner } from "./NeedsLoginBanner";
-import { ProblemReportDialog, ReportLink } from "./ProblemReportDialog";
+import { ProblemReportDialog } from "./ProblemReportDialog";
 import type { ProblemReportContext } from "../../api/problemReportClient";
-import { reportableCommandFailure } from "./problemReport";
 import { awayBanner, hasSignInFields, readDeviceAway, reportableOffline, waitsForLogin } from "./deviceAway";
 import { AsleepBanner, OfflineBanner, PausedBanner, RestartingBanner } from "./AwayBanners";
 import { OrphanBanner } from "./OrphanBanner";
 import { ChildTroubleBanner } from "./ChildTroubleBanner";
+import { SendCommandSection } from "./SendCommandSection";
+import { sectionStyle, sectionTitleStyle } from "./deviceSectionStyles";
 
 export function DeviceDetail({
   deviceId,
@@ -84,28 +72,8 @@ export function DeviceDetail({
   // the device log says why). It is still in the project, so it can still be
   // edited, duplicated or deleted.
   const [notRunning, setNotRunning] = useState(false);
-  const [commandResult, setCommandResult] = useState<
-    {
-      ok: boolean;
-      text: string;
-      detail?: string;
-      // A failure's HTTP status and code, and what was sent, for Report a problem.
-      status?: number;
-      code?: string;
-      command?: string;
-      params?: Record<string, unknown>;
-    } | null
-  >(null);
   // Report a problem is open, from where and with what the page showed.
   const [reportContext, setReportContext] = useState<ProblemReportContext | null>(null);
-  const [selectedCommand, setSelectedCommand] = useState("");
-  const [commandParams, setCommandParams] = useState<Record<string, string>>({});
-  // The files chosen for a command that takes one, by param.
-  const [commandFiles, setCommandFiles] = useState<Record<string, File | null>>({});
-  const fileRun = useCommandFileRun(deviceId);
-  const [sending, setSending] = useState(false);
-  // What the driver asks before the chosen command is sent, while asking.
-  const [confirmSend, setConfirmSend] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -303,9 +271,6 @@ export function DeviceDetail({
       ?.help?.connection ?? ""
   );
 
-  const commands = deviceInfo?.commands ?? {};
-  const commandNames = Object.keys(commands);
-
   // What the driver declares about each state variable — label, unit, type,
   // range, allowed values. Monitor pre-fills from this, which is why tagging
   // lamp hours is one click rather than a form: the projector's driver already
@@ -338,69 +303,6 @@ export function DeviceDetail({
     return keys;
   }, [deviceInfo]);
 
-  // child_id params render a dropdown of the device's live children — the
-  // shared ParamInput fetches them per-field (children register dynamically as
-  // the driver discovers them).
-
-  const handleSendCommand = useCallback(async () => {
-    if (!selectedCommand) return;
-    setSending(true);
-    setCommandResult(null);
-    const def = commands[selectedCommand] as { label?: string } | undefined;
-    const label = def?.label || selectedCommand;
-    const fileParams = new Set(fileParamNames(def));
-    const params: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(commandParams)) {
-      if (v === "" || fileParams.has(k)) continue;
-      params[k] = v;
-    }
-    try {
-      if (isFileCommand(def)) {
-        // Uploaded first, then run in the background; CommandFileRunStatus
-        // follows it.
-        const files: Record<string, File> = {};
-        for (const [k, f] of Object.entries(commandFiles)) {
-          if (f && fileParams.has(k)) files[k] = f;
-        }
-        await fileRun.start(selectedCommand, label, params, files);
-        return;
-      }
-      const result = await api.sendCommand(deviceId, selectedCommand, params);
-      setCommandResult({ ok: true, ...commandResultText(label, result) });
-    } catch (e) {
-      setCommandResult({
-        ok: false,
-        text: parseApiError(e),
-        status: e instanceof ApiError ? e.status : undefined,
-        code: e instanceof ApiError ? apiErrorCode(e) : undefined,
-        command: selectedCommand,
-        params,
-      });
-    } finally {
-      setSending(false);
-    }
-  }, [deviceId, selectedCommand, commandParams, commandFiles, commands, fileRun]);
-
-  // Get param fields for selected command
-  const commandDef = commands[selectedCommand] as Record<string, unknown> | undefined;
-  const commandParamDefs =
-    (commandDef?.params as Record<string, Partial<DriverParamDef>>) ?? {};
-  const paramKeys = Object.keys(commandParamDefs);
-  // Block Send on an invalid literal param (out of range / pattern mismatch)
-  // or a required one left blank — the per-field inline error says which.
-  // Authoring aid; the runtime gates both too.
-  const sendBlocked =
-    commandParamsBlocked(commandParamDefs, commandParams) ||
-    fileParamsBlocked(commandParamDefs, commandFiles) ||
-    fileRun.busy;
-  const commandLabel = (commandDef?.label as string | undefined) || selectedCommand;
-  // A command that erases or resets the device asks first.
-  const requestSend = () => {
-    const ask = commandConfirmMessage(commandDef, commandLabel);
-    if (ask) setConfirmSend(ask);
-    else void handleSendCommand();
-  };
-
   // Bridge: when this device's driver advertises bridge ports, it's a bridge
   // other devices route through. The card below lists each port + what's bound
   // to it, plus a link to the unit's own web UI (at its connection host).
@@ -414,19 +316,6 @@ export function DeviceDetail({
       const c = project?.connections?.[d.id];
       return c?.bridge === deviceId && c?.bridge_port === portId;
     });
-
-  const sectionStyle: React.CSSProperties = {
-    marginBottom: "var(--space-xl)",
-  };
-
-  const sectionTitleStyle: React.CSSProperties = {
-    fontSize: "var(--font-size-sm)",
-    color: "var(--text-secondary)",
-    textTransform: "uppercase",
-    letterSpacing: "0.5px",
-    marginBottom: "var(--space-md)",
-    fontWeight: 600,
-  };
 
   return (
     <div>
@@ -1089,160 +978,13 @@ export function DeviceDetail({
           />
         ))}
 
-      {/* Send Command */}
-      <div style={sectionStyle}>
-        <h3 style={sectionTitleStyle}>Send Command</h3>
-        <div
-          style={{
-            background: "var(--bg-surface)",
-            borderRadius: "var(--border-radius)",
-            border: "1px solid var(--border-color)",
-            padding: "var(--space-lg)",
-          }}
-        >
-          {commandNames.length === 0 ? (
-            <div style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
-              {!connected
-                ? "Device is not connected. Commands will be available once the device connects."
-                : "No commands available. The driver may not be loaded or may not define any commands."}
-            </div>
-          ) : (
-            <>
-              <div style={{ marginBottom: "var(--space-md)" }}>
-                <div style={{ display: "flex", gap: "var(--space-sm)" }}>
-                <CommandPicker
-                  commands={commands}
-                  value={selectedCommand}
-                  onChange={(cmd) => {
-                    setSelectedCommand(cmd);
-                    // Seed so enum params show the driver's default (or the
-                    // first choice) instead of a blank box, and flags their
-                    // default or No.
-                    const pdefs = (commands[cmd] as Record<string, unknown>)
-                      ?.params as CommandParamDefs | undefined;
-                    setCommandParams(seedCommandParams(pdefs ?? {}, { fillChoices: true }));
-                    setCommandFiles({});
-                    setCommandResult(null);
-                    if (!fileRun.busy) fileRun.clear();
-                  }}
-                />
-                <button
-                  onClick={requestSend}
-                  disabled={!selectedCommand || sending || sendBlocked}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "var(--space-xs)",
-                    padding: "var(--space-sm) var(--space-lg)",
-                    borderRadius: "var(--border-radius)",
-                    background: selectedCommand && !sendBlocked ? "var(--accent-bg)" : "var(--bg-hover)",
-                    color: selectedCommand && !sendBlocked ? "var(--text-on-accent)" : "var(--text-muted)",
-                    opacity: sending ? 0.6 : 1,
-                  }}
-                >
-                  <Send size={14} /> Send
-                </button>
-                </div>
-                {selectedCommand && (() => {
-                  const cmdDef = commands[selectedCommand] as Record<string, unknown> | undefined;
-                  const cmdHelp = cmdDef?.help as string | undefined;
-                  return cmdHelp ? (
-                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-                      {cmdHelp}
-                    </div>
-                  ) : null;
-                })()}
-              </div>
-
-              {/* Param fields */}
-              {paramKeys.length > 0 && (
-                <div style={{ marginBottom: "var(--space-md)" }}>
-                  <CommandParamForm
-                    layout="inline"
-                    params={commandParamDefs}
-                    values={commandParams}
-                    onChange={(name, val) => setCommandParams((p) => ({ ...p, [name]: val }))}
-                    deviceId={deviceId}
-                    files={commandFiles}
-                    onFileChange={(name, file) => setCommandFiles((f) => ({ ...f, [name]: file }))}
-                  />
-                </div>
-              )}
-
-              {/* A command that takes or hands back a file, while it runs and after */}
-              <CommandFileRunStatus
-                view={fileRun.view}
-                deviceId={deviceId}
-                deviceName={deviceName}
-                onStop={() => void fileRun.stop()}
-                onReport={setReportContext}
-              />
-
-              {/* Result */}
-              {commandResult !== null && (
-                <div role="status" style={{ fontSize: "var(--font-size-sm)" }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "var(--space-xs)",
-                      color: commandResult.ok ? "var(--color-success)" : "var(--color-error)",
-                    }}
-                  >
-                    {commandResult.ok ? <Check size={14} /> : <AlertTriangle size={14} />}
-                    <span>{commandResult.text}</span>
-                    {!commandResult.ok &&
-                      reportableCommandFailure(commandResult.status, commandResult.code) && (
-                        <ReportLink
-                          onClick={() =>
-                            setReportContext({
-                              source: "command_failure",
-                              error: commandResult.text,
-                              command: commandResult.command,
-                              params: commandResult.params,
-                              status: commandResult.status,
-                              code: commandResult.code ?? "",
-                            })
-                          }
-                        />
-                      )}
-                  </div>
-                  {commandResult.detail && (
-                    <pre
-                      style={{
-                        background: "var(--bg-base)",
-                        padding: "var(--space-md)",
-                        borderRadius: "var(--border-radius)",
-                        fontFamily: "var(--font-mono)",
-                        overflow: "auto",
-                        maxHeight: 200,
-                        whiteSpace: "pre-wrap",
-                        margin: "var(--space-xs) 0 0",
-                      }}
-                    >
-                      {commandResult.detail}
-                    </pre>
-                  )}
-                </div>
-              )}
-
-              {confirmSend !== null && (
-                <ConfirmDialog
-                  title={commandLabel}
-                  message={confirmSend}
-                  confirmLabel="Send"
-                  destructive
-                  onConfirm={() => {
-                    setConfirmSend(null);
-                    void handleSendCommand();
-                  }}
-                  onCancel={() => setConfirmSend(null)}
-                />
-              )}
-            </>
-          )}
-        </div>
-      </div>
+      <SendCommandSection
+        deviceId={deviceId}
+        deviceName={deviceName}
+        commands={deviceInfo?.commands ?? {}}
+        connected={connected}
+        onReport={setReportContext}
+      />
 
       {/* Plugin Device Panels */}
       <DevicePanelSlot
@@ -1265,53 +1007,6 @@ export function DeviceDetail({
         />
       )}
     </div>
-  );
-}
-
-/** The `code` a structured refusal carries beside `detail`, or "". */
-function apiErrorCode(e: ApiError): string {
-  try {
-    const code = JSON.parse(e.body)?.code;
-    return typeof code === "string" ? code : "";
-  } catch {
-    return "";
-  }
-}
-
-// --- Command Picker ---
-
-/**
- * The device page's command dropdown, which is where a searchable one was
- * first needed and for a long time the only place there was one. It is now
- * `SearchableSelect` like every other command dropdown in the product, so a
- * command reads the same here as it does in a macro step or a panel binding.
- *
- * Kept as a named wrapper rather than inlined: the call site cares about
- * commands, not about option shapes.
- */
-function CommandPicker({
-  commands,
-  value,
-  onChange,
-}: {
-  commands: Record<string, unknown>;
-  value: string;
-  onChange: (cmd: string) => void;
-}) {
-  // The one picker that offers a command taking or handing back a file.
-  const options = useMemo(() => commandOptions(commands, { fileCommands: true }), [commands]);
-  return (
-    <SearchableSelect
-      value={value}
-      onChange={onChange}
-      options={options}
-      allowEmpty={false}
-      placeholder="Select a command..."
-      searchPlaceholder="Search commands..."
-      emptyHint="This driver declares no commands."
-      testId="command-picker"
-      style={{ flex: 1 }}
-    />
   );
 }
 

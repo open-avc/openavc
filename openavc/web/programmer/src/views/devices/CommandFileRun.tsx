@@ -9,7 +9,7 @@ import {
   uploadCommandFiles,
   type CommandRun,
 } from "../../api/commandFileClient";
-import { ApiError, parseApiError } from "../../api/errors";
+import { ApiError, apiErrorCode, parseApiError } from "../../api/errors";
 import type { ProblemReportContext } from "../../api/problemReportClient";
 import { onMessage } from "../../api/wsClient";
 import { describeSize } from "../../components/shared/commandFiles";
@@ -106,7 +106,7 @@ export function useCommandFileRun(deviceId: string) {
             text: parseApiError(e),
             command,
             status: e instanceof ApiError ? e.status : undefined,
-            code: e instanceof ApiError ? structuredCode(e.body) : undefined,
+            code: apiErrorCode(e),
           });
         }
       } finally {
@@ -138,15 +138,6 @@ export function useCommandFileRun(deviceId: string) {
   const busy =
     view.kind === "uploading" || (view.kind === "run" && view.run.status === "running");
   return { view, start, stop, clear, busy };
-}
-
-function structuredCode(body: string): string {
-  try {
-    const code = JSON.parse(body)?.code;
-    return typeof code === "string" ? code : "";
-  } catch {
-    return "";
-  }
 }
 
 function percent(sent: number, total: number): number {

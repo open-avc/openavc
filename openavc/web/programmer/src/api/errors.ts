@@ -81,6 +81,21 @@ export function parseApiError(e: unknown): string {
 }
 
 /**
+ * The `code` a structured refusal carries beside `detail`: "" when the answer
+ * has none, undefined when the failure was not an answer from the server.
+ * Report a problem reads it (a 409 `command_incomplete` is the driver's).
+ */
+export function apiErrorCode(e: unknown): string | undefined {
+  if (!(e instanceof ApiError)) return undefined;
+  try {
+    const code = JSON.parse(e.body)?.code;
+    return typeof code === "string" ? code : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
  * The `errors` list a structured refusal carries beside `detail` (a driver
  * definition that failed validation lists each problem there), or null when
  * the error has none.
