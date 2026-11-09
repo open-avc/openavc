@@ -5,6 +5,8 @@ Applies versioned transforms when loading older project files.
 Each migration is a pure function: dict -> dict.
 """
 
+from typing import NamedTuple
+
 from openavc.core.layout_migration import convert_grid_layout
 
 # Connection-related config fields that belong in the connections table. The
@@ -37,26 +39,12 @@ def migrate_0_1_to_0_2(data: dict) -> dict:
     - Bump version
     """
     connections: dict[str, dict] = {}
-    serial_renames = (("com_port", "port"), ("baud_rate", "baudrate"))
-
     for device in data.get("devices", []):
         device_id = device.get("id", "")
         config = device.get("config", {})
-
-        # Rename legacy serial field names BEFORE moving to connections table.
-        # If both legacy and new are present (e.g. mixed manual edits), the
-        # new name wins.
-        for old_name, new_name in serial_renames:
-            if old_name in config and new_name not in config:
-                config[new_name] = config.pop(old_name)
-            elif old_name in config:
-                config.pop(old_name)
-
-        conn_overrides: dict = {}
-        for key in list(config.keys()):
-            if key in CONNECTION_FIELDS:
-                conn_overrides[key] = config.pop(key)
-
+        # Renamed BEFORE the move, so the moved fields carry the new names.
+        _rename_serial_fields_0_2(config)
+        conn_overrides = {key: config.pop(key) for key in list(config) if key in CONNECTION_FIELDS}
         if conn_overrides:
             connections[device_id] = conn_overrides
 
@@ -64,6 +52,19 @@ def migrate_0_1_to_0_2(data: dict) -> dict:
     data.setdefault("driver_dependencies", [])
     data["openavc_version"] = "0.2.0"
     return data
+
+
+_SERIAL_RENAMES_0_2 = (("com_port", "port"), ("baud_rate", "baudrate"))
+
+
+def _rename_serial_fields_0_2(config: dict) -> None:
+    """The legacy serial field names, renamed in place. If both a legacy name
+    and its new one are present (e.g. mixed manual edits), the new name wins."""
+    for old_name, new_name in _SERIAL_RENAMES_0_2:
+        if old_name in config and new_name not in config:
+            config[new_name] = config.pop(old_name)
+        elif old_name in config:
+            config.pop(old_name)
 
 
 def migrate_0_2_to_0_3(data: dict) -> dict:
@@ -92,12 +93,7 @@ def migrate_0_3_to_0_4(data: dict) -> dict:
     # and avoid an import cycle with project_library.
     from openavc.core.project_library import sanitize_id
 
-    # Collect group assignments from devices
-    groups_map: dict[str, list[str]] = {}
-    for device in data.get("devices", []):
-        group_name = device.pop("group", None)
-        if group_name:
-            groups_map.setdefault(group_name, []).append(device.get("id", ""))
+    groups_map = _groups_named_by_devices_0_4(data.get("devices", []))
 
     # Merge the per-device assignments INTO any device_groups already present
     # (a hand-edited or partially-migrated file can carry both). Dropping
@@ -108,19 +104,33 @@ def migrate_0_3_to_0_4(data: dict) -> dict:
     by_id = {g.get("id"): g for g in groups}
     for name, ids in groups_map.items():
         gid = sanitize_id(name)
-        target = by_id.get(gid)
-        if target is None:
-            target = {"id": gid, "name": name, "device_ids": []}
-            by_id[gid] = target
-            groups.append(target)
-        device_ids = target.setdefault("device_ids", [])
-        for device_id in ids:
-            if device_id and device_id not in device_ids:
-                device_ids.append(device_id)
+        if by_id.get(gid) is None:
+            by_id[gid] = {"id": gid, "name": name, "device_ids": []}
+            groups.append(by_id[gid])
+        _add_group_members_0_4(by_id[gid], ids)
     data["device_groups"] = groups
 
     data["openavc_version"] = "0.4.0"
     return data
+
+
+def _groups_named_by_devices_0_4(devices: list) -> dict[str, list[str]]:
+    """Each group name a device carried, with the ids of the devices that
+    named it, in the order first named. The field leaves every device."""
+    groups_map: dict[str, list[str]] = {}
+    for device in devices:
+        group_name = device.pop("group", None)
+        if group_name:
+            groups_map.setdefault(group_name, []).append(device.get("id", ""))
+    return groups_map
+
+
+def _add_group_members_0_4(group: dict, ids: list) -> None:
+    """The ids not already listed, added in order; an empty id is not one."""
+    device_ids = group.setdefault("device_ids", [])
+    for device_id in ids:
+        if device_id and device_id not in device_ids:
+            device_ids.append(device_id)
 
 
 def migrate_0_4_to_0_5(data: dict) -> dict:
@@ -419,13 +429,37 @@ def migrate_0_8_to_0_9(data: dict) -> dict:
 #: panel already drew, and the renderer stops defaulting in 0.10.0.
 _MATRIX_LEGACY_DEFAULT_COUNT = 4
 
-#: The eight keys the pattern form used, and which generator key each becomes.
-#: Dropped from the config afterwards -- left in place they would be keys the
-#: renderer no longer reads, and every migrated project would open with a
-#: warning about its own history.
-_MATRIX_LEGACY_KEYS = ("input_count", "output_count", "input_labels", "output_labels",
-                       "input_key_pattern", "output_key_pattern",
-                       "route_key_pattern", "audio_route_key_pattern")
+
+class _LegacyMatrixAxis(NamedTuple):
+    """One axis as the pattern form described it."""
+
+    name: str
+    count_key: str
+    labels_key: str
+    # Each pattern key this axis took, and the generator key it becomes.
+    patterns: tuple
+
+
+#: The two axes, and which of the pattern form's keys became which generator key.
+_MATRIX_AXES_0_10 = (
+    _LegacyMatrixAxis("sources", "input_count", "input_labels", (
+        ("input_key_pattern", "label_key"),
+    )),
+    _LegacyMatrixAxis("destinations", "output_count", "output_labels", (
+        ("output_key_pattern", "label_key"),
+        ("route_key_pattern", "route_key"),
+        ("audio_route_key_pattern", "audio_route_key"),
+    )),
+)
+
+#: The eight keys the pattern form used. Dropped from the config afterwards --
+#: left in place they would be keys the renderer no longer reads, and every
+#: migrated project would open with a warning about its own history.
+_MATRIX_LEGACY_KEYS = frozenset(
+    key
+    for axis in _MATRIX_AXES_0_10
+    for key in (axis.count_key, axis.labels_key, *(legacy for legacy, _ in axis.patterns))
+)
 
 
 def _migrate_matrix_config_0_9_to_0_10(config: dict) -> dict:
@@ -453,34 +487,36 @@ def _migrate_matrix_config_0_9_to_0_10(config: dict) -> dict:
     wants the button back turns it on and says which variable backs it.
     """
     out = {k: v for k, v in config.items() if k not in _MATRIX_LEGACY_KEYS}
-
-    for axis, count_key, label_key, key_pattern in (
-        ("sources", "input_count", "input_labels", "input_key_pattern"),
-        ("destinations", "output_count", "output_labels", "output_key_pattern"),
-    ):
+    for axis in _MATRIX_AXES_0_10:
         # A file that already speaks 0.10.0 keeps what it says. Nothing writes
         # one yet, but a hand-edited project should not have its lists replaced
         # by an expansion of keys it also happens to carry.
-        if axis in config:
-            continue
-        try:
-            count = int(config.get(count_key) or _MATRIX_LEGACY_DEFAULT_COUNT)
-        except (TypeError, ValueError):
-            count = _MATRIX_LEGACY_DEFAULT_COUNT
-        generator: dict = {"count": max(count, 0)}
-        labels = config.get(label_key)
-        if isinstance(labels, list) and labels:
-            generator["labels"] = labels
-        if config.get(key_pattern):
-            generator["label_key"] = config[key_pattern]
-        if axis == "destinations":
-            if config.get("route_key_pattern"):
-                generator["route_key"] = config["route_key_pattern"]
-            if config.get("audio_route_key_pattern"):
-                generator["audio_route_key"] = config["audio_route_key_pattern"]
-        out[axis] = {"from": generator}
-
+        if axis.name not in config:
+            out[axis.name] = {"from": _axis_generator_0_10(config, axis)}
     return out
+
+
+def _axis_generator_0_10(config: dict, axis: _LegacyMatrixAxis) -> dict:
+    """One axis's pattern-form keys as its generator: the count, then the
+    labels, then each pattern key that was set."""
+    generator: dict = {"count": _legacy_count_0_10(config.get(axis.count_key))}
+    labels = config.get(axis.labels_key)
+    if isinstance(labels, list) and labels:
+        generator["labels"] = labels
+    for legacy, key in axis.patterns:
+        if config.get(legacy):
+            generator[key] = config[legacy]
+    return generator
+
+
+def _legacy_count_0_10(value) -> int:
+    """The count an axis drew: an unstated or unreadable one drew 4, and
+    nothing drew fewer than none."""
+    try:
+        count = int(value or _MATRIX_LEGACY_DEFAULT_COUNT)
+    except (TypeError, ValueError):
+        count = _MATRIX_LEGACY_DEFAULT_COUNT
+    return max(count, 0)
 
 
 def migrate_0_9_to_0_10(data: dict) -> dict:
@@ -538,20 +574,11 @@ def migrate_0_10_to_0_11(data: dict) -> dict:
     """
     existing = data.get("monitors")
     monitors = list(existing) if isinstance(existing, list) else []
-    already = {
-        m.get("key") for m in monitors
-        if isinstance(m, dict) and isinstance(m.get("key"), str)
-    }
+    already = _monitored_keys_0_11(monitors)
 
     for var in data.get("variables", []) or []:
-        if not isinstance(var, dict):
-            continue
-        tracked = var.pop("dashboard", None)
-        var_id = var.get("id")
-        if not tracked or not isinstance(var_id, str) or not var_id:
-            continue
-        key = f"var.{var_id}"
-        if key in already:
+        key = _dashboard_key_0_11(var)
+        if key is None or key in already:
             continue
         already.add(key)
         monitors.append({
@@ -565,6 +592,26 @@ def migrate_0_10_to_0_11(data: dict) -> dict:
 
     data["openavc_version"] = "0.11.0"
     return data
+
+
+def _monitored_keys_0_11(monitors: list) -> set[str]:
+    """The keys the project's monitors already name."""
+    return {
+        m.get("key") for m in monitors
+        if isinstance(m, dict) and isinstance(m.get("key"), str)
+    }
+
+
+def _dashboard_key_0_11(var) -> str | None:
+    """The var.<id> key a variable's dashboard flag asked to show, or None.
+    The flag leaves every variable either way."""
+    if not isinstance(var, dict):
+        return None
+    tracked = var.pop("dashboard", None)
+    var_id = var.get("id")
+    if not tracked:
+        return None
+    return f"var.{var_id}" if isinstance(var_id, str) and var_id else None
 
 
 def migrate_0_11_to_0_12(data: dict) -> dict:
