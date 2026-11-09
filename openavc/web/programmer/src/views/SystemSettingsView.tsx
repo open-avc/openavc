@@ -22,6 +22,7 @@ import {
   warningBox,
 } from "../components/system/settingsStyles";
 import { PasswordField, REDACTED, Toggle } from "./settings/settingsControls";
+import { saveChecks } from "./settings/saveChecks";
 import { AcceptConnectionsField, ReachDevicesField } from "../components/system/NetworkChoiceFields";
 import { CutOffRestartLines, CutOffSaved, CutOffWarning, type CutOffFacts } from "../components/system/ListenCutOff";
 import { adapterName, ownScreenOpensProgrammer, restartPlan, sameListenChoice, type RestartPlan } from "../components/system/adapterChoice";
@@ -33,7 +34,7 @@ import { configuredOrigin, restartOrigin, runningOrigin, withHost } from "../com
 import { showError, showSuccess } from "../store/toastStore";
 import * as api from "../api/restClient";
 import { ApiError, parseApiError } from "../api/errors";
-import { PASSWORD_TOO_SHORT, passwordTooShortToSave } from "../api/auth";
+import { PASSWORD_TOO_SHORT } from "../api/auth";
 import type {
   AdapterIdentity,
   ListenMode,
@@ -774,45 +775,9 @@ export function SystemSettingsView() {
   const noAuth = !auth.programmer_password && auth.programmer_password !== REDACTED && !auth.api_key && auth.api_key !== REDACTED;
   const publicBind = listenMode !== "this_computer";
 
-  // An API key claims the system but is only ever accepted in the X-API-Key
-  // header, which a browser can't attach to a page it is opening. So a key with
-  // no password leaves the Programmer unreachable from every browser, with only
-  // the filesystem to undo it. A stored value reads back as REDACTED, which
-  // counts as set.
-  const apiKeyNeedsPassword = !!auth.api_key && !auth.programmer_password;
-  // Block the save only when this edit is what puts it there. A system already
-  // in that state (its key came from OPENAVC_API_KEY, or from a hand-written
-  // system.json) still has to be able to change its log level -- the server
-  // draws the same line.
-  const credentialEdited =
-    !!dirty.auth && ("api_key" in dirty.auth || "programmer_password" in dirty.auth);
-  const apiKeySaveBlocked = apiKeyNeedsPassword && credentialEdited;
-  // The floor first-run setup applies; the server refuses the same save with
-  // the same sentence. Only a password typed in this edit: a stored one reads
-  // back as REDACTED, and an empty field removes the password.
-  const passwordTooShort =
-    !!dirty.auth &&
-    "programmer_password" in dirty.auth &&
-    auth.programmer_password !== REDACTED &&
-    passwordTooShortToSave(auth.programmer_password ?? "");
-
-  // Validation for TLS fields. The cert mode is driven by tls.auto_generate
-  // (true => auto self-sign, false => user-supplied paths), not by whether the
-  // path fields happen to be populated.
+  const { tlsPortError, tlsProvidedBlank, apiKeyNeedsPassword, passwordTooShort, blocked: saveBlocked } =
+    saveChecks({ tls, httpPort: net.http_port, auth, dirtyAuth: dirty.auth });
   const tlsCertMode: "auto" | "provided" = tls?.auto_generate ? "auto" : "provided";
-  const tlsPortInvalid =
-    tls && (tls.port < 1 || tls.port > 65535 || tls.port === net.http_port);
-  const tlsPortError = tls && tls.port === net.http_port
-    ? "HTTPS port must differ from HTTP port"
-    : tls && (tls.port < 1 || tls.port > 65535)
-    ? "Port must be between 1 and 65535"
-    : null;
-  const tlsProvidedBlank =
-    tlsCertMode === "provided" &&
-    tls?.enabled &&
-    (!tls?.cert_file?.trim() || !tls?.key_file?.trim());
-  const saveBlocked =
-    !!(tls?.enabled && (tlsPortInvalid || tlsProvidedBlank)) || apiKeySaveBlocked || passwordTooShort;
 
   // Cross-protocol switch warning (page loaded over one scheme, switching to the other)
   const pageIsHttps = typeof window !== "undefined" && window.location.protocol === "https:";

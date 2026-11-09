@@ -436,12 +436,14 @@ class TestTheSettingsCardMirrorsIt:
     what is pinned is that the two agree on WHEN, not word for word."""
 
     def _card(self) -> str:
+        """The card and the module holding the rules it refuses Save on."""
         from pathlib import Path
 
-        return (
-            Path(_repo_root())
-            / "openavc/web/programmer/src/views/SystemSettingsView.tsx"
-        ).read_text(encoding="utf-8")
+        root = Path(_repo_root()) / "openavc/web/programmer/src/views"
+        return "\n".join(
+            (root / name).read_text(encoding="utf-8")
+            for name in ("SystemSettingsView.tsx", "settings/saveChecks.ts")
+        )
 
     def test_the_card_computes_the_same_condition(self):
         card = self._card()
