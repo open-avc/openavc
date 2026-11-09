@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { Save, AlertTriangle, Power } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { HostNetworkCard } from "../components/system/HostNetworkCard";
@@ -14,6 +14,7 @@ import {
 } from "../components/system/settingsStyles";
 import { FieldRow, NumberBox, SwitchRow } from "./settings/settingsControls";
 import { AccessCards, NoCredentialWarning, useSshAccess } from "./settings/AccessCards";
+import { useAdapters, useCertificateStatus, useInstallFacts } from "./settings/serverReads";
 import { saveChecks } from "./settings/saveChecks";
 import { DevicesCard, PanelDisplayCard } from "./settings/ProjectSettingsCards";
 import { SecurityCard } from "./settings/SecurityCard";
@@ -28,13 +29,7 @@ import { useSettingsSave } from "./settings/saveFlow";
 import { useSettingsDraft } from "./settings/settingsDraft";
 import { CutOffQuestion, RebootQuestion } from "./settings/SaveDialogs";
 import { useProjectStore } from "../store/projectStore";
-import * as api from "../api/restClient";
-import type {
-  AdapterIdentity,
-  NetworkAdapter,
-  NetworkInterface,
-  TlsStatus,
-} from "../api/restClient";
+import type { AdapterIdentity } from "../api/restClient";
 
 function getTheme(): "dark" | "light" {
   return (localStorage.getItem("openavc-theme") as "dark" | "light") || "dark";
@@ -50,45 +45,12 @@ export function SystemSettingsView() {
   // The config, the changes not saved yet, and whether one needs a restart.
   const draft = useSettingsDraft();
   const { config, dirty, update, merged, restartNeeded } = draft;
-  const [kioskAvailable, setKioskAvailable] = useState(false);
-  const [panelDimAvailable, setPanelDimAvailable] = useState(false);
-  const [updateGuidance, setUpdateGuidance] = useState<string | null>(null);
-
-  const projectLoaded = useProjectStore((s) => s.project !== null);
-  const [adapters, setAdapters] = useState<NetworkAdapter[]>([]);
-  // One entry per adapter, connected or not: what the two adapter pickers list.
-  const [interfaces, setInterfaces] = useState<NetworkInterface[]>([]);
-  const [adaptersLoading, setAdaptersLoading] = useState(false);
-  const [tlsStatus, setTlsStatus] = useState<TlsStatus | null>(null);
-
-  const loadAdapters = useCallback(() => {
-    setAdaptersLoading(true);
-    api.getNetworkAdapters()
-      .then((r) => {
-        setAdapters(r.adapters);
-        setInterfaces(r.interfaces ?? []);
-      })
-      .catch(() => {})
-      .finally(() => setAdaptersLoading(false));
-  }, []);
-
-  const loadTlsStatus = useCallback(() => {
-    api.getTlsStatus().then(setTlsStatus).catch(() => setTlsStatus(null));
-  }, []);
-
   // Read when Settings opens, in this order after the config.
-  useEffect(() => {
-    api.getSystemVersion().then((v) => {
-      setKioskAvailable(v.kiosk_available);
-      setPanelDimAvailable(v.panel_dim_available);
-      setUpdateGuidance(v.update_guidance ?? "");
-    }).catch(() => setUpdateGuidance("Update settings could not be loaded. Reload this page to try again."));
-  }, []);
+  const { kioskAvailable, panelDimAvailable, updateGuidance } = useInstallFacts();
   const ssh = useSshAccess();
-  useEffect(() => {
-    loadAdapters();
-    loadTlsStatus();
-  }, [loadAdapters, loadTlsStatus]);
+  const adapters = useAdapters();
+  const certificate = useCertificateStatus();
+  const projectLoaded = useProjectStore((s) => s.project !== null);
 
   const updateTls: UpdateTls = useCallback((key, value) => update("tls", key, value), [update]);
 
@@ -112,7 +74,7 @@ export function SystemSettingsView() {
     restart,
     saved: (fresh) => {
       draft.saved(fresh);
-      loadTlsStatus();
+      certificate.load();
     },
   });
 
@@ -127,7 +89,7 @@ export function SystemSettingsView() {
   const advertise = merged("discovery")?.advertise !== false;
 
   const reachChosen: AdapterIdentity = net.reach_devices_through ?? {};
-  const listenAdapterName = adapterName(listen.adapter, interfaces, listen.running?.adapter_name ?? "");
+  const listenAdapterName = adapterName(listen.adapter, adapters.interfaces, listen.running?.adapter_name ?? "");
   const urlFacts = {
     httpPort: net.http_port,
     // Settings cannot know whether port 80 is answering, so it always
@@ -143,8 +105,8 @@ export function SystemSettingsView() {
   const trustedCertPage: TrustedCertificatePage = {
     savedTlsEnabled: config?.tls?.enabled,
     setConfig: draft.setConfig,
-    setTlsStatus,
-    loadTlsStatus,
+    setTlsStatus: certificate.setStatus,
+    loadTlsStatus: certificate.load,
     askForRestart: restart.ask,
   };
 
@@ -231,7 +193,7 @@ export function SystemSettingsView() {
         <div style={cardStyle}>
           <div style={fieldRow}>
             <AcceptConnectionsField
-              interfaces={interfaces}
+              interfaces={adapters.interfaces}
               mode={listen.mode}
               adapter={listen.adapter}
               runningName={listen.running?.adapter_name ?? ""}
@@ -248,13 +210,13 @@ export function SystemSettingsView() {
           </div>
           <div style={fieldRow}>
             <ReachDevicesField
-              interfaces={interfaces}
+              interfaces={adapters.interfaces}
               chosen={reachChosen}
               resolved={config._reach_devices}
               hold={hold}
-              loading={adaptersLoading}
+              loading={adapters.loading}
               onChange={(identity) => update("network", "reach_devices_through", identity)}
-              onRefresh={loadAdapters}
+              onRefresh={adapters.reload}
             />
           </div>
           <FieldRow label="HTTP port" htmlFor="cfg-http-port" held={heldSetting(hold, "network", "http_port")}>
@@ -306,7 +268,7 @@ export function SystemSettingsView() {
           tls={tls}
           savedTlsEnabled={config?.tls?.enabled}
           httpPort={net.http_port}
-          tlsStatus={tlsStatus}
+          tlsStatus={certificate.status}
           updateTls={updateTls}
           hold={hold}
           tlsPortError={tlsPortError}
@@ -315,9 +277,9 @@ export function SystemSettingsView() {
 
         <TrustedCertificateCard
           page={trustedCertPage}
-          tlsStatus={tlsStatus}
+          tlsStatus={certificate.status}
           tlsPort={tls?.port}
-          adapters={adapters}
+          adapters={adapters.adapters}
           hold={hold}
         />
 
