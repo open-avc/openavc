@@ -2223,6 +2223,62 @@ def range_review(
     return fills, findings
 
 
+# --- One element, wherever it is drawn -------------------------------------
+
+#: The checks an element gets on its own, before any box is measured, in the
+#: order they report. A page and a master element both run this list, so a new
+#: check is one entry here.
+_ELEMENT_CHECKS: tuple[Callable[[Mapping[str, Any]], list[Finding]], ...] = (
+    binding_findings,
+    do_action_findings,
+    property_findings,
+    content_findings,
+    keypad_findings,
+    matrix_findings,
+)
+
+
+def _element_findings(element: Mapping[str, Any]) -> list[Finding]:
+    """Its type first (an unknown one draws nothing), then each of ``_ELEMENT_CHECKS``."""
+    type_finding = element_type_finding(element)
+    findings = [type_finding] if type_finding else []
+    for check in _ELEMENT_CHECKS:
+        findings.extend(check(element))
+    return findings
+
+
+def _declared_range_findings(
+    dump: Mapping[str, Any],
+    declared_range: Callable[[str], Mapping[str, Any] | None] | None,
+) -> tuple[list[Finding], list[Adjustment]]:
+    """What the device declares about the state this element is bound to.
+
+    The range findings and the rounding one, read before anything is filled,
+    and the fills the declaration supplies. Nothing when the element reads no
+    state or the caller has no declarations to ask.
+    """
+    key = bound_state_key(dump)
+    if not (key and declared_range):
+        return [], []
+    declared = declared_range(key)
+    fills, findings = range_review(dump, declared, key)
+    rounding = precision_review(dump, declared, key)
+    return [*findings, *([rounding] if rounding else [])], fills
+
+
+def _filled(
+    element: Any,
+    dump: dict[str, Any],
+    fills: list[Adjustment],
+    set_field: Callable[[Any, str, Any], None],
+) -> list[Adjustment]:
+    """Each fill written into the element, and into the dump the rest of the review reads."""
+    for fill in fills:
+        set_field(element, fill.field, fill.value)
+        dump[fill.field] = fill.value
+    return list(fills)
+
+
 # --- The whole page --------------------------------------------------------
 
 
@@ -2274,27 +2330,10 @@ def review_page(
     for el_id, dump in dumps.items():
         if not in_scope(el_id):
             continue
-        type_finding = element_type_finding(dump)
-        if type_finding:
-            findings.append(type_finding)
-        findings.extend(binding_findings(dump))
-        findings.extend(do_action_findings(dump))
-        findings.extend(property_findings(dump))
-        findings.extend(content_findings(dump))
-        findings.extend(keypad_findings(dump))
-        findings.extend(matrix_findings(dump))
-        key = bound_state_key(dump)
-        if key and declared_range:
-            declared = declared_range(key)
-            fills, range_findings = range_review(dump, declared, key)
-            findings.extend(range_findings)
-            rounding = precision_review(dump, declared, key)
-            if rounding:
-                findings.append(rounding)
-            for fill in fills:
-                set_field(elements[el_id], fill.field, fill.value)
-                dump[fill.field] = fill.value
-                adjustments.append(fill)
+        findings.extend(_element_findings(dump))
+        range_findings, fills = _declared_range_findings(dump, declared_range)
+        findings.extend(range_findings)
+        adjustments.extend(_filled(elements[el_id], dump, fills, set_field))
 
     if page.layouts:
         findings.extend(_arrangement_findings(
@@ -2564,16 +2603,7 @@ def review_master_element(
     its own has no page in hand to look at.
     """
     dump = _mapping(element)
-    type_finding = element_type_finding(dump)
-    findings = (
-        ([type_finding] if type_finding else [])
-        + binding_findings(dump)
-        + do_action_findings(dump)
-        + property_findings(dump)
-        + content_findings(dump)
-        + keypad_findings(dump)
-        + matrix_findings(dump)
-    )
+    findings = _element_findings(dump)
     placements = dump.get("placements")
     if not isinstance(placements, Mapping):
         return findings

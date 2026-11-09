@@ -5648,6 +5648,26 @@ export interface ReviewOptions {
 }
 
 /**
+ * The checks an element gets on its own, before any box is measured, in the
+ * order they report. A page and a master element both run this list, so a new
+ * check is one entry here.
+ */
+const ELEMENT_CHECKS: readonly ((el: UIElement) => ReviewFinding[])[] = [
+  bindingFindings,
+  doActionFindings,
+  propertyFindings,
+  contentFindings,
+  keypadFindings,
+  matrixFindings,
+];
+
+/** Its type first (an unknown one draws nothing), then each of ELEMENT_CHECKS. */
+function elementFindings(el: UIElement): ReviewFinding[] {
+  const typeFinding = elementTypeFinding(el);
+  return [...(typeFinding ? [typeFinding] : []), ...ELEMENT_CHECKS.flatMap((check) => check(el))];
+}
+
+/**
  * Everything a page will draw wrong, across every arrangement.
  *
  * Ordered and de-duplicated exactly the way the Python side is: bindings are a
@@ -5669,15 +5689,7 @@ export function reviewPage(page: UIPage, options: ReviewOptions = {}): ReviewFin
   findings.push(...custom);
 
   for (const el of page.elements) {
-    if (!inScope(el.id)) continue;
-    const typeFinding = elementTypeFinding(el);
-    if (typeFinding) findings.push(typeFinding);
-    findings.push(...bindingFindings(el));
-    findings.push(...doActionFindings(el));
-    findings.push(...propertyFindings(el));
-    findings.push(...contentFindings(el));
-    findings.push(...keypadFindings(el));
-    findings.push(...matrixFindings(el));
+    if (inScope(el.id)) findings.push(...elementFindings(el));
   }
 
   const layouts = page.layouts ?? [];
@@ -5923,16 +5935,7 @@ export function reviewMasterElement(
   master: MasterElement,
   theme?: ElementDefaults,
 ): ReviewFinding[] {
-  const typeFinding = elementTypeFinding(master);
-  const findings = [
-    ...(typeFinding ? [typeFinding] : []),
-    ...bindingFindings(master),
-    ...doActionFindings(master),
-    ...propertyFindings(master),
-    ...contentFindings(master),
-    ...keypadFindings(master),
-    ...matrixFindings(master),
-  ];
+  const findings = elementFindings(master);
   const placements = master.placements;
   if (!placements || typeof placements !== "object") return findings;
   const seen = new Set<string>();
