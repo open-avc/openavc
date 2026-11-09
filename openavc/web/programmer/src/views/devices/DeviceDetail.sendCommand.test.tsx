@@ -341,6 +341,38 @@ describe("a command that asks first", () => {
   });
 });
 
+describe("across a drop of the device", () => {
+  async function dropAndReturn(view: ReturnType<typeof render>) {
+    setInfo({});
+    setLive({ "device.amp.connected": false });
+    view.rerender(page());
+    await screen.findByText(/Device is not connected\./);
+    setInfo();
+    setLive({ "device.amp.connected": true });
+    view.rerender(page());
+    await screen.findByTestId("command-picker");
+  }
+
+  it("keeps a question that was being asked", async () => {
+    const view = await showPage();
+    await pick("Factory Reset");
+    fireEvent.click(sendButton());
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    await dropAndReturn(view);
+    await waitFor(() => expect(screen.getByRole("alertdialog").textContent).toContain("This erases every preset."));
+  });
+
+  it("keeps the last answer", async () => {
+    mocks.sendCommand.mockResolvedValue({ result: true });
+    const view = await showPage();
+    await pick("Power On");
+    fireEvent.click(sendButton());
+    await screen.findByRole("status");
+    await dropAndReturn(view);
+    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Power On sent."));
+  });
+});
+
 describe("a command that takes a file", () => {
   it("runs it in the background with the chosen file, never as a plain send", async () => {
     const { container } = await showPage();

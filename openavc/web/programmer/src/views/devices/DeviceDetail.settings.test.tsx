@@ -307,6 +307,20 @@ describe("changing a setting", () => {
   });
 });
 
+describe("the keyboard in Device Settings", () => {
+  it("keeps focus on the row's button as Edit turns into Cancel and back", async () => {
+    await showPage();
+    await screen.findByText("Device Settings");
+    const edit = editButton("Eco Mode");
+    edit.focus();
+    fireEvent.click(edit);
+    const cancel = screen.getByTitle("Cancel");
+    expect(document.activeElement).toBe(cancel);
+    fireEvent.click(cancel);
+    expect(document.activeElement).toBe(editButton("Eco Mode"));
+  });
+});
+
 describe("the Device Log", () => {
   it("opens on the protocol log and switches to state changes", async () => {
     await showPage();
