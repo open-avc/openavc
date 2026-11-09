@@ -25,10 +25,12 @@ REPO = Path(__file__).resolve().parents[1]
 DOC = REPO / "docs" / "hardened-deployment.md"
 SETTINGS_VIEW = REPO / "openavc" / "web" / "programmer" / "src" / "views" / "SystemSettingsView.tsx"
 SIDEBAR = REPO / "openavc" / "web" / "programmer" / "src" / "components" / "layout" / "Sidebar.tsx"
-# The Settings view, and the Network section's two adapter fields it renders.
+# The Settings view, the Network section's two adapter fields it renders, and
+# the Security card.
 SETTINGS_SOURCES = (
     SETTINGS_VIEW,
     REPO / "openavc" / "web" / "programmer" / "src" / "components" / "system" / "NetworkChoiceFields.tsx",
+    REPO / "openavc" / "web" / "programmer" / "src" / "views" / "settings" / "SecurityCard.tsx",
 )
 
 TEXT = DOC.read_text(encoding="utf-8")

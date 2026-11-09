@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Save, AlertTriangle, RefreshCw, Download, Lock, Power, Upload, FileCheck2, ChevronDown, ChevronRight, Copy, Smartphone, ShieldCheck } from "lucide-react";
+import { Save, AlertTriangle, RefreshCw, Power, Copy, ShieldCheck } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { copyToClipboard } from "../components/shared/clipboard";
@@ -24,6 +24,8 @@ import {
 import { PasswordField, REDACTED, Toggle } from "./settings/settingsControls";
 import { saveChecks } from "./settings/saveChecks";
 import { DevicesCard, PanelDisplayCard } from "./settings/ProjectSettingsCards";
+import { SecurityCard } from "./settings/SecurityCard";
+import type { UpdateTls } from "./settings/YourOwnCertificate";
 import { AcceptConnectionsField, ReachDevicesField } from "../components/system/NetworkChoiceFields";
 import { CutOffRestartLines, CutOffSaved, CutOffWarning, type CutOffFacts } from "../components/system/ListenCutOff";
 import { adapterName, ownScreenOpensProgrammer, restartPlan, sameListenChoice, type RestartPlan } from "../components/system/adapterChoice";
@@ -43,7 +45,6 @@ import type {
   SshStatus,
   SystemConfig,
   TlsStatus,
-  TlsUploadResult,
 } from "../api/restClient";
 
 /** A new API key: 32 random bytes, url-safe, the same shape the server would
@@ -74,118 +75,6 @@ const CLOUD_CERT_ERROR_LABELS: Record<string, string> = {
   internal: "The cloud hit an internal error during issuance. An automatic retry is scheduled.",
 };
 
-function ExpiryBadge({ days }: { days: number }) {
-  let bg = "rgba(76, 175, 80, 0.15)";
-  let color = "rgb(76, 175, 80)";
-  let label = `${days} days`;
-  if (days < 0) {
-    bg = "rgba(244, 67, 54, 0.15)";
-    color = "rgb(244, 67, 54)";
-    label = "Expired";
-  } else if (days < 30) {
-    bg = "rgba(255, 152, 0, 0.15)";
-    color = "rgb(255, 152, 0)";
-    label = `${days} days left`;
-  }
-  return (
-    <span style={{
-      display: "inline-block",
-      padding: "2px 8px",
-      borderRadius: 4,
-      fontSize: 11,
-      fontWeight: 600,
-      background: bg,
-      color,
-    }}>
-      {label}
-    </span>
-  );
-}
-
-// --- CA install instructions (per-OS) ---
-//
-// The text below is hand-written from current OS docs (Apple Platform Security
-// Guide, Microsoft "Manage trusted root certificates", Google Chrome Help, and
-// Mozilla support). Re-check it when shipping a new major OS version.
-
-type CaInstallOs =
-  | "windows"
-  | "macos"
-  | "ios"
-  | "android"
-  | "linux-chrome"
-  | "linux-firefox";
-
-const CA_INSTALL_OS_LABELS: Array<{ id: CaInstallOs; label: string }> = [
-  { id: "windows", label: "Windows" },
-  { id: "macos", label: "macOS" },
-  { id: "ios", label: "iOS (iPhone / iPad)" },
-  { id: "android", label: "Android" },
-  { id: "linux-chrome", label: "Linux (Chrome / Chromium / Edge)" },
-  { id: "linux-firefox", label: "Linux (Firefox)" },
-];
-
-const CA_INSTALL_STEPS: Record<CaInstallOs, string[]> = {
-  windows: [
-    "Double-click the downloaded openavc-ca.crt file.",
-    "Click \"Install Certificate…\" and choose \"Local Machine\" (or \"Current User\" if you can't elevate).",
-    "Select \"Place all certificates in the following store\", click \"Browse…\", and pick \"Trusted Root Certification Authorities\".",
-    "Finish the wizard. Restart any browsers that were already running.",
-  ],
-  macos: [
-    "Double-click the downloaded openavc-ca.crt file to open it in Keychain Access.",
-    "Pick the \"System\" keychain (or \"login\" if you only want to trust it for your own user) and add the certificate.",
-    "In Keychain Access, find \"OpenAVC Root CA\", double-click it, expand \"Trust\", and set \"When using this certificate\" to \"Always Trust\".",
-    "Close the window and authenticate. Restart Safari / Chrome to pick up the new trust setting.",
-  ],
-  ios: [
-    "Email or AirDrop the openavc-ca.crt file to the device, then open it.",
-    "iOS will say \"Profile Downloaded\". Open Settings → General → VPN & Device Management and tap the OpenAVC profile to install it.",
-    "Open Settings → General → About → Certificate Trust Settings and enable full trust for the OpenAVC root.",
-    "Reopen any browser tabs that were already showing a warning.",
-  ],
-  android: [
-    "Copy the openavc-ca.crt file to the device (USB, Drive, or email).",
-    "Open Settings → Security & privacy → More security settings → Encryption & credentials → Install a certificate → CA certificate.",
-    "Acknowledge the warning, tap \"Install anyway\", browse to the file, and confirm.",
-    "Some apps only trust user-installed CAs with explicit opt-in. Chrome works out of the box; the OpenAVC Panel app trusts the server automatically and does not need this step.",
-  ],
-  "linux-chrome": [
-    "Open Settings → Privacy and security → Security → Manage certificates → \"Authorities\" tab.",
-    "Click \"Import\", select openavc-ca.crt, and confirm.",
-    "In the trust dialog, tick \"Trust this certificate for identifying websites\" and click OK.",
-    "Restart Chrome / Chromium / Edge.",
-  ],
-  "linux-firefox": [
-    "Open Settings → Privacy & Security, scroll to \"Certificates\", and click \"View Certificates…\".",
-    "Switch to the \"Authorities\" tab and click \"Import…\".",
-    "Pick openavc-ca.crt and tick \"Trust this CA to identify websites\".",
-    "Close the dialog and reload any open OpenAVC tab.",
-  ],
-};
-
-function detectOs(): CaInstallOs {
-  if (typeof navigator === "undefined") return "windows";
-  const ua = navigator.userAgent;
-  if (/iPad|iPhone|iPod/i.test(ua)) return "ios";
-  if (/Android/i.test(ua)) return "android";
-  if (/Macintosh|Mac OS X/i.test(ua)) return "macos";
-  if (/Linux/i.test(ua)) {
-    if (/Firefox/i.test(ua)) return "linux-firefox";
-    return "linux-chrome";
-  }
-  return "windows";
-}
-
-function warningLabel(w: string): string {
-  switch (w) {
-    case "expired": return "Certificate is expired. Generate a new one";
-    case "expiring-soon": return "Certificate expires in under 30 days";
-    case "hostname-mismatch": return "Certificate does not cover this server's current hostname/IP. Regenerate after IP change";
-    default: return w;
-  }
-}
-
 function getTheme(): "dark" | "light" {
   return (localStorage.getItem("openavc-theme") as "dark" | "light") || "dark";
 }
@@ -212,16 +101,6 @@ export function SystemSettingsView() {
   const [showRebootDialog, setShowRebootDialog] = useState(false);
   const [showRestartDialog, setShowRestartDialog] = useState(false);
   const [showRestartPrompt, setShowRestartPrompt] = useState(false);
-  // TLS provided-mode cert upload state.
-  const [pickedCert, setPickedCert] = useState<File | null>(null);
-  const [pickedKey, setPickedKey] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadResult, setUploadResult] = useState<TlsUploadResult | null>(null);
-  const [pasteOpen, setPasteOpen] = useState(false);
-  const [pasteCert, setPasteCert] = useState("");
-  const [pasteKey, setPasteKey] = useState("");
-  const certInputRef = useRef<HTMLInputElement>(null);
-  const keyInputRef = useRef<HTMLInputElement>(null);
   const [kioskAvailable, setKioskAvailable] = useState(false);
   const [panelDimAvailable, setPanelDimAvailable] = useState(false);
   const [updateGuidance, setUpdateGuidance] = useState<string | null>(null);
@@ -243,9 +122,6 @@ export function SystemSettingsView() {
   // Where the restart dialog waits, worked out when it opens.
   const [restartSetup, setRestartSetup] = useState<{ plan: RestartPlan; preview: ListenPreview | null } | null>(null);
   const [tlsStatus, setTlsStatus] = useState<TlsStatus | null>(null);
-  const [installOs, setInstallOs] = useState<CaInstallOs>(() => detectOs());
-  const [installStepsOpen, setInstallStepsOpen] = useState(false);
-  const [fingerprintCopied, setFingerprintCopied] = useState(false);
 
   const loadAdapters = useCallback(() => {
     setAdaptersLoading(true);
@@ -326,6 +202,8 @@ export function SystemSettingsView() {
     },
     [],
   );
+
+  const updateTls: UpdateTls = useCallback((key, value) => update("tls", key, value), [update]);
 
   // Merged view: base config + unsaved changes
   const merged = useCallback(
@@ -554,68 +432,6 @@ export function SystemSettingsView() {
     }
   };
 
-  const handleDownloadCert = async () => {
-    try {
-      const blob = await api.downloadCertificate();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "openavc-ca.crt";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      showSuccess("CA certificate downloaded. Install it on your panel devices to skip the security warning.");
-    } catch (e) {
-      showError("Could not download CA certificate: " + parseApiError(e));
-    }
-  };
-
-  // Upload either the picked files (file-picker path) or the pasted PEM text
-  // (paste-expander path). Server writes them to data_dir/tls/, returns the
-  // paths, and we wire those into the unsaved config so the next Save points
-  // tls.cert_file / tls.key_file at the new files.
-  const handleUploadCert = async (cert: File, key: File) => {
-    setUploading(true);
-    try {
-      const result = await api.uploadTlsCert(cert, key);
-      setUploadResult(result);
-      // Auto-fill the path fields. Marks dirty so the save button enables.
-      update("tls", "cert_file", result.cert_path);
-      update("tls", "key_file", result.key_path);
-      // Reset picker state.
-      setPickedCert(null);
-      setPickedKey(null);
-      setPasteCert("");
-      setPasteKey("");
-      setPasteOpen(false);
-      if (certInputRef.current) certInputRef.current.value = "";
-      if (keyInputRef.current) keyInputRef.current.value = "";
-      showSuccess(
-        "Certificate uploaded. Save and restart to apply." +
-          (result.warnings.includes("is-ca-cert")
-            ? " Warning: this looks like a CA cert, not a server cert. Browsers may not trust it."
-            : ""),
-      );
-    } catch (e) {
-      showError(parseApiError(e));
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleUploadFromPickers = () => {
-    if (!pickedCert || !pickedKey) return;
-    void handleUploadCert(pickedCert, pickedKey);
-  };
-
-  const handleUploadFromPaste = () => {
-    if (!pasteCert.trim() || !pasteKey.trim()) return;
-    const certFile = new File([pasteCert], "cert.pem", { type: "application/x-pem-file" });
-    const keyFile = new File([pasteKey], "key.pem", { type: "application/x-pem-file" });
-    void handleUploadCert(certFile, keyFile);
-  };
-
   // BOTH stores, because this one Save button now writes both. The panel
   // display and device settings live in the project, so a change to only
   // those left this false, the button greyed, and nothing saved -- the edit
@@ -633,7 +449,6 @@ export function SystemSettingsView() {
   const hold = envHold(config);
   const heldBy = hold.by;
   const deploymentType = hold.deploymentType;
-  const tlsCertHeld = heldBy("tls", "auto_generate") ?? heldBy("tls", "cert_file") ?? heldBy("tls", "key_file");
   // Getting a trusted certificate also turns HTTPS on, so a held HTTPS switch
   // locks it too while HTTPS is off.
   const cloudCertHeld = heldBy("tls", "cloud_cert") ?? (config?.tls?.enabled ? undefined : heldBy("tls", "enabled"));
@@ -700,12 +515,6 @@ export function SystemSettingsView() {
 
   const { tlsPortError, tlsProvidedBlank, apiKeyNeedsPassword, passwordTooShort, blocked: saveBlocked } =
     saveChecks({ tls, httpPort: net.http_port, auth, dirtyAuth: dirty.auth });
-  const tlsCertMode: "auto" | "provided" = tls?.auto_generate ? "auto" : "provided";
-
-  // Cross-protocol switch warning (page loaded over one scheme, switching to the other)
-  const pageIsHttps = typeof window !== "undefined" && window.location.protocol === "https:";
-  const switchingOff = pageIsHttps && tls && tls.enabled === false && config?.tls?.enabled === true;
-  const switchingOn = !pageIsHttps && tls && tls.enabled === true && config?.tls?.enabled === false;
 
   // Trusted-certificate card facts. The certified address encodes the IPv4
   // the browser is using (dash-for-dot) under the certificate's wildcard;
@@ -904,522 +713,16 @@ export function SystemSettingsView() {
 
         {/* Security (HTTPS / TLS) */}
         <h3 style={sectionTitle}>Security</h3>
-        <div style={cardStyle}>
-          <div style={toggleRow}>
-            <div>
-              <div style={{ fontSize: "var(--font-size-sm)" }}>Enable HTTPS</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Encrypt traffic between this server and panels / browsers. Off by default.
-              </div>
-              <HeldNote hold={hold} variable={heldBy("tls", "enabled")} />
-            </div>
-            <EnvLock held={heldBy("tls", "enabled")} style={{ flexShrink: 0 }}>
-              <Toggle
-                checked={!!tls?.enabled}
-                onChange={(v) => update("tls", "enabled", v)}
-              />
-            </EnvLock>
-          </div>
-
-          {/* URL preview always visible — shows the user where they'll reach the IDE */}
-          <div style={{ ...helpText, gridColumn: "1 / -1", marginTop: 0, marginBottom: "var(--space-md)" }}>
-            After restart, the Programmer IDE will be at{" "}
-            <code>
-              {tls?.enabled ? "https" : "http"}://&lt;server&gt;:
-              {tls?.enabled ? tls.port : net.http_port}/programmer
-            </code>
-          </div>
-
-          {switchingOff && (
-            <div style={warningBox}>
-              <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: 2 }} />
-              <span>
-                You're disabling HTTPS while connected over <code>https://</code>. After restart, this page will be at{" "}
-                <code>http://&lt;server&gt;:{net.http_port}/programmer</code>. Update any bookmarks pointing to{" "}
-                <code>https://</code>.
-              </span>
-            </div>
-          )}
-          {switchingOn && (
-            <div style={warningBox}>
-              <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: 2 }} />
-              <span>
-                You're enabling HTTPS while connected over <code>http://</code>. After restart, this page will be at{" "}
-                <code>https://&lt;server&gt;:{tls?.port ?? 8443}/programmer</code>. Your browser will show a warning
-                until you install the CA certificate (button appears below after restart).
-              </span>
-            </div>
-          )}
-
-          {tls?.enabled && (
-            <>
-              {/* Cert source */}
-              <div style={{ ...fieldRow, gridTemplateColumns: "200px 1fr" }}>
-                <label style={labelStyle}>Certificate source</label>
-                <EnvLock held={tlsCertHeld} style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", cursor: "pointer" }}>
-                    <input
-                      type="radio"
-                      name="tls-cert-source"
-                      checked={tlsCertMode === "auto"}
-                      onChange={() => {
-                        update("tls", "auto_generate", true);
-                        update("tls", "cert_file", "");
-                        update("tls", "key_file", "");
-                      }}
-                    />
-                    <span>Auto-generate (recommended)</span>
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", cursor: "pointer" }}>
-                    <input
-                      type="radio"
-                      name="tls-cert-source"
-                      checked={tlsCertMode === "provided"}
-                      onChange={() => update("tls", "auto_generate", false)}
-                    />
-                    <span>Use my own certificate</span>
-                  </label>
-                </EnvLock>
-                <HeldNote hold={hold} variable={tlsCertHeld} style={{ gridColumn: "2" }} />
-              </div>
-
-              {tlsCertMode === "auto" && (
-                <>
-                  {/* Panel-app banner — only relevant when the server is actually
-                      running in auto-generate TLS mode. The browser-side card
-                      below is what desktop / iOS users need to install on their
-                      device. */}
-                  {tlsStatus?.enabled && tlsStatus.mode === "auto" && (
-                    <div style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: "var(--space-sm)",
-                      padding: "var(--space-md)",
-                      marginBottom: "var(--space-md)",
-                      background: "rgba(76, 175, 80, 0.08)",
-                      border: "1px solid rgba(76, 175, 80, 0.3)",
-                      borderRadius: "var(--border-radius)",
-                      fontSize: "var(--font-size-sm)",
-                      color: "var(--text-primary)",
-                    }}>
-                      <Smartphone size={16} style={{ color: "rgb(76, 175, 80)", flexShrink: 0, marginTop: 2 }} />
-                      <span>
-                        The OpenAVC Panel app (Android v0.1.0-rc6 or newer) trusts this server automatically, with no
-                        certificate install needed. The instructions below are for web browsers and the iOS panel app.
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Fingerprint verification — lets a paranoid integrator confirm
-                      the CA being downloaded matches the one the server is actually
-                      serving, before they install it on devices. */}
-                  {tlsStatus?.enabled && tlsStatus.cert && (
-                    <div style={{
-                      padding: "var(--space-md)",
-                      marginBottom: "var(--space-md)",
-                      background: "var(--bg-elevated)",
-                      border: "1px solid var(--border-color)",
-                      borderRadius: "var(--border-radius)",
-                    }}>
-                      <div style={{ ...subCardTitle, marginBottom: "var(--space-xs)" }}>Verify fingerprint</div>
-                      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "var(--space-sm)", lineHeight: 1.5 }}>
-                        When you install this certificate on a device, the device will show this same SHA-256
-                        fingerprint. They should match exactly.
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-                        <code style={{
-                          fontFamily: "var(--font-mono, monospace)",
-                          fontSize: 12,
-                          padding: "var(--space-xs) var(--space-sm)",
-                          background: "var(--bg-surface)",
-                          border: "1px solid var(--border-color)",
-                          borderRadius: 4,
-                          wordBreak: "break-all",
-                          flex: 1,
-                          minWidth: 240,
-                        }}>
-                          {tlsStatus.cert.fingerprint}
-                        </code>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            copyToClipboard(tlsStatus.cert!.fingerprint).then((copied) => {
-                              if (!copied) {
-                                showError("Couldn't copy to clipboard");
-                                return;
-                              }
-                              setFingerprintCopied(true);
-                              setTimeout(() => setFingerprintCopied(false), 1500);
-                            });
-                          }}
-                          style={{
-                            ...btnStyle,
-                            background: "var(--bg-surface)",
-                            color: "var(--text-primary)",
-                            border: "1px solid var(--border-color)",
-                          }}
-                        >
-                          <Copy size={14} />
-                          <span>{fingerprintCopied ? "Copied" : "Copy"}</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  <div style={fieldRow}>
-                    <label style={labelStyle}>Certificate</label>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
-                      {tlsStatus?.enabled && tlsStatus.cert ? (
-                        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-                          <span style={{ fontSize: "var(--font-size-sm)" }}>
-                            Valid until{" "}
-                            <strong>{new Date(tlsStatus.cert.expires_at).toLocaleDateString()}</strong>
-                          </span>
-                          <ExpiryBadge days={tlsStatus.cert.days_until_expiry} />
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
-                          The self-signed certificate will be generated on the next restart.
-                        </span>
-                      )}
-                      {tlsStatus?.enabled && tlsStatus.mode === "auto" && (
-                        <button
-                          type="button"
-                          onClick={handleDownloadCert}
-                          style={{
-                            ...btnStyle,
-                            background: "var(--bg-elevated)",
-                            color: "var(--text-primary)",
-                            border: "1px solid var(--border-color)",
-                            alignSelf: "flex-start",
-                            marginTop: "var(--space-xs)",
-                          }}
-                        >
-                          <Download size={14} />
-                          <span>Download CA certificate</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* OS picker + collapsible step-by-step. Lets browser / iOS users
-                      see the right install path for their device without us trying
-                      to pretend the whole flow is one-click. */}
-                  {tlsStatus?.enabled && tlsStatus.mode === "auto" && (
-                    <div style={fieldRow}>
-                      <label style={labelStyle} htmlFor="ca-install-os">Install on</label>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-xs)" }}>
-                        <select
-                          id="ca-install-os"
-                          value={installOs}
-                          onChange={(e) => setInstallOs(e.target.value as CaInstallOs)}
-                          style={selectStyle}
-                        >
-                          {CA_INSTALL_OS_LABELS.map((opt) => (
-                            <option key={opt.id} value={opt.id}>{opt.label}</option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => setInstallStepsOpen((v) => !v)}
-                          style={{
-                            ...btnStyle,
-                            background: "transparent",
-                            color: "var(--text-primary)",
-                            border: "1px solid var(--border-color)",
-                            justifyContent: "flex-start",
-                            marginTop: "var(--space-xs)",
-                          }}
-                        >
-                          {installStepsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                          <span>How to install</span>
-                        </button>
-                        {installStepsOpen && (
-                          <ol style={{
-                            marginTop: "var(--space-sm)",
-                            padding: "var(--space-md) var(--space-md) var(--space-md) var(--space-xl)",
-                            background: "var(--bg-elevated)",
-                            border: "1px solid var(--border-color)",
-                            borderRadius: "var(--border-radius)",
-                            fontSize: "var(--font-size-sm)",
-                            lineHeight: 1.6,
-                            color: "var(--text-primary)",
-                          }}>
-                            {CA_INSTALL_STEPS[installOs].map((step, i) => (
-                              <li key={i} style={{ marginBottom: "var(--space-xs)" }}>{step}</li>
-                            ))}
-                          </ol>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {tlsCertMode === "provided" && (
-                <EnvLock held={tlsCertHeld}>
-                  {/* Active-cert card: shows either the just-uploaded result or
-                      the previously-saved provided cert (from tls-status). */}
-                  {(uploadResult || (tlsStatus?.enabled && tlsStatus.mode === "provided" && tlsStatus.cert)) && (
-                    <div style={{
-                      padding: "var(--space-md)",
-                      background: "var(--bg-elevated)",
-                      borderRadius: "var(--border-radius)",
-                      marginBottom: "var(--space-md)",
-                      border: "1px solid var(--border-color)",
-                    }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)", marginBottom: "var(--space-xs)" }}>
-                        <FileCheck2 size={16} style={{ color: "rgb(76, 175, 80)" }} />
-                        <strong style={{ fontSize: "var(--font-size-sm)" }}>
-                          {uploadResult ? "Certificate uploaded" : "Active certificate"}
-                        </strong>
-                      </div>
-                      <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6 }}>
-                        <div>
-                          Valid until <strong>
-                            {new Date((uploadResult?.expires_at) ?? (tlsStatus?.cert?.expires_at ?? "")).toLocaleDateString()}
-                          </strong>
-                          {" "}
-                          <ExpiryBadge days={(uploadResult?.days_until_expiry) ?? (tlsStatus?.cert?.days_until_expiry ?? 0)} />
-                        </div>
-                        <div><strong>Subject:</strong> <code>{uploadResult?.subject ?? tlsStatus?.cert?.subject}</code></div>
-                        <div style={{ wordBreak: "break-all" }}>
-                          <strong>SHA-256:</strong> <code>{uploadResult?.fingerprint ?? tlsStatus?.cert?.fingerprint}</code>
-                        </div>
-                        <div><strong>Valid for:</strong> {(uploadResult?.sans ?? tlsStatus?.cert?.sans ?? []).join(", ") || "—"}</div>
-                        {uploadResult?.warnings.includes("is-ca-cert") && (
-                          <div style={{ marginTop: "var(--space-xs)", color: "rgb(255, 152, 0)" }}>
-                            <AlertTriangle size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />
-                            This looks like a CA certificate, not a server certificate. Most browsers won't trust it.
-                          </div>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setUploadResult(null);
-                          update("tls", "cert_file", "");
-                          update("tls", "key_file", "");
-                          setPickedCert(null);
-                          setPickedKey(null);
-                        }}
-                        style={{
-                          ...btnStyle,
-                          background: "transparent",
-                          border: "1px solid var(--border-color)",
-                          color: "var(--text-primary)",
-                          marginTop: "var(--space-sm)",
-                        }}
-                      >
-                        Replace certificate
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Picker UI: hidden when an upload result is showing.
-                      "Replace certificate" above puts us back here. */}
-                  {!uploadResult && !(tls.cert_file && tls.key_file) && (
-                    <>
-                      <div style={fieldRow}>
-                        <label style={labelStyle}>Certificate</label>
-                        <div>
-                          <input
-                            ref={certInputRef}
-                            type="file"
-                            accept=".pem,.crt,.cer,application/x-pem-file,application/x-x509-ca-cert"
-                            onChange={(e) => setPickedCert(e.target.files?.[0] ?? null)}
-                            style={{ fontSize: "var(--font-size-sm)" }}
-                          />
-                          {pickedCert && (
-                            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-                              Selected: <code>{pickedCert.name}</code> ({Math.ceil(pickedCert.size / 100) / 10} KB)
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div style={fieldRow}>
-                        <label style={labelStyle}>Private key</label>
-                        <div>
-                          <input
-                            ref={keyInputRef}
-                            type="file"
-                            accept=".pem,.key,application/x-pem-file"
-                            onChange={(e) => setPickedKey(e.target.files?.[0] ?? null)}
-                            style={{ fontSize: "var(--font-size-sm)" }}
-                          />
-                          {pickedKey && (
-                            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-                              Selected: <code>{pickedKey.name}</code> ({Math.ceil(pickedKey.size / 100) / 10} KB)
-                            </div>
-                          )}
-                        </div>
-                        <span style={helpText}>
-                          The private key matching the certificate above. PEM format, no passphrase.
-                          Files are written to the server's data directory; you don't need filesystem access.
-                        </span>
-                      </div>
-                      <div style={fieldRow}>
-                        <div />
-                        <button
-                          type="button"
-                          onClick={handleUploadFromPickers}
-                          disabled={!pickedCert || !pickedKey || uploading}
-                          style={{
-                            ...btnStyle,
-                            opacity: !pickedCert || !pickedKey || uploading ? 0.5 : 1,
-                            alignSelf: "flex-start",
-                          }}
-                        >
-                          <Upload size={14} />
-                          <span>{uploading ? "Uploading..." : "Upload certificate"}</span>
-                        </button>
-                      </div>
-
-                      {/* Paste-PEM expander for users whose cert arrived in an email. */}
-                      <div style={{ marginTop: "var(--space-md)" }}>
-                        <button
-                          type="button"
-                          onClick={() => setPasteOpen((v) => !v)}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: "var(--text-secondary)",
-                            cursor: "pointer",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 4,
-                            padding: 0,
-                            fontSize: "var(--font-size-sm)",
-                          }}
-                        >
-                          {pasteOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                          <span>Or paste PEM contents</span>
-                        </button>
-                        {pasteOpen && (
-                          <div style={{ marginTop: "var(--space-sm)", display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
-                            <textarea
-                              placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
-                              value={pasteCert}
-                              onChange={(e) => setPasteCert(e.target.value)}
-                              rows={6}
-                              style={{ ...inputStyle, fontFamily: "monospace", fontSize: 12, resize: "vertical" }}
-                            />
-                            <textarea
-                              placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"
-                              value={pasteKey}
-                              onChange={(e) => setPasteKey(e.target.value)}
-                              rows={6}
-                              style={{ ...inputStyle, fontFamily: "monospace", fontSize: 12, resize: "vertical" }}
-                            />
-                            <button
-                              type="button"
-                              onClick={handleUploadFromPaste}
-                              disabled={!pasteCert.trim() || !pasteKey.trim() || uploading}
-                              style={{
-                                ...btnStyle,
-                                opacity: !pasteCert.trim() || !pasteKey.trim() || uploading ? 0.5 : 1,
-                                alignSelf: "flex-start",
-                              }}
-                            >
-                              <Upload size={14} />
-                              <span>{uploading ? "Uploading..." : "Use pasted certificate"}</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
-
-                  {tlsProvidedBlank && !uploadResult && (
-                    <div style={{ ...helpText, color: "rgb(244, 67, 54)", marginTop: "var(--space-sm)" }}>
-                      Upload a certificate before saving.
-                    </div>
-                  )}
-                </EnvLock>
-              )}
-
-              <div style={fieldRow}>
-                <label style={labelStyle} htmlFor="cfg-tls-port">HTTPS port</label>
-                <EnvLock held={heldBy("tls", "port")}>
-                  <input
-                    id="cfg-tls-port"
-                    type="number"
-                    min={1}
-                    max={65535}
-                    style={{
-                      ...inputStyle,
-                      borderColor: tlsPortError ? "rgb(244, 67, 54)" : (inputStyle.borderColor as string),
-                    }}
-                    value={tls.port}
-                    onChange={(e) => update("tls", "port", parseInt(e.target.value) || 8443)}
-                  />
-                </EnvLock>
-                <HeldNote hold={hold} variable={heldBy("tls", "port")} style={{ gridColumn: "2" }} />
-                {tlsPortError && (
-                  <span style={{ ...helpText, color: "rgb(244, 67, 54)" }}>
-                    {tlsPortError}
-                  </span>
-                )}
-              </div>
-
-              <div style={toggleRow}>
-                <div>
-                  <div style={{ fontSize: "var(--font-size-sm)" }}>Redirect HTTP to HTTPS</div>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                    Old links to <code>http://&lt;server&gt;:{net.http_port}</code> redirect automatically. Turn off only
-                    if a reverse proxy in front of OpenAVC handles HTTP.
-                  </div>
-                  <HeldNote hold={hold} variable={heldBy("tls", "redirect_http")} />
-                </div>
-                <EnvLock held={heldBy("tls", "redirect_http")} style={{ flexShrink: 0 }}>
-                  <Toggle
-                    checked={!!tls.redirect_http}
-                    onChange={(v) => update("tls", "redirect_http", v)}
-                  />
-                </EnvLock>
-              </div>
-
-              {/* Status block — read-only, populated after restart */}
-              {tlsStatus?.enabled && tlsStatus.cert && (
-                <div style={{
-                  marginTop: "var(--space-md)",
-                  padding: "var(--space-md)",
-                  background: "var(--bg-elevated)",
-                  borderRadius: "var(--border-radius)",
-                  fontSize: 12,
-                  lineHeight: 1.6,
-                }}>
-                  <div style={{ ...sectionTitle, marginBottom: "var(--space-sm)" }}>Current certificate</div>
-                  <div><strong>Subject:</strong> <code>{tlsStatus.cert.subject}</code></div>
-                  <div><strong>Issuer:</strong> <code>{tlsStatus.cert.issuer}</code></div>
-                  <div><strong>SHA-256 fingerprint:</strong>{" "}
-                    <code style={{ wordBreak: "break-all" }}>{tlsStatus.cert.fingerprint}</code>
-                  </div>
-                  <div><strong>Valid for:</strong> {tlsStatus.cert.sans.join(", ")}</div>
-                  {tlsStatus.cert.warnings.length > 0 && (
-                    <div style={{ marginTop: "var(--space-sm)", color: "rgb(255, 152, 0)" }}>
-                      <Lock size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />
-                      {tlsStatus.cert.warnings.map((w) => warningLabel(w)).join("; ")}
-                    </div>
-                  )}
-                </div>
-              )}
-              {tlsStatus?.enabled && tlsStatus.error && (
-                <div style={{ ...helpText, color: "rgb(244, 67, 54)", marginTop: "var(--space-sm)" }}>
-                  <Lock size={12} style={{ verticalAlign: "middle", marginRight: 4 }} />
-                  {tlsStatus.error}
-                </div>
-              )}
-
-              {/* Panel-device install hint */}
-              <div style={{ ...helpText, gridColumn: "1 / -1", marginTop: "var(--space-md)" }}>
-                <strong>Panel apps:</strong> the OpenAVC Panel app detects HTTPS automatically via mDNS once both the
-                server and the app are updated to a release with HTTPS support. To suppress the browser warning on each
-                device, download the CA certificate (button above) and install it on the device.
-              </div>
-            </>
-          )}
-        </div>
+        <SecurityCard
+          tls={tls}
+          savedTlsEnabled={config?.tls?.enabled}
+          httpPort={net.http_port}
+          tlsStatus={tlsStatus}
+          updateTls={updateTls}
+          hold={hold}
+          tlsPortError={tlsPortError}
+          tlsProvidedBlank={tlsProvidedBlank}
+        />
 
         {/* Trusted certificate (cloud-issued, browser-trusted — no warnings).
             Prominent callout when paired-but-not-enrolled (this must be
