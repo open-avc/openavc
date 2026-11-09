@@ -31,6 +31,8 @@ from openavc.core.plugin_loader import (
     validate_macro_actions,
     validate_script_api,
 )
+from openavc.core.plugin_api import PluginAPI
+from openavc.core.plugin_registry import PluginRegistry
 from openavc.core.state_store import StateStore
 from openavc.version import __version__
 
@@ -713,7 +715,7 @@ def test_the_extensions_each_type_receives(loader, caplog):
     _running(loader, "acme_a", {
         "views": [{"id": "main", "label": "Main", "state_pattern": "plugin.acme_a.*"}],
         "device_panels": [{"id": "dp", "state_pattern": "device.*"}],
-        "status_cards": [{"id": "card", "state_pattern": "   "}],
+        "status_cards": [{"id": "card", "state_pattern": "   "}, {"id": "card2", "state_pattern": ""}],
         "context_actions": [{"id": "ctx", "state_pattern": 7}, {"label": "no id"}, {"label": "no id"}],
         "panel_elements": [{
             "type": "meter",
@@ -728,7 +730,8 @@ def test_the_extensions_each_type_receives(loader, caplog):
     assert result == {
         "views": [{"id": "main", "label": "Main", "state_pattern": "plugin.acme_a.*", **base}],
         "device_panels": [{"id": "dp", "state_pattern": "plugin.acme_a.*", **base}],
-        "status_cards": [{"id": "card", "state_pattern": "plugin.acme_a.*", **base}],
+        "status_cards": [{"id": "card", "state_pattern": "plugin.acme_a.*", **base},
+                         {"id": "card2", "state_pattern": "plugin.acme_a.*", **base}],
         "context_actions": [
             {"id": "ctx", "state_pattern": "plugin.acme_a.*", **base},
             {"label": "no id", **base},
@@ -958,13 +961,27 @@ def test_validate_plugins_sorts_what_the_project_names(loader):
 
 
 class _Recorder:
-    def __init__(self, loader):
+    def __init__(self, loader, monkeypatch):
         self.calls = []
         self.loader = loader
         macros = loader._macros
         macros.register_plugin_action.side_effect = lambda *a: self.calls.append(("register_action", a[0]))
         macros.unregister_plugin_actions.side_effect = lambda pid: self.calls.append(("unregister_actions", pid))
         loader._events.on("plugin.*", self._event)
+        loader.sync_declared_ports = lambda: self.calls.append(("sync_ports", None))
+        cleanup = PluginRegistry.cleanup
+        cancel = PluginAPI._cancel_all_tasks
+
+        async def recorded_cleanup(registry, state, events):
+            self.calls.append(("registry_cleanup", registry.plugin_id))
+            await cleanup(registry, state, events)
+
+        def recorded_cancel(api):
+            self.calls.append(("cancel_api_tasks", api._plugin_id))
+            cancel(api)
+
+        monkeypatch.setattr(PluginRegistry, "cleanup", recorded_cleanup)
+        monkeypatch.setattr(PluginAPI, "_cancel_all_tasks", recorded_cancel)
 
     async def _event(self, event, payload):
         self.calls.append(("event", event))
@@ -981,7 +998,12 @@ class _Recorder:
                                      hook("mount_guest"), hook("unmount_guest"))
 
 
-def _lifecycle_plugin(rec, *, start_raises=None, stop=None, router=False, guest=False):
+@pytest.fixture
+def rec(loader, monkeypatch):
+    return _Recorder(loader, monkeypatch)
+
+
+def _lifecycle_plugin(rec, *, start_raises=None, stop=None, router=False, guest=False, panel_paths=("/p",)):
     async def go(self):
         return None
 
@@ -989,7 +1011,7 @@ def _lifecycle_plugin(rec, *, start_raises=None, stop=None, router=False, guest=
         rec.calls.append(("start", None))
         if router:
             api._registry.http_router = "router"
-            api._registry.panel_ext_paths = ["/p"]
+            api._registry.panel_ext_paths = list(panel_paths)
         if guest:
             api._registry.guest_router = "guest"
         if start_raises:
@@ -1014,8 +1036,7 @@ async def _settle():
         await asyncio.sleep(0)
 
 
-async def test_a_start_in_order(loader):
-    rec = _Recorder(loader)
+async def test_a_start_in_order(loader, rec):
     rec.hooks()
     register_plugin_class(_lifecycle_plugin(rec, router=True, guest=True))
     assert await loader.start_plugin("acme_widget") is True
@@ -1026,12 +1047,12 @@ async def test_a_start_in_order(loader):
         ("mount", ("acme_widget", "router", ["/p"], None)),
         ("mount_guest", ("acme_widget", "guest", "acme")),
         ("event", "plugin.started"),
+        ("sync_ports", None),
     ]
     assert loader.get_plugin_status("acme_widget") == "running"
 
 
-async def test_a_failed_mount_is_logged_and_the_start_stands(loader, caplog):
-    rec = _Recorder(loader)
+async def test_a_failed_mount_is_logged_and_the_start_stands(loader, caplog, rec):
     rec.hooks(fail=("mount", "mount_guest"))
     register_plugin_class(_lifecycle_plugin(rec, router=True, guest=True))
     with caplog.at_level(logging.ERROR, logger=LOGGER):
@@ -1043,16 +1064,14 @@ async def test_a_failed_mount_is_logged_and_the_start_stands(loader, caplog):
     assert loader.is_running("acme_widget")
 
 
-async def test_no_router_means_no_mount_call(loader):
-    rec = _Recorder(loader)
+async def test_no_router_means_no_mount_call(loader, rec):
     rec.hooks()
     register_plugin_class(_lifecycle_plugin(rec))
     assert await loader.start_plugin("acme_widget") is True
     assert not [c for c in rec.calls if c[0].startswith("mount")]
 
 
-async def test_a_failed_start_in_order(loader, caplog):
-    rec = _Recorder(loader)
+async def test_a_failed_start_in_order(loader, caplog, rec):
     rec.hooks()
     register_plugin_class(_lifecycle_plugin(rec, start_raises=ValueError("acme said no")))
     with caplog.at_level(logging.ERROR, logger=LOGGER):
@@ -1062,6 +1081,7 @@ async def test_a_failed_start_in_order(loader, caplog):
         ("start", None),
         ("unregister_actions", "acme_widget"),
         ("stop", None),
+        ("registry_cleanup", "acme_widget"),
         ("event", "plugin.error"),
     ]
     assert loader._errors["acme_widget"] == "acme said no"
@@ -1074,9 +1094,8 @@ async def test_a_failed_start_in_order(loader, caplog):
     ("raise", "Plugin 'acme_widget' stop() raised while cleaning up a failed start"),
     ("hang", f"Plugin 'acme_widget' stop() timed out after {0.05}s while cleaning up a failed start"),
 ])
-async def test_a_failed_starts_stop_is_bounded_and_worded(loader, caplog, monkeypatch, stop, message):
+async def test_a_failed_starts_stop_is_bounded_and_worded(loader, caplog, monkeypatch, stop, message, rec):
     monkeypatch.setattr(loader_module, "PLUGIN_STOP_TIMEOUT", 0.05)
-    rec = _Recorder(loader)
     register_plugin_class(_lifecycle_plugin(rec, start_raises=ValueError("no"), stop=stop))
     with caplog.at_level(logging.ERROR, logger=LOGGER):
         assert await loader.start_plugin("acme_widget") is False
@@ -1088,8 +1107,7 @@ async def test_a_failed_starts_stop_is_bounded_and_worded(loader, caplog, monkey
     assert (records[1].exc_info is not None) is (stop == "raise")
 
 
-async def test_a_stop_in_order(loader):
-    rec = _Recorder(loader)
+async def test_a_stop_in_order(loader, rec):
     rec.hooks()
     register_plugin_class(_lifecycle_plugin(rec, router=True))
     await loader.start_plugin("acme_widget")
@@ -1100,9 +1118,12 @@ async def test_a_stop_in_order(loader):
     assert rec.calls == [
         ("unregister_actions", "acme_widget"),
         ("stop", None),
+        ("registry_cleanup", "acme_widget"),
+        ("cancel_api_tasks", "acme_widget"),
         ("unmount", ("acme_widget",)),
         ("unmount_guest", ("acme_widget",)),
         ("event", "plugin.stopped"),
+        ("sync_ports", None),
     ]
     assert loader.get_plugin_status("acme_widget") == "stopped"
 
@@ -1111,9 +1132,8 @@ async def test_a_stop_in_order(loader):
     ("raise", "Plugin 'acme_widget' stop() raised an exception", True),
     ("hang", "Plugin 'acme_widget' stop() timed out after 0.05s — continuing teardown", False),
 ])
-async def test_a_stops_stop_is_bounded_and_worded(loader, caplog, monkeypatch, stop, message, traced):
+async def test_a_stops_stop_is_bounded_and_worded(loader, caplog, monkeypatch, stop, message, traced, rec):
     monkeypatch.setattr(loader_module, "PLUGIN_STOP_TIMEOUT", 0.05)
-    rec = _Recorder(loader)
     rec.hooks()
     register_plugin_class(_lifecycle_plugin(rec, stop=stop))
     await loader.start_plugin("acme_widget")
@@ -1127,8 +1147,7 @@ async def test_a_stops_stop_is_bounded_and_worded(loader, caplog, monkeypatch, s
     assert loader.get_plugin_status("acme_widget") == "stopped"
 
 
-async def test_a_failed_unmount_is_logged_and_the_stop_finishes(loader, caplog):
-    rec = _Recorder(loader)
+async def test_a_failed_unmount_is_logged_and_the_stop_finishes(loader, caplog, rec):
     rec.hooks(fail=("unmount", "unmount_guest"))
     register_plugin_class(_lifecycle_plugin(rec))
     await loader.start_plugin("acme_widget")
@@ -1139,11 +1158,10 @@ async def test_a_failed_unmount_is_logged_and_the_stop_finishes(loader, caplog):
         "Failed to unmount HTTP router for plugin 'acme_widget'",
         "Failed to unmount guest HTTP router for plugin 'acme_widget'",
     ]
-    assert rec.calls[-1] == ("event", "plugin.stopped")
+    assert rec.calls[-2:] == [("event", "plugin.stopped"), ("sync_ports", None)]
 
 
-async def test_stopping_a_plugin_that_never_ran_still_reports_stopped(loader):
-    rec = _Recorder(loader)
+async def test_stopping_a_plugin_that_never_ran_still_reports_stopped(loader, rec):
     rec.hooks()
     await loader.stop_plugin("acme_ghost")
     await _settle()
@@ -1152,6 +1170,7 @@ async def test_stopping_a_plugin_that_never_ran_still_reports_stopped(loader):
         ("unmount", ("acme_ghost",)),
         ("unmount_guest", ("acme_ghost",)),
         ("event", "plugin.stopped"),
+        ("sync_ports", None),
     ]
     assert loader.get_plugin_status("acme_ghost") == "stopped"
 
@@ -1163,8 +1182,7 @@ async def test_a_start_for_an_unregistered_class_is_refused_quietly(loader, capl
     assert loader.get_plugin_status("acme_nothing") == "unknown"
 
 
-async def test_a_success_resets_the_failure_streak(loader):
-    rec = _Recorder(loader)
+async def test_a_success_resets_the_failure_streak(loader, rec):
     register_plugin_class(_lifecycle_plugin(rec))
     await loader.start_plugin("acme_widget")
     api = loader._apis["acme_widget"]
@@ -1190,3 +1208,49 @@ async def test_a_success_resets_the_failure_streak(loader):
 
 def test_the_default_stop_timeout_is_what_the_messages_quote():
     assert PLUGIN_STOP_TIMEOUT == 10.0
+
+
+async def test_empty_panel_paths_reach_the_mount_as_none(loader, rec):
+    rec.hooks()
+    register_plugin_class(_lifecycle_plugin(rec, router=True, panel_paths=()))
+    assert await loader.start_plugin("acme_widget") is True
+    assert ("mount", ("acme_widget", "router", None, None)) in rec.calls
+
+
+async def test_a_failed_start_leaves_the_ports_alone(loader, rec):
+    register_plugin_class(_lifecycle_plugin(rec, start_raises=ValueError("no")))
+    assert await loader.start_plugin("acme_widget") is False
+    assert ("sync_ports", None) not in rec.calls
+
+
+async def test_a_stop_clears_what_the_run_left(loader, rec):
+    register_plugin_class(_lifecycle_plugin(rec))
+    await loader.start_plugin("acme_widget")
+    loader._apis["acme_widget"]._failure_reporter()
+    loader._set_error("acme_widget", "Broke.", unmarked=True)
+    assert loader._callback_failures == {"acme_widget": 1}
+    assert "acme_widget" in loader._instance_epoch
+    await loader.stop_plugin("acme_widget")
+    assert "acme_widget" not in loader._callback_failures
+    assert "acme_widget" not in loader._instance_epoch
+    assert "acme_widget" not in loader._errors
+    assert "acme_widget" not in loader._unmarked_errors
+
+
+async def test_stopping_a_plugin_in_error_clears_the_error(loader, rec):
+    register_plugin_class(_lifecycle_plugin(rec, start_raises=ValueError("acme said no")))
+    await loader.start_plugin("acme_widget")
+    assert loader.get_plugin_status("acme_widget") == "error"
+    await loader.stop_plugin("acme_widget")
+    assert loader.get_plugin_status("acme_widget") == "stopped"
+    assert "acme_widget" not in loader._errors
+    assert loader.error_for_cloud("acme_widget") is None
+
+
+async def test_a_start_ends_a_pending_auto_disable_mark(loader, rec):
+    register_plugin_class(_lifecycle_plugin(rec))
+    loader._auto_disabling.add("acme_widget")
+    await loader.start_plugin("acme_widget")
+    assert "acme_widget" not in loader._auto_disabling
+    loader._apis["acme_widget"]._failure_reporter()
+    assert loader._callback_failures == {"acme_widget": 1}
