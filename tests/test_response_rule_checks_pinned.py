@@ -437,6 +437,15 @@ CASES = {
         lst(match="(", group="$9", element="(", separator="", id={"group": 9, "map": {"a": "x"}},
             start=2, state={"nope": "$9"}),
     ],
+    "form_precedence": [
+        {"address": "x", "json": True, "match": "("},
+        {"json": True, "match": "(", "set": {}},
+    ],
+    "json_contains_set_before_mappings": [
+        {"json": True, "set": {"a": {"key": "x", "contains": []}},
+         "mappings": [{"key": "k", "state": "a", "contains": {}}]},
+    ],
+    "throttle_nan": [{"match": "A", "throttle": float("nan")}],
     # --- several rules -------------------------------------------------------
     "several_rules_each_tagged": [
         {"match": "A", "throttle": 0},
@@ -457,6 +466,17 @@ EXTRA = {
         tx({"type": "zone", "id": "$1", "state": {"level": "$2"}}),
         lst(),
     ]},
+    "child_list_other_id_kind": {
+        "child_entity_types": {
+            "odd": {"id_format": {"type": "uuid"},
+                    "state_variables": {"level": {"type": "number", "label": "Level"}},
+                    "instances": {"count": 2}},
+        },
+        "responses": [
+            lst(type="odd"),
+            lst(type="odd", id={"group": 1, "map": {"a": "one"}}),
+        ],
+    },
     "child_types_not_a_mapping": {"child_entity_types": ["zone"], "responses": [
         tx({"type": "zone", "id": "$1", "state": {"level": "$2"}}),
     ]},
@@ -1150,6 +1170,17 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'not_a_mapping': [('responses[0]',
                                   'child_entity_types.zone.state_variables'),
                                  ('child_entity_types.bare',
                                   'child_entity_types.bare: must be a mapping')],
+ 'form_precedence': [('responses[0]', "Response 0: OSC address must start with '/'"),
+                     ('child_entity_types.bare', 'child_entity_types.bare: must be a mapping')],
+ 'json_contains_set_before_mappings': [('responses[0]',
+                                        'Response 0: set.a: contains must be a scalar to look for '
+                                        '(a flag name, a number, true/false), not list'),
+                                       ('responses[0]',
+                                        'Response 0: mappings[0]: contains must be a scalar to '
+                                        'look for (a flag name, a number, true/false), not dict'),
+                                       ('child_entity_types.bare',
+                                        'child_entity_types.bare: must be a mapping')],
+ 'throttle_nan': [('child_entity_types.bare', 'child_entity_types.bare: must be a mapping')],
  'several_rules_each_tagged': [('responses[0]',
                                 'Response 0: throttle must be a positive number of seconds'),
                                ('responses[1]', 'Response 1: must be a mapping'),
@@ -1175,6 +1206,9 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'not_a_mapping': [('responses[0]',
                      "Response 2: child_set[0]: type 'zone' is not a declared child_entity_type"),
                     ('responses[3]',
                      "Response 3: child_list: type 'zone' is not a declared child_entity_type")],
+ 'child_list_other_id_kind': [('child_entity_types.odd',
+                               "child_entity_types.odd.id_format: unknown type 'uuid' (expected "
+                               "'integer' or 'string')")],
  'child_types_not_a_mapping': [('responses[0]',
                                 "Response 0: child_set[0]: type 'zone' is not a declared "
                                 'child_entity_type'),

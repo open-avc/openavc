@@ -73,6 +73,7 @@ CASES = {
     "multicast_template_undeclared": ({"type": "multicast", "group": "{nope}", "port": "{also_nope}"}, {}),
     "multicast_template_no_token": ({"type": "multicast", "group": "{}", "port": "{bad-name}"}, {}),
     "multicast_template_two_tokens": ({"type": "multicast", "group": "{group_field}.{nope}", "port": 5000}, {}),
+    "multicast_template_inside_text": ({"type": "multicast", "group": "239.1.1.{octet}", "port": "5{port_field}"}, {}),
     "multicast_port_values_0": ({"type": "multicast", "group": "239.1.1.1", "port": 0}, {}),
     "multicast_port_values_big": ({"type": "multicast", "group": "239.1.1.1", "port": 65536}, {}),
     "multicast_port_values_bool": ({"type": "multicast", "group": "239.1.1.1", "port": True}, {}),
@@ -260,6 +261,10 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'not_a_mapping': [('push', 'push: 
                                     "push: group references config field 'nope' that is not "
                                     'declared in config_schema, default_config, or '
                                     'config_derived')],
+ 'multicast_template_inside_text': [('push',
+                                     "push: group references config field 'octet' that is not "
+                                     'declared in config_schema, default_config, or '
+                                     'config_derived')],
  'multicast_port_values_0': [('push',
                               'push: port must be an integer 1-65535 or a {config_field} '
                               'template')],
