@@ -14,12 +14,12 @@ style conversion for an element whose font size is not the base 14.
 import pytest
 
 from openavc.core.project_loader import ProjectConfig
-from openavc.core.project_migration import (
+from openavc.core.layout_migration import (
     DEFAULT_GRID_GAP,
     REFERENCE_HEIGHT,
     REFERENCE_WIDTH,
-    migrate_0_7_to_0_8,
 )
+from openavc.core.project_migration import migrate_0_7_to_0_8
 
 
 def _grid_rect_px(col, row, col_span, row_span, columns=12, rows=8,

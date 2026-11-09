@@ -103,12 +103,14 @@ NOT_AN_IMPLEMENTATION = frozenset({
     "openavc/drivers/spec.py",
     "openavc/drivers/contract_gen.py",
     "openavc/drivers/contract_gen_ts.py",
-    # The project-file format migration. It reads the 0.7.0 UI page grid,
-    # whose `columns`/`rows` share a spelling with a config table's, so it
-    # supplies configSchemaEntry's anchor while implementing nothing in the
-    # driver contract -- and a dict `.values()` call beside it was enough to
-    # make config_schema.*.values look read by the runtime.
+    # The project-file format migration, and its 0.8.0 layout step. The step
+    # reads the 0.7.0 UI page grid, whose `columns`/`rows` share a spelling
+    # with a config table's, so it supplies configSchemaEntry's anchor while
+    # implementing nothing in the driver contract -- and a dict `.values()`
+    # call beside it was enough to make config_schema.*.values look read by
+    # the runtime. The chain reads `type`, `label` and `value` keys of its own.
     "openavc/core/project_migration.py",
+    "openavc/core/layout_migration.py",
     # The PANEL-authoring generators. They render the control minimums, the
     # binding-reach table and the authoring guide, none of which is a driver
     # contract field -- and they talk about a page's `columns`, `rows` and
