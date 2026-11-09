@@ -462,6 +462,7 @@ describe("An adapter the server runs or resolves but no longer lists", () => {
     await renderSettings();
     expect(listenField().options[listenField().selectedIndex].textContent).toBe("Ethernet 3 · not connected");
     expect(screen.getByTestId("accept-connections-help").textContent).toContain("Ethernet 3");
+    expect(screen.getByTestId("advertise-help").textContent).toContain("on the Ethernet 3 network");
   });
 
   it("is named by what the server resolved, for reaching devices", async () => {

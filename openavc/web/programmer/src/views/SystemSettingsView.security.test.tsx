@@ -707,3 +707,14 @@ describe("The running certificate after a save", () => {
     await waitFor(() => expect(screen.queryByText("Current certificate")).toBeNull());
   });
 });
+
+describe("The HTTPS port box", () => {
+  it("takes a port from 1 to 65535", async () => {
+    served.config.tls.enabled = true;
+    await renderLoaded(<SystemSettingsView />);
+    const box = screen.getByLabelText("HTTPS port") as HTMLInputElement;
+    expect(box.type).toBe("number");
+    expect(box.min).toBe("1");
+    expect(box.max).toBe("65535");
+  });
+});

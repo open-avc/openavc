@@ -407,3 +407,27 @@ describe("Keyboard focus", () => {
     expect(within(document.body).queryByText("Loading...")).toBeNull();
   });
 });
+
+describe("How a setting's row is drawn", () => {
+  it.each([
+    "Beta includes pre-release versions.",
+    "How often to check for new versions.",
+    "Paired with the password on the Programmer sign-in screen. Defaults to admin; leave blank to accept any username.",
+  ])("puts the help line %j in the control's column, in the help style", async (text) => {
+    await renderLoaded(<SystemSettingsView />);
+    const line = screen.getByText(text);
+    expect(line.tagName).toBe("SPAN");
+    expect(line.style.gridColumn).toBe("2");
+    expect(line.style.fontSize).toBe("12px");
+    expect(line.style.color).toBe("var(--text-muted)");
+  });
+
+  it("keeps the API key's box and its buttons on one line inside the lock", async () => {
+    await renderLoaded(<SystemSettingsView />);
+    const lock = screen.getByRole("button", { name: "Generate" }).closest("fieldset")!;
+    expect(lock.style.display).toBe("flex");
+    expect(lock.style.alignItems).toBe("center");
+    expect(lock.style.gap).toBe("var(--space-sm)");
+    expect(lock.contains(screen.getByPlaceholderText("No API key set"))).toBe(true);
+  });
+});
