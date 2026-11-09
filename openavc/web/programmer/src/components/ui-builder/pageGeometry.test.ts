@@ -3,8 +3,10 @@ import {
   absolutePlacements,
   alignElements,
   distributeElements,
+  duplicateElementInPage,
   duplicatePage,
   matchSizeElements,
+  pasteIntoPage,
   reparentElement,
   resolveDropParent,
   toPageBox,
@@ -468,5 +470,29 @@ describe("duplicatePage", () => {
   it("gives a page with no layouts an empty list", () => {
     const bare = { id: "p1", name: "Main", elements: [el("a")] } as unknown as UIPage;
     expect(duplicatePage([bare], "p1")[1].layouts).toEqual([]);
+  });
+});
+
+describe("the ids a copy may not take: every page's, not just the first one's", () => {
+  const first = () => page([el("x", "label")], [primary({ x: box(0, 0, 10, 10) })], "first");
+  const second = () => page([el("b")], [primary({ b: box(0, 0, 10, 10) })], "second");
+
+  it("a page copy counts past an id held on another page", () => {
+    const pages = [second(), page([el("button_second_copy_1", "label")], [primary({})], "third")];
+    const out = duplicatePage(pages, "second");
+    expect(out[1].elements.map((e) => e.id)).toEqual(["button_second_copy_2"]);
+  });
+
+  it("a duplicate counts past an id held on another page", () => {
+    const pages = [first(), second(), page([el("button_1", "label")], [primary({})], "third")];
+    const out = duplicateElementInPage(pages, "second", "b");
+    expect(out[1].elements.map((e) => e.id)).toEqual(["b", "button_2"]);
+  });
+
+  it("a paste renames a control whose id is held on another page", () => {
+    const pages = [first(), second(), page([el("pasted", "label")], [primary({})], "third")];
+    const clipboard = { elements: [el("pasted")], placements: { pasted: box(0, 0, 10, 10) } };
+    const out = pasteIntoPage(pages, "second", clipboard);
+    expect(out[1].elements.map((e) => e.id)).toEqual(["b", "button_1"]);
   });
 });
