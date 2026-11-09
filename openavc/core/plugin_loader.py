@@ -9,20 +9,24 @@ import asyncio
 import importlib
 import importlib.machinery
 import importlib.util
-import inspect
 import os
 import platform
-import re
 import sys
 import threading
 from pathlib import Path
 from typing import Any
 
+from openavc.core import plugin_manifest
 from openavc.core.plugin_api import PluginAPI, PluginRefusal
 from openavc.core.plugin_extensions import (
     collect_extensions,
     sandbox_permissions,
     validate_extensions as validate_extensions,
+)
+from openavc.core.plugin_manifest import (
+    platform_supported,
+    validate_macro_actions as validate_macro_actions,
+    validate_script_api as validate_script_api,
 )
 from openavc.core.plugin_registry import PluginRegistry
 from openavc.utils.logger import get_logger
@@ -46,39 +50,6 @@ def _log_task_exception(task: asyncio.Task) -> None:
 _PLUGIN_CLASS_REGISTRY: dict[str, type] = {}
 _REGISTRY_LOCK = threading.Lock()
 
-# Required fields in PLUGIN_INFO
-REQUIRED_MANIFEST_FIELDS = {"id", "name", "version", "author", "description", "category", "license"}
-
-# Valid capability values
-VALID_CAPABILITIES = {
-    "state_read", "state_write", "variable_write",
-    "event_emit", "event_subscribe",
-    "macro_execute", "device_command", "network_listen", "usb_access",
-    "http_endpoints", "guest_endpoints",
-}
-
-# PLUGIN_INFO["guest_alias"] — optional top-level short route for a plugin's
-# guest router (e.g. "present" also mounts it at /present/*, giving guests a
-# short typed URL). One lowercase URL segment; requires guest_endpoints.
-# Static rules live here; runtime uniqueness against other running plugins
-# and live app routes is checked at mount time (api/plugin_ext.py).
-GUEST_ALIAS_RE = re.compile(r"[a-z][a-z0-9_-]{0,31}")
-# Platform surfaces an alias must never shadow (top-level path segments).
-RESERVED_GUEST_ALIASES = {
-    "api", "panel", "programmer", "pair", "setup", "ws", "isc",
-    "docs", "redoc", "openapi.json", "assets", "themes", "health",
-    "favicon.ico", "static", "simulator",
-}
-
-# Valid category values
-VALID_CATEGORIES = {"control_surface", "integration", "sensor", "utility"}
-
-# MIT-compatible licenses (case-insensitive check)
-MIT_COMPATIBLE_LICENSES = {
-    "mit", "bsd-2-clause", "bsd-3-clause", "apache-2.0", "isc",
-    "psf", "unlicense", "0bsd", "cc0-1.0",
-}
-
 # Max consecutive callback failures before auto-disable
 MAX_CALLBACK_FAILURES = 10
 
@@ -98,23 +69,6 @@ PLUGIN_APPLY_TIMEOUT = 10.0
 # the event mirror is dropped (the logger line is still written).
 MAX_PENDING_LOG_EVENTS = 1000
 
-# Valid macro action param field types (mirrors the macro builder's renderer support)
-VALID_MACRO_ACTION_PARAM_TYPES = {
-    "text", "integer", "float", "boolean", "select",
-    "state_key", "device_ref", "macro_ref",
-}
-
-# Action name segment after "<plugin_id>." — lowercase letters, digits, underscores
-_MACRO_ACTION_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
-
-# Script API method name pattern — valid Python identifier, no leading underscore
-_SCRIPT_API_METHOD_RE = re.compile(r"^[a-z][a-zA-Z0-9_]*$")
-
-# Names plugins can't use for SCRIPT_API methods (Python or proxy machinery)
-_SCRIPT_API_RESERVED_NAMES = frozenset({
-    "register", "unregister", "clear",
-    # Anything starting with underscore is rejected by the regex above.
-})
 
 def get_platform_id() -> str:
     """Detect the current platform identifier."""
@@ -158,134 +112,6 @@ def unregister_plugin_class(plugin_id: str) -> bool:
     if removed:
         log.info(f"Unregistered plugin class: {plugin_id}")
     return removed
-
-
-def validate_macro_actions(
-    macro_actions: Any, plugin_id: str, plugin_class: type
-) -> tuple[bool, str]:
-    """Validate a plugin's MACRO_ACTIONS declaration.
-
-    Returns (valid, error_message).
-    """
-    if not isinstance(macro_actions, dict):
-        return False, "MACRO_ACTIONS must be a dict"
-
-    expected_prefix = f"{plugin_id}."
-    for action_type, spec in macro_actions.items():
-        if not isinstance(action_type, str):
-            return False, f"action key {action_type!r} must be a string"
-        if not action_type.startswith(expected_prefix):
-            return False, (
-                f"action '{action_type}' must be prefixed with the plugin id "
-                f"('{expected_prefix}')"
-            )
-        suffix = action_type[len(expected_prefix):]
-        if not _MACRO_ACTION_NAME_RE.match(suffix):
-            return False, (
-                f"action '{action_type}' suffix must be lowercase letters, digits, "
-                f"or underscores (got '{suffix}')"
-            )
-        if not isinstance(spec, dict):
-            return False, f"action '{action_type}' spec must be a dict"
-
-        handler_name = spec.get("handler")
-        if not handler_name or not isinstance(handler_name, str):
-            return False, f"action '{action_type}' missing 'handler' (method name)"
-        handler = getattr(plugin_class, handler_name, None)
-        if handler is None:
-            return False, (
-                f"action '{action_type}' handler '{handler_name}' not found on "
-                f"plugin class"
-            )
-        if not inspect.iscoroutinefunction(handler):
-            return False, (
-                f"action '{action_type}' handler '{handler_name}' must be an "
-                f"async method"
-            )
-
-        params = spec.get("params", [])
-        if not isinstance(params, list):
-            return False, f"action '{action_type}' params must be a list"
-        seen_keys: set[str] = set()
-        for i, param in enumerate(params):
-            if not isinstance(param, dict):
-                return False, f"action '{action_type}' param[{i}] must be a dict"
-            key = param.get("key")
-            if not key or not isinstance(key, str):
-                return False, f"action '{action_type}' param[{i}] missing 'key'"
-            if key in seen_keys:
-                return False, f"action '{action_type}' has duplicate param key '{key}'"
-            seen_keys.add(key)
-            ptype = param.get("type")
-            if ptype not in VALID_MACRO_ACTION_PARAM_TYPES:
-                return False, (
-                    f"action '{action_type}' param '{key}' has invalid type "
-                    f"'{ptype}' (allowed: {sorted(VALID_MACRO_ACTION_PARAM_TYPES)})"
-                )
-            if ptype == "select" and not isinstance(param.get("options"), list) \
-                    and not param.get("options_source"):
-                return False, (
-                    f"action '{action_type}' select param '{key}' needs either "
-                    f"'options' (list) or 'options_source' (state key)"
-                )
-
-    return True, ""
-
-
-def validate_script_api(
-    script_api: Any, plugin_id: str, plugin_class: type
-) -> tuple[bool, str]:
-    """Validate a plugin's SCRIPT_API declaration.
-
-    Returns (valid, error_message).
-    """
-    if not isinstance(script_api, dict):
-        return False, "SCRIPT_API must be a dict"
-
-    # The plugin id itself must be a valid Python identifier — otherwise
-    # `openavc.plugins.<id>` won't even parse.
-    if not _SCRIPT_API_METHOD_RE.match(plugin_id):
-        return False, (
-            f"plugin id '{plugin_id}' is not a valid Python identifier — "
-            f"SCRIPT_API can't be exposed under openavc.plugins"
-        )
-
-    for method_name, spec in script_api.items():
-        if not isinstance(method_name, str):
-            return False, f"method key {method_name!r} must be a string"
-        if not _SCRIPT_API_METHOD_RE.match(method_name):
-            return False, (
-                f"method '{method_name}' is not a valid identifier "
-                f"(lowercase start, letters/digits/underscores only)"
-            )
-        if method_name in _SCRIPT_API_RESERVED_NAMES:
-            return False, f"method name '{method_name}' is reserved"
-        if not isinstance(spec, dict):
-            return False, f"method '{method_name}' spec must be a dict"
-
-        handler_name = spec.get("handler")
-        if not handler_name or not isinstance(handler_name, str):
-            return False, f"method '{method_name}' missing 'handler' (method name)"
-        handler = getattr(plugin_class, handler_name, None)
-        if handler is None:
-            return False, (
-                f"method '{method_name}' handler '{handler_name}' not found "
-                f"on plugin class"
-            )
-        is_async = inspect.iscoroutinefunction(handler)
-        wants_sync = bool(spec.get("sync"))
-        if wants_sync and is_async:
-            return False, (
-                f"method '{method_name}' marked sync=True but handler "
-                f"'{handler_name}' is async"
-            )
-        if not wants_sync and not is_async:
-            return False, (
-                f"method '{method_name}' handler '{handler_name}' is not async — "
-                f"add 'sync': True to SCRIPT_API entry if intentional"
-            )
-
-    return True, ""
 
 
 def _purge_plugin_modules(package_name: str) -> None:
@@ -641,140 +467,13 @@ class PluginLoader:
     # ──── Validation ────
 
     def validate_manifest(self, plugin_class: type) -> tuple[bool, str]:
-        """
-        Validate a plugin's PLUGIN_INFO manifest.
-
-        Returns (valid, error_message).
-        """
-        info = getattr(plugin_class, "PLUGIN_INFO", None)
-        if not isinstance(info, dict):
-            return False, "Missing or invalid PLUGIN_INFO dict"
-
-        # Required fields
-        missing = REQUIRED_MANIFEST_FIELDS - set(info.keys())
-        if missing:
-            return False, f"Missing required fields: {sorted(missing)}"
-
-        # License check
-        license_str = info.get("license", "").lower().strip()
-        if license_str not in MIT_COMPATIBLE_LICENSES:
-            return False, f"License '{info.get('license')}' is not MIT-compatible"
-
-        # Category check
-        category = info.get("category", "")
-        if category not in VALID_CATEGORIES:
-            return False, f"Invalid category '{category}', must be one of {sorted(VALID_CATEGORIES)}"
-
-        # Capabilities check
-        capabilities = info.get("capabilities", [])
-        invalid_caps = set(capabilities) - VALID_CAPABILITIES
-        if invalid_caps:
-            return False, f"Unknown capabilities: {sorted(invalid_caps)}"
-
-        # guest_alias check (top-level short route for the guest router)
-        guest_alias = info.get("guest_alias")
-        if guest_alias is not None:
-            if not isinstance(guest_alias, str) or not GUEST_ALIAS_RE.fullmatch(guest_alias):
-                return False, (
-                    f"Invalid guest_alias '{guest_alias}': must be one lowercase URL "
-                    "segment (letters, digits, hyphens, underscores; max 32 chars)"
-                )
-            if guest_alias in RESERVED_GUEST_ALIASES:
-                return False, f"guest_alias '{guest_alias}' is a reserved platform path"
-            if "guest_endpoints" not in capabilities:
-                return False, "guest_alias requires the guest_endpoints capability"
-
-        # network_ports check. A port a plugin needs open in the HOST firewall,
-        # which is a request about the machine rather than about the plugin --
-        # so it is refused outright rather than trimmed, and it requires the
-        # capability that says this plugin listens on the network at all.
-        if "network_ports" in info:
-            from openavc.core.plugin_ports import validate_declaration
-
-            ports_ok, ports_err = validate_declaration(info["network_ports"])
-            if not ports_ok:
-                return False, ports_err
-            if info["network_ports"] and "network_listen" not in capabilities:
-                return False, "network_ports requires the network_listen capability"
-
-        # Platform check
-        platforms = info.get("platforms", ["all"])
-        if "all" not in platforms and self._platform_id not in platforms:
-            return False, (
-                f"Plugin not compatible with current platform '{self._platform_id}'. "
-                f"Supported: {platforms}"
-            )
-
-        # min_openavc_version check
-        min_version = info.get("min_openavc_version")
-        if min_version:
-            from openavc.version import __version__
-            try:
-                from packaging.version import Version, InvalidVersion
-            except ImportError:
-                # packaging should be installed (it's in requirements.txt), but
-                # if a deployment's venv is missing it, fail open rather than
-                # raise — a missing dep must never turn plugin-enable into a 500.
-                Version = None
-            if Version is not None:
-                try:
-                    if Version(__version__) < Version(min_version):
-                        return False, (
-                            f"Plugin requires OpenAVC v{min_version} or later "
-                            f"(current: v{__version__})"
-                        )
-                except InvalidVersion:
-                    pass
-
-        # CONFIG_SCHEMA validation (basic)
-        schema = getattr(plugin_class, "CONFIG_SCHEMA", None)
-        if schema is not None and not isinstance(schema, dict):
-            return False, "CONFIG_SCHEMA must be a dict"
-
-        # The logins it declares (core/plugin_secrets). A malformed
-        # CONFIG_SECRETS is refused: started anyway, its logins would stay in
-        # the project, which is what declaring them was meant to stop.
-        from openavc.core import plugin_secrets
-
-        problem = plugin_secrets.config_secrets_problem(
-            getattr(plugin_class, "CONFIG_SECRETS", None), schema,
-        )
-        if problem:
-            return False, problem
-        for where in plugin_secrets.unsupported_row_secrets(schema):
-            log.warning(
-                f"Plugin '{info['id']}': {where} is marked secret, but a mapping_list row "
-                f"has no id to save a login under, so it stays in the project"
-            )
-
-        # MACRO_ACTIONS validation
-        macro_actions = getattr(plugin_class, "MACRO_ACTIONS", None)
-        if macro_actions is not None:
-            valid, error = validate_macro_actions(macro_actions, info["id"], plugin_class)
-            if not valid:
-                return False, f"MACRO_ACTIONS invalid: {error}"
-
-        # SCRIPT_API validation
-        script_api = getattr(plugin_class, "SCRIPT_API", None)
-        if script_api is not None:
-            valid, error = validate_script_api(script_api, info["id"], plugin_class)
-            if not valid:
-                return False, f"SCRIPT_API invalid: {error}"
-
-        # EXTENSIONS validation
-        extensions = getattr(plugin_class, "EXTENSIONS", None)
-        if extensions is not None:
-            valid, error = validate_extensions(extensions, info["id"], plugin_class)
-            if not valid:
-                return False, f"EXTENSIONS invalid: {error}"
-
-        return True, ""
+        """Check a plugin's manifest and declarations on this platform
+        (core/plugin_manifest.py). Returns (valid, error_message)."""
+        return plugin_manifest.validate_manifest(plugin_class, self._platform_id)
 
     def is_platform_compatible(self, plugin_class: type) -> bool:
         """Check if a plugin is compatible with the current platform."""
-        info = getattr(plugin_class, "PLUGIN_INFO", {})
-        platforms = info.get("platforms", ["all"])
-        return "all" in platforms or self._platform_id in platforms
+        return platform_supported(getattr(plugin_class, "PLUGIN_INFO", {}), self._platform_id)
 
     # ──── Lifecycle ────
 
