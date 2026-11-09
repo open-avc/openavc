@@ -113,9 +113,9 @@ function offlineLastLine(installed: boolean, reason: string | undefined, failed:
 
 /** The server's reason a device is offline (device.<id>.offline_detail), the
  *  driver's own troubleshooting line (DRIVER_INFO.help.connection), and what
- *  happens next. Everything it says is read here, from the device's away state
- *  and its driver's declaration, so a new line on it is a change to this file
- *  and deviceAway.ts, never to the page that places it. */
+ *  happens next. Everything it says is read here, from the device's away state,
+ *  its driver's declaration and whether it is product hardware, so a new line
+ *  drawn from those is a change to this file and deviceAway.ts alone. */
 export function OfflineBanner({
   away,
   driverInfo,

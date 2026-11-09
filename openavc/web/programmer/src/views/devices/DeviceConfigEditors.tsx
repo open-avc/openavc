@@ -7,10 +7,11 @@
  * than a flag of its own. Each writes into the device config and says so
  * through `onSaved`, which reads the device again.
  *
- * A new editor of this kind is one more entry here; the page only places the
- * group, between Device Settings and Send Command. The Edit dialog leaves
- * these fields to the page (`ir_codes` is never a raw field there, and a table
- * setting says to set it up on the device page).
+ * The page only places the group, between Device Settings and Send Command. A
+ * new editor of this kind is one more entry here, plus one in the Edit dialog
+ * (DeviceDialogs.tsx) when its field would otherwise show there as a raw box:
+ * the dialog leaves `ir_codes` out (`hiddenRawConfigKeys`), and a table setting
+ * says to set it up on the device page.
  */
 import { InlineProtocolEditor } from "./InlineProtocolEditor";
 import { IrCodesEditor } from "./IrCodesEditor";

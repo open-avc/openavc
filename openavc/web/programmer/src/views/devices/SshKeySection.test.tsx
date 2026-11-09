@@ -22,7 +22,7 @@ const KEY = {
 describe("SshKeySection", () => {
   it("shows the key, what to do with it, its fingerprint and a copy button", async () => {
     getKeyMock.mockImplementationOnce(() => Promise.resolve(KEY));
-    render(<SshKeySection sectionStyle={{}} sectionTitleStyle={{}} />);
+    render(<SshKeySection />);
     expect(screen.getByText(SSH_KEY_TITLE)).toBeTruthy();
     expect(screen.getByText(SSH_KEY_HELP)).toBeTruthy();
     expect(await screen.findByText(KEY.public_key)).toBeTruthy();
@@ -36,7 +36,7 @@ describe("SshKeySection", () => {
       JSON.stringify({ detail: "OpenAVC couldn't create its SSH key. Check that the server can write to its data folder, then try again." }),
     );
     getKeyMock.mockImplementationOnce(() => Promise.reject(refusal));
-    render(<SshKeySection sectionStyle={{}} sectionTitleStyle={{}} />);
+    render(<SshKeySection />);
     expect((await screen.findByRole("alert")).textContent).toContain("couldn't create its SSH key");
   });
 

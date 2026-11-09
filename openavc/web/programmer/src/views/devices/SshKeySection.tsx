@@ -64,15 +64,12 @@ export function DeviceSshKey({
   if (info?.connection?.transport !== "ssh") return null;
   const driver = Object.keys(info.driver_info ?? {}).length > 0 ? info.driver_info : installedDriver;
   if (!canUseSshKey(driver, { ...config, ...connection })) return null;
-  return <SshKeySection sectionStyle={sectionStyle} sectionTitleStyle={sectionTitleStyle} />;
+  return <SshKeySection />;
 }
 
-interface SshKeySectionProps {
-  sectionStyle: React.CSSProperties;
-  sectionTitleStyle: React.CSSProperties;
-}
-
-export function SshKeySection({ sectionStyle, sectionTitleStyle }: SshKeySectionProps) {
+/** The key itself: fetched once, with its fingerprint and a copy button, in the
+ *  device page's section frame. */
+export function SshKeySection() {
   const [key, setKey] = useState<SshPublicKey | null>(null);
   const [error, setError] = useState("");
 
