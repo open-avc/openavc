@@ -116,25 +116,37 @@ async def install_native_deps(plugin_id: str, native_deps: list[dict]) -> None:
 
 
 def inject_native_lib_paths(deps_dir: Path) -> None:
-    """Add .deps/ to DLL/shared-library search paths for the current process."""
+    """Add .deps/ to DLL/shared-library search paths for the current process.
+
+    Installs call it after placing a library, and the startup scan for a
+    ``.deps`` that is already there (core/plugin_import.py).
+    """
     deps_str = str(deps_dir)
     system = platform_mod.system().lower()
-
     if system == "windows":
-        try:
-            if hasattr(os, "add_dll_directory"):
-                os.add_dll_directory(deps_str)
-            if deps_str not in os.environ.get("PATH", ""):
-                os.environ["PATH"] = deps_str + os.pathsep + os.environ.get("PATH", "")
-            log.debug(f"Injected {deps_str} into Windows DLL search paths")
-        except OSError as e:
-            log.debug(f"Could not inject DLL paths: {e}")
-
+        _inject_windows_dll_paths(deps_str)
     elif system == "linux":
-        current_ld = os.environ.get("LD_LIBRARY_PATH", "")
-        if deps_str not in current_ld:
-            os.environ["LD_LIBRARY_PATH"] = deps_str + (":" + current_ld if current_ld else "")
-            log.debug(f"Injected {deps_str} into LD_LIBRARY_PATH")
+        _inject_ld_library_path(deps_str)
+
+
+def _inject_windows_dll_paths(deps_str: str) -> None:
+    """Both are needed: add_dll_directory for LoadLibrary, PATH for
+    ctypes.util.find_library."""
+    try:
+        if hasattr(os, "add_dll_directory"):
+            os.add_dll_directory(deps_str)
+        if deps_str not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = deps_str + os.pathsep + os.environ.get("PATH", "")
+        log.debug(f"Injected {deps_str} into Windows DLL search paths")
+    except OSError as e:
+        log.debug(f"Could not inject DLL paths: {e}")
+
+
+def _inject_ld_library_path(deps_str: str) -> None:
+    current_ld = os.environ.get("LD_LIBRARY_PATH", "")
+    if deps_str not in current_ld:
+        os.environ["LD_LIBRARY_PATH"] = deps_str + (":" + current_ld if current_ld else "")
+        log.debug(f"Injected {deps_str} into LD_LIBRARY_PATH")
 
 
 def _check_native_dep(dep: dict) -> bool:
