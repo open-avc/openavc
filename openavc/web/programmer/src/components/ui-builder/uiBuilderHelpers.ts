@@ -2039,9 +2039,89 @@ export function topmostSelection(page: UIPage, elementIds: string[]): string[] {
   });
 }
 
+/**
+ * What an arranging tool works on: one page's selection, read in page space.
+ *
+ * The alignment tools share everything but their arithmetic: a selected
+ * container already carries its children (`topmostSelection`), the boxes are
+ * compared where the eye sees them (`absolutePlacements`), a locked control
+ * counts but never moves (`movableIds`), and what moved is written back against
+ * each control's own container (`withAbsolutePlacements`). `arrangeSelection`
+ * is that walk; each tool is the function it hands the walk.
+ */
+interface Arranging {
+  /** The selection less anything a selected container carries, in the order selected. */
+  ids: string[];
+  /** The same controls in page order, each one on the page. */
+  targets: UIElement[];
+  /** Every box on the page, in page space. */
+  absolute: Record<string, Placement>;
+  /** The selected controls a tool may move. */
+  movable: Set<string>;
+}
+
+/** The page-space boxes an arranging tool moved; empty when it moved none. */
+type Arranged = Record<string, Placement>;
+
+function arrangeSelection(
+  pages: UIPage[],
+  pageId: string,
+  selection: { elementIds: string[]; layoutId?: string | null },
+  arrange: (sel: Arranging) => Arranged,
+): UIPage[] {
+  return pages.map((p) => {
+    if (p.id !== pageId) return p;
+    const ids = topmostSelection(p, selection.elementIds);
+    const kept = new Set(ids);
+    const absolute = absolutePlacements(p, selection.layoutId);
+    const moved = arrange({
+      ids,
+      targets: p.elements.filter((el) => kept.has(el.id)),
+      absolute,
+      movable: movableIds(p, ids),
+    });
+    if (Object.keys(moved).length === 0) return p;
+    return withAbsolutePlacements(p, moved, absolute, selection.layoutId);
+  });
+}
+
 export type AlignAction =
   | "align-left" | "align-center" | "align-right"
   | "align-top" | "align-middle" | "align-bottom";
+
+/** The edges a selection is lined up on. */
+interface Span {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+/** What each alignment does to one box, given the edges it lines up on. */
+const ALIGNED = new Map<AlignAction, (box: Placement, span: Span) => Partial<Placement>>([
+  ["align-left", (_box, span) => ({ x: span.left })],
+  ["align-center", (box, span) => ({ x: span.left + (span.right - span.left - box.w) / 2 })],
+  ["align-right", (box, span) => ({ x: span.right - box.w })],
+  ["align-top", (_box, span) => ({ y: span.top })],
+  ["align-middle", (box, span) => ({ y: span.top + (span.bottom - span.top - box.h) / 2 })],
+  ["align-bottom", (box, span) => ({ y: span.bottom - box.h })],
+]);
+
+/**
+ * Several selected: the selection's own bounding box, which is what "line
+ * these up with each other" means. One selected: the page, which in page space
+ * is the whole 0..100 box -- so a lone element centres on the page rather than
+ * sitting still.
+ */
+function alignSpan(count: number, boxes: Placement[]): Span {
+  if (count <= 1) return { left: 0, right: 100, top: 0, bottom: 100 };
+  return {
+    left: Math.min(...boxes.map((b) => b.x)),
+    right: Math.max(...boxes.map((b) => b.x + b.w)),
+    top: Math.min(...boxes.map((b) => b.y)),
+    bottom: Math.max(...boxes.map((b) => b.y + b.h)),
+  };
+}
 
 export function alignElements(
   pages: UIPage[],
@@ -2050,59 +2130,19 @@ export function alignElements(
   action: AlignAction,
   layoutId?: string | null,
 ): UIPage[] {
-  return pages.map((p) => {
-    if (p.id !== pageId) return p;
-    const ids = new Set(topmostSelection(p, elementIds));
-    const targets = p.elements.filter((el) => ids.has(el.id));
-    if (targets.length === 0) return p;
-
-    const absolute = absolutePlacements(p, layoutId);
+  return arrangeSelection(pages, pageId, { elementIds, layoutId }, ({ targets, absolute, movable }) => {
     const boxes = new Map(
       targets.map((el) => [el.id, absolute[el.id] ?? { ...DEFAULT_PLACEMENT }]),
     );
-
-    // Several selected: align to the selection's own bounding box, which is
-    // what "line these up with each other" means. One selected: align to the
-    // page, which in this flattened space is the whole 0..100 box -- so a lone
-    // element centres on the page rather than sitting still.
-    let left = 0, right = 100, top = 0, bottom = 100;
-    if (targets.length > 1) {
-      const all = [...boxes.values()];
-      left = Math.min(...all.map((b) => b.x));
-      right = Math.max(...all.map((b) => b.x + b.w));
-      top = Math.min(...all.map((b) => b.y));
-      bottom = Math.max(...all.map((b) => b.y + b.h));
-    }
-
-    const movable = movableIds(p, ids);
-    const moved: Record<string, Placement> = {};
+    const span = alignSpan(targets.length, [...boxes.values()]);
+    const place = ALIGNED.get(action);
+    const moved: Arranged = {};
     for (const el of targets) {
       if (!movable.has(el.id)) continue;
       const box = { ...boxes.get(el.id)! };
-      switch (action) {
-        case "align-left":
-          box.x = left;
-          break;
-        case "align-center":
-          box.x = left + (right - left - box.w) / 2;
-          break;
-        case "align-right":
-          box.x = right - box.w;
-          break;
-        case "align-top":
-          box.y = top;
-          break;
-        case "align-middle":
-          box.y = top + (bottom - top - box.h) / 2;
-          break;
-        case "align-bottom":
-          box.y = bottom - box.h;
-          break;
-      }
-      moved[el.id] = box;
+      moved[el.id] = { ...box, ...place?.(box, span) };
     }
-    if (Object.keys(moved).length === 0) return p;
-    return withAbsolutePlacements(p, moved, absolute, layoutId);
+    return moved;
   });
 }
 
@@ -2128,42 +2168,25 @@ export function distributeElements(
   axis: DistributeAxis,
   layoutId?: string | null,
 ): UIPage[] {
-  return pages.map((p) => {
-    if (p.id !== pageId) return p;
-    const ids = new Set(topmostSelection(p, elementIds));
-    const targets = p.elements.filter((el) => ids.has(el.id));
-    if (targets.length < 3) return p;
-
-    const absolute = absolutePlacements(p, layoutId);
+  return arrangeSelection(pages, pageId, { elementIds, layoutId }, ({ targets, absolute, movable }) => {
+    if (targets.length < 3) return {};
     const pos = axis === "horizontal" ? "x" : "y";
     const size = axis === "horizontal" ? "w" : "h";
     const boxes = new Map(
       targets.map((el) => [el.id, { ...(absolute[el.id] ?? DEFAULT_PLACEMENT) }]),
     );
 
-    // Leading edge decides the order, with the far edge and then the id as
-    // tie-breaks so two elements starting at the same coordinate still sort
-    // the same way every time this runs.
-    const sorted = [...targets].sort((a, b) => {
-      const ba = boxes.get(a.id)!;
-      const bb = boxes.get(b.id)!;
-      return (
-        ba[pos] - bb[pos] ||
-        ba[pos] + ba[size] - (bb[pos] + bb[size]) ||
-        (a.id < b.id ? -1 : 1)
-      );
-    });
-
+    const sorted = alongAxis(targets, boxes, pos, size);
     const first = boxes.get(sorted[0].id)!;
     const last = boxes.get(sorted[sorted.length - 1].id)!;
     const span = last[pos] + last[size] - first[pos];
     const occupied = sorted.reduce((sum, el) => sum + boxes.get(el.id)![size], 0);
     const gap = (span - occupied) / (sorted.length - 1);
 
-    // A locked element in the middle holds its place, and the run carries on
-    // from where it sits -- the gaps either side of it still even out.
-    const movable = movableIds(p, ids);
-    const moved: Record<string, Placement> = {};
+    // A locked element in the middle is not written. The run carries on from
+    // the place it was given, not from where it sits, so the gaps either side
+    // of it do not even out.
+    const moved: Arranged = {};
     let cursor = first[pos] + first[size];
     for (let i = 1; i < sorted.length - 1; i++) {
       const box = { ...boxes.get(sorted[i].id)! };
@@ -2171,9 +2194,26 @@ export function distributeElements(
       cursor = box[pos] + box[size];
       if (movable.has(sorted[i].id)) moved[sorted[i].id] = box;
     }
-    if (Object.keys(moved).length === 0) return p;
-    return withAbsolutePlacements(p, moved, absolute, layoutId);
+    return moved;
   });
+}
+
+/**
+ * The order a distribute walks: the leading edge, with the far edge and then
+ * the id as tie-breaks, so two elements starting at the same coordinate still
+ * sort the same way every time it runs.
+ */
+function alongAxis(
+  targets: UIElement[],
+  boxes: Map<string, Placement>,
+  pos: "x" | "y",
+  size: "w" | "h",
+): UIElement[] {
+  const lead = (el: UIElement) => boxes.get(el.id)![pos];
+  const far = (el: UIElement) => lead(el) + boxes.get(el.id)![size];
+  return [...targets].sort(
+    (a, b) => lead(a) - lead(b) || far(a) - far(b) || (a.id < b.id ? -1 : 1),
+  );
 }
 
 export type MatchSizeAction = "match-width" | "match-height" | "match-both";
@@ -2194,22 +2234,13 @@ export function matchSizeElements(
   action: MatchSizeAction,
   layoutId?: string | null,
 ): UIPage[] {
-  return pages.map((p) => {
-    if (p.id !== pageId) return p;
-    const kept = topmostSelection(p, elementIds);
-    if (kept.length < 2) return p;
-    const anchorId = kept[0];
-
-    const absolute = absolutePlacements(p, layoutId);
-    const anchor = absolute[anchorId];
-    if (!anchor) return p;
-
-    const movable = movableIds(p, kept);
-    const moved: Record<string, Placement> = {};
-    for (const id of kept.slice(1)) {
-      if (!movable.has(id)) continue;
+  return arrangeSelection(pages, pageId, { elementIds, layoutId }, ({ ids, absolute, movable }) => {
+    const anchor = ids.length < 2 ? undefined : absolute[ids[0]];
+    if (!anchor) return {};
+    const moved: Arranged = {};
+    for (const id of ids.slice(1)) {
       const box = absolute[id];
-      if (!box) continue;
+      if (!movable.has(id) || !box) continue;
       const next = { ...box };
       if (action !== "match-height") next.w = anchor.w;
       if (action !== "match-width") next.h = anchor.h;
@@ -2218,8 +2249,7 @@ export function matchSizeElements(
       // drawn inside it, exactly as it does during a handle drag.
       moved[id] = next;
     }
-    if (Object.keys(moved).length === 0) return p;
-    return withAbsolutePlacements(p, moved, absolute, layoutId);
+    return moved;
   });
 }
 
