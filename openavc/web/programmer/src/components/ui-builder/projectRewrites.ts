@@ -17,8 +17,8 @@
  * current page (`removePageAndScrubRefs`).
  *
  * Every array and object nothing in it changed comes back as it was
- * (`mapPreserve`, `withField`): the IDE's undo history snapshots only the
- * sections a change hands back new.
+ * (`mapPreserve`, `filterPreserve`, `withField`): the IDE's undo history
+ * snapshots only the sections a change hands back new.
  */
 import type {
   Layout,
@@ -38,7 +38,7 @@ import { ACTION_SLOTS } from "./bindingActions";
 
 /** The same array back when `fn` handed back every item as it was; otherwise
  *  the new one. */
-export function mapPreserve<T>(arr: T[], fn: (item: T) => T): T[] {
+function mapPreserve<T>(arr: T[], fn: (item: T) => T): T[] {
   const next = arr.map(fn);
   return sameItems(next, arr) ? arr : next;
 }
@@ -47,10 +47,16 @@ function sameItems<T>(after: T[], before: T[]): boolean {
   return after.every((item, i) => item === before[i]);
 }
 
+/** The same array back when `keep` kept every item; otherwise the shorter one. */
+function filterPreserve<T>(arr: T[], keep: (item: T) => boolean): T[] {
+  const kept = arr.filter(keep);
+  return kept.length === arr.length ? arr : kept;
+}
+
 /** The holder with one field replaced by what `rewrite` makes of it, or the
  *  holder itself when that is the same value. A field that is not set is left
  *  alone. */
-export function withField<T extends object, K extends keyof T>(
+function withField<T extends object, K extends keyof T>(
   holder: T,
   field: K,
   rewrite: (value: NonNullable<T[K]>) => T[K],
@@ -258,8 +264,8 @@ function isMoveTo(action: unknown, pageId: string): boolean {
  *  in an older project, one action; a list keeps whatever else it holds. */
 function slotWithoutMoves(raw: unknown, pageId: string): unknown {
   if (!Array.isArray(raw)) return isMoveTo(raw, pageId) ? undefined : raw;
-  const kept = raw.filter((a) => !isMoveTo(a, pageId));
-  if (kept.length === raw.length) return raw;
+  const kept = filterPreserve(raw, (a) => !isMoveTo(a, pageId));
+  if (kept === raw) return raw;
   return kept.length > 0 ? kept : undefined;
 }
 
@@ -307,16 +313,15 @@ export function removePage(pages: UIPage[], pageId: string): UIPage[] {
  *  shows on every page ("*"). */
 function masterWithoutPage(m: MasterElement, pageId: string): MasterElement {
   if (!Array.isArray(m.pages)) return m;
-  const kept = m.pages.filter((pid) => pid !== pageId);
-  if (kept.length === m.pages.length) return m;
+  const kept = filterPreserve(m.pages, (pid) => pid !== pageId);
+  if (kept === m.pages) return m;
   return { ...m, pages: kept.length > 0 ? kept : "*" };
 }
 
 /** A trigger's conditions without those that matched on the deleted page
  *  being the current one, whatever their operator. */
 function conditionsWithoutPage(conditions: TriggerCondition[], pageId: string): TriggerCondition[] {
-  const kept = conditions.filter((c) => !(c.key === "system.current_page" && c.value === pageId));
-  return kept.length === conditions.length ? conditions : kept;
+  return filterPreserve(conditions, (c) => !(c.key === "system.current_page" && c.value === pageId));
 }
 
 function macroWithoutPage(macro: MacroConfig, pageId: string): MacroConfig {

@@ -53,7 +53,7 @@ export function slotActions(
  * reach the device" test and the command list sent to the platform share this
  * reading, so a change to it is made here.
  */
-export function valueMapActions(a: Record<string, unknown>): Record<string, unknown>[] {
+function valueMapActions(a: Record<string, unknown>): Record<string, unknown>[] {
   if (a.action !== "value_map" || !a.map || typeof a.map !== "object") return [];
   return Object.values(a.map as Record<string, unknown>)
     .flatMap((option) => (Array.isArray(option) ? option : [option]))
@@ -80,7 +80,7 @@ export interface BindingRefIds {
 }
 
 /** What an action names by id, which is also the field it is named in. */
-export type ReferenceKind = "device" | "macro" | "page";
+type ReferenceKind = "device" | "macro" | "page";
 
 /** The one id each action names: a command's device, a macro call's macro, a
  *  page move's page. A field another action carries means nothing to the

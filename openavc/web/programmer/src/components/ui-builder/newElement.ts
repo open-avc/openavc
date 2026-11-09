@@ -2,11 +2,12 @@
  * What a control is when it comes off the palette: its id, the box and shape
  * it is dropped at, and the fields it starts with.
  *
- * A new palette type is one entry in `NEW_ELEMENT_FIELDS`, beside its size in
- * `DEFAULT_ELEMENT_SIZES` and, when it has one, its lock in
- * `DEFAULT_ASPECT_LOCKS`. A plugin element is spelled
- * `plugin:<plugin_id>:<plugin_type>`, and `pluginElementType` is the one
- * reading of that spelling all three answers ask.
+ * A new palette type's starting fields are one entry in `NEW_ELEMENT_FIELDS`,
+ * beside its size in `DEFAULT_ELEMENT_SIZES` and, when it has one, its lock in
+ * `DEFAULT_ASPECT_LOCKS`; its palette entry (`ELEMENT_TYPES`) and what it can
+ * bind (`BINDING_CAPABILITIES`) are in uiBuilderHelpers.ts. A plugin element
+ * is spelled `plugin:<plugin_id>:<plugin_type>`, and `pluginElementType` is
+ * the one reading of that spelling all three answers ask.
  *
  * The fields are written in the order a saved project keeps them;
  * `newElementShape.test.ts` holds that order.
