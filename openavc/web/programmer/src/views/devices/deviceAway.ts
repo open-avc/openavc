@@ -10,7 +10,7 @@
  * it is offline for a reason. The first four are said whether or not the
  * device still reads connected; the last two only for a disconnected device
  * that is enabled. A new way of being away is one more step in `awayBanner`,
- * its banner, and its place on the page.
+ * its banner, and its entry in DeviceBanners.tsx, which the compiler asks for.
  *
  * The status dot (components/shared/DeviceStatusDot.tsx) and the device list's
  * Needs login chip (DeviceListItem.tsx) decide separately, so a change to the

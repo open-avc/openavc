@@ -1,8 +1,9 @@
 /**
  * The banners a device's page shows while the device is away on purpose or
  * offline: restarting, asleep, paused, and the Offline banner. Which one shows
- * is decided in deviceAway.ts; the missing-driver banner (OrphanBanner.tsx)
- * and the login box (NeedsLoginBanner.tsx) are the other two.
+ * is decided in deviceAway.ts and where it sits in DeviceBanners.tsx; the
+ * missing-driver banner (OrphanBanner.tsx) and the login box
+ * (NeedsLoginBanner.tsx) are the other two.
  *
  * Restarting and asleep are not the Offline banner in another colour: that one
  * names a fault and tells somebody to go and check something, and here the

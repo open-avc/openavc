@@ -1,4 +1,3 @@
-import { InstalledEquipment } from "./InstalledEquipment";
 import { useState, useMemo } from "react";
 import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
@@ -19,13 +18,10 @@ import { AuditRefusalLine, ConnectionTestLine } from "./DeviceCheckResults";
 import { DeviceFilter } from "./DeviceFilter";
 import { LiveStateSection } from "./LiveStateSection";
 import { childTypeNames, deviceStateRows, type StateVariables } from "./liveStateRows";
-import { NeedsLoginBanner } from "./NeedsLoginBanner";
 import { ProblemReportDialog } from "./ProblemReportDialog";
 import type { ProblemReportContext } from "../../api/problemReportClient";
-import { awayBanner, readDeviceAway, waitsForLogin } from "./deviceAway";
-import { AsleepBanner, OfflineBanner, PausedBanner, RestartingBanner } from "./AwayBanners";
-import { OrphanBanner } from "./OrphanBanner";
-import { ChildTroubleBanner } from "./ChildTroubleBanner";
+import { readDeviceAway, waitsForLogin } from "./deviceAway";
+import { DeviceBanners } from "./DeviceBanners";
 import { DeviceSettingsSection } from "./DeviceSettingsSection";
 import { DeviceLog } from "./DeviceLog";
 import { SendCommandSection } from "./SendCommandSection";
@@ -75,7 +71,6 @@ export function DeviceDetail({
   // Product hardware is never edited or deleted here, and only the running
   // system says which devices are; until it answers, nothing is offered.
   const manageable = deviceInfo ? !installed : notRunning && Boolean(deviceConfig);
-  const banner = awayBanner(away, isEnabled, deviceInfo?.needs_login?.length ?? 0);
 
   const childTypes = useMemo(() => childTypeNames(deviceInfo?.driver_info), [deviceInfo]);
 
@@ -111,55 +106,21 @@ export function DeviceDetail({
         onDriverUpdated={refetchDeviceInfo}
       />
 
-      {/* Why the device is away: one banner at a time, chosen in deviceAway.ts.
-          The first four sit above product hardware's own panel, the login box
-          and the Offline banner below it. */}
-      {banner === "orphaned" && (
-        <OrphanBanner
-          driverId={deviceConfig?.driver ?? ""}
-          onReassign={() => deviceConfig && onEdit(deviceConfig)}
-          onBrowseDrivers={onBrowseDrivers}
-          onActivated={takeActivated}
-        />
-      )}
-      {banner === "restarting" && <RestartingBanner detail={away.offlineDetail} />}
-      {banner === "asleep" && <AsleepBanner detail={away.offlineDetail} />}
-      {banner === "paused" && <PausedBanner deviceId={deviceId} pausedFor={away.pausedFor} />}
-
-      <ChildTroubleBanner
+      <DeviceBanners
         deviceId={deviceId}
-        connected={connected}
-        childTypes={deviceInfo?.driver_info?.child_entity_types}
+        deviceName={deviceName}
+        away={away}
+        isEnabled={isEnabled}
+        info={deviceInfo}
+        config={deviceConfig}
+        installed={installed}
         liveState={liveState}
+        onEdit={onEdit}
+        onBrowseDrivers={onBrowseDrivers}
+        onActivated={takeActivated}
+        onLoginSaved={refetchDeviceInfo}
+        onReport={setReportContext}
       />
-
-      {installed && (
-        <InstalledEquipment
-          key={deviceId}
-          deviceId={deviceId}
-          name={deviceName}
-          completionWait={deviceInfo?.completion_wait}
-        />
-      )}
-
-      {/* Saving the login adds the device again, so there is nothing to retry. */}
-      {banner === "needs_login" && (
-        <NeedsLoginBanner
-          key={deviceId}
-          deviceId={deviceId}
-          fields={deviceInfo?.needs_login ?? []}
-          driverInfo={deviceInfo?.driver_info}
-          onSaved={refetchDeviceInfo}
-        />
-      )}
-      {banner === "offline" && (
-        <OfflineBanner
-          away={away}
-          driverInfo={deviceInfo?.driver_info}
-          installed={installed}
-          onReport={setReportContext}
-        />
-      )}
 
       <AuditRefusalLine refusal={checks.auditRefusal} onDismiss={checks.dismissAuditRefusal} />
       <ConnectionTestLine result={checks.testResult} devices={project?.devices} />
