@@ -18,6 +18,7 @@ import re
 from pathlib import Path
 
 from openavc.core.macro_steps import MacroSteps
+from openavc.core.macro_text import _ANNOUNCED
 from openavc.core.macro_validation import BUILTIN_STEP_ACTIONS
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
@@ -55,3 +56,14 @@ def test_the_runtime_runs_every_step_the_validator_accepts() -> None:
         f"runtime only: {sorted(runs - BUILTIN_STEP_ACTIONS)}; "
         f"validator only: {sorted(BUILTIN_STEP_ACTIONS - runs)}"
     )
+
+
+def test_every_step_the_runtime_runs_has_its_own_announcement() -> None:
+    """A step missing from the announcements would show its bare action name
+    while it runs."""
+    assert set(_ANNOUNCED) == set(MacroSteps.STEP_HANDLERS)
+
+
+def test_every_step_in_the_table_has_a_method() -> None:
+    for action, method in MacroSteps.STEP_HANDLERS.items():
+        assert callable(getattr(MacroSteps, method, None)), action

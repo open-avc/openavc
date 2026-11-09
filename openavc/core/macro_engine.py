@@ -156,6 +156,7 @@ class MacroEngine(MacroSteps):
         # harnesses, where the check is skipped rather than guessed, the same
         # posture _broadcast_ws and _help take.
         self._project_device_ids = project_device_ids
+        self._project_provider = project_provider
         self._macros: dict[str, dict[str, Any]] = {}  # id -> macro config
         self._groups = DeviceGroups()
         # macro_id -> set of currently-running tasks. A set (not a single
@@ -180,12 +181,19 @@ class MacroEngine(MacroSteps):
         self._max_conditional_depth = 5  # maximum nesting of conditional steps
         # Plugin-registered actions: action_type -> (handler, plugin_id, label)
         self._plugin_actions: dict[str, tuple[PluginActionHandler, str, str]] = {}
-        # Every sentence said about a step: its announcement, a failure's
-        # context and its two renderings.
-        self._wording = StepWording(
-            state, devices, project_provider, self._plugin_actions.get,
+
+    @property
+    def _wording(self) -> StepWording:
+        """Every sentence said about a step, from this engine's state, devices,
+        project and plugin actions as they are now."""
+        return StepWording(
+            self.state, self.devices, self._project_provider, self._plugin_actions.get,
         )
-        self._group_command = GroupCommand(devices, state, self._wording, self._groups)
+
+    @property
+    def _group_command(self) -> GroupCommand:
+        """The group fan-out, on this engine's devices and groups as they are now."""
+        return GroupCommand(self.devices, self.state, self._wording, self._groups)
 
     def is_macro_running(self, macro_id: str) -> bool:
         """Check if any invocation of the macro is currently running."""

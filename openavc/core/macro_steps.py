@@ -70,8 +70,15 @@ class StepRun:
     prefix: tuple[int | str, ...] = ()
 
     def branch(self, step_path: StepPath, name: str) -> StepRun:
-        """The same run, one conditional deeper, inside ``name`` of that step."""
-        return replace(self, depth=self.depth + 1, prefix=(*step_path, name))
+        """The same run, one conditional deeper, inside ``name`` of that step.
+
+        A run with no trigger context hands each branch an empty context of its
+        own, so what a plugin writes into one stays inside that branch.
+        """
+        return replace(
+            self, context=self.context or {}, depth=self.depth + 1,
+            prefix=(*step_path, name),
+        )
 
 
 def _wait_until_args(step: dict[str, Any]) -> tuple[dict[str, Any], Any, str]:
@@ -119,8 +126,12 @@ class MacroSteps:
         _project_device_ids: Callable[[], set[str] | None] | None
         _plugin_actions: dict[str, tuple[Any, str, str]]
         _max_conditional_depth: int
-        _wording: StepWording
-        _group_command: GroupCommand
+
+        @property
+        def _wording(self) -> StepWording: ...
+
+        @property
+        def _group_command(self) -> GroupCommand: ...
 
         async def execute(
             self, macro_id: str, context: dict[str, Any] | None = None,
@@ -254,7 +265,8 @@ class MacroSteps:
             return None
         handler = self.STEP_HANDLERS.get(action)
         if handler is not None:
-            return await handler(self, step, run, step_path)
+            # Looked up on the instance, so a patched or overridden step runs.
+            return await getattr(self, handler)(step, run, step_path)
         await self._plugin_step(action, step, run)
         return None
 
@@ -553,18 +565,19 @@ class MacroSteps:
             {"macro_id": run.macro_id, "action": "wait_until", **frame},
         )
 
-    STEP_HANDLERS: dict[str, Callable[..., Awaitable[Unreported | None]]] = {
-        "device.command": _device_command,
-        "group.command": _group_command_step,
-        "delay": _delay,
-        "state.set": _state_set,
-        "macro": _call_macro,
-        "event.emit": _emit_event,
-        "conditional": _conditional,
-        "wait_until": _wait_until,
-        "ui.navigate": _navigate,
-        "help.request": _request_help,
-        "help.clear": _clear_help,
+    # Each built-in step and the method that runs it.
+    STEP_HANDLERS: dict[str, str] = {
+        "device.command": "_device_command",
+        "group.command": "_group_command_step",
+        "delay": "_delay",
+        "state.set": "_state_set",
+        "macro": "_call_macro",
+        "event.emit": "_emit_event",
+        "conditional": "_conditional",
+        "wait_until": "_wait_until",
+        "ui.navigate": "_navigate",
+        "help.request": "_request_help",
+        "help.clear": "_clear_help",
     }
 
 
