@@ -6,7 +6,6 @@ import { envHold, heldSetting } from "../components/system/EnvHeldNote";
 import {
   btnStyle,
   cardStyle,
-  fieldRow,
   inputStyle,
   sectionTitle,
   selectStyle,
@@ -20,8 +19,7 @@ import { DevicesCard, PanelDisplayCard } from "./settings/ProjectSettingsCards";
 import { SecurityCard } from "./settings/SecurityCard";
 import { TrustedCertificateCard, type TrustedCertificatePage } from "./settings/TrustedCertificateCard";
 import type { UpdateTls } from "./settings/YourOwnCertificate";
-import { AcceptConnectionsField, ReachDevicesField } from "../components/system/NetworkChoiceFields";
-import { adapterName } from "../components/system/adapterChoice";
+import { NetworkCard } from "./settings/NetworkCard";
 import { useListenChoice } from "./settings/listenChoice";
 import { useRestart } from "./settings/restartFlow";
 import { RestartProgress, RestartQuestion } from "./settings/RestartDialogs";
@@ -29,7 +27,6 @@ import { useSettingsSave } from "./settings/saveFlow";
 import { useSettingsDraft } from "./settings/settingsDraft";
 import { CutOffQuestion, RebootQuestion } from "./settings/SaveDialogs";
 import { useProjectStore } from "../store/projectStore";
-import type { AdapterIdentity } from "../api/restClient";
 
 function getTheme(): "dark" | "light" {
   return (localStorage.getItem("openavc-theme") as "dark" | "light") || "dark";
@@ -85,20 +82,6 @@ export function SystemSettingsView() {
   const upd = merged("updates");
   const kiosk = merged("kiosk");
   const tls = merged("tls");
-  // Read the way the server does: an absent discovery section advertises.
-  const advertise = merged("discovery")?.advertise !== false;
-
-  const reachChosen: AdapterIdentity = net.reach_devices_through ?? {};
-  const listenAdapterName = adapterName(listen.adapter, adapters.interfaces, listen.running?.adapter_name ?? "");
-  const urlFacts = {
-    httpPort: net.http_port,
-    // Settings cannot know whether port 80 is answering, so it always
-    // prints the port.
-    port80: false,
-    tlsEnabled: !!tls?.enabled,
-    tlsPort: tls?.port ?? 8443,
-    redirectHttp: tls?.redirect_http !== false,
-  };
   const checks = saveChecks({ tls, httpPort: net.http_port, auth, dirtyAuth: dirty.auth });
   const { tlsPortError, tlsProvidedBlank, blocked: saveBlocked } = checks;
 
@@ -188,75 +171,8 @@ export function SystemSettingsView() {
           </FieldRow>
         </div>
 
-        {/* Network */}
         <h3 style={sectionTitle}>Network</h3>
-        <div style={cardStyle}>
-          <div style={fieldRow}>
-            <AcceptConnectionsField
-              interfaces={adapters.interfaces}
-              mode={listen.mode}
-              adapter={listen.adapter}
-              runningName={listen.running?.adapter_name ?? ""}
-              problem={listen.needsRestart ? null : (listen.running?.problem ?? null)}
-              preview={listen.preview}
-              changed={listen.changed}
-              hold={hold}
-              urlFacts={urlFacts}
-              onChange={(mode, adapter) => {
-                update("network", "accept_connections_from", mode);
-                update("network", "accept_connections_adapter", adapter);
-              }}
-            />
-          </div>
-          <div style={fieldRow}>
-            <ReachDevicesField
-              interfaces={adapters.interfaces}
-              chosen={reachChosen}
-              resolved={config._reach_devices}
-              hold={hold}
-              loading={adapters.loading}
-              onChange={(identity) => update("network", "reach_devices_through", identity)}
-              onRefresh={adapters.reload}
-            />
-          </div>
-          <FieldRow label="HTTP port" htmlFor="cfg-http-port" held={heldSetting(hold, "network", "http_port")}>
-            <NumberBox
-              id="cfg-http-port"
-              value={net.http_port}
-              fallback={8080}
-              onChange={(n) => update("network", "http_port", n)}
-            />
-          </FieldRow>
-          <SwitchRow
-            title="Short URLs (port 80 redirect)"
-            help={<>
-              Lets people type addresses without a port: <code>http://&lt;server&gt;/panel</code> forwards
-              to the real port automatically. Needs port 80 free on this machine. On Linux the
-              OpenAVC service also needs permission to bind it (fresh installs have this; see
-              the deployment guide).
-            </>}
-            held={heldSetting(hold, "network", "port80_redirect")}
-            checked={!!net.port80_redirect}
-            onChange={(v) => update("network", "port80_redirect", v)}
-          />
-          {/* With this computer only, it is shown off and left as saved, so
-              choosing a network again brings back what was set. */}
-          <SwitchRow
-            title="Advertise on the network"
-            help={listen.mode === "this_computer"
-              ? "Nothing on the network can connect, so there is nothing to announce."
-              : listen.mode === "adapter"
-                ? `Lets the OpenAVC Panel app on the ${listenAdapterName || "chosen"} network find this system in its list. Turning this off hides the system from the list; devices can still connect by address.`
-                : "Lets the OpenAVC Panel app find this system in its list. Turning this off hides the system from the list; devices can still connect by address."}
-            helpTestId="advertise-help"
-            label="Advertise on the network"
-            held={listen.mode === "this_computer"
-              ? { ...heldSetting(hold, "discovery", "advertise"), locked: "this_computer" }
-              : heldSetting(hold, "discovery", "advertise")}
-            checked={listen.mode === "this_computer" ? false : advertise}
-            onChange={(v) => update("discovery", "advertise", v)}
-          />
-        </div>
+        <NetworkCard draft={draft} listen={listen} adapters={adapters} hold={hold} />
 
         {/* Host network configuration (Pi appliance / Linux with NetworkManager).
             Renders nothing when the deployment has no backend. */}

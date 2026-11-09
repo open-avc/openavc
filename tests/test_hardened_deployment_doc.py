@@ -25,10 +25,11 @@ REPO = Path(__file__).resolve().parents[1]
 DOC = REPO / "docs" / "hardened-deployment.md"
 SETTINGS_VIEW = REPO / "openavc" / "web" / "programmer" / "src" / "views" / "SystemSettingsView.tsx"
 SIDEBAR = REPO / "openavc" / "web" / "programmer" / "src" / "components" / "layout" / "Sidebar.tsx"
-# The Settings view, the Network section's two adapter fields it renders, and
-# the Security and Access cards.
+# The Settings view, the Network card and the two adapter fields it renders,
+# and the Security and Access cards.
 SETTINGS_SOURCES = (
     SETTINGS_VIEW,
+    REPO / "openavc" / "web" / "programmer" / "src" / "views" / "settings" / "NetworkCard.tsx",
     REPO / "openavc" / "web" / "programmer" / "src" / "components" / "system" / "NetworkChoiceFields.tsx",
     REPO / "openavc" / "web" / "programmer" / "src" / "views" / "settings" / "SecurityCard.tsx",
     REPO / "openavc" / "web" / "programmer" / "src" / "views" / "settings" / "AccessCards.tsx",
