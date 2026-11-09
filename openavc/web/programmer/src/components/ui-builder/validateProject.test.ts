@@ -493,6 +493,25 @@ describe("validateProject: master elements", () => {
   });
 });
 
+describe("validateProject: the page review sees the master elements", () => {
+  it("reports a page control laid over a master, on the page", () => {
+    const master = {
+      id: "mb", type: "button", label: "M", pages: "*",
+      placements: { landscape: { x: 0, y: 0, w: 20, h: 12.5 } },
+      bindings: { do: { press: [{ action: "macro", macro: "all_on" }] } },
+    };
+    const button = { id: "b1", type: "button", label: "B", bindings: { do: { press: [{ action: "macro", macro: "all_on" }] } } };
+    const over = validateProject(project({ elements: [button], masters: [master] }))
+      .filter((i) => i.pageId === "main" && i.elementId === "b1");
+    const alone = validateProject(project({ elements: [button] }))
+      .filter((i) => i.pageId === "main" && i.elementId === "b1");
+    expect(alone).toEqual([]);
+    expect(over).toHaveLength(1);
+    expect(over[0]).toMatchObject({ severity: "warning", location: "Main > b1", pageId: "main", elementId: "b1" });
+    expect(over[0].message).toContain("mb");
+  });
+});
+
 describe("validateProject: macro steps", () => {
   it("names a missing device or macro at each step, nested branches included, in order", () => {
     const macros = [{
