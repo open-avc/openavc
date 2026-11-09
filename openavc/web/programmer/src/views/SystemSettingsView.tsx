@@ -28,8 +28,9 @@ import { SecurityCard } from "./settings/SecurityCard";
 import { TrustedCertificateCard, type TrustedCertificatePage } from "./settings/TrustedCertificateCard";
 import type { UpdateTls } from "./settings/YourOwnCertificate";
 import { AcceptConnectionsField, ReachDevicesField } from "../components/system/NetworkChoiceFields";
-import { CutOffRestartLines, CutOffSaved, CutOffWarning, type CutOffFacts } from "../components/system/ListenCutOff";
-import { adapterName, ownScreenOpensProgrammer, restartPlan, sameListenChoice, type RestartPlan } from "../components/system/adapterChoice";
+import { CutOffRestartLines, CutOffSaved, CutOffWarning } from "../components/system/ListenCutOff";
+import { adapterName, restartPlan, type RestartPlan } from "../components/system/adapterChoice";
+import { listenBody, useListenChoice } from "./settings/listenChoice";
 import { useProjectStore } from "../store/projectStore";
 import { RestartProgressDialog } from "../components/shared/RestartProgressDialog";
 import { configuredOrigin, restartOrigin, runningOrigin, withHost } from "../components/shared/restartPollHelpers";
@@ -39,7 +40,6 @@ import { ApiError, parseApiError } from "../api/errors";
 import { PASSWORD_TOO_SHORT } from "../api/auth";
 import type {
   AdapterIdentity,
-  ListenMode,
   ListenPreview,
   NetworkAdapter,
   NetworkInterface,
@@ -63,13 +63,6 @@ function generateApiKey(): string {
 
 function getTheme(): "dark" | "light" {
   return (localStorage.getItem("openavc-theme") as "dark" | "light") || "dark";
-}
-
-/** A choice of who can connect, as the preview and PATCH take it. */
-function listenBody(mode: ListenMode, adapter: AdapterIdentity) {
-  return mode === "adapter"
-    ? { accept_connections_from: mode, accept_connections_adapter: adapter }
-    : { accept_connections_from: mode };
 }
 
 function setTheme(theme: "dark" | "light") {
@@ -101,8 +94,6 @@ export function SystemSettingsView() {
   // One entry per adapter, connected or not: what the two adapter pickers list.
   const [interfaces, setInterfaces] = useState<NetworkInterface[]>([]);
   const [adaptersLoading, setAdaptersLoading] = useState(false);
-  // The server's answer for the Accept connections from choice on screen.
-  const [listenPreview, setListenPreview] = useState<ListenPreview | null>(null);
   // Set while the "Change who can connect?" dialog is open.
   const [cutOffCheck, setCutOffCheck] = useState<ListenPreview | null>(null);
   // Where the restart dialog waits, worked out when it opens.
@@ -168,41 +159,14 @@ export function SystemSettingsView() {
     [config, dirty],
   );
 
-  // Accept connections from, as on screen: saved, or changed and not saved.
-  const shownNetwork = config ? { ...config.network, ...(dirty.network ?? {}) } : null;
-  const listenMode = (shownNetwork?.accept_connections_from || "this_computer") as ListenMode;
-  const listenAdapter: AdapterIdentity =
-    listenMode === "adapter" ? (shownNetwork?.accept_connections_adapter ?? {}) : {};
-  const listenKey = JSON.stringify([listenMode, listenAdapter]);
-
-  // Ask the server what the choice on screen does: the addresses a panel can
-  // open, whether this browser keeps its connection, what stops working.
-  // Asked again after every save, since the adapters may have changed.
-  useEffect(() => {
-    if (!config) return;
-    let stale = false;
-    const timer = window.setTimeout(() => {
-      api.previewListen(listenBody(listenMode, listenAdapter))
-        .then((p) => { if (!stale) setListenPreview(p); })
-        .catch(() => { if (!stale) setListenPreview(null); });
-    }, 150);
-    return () => {
-      stale = true;
-      window.clearTimeout(timer);
-    };
-    // listenKey stands for listenMode and listenAdapter.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listenKey, config]);
-
-  // A change of who can connect that the screen shows and the server does
-  // not have saved yet.
-  const listenSaving = (): boolean =>
-    !!config && !!dirty.network &&
-    ("accept_connections_from" in dirty.network || "accept_connections_adapter" in dirty.network) &&
-    !sameListenChoice(
-      { mode: listenMode, adapter: listenAdapter },
-      { mode: config.network.accept_connections_from, adapter: config.network.accept_connections_adapter },
-    );
+  // Fields the service's environment holds: the server runs with that value
+  // at every start whatever is saved here, so they are shown locked and the
+  // server refuses a change to one.
+  const hold = envHold(config);
+  const heldBy = hold.by;
+  // Accept connections from: the choice on screen, the server's answer for
+  // it, and where it stands against the saved and the running choice.
+  const listen = useListenChoice(config, dirty.network, hold.deploymentType);
 
   /** Open the restart dialog, having worked out where it waits: a change of
    *  who can connect can move this page to another address, or cut it off. */
@@ -224,11 +188,11 @@ export function SystemSettingsView() {
     // A change of who can connect that would cut off this browser is said
     // first, from the server's own answer ("Change who can connect?"), and
     // nothing is saved until the person agrees.
-    const changingListen = listenSaving();
+    const changingListen = listen.saving;
     if (changingListen && !cutOffConfirmed) {
       let check: ListenPreview;
       try {
-        check = await api.previewListen(listenBody(listenMode, listenAdapter));
+        check = await listen.ask();
       } catch (e) {
         showError("Could not check the change to Accept connections from: " + parseApiError(e));
         return;
@@ -345,30 +309,13 @@ export function SystemSettingsView() {
   const upd = merged("updates");
   const kiosk = merged("kiosk");
   const tls = merged("tls");
-  // Fields the service's environment holds: the server runs with that value
-  // at every start whatever is saved here, so they are shown locked and the
-  // server refuses a change to one.
-  const hold = envHold(config);
-  const heldBy = hold.by;
-  const deploymentType = hold.deploymentType;
   // Both read the way the server does: anything but the exact word "open" is
   // approved panels only, and an absent discovery section advertises.
   const panelAccess = merged("panels")?.access === "open" ? "open" : "approved";
   const advertise = merged("discovery")?.advertise !== false;
 
-  // Who can connect: what the server runs, and whether the choice on screen
-  // needs a restart to take effect (choosing the running one again does not).
-  const listenRunning = config?._listen;
-  const listenNeedsRestart = !!listenRunning && !sameListenChoice(
-    { mode: listenMode, adapter: listenAdapter },
-    { mode: listenRunning.mode, adapter: listenRunning.adapter },
-  );
-  const listenChanged = !!config && !sameListenChoice(
-    { mode: listenMode, adapter: listenAdapter },
-    { mode: config.network.accept_connections_from, adapter: config.network.accept_connections_adapter },
-  );
   const reachChosen: AdapterIdentity = net.reach_devices_through ?? {};
-  const listenAdapterName = adapterName(listenAdapter, interfaces, listenRunning?.adapter_name ?? "");
+  const listenAdapterName = adapterName(listen.adapter, interfaces, listen.running?.adapter_name ?? "");
   const urlFacts = {
     httpPort: net.http_port,
     // Settings cannot know whether port 80 is answering, so it always
@@ -378,39 +325,8 @@ export function SystemSettingsView() {
     tlsPort: tls?.port ?? 8443,
     redirectHttp: tls?.redirect_http !== false,
   };
-  // An environment-held address is not something the preview takes, so its
-  // panel addresses come from what the server is running.
-  const shownPreview: ListenPreview | null = listenPreview ?? (
-    !listenChanged && listenRunning && listenRunning.network_addresses.length > 0
-      ? {
-        mode: listenRunning.mode, adapter_name: listenRunning.adapter_name, label: listenRunning.label,
-        panel_addresses: listenRunning.network_addresses, connected_through: "",
-        serves_this_address: true, keeps_this_connection: true, safety_net: false,
-        problem: null, consequences: [], held_by: listenRunning.held_by,
-        cloud_remote_access: false,
-      }
-      : null
-  );
-
-  /** What the cut-off warning and the restart dialog say, from the server's
-   *  answer for the change. */
-  const cutOffFacts = (p: ListenPreview, programmerUrls: string[], localUrl: string): CutOffFacts => ({
-    connectedThrough: p.connected_through || window.location.hostname,
-    mode: p.mode,
-    adapterName: p.adapter_name,
-    programmerUrls: p.mode === "adapter" ? programmerUrls : [],
-    localUrl,
-    ownScreenOpensProgrammer: ownScreenOpensProgrammer(deploymentType),
-    // The safety net goes back to the choice the server is running.
-    previousLabel: listenRunning?.label ?? "the previous choice",
-    minutes: 10,
-    cloudPaired: p.cloud_remote_access,
-    consequences: p.consequences.map((c) => c.message),
-  });
-
   // Warning: no auth, and something on the network can connect.
   const noAuth = !auth.programmer_password && auth.programmer_password !== REDACTED && !auth.api_key && auth.api_key !== REDACTED;
-  const publicBind = listenMode !== "this_computer";
 
   const { tlsPortError, tlsProvidedBlank, apiKeyNeedsPassword, passwordTooShort, blocked: saveBlocked } =
     saveChecks({ tls, httpPort: net.http_port, auth, dirtyAuth: dirty.auth });
@@ -453,7 +369,7 @@ export function SystemSettingsView() {
             - !hasDirty: settings saved; offer to restart in-app. */}
         {/* Not once a restart has handed this page over: the server it would
             ask can no longer be reached from here. */}
-        {(restartNeeded || listenNeedsRestart) && !restartSetup?.plan.cutOff && (
+        {(restartNeeded || listen.needsRestart) && !restartSetup?.plan.cutOff && (
           <div style={warningBox} data-testid="restart-banner">
             <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: 2 }} />
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-md)", flexWrap: "wrap", flex: 1 }}>
@@ -481,7 +397,7 @@ export function SystemSettingsView() {
         )}
 
         {/* Security warning */}
-        {noAuth && publicBind && (
+        {noAuth && listen.reachesNetwork && (
           <div style={warningBox}>
             <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: 2 }} />
             <span>The server is accessible on the network with no authentication. Anyone on your network can open the Programmer IDE and modify your project. Set a <strong>programmer login</strong> below to require credentials.</span>
@@ -514,12 +430,12 @@ export function SystemSettingsView() {
           <div style={fieldRow}>
             <AcceptConnectionsField
               interfaces={interfaces}
-              mode={listenMode}
-              adapter={listenAdapter}
-              runningName={listenRunning?.adapter_name ?? ""}
-              problem={listenNeedsRestart ? null : (listenRunning?.problem ?? null)}
-              preview={shownPreview}
-              changed={listenChanged}
+              mode={listen.mode}
+              adapter={listen.adapter}
+              runningName={listen.running?.adapter_name ?? ""}
+              problem={listen.needsRestart ? null : (listen.running?.problem ?? null)}
+              preview={listen.preview}
+              changed={listen.changed}
               hold={hold}
               urlFacts={urlFacts}
               onChange={(mode, adapter) => {
@@ -574,9 +490,9 @@ export function SystemSettingsView() {
             <div>
               <div style={{ fontSize: "var(--font-size-sm)" }}>Advertise on the network</div>
               <div style={{ fontSize: 12, color: "var(--text-muted)" }} data-testid="advertise-help">
-                {listenMode === "this_computer"
+                {listen.mode === "this_computer"
                   ? "Nothing on the network can connect, so there is nothing to announce."
-                  : listenMode === "adapter"
+                  : listen.mode === "adapter"
                     ? `Lets the OpenAVC Panel app on the ${listenAdapterName || "chosen"} network find this system in its list. Turning this off hides the system from the list; devices can still connect by address.`
                     : "Lets the OpenAVC Panel app find this system in its list. Turning this off hides the system from the list; devices can still connect by address."}
               </div>
@@ -585,12 +501,12 @@ export function SystemSettingsView() {
             {/* With this computer only, it is shown off and left as saved, so
                 choosing a network again brings back what was set. */}
             <EnvLock
-              held={listenMode === "this_computer" ? "this_computer" : heldBy("discovery", "advertise")}
+              held={listen.mode === "this_computer" ? "this_computer" : heldBy("discovery", "advertise")}
               style={{ flexShrink: 0 }}
             >
               <Toggle
                 label="Advertise on the network"
-                checked={listenMode === "this_computer" ? false : advertise}
+                checked={listen.mode === "this_computer" ? false : advertise}
                 onChange={(v) => update("discovery", "advertise", v)}
               />
             </EnvLock>
@@ -991,7 +907,7 @@ export function SystemSettingsView() {
           title="Change who can connect?"
           message={
             <CutOffWarning
-              facts={cutOffFacts(
+              facts={listen.facts(
                 cutOffCheck,
                 cutOffCheck.panel_addresses.map((ip) => `${scheme}://${ip}:${port}/programmer`),
                 `${scheme}://localhost:${port}/programmer`,
@@ -1032,7 +948,7 @@ export function SystemSettingsView() {
       const isProtocolSwitch = currentScheme !== targetScheme;
       const expectsNewCert = currentScheme === "http" && targetScheme === "https";
       const facts = plan.cutOff && restartSetup?.preview
-        ? cutOffFacts(restartSetup.preview, urls, localUrl)
+        ? listen.facts(restartSetup.preview, urls, localUrl)
         : null;
       return (
         <RestartProgressDialog
