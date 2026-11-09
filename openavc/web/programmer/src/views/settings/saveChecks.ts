@@ -28,8 +28,7 @@ export interface SaveChecks {
   blocked: boolean;
 }
 
-/** The HTTPS port's problem. Its own port only matters while HTTPS is on,
- *  which the caller decides. */
+/** The HTTPS port's problem, or null. */
 function tlsPortProblem(port: number | undefined, httpPort: number): string | null {
   if (port === undefined) return null;
   if (port === httpPort) return "HTTPS port must differ from HTTP port";
@@ -37,14 +36,20 @@ function tlsPortProblem(port: number | undefined, httpPort: number): string | nu
   return null;
 }
 
-export function saveChecks({ tls, httpPort, auth, dirtyAuth }: SaveCheckInput): SaveChecks {
+/** HTTPS: its port, and the files your own certificate needs. Either refuses
+ *  the save only while HTTPS is on. */
+function tlsChecks(tls: SaveCheckInput["tls"], httpPort: number) {
   const tlsPortError = tlsPortProblem(tls.port, httpPort);
   // The cert mode is driven by tls.auto_generate (true => auto self-sign,
   // false => user-supplied paths), not by whether the path fields happen to
   // be populated.
   const tlsProvidedBlank =
     !tls.auto_generate && !!tls.enabled && (!tls.cert_file?.trim() || !tls.key_file?.trim());
+  return { tlsPortError, tlsProvidedBlank, tlsBlocked: !!tls.enabled && (tlsPortError !== null || tlsProvidedBlank) };
+}
 
+/** An API key with no password beside it. */
+function apiKeyChecks(auth: SaveCheckInput["auth"], dirtyAuth: SaveCheckInput["dirtyAuth"]) {
   // An API key claims the system but is only ever accepted in the X-API-Key
   // header, which a browser can't attach to a page it is opening. So a key with
   // no password leaves the Programmer unreachable from every browser, with only
@@ -58,16 +63,21 @@ export function saveChecks({ tls, httpPort, auth, dirtyAuth }: SaveCheckInput): 
   const credentialEdited =
     !!dirtyAuth && ("api_key" in dirtyAuth || "programmer_password" in dirtyAuth);
   const apiKeySaveBlocked = apiKeyNeedsPassword && credentialEdited;
-  // The floor first-run setup applies; the server refuses the same save with
-  // the same sentence. Only a password typed in this edit: a stored one reads
-  // back as REDACTED, and an empty field removes the password.
-  const passwordTooShort =
-    !!dirtyAuth &&
-    "programmer_password" in dirtyAuth &&
-    auth.programmer_password !== REDACTED &&
-    passwordTooShortToSave(auth.programmer_password ?? "");
+  return { apiKeyNeedsPassword, apiKeySaveBlocked };
+}
 
-  const blocked =
-    (!!tls.enabled && (tlsPortError !== null || tlsProvidedBlank)) || apiKeySaveBlocked || passwordTooShort;
+/** The floor first-run setup applies; the server refuses the same save with
+ *  the same sentence. Only a password typed in this edit: a stored one reads
+ *  back as REDACTED, and an empty field removes the password. */
+function passwordTooShortTyped(auth: SaveCheckInput["auth"], dirtyAuth: SaveCheckInput["dirtyAuth"]): boolean {
+  if (!dirtyAuth || !("programmer_password" in dirtyAuth)) return false;
+  return auth.programmer_password !== REDACTED && passwordTooShortToSave(auth.programmer_password ?? "");
+}
+
+export function saveChecks({ tls, httpPort, auth, dirtyAuth }: SaveCheckInput): SaveChecks {
+  const { tlsPortError, tlsProvidedBlank, tlsBlocked } = tlsChecks(tls, httpPort);
+  const { apiKeyNeedsPassword, apiKeySaveBlocked } = apiKeyChecks(auth, dirtyAuth);
+  const passwordTooShort = passwordTooShortTyped(auth, dirtyAuth);
+  const blocked = tlsBlocked || apiKeySaveBlocked || passwordTooShort;
   return { tlsPortError, tlsProvidedBlank, apiKeyNeedsPassword, passwordTooShort, blocked };
 }
