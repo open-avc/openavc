@@ -268,6 +268,30 @@
           "key": "matrix_lock_unbacked|mx"
         }
       ]
+    },
+    {
+      "name": "a lock asked for with something other than true is not drawn",
+      "element": {
+        "id": "mx",
+        "type": "matrix",
+        "matrix_config": {
+          "sources": [
+            {
+              "value": 1,
+              "label": "A"
+            }
+          ],
+          "destinations": [
+            {
+              "value": 1,
+              "label": "Main",
+              "route_key": "device.sw.o.1"
+            }
+          ],
+          "show_lock": "yes"
+        }
+      },
+      "expected": []
     }
   ],
   "style_finding": [
@@ -641,6 +665,22 @@
       "expected": []
     },
     {
+      "name": "a clock given a label, which no label hint fits",
+      "element": {
+        "id": "c1",
+        "type": "clock",
+        "label": "Now"
+      },
+      "expected": [
+        {
+          "element_id": "c1",
+          "kind": "property_not_rendered",
+          "message": "c1 (clock) sets 'label', which a clock does not render. 'label' is read by `button`, `camera_preset`, `fader`, `gauge`, `group`, `image`, `keypad`, `level_meter`, `list`, `matrix`, `page_nav`, `select`, `slider`, `status_led` and `text_input`, not by a clock. A clock reads: clock_mode, duration_minutes, format, start_key, target_time, timezone.",
+          "key": "property_not_rendered|c1|label"
+        }
+      ]
+    },
+    {
       "name": "a type the panel has never heard of",
       "element": {
         "id": "q1",
@@ -757,6 +797,33 @@
         "y": 9.0,
         "w": 9.0,
         "h": 9.0
+      }
+    },
+    {
+      "name": "an orientation neither named, landscape before portrait",
+      "master": {
+        "id": "m",
+        "placements": {
+          "portrait": {
+            "x": 5,
+            "y": 6,
+            "w": 7,
+            "h": 8
+          },
+          "landscape": {
+            "x": 1,
+            "y": 2,
+            "w": 3,
+            "h": 4
+          }
+        }
+      },
+      "orientation": "square",
+      "expected": {
+        "x": 1.0,
+        "y": 2.0,
+        "w": 3.0,
+        "h": 4.0
       }
     },
     {

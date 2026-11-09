@@ -152,6 +152,11 @@ def test_a_declared_zero_is_a_bound() -> None:
     ]
 
 
+def test_a_bound_the_author_wrote_as_zero_is_kept() -> None:
+    fills, _ = range_review({"id": "f1", "type": "fader", "min": 0, "step": 0}, DECLARED, KEY)
+    assert [a.field for a in fills] == ["max", "unit"]
+
+
 def test_a_fader_wider_than_the_device_is_warned_bottom_then_top() -> None:
     fills, findings = range_review(
         {"id": "f1", "type": "fader", "min": -100, "max": 12.5}, DECLARED, KEY,
