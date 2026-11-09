@@ -1,7 +1,8 @@
 /**
  * How a device's page explains a device that is away: what the live state says
- * about it, which one banner explains it, and what the Offline banner's last
- * line says.
+ * about it, which one banner explains it, and what the Offline banner adds to
+ * the server's sentence (the driver's hint, its last line, whether it offers
+ * Report a problem).
  *
  * Exactly one banner explains an away device, in this order: its driver is not
  * installed; Live Test or a Device Audit holds it; a command is restarting it;
@@ -97,6 +98,13 @@ const PERMANENT_OFFLINE_REASONS = new Set([
   "client_missing",
   "login_missing",
 ]);
+
+/** The driver's own troubleshooting line for a device that will not connect
+ *  (DRIVER_INFO.help.connection): what the server's classifier cannot know,
+ *  such as a setting to turn on at the device first. Empty when it has none. */
+export function driverConnectionHint(driverInfo: Record<string, unknown> | undefined): string {
+  return String((driverInfo as { help?: { connection?: string } } | undefined)?.help?.connection ?? "");
+}
 
 /** True when the driver has a password, key or other sign-in field, so a
  *  refused sign-in may be fixed under Edit. A device that pairs (a TV

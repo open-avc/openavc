@@ -25,7 +25,7 @@ import { childTypeNames, deviceStateRows, type StateVariables } from "./liveStat
 import { NeedsLoginBanner } from "./NeedsLoginBanner";
 import { ProblemReportDialog } from "./ProblemReportDialog";
 import type { ProblemReportContext } from "../../api/problemReportClient";
-import { awayBanner, hasSignInFields, readDeviceAway, reportableOffline, waitsForLogin } from "./deviceAway";
+import { awayBanner, readDeviceAway, waitsForLogin } from "./deviceAway";
 import { AsleepBanner, OfflineBanner, PausedBanner, RestartingBanner } from "./AwayBanners";
 import { OrphanBanner } from "./OrphanBanner";
 import { ChildTroubleBanner } from "./ChildTroubleBanner";
@@ -105,13 +105,6 @@ export function DeviceDetail({
   });
 
   const deviceName = String(liveState[`device.${deviceId}.name`] ?? deviceConfig?.name ?? deviceId);
-  // Optional driver-provided troubleshooting hint (DRIVER_INFO.help.connection),
-  // surfaced under the offline reason. The driver supplies device-specific
-  // guidance the generic classifier can't know (e.g. "enable SSH first").
-  const connectionHint = String(
-    (deviceInfo?.driver_info as { help?: { connection?: string } } | undefined)
-      ?.help?.connection ?? ""
-  );
 
   return (
     <div>
@@ -175,19 +168,10 @@ export function DeviceDetail({
       )}
       {banner === "offline" && (
         <OfflineBanner
+          away={away}
+          driverInfo={deviceInfo?.driver_info}
           installed={installed}
-          detail={away.offlineDetail}
-          reason={away.offlineReason}
-          failed={away.reconnectFailed}
-          hint={connectionHint}
-          signInFields={hasSignInFields(
-            deviceInfo?.driver_info?.config_schema as Record<string, unknown> | undefined,
-          )}
-          onReport={
-            reportableOffline(away.offlineReason)
-              ? () => setReportContext({ source: "offline_banner", error: `Offline. ${away.offlineDetail}` })
-              : undefined
-          }
+          onReport={setReportContext}
         />
       )}
 

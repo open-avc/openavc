@@ -13,8 +13,15 @@
 import { Moon, Pause, Play, RefreshCw, WifiOff } from "lucide-react";
 import type { CSSProperties } from "react";
 import * as api from "../../api/restClient";
+import type { ProblemReportContext } from "../../api/problemReportClient";
 import { pausedBannerText } from "../../components/shared/pausedText";
-import { offlineNextStep } from "./deviceAway";
+import {
+  type DeviceAway,
+  driverConnectionHint,
+  hasSignInFields,
+  offlineNextStep,
+  reportableOffline,
+} from "./deviceAway";
 
 const lineStyle: CSSProperties = {
   display: "flex",
@@ -105,25 +112,28 @@ function offlineLastLine(installed: boolean, reason: string | undefined, failed:
 
 /** The server's reason a device is offline (device.<id>.offline_detail), the
  *  driver's own troubleshooting line (DRIVER_INFO.help.connection), and what
- *  happens next. */
+ *  happens next. Everything it says is read here, from the device's away state
+ *  and its driver's declaration, so a new line on it is a change to this file
+ *  and deviceAway.ts, never to the page that places it. */
 export function OfflineBanner({
+  away,
+  driverInfo,
   installed = false,
-  detail,
-  reason,
-  failed,
-  hint,
-  signInFields = false,
   onReport,
 }: {
+  away: DeviceAway;
+  /** The running driver's declaration (DeviceInfo.driver_info). */
+  driverInfo?: Record<string, unknown>;
   installed?: boolean;
-  detail: string;
-  reason?: string;
-  failed: boolean;
-  hint?: string;
-  signInFields?: boolean;
-  /** Report a problem, offered when the driver could have caused the fault. */
-  onReport?: () => void;
+  /** Opens Report a problem, offered when the driver could have caused the fault. */
+  onReport: (context: ProblemReportContext) => void;
 }) {
+  const detail = away.offlineDetail;
+  const hint = driverConnectionHint(driverInfo);
+  const signInFields = hasSignInFields(driverInfo?.config_schema as Record<string, unknown> | undefined);
+  const report = reportableOffline(away.offlineReason)
+    ? () => onReport({ source: "offline_banner", error: `Offline. ${detail}` })
+    : undefined;
   return (
     <div
       style={{
@@ -149,8 +159,8 @@ export function OfflineBanner({
           </div>
         )}
         <div style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>
-          {offlineLastLine(installed, reason, failed, signInFields)}
-          {onReport && <OfflineReportButton onClick={onReport} />}
+          {offlineLastLine(installed, away.offlineReason, away.reconnectFailed, signInFields)}
+          {report && <OfflineReportButton onClick={report} />}
         </div>
       </div>
     </div>
