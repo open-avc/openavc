@@ -43,6 +43,7 @@ from openavc.drivers.compiled_protocol import (
     read_back_queries,
     is_passthrough_send,
     infer_state_var,
+    name_switch,
     reading_from_wire,
     safe_substitute,
     send_param_groups,
@@ -1960,12 +1961,11 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                         response_is_child = bool(child_ctype and target in child_vars)
                         if response_is_child:
                             child_state_keys.add(target)
-                        if cmd_name.endswith("_on") or cmd_name.startswith("enable_"):
-                            state_changes[target] = True
-                        elif cmd_name.endswith("_off") or cmd_name.startswith("disable_"):
-                            state_changes[target] = False
-                        elif cmd_name.endswith("_toggle"):
-                            # Toggle handled specially — for now, just report current
+                        switches, value = name_switch(cmd_name)
+                        if value is not None:
+                            state_changes[target] = value
+                        elif switches:
+                            # A toggle: report the current value, set nothing.
                             pass
                         elif params:
                             # set_X with params → first non-child-id param is
