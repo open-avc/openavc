@@ -29,6 +29,11 @@ from openavc.drivers.declared_names import (
     declared_id_kind,
 )
 from openavc.drivers.push_block_checks import push_block_errors
+from openavc.drivers.query_entry_checks import (
+    FollowUp,
+    QueryEntries,
+    then_query_errors,
+)
 from openavc.drivers.response_rule_checks import response_rule_errors
 from openavc.drivers.spec import (
     ACTION_KINDS,
@@ -82,105 +87,10 @@ PLATFORM_SUBSTITUTIONS = frozenset(
     {"child_id", "push_callback_url", "listener_port", "push_session"}
 )
 
-def _when_state_errors(
-    where: str, gate: Any, driver_def: dict[str, Any]
-) -> list[str]:
-    """A ``when_state:`` gate: device-level state variables, each with a value
-    (or a list of values) its declared type and enum allow.
-
-    The gate reads the device's own state at runtime; a name that is not a
-    device-level variable never holds a value, so the entry would run as if
-    ungated forever, and a value the variable can never take shuts it for
-    good. Both are refused here, where the author can see them. So is empty
-    text: a condition left blank reads as none, but it shuts the gate
-    whenever the device reports any text at all.
-    """
-    if not isinstance(gate, dict) or not gate:
-        return [
-            f"{where}: when_state must map a state variable to the value it "
-            f"must hold, or to a list of values"
-        ]
-    raw_vars = driver_def.get("state_variables")
-    declared = raw_vars if isinstance(raw_vars, dict) else {}
-    raw_types = driver_def.get("child_entity_types")
-    child_types = raw_types if isinstance(raw_types, dict) else {}
-    errors: list[str] = []
-    for var, wanted in gate.items():
-        var_def = declared.get(var)
-        if not isinstance(var_def, dict):
-            owners = sorted(
-                t for t, d in child_types.items()
-                if isinstance(d, dict)
-                and isinstance(d.get("state_variables"), dict)
-                and var in d["state_variables"]
-            )
-            if owners or (isinstance(var, str) and "." in var):
-                errors.append(
-                    f"{where}: when_state '{var}' is a child variable; the "
-                    f"gate reads the device's own state variables only"
-                )
-            else:
-                errors.append(
-                    f"{where}: when_state '{var}' is not a declared state "
-                    f"variable"
-                )
-            continue
-        values = wanted if isinstance(wanted, list) else [wanted]
-        if not values:
-            errors.append(f"{where}: when_state.{var} lists no values")
-            continue
-        vtype = var_def.get("type", "string")
-        enum_values = declared_enum_values(var_def) if vtype == "enum" else None
-        for value in values:
-            if isinstance(value, str) and not value.strip():
-                errors.append(
-                    f"{where}: when_state.{var} has no value. Type the value "
-                    f"the device reports, or remove the condition"
-                )
-            elif vtype == "boolean":
-                if not isinstance(value, bool):
-                    errors.append(
-                        f"{where}: when_state.{var} is a boolean; write true "
-                        f"or false without quotes, not {value!r}"
-                    )
-            elif vtype == "integer":
-                if isinstance(value, bool) or not isinstance(value, int):
-                    errors.append(
-                        f"{where}: when_state.{var} is a whole number; "
-                        f"{value!r} is not one"
-                    )
-            elif vtype in ("number", "float"):
-                if isinstance(value, bool) or not isinstance(value, (int, float)):
-                    errors.append(
-                        f"{where}: when_state.{var} is a number; {value!r} is "
-                        f"not one"
-                    )
-            elif isinstance(value, bool):
-                errors.append(
-                    f"{where}: when_state.{var} value {value!r} is not text; "
-                    f"YAML reads a bare true, false, on, off, yes or no as a "
-                    f"boolean. Put it in quotes."
-                )
-            elif not isinstance(value, str):
-                errors.append(
-                    f"{where}: when_state.{var} holds text; put {value!r} in "
-                    f"quotes"
-                )
-            elif enum_values is not None and value not in enum_values:
-                errors.append(
-                    f"{where}: when_state.{var} value '{value}' is not one of "
-                    f"its values ({', '.join(enum_values)})"
-                )
-    return errors
-
-
 # One ``{name}`` or ``{name:format_spec}`` token. Deliberately requires an
 # identifier, so a literal JSON body — ``{"vol": {level}}`` — matches only on
 # the real placeholder and never on the brace that opens the object.
 _SUBSTITUTION_TOKEN = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)(?::[^{}]*)?\}")
-
-# A {child_id} / {child_id:spec} token in a query template.
-_CHILD_ID_TOKEN = re.compile(r"\{child_id(?::[^{}]*)?\}")
 
 # What each position is allowed to interpolate, phrased for the message.
 _CMD_SOURCES = "no parameter of this command and no config field"
@@ -692,6 +602,20 @@ class _TaggedErrors(list):
             self.tags.extend(sub_tags)
         else:
             self.tags.extend([self.ctx] * len(items))
+
+
+def _extend_each(
+    errors: _TaggedErrors, name: str, entries: Any,
+    check: Callable[..., list[str]], **how: Any,
+) -> None:
+    """Ask ``check`` about each entry of a list, tagging what it says with the
+    entry's place (``name[i]``). A list that is not a list has no entries."""
+    errors.ctx = name
+    if not isinstance(entries, list):
+        return
+    for i, entry in enumerate(entries):
+        errors.ctx = f"{name}[{i}]"
+        errors.extend(check(f"{name}[{i}]", entry, **how))
 
 
 def unknown_key_errors(driver_def: dict[str, Any]) -> list[str]:
@@ -1635,244 +1559,10 @@ def validate_driver_definition(
                             f"{where}.instances: label must be a string"
                         )
 
-    # Validate mapping entries in polling.queries and on_connect: per-child
-    # query templates (each_child) and their optional `when:` gate. A bad entry
-    # would silently poll nothing.
-    # config_derived keys resolve into config at runtime, so a `when:` gate
-    # may name them like any declared field.
-    query_config_fields = config_field_names(driver_def)
-
-    # (child type, variable) pairs a child_list rule fills: what a list read
-    # (a plain query naming <type>.<var>, or a paged per-child query) reports.
-    list_filled: set[tuple[str, str]] = set()
-    # Of those, the pairs some rule can place a page of: it names each item
-    # (`id`) or takes its start from the reply (`start: $N`). A rule counting
-    # from a fixed start writes every page onto the same first children.
-    list_paged: set[tuple[str, str]] = set()
-    # Child type -> whether any of its child_list rules can place a page, for
-    # a paged query that does not say which variable it reads.
-    list_types_paged: dict[Any, bool] = {}
-    for resp in responses:
-        spec = resp.get("child_list") if isinstance(resp, dict) else None
-        if isinstance(spec, dict) and isinstance(spec.get("state"), dict):
-            start = spec.get("start")
-            places_a_page = "id" in spec or (
-                isinstance(start, str) and start.startswith("$")
-            )
-            list_types_paged[spec.get("type")] = (
-                list_types_paged.get(spec.get("type"), False) or places_a_page
-            )
-            for prop in spec["state"]:
-                list_filled.add((spec.get("type"), prop))
-                if places_a_page:
-                    list_paged.add((spec.get("type"), prop))
-
-    def _validate_each_child(
-        name: str, entries: Any, allow_osc_dict: bool,
-        follow_up: bool = False, child_of: str | None = None,
-    ) -> None:
-        # `follow_up`: a response rule's then_query, where {child_id} in an
-        # entry sent once is the child the rule writes, of type `child_of`
-        # (None when the rule names no single child type; the then_query
-        # checks below report that, so such an entry's query_for is left).
-        errors.ctx = name
-        if not isinstance(entries, list):
-            return
-        for i, q in enumerate(entries):
-            errors.ctx = f"{name}[{i}]"
-            if not isinstance(q, dict):
-                continue
-            routed = (
-                follow_up
-                and "each_child" not in q
-                and isinstance(q.get("send"), str)
-                and _CHILD_ID_TOKEN.search(q["send"]) is not None
-            )
-            # `when: <config_field>` gates the entry on a truthy config value.
-            # A field name that doesn't exist would silently disable the entry
-            # forever, so a typo is an error rather than a quiet no-op.
-            if "when" in q:
-                when = q.get("when")
-                if not isinstance(when, str) or not when:
-                    errors.append(
-                        f"{name}[{i}]: 'when' must name a config field"
-                    )
-                elif when not in query_config_fields:
-                    errors.append(
-                        f"{name}[{i}]: 'when' field '{when}' is not a declared "
-                        f"config field (config_schema / default_config / "
-                        f"config_derived)"
-                    )
-            # `when_state:` gates the entry on the device's own state.
-            if "when_state" in q:
-                errors.extend(
-                    _when_state_errors(f"{name}[{i}]", q.get("when_state"), driver_def)
-                )
-            # `query_for: <state_var>` declares which state variable the
-            # reply reports (drives the auto-generated simulator). On a plain
-            # {send} entry it names a device-level variable; on an each_child
-            # entry it names one of that child type's state variables. A
-            # dangling name would silently declare nothing, so verify it
-            # exists either way.
-            if "query_for" in q:
-                qf = q.get("query_for")
-                if "address" in q:
-                    errors.append(
-                        f"{name}[{i}]: 'query_for' is only valid on a "
-                        f"plain {{send}} or each_child query entry"
-                    )
-                elif not isinstance(qf, str) or not qf:
-                    errors.append(
-                        f"{name}[{i}]: 'query_for' must name a state variable"
-                    )
-                elif routed:
-                    _co_def = child_types_map.get(child_of) if child_of else None
-                    _co_vars = (
-                        _co_def.get("state_variables")
-                        if isinstance(_co_def, dict) else None
-                    )
-                    if child_of and not (isinstance(_co_vars, dict) and qf in _co_vars):
-                        errors.append(
-                            f"{name}[{i}]: query_for '{qf}' is not a state "
-                            f"variable of child type {child_of!r}, the child "
-                            f"{{child_id}} names here"
-                        )
-                elif "each_child" in q:
-                    _ec = q.get("each_child")
-                    _ec_def = (
-                        child_types_map.get(_ec)
-                        if isinstance(_ec, str) else None
-                    )
-                    _ec_vars = (
-                        _ec_def.get("state_variables")
-                        if isinstance(_ec_def, dict) else None
-                    )
-                    if not (isinstance(_ec_vars, dict) and qf in _ec_vars):
-                        errors.append(
-                            f"{name}[{i}]: query_for '{qf}' is not a state "
-                            f"variable of child type {_ec!r}"
-                        )
-                    elif "page_size" in q and (_ec, qf) not in list_filled:
-                        errors.append(
-                            f"{name}[{i}]: a paged query reads a list, and no "
-                            f"child_list rule fills '{qf}' on {_ec!r}"
-                        )
-                    elif "page_size" in q and (_ec, qf) not in list_paged:
-                        errors.append(
-                            f"{name}[{i}]: every page of this paged query "
-                            f"would land on the same children of {_ec!r}: the "
-                            f"child_list rule that fills '{qf}' counts from a "
-                            f"fixed start. Take the start from the reply "
-                            f"(start: $2) or name each item (id: $1)"
-                        )
-                elif "." in qf:
-                    # <child type>.<variable>: a list read sent once whose
-                    # reply a child_list rule spreads across every child.
-                    _lt, _, _lv = qf.partition(".")
-                    _lt_def = child_types_map.get(_lt)
-                    _lt_vars = (
-                        _lt_def.get("state_variables")
-                        if isinstance(_lt_def, dict) else None
-                    )
-                    if not isinstance(_lt_def, dict):
-                        errors.append(
-                            f"{name}[{i}]: query_for '{qf}': '{_lt}' is not a "
-                            f"declared child_entity_type"
-                        )
-                    elif not (isinstance(_lt_vars, dict) and _lv in _lt_vars):
-                        errors.append(
-                            f"{name}[{i}]: query_for '{qf}': '{_lv}' is not a "
-                            f"state variable of child type '{_lt}'"
-                        )
-                    elif (_lt, _lv) not in list_filled:
-                        errors.append(
-                            f"{name}[{i}]: query_for '{qf}' names a child "
-                            f"variable, and no child_list rule fills it; a "
-                            f"query sent once reports a child only through a "
-                            f"list"
-                        )
-                elif qf not in declared_vars:
-                    # Two child types can share a variable name, so a bare
-                    # child variable on a query sent once says nothing about
-                    # which children it reports.
-                    _owners = sorted(
-                        t for t, d in child_types_map.items()
-                        if isinstance(d, dict)
-                        and isinstance(d.get("state_variables"), dict)
-                        and qf in d["state_variables"]
-                    )
-                    if _owners:
-                        errors.append(
-                            f"{name}[{i}]: query_for '{qf}' is a child "
-                            f"variable; on a query sent once, name its child "
-                            f"type too: '{_owners[0]}.{qf}'"
-                        )
-                    else:
-                        errors.append(
-                            f"{name}[{i}]: query_for '{qf}' is not a declared "
-                            f"state variable"
-                        )
-            # `page_size: N` sends a per-child query once per N children.
-            if "page_size" in q:
-                _page = q.get("page_size")
-                if "each_child" not in q:
-                    errors.append(
-                        f"{name}[{i}]: page_size applies to a per-child query "
-                        f"(each_child)"
-                    )
-                elif isinstance(_page, bool) or not isinstance(_page, int) or _page < 2:
-                    errors.append(
-                        f"{name}[{i}]: page_size must be a whole number, 2 or "
-                        f"more (how many children one reply covers)"
-                    )
-                elif (
-                    "query_for" not in q
-                    and list_types_paged.get(q.get("each_child")) is False
-                ):
-                    errors.append(
-                        f"{name}[{i}]: every page of this paged query would "
-                        f"land on the same children of {q.get('each_child')!r}: "
-                        f"its child_list rules count from a fixed start. Take "
-                        f"the start from the reply (start: $2) or name each "
-                        f"item (id: $1)"
-                    )
-            if "each_child" not in q:
-                if allow_osc_dict and "address" in q:
-                    continue  # OSC on_connect {address, args} form
-                send = q.get("send")
-                if isinstance(send, str) and send:
-                    continue  # plain {send, when/query_for} query
-                errors.append(
-                    f"{name}[{i}]: mapping entries must be "
-                    f"{{each_child, send}} or {{send, when}} or "
-                    f"{{send, when_state}} or {{send, query_for}}"
-                    + (" or {address, args}" if allow_osc_dict else "")
-                )
-                continue
-            ec = q.get("each_child")
-            if not isinstance(ec, str) or ec not in child_types_map:
-                errors.append(
-                    f"{name}[{i}]: each_child type {ec!r} is not a declared "
-                    f"child_entity_type"
-                )
-            elif not isinstance(
-                (child_types_map.get(ec) or {}).get("instances")
-                if isinstance(child_types_map.get(ec), dict) else None,
-                dict,
-            ):
-                errors.append(
-                    f"{name}[{i}]: each_child type '{ec}' declares no "
-                    f"instances: block, so nothing would ever be polled"
-                )
-            send = q.get("send")
-            if not isinstance(send, str) or not send:
-                errors.append(f"{name}[{i}]: missing 'send' template")
-            elif not re.search(r"\{child_id(?::[^{}]*)?\}", send):
-                errors.append(
-                    f"{name}[{i}]: 'send' must contain {{child_id}} "
-                    f"(a format spec like {{child_id:02d}} works too)"
-                )
-
+    # The query entries: the poll's, the start-up's and each text rule's
+    # then_query, checked in query_entry_checks against what the definition
+    # declares, read once here.
+    queries = QueryEntries(driver_def, responses)
     errors.ctx = "polling"
     polling_def = driver_def.get("polling")
     if polling_def is not None and not isinstance(polling_def, dict):
@@ -1885,91 +1575,35 @@ def validate_driver_definition(
                 "polling.interval is not read by the runtime. Remove the "
                 "interval: key and set default_config.poll_interval instead"
             )
-        _validate_each_child(
-            "polling.queries", polling_def.get("queries"), allow_osc_dict=False
+        _extend_each(
+            errors, "polling.queries", polling_def.get("queries"), queries.entry_errors
         )
         if "when_state" in polling_def:
             errors.ctx = "polling"
             errors.extend(
-                _when_state_errors(
-                    "polling", polling_def.get("when_state"), driver_def
-                )
+                queries.when_state_errors("polling", polling_def.get("when_state"))
             )
-    _validate_each_child(
-        "on_connect", driver_def.get("on_connect"), allow_osc_dict=True
+    _extend_each(
+        errors, "on_connect", driver_def.get("on_connect"), queries.entry_errors,
+        osc_form=True,
     )
 
-    # A response rule's `then_query:` takes the entries a poll takes, plus
-    # {child_id} in an entry sent once, naming the child the rule writes.
-    # Without one child type to name, that token would be sent as written.
+    # A text rule's `then_query:` takes the entries a poll takes, plus
+    # {child_id} in an entry sent once, naming the child the rule writes. Each
+    # entry is checked against the rule first, then as any entry is.
     for i, resp in enumerate(responses):
         if not isinstance(resp, dict) or "then_query" not in resp:
             continue
         errors.ctx = f"responses[{i}]"
-        follow = resp.get("then_query")
-        if resp.get("json") or "address" in resp:
-            errors.append(
-                f"Response {i}: then_query works on text rules (match:) only"
-            )
+        refused = then_query_errors(i, resp)
+        errors.extend(refused)
+        if refused:
             continue
-        if not isinstance(follow, list) or not follow:
-            errors.append(
-                f"Response {i}: then_query must list at least one query"
-            )
-            continue
-        _routes = [
-            e for e in (resp.get("child_set") or [])
-            if isinstance(e, dict)
-        ] if isinstance(resp.get("child_set"), list) else []
-        _routed_types = sorted({str(e.get("type")) for e in _routes})
-        _child_of = _routed_types[0] if len(_routed_types) == 1 else None
-        # What the rule itself writes: reading one of those again for the
-        # same device or child asks the device what it has just said.
-        _written = set((resp.get("set") or {}) if isinstance(resp.get("set"), dict) else ())
-        _written |= {
-            m.get("state") for m in (resp.get("mappings") or [])
-            if isinstance(m, dict)
-        }
-        _written_child = {
-            prop for e in _routes if isinstance(e.get("state"), dict)
-            for prop in e["state"]
-        }
-        for j, entry in enumerate(follow):
-            where = f"responses[{i}].then_query[{j}]"
-            errors.ctx = f"responses[{i}].then_query[{j}]"
-            if isinstance(entry, dict) and "each_child" in entry:
-                continue
-            send = entry.get("send") if isinstance(entry, dict) else entry
-            qf = entry.get("query_for") if isinstance(entry, dict) else None
-            if isinstance(send, str) and _CHILD_ID_TOKEN.search(send):
-                if not _routed_types:
-                    errors.append(
-                        f"{where}: {{child_id}} names the child this rule "
-                        f"writes, and the rule has no child_set. Route the "
-                        f"report to its child with child_set, or send the "
-                        f"query to every child with each_child"
-                    )
-                elif _child_of is None:
-                    errors.append(
-                        f"{where}: {{child_id}} names the child this rule "
-                        f"writes, and the rule writes children of more than "
-                        f"one type ({', '.join(_routed_types)}). Send the "
-                        f"query to every child of one type with each_child"
-                    )
-                elif isinstance(qf, str) and qf in _written_child:
-                    errors.append(
-                        f"{where}: reads '{qf}', which this rule has just "
-                        f"written for that child. then_query reads what the "
-                        f"report did not say"
-                    )
-            elif isinstance(qf, str) and qf in _written:
-                errors.append(
-                    f"{where}: reads '{qf}', which this rule has just "
-                    f"written. then_query reads what the report did not say"
-                )
-        _validate_each_child(
-            f"responses[{i}].then_query", follow, allow_osc_dict=False,
-            follow_up=True, child_of=_child_of,
+        follow = FollowUp(resp)
+        listed = f"responses[{i}].then_query"
+        _extend_each(errors, listed, resp["then_query"], follow.reread_errors)
+        _extend_each(
+            errors, listed, resp["then_query"], queries.entry_errors, follow_up=follow
         )
 
     # Validate the optional `routing:` block (where this driver's routing

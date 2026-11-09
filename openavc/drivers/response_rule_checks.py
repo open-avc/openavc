@@ -10,10 +10,11 @@ otherwise a ``json: true`` rule reads a JSON body, otherwise it is a text rule
 whose ``match:`` regex the rest refers to.
 
 Three checks of a rule read other parts of the definition and run later in
-the walk, so they stay in ``avcdriver_semantic``: a rule's ``then_query:``
-(its entries are query entries, checked with the poll's), the placeholders in
-its ``match:`` (``validate_substitutions``), and whether a paged query can
-place the list a ``child_list:`` rule fills.
+the walk: a rule's ``then_query:`` (its entries are query entries, checked
+with the poll's) and whether a paged query can place the list a
+``child_list:`` rule fills, both in ``query_entry_checks``, and the
+placeholders in its ``match:``, in ``avcdriver_semantic``'s
+``validate_substitutions``.
 
 A rule's ``child_set:`` is one check for all three forms. What an entry's id
 and its values may be depends on what the form has to route on (a capture, an
