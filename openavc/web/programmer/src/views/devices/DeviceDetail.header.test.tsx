@@ -440,6 +440,19 @@ describe("the device page's header", () => {
       expect(items[5]).toBe("...and 2 more");
     });
 
+    it("says one more for a sixth place", async () => {
+      const macros = Array.from({ length: 6 }, (_, i) => ({
+        id: `m${i}`, name: `Macro ${i}`,
+        steps: [{ action: "device.command", device: "amp", command: "power_on" }],
+      }));
+      setProject([amp], { macros });
+      showPage();
+      fireEvent.click(await screen.findByRole("button", { name: /Delete/ }));
+      const items = screen.getAllByRole("listitem").map((li) => li.textContent);
+      expect(items).toHaveLength(6);
+      expect(items[5]).toBe("...and 1 more");
+    });
+
     it("lists every place when there are five or fewer, with no warning when none", async () => {
       const macros = [{
         id: "m0", name: "Only Macro",
