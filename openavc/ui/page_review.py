@@ -2331,14 +2331,10 @@ def _action_entries(
     a toggle that turns the room OFF.
     """
     found: list[tuple[str, Mapping[str, Any]]] = []
-
-    def walk(path: str, action: Any) -> None:
-        found.extend(_walk_action(path, action))
-
     for interaction, binding in do.items():
         entries = binding if isinstance(binding, list) else [binding]
         for entry in entries:
-            walk(f"do.{interaction}", entry)
+            found.extend(_walk_action(f"do.{interaction}", entry))
     return found
 
 
@@ -2372,21 +2368,53 @@ def _destination_route_entries(
     return found
 
 
-def do_action_dicts(element: Mapping[str, Any]) -> list[Mapping[str, Any]]:
-    """Every action dict this element can run, nesting included, paths dropped.
+def _element_actions(element: Mapping[str, Any]) -> list[tuple[str, Mapping[str, Any]]]:
+    """Every action this element can run, each with the path a reader can go and edit.
 
-    The same two walks ``do_action_findings`` runs, for a caller that wants the
-    actions rather than a verdict on them (``core/event_references`` asks which
-    events a control can emit). It is public so that question is answered by
-    the walk that goes where the runtime goes, rather than by a third copy of
-    the list of places an action nests -- the copy that would be the one not
-    updated the next time a place is added.
+    Its own ``do`` first, then each matrix row's override of ``do.route``: the
+    two places a control keeps actions. ``do_action_findings`` judges them and
+    ``do_action_dicts`` hands them out, so a new place an action lives is added
+    here once for both. The Builder's twin is ``elementActions``.
     """
     bindings = element.get("bindings")
     do = bindings.get("do") if isinstance(bindings, Mapping) else None
     entries = _action_entries(do) if isinstance(do, Mapping) else []
-    entries += _destination_route_entries(element)
-    return [action for _path, action in entries]
+    return entries + _destination_route_entries(element)
+
+
+def do_action_dicts(element: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """Every action dict this element can run, nesting included, paths dropped.
+
+    The walk ``do_action_findings`` runs (``_element_actions``), for a caller
+    that wants the actions rather than a verdict on them
+    (``core/event_references`` asks which events a control can emit). It is
+    public so that question is answered by the walk that goes where the runtime
+    goes, rather than by another copy of the list of places an action nests --
+    the copy that would be the one not updated the next time a place is added.
+    """
+    return [action for _path, action in _element_actions(element)]
+
+
+#: The names a binding action can have, as a sentence lists them.
+_BINDING_ACTIONS_SAID = ", ".join(sorted(DISPATCHED_ACTIONS))
+
+
+def _why_nothing_runs(path: str, action: str) -> str:
+    """What the action at ``path`` is, said after "has", when no branch of the runtime takes it.
+
+    Three cases. The middle one is why the sentence is worth reading: a name
+    that is a macro step is the natural wrong guess, and how to reach a macro
+    step is the fix. The Builder's twin is ``whyNothingRuns``.
+    """
+    if not action:
+        return f"a {path} entry with no action, so nothing runs when it fires."
+    if action in MACRO_ONLY_ACTIONS:
+        return (
+            f"{path} action '{action}', which is a macro step and not a binding action, "
+            f"so nothing runs when it fires. Put it in a macro and call that one with "
+            f"action 'macro'."
+        )
+    return f"{path} action '{action}', which nothing dispatches, so nothing runs when it fires."
 
 
 def do_action_findings(element: Mapping[str, Any]) -> list[Finding]:
@@ -2398,44 +2426,19 @@ def do_action_findings(element: Mapping[str, Any]) -> list[Finding]:
     either, so a control authored with a retired spelling drew perfectly, took
     the press, and did nothing at all.
     """
-    bindings = element.get("bindings")
-    do = bindings.get("do") if isinstance(bindings, Mapping) else None
-    entries = _action_entries(do) if isinstance(do, Mapping) else []
-    entries += _destination_route_entries(element)
-    if not entries:
-        return []
-
     el_id = str(element.get("id", "?"))
     el_type = str(element.get("type", ""))
-    usable = ", ".join(sorted(DISPATCHED_ACTIONS))
     findings: list[Finding] = []
-    for path, action_def in entries:
+    for path, action_def in _element_actions(element):
         action = action_def.get("action")
         action = action if isinstance(action, str) else ""
         if action in DISPATCHED_ACTIONS:
             continue
-        if not action:
-            message = (
-                f"{el_id} ({el_type}) has a {path} entry with no action, so nothing "
-                f"runs when it fires. A binding action is one of: {usable}."
-            )
-        elif action in MACRO_ONLY_ACTIONS:
-            message = (
-                f"{el_id} ({el_type}) has {path} action '{action}', which is a macro "
-                f"step and not a binding action, so nothing runs when it fires. Put it "
-                f"in a macro and call that one with action 'macro'. A binding action is "
-                f"one of: {usable}."
-            )
-        else:
-            message = (
-                f"{el_id} ({el_type}) has {path} action '{action}', which nothing "
-                f"dispatches, so nothing runs when it fires. A binding action is one "
-                f"of: {usable}."
-            )
         findings.append(Finding(
             el_id,
             "binding_not_dispatched",
-            message,
+            f"{el_id} ({el_type}) has {_why_nothing_runs(path, action)} A binding action is "
+            f"one of: {_BINDING_ACTIONS_SAID}.",
             key=("binding_not_dispatched", el_id, path, action),
         ))
     return findings

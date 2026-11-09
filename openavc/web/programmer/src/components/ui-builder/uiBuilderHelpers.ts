@@ -5239,6 +5239,39 @@ function destinationRouteEntries(el: UIElement): ActionEntry[] {
 }
 
 /**
+ * Every action this element can run, each with the path a reader can go and
+ * edit: its own `do` first, then each matrix row's override of `do.route`. A new
+ * place an action lives is added here. Mirrors `_element_actions` in
+ * page_review.py.
+ */
+function elementActions(el: UIElement): ActionEntry[] {
+  const do_ = ((el.bindings ?? {}) as Record<string, unknown>).do;
+  const entries = isPlainObject(do_) ? actionEntries(do_) : [];
+  return [...entries, ...destinationRouteEntries(el)];
+}
+
+/** The names a binding action can have, as a sentence lists them. */
+const BINDING_ACTIONS_SAID = [...DISPATCHED_ACTIONS].sort().join(", ");
+
+/**
+ * What the action at `path` is, said after "has", when no branch of the
+ * runtime takes it. The middle case is why the sentence is worth reading: a
+ * macro step is the natural wrong guess, and how to reach one is the fix.
+ * Mirrors `_why_nothing_runs` in page_review.py.
+ */
+function whyNothingRuns(path: string, action: string): string {
+  if (!action) return `a ${path} entry with no action, so nothing runs when it fires.`;
+  if (MACRO_ONLY_ACTIONS.includes(action)) {
+    return (
+      `${path} action '${action}', which is a macro step and not a binding action, ` +
+      `so nothing runs when it fires. Put it in a macro and call that one with ` +
+      `action 'macro'.`
+    );
+  }
+  return `${path} action '${action}', which nothing dispatches, so nothing runs when it fires.`;
+}
+
+/**
  * Actions the runtime has no branch for, so the interaction does nothing.
  *
  * The chain in `ui_events.execute_action` ends with the six names it knows;
@@ -5248,44 +5281,16 @@ function destinationRouteEntries(el: UIElement): ActionEntry[] {
  * the press, and did nothing at all.
  */
 export function doActionFindings(el: UIElement): ReviewFinding[] {
-  const bindings = (el.bindings ?? {}) as Record<string, unknown>;
-  const do_ = bindings.do;
-  const entries: ActionEntry[] =
-    do_ && typeof do_ === "object" && !Array.isArray(do_)
-      ? actionEntries(do_ as Record<string, unknown>)
-      : [];
-  entries.push(...destinationRouteEntries(el));
-  if (!entries.length) return [];
-
-  const usable = [...DISPATCHED_ACTIONS].sort().join(", ");
-  const macroOnly = new Set(MACRO_ONLY_ACTIONS);
-  const dispatched = new Set(DISPATCHED_ACTIONS);
   const findings: ReviewFinding[] = [];
-  for (const [path, def] of entries) {
-    const raw = def.action;
-    const action = typeof raw === "string" ? raw : "";
-    if (dispatched.has(action)) continue;
-    let message: string;
-    if (!action) {
-      message =
-        `${el.id} (${el.type}) has a ${path} entry with no action, so nothing ` +
-        `runs when it fires. A binding action is one of: ${usable}.`;
-    } else if (macroOnly.has(action)) {
-      message =
-        `${el.id} (${el.type}) has ${path} action '${action}', which is a macro ` +
-        `step and not a binding action, so nothing runs when it fires. Put it ` +
-        `in a macro and call that one with action 'macro'. A binding action is ` +
-        `one of: ${usable}.`;
-    } else {
-      message =
-        `${el.id} (${el.type}) has ${path} action '${action}', which nothing ` +
-        `dispatches, so nothing runs when it fires. A binding action is one ` +
-        `of: ${usable}.`;
-    }
+  for (const [path, def] of elementActions(el)) {
+    const action = typeof def.action === "string" ? def.action : "";
+    if (DISPATCHED_ACTIONS.includes(action)) continue;
     findings.push({
       elementId: el.id,
       kind: "binding_not_dispatched",
-      message,
+      message:
+        `${el.id} (${el.type}) has ${whyNothingRuns(path, action)} A binding action is ` +
+        `one of: ${BINDING_ACTIONS_SAID}.`,
       key: `binding_not_dispatched|${el.id}|${path}|${action}`,
     });
   }
