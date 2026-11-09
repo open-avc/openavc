@@ -4429,19 +4429,41 @@ const UPPER_OPS: Record<string, boolean> = { lt: false, "<": false, lte: true, "
 /** One condition, read off a `visible_when`. */
 type Leaf = { key: string; op: string; value: unknown };
 
+/** The kinds of authored literal both surfaces read alike. */
+type LiteralKind = "null" | "bool" | "number" | "text";
+
+/**
+ * Which kind of authored literal this is, where both surfaces agree; null where
+ * they do not.
+ *
+ * A list or an object as a condition value is not something either surface can
+ * reason about, and Python and JavaScript do not even agree on whether an empty
+ * one is truthy. Equality, truthiness and the bounds below all ask this first.
+ * Mirrors `_literal_kind` in page_review.py.
+ */
+function literalKind(value: unknown): LiteralKind | null {
+  if (value === null) return "null";
+  switch (typeof value) {
+    case "boolean":
+      return "bool";
+    case "number":
+      return "number";
+    case "string":
+      return "text";
+    default:
+      return null;
+  }
+}
+
 /**
  * Two authored literals, compared the way both surfaces can agree on.
  *
  * Not `==`: Python says `1 == True` and JavaScript says `"1" == 1`, and they
- * disagree about which. Same type family and same value, or different.
+ * disagree about which. Same kind and same value, or different.
  */
 function sameValue(left: unknown, right: unknown): boolean {
-  if (typeof left === "boolean" || typeof right === "boolean") {
-    return typeof left === "boolean" && typeof right === "boolean" && left === right;
-  }
-  if (typeof left === "number" && typeof right === "number") return left === right;
-  if (typeof left === "string" && typeof right === "string") return left === right;
-  return left === null && right === null;
+  const kind = literalKind(left);
+  return kind !== null && kind === literalKind(right) && left === right;
 }
 
 /** A condition value as a number, or null when it is not one.
@@ -4450,7 +4472,7 @@ function sameValue(left: unknown, right: unknown): boolean {
  *  JavaScript's coercing `>`, which has no Python equivalent worth mirroring,
  *  and undecidable here only costs a warning nobody needed suppressed. */
 function conditionNumber(value: unknown): number | null {
-  return typeof value === "number" ? value : null;
+  return literalKind(value) === "number" ? (value as number) : null;
 }
 
 /** Whether a key pinned to `value` satisfies `op target`.
@@ -4460,23 +4482,39 @@ function conditionNumber(value: unknown): number | null {
 function conditionHolds(value: unknown, op: string, target: unknown): boolean {
   if (EQ_OPS.has(op)) return sameValue(value, target);
   if (NE_OPS.has(op)) return !sameValue(value, target);
-  if (op === "truthy" || op === "falsy") {
-    const scalar =
-      value === null ||
-      typeof value === "string" ||
-      typeof value === "number" ||
-      typeof value === "boolean";
-    if (!scalar) return true;
-    return op === "truthy" ? !!value : !value;
-  }
-  if (op in LOWER_OPS || op in UPPER_OPS) {
-    const left = conditionNumber(value);
-    const right = conditionNumber(target);
-    if (left === null || right === null) return true;
-    if (op in LOWER_OPS) return LOWER_OPS[op] ? left >= right : left > right;
-    return UPPER_OPS[op] ? left <= right : left < right;
-  }
+  if (op === "truthy" || op === "falsy") return truthHolds(value, op);
+  if (op in LOWER_OPS || op in UPPER_OPS) return boundHolds(value, op, target);
   return true;
+}
+
+/** Whether a key pinned to `value` is `truthy` or `falsy`, as `op` asks.
+ *
+ *  True (undecidable) for a value the two surfaces would not read alike. */
+function truthHolds(value: unknown, op: string): boolean {
+  if (literalKind(value) === null) return true;
+  return op === "truthy" ? !!value : !value;
+}
+
+/** Whether a key pinned to `value` is on the near side of the bound `op target`.
+ *
+ *  True (undecidable) unless both are numbers. */
+function boundHolds(value: unknown, op: string, target: unknown): boolean {
+  const left = conditionNumber(value);
+  const right = conditionNumber(target);
+  if (left === null || right === null) return true;
+  if (op in LOWER_OPS) return LOWER_OPS[op] ? left >= right : left > right;
+  return UPPER_OPS[op] ? left <= right : left < right;
+}
+
+/** Whether a lower bound and an upper bound leave no number that meets both.
+ *
+ *  False (no proof) unless both bounds are numbers. */
+function noRoomBetween(lower: Leaf, upper: Leaf): boolean {
+  const low = conditionNumber(lower.value);
+  const high = conditionNumber(upper.value);
+  if (low === null || high === null) return false;
+  const closed = LOWER_OPS[lower.op] && UPPER_OPS[upper.op];
+  return high < low || (high === low && !closed);
 }
 
 /** Whether condition `a` rules out `b`, read in one direction only. */
@@ -4486,27 +4524,17 @@ function rulesOut(a: Leaf, b: Leaf): boolean {
     // either satisfied by that value or contradicts it outright.
     return !conditionHolds(a.value, b.op, b.value);
   }
-  if (a.op === "truthy" && b.op === "falsy") return true;
-  if (a.op in LOWER_OPS && b.op in UPPER_OPS) {
-    const low = conditionNumber(a.value);
-    const high = conditionNumber(b.value);
-    if (low === null || high === null) return false;
-    const closed = LOWER_OPS[a.op] && UPPER_OPS[b.op];
-    return high < low || (high === low && !closed);
-  }
+  if (a.op === "truthy") return b.op === "falsy";
+  if (a.op in LOWER_OPS && b.op in UPPER_OPS) return noRoomBetween(a, b);
   return false;
 }
 
 /** One condition as a leaf, or null if it is unreadable. */
 function conditionLeaf(condition: unknown): Leaf | null {
-  if (!condition || typeof condition !== "object" || Array.isArray(condition)) return null;
-  const raw = condition as Record<string, unknown>;
-  if (typeof raw.key !== "string" || !raw.key) return null;
-  return {
-    key: raw.key,
-    op: String(raw.operator || "eq").toLowerCase(),
-    value: raw.value ?? null,
-  };
+  if (!isPlainObject(condition)) return null;
+  const { key, operator, value } = condition;
+  if (typeof key !== "string" || !key) return null;
+  return { key, op: String(operator || "eq").toLowerCase(), value: value ?? null };
 }
 
 /**
@@ -4515,29 +4543,35 @@ function conditionLeaf(condition: unknown): Leaf | null {
  * A bare condition and an `all:` block are one branch; an `any:` block is one
  * branch per condition. Null means there is nothing to reason about, which is
  * not the same as an empty list -- an empty list of branches is never
- * satisfiable, and would suppress every overlap on the page.
- *
- * An unreadable leaf inside `all:` is dropped, which only widens the set: if the
- * wider condition is still exclusive, so is the real one. Inside `any:` the same
- * drop would NARROW it, which could prove an exclusivity that is not there, so
- * the whole block goes undecidable instead.
+ * satisfiable, and would suppress every overlap on the page. An unreadable
+ * condition is dropped from `all:` and makes `any:` undecidable; each block's
+ * reader says why.
  */
 function visibleWhenBranches(el: UIElement): Leaf[][] | null {
-  const when = showOf(el)?.visible_when;
-  if (!when || typeof when !== "object" || Array.isArray(when)) return null;
-  const block = when as Record<string, unknown>;
+  const block = showOf(el)?.visible_when;
+  if (!isPlainObject(block)) return null;
 
-  if (Array.isArray(block.any)) {
-    const leaves = block.any.map(conditionLeaf);
-    if (!leaves.length || leaves.some((leaf) => leaf === null)) return null;
-    return leaves.map((leaf) => [leaf as Leaf]);
-  }
-  if (Array.isArray(block.all)) {
-    const kept = block.all.map(conditionLeaf).filter((leaf): leaf is Leaf => !!leaf);
-    return kept.length ? [kept] : null;
-  }
+  if (Array.isArray(block.any)) return anyBranches(block.any);
+  if (Array.isArray(block.all)) return allBranch(block.all);
   const leaf = conditionLeaf(block);
   return leaf ? [[leaf]] : null;
+}
+
+/** An `any:` block, one branch per condition; null if any one is unreadable.
+ *  Dropping an unreadable condition here would NARROW the set, which could
+ *  prove an exclusivity that is not there. */
+function anyBranches(conditions: unknown[]): Leaf[][] | null {
+  const leaves = conditions.map(conditionLeaf);
+  if (!leaves.length || leaves.some((leaf) => leaf === null)) return null;
+  return leaves.map((leaf) => [leaf as Leaf]);
+}
+
+/** An `all:` block as one branch of its readable conditions; null when none is.
+ *  Dropping an unreadable condition only widens the set: if the wider condition
+ *  is still exclusive, so is the real one. */
+function allBranch(conditions: unknown[]): Leaf[][] | null {
+  const kept = conditions.map(conditionLeaf).filter((leaf): leaf is Leaf => !!leaf);
+  return kept.length ? [kept] : null;
 }
 
 /**

@@ -1047,25 +1047,38 @@ _NE = frozenset({"ne", "not_equals", "!="})
 _LOWER = {"gt": False, ">": False, "gte": True, ">=": True}
 _UPPER = {"lt": False, "<": False, "lte": True, "<=": True}
 
-#: What both surfaces can compare without disagreeing. A list or an object as a
-#: condition value is not something either can reason about, and Python and
-#: JavaScript do not even agree on whether an empty one is truthy.
-_SCALARS = (str, int, float, bool)
+def _literal_kind(value: Any) -> str | None:
+    """Which kind of authored literal this is, where both surfaces agree; None where they do not.
+
+    ``null``, ``bool``, ``number`` or ``text``. A list or an object as a
+    condition value is not something either surface can reason about, and
+    Python and JavaScript do not even agree on whether an empty one is truthy. A
+    boolean is never a number here, though Python counts it as one. Equality,
+    truthiness and the bounds below all ask this first.
+    """
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "bool"
+    if isinstance(value, (int, float)):
+        return "number"
+    if isinstance(value, str):
+        return "text"
+    return None
 
 
 def _same_value(left: Any, right: Any) -> bool:
     """Two authored literals, compared the way both surfaces can agree on.
 
     Not ``==``: Python says ``1 == True`` and JavaScript says ``"1" == 1``, and
-    they disagree about which. Same type family and same value, or different.
+    they disagree about which. Same kind and same value, or different.
     """
-    if isinstance(left, bool) or isinstance(right, bool):
-        return isinstance(left, bool) and isinstance(right, bool) and left is right
-    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+    kind = _literal_kind(left)
+    if kind is None or kind != _literal_kind(right):
+        return False
+    if kind == "number":
         return float(left) == float(right)
-    if isinstance(left, str) and isinstance(right, str):
-        return left == right
-    return left is None and right is None
+    return left == right
 
 
 def _number(value: Any) -> float | None:
@@ -1075,9 +1088,7 @@ def _number(value: Any) -> float | None:
     JavaScript's coercing ``>``, which has no Python equivalent worth mirroring,
     and undecidable here only costs a warning nobody needed suppressed.
     """
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    return float(value)
+    return float(value) if _literal_kind(value) == "number" else None
 
 
 def _holds(value: Any, op: str, target: Any) -> bool:
@@ -1091,17 +1102,45 @@ def _holds(value: Any, op: str, target: Any) -> bool:
     if op in _NE:
         return not _same_value(value, target)
     if op in ("truthy", "falsy"):
-        if not isinstance(value, _SCALARS) and value is not None:
-            return True
-        return bool(value) if op == "truthy" else not value
+        return _truth_holds(value, op)
     if op in _LOWER or op in _UPPER:
-        left, right = _number(value), _number(target)
-        if left is None or right is None:
-            return True
-        if op in _LOWER:
-            return left >= right if _LOWER[op] else left > right
-        return left <= right if _UPPER[op] else left < right
+        return _bound_holds(value, op, target)
     return True
+
+
+def _truth_holds(value: Any, op: str) -> bool:
+    """Whether a key pinned to ``value`` is ``truthy`` or ``falsy``, as ``op`` asks.
+
+    True (undecidable) for a value the two surfaces would not read alike.
+    """
+    if _literal_kind(value) is None:
+        return True
+    return bool(value) if op == "truthy" else not value
+
+
+def _bound_holds(value: Any, op: str, target: Any) -> bool:
+    """Whether a key pinned to ``value`` is on the near side of the bound ``op target``.
+
+    True (undecidable) unless both are numbers.
+    """
+    left, right = _number(value), _number(target)
+    if left is None or right is None:
+        return True
+    if op in _LOWER:
+        return left >= right if _LOWER[op] else left > right
+    return left <= right if _UPPER[op] else left < right
+
+
+def _no_room_between(lower_op: str, lower: Any, upper_op: str, upper: Any) -> bool:
+    """Whether a lower bound and an upper bound leave no number that meets both.
+
+    False (no proof) unless both bounds are numbers.
+    """
+    low, high = _number(lower), _number(upper)
+    if low is None or high is None:
+        return False
+    closed = _LOWER[lower_op] and _UPPER[upper_op]
+    return high < low or (high == low and not closed)
 
 
 def _one_way(op_a: str, val_a: Any, op_b: str, val_b: Any) -> bool:
@@ -1110,14 +1149,10 @@ def _one_way(op_a: str, val_a: Any, op_b: str, val_b: Any) -> bool:
         # `key == val_a` pins the key to one value, so the other condition is
         # either satisfied by that value or contradicts it outright.
         return not _holds(val_a, op_b, val_b)
-    if op_a == "truthy" and op_b == "falsy":
-        return True
+    if op_a == "truthy":
+        return op_b == "falsy"
     if op_a in _LOWER and op_b in _UPPER:
-        low, high = _number(val_a), _number(val_b)
-        if low is None or high is None:
-            return False
-        closed = _LOWER[op_a] and _UPPER[op_b]
-        return high < low or (high == low and not closed)
+        return _no_room_between(op_a, val_a, op_b, val_b)
     return False
 
 
@@ -1137,12 +1172,9 @@ def _branches(element: Mapping[str, Any]) -> list[list[tuple[str, str, Any]]] | 
     A bare condition and an ``all:`` block are one branch; an ``any:`` block is
     one branch per condition. None means there is nothing to reason about, which
     is not the same as an empty list -- an empty list of branches is never
-    satisfiable, and would suppress every overlap on the page.
-
-    An unreadable leaf inside ``all:`` is dropped, which only widens the set: if
-    the wider condition is still exclusive, so is the real one. Inside ``any:``
-    the same drop would NARROW it, which could prove an exclusivity that is not
-    there, so the whole block goes undecidable instead.
+    satisfiable, and would suppress every overlap on the page. An unreadable
+    condition is dropped from ``all:`` and makes ``any:`` undecidable; each
+    block's reader says why.
     """
     show = _show(element)
     when = show.get("visible_when") if show is not None else None
@@ -1151,15 +1183,33 @@ def _branches(element: Mapping[str, Any]) -> list[list[tuple[str, str, Any]]] | 
 
     any_of, all_of = when.get("any"), when.get("all")
     if isinstance(any_of, list):
-        leaves = [_leaf(c) for c in any_of]
-        if not leaves or any(leaf is None for leaf in leaves):
-            return None
-        return [[leaf] for leaf in leaves if leaf]
+        return _any_branches(any_of)
     if isinstance(all_of, list):
-        kept = [leaf for c in all_of if (leaf := _leaf(c))]
-        return [kept] if kept else None
+        return _all_branch(all_of)
     leaf = _leaf(when)
     return [[leaf]] if leaf else None
+
+
+def _any_branches(conditions: list[Any]) -> list[list[tuple[str, str, Any]]] | None:
+    """An ``any:`` block, one branch per condition; None if any one is unreadable.
+
+    Dropping an unreadable condition here would NARROW the set, which could
+    prove an exclusivity that is not there.
+    """
+    leaves = [_leaf(c) for c in conditions]
+    if not leaves or any(leaf is None for leaf in leaves):
+        return None
+    return [[leaf] for leaf in leaves if leaf]
+
+
+def _all_branch(conditions: list[Any]) -> list[list[tuple[str, str, Any]]] | None:
+    """An ``all:`` block as one branch of its readable conditions; None when none is.
+
+    Dropping an unreadable condition only widens the set: if the wider
+    condition is still exclusive, so is the real one.
+    """
+    kept = [leaf for c in conditions if (leaf := _leaf(c))]
+    return [kept] if kept else None
 
 
 def mutually_exclusive(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
