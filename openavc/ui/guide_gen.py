@@ -56,6 +56,7 @@ from openavc.ui.page_review import (
     MACRO_ONLY_ACTIONS,
     buried_master_findings,
     custom_page_findings,
+    DrawnPage,
     HONORED_SHOW_SLOTS,
     INERT_WITHOUT,
     KEYPAD_DIGITS_DEFAULT,
@@ -746,14 +747,17 @@ def _master_section() -> str:
     Same reason as the custom-page section above: the reader acts on the
     sentence, so a hand copy of it here would be a second version to drift.
     """
+    lobby = DrawnPage(
+        page_id="lobby",
+        orientation="landscape",
+        boxes={"video": {"x": 3.984375, "y": 0, "w": 48.75, "h": 20}},
+        elements={"video": {"id": "video", "type": "image"}},
+        parents={"video": None},
+    )
     buried = buried_master_findings(
-        {"video": {"x": 3.984375, "y": 0, "w": 48.75, "h": 20}},
-        {"video": {"id": "video", "type": "image"}},
-        {"video": None},
+        lobby,
         [{"id": "nav_bar", "type": "button", "pages": "*",
           "placements": {"landscape": {"x": 0, "y": 0, "w": 15.859375, "h": 7.875}}}],
-        "lobby",
-        "landscape",
         lambda _el_id: True,
     )
     return MASTER_INTRO % {"buried": buried[0].message}

@@ -30,6 +30,7 @@ import pytest
 
 from openavc.ui.page_review import (
     Container,
+    DrawnPage,
     Seat,
     binding_findings,
     buried_master_findings,
@@ -97,9 +98,16 @@ def test_master_box(case) -> None:
 @pytest.mark.parametrize("case", _cases("buried_master_findings"))
 def test_buried_master_findings(case) -> None:
     scope = case["in_scope"]
+    drawn = DrawnPage(
+        page_id=case["page_id"],
+        orientation=case["orientation"],
+        boxes=case["boxes"],
+        elements=case["dumps"],
+        parents=case["parents"],
+    )
     findings = buried_master_findings(
-        case["boxes"], case["dumps"], case["parents"], case["masters"],
-        case["page_id"], case["orientation"],
+        drawn,
+        case["masters"],
         (lambda _el_id: True) if scope is None else (lambda el_id: el_id in scope),
     )
     assert _said(findings) == case["expected"]

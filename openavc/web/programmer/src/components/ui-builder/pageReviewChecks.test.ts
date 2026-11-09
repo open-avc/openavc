@@ -17,7 +17,7 @@ import {
   styleFinding,
   touchFinding,
 } from "./uiBuilderHelpers";
-import type { ElementDefaults, Seat } from "./uiBuilderHelpers";
+import type { DrawnPage, ElementDefaults, Seat } from "./uiBuilderHelpers";
 import type { MasterElement, Placement, UIElement } from "../../api/types";
 
 // The Builder's single-element review checks, held sentence for sentence to the
@@ -76,13 +76,16 @@ describe("masterBox", () => {
 describe("buriedMasterFindings", () => {
   it.each(corpus.buried_master_findings.map((c) => [c.name, c] as const))("%s", (_name, c) => {
     const scope = c.in_scope as string[] | null;
+    const drawn: DrawnPage = {
+      pageId: c.page_id as string,
+      orientation: c.orientation as string,
+      boxes: toMap(c.boxes as Record<string, Placement>),
+      elements: toMap(c.dumps as Record<string, UIElement>),
+      parents: toMap(c.parents as Record<string, string | null>),
+    };
     const findings = buriedMasterFindings(
-      toMap(c.boxes as Record<string, Placement>),
-      toMap(c.dumps as Record<string, UIElement>),
-      toMap(c.parents as Record<string, string | null>),
+      drawn,
       c.masters as MasterElement[],
-      c.page_id as string,
-      c.orientation as string,
       scope === null ? () => true : (id) => scope.includes(id),
     );
     expect(said(findings)).toEqual(c.expected);

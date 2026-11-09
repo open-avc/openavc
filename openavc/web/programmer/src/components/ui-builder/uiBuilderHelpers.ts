@@ -4737,6 +4737,25 @@ function masterScope(pages: string | string[]): string {
   return "every page";
 }
 
+/**
+ * A page's controls as one arrangement draws them, which is what a master
+ * underneath them is checked against.
+ *
+ * `boxes` are absolute -- page percentages with container nesting already
+ * flattened -- because a master's box is a percentage of the viewport and a
+ * nested control's is a percentage of its container, so the two are not
+ * comparable until one of them has been folded down. They hold only the
+ * controls drawn in this arrangement; `elements` and `parents` hold every
+ * element on the page, by id. Its twin in page_review.py is `DrawnPage`.
+ */
+export interface DrawnPage {
+  pageId: string;
+  orientation: string;
+  boxes: Map<string, Placement>;
+  elements: Map<string, UIElement>;
+  parents: Map<string, string | null>;
+}
+
 /** One master as it draws on one page: its box, its size, the screen it is on. */
 interface MasterHere {
   master: MasterElement;
@@ -4749,7 +4768,8 @@ interface MasterHere {
 
 /** A master as it draws on this page, or null when it draws nothing here:
  *  hidden, listed for other pages only, with no box, or with no size. */
-function masterHere(master: MasterElement, pageId: string, orientation: string): MasterHere | null {
+function masterHere(master: MasterElement, drawn: DrawnPage): MasterHere | null {
+  const { pageId, orientation } = drawn;
   if (master.hidden || !masterDrawsOn(master.pages ?? "*", pageId)) return null;
   const box = masterBox(master, orientation);
   if (!box) return null;
@@ -4764,10 +4784,10 @@ type Covered = Map<string, { oxPx: number; oyPx: number }>;
 
 /** Each drawn control lying on this master, with the pixels it covers per axis.
  *  A control that can never be on screen with the master is not lying on it. */
-function coveredBy(here: MasterHere, boxes: Map<string, Placement>, elements: Map<string, UIElement>): Covered {
+function coveredBy(here: MasterHere, drawn: DrawnPage): Covered {
   const covered: Covered = new Map();
-  for (const [elId, box] of boxes) {
-    if (mutuallyExclusive(elements.get(elId) as UIElement, here.master)) continue;
+  for (const [elId, box] of drawn.boxes) {
+    if (mutuallyExclusive(drawn.elements.get(elId) as UIElement, here.master)) continue;
     const extent = overlapExtent(box, here.box, here.reference);
     if (extent) covered.set(elId, { oxPx: extent.oxPx, oyPx: extent.oyPx });
   }
@@ -4804,11 +4824,6 @@ function coversMasterFinding(
 /**
  * Every control on this page that is drawn over a master element.
  *
- * `boxes` are absolute -- page percentages with container nesting already
- * flattened -- because a master's box is a percentage of the viewport and a
- * nested control's is a percentage of its container, so the two are not
- * comparable until one of them has been folded down.
- *
  * Reported on the CONTROL rather than on the master: the control is what moved,
  * it is the thing being edited, and the master has no page to be warned about it
  * on. A control inside a container that is itself burying the master says the
@@ -4816,24 +4831,20 @@ function coversMasterFinding(
  * the child has done nothing wrong.
  */
 export function buriedMasterFindings(
-  boxes: Map<string, Placement>,
-  elements: Map<string, UIElement>,
-  parents: Map<string, string | null>,
+  drawn: DrawnPage,
   masters: MasterElement[],
-  pageId: string,
-  orientation: string,
   inScope: (id: string) => boolean,
 ): ReviewFinding[] {
   const findings: ReviewFinding[] = [];
   for (const master of masters) {
-    const here = masterHere(master, pageId, orientation);
+    const here = masterHere(master, drawn);
     if (!here) continue;
-    const covered = coveredBy(here, boxes, elements);
+    const covered = coveredBy(here, drawn);
     findings.push(
       ...[...covered.keys()].sort()
-        .filter((elId) => inScope(elId) && !coveredAncestor(elId, covered, parents))
+        .filter((elId) => inScope(elId) && !coveredAncestor(elId, covered, drawn.parents))
         .map((elId) => coversMasterFinding(
-          here, elId, elements.get(elId), covered.get(elId) as { oxPx: number; oyPx: number },
+          here, elId, drawn.elements.get(elId), covered.get(elId) as { oxPx: number; oyPx: number },
         )),
     );
   }
@@ -6258,19 +6269,18 @@ function collidingPairs(arr: Arrangement, kids: string[], scope: ReviewScope): O
 
 /** ...and the masters under all of them, which are nobody's sibling. */
 function buriedMastersIn(arr: Arrangement, scope: ReviewScope): ReviewFinding[] {
-  const drawn = new Map<string, Placement>();
+  const boxes = new Map<string, Placement>();
   for (const el of arr.page.elements) {
-    if (isDrawn(arr, el.id)) drawn.set(el.id, own(arr.absolute, el.id) as Placement);
+    if (isDrawn(arr, el.id)) boxes.set(el.id, own(arr.absolute, el.id) as Placement);
   }
-  return buriedMasterFindings(
-    drawn,
-    arr.byId,
-    new Map(arr.page.elements.map((el) => [el.id, parentIn(arr, el.id)])),
-    scope.masters,
-    arr.page.id,
-    arr.orientation,
-    scope.inScope,
-  );
+  const drawn: DrawnPage = {
+    pageId: arr.page.id,
+    orientation: arr.orientation,
+    boxes,
+    elements: arr.byId,
+    parents: new Map(arr.page.elements.map((el) => [el.id, parentIn(arr, el.id)])),
+  };
+  return buriedMasterFindings(drawn, scope.masters, scope.inScope);
 }
 
 /**

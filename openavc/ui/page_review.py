@@ -1411,6 +1411,26 @@ def _master_scope(pages: Any) -> str:
 
 
 @dataclass(frozen=True)
+class DrawnPage:
+    """A page's controls as one arrangement draws them, which is what a master
+    underneath them is checked against.
+
+    ``boxes`` are absolute -- page percentages with container nesting already
+    flattened -- because a master's box is a percentage of the viewport and a
+    nested control's is a percentage of its container, so the two are not
+    comparable until one of them has been folded down. They hold only the
+    controls drawn in this arrangement; ``elements`` and ``parents`` hold every
+    element on the page, by id. The Builder's twin is ``DrawnPage``.
+    """
+
+    page_id: str
+    orientation: str
+    boxes: Mapping[str, Mapping[str, float]]
+    elements: Mapping[str, Mapping[str, Any]]
+    parents: Mapping[str, str | None]
+
+
+@dataclass(frozen=True)
 class _MasterHere:
     """One master as it draws on one page: its box, its size, the screen it is on."""
 
@@ -1421,37 +1441,33 @@ class _MasterHere:
     reference: tuple[float, float]
 
 
-def _master_here(master: Any, page_id: str, orientation: str) -> _MasterHere | None:
+def _master_here(master: Any, drawn: DrawnPage) -> _MasterHere | None:
     """A master as it draws on this page, or None when it draws nothing here.
 
     Hidden, listed for other pages only, with no box, or with no size: each is
     a master the page's controls cannot be drawn over.
     """
     m = _mapping(master)
-    if m.get("hidden") or not master_draws_on(m.get("pages", "*"), page_id):
+    if m.get("hidden") or not master_draws_on(m.get("pages", "*"), drawn.page_id):
         return None
-    box = master_box(m, orientation)
+    box = master_box(m, drawn.orientation)
     if box is None:
         return None
-    reference = reference_box(orientation)
+    reference = reference_box(drawn.orientation)
     size_px = _box_px(box, reference)
     if size_px[0] <= 0 or size_px[1] <= 0:
         return None
-    return _MasterHere(m, page_id, box, size_px, reference)
+    return _MasterHere(m, drawn.page_id, box, size_px, reference)
 
 
-def _covered_by(
-    here: _MasterHere,
-    boxes: Mapping[str, Mapping[str, float]],
-    dumps: Mapping[str, Mapping[str, Any]],
-) -> dict[str, tuple[float, float]]:
+def _covered_by(here: _MasterHere, drawn: DrawnPage) -> dict[str, tuple[float, float]]:
     """Each drawn control lying on this master, with the pixels it covers per axis.
 
     A control that can never be on screen with the master is not lying on it.
     """
     covered: dict[str, tuple[float, float]] = {}
-    for el_id, box in boxes.items():
-        if mutually_exclusive(dumps[el_id], here.master):
+    for el_id, box in drawn.boxes.items():
+        if mutually_exclusive(drawn.elements[el_id], here.master):
             continue
         extent = overlap_extent(box, here.box, here.reference)
         if extent:
@@ -1483,20 +1499,9 @@ def _covers_master_finding(
 
 
 def buried_master_findings(
-    boxes: Mapping[str, Mapping[str, float]],
-    dumps: Mapping[str, Mapping[str, Any]],
-    parents: Mapping[str, str | None],
-    masters: Sequence[Any],
-    page_id: str,
-    orientation: str,
-    in_scope: Callable[[str], bool],
+    drawn: DrawnPage, masters: Sequence[Any], in_scope: Callable[[str], bool],
 ) -> list[Finding]:
     """Every control on this page that is drawn over a master element.
-
-    ``boxes`` are absolute -- page percentages with container nesting already
-    flattened -- because a master's box is a percentage of the viewport and a
-    nested control's is a percentage of its container, so the two are not
-    comparable until one of them has been folded down.
 
     Reported on the CONTROL rather than on the master: the control is what
     moved, it is the thing being edited, and the master has no page to be
@@ -1506,14 +1511,14 @@ def buried_master_findings(
     """
     findings: list[Finding] = []
     for master in masters:
-        here = _master_here(master, page_id, orientation)
+        here = _master_here(master, drawn)
         if here is None:
             continue
-        covered = _covered_by(here, boxes, dumps)
+        covered = _covered_by(here, drawn)
         findings.extend(
-            _covers_master_finding(here, el_id, dumps[el_id], covered[el_id])
+            _covers_master_finding(here, el_id, drawn.elements[el_id], covered[el_id])
             for el_id in sorted(covered)
-            if in_scope(el_id) and not _covered_ancestor(el_id, covered, parents)
+            if in_scope(el_id) and not _covered_ancestor(el_id, covered, drawn.parents)
         )
     return findings
 
@@ -3020,16 +3025,16 @@ def _buried_masters_in(
     arrangement: _Arrangement, dumps: dict[str, dict[str, Any]], scope: _ReviewScope,
 ) -> list[Finding]:
     """...and the masters under all of them, which are nobody's sibling."""
-    drawn = {el_id: arrangement.absolute[el_id] for el_id in dumps if arrangement.is_drawn(el_id)}
-    return buried_master_findings(
-        drawn,
-        dumps,
-        {el_id: arrangement.parent_of(el_id) for el_id in dumps},
-        scope.masters,
-        str(getattr(arrangement.page, "id", "?")),
-        arrangement.orientation,
-        scope.in_scope,
+    drawn = DrawnPage(
+        page_id=str(getattr(arrangement.page, "id", "?")),
+        orientation=arrangement.orientation,
+        boxes={
+            el_id: arrangement.absolute[el_id] for el_id in dumps if arrangement.is_drawn(el_id)
+        },
+        elements=dumps,
+        parents={el_id: arrangement.parent_of(el_id) for el_id in dumps},
     )
+    return buried_master_findings(drawn, scope.masters, scope.in_scope)
 
 
 def _with_where(finding: Finding, where: str) -> Finding:
