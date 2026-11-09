@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   getDeviceSettings: vi.fn(),
   getSshPublicKey: vi.fn(),
   editors: [] as { kind: string; props: Record<string, unknown> }[],
+  installed: [] as Record<string, unknown>[],
 }));
 
 vi.mock("../../api/restClient", () => ({
@@ -43,7 +44,12 @@ vi.mock("./ChildEntities", () => ({ ChildEntities: () => null }));
 vi.mock("./DeviceStateLog", () => ({ DeviceStateLog: () => null }));
 vi.mock("./DeviceProtocolLog", () => ({ DeviceProtocolLog: () => null }));
 vi.mock("./QuickActions", () => ({ QuickActions: () => null }));
-vi.mock("./InstalledEquipment", () => ({ InstalledEquipment: () => null }));
+vi.mock("./InstalledEquipment", () => ({
+  InstalledEquipment: (props: Record<string, unknown>) => {
+    mocks.installed.push(props);
+    return <div data-testid="installed-panel" />;
+  },
+}));
 vi.mock("./DriverUpdateLine", () => ({ DriverUpdateLine: () => null }));
 vi.mock("../../components/plugins/PluginExtensions", () => ({
   DevicePanelSlot: () => null,
@@ -118,6 +124,7 @@ function before(a: Element, b: Element): boolean {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.editors.length = 0;
+  mocks.installed.length = 0;
   mocks.getDeviceSettings.mockResolvedValue({ settings: {} });
   mocks.getSshPublicKey.mockReturnValue(new Promise(() => {}));
   setProject();
@@ -207,6 +214,22 @@ describe("the editors a driver opts in to", () => {
       await waitFor(() => expect(mocks.getDevice.mock.calls.length).toBe(reads + 1));
       expect(mocks.getDevice).toHaveBeenLastCalledWith("amp");
     }
+  });
+});
+
+describe("product hardware's own panel", () => {
+  it("gets the device, the name it goes by and the wait the running system gives", async () => {
+    setInfo({ ownership: "manufacturer", completion_wait: { default: 5, max: 30 } });
+    setLive({ "device.amp.name": "Lobby Amp" });
+    await showPage();
+    expect(screen.getByTestId("installed-panel")).toBeTruthy();
+    expect(mocks.installed.at(-1)).toEqual({ deviceId: "amp", name: "Lobby Amp", completionWait: { default: 5, max: 30 } });
+  });
+
+  it("is not drawn for a device that is not product hardware", async () => {
+    await showPage();
+    expect(screen.queryByTestId("installed-panel")).toBeNull();
+    expect(mocks.installed).toEqual([]);
   });
 });
 
