@@ -406,6 +406,18 @@ def _mapping(element: Any) -> Mapping[str, Any]:
     return dump() if callable(dump) else dict(vars(element))
 
 
+def _show(element: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """An element's ``show`` bindings, when it carries a readable set of them.
+
+    Every check that reads a slot (``value``, ``look``, ``items``,
+    ``visible_when``) starts here, so a malformed ``bindings`` or ``show`` reads
+    as no bindings everywhere alike.
+    """
+    bindings = element.get("bindings")
+    show = bindings.get("show") if isinstance(bindings, Mapping) else None
+    return show if isinstance(show, Mapping) else None
+
+
 def _pct(value: float) -> str:
     """A percentage the way it would be written back into a placement."""
     return f"{value:.2f}".rstrip("0").rstrip(".") or "0"
@@ -1132,9 +1144,8 @@ def _branches(element: Mapping[str, Any]) -> list[list[tuple[str, str, Any]]] | 
     the same drop would NARROW it, which could prove an exclusivity that is not
     there, so the whole block goes undecidable instead.
     """
-    bindings = element.get("bindings")
-    show = bindings.get("show") if isinstance(bindings, Mapping) else None
-    when = show.get("visible_when") if isinstance(show, Mapping) else None
+    show = _show(element)
+    when = show.get("visible_when") if show is not None else None
     if not isinstance(when, Mapping):
         return None
 
@@ -1643,9 +1654,8 @@ def content_findings(element: Mapping[str, Any]) -> list[Finding]:
     prop, slot, remedy = rule
     if element.get(prop):
         return []
-    bindings = element.get("bindings")
-    show = bindings.get("show") if isinstance(bindings, Mapping) else None
-    if slot and isinstance(show, Mapping) and show.get(slot):
+    show = _show(element)
+    if slot and show is not None and show.get(slot):
         return []
     # A label whose words come from its look is not an empty box. The renderer
     # draws show.look's per-state text for the types in STATE_LABEL_TYPES, and
@@ -1654,7 +1664,7 @@ def content_findings(element: Mapping[str, Any]) -> list[Finding]:
     # about it taught authors to add a dead `text` to silence the check.
     if (
         el_type in STATE_LABEL_TYPES
-        and isinstance(show, Mapping)
+        and show is not None
         and look_supplies_text(show.get("look"))
     ):
         return []
@@ -1948,9 +1958,8 @@ def _shown(element: Mapping[str, Any]) -> _Shown | None:
     honored = HONORED_SHOW_SLOTS.get(el_type)
     if honored is None:  # a type this module has never heard of; say nothing
         return None
-    bindings = element.get("bindings")
-    show = bindings.get("show") if isinstance(bindings, Mapping) else None
-    if not isinstance(show, Mapping):
+    show = _show(element)
+    if show is None:
         return None
     return _Shown(str(element.get("id", "?")), el_type, honored, show)
 
@@ -2303,9 +2312,8 @@ def do_action_findings(element: Mapping[str, Any]) -> list[Finding]:
 
 def bound_state_key(element: Mapping[str, Any]) -> str | None:
     """The state key a control's value reads, when it reads one."""
-    bindings = element.get("bindings")
-    show = bindings.get("show") if isinstance(bindings, Mapping) else None
-    value = show.get("value") if isinstance(show, Mapping) else None
+    show = _show(element)
+    value = show.get("value") if show is not None else None
     if not isinstance(value, Mapping):
         return None
     key = value.get("key")

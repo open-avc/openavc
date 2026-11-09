@@ -3490,6 +3490,16 @@ function own<T>(table: Record<string, T>, key: string): T | undefined {
   return Object.prototype.hasOwnProperty.call(table, key) ? table[key] : undefined;
 }
 
+/** An element's `show` bindings, when it carries an object of them.
+ *
+ *  Every review check that reads a slot (`value`, `look`, `items`,
+ *  `visible_when`) starts here. Mirrors `_show` in page_review.py, which
+ *  also turns away a list; no check here reads a slot a list has. */
+function showOf(el: UIElement): Record<string, unknown> | null {
+  const show = ((el.bindings ?? {}) as Record<string, unknown>).show;
+  return show && typeof show === "object" ? (show as Record<string, unknown>) : null;
+}
+
 /** Whether this element draws text beside its control.
  *
  *  Only `label` does. The single type with a caption bonus is `status_led`, and
@@ -4513,10 +4523,7 @@ function conditionLeaf(condition: unknown): Leaf | null {
  * the whole block goes undecidable instead.
  */
 function visibleWhenBranches(el: UIElement): Leaf[][] | null {
-  const show = ((el.bindings ?? {}) as Record<string, unknown>).show as
-    | Record<string, unknown>
-    | undefined;
-  const when = show?.visible_when;
+  const when = showOf(el)?.visible_when;
   if (!when || typeof when !== "object" || Array.isArray(when)) return null;
   const block = when as Record<string, unknown>;
 
@@ -4854,10 +4861,8 @@ interface Shown {
 function shownBindings(el: UIElement): Shown | null {
   const honored = own(HONORED_SHOW_SLOTS, el.type);
   if (!honored) return null; // a type this module has never heard of; say nothing
-  const show = ((el.bindings ?? {}) as Record<string, unknown>).show as
-    | Record<string, unknown>
-    | undefined;
-  if (!show || typeof show !== "object") return null;
+  const show = showOf(el);
+  if (!show) return null;
   return { el, honored, show };
 }
 
@@ -5469,10 +5474,8 @@ export function contentFindings(el: UIElement): ReviewFinding[] {
   const value = (el as unknown as Record<string, unknown>)[prop];
   if (value !== undefined && value !== null && value !== "" &&
       !(Array.isArray(value) && value.length === 0)) return [];
-  const show = ((el.bindings ?? {}) as Record<string, unknown>).show as
-    | Record<string, unknown>
-    | undefined;
-  if (slot && show && typeof show === "object" && show[slot]) return [];
+  const show = showOf(el);
+  if (slot && show && show[slot]) return [];
   // A label whose words come from its look is not an empty box: the renderer
   // draws show.look's per-state text for STATE_LABEL_TYPES. Warning about it
   // taught authors to add a dead `text` to silence the check.
