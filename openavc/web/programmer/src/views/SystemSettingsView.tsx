@@ -1,25 +1,19 @@
 import { useState, useEffect, useCallback } from "react";
-import { Save, AlertTriangle, Power, Copy } from "lucide-react";
+import { Save, AlertTriangle, Power } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
-import { copyToClipboard } from "../components/shared/clipboard";
 import { HostNetworkCard } from "../components/system/HostNetworkCard";
 import { envHold, heldSetting } from "../components/system/EnvHeldNote";
 import {
   btnStyle,
   cardStyle,
   fieldRow,
-  helpText,
   inputStyle,
-  radioInput,
-  radioRow,
   sectionTitle,
   selectStyle,
-  subCardDescription,
-  subCardTitle,
   warningBox,
 } from "../components/system/settingsStyles";
-import { EnvLock, HeldNote } from "../components/system/EnvHeldNote";
-import { FieldRow, NumberBox, PasswordField, REDACTED, SwitchRow } from "./settings/settingsControls";
+import { FieldRow, NumberBox, SwitchRow } from "./settings/settingsControls";
+import { AccessCards, NoCredentialWarning, useSshAccess } from "./settings/AccessCards";
 import { saveChecks } from "./settings/saveChecks";
 import { DevicesCard, PanelDisplayCard } from "./settings/ProjectSettingsCards";
 import { SecurityCard } from "./settings/SecurityCard";
@@ -34,30 +28,13 @@ import { useSettingsSave } from "./settings/saveFlow";
 import { useSettingsDraft } from "./settings/settingsDraft";
 import { CutOffQuestion, RebootQuestion } from "./settings/SaveDialogs";
 import { useProjectStore } from "../store/projectStore";
-import { showError, showSuccess } from "../store/toastStore";
 import * as api from "../api/restClient";
-import { parseApiError } from "../api/errors";
-import { PASSWORD_TOO_SHORT } from "../api/auth";
 import type {
   AdapterIdentity,
   NetworkAdapter,
   NetworkInterface,
-  SshStatus,
   TlsStatus,
 } from "../api/restClient";
-
-/** A new API key: 32 random bytes, url-safe, the same shape the server would
- *  produce. The server stores only a digest of whatever is saved here, so this
- *  is the one moment the key exists in readable form -- and its length is what
- *  makes a key safe to store that way. */
-function generateApiKey(): string {
-  const raw = new Uint8Array(32);
-  crypto.getRandomValues(raw);
-  return btoa(String.fromCharCode(...raw))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
 
 function getTheme(): "dark" | "light" {
   return (localStorage.getItem("openavc-theme") as "dark" | "light") || "dark";
@@ -78,8 +55,6 @@ export function SystemSettingsView() {
   const [updateGuidance, setUpdateGuidance] = useState<string | null>(null);
 
   const projectLoaded = useProjectStore((s) => s.project !== null);
-  const [ssh, setSsh] = useState<SshStatus | null>(null);
-  const [sshBusy, setSshBusy] = useState(false);
   const [adapters, setAdapters] = useState<NetworkAdapter[]>([]);
   // One entry per adapter, connected or not: what the two adapter pickers list.
   const [interfaces, setInterfaces] = useState<NetworkInterface[]>([]);
@@ -101,13 +76,16 @@ export function SystemSettingsView() {
     api.getTlsStatus().then(setTlsStatus).catch(() => setTlsStatus(null));
   }, []);
 
+  // Read when Settings opens, in this order after the config.
   useEffect(() => {
     api.getSystemVersion().then((v) => {
       setKioskAvailable(v.kiosk_available);
       setPanelDimAvailable(v.panel_dim_available);
       setUpdateGuidance(v.update_guidance ?? "");
     }).catch(() => setUpdateGuidance("Update settings could not be loaded. Reload this page to try again."));
-    api.getSshStatus().then(setSsh).catch(() => setSsh(null));
+  }, []);
+  const ssh = useSshAccess();
+  useEffect(() => {
     loadAdapters();
     loadTlsStatus();
   }, [loadAdapters, loadTlsStatus]);
@@ -118,7 +96,6 @@ export function SystemSettingsView() {
   // at every start whatever is saved here, so they are shown locked and the
   // server refuses a change to one.
   const hold = envHold(config);
-  const heldBy = hold.by;
   // Accept connections from: the choice on screen, the server's answer for
   // it, and where it stands against the saved and the running choice.
   const listen = useListenChoice(config, dirty.network, hold.deploymentType);
@@ -139,28 +116,6 @@ export function SystemSettingsView() {
     },
   });
 
-  const handleSshToggle = async (enabled: boolean) => {
-    if (sshBusy) return;
-    setSshBusy(true);
-    try {
-      const r = await api.setSsh(enabled);
-      if (r.success) {
-        setSsh((s) => (s ? { ...s, enabled } : s));
-        showSuccess(enabled ? "SSH enabled." : "SSH disabled.");
-      } else if (r.pending) {
-        showSuccess("SSH change submitted. Confirming...");
-        const fresh = await api.getSshStatus().catch(() => null);
-        if (fresh) setSsh(fresh);
-      } else {
-        showError("SSH change failed: " + (r.error || "unknown error"));
-      }
-    } catch (e) {
-      showError("SSH change failed: " + parseApiError(e));
-    } finally {
-      setSshBusy(false);
-    }
-  };
-
   const hasDirty = save.hasChanges;
   const net = merged("network");
   const auth = merged("auth");
@@ -168,9 +123,7 @@ export function SystemSettingsView() {
   const upd = merged("updates");
   const kiosk = merged("kiosk");
   const tls = merged("tls");
-  // Both read the way the server does: anything but the exact word "open" is
-  // approved panels only, and an absent discovery section advertises.
-  const panelAccess = merged("panels")?.access === "open" ? "open" : "approved";
+  // Read the way the server does: an absent discovery section advertises.
   const advertise = merged("discovery")?.advertise !== false;
 
   const reachChosen: AdapterIdentity = net.reach_devices_through ?? {};
@@ -184,11 +137,8 @@ export function SystemSettingsView() {
     tlsPort: tls?.port ?? 8443,
     redirectHttp: tls?.redirect_http !== false,
   };
-  // Warning: no auth, and something on the network can connect.
-  const noAuth = !auth.programmer_password && auth.programmer_password !== REDACTED && !auth.api_key && auth.api_key !== REDACTED;
-
-  const { tlsPortError, tlsProvidedBlank, apiKeyNeedsPassword, passwordTooShort, blocked: saveBlocked } =
-    saveChecks({ tls, httpPort: net.http_port, auth, dirtyAuth: dirty.auth });
+  const checks = saveChecks({ tls, httpPort: net.http_port, auth, dirtyAuth: dirty.auth });
+  const { tlsPortError, tlsProvidedBlank, blocked: saveBlocked } = checks;
 
   const trustedCertPage: TrustedCertificatePage = {
     savedTlsEnabled: config?.tls?.enabled,
@@ -255,13 +205,7 @@ export function SystemSettingsView() {
           </div>
         )}
 
-        {/* Security warning */}
-        {noAuth && listen.reachesNetwork && (
-          <div style={warningBox}>
-            <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: 2 }} />
-            <span>The server is accessible on the network with no authentication. Anyone on your network can open the Programmer IDE and modify your project. Set a <strong>programmer login</strong> below to require credentials.</span>
-          </div>
-        )}
+        <NoCredentialWarning auth={auth} reachesNetwork={listen.reachesNetwork} />
 
         {/* Appearance */}
         <h3 style={sectionTitle}>Appearance</h3>
@@ -379,168 +323,7 @@ export function SystemSettingsView() {
 
         {/* Access */}
         <h3 style={sectionTitle}>Access</h3>
-        <div style={{
-          fontSize: "var(--font-size-sm)",
-          color: "var(--text-secondary)",
-          marginBottom: "var(--space-md)",
-          lineHeight: 1.5,
-        }}>
-          A system installed from a package always asks for the admin password before the Programmer opens.
-          A system run from source opens without one until a password is set below.
-          Who can open the panel is set below under Panel access.
-        </div>
-
-        <div style={cardStyle}>
-          <h4 style={subCardTitle}>Programmer login</h4>
-          <div style={subCardDescription}>
-            For humans opening the Programmer IDE in a browser. When a password is set, the Programmer shows its own sign-in screen first. Who can open the panel is set below under Panel access.
-          </div>
-          <FieldRow
-            label="Username"
-            held={heldSetting(hold, "auth", "programmer_username")}
-            help="Paired with the password on the Programmer sign-in screen. Defaults to admin; leave blank to accept any username."
-          >
-            <input
-              style={inputStyle}
-              type="text"
-              autoComplete="off"
-              spellCheck={false}
-              value={auth.programmer_username}
-              placeholder="No username set"
-              onChange={(e) => update("auth", "programmer_username", e.target.value)}
-            />
-          </FieldRow>
-          <FieldRow
-            label="Password"
-            held={heldSetting(hold, "auth", "programmer_password")}
-            help={<>
-              Set this if anyone else on your network could open the Programmer IDE.
-              {ssh?.supported && " On this controller it is also the SSH and console login for the openavc user."}
-            </>}
-            after={passwordTooShort && (
-              <span style={{ ...helpText, color: "rgb(244, 67, 54)" }}>
-                {PASSWORD_TOO_SHORT}
-              </span>
-            )}
-          >
-            <PasswordField
-              value={auth.programmer_password}
-              placeholder="No password set"
-              onChange={(v) => update("auth", "programmer_password", v)}
-            />
-          </FieldRow>
-        </div>
-
-        {ssh?.supported && (
-          <div style={cardStyle}>
-            <h4 style={subCardTitle}>SSH access</h4>
-            <div style={subCardDescription}>
-              Remote command-line login to this controller. Off by default. When on, log in as user <code>openavc</code> with your admin password.
-            </div>
-            <SwitchRow
-              title="Enable SSH"
-              help={sshBusy
-                ? "Applying..."
-                : ssh.enabled === null
-                ? "Current state unknown"
-                : ssh.enabled
-                ? "SSH is on"
-                : "SSH is off"}
-              checked={!!ssh.enabled}
-              onChange={handleSshToggle}
-            />
-          </div>
-        )}
-
-        <div style={cardStyle}>
-          <h4 style={subCardTitle}>API key (for integrations)</h4>
-          <div style={subCardDescription}>
-            For external systems: control scripts, middleware, or other software that connects to the OpenAVC REST API or WebSocket. Not needed unless you are building a custom integration.
-          </div>
-          <FieldRow
-            label="API key"
-            held={heldSetting(hold, "auth", "api_key")}
-            lockStyle={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}
-            help={<>
-              Provide this to external systems via the <code>X-API-Key</code> header.
-              Copy it before you save. It is not shown again afterwards.
-            </>}
-            after={apiKeyNeedsPassword && (
-              <span style={{ ...helpText, color: "rgb(244, 67, 54)" }}>
-                An API key can't sign in to the Programmer. Set a Programmer
-                password as well, or clear the API key, so this system can still
-                be opened in a browser.
-              </span>
-            )}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <PasswordField
-                value={auth.api_key}
-                placeholder="No API key set"
-                onChange={(v) => update("auth", "api_key", v)}
-              />
-            </div>
-            {auth.api_key && auth.api_key !== REDACTED && (
-              <button
-                type="button"
-                title="Copy API key"
-                onClick={() => { copyToClipboard(auth.api_key).then((ok) => { if (ok) showSuccess("Copied."); }); }}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)", padding: 2, display: "inline-flex" }}
-              >
-                <Copy size={14} />
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => update("auth", "api_key", generateApiKey())}
-              style={{ ...btnStyle, background: "none", color: "var(--text-secondary)", border: "1px solid var(--border)", flexShrink: 0 }}
-            >
-              Generate
-            </button>
-          </FieldRow>
-        </div>
-
-        <div style={cardStyle}>
-          <h4 style={subCardTitle}>Panel access</h4>
-          <div style={subCardDescription}>
-            Who can open the panel from a tablet, a phone or a browser on the network. Applies as soon as it is saved.
-          </div>
-          <HeldNote hold={hold} variable={heldBy("panels", "access")} style={{ marginBottom: "var(--space-sm)" }} />
-          <EnvLock held={heldBy("panels", "access")}>
-          <label style={radioRow}>
-            <input
-              type="radio"
-              name="cfg-panel-access"
-              value="approved"
-              checked={panelAccess === "approved"}
-              onChange={() => update("panels", "access", "approved")}
-              style={radioInput}
-            />
-            <div>
-              <div style={{ fontSize: "var(--font-size-sm)" }}>Approved panels only</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                A new tablet or browser waits until you approve it here. Approved panels stay approved.
-              </div>
-            </div>
-          </label>
-          <label style={radioRow}>
-            <input
-              type="radio"
-              name="cfg-panel-access"
-              value="open"
-              checked={panelAccess === "open"}
-              onChange={() => update("panels", "access", "open")}
-              style={radioInput}
-            />
-            <div>
-              <div style={{ fontSize: "var(--font-size-sm)" }}>Anyone on the network</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Any device that can reach this system can open the panel and control the space.
-              </div>
-            </div>
-          </label>
-          </EnvLock>
-        </div>
+        <AccessCards draft={draft} hold={hold} ssh={ssh} problems={checks} />
 
         {/* Logging */}
         <h3 style={sectionTitle}>Logging</h3>

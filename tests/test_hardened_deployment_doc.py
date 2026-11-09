@@ -26,11 +26,12 @@ DOC = REPO / "docs" / "hardened-deployment.md"
 SETTINGS_VIEW = REPO / "openavc" / "web" / "programmer" / "src" / "views" / "SystemSettingsView.tsx"
 SIDEBAR = REPO / "openavc" / "web" / "programmer" / "src" / "components" / "layout" / "Sidebar.tsx"
 # The Settings view, the Network section's two adapter fields it renders, and
-# the Security card.
+# the Security and Access cards.
 SETTINGS_SOURCES = (
     SETTINGS_VIEW,
     REPO / "openavc" / "web" / "programmer" / "src" / "components" / "system" / "NetworkChoiceFields.tsx",
     REPO / "openavc" / "web" / "programmer" / "src" / "views" / "settings" / "SecurityCard.tsx",
+    REPO / "openavc" / "web" / "programmer" / "src" / "views" / "settings" / "AccessCards.tsx",
 )
 
 TEXT = DOC.read_text(encoding="utf-8")

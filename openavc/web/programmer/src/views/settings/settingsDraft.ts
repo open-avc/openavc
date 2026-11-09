@@ -72,3 +72,5 @@ export function useSettingsDraft() {
     },
   };
 }
+
+export type SettingsDraft = ReturnType<typeof useSettingsDraft>;

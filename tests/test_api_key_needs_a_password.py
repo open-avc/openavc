@@ -442,7 +442,7 @@ class TestTheSettingsCardMirrorsIt:
         root = Path(_repo_root()) / "openavc/web/programmer/src/views"
         return "\n".join(
             (root / name).read_text(encoding="utf-8")
-            for name in ("SystemSettingsView.tsx", "settings/saveChecks.ts")
+            for name in ("settings/AccessCards.tsx", "settings/saveChecks.ts")
         )
 
     def test_the_card_computes_the_same_condition(self):
