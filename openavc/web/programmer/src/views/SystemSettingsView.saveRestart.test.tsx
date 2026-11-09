@@ -164,6 +164,20 @@ describe("Save, once its checks pass", () => {
     await waitFor(() => expect(saveButton().textContent).toBe("Save"));
   });
 
+  it("is drawn at half strength whenever it is off, and full once there is something to save", async () => {
+    let finish: (v: { status: string; updated_sections: string[] }) => void = () => {};
+    api.updateSystemConfig.mockImplementationOnce(() => new Promise((r) => { finish = r; }));
+    await renderLoaded(<SystemSettingsView />);
+    expect(saveButton().style.opacity).toBe("0.5");
+    fireEvent.change(logLevel(), { target: { value: "warning" } });
+    expect(saveButton().style.opacity).toBe("1");
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(saveButton().textContent).toBe("Saving..."));
+    expect(saveButton().style.opacity).toBe("0.5");
+    finish({ status: "ok", updated_sections: ["logging"] });
+    await waitFor(() => expect(saveButton().textContent).toBe("Save"));
+  });
+
   it("reads the config and the certificate status again, and has nothing left to save", async () => {
     await renderLoaded(<SystemSettingsView />);
     expect(api.getSystemConfig).toHaveBeenCalledTimes(1);

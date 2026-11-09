@@ -693,3 +693,17 @@ describe("The trusted certificate", () => {
     expect(card.style.border).toBe("1px solid rgba(76, 175, 80, 0.45)");
   });
 });
+
+describe("The running certificate after a save", () => {
+  it("is read again, and no longer shown when that read fails", async () => {
+    served.config.tls.enabled = true;
+    served.tls = { enabled: true, mode: "auto", cert: CERT };
+    await renderLoaded(<SystemSettingsView />);
+    expect(screen.getByText("Current certificate")).toBeTruthy();
+    api.getTlsStatus.mockRejectedValueOnce(new Error("down"));
+    fireEvent.change(screen.getByLabelText("Log level"), { target: { value: "debug" } });
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(api.getTlsStatus).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText("Current certificate")).toBeNull());
+  });
+});

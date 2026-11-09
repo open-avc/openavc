@@ -375,3 +375,128 @@ describe("Reach devices through", () => {
     expect(screen.getByTestId("reach-devices-problem").textContent).toContain("Ethernet 3 isn't connected");
   });
 });
+
+describe("Where panels open, with HTTPS on", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    served.config = baseConfig();
+    served.cutOff = true;
+    served.cloud = false;
+    served.appliance = false;
+  });
+
+  it("is the HTTPS port when HTTP does not redirect, 8443 when no port is saved", async () => {
+    served.config.tls = { enabled: true, auto_generate: true, cert_file: "", key_file: "", redirect_http: false, cloud_cert: false };
+    await renderSettings();
+    await waitFor(() => expect(screen.getByTestId("panels-open-at").textContent).toContain("https://10.20.30.5:8443/panel"));
+    expect(screen.getByTestId("panels-open-at").textContent).not.toContain("http://10.20.30.5:8080");
+  });
+
+  it("is the HTTP port, which redirects, when the redirect is not saved", async () => {
+    served.config.tls = { enabled: true, port: 9443, auto_generate: true, cert_file: "", key_file: "" };
+    await renderSettings();
+    await waitFor(() => expect(screen.getByTestId("panels-open-at").textContent).toContain("http://10.20.30.5:8080/panel"));
+    expect(screen.getByTestId("panels-open-at").textContent).not.toContain("9443");
+  });
+});
+
+describe("Refresh adapter list", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    served.config = baseConfig();
+  });
+
+  it("reads the adapters again, waits while they load, and is offered again after", async () => {
+    await renderSettings();
+    const refresh = screen.getByRole("button", { name: "Refresh adapter list" }) as HTMLButtonElement;
+    expect(refresh.disabled).toBe(false);
+    let answer: (v: unknown) => void = () => {};
+    vi.mocked(api.getNetworkAdapters).mockImplementationOnce(() => new Promise((r) => { answer = r as (v: unknown) => void; }));
+    await userEvent.click(refresh);
+    expect(api.getNetworkAdapters).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(refresh.disabled).toBe(true));
+    answer({ adapters: [], interfaces: [ETHERNET] });
+    await waitFor(() => expect(refresh.disabled).toBe(false));
+    expect([...listenField().options].map((o) => o.textContent)).toEqual([
+      "Any network",
+      "Ethernet · 10.20.30.5 · 10.20.30.0/24",
+      "This computer only",
+    ]);
+  });
+
+  it("keeps the list it has when the read fails, and is offered again", async () => {
+    await renderSettings();
+    const refresh = screen.getByRole("button", { name: "Refresh adapter list" }) as HTMLButtonElement;
+    vi.mocked(api.getNetworkAdapters).mockRejectedValueOnce(new Error("gone"));
+    await userEvent.click(refresh);
+    await waitFor(() => expect(api.getNetworkAdapters).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(refresh.disabled).toBe(false));
+    expect(listenField().options).toHaveLength(5);
+  });
+
+  it("lists no adapter when the server sends no interface list", async () => {
+    vi.mocked(api.getNetworkAdapters).mockImplementationOnce(async () => ({ adapters: [] }) as never);
+    render(<SystemSettingsView />);
+    await waitFor(() => expect(screen.queryByLabelText("Accept connections from")).toBeTruthy());
+    await waitFor(() => expect(api.getTlsStatus).toHaveBeenCalled());
+    expect([...listenField().options].map((o) => o.textContent)).toEqual(["Any network", "This computer only"]);
+  });
+});
+
+describe("An adapter the server runs or resolves but no longer lists", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    served.config = baseConfig();
+    served.cutOff = true;
+    served.cloud = false;
+  });
+
+  const GONE = { mac: "AA-BB-CC-DD-EE-FF" };
+
+  it("is named by what the server runs, for who can connect", async () => {
+    served.config = {
+      ...baseConfig(),
+      network: { ...(baseConfig().network as object), accept_connections_from: "adapter", accept_connections_adapter: GONE },
+      _listen: { ...RUNNING_ANY, mode: "adapter", adapter: GONE, adapter_name: "Ethernet 3", local_only: true },
+    };
+    await renderSettings();
+    expect(listenField().options[listenField().selectedIndex].textContent).toBe("Ethernet 3 · not connected");
+    expect(screen.getByTestId("accept-connections-help").textContent).toContain("Ethernet 3");
+  });
+
+  it("is named by what the server resolved, for reaching devices", async () => {
+    served.config = {
+      ...baseConfig(),
+      network: { ...(baseConfig().network as object), reach_devices_through: GONE },
+      _reach_devices: {
+        mode: "adapter", adapter: GONE, adapter_name: "Ethernet 3",
+        address: "10.9.9.9", connected: false, label: "Ethernet 3",
+      },
+    };
+    await renderSettings();
+    expect(reachField().options[reachField().selectedIndex].textContent).toBe("Ethernet 3 · not connected");
+    expect(screen.getByTestId("reach-devices-problem").textContent).toContain("Ethernet 3 isn't connected");
+  });
+});
+
+describe("Why the network is not listened on", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    served.cutOff = true;
+    served.cloud = false;
+  });
+
+  it("is not said once a different saved choice waits for a restart", async () => {
+    const problem = {
+      code: "adapter_not_connected",
+      message: "Not accepting connections from the network: the Ethernet adapter isn't connected.",
+    };
+    served.config = {
+      ...baseConfig(),
+      _listen: { ...RUNNING_ANY, mode: "adapter", adapter: { name: "Ethernet", mac: ETHERNET.mac }, adapter_name: "Ethernet", local_only: true, problem },
+    };
+    await renderSettings();
+    expect(screen.getByTestId("restart-banner")).toBeTruthy();
+    expect(screen.queryByTestId("accept-connections-problem")).toBeNull();
+  });
+});

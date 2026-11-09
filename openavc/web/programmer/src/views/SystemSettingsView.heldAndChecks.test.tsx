@@ -114,6 +114,29 @@ describe("Each field the environment can hold", () => {
     expect(byVar("OPENAVC_PANEL_ACCESS").style.marginBottom).toBe("var(--space-sm)");
   });
 
+  // A field in the label-and-control grid has its line in the control's
+  // column; a switch's line sits under its help line, outside the grid.
+  it.each([
+    ["network.http_port", "2", () => {}],
+    ["tls.port", "2", () => { served.config.tls.enabled = true; }],
+    ["auth.programmer_username", "2", () => {}],
+    ["auth.programmer_password", "2", () => {}],
+    ["auth.api_key", "2", () => {}],
+    ["logging.level", "2", () => {}],
+    ["updates.channel", "2", () => {}],
+    ["network.port80_redirect", "", () => {}],
+    ["discovery.advertise", "", () => {}],
+    ["tls.enabled", "", () => {}],
+    ["tls.redirect_http", "", () => { served.config.tls.enabled = true; }],
+    ["updates.check_enabled", "", () => {}],
+  ])("puts %s's line in grid column %j", async (field, column, arrange) => {
+    arrange();
+    hold({ [field]: "OPENAVC_TEST" });
+    await renderLoaded(<SystemSettingsView />);
+    expect(notes()).toHaveLength(1);
+    expect(notes()[0].style.gridColumn).toBe(column);
+  });
+
   it("locks the trusted certificate while HTTPS is off and its switch is held", async () => {
     served.tls = { enabled: false, cloud_cert: cloudCert() };
     hold({ "tls.enabled": "OPENAVC_TLS" });
@@ -157,10 +180,12 @@ describe("Save is refused before it is sent", () => {
     expect(screen.getByText(/An API key can't sign in to the Programmer\./)).toBeTruthy();
     expect(saveButton()).toBeDisabled();
     expect(saveButton().title).toBe("Fix the validation errors below before saving");
+    expect(saveButton().style.opacity).toBe("0.5");
     fireEvent.change(screen.getByPlaceholderText("No password set"), { target: { value: "longenough1" } });
     expect(screen.queryByText(/An API key can't sign in to the Programmer\./)).toBeNull();
     expect(saveButton()).not.toBeDisabled();
     expect(saveButton().title).toBe("");
+    expect(saveButton().style.opacity).toBe("1");
   });
 
   it("for a password emptied beside a stored API key", async () => {
