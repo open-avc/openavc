@@ -6417,6 +6417,174 @@ function validateSays({ kind, id }: BrokenReference): string {
   return kind === "page" ? `Navigate to deleted page "${id}"` : `${REFERENCE_NOUNS[kind]} "${id}" not found`;
 }
 
+/** The device a `device.<id>.<property>` state key reads, or null for a key
+ *  that is not a device's. Validate and the binding card's badge both ask it
+ *  before saying a key reads a device that is not in the project. */
+export function stateKeyDevice(key: string | undefined): string | null {
+  return key?.startsWith("device.") ? key.split(".")[1] : null;
+}
+
+/** What a project's references resolve against, and what the platform said
+ *  about the commands it was asked about (`validateProject`'s second argument). */
+interface ProjectRefs extends BindingRefIds {
+  commandIssues?: Map<Record<string, unknown>, string[]>;
+}
+
+/** One thing Validate says about a control. `where` follows the control in the
+ *  location it is reported at (` > press`, ` > change > "hdmi"`). */
+interface ControlIssue {
+  severity: ValidationIssue["severity"];
+  message: string;
+  where?: string;
+}
+
+type ControlCheck = (el: UIElement, refs: ProjectRefs) => ControlIssue[];
+
+function doMapOf(el: UIElement): Record<string, unknown> {
+  return (((el.bindings || {}) as Record<string, unknown>).do || {}) as Record<string, unknown>;
+}
+
+/** The binding a show slot holds, when it holds one. */
+function shownBinding(el: UIElement, slot: string): Record<string, unknown> | undefined {
+  return showOf(el)?.[slot] as Record<string, unknown> | undefined;
+}
+
+/** A page nav aimed at a page that is not there. */
+function targetPageIssues(el: UIElement, refs: ProjectRefs): ControlIssue[] {
+  const target = el.type === "page_nav" ? el.target_page : undefined;
+  if (!target || pageExists(target, refs.pageIds)) return [];
+  return [{ severity: "error", message: `Target page "${target}" does not exist` }];
+}
+
+/** A grant naming a device that is gone matches nothing at runtime, and a
+ *  grant that matches nothing looks exactly like a grant nobody set: the
+ *  control just sits there seeing no state. */
+function grantIssues(el: UIElement, refs: ProjectRefs): ControlIssue[] {
+  const issues: ControlIssue[] = [];
+  for (const granted of el.grant?.devices ?? []) {
+    if (!refs.deviceIds.has(granted)) {
+      issues.push({ severity: "error", message: `Granted device "${granted}" not found, so this control cannot read or control it` });
+    }
+  }
+  return issues;
+}
+
+/**
+ * One action and the value_map options under it: what it names that is not
+ * there, then what the platform said about it. Reads one action per option, as
+ * the runtime runs it; the binding card's checks read a list option as well
+ * (`valueMapActions`).
+ */
+function actionIssuesAt(a: Record<string, unknown>, where: string, refs: ProjectRefs): ControlIssue[] {
+  const broken = brokenReference(a, refs);
+  const issues: ControlIssue[] = broken ? [{ severity: "error", message: validateSays(broken), where }] : [];
+  // The device is here and the command is one it has, and the driver will
+  // still refuse it: a parameter it declares required was never filled in.
+  // The sentence is the platform's, so this warning and the refusal on the
+  // wall are the same words.
+  for (const message of refs.commandIssues?.get(a) ?? []) issues.push({ severity: "error", message, where });
+  if (a.action === "value_map" && isPlainObject(a.map)) {
+    for (const [option, mapped] of Object.entries(a.map)) {
+      if (isPlainObject(mapped)) issues.push(...actionIssuesAt(mapped, `${where} > "${option}"`, refs));
+    }
+  }
+  return issues;
+}
+
+/** Every action in every interaction, the slots in their own order (an
+ *  interaction written as one object rather than a list is read the same). */
+function actionIssues(el: UIElement, refs: ProjectRefs): ControlIssue[] {
+  const doMap = doMapOf(el);
+  return ACTION_SLOTS.flatMap((slot) =>
+    slotActions(doMap, slot).flatMap((a) => actionIssuesAt(a, ` > ${slot}`, refs)),
+  );
+}
+
+/** The value and the appearance read a device that is not in the project. */
+function shownDeviceIssues(el: UIElement, refs: ProjectRefs): ControlIssue[] {
+  const issues: ControlIssue[] = [];
+  for (const [slot, label] of [["value", "value"], ["look", "appearance"]] as const) {
+    const deviceId = stateKeyDevice(shownBinding(el, slot)?.key as string | undefined);
+    if (deviceId !== null && !refs.deviceIds.has(deviceId)) {
+      issues.push({ severity: "warning", message: `State key references unknown device "${deviceId}"`, where: ` > ${label}` });
+    }
+  }
+  return issues;
+}
+
+/**
+ * A control whose Value reads a device key but never sends a command can't
+ * actually drive that device — the drag/selection updates only the local
+ * mirror, overwritten on the next poll. Two-way to a device must go through
+ * a command (do.<interaction> device.command with $value), never a state
+ * write. Display-only controls reading device state are fine.
+ */
+function deviceValueIssues(el: UIElement): ControlIssue[] {
+  const cap = BINDING_CAPABILITIES[el.type];
+  const valueKey = shownBinding(el, "value")?.key as string | undefined;
+  if (!cap?.value?.link || !valueKey?.startsWith("device.")) return [];
+  const doMap = doMapOf(el);
+  if ((cap.does ?? []).some((d) => actionsCommandDevice(slotActions(doMap, d.interaction)))) return [];
+  return [{
+    severity: "warning",
+    message: "This control shows a device value but has no command to change it. Add a command so touching it reaches the device",
+    where: " > value",
+  }];
+}
+
+/** A visibility condition reads a device that is not in the project. `all`
+ *  is read before `any`, and a single condition stands on its own. */
+function visibilityIssues(el: UIElement, refs: ProjectRefs): ControlIssue[] {
+  const vw = shownBinding(el, "visible_when");
+  if (!vw) return [];
+  const issues: ControlIssue[] = [];
+  for (const c of (vw.all || vw.any || [vw]) as Array<{ key?: string }>) {
+    const deviceId = stateKeyDevice(c.key);
+    if (deviceId !== null && !refs.deviceIds.has(deviceId)) {
+      issues.push({ severity: "warning", message: `Visibility condition references unknown device "${deviceId}"`, where: " > visible_when" });
+    }
+  }
+  return issues;
+}
+
+/** The types a touch is meant to do something on. */
+const INTERACTIVE_TYPES = ["button", "slider", "fader", "select", "text_input", "keypad", "matrix", "list"];
+
+/** An interactive control with no action and no two-way value does nothing
+ *  when touched. */
+function noActionIssues(el: UIElement): ControlIssue[] {
+  if (!INTERACTIVE_TYPES.includes(el.type)) return [];
+  const doMap = doMapOf(el);
+  const acts = ACTION_SLOTS.some((slot) => slotActions(doMap, slot).length > 0);
+  const writesBack = !!shownBinding(el, "value")?.write_back;
+  return acts || writesBack ? [] : [{ severity: "warning", message: "Interactive element has no action" }];
+}
+
+/** Validate's checks of one control, reported in this order. A new check is one
+ *  function and one entry here; pages and master elements both run the list. */
+const CONTROL_CHECKS: readonly ControlCheck[] = [
+  targetPageIssues,
+  grantIssues,
+  actionIssues,
+  shownDeviceIssues,
+  deviceValueIssues,
+  visibilityIssues,
+  noActionIssues,
+];
+
+/** What Validate says about one control, placed under its page (a master's
+ *  page is the empty string). */
+function controlIssues(el: UIElement, pageId: string, pageName: string, refs: ProjectRefs): ValidationIssue[] {
+  const location = `${pageName} > ${el.id}`;
+  return CONTROL_CHECKS.flatMap((check) => check(el, refs)).map((issue) => ({
+    severity: issue.severity,
+    message: issue.message,
+    location: location + (issue.where ?? ""),
+    pageId,
+    elementId: el.id,
+  }));
+}
+
 /**
  * @param commandIssues What the platform says about each `device.command` in
  *   the project, keyed by the action object (see `api/commandIssues.ts`).
@@ -6432,111 +6600,7 @@ export function validateProject(
   const pageIds = new Set(project.ui.pages.map((p) => p.id));
   const deviceIds = new Set(project.devices.map((d) => d.id));
   const macroIds = new Set(project.macros.map((m) => m.id));
-  const refIds: BindingRefIds = { deviceIds, macroIds, pageIds };
-  const checkElement = (el: UIElement, pageId: string, pageName: string) => {
-    const loc = `${pageName} > ${el.id}`;
-    const bindings = (el.bindings || {}) as Record<string, unknown>;
-    const show = (bindings.show || {}) as Record<string, unknown>;
-    const doMap = (bindings.do || {}) as Record<string, unknown>;
-
-    // page_nav target
-    if (el.type === "page_nav" && el.target_page && !pageExists(el.target_page, pageIds)) {
-      issues.push({ severity: "error", message: `Target page "${el.target_page}" does not exist`, location: loc, pageId, elementId: el.id });
-    }
-
-    // A grant naming a device that is gone matches nothing at runtime, and a
-    // grant that matches nothing looks exactly like a grant nobody set: the
-    // control just sits there seeing no state.
-    for (const granted of el.grant?.devices ?? []) {
-      if (!deviceIds.has(granted)) {
-        issues.push({ severity: "error", message: `Granted device "${granted}" not found, so this control cannot read or control it`, location: loc, pageId, elementId: el.id });
-      }
-    }
-
-    // One action checker for every interaction. Recurses into value_map
-    // per-option actions the same way the engine executes them.
-    const checkAction = (b: Record<string, unknown>, slotLoc: string) => {
-      const broken = brokenReference(b, refIds);
-      if (broken) {
-        issues.push({ severity: "error", message: validateSays(broken), location: slotLoc, pageId, elementId: el.id });
-      }
-      // The device is here and the command is one it has, and the driver will
-      // still refuse it: a parameter it declares required was never filled in.
-      // The sentence is the platform's, so this warning and the refusal on the
-      // wall are the same words.
-      for (const message of commandIssues?.get(b) ?? []) {
-        issues.push({ severity: "error", message, location: slotLoc, pageId, elementId: el.id });
-      }
-      if (b.action === "value_map" && b.map && typeof b.map === "object" && !Array.isArray(b.map)) {
-        for (const [optValue, mapped] of Object.entries(b.map as Record<string, unknown>)) {
-          if (mapped && typeof mapped === "object" && !Array.isArray(mapped)) {
-            checkAction(mapped as Record<string, unknown>, `${slotLoc} > "${optValue}"`);
-          }
-        }
-      }
-    };
-
-    // DOES — each interaction holds an array of actions (legacy single objects
-    // are normalized by slotActions). Check every action in each interaction.
-    for (const slot of ACTION_SLOTS) {
-      for (const b of slotActions(doMap, slot)) {
-        checkAction(b, `${loc} > ${slot}`);
-      }
-    }
-
-    // SHOWS → value / look device references
-    const valueBinding = show.value as Record<string, unknown> | undefined;
-    const lookBinding = show.look as Record<string, unknown> | undefined;
-    for (const [b, label] of [[valueBinding, "value"], [lookBinding, "appearance"]] as const) {
-      const key = b?.key as string | undefined;
-      if (key?.startsWith("device.")) {
-        const deviceId = key.split(".")[1];
-        if (!deviceIds.has(deviceId)) {
-          issues.push({ severity: "warning", message: `State key references unknown device "${deviceId}"`, location: `${loc} > ${label}`, pageId, elementId: el.id });
-        }
-      }
-    }
-
-    // A control whose Value reads a device key but never sends a command can't
-    // actually drive that device — the drag/selection updates only the local
-    // mirror, overwritten on the next poll. Two-way to a device must go through
-    // a command (do.<interaction> device.command with $value), never a state
-    // write. Display-only controls reading device state are fine.
-    const cap = BINDING_CAPABILITIES[el.type];
-    const valueKey = valueBinding?.key as string | undefined;
-    if (cap?.value?.link && valueKey?.startsWith("device.")) {
-      const hasCommand = (cap.does ?? []).some((d) =>
-        actionsCommandDevice(slotActions(doMap, d.interaction)),
-      );
-      if (!hasCommand) {
-        issues.push({ severity: "warning", message: `This control shows a device value but has no command to change it. Add a command so touching it reaches the device`, location: `${loc} > value`, pageId, elementId: el.id });
-      }
-    }
-
-    // SHOWS → visible_when conditions
-    const vw = show.visible_when as Record<string, unknown> | undefined;
-    if (vw) {
-      const conditions = (vw.all || vw.any || [vw]) as Array<{ key?: string }>;
-      for (const c of conditions) {
-        if (c.key?.startsWith("device.")) {
-          const deviceId = c.key.split(".")[1];
-          if (!deviceIds.has(deviceId)) {
-            issues.push({ severity: "warning", message: `Visibility condition references unknown device "${deviceId}"`, location: `${loc} > visible_when`, pageId, elementId: el.id });
-          }
-        }
-      }
-    }
-
-    // Unbound interactive elements — an interactive control with no DOES action
-    // and no two-way value does nothing when touched.
-    if (["button", "slider", "fader", "select", "text_input", "keypad", "matrix", "list"].includes(el.type)) {
-      const hasDoAction = ACTION_SLOTS.some((slot) => slotActions(doMap, slot).length > 0);
-      const hasTwoWayValue = !!valueBinding?.write_back;
-      if (!hasDoAction && !hasTwoWayValue) {
-        issues.push({ severity: "warning", message: `Interactive element has no action`, location: loc, pageId, elementId: el.id });
-      }
-    }
-  };
+  const refs: ProjectRefs = { deviceIds, macroIds, pageIds, commandIssues };
 
   // Check page elements. Geometry and binding reach come back from the shared
   // review -- the same code, the same numbers and the same sentences the AI
@@ -6579,7 +6643,7 @@ export function validateProject(
     }
 
     for (const el of page.elements) {
-      checkElement(el, page.id, page.name);
+      issues.push(...controlIssues(el, page.id, page.name, refs));
       // A parent that doesn't exist leaves the child unrendered \u2014 the runtime
       // draws children into their container, and there is no container.
       if (el.parent && !byId.has(el.parent)) {
@@ -6600,7 +6664,7 @@ export function validateProject(
 
   // Check master elements
   for (const mel of project.ui.master_elements || []) {
-    checkElement(mel, "", "Master Elements");
+    issues.push(...controlIssues(mel, "", "Master Elements", refs));
     for (const finding of reviewMasterElement(mel, theme)) {
       issues.push({
         severity: "warning",

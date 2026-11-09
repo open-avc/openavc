@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
 import type { UIElement, ProjectConfig } from "../../../api/types";
-import { BINDING_CAPABILITIES, type BindingCapability, slotActions, actionsCommandDevice, actionDanglingRef, actionIncompleteCheck, elementCommandActions } from "../uiBuilderHelpers";
+import { BINDING_CAPABILITIES, type BindingCapability, slotActions, actionsCommandDevice, actionDanglingRef, actionIncompleteCheck, elementCommandActions, stateKeyDevice } from "../uiBuilderHelpers";
 import { commandIssues, type CommandIssues } from "../../../api/commandIssues";
 import { ButtonBindingEditor, type ButtonBindings } from "../../shared/ButtonBindingEditor";
 import { PressBindingEditor } from "../BindingEditor/PressBindingEditor";
@@ -144,10 +144,8 @@ export function BindingProperties({ element, project, onChange }: BindingPropert
   };
   const keyStatus = (binding: Record<string, unknown> | undefined): CardStatus | null => {
     const key = binding?.key as string | undefined;
-    if (key?.startsWith("device.")) {
-      const deviceId = key.split(".")[1];
-      if (!deviceIds.has(deviceId)) return { kind: "broken", text: `Device "${deviceId}" not found` };
-    }
+    const deviceId = stateKeyDevice(key);
+    if (deviceId !== null && !deviceIds.has(deviceId)) return { kind: "broken", text: `Device "${deviceId}" not found` };
     // Bound to nothing. Worth saying here rather than only in Validate,
     // because this is the half-second a binding spends between "state" being
     // chosen and a key being picked -- and a control left in it goes blank on
