@@ -507,7 +507,8 @@ def test_the_checks_run_in_their_order(loader):
         network_ports=[{"port": 9000, "protocol": "tcp", "reason": "x"}],
         platforms=["win_x64"], min_openavc_version="999.0.0",
     )
-    attrs = {"CONFIG_SCHEMA": [], "MACRO_ACTIONS": [], "SCRIPT_API": [], "EXTENSIONS": []}
+    attrs = {"CONFIG_SCHEMA": [], "CONFIG_SECRETS": "nope", "MACRO_ACTIONS": [],
+             "SCRIPT_API": [], "EXTENSIONS": []}
     fixes = [
         ("license", "MIT"), ("category", "utility"), ("capabilities", ["guest_endpoints"]),
         ("guest_alias", "acme"), ("network_ports", []), ("platforms", ["all"]),
@@ -533,6 +534,7 @@ def test_the_checks_run_in_their_order(loader):
         "Plugin not compatible with current platform 'linux_x64'. Supported: ['win_x64']",
         f"Plugin requires OpenAVC v999.0.0 or later (current: v{__version__})",
         "CONFIG_SCHEMA must be a dict",
+        "CONFIG_SECRETS must be a dict",
         "MACRO_ACTIONS invalid: MACRO_ACTIONS must be a dict",
         "SCRIPT_API invalid: SCRIPT_API must be a dict",
         "EXTENSIONS invalid: EXTENSIONS must be a dict",
@@ -1089,6 +1091,7 @@ async def test_a_failed_start_in_order(loader, caplog, rec):
     assert _msgs(caplog, logging.ERROR) == [
         "Plugin 'acme_widget' failed to start: ValueError: acme said no",
     ]
+    assert _recs(caplog, logging.ERROR)[0].exc_info[0] is ValueError
 
 
 @pytest.mark.parametrize("stop, message", [
