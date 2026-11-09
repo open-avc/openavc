@@ -716,3 +716,182 @@ async def test_a_group_step_sends_through_the_engines_current_devices(
     assert await engine.execute("m") == "completed"
     assert [c.args[0] for c in replacement.send_command.call_args_list] == ["acme1", "acme2"]
     devices.send_command.assert_not_called()
+
+
+# --- what the corrected break pass on the original found nothing else checks --------
+
+
+async def test_a_run_announces_its_start_and_end_with_counts(
+    engine: MacroEngine, events: EventBus,
+) -> None:
+    seen = _record(events, "macro.*.m")
+    engine.load_macros([{"id": "m", "name": "M", "steps": [
+        {"action": "delay", "seconds": 0}, {"action": "acme.nothing"}, {"action": "acme.nothing"},
+    ]}])
+    assert await engine.execute("m") == "failed"
+    ends = [(e, p) for e, p in seen if e in ("macro.started.m", "macro.completed.m")]
+    assert ends == [
+        ("macro.started.m", {"macro_id": "m", "name": "M", "total_steps": 3}),
+        ("macro.completed.m", {"macro_id": "m", "name": "M", "outcome": "failed", "failed_steps": 2}),
+    ]
+
+
+async def test_an_empty_group_is_skipped_without_a_failure(
+    engine: MacroEngine, events: EventBus, devices: MagicMock,
+) -> None:
+    engine.load_groups([{"id": "wall", "name": "Wall", "device_ids": []}])
+    progress = _record(events, "macro.progress.*")
+    errors = _record(events, "macro.step_error.*")
+    engine.load_macros([{"id": "m", "name": "M", "steps": [
+        {"action": "group.command", "group": "wall", "command": "power_on"},
+    ]}])
+    assert await engine.execute("m") == "completed"
+    assert errors == []
+    assert [p for _e, p in progress if p.get("status") == "group_complete"] == []
+    devices.send_command.assert_not_called()
+
+
+async def test_a_macro_writes_state_as_the_macro(engine: MacroEngine, state: StateStore) -> None:
+    sources: list[str] = []
+    state.subscribe("var.x", lambda _k, _o, _n, src: sources.append(src))
+    engine.load_macros([{"id": "m", "name": "M", "steps": [
+        {"action": "state.set", "key": "var.x", "value": 1},
+    ]}])
+    await engine.execute("m")
+    assert sources == ["macro"]
+
+
+async def test_a_conditional_with_no_condition_is_stepped_over(
+    engine: MacroEngine, events: EventBus, state: StateStore, caplog,
+) -> None:
+    errors = _record(events, "macro.step_error.*")
+    engine.load_macros([{"id": "m", "name": "M", "steps": [
+        {"action": "conditional", "condition": None,
+         "then_steps": [{"action": "state.set", "key": "var.then", "value": 1}]},
+        {"action": "state.set", "key": "var.after", "value": 1},
+    ]}])
+    with caplog.at_level(logging.WARNING, logger="openavc.core.macro_engine"):
+        assert await engine.execute("m") == "completed"
+    assert errors == [] and state.get("var.then") is None and state.get("var.after") == 1
+    assert any("Conditional step has no condition, skipping" in r.getMessage() for r in caplog.records)
+
+
+async def test_a_navigate_with_no_page_fails_the_step(
+    engine: MacroEngine, events: EventBus,
+) -> None:
+    engine._broadcast_ws = AsyncMock()
+    errors = _record(events, "macro.step_error.*")
+    engine.load_macros([{"id": "m", "name": "M", "steps": [{"action": "ui.navigate"}]}])
+    assert await engine.execute("m") == "failed"
+    assert [p["error"] for _e, p in errors] == [
+        "ui.navigate step requires a 'page' value (page id, '$back', or '$dismiss')"
+    ]
+
+
+async def test_a_help_request_with_nothing_wired_completes_and_says_so(
+    engine: MacroEngine, events: EventBus, caplog,
+) -> None:
+    errors = _record(events, "macro.step_error.*")
+    engine.load_macros([{"id": "m", "name": "M", "steps": [
+        {"action": "help.request", "message": "Lamp out"}, {"action": "help.clear"},
+    ]}])
+    with caplog.at_level(logging.WARNING, logger="openavc.core.macro_engine"):
+        assert await engine.execute("m") == "completed"
+    assert errors == []
+    said = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert said == [
+        "A macro asked for help and there is nothing wired to send it. The request was not raised.",
+        "A macro cleared the help request and there is nothing wired to clear.",
+    ]
+
+
+async def test_the_trigger_context_reaches_a_called_macro_and_an_else_branch(
+    engine: MacroEngine, state: StateStore,
+) -> None:
+    state.set("var.a", 0)
+    engine.load_macros([
+        {"id": "outer", "name": "Outer", "steps": [
+            {"action": "macro", "macro": "inner"},
+            {"action": "conditional", "condition": {"key": "var.a", "value": 1},
+             "else_steps": [{"action": "state.set", "key": "var.else", "value": "$trigger.data"}]},
+        ]},
+        {"id": "inner", "name": "Inner", "steps": [
+            {"action": "state.set", "key": "var.inner", "value": "$trigger.data"},
+        ]},
+    ])
+    assert await engine.execute("outer", {"data": "lobby"}) == "completed"
+    assert state.get("var.inner") == "lobby"
+    assert state.get("var.else") == "lobby"
+
+
+async def test_a_wait_until_with_no_condition_says_what_it_needs(
+    engine: MacroEngine, events: EventBus,
+) -> None:
+    errors = _record(events, "macro.step_error.*")
+    engine.load_macros([{"id": "w", "name": "W", "steps": [
+        {"action": "wait_until", "timeout": 1, "condition": None},
+    ]}])
+    assert await engine.execute("w") == "failed"
+    assert errors[0][1]["error"] == "wait_until step requires a condition with 'key'"
+    assert errors[0][1]["message"].startswith("Invalid value: wait_until step requires")
+
+
+async def test_a_wait_until_that_times_out_says_how_long_and_on_what(
+    engine: MacroEngine, events: EventBus,
+) -> None:
+    errors = _record(events, "macro.step_error.*")
+    engine.load_macros([{"id": "w", "name": "W", "steps": [
+        {"action": "wait_until", "timeout": 0.05,
+         "condition": {"key": "var.ready", "operator": "eq", "value": True}},
+    ]}])
+    assert await asyncio.wait_for(engine.execute("w"), 2) == "failed"
+    assert errors[0][1]["error"] == (
+        "wait_until timed out after 0.05s (condition: var.ready eq True)"
+    )
+    assert errors[0][1]["message"] == (
+        "The requested status was not reached in time. Check the system and try again."
+    )
+
+
+async def test_a_wait_until_met_later_reports_how_long_it_waited(
+    engine: MacroEngine, events: EventBus, state: StateStore,
+) -> None:
+    progress = _record(events, "macro.progress.*")
+    engine.load_macros([{"id": "w", "name": "W", "steps": [
+        {"action": "wait_until", "timeout": 2,
+         "condition": {"key": "var.ready", "operator": "eq", "value": True}},
+    ]}])
+    run = asyncio.create_task(engine.execute("w"))
+    await asyncio.sleep(0.1)
+    state.set("var.ready", True)
+    assert await run == "completed"
+    done = [p for _e, p in progress if p.get("status") == "satisfied"]
+    assert len(done) == 1 and done[0]["waited_seconds"] >= 0.05
+    assert set(done[0]) == {"macro_id", "action", "condition_key", "status", "waited_seconds"}
+
+
+async def test_a_refused_step_aimed_at_a_device_is_worded_with_its_host(
+    engine: MacroEngine, events: EventBus, state: StateStore,
+) -> None:
+    async def refused(_params: dict[str, Any], _context: dict[str, Any]) -> None:
+        raise ConnectionRefusedError("refused")
+
+    engine.register_plugin_action("acme.blink", refused, "acme_plugin")
+    state.set("device.acme1.host", "10.20.30.40")
+    errors = _record(events, "macro.step_error.*")
+    engine.load_macros([{"id": "m", "name": "M", "steps": [
+        {"action": "acme.blink", "device": "acme1"},
+    ]}])
+    await engine.execute("m")
+    assert "10.20.30.40" in errors[0][1]["message"]
+
+
+async def test_a_step_error_frame_carries_the_steps_own_description(
+    engine: MacroEngine, events: EventBus,
+) -> None:
+    errors = _record(events, "macro.step_error.*")
+    engine.load_macros([{"id": "m", "name": "M", "steps": [
+        {"action": "acme.nothing", "description": "Dim the lights"},
+    ]}])
+    await engine.execute("m")
+    assert errors[0][1]["description"] == "Dim the lights"
