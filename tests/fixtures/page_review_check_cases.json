@@ -5201,6 +5201,142 @@
           "key": "too_small_for_contents|vol"
         }
       ]
+    },
+    {
+      "name": "an LED 0.45 px narrow and too short, so short only on height",
+      "element": {
+        "id": "led",
+        "type": "status_led",
+        "label": "Power"
+      },
+      "seat": {
+        "box_px": [
+          28.55,
+          10
+        ],
+        "parent_px": [
+          400,
+          300
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "led",
+          "kind": "too_small_for_contents",
+          "message": "led (status_led) is 29x10px at the 1280x800 reference, too small for what it draws: 10px tall, needs 20px (led-dot is 20px). Give it h at least 6.67% of grp_strip.",
+          "key": "too_small_for_contents|led"
+        }
+      ]
+    },
+    {
+      "name": "an LED 0.55 px narrow and too short, so short both ways",
+      "element": {
+        "id": "led",
+        "type": "status_led",
+        "label": "Power"
+      },
+      "seat": {
+        "box_px": [
+          28.45,
+          10
+        ],
+        "parent_px": [
+          400,
+          300
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "led",
+          "kind": "too_small_for_contents",
+          "message": "led (status_led) is 28x10px at the 1280x800 reference, too small for what it draws: 28px wide, needs 29px (led-dot is 20px); 10px tall, needs 20px (led-dot is 20px). Give it w at least 7.25% and h at least 6.67% of grp_strip.",
+          "key": "too_small_for_contents|led"
+        }
+      ]
+    },
+    {
+      "name": "a fader whose floor is 0.45 px over its strip, which a share still reaches",
+      "element": {
+        "id": "vol",
+        "type": "fader"
+      },
+      "seat": {
+        "box_px": [
+          46,
+          300
+        ],
+        "parent_px": [
+          87.55,
+          400
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [
+          {
+            "label": "grp_strip",
+            "width_px": 87.55,
+            "height_px": 400
+          },
+          {
+            "label": "grp_bank",
+            "width_px": 600,
+            "height_px": 500
+          }
+        ],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "vol",
+          "kind": "too_small_for_contents",
+          "message": "vol (fader) is 46x300px at the 1280x800 reference, too small for what it draws: 46px wide, needs 88px (fader-handle is 44px, fader-scale is 42px). Give it w at least 100.51% of grp_strip.",
+          "key": "too_small_for_contents|vol"
+        }
+      ]
+    },
+    {
+      "name": "a fader whose floor is 0.55 px over its strip, so the strip has to grow",
+      "element": {
+        "id": "vol",
+        "type": "fader"
+      },
+      "seat": {
+        "box_px": [
+          46,
+          300
+        ],
+        "parent_px": [
+          87.45,
+          400
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [
+          {
+            "label": "grp_strip",
+            "width_px": 87.45,
+            "height_px": 400
+          },
+          {
+            "label": "grp_bank",
+            "width_px": 600,
+            "height_px": 500
+          }
+        ],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "vol",
+          "kind": "too_small_for_contents",
+          "message": "vol (fader) is 46x300px at the 1280x800 reference, too small for what it draws: 46px wide, needs 88px (fader-handle is 44px, fader-scale is 42px). grp_strip is 87px wide, too small to hold it at any width: give grp_strip w at least 27.88% of grp_bank.",
+          "key": "too_small_for_contents|vol"
+        }
+      ]
     }
   ],
   "degenerate_finding": [
