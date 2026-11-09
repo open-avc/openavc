@@ -20,7 +20,6 @@ import importlib.util
 import os
 import re
 import shutil
-import sys
 import time
 import zipfile
 from io import BytesIO
@@ -30,10 +29,14 @@ from urllib.parse import urlparse
 
 import httpx
 
+from openavc.core.plugin_import import (
+    add_deps_to_import_path,
+    exec_plugin_in_package,
+    plugin_class_in,
+    purge_plugin_modules,
+)
 from openavc.core.plugin_loader import (
     _PLUGIN_CLASS_REGISTRY,
-    _exec_plugin_in_package,
-    _purge_plugin_modules,
     register_plugin_class,
     unregister_plugin_class,
 )
@@ -553,7 +556,7 @@ def _check_min_openavc_version(plugin_id: str, plugin_dir: Path) -> None:
 
     Called during install (before pip deps install + class registration)
     so the user doesn't pay for a download that's going to fail to enable
-    later anyway. Mirrors the runtime check in PluginLoader.validate_manifest.
+    later anyway. Mirrors the runtime check in core/plugin_manifest.py.
     """
     min_version = _extract_min_openavc_version(plugin_dir)
     if not min_version:
@@ -623,23 +626,18 @@ def _register_installed_plugin(plugin_id: str, plugin_dir: Path) -> str | None:
     the UI — silently swallowing here would leave the user staring at a
     green "Installed" check with nothing in the Installed tab (A60).
 
-    The plugin file is executed inside a per-plugin package namespace (shared
-    with the loader via ``_exec_plugin_in_package``), so a multi-file plugin's
-    helper modules import via relative imports and can't collide with another
-    plugin's same-named helpers in sys.modules (A388).
+    The plugin file is executed inside a per-plugin package namespace
+    (core/plugin_import.py, shared with the startup scan), so a multi-file
+    plugin's helper modules import via relative imports and can't collide with
+    another plugin's same-named helpers in sys.modules.
     """
     try:
         _clear_installed_bytecode(plugin_dir)
     except OSError as exc:
         return f"OpenAVC could not refresh cached plugin code. Check write access to the Python cache directory, then retry: {exc}"
     # Refresh the whole package before loading the new entry and its helpers.
-    _purge_plugin_modules(f"plugin_{plugin_dir.name}")
-    # Add .deps to sys.path. Append (don't insert at 0) so a bundled plugin
-    # dependency can't shadow a stdlib or first-party module — .deps holds
-    # extra packages plugins need, not overrides of ours.
-    deps_path = str(PLUGIN_REPO_DIR / ".deps")
-    if os.path.isdir(deps_path) and deps_path not in sys.path:
-        sys.path.append(deps_path)
+    purge_plugin_modules(f"plugin_{plugin_dir.name}")
+    add_deps_to_import_path(PLUGIN_REPO_DIR / ".deps")
 
     # Look for plugin file
     candidates = [
@@ -665,23 +663,19 @@ def _register_installed_plugin(plugin_id: str, plugin_dir: Path) -> str | None:
 
         candidates_tried += 1
         try:
-            module = _exec_plugin_in_package(filepath, plugin_dir)
+            module = exec_plugin_in_package(filepath, plugin_dir)
             if module is None:
                 continue
 
-            for attr_name in dir(module):
-                attr = getattr(module, attr_name)
-                if (isinstance(attr, type) and
-                        hasattr(attr, "PLUGIN_INFO") and
-                        isinstance(attr.PLUGIN_INFO, dict) and
-                        attr.PLUGIN_INFO.get("id") == plugin_id):
-                    register_plugin_class(attr)
-                    log.info(f"Registered plugin class '{plugin_id}' from {filepath.name}")
-                    return None
+            plugin_class = plugin_class_in(module, plugin_id)
+            if plugin_class is not None:
+                register_plugin_class(plugin_class)
+                log.info(f"Registered plugin class '{plugin_id}' from {filepath.name}")
+                return None
 
             # No matching class in this file — drop the modules it loaded so a
             # later candidate (or install) starts clean.
-            _purge_plugin_modules(f"plugin_{plugin_dir.name}")
+            purge_plugin_modules(f"plugin_{plugin_dir.name}")
 
         except Exception as e:  # Catch-all: exec_module runs arbitrary plugin code
             last_error = f"{filepath.name}: {type(e).__name__}: {e}"

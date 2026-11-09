@@ -6,12 +6,7 @@ manages the start/stop lifecycle, and handles missing/incompatible plugins.
 """
 
 import asyncio
-import importlib
-import importlib.machinery
-import importlib.util
-import os
 import platform
-import sys
 import threading
 from pathlib import Path
 from typing import Any
@@ -23,6 +18,7 @@ from openavc.core.plugin_extensions import (
     sandbox_permissions,
     validate_extensions as validate_extensions,
 )
+from openavc.core.plugin_import import find_plugin_class, make_deps_loadable, plugin_folders
 from openavc.core.plugin_manifest import (
     platform_supported,
     validate_macro_actions as validate_macro_actions,
@@ -112,76 +108,6 @@ def unregister_plugin_class(plugin_id: str) -> bool:
     if removed:
         log.info(f"Unregistered plugin class: {plugin_id}")
     return removed
-
-
-def _purge_plugin_modules(package_name: str) -> None:
-    """Remove a plugin's package and all its submodules from sys.modules."""
-    for name in [
-        m for m in sys.modules
-        if m == package_name or m.startswith(package_name + ".")
-    ]:
-        sys.modules.pop(name, None)
-
-
-def _exec_plugin_in_package(filepath: Path, plugin_dir: Path) -> Any:
-    """Import a plugin's main module inside a private package namespace.
-
-    Each plugin loads as a package ``plugin_<dir>`` whose ``__path__`` is the
-    plugin's own directory. A multi-file plugin's siblings therefore import via
-    relative imports (``from . import helper`` / ``from .helper import X``) and
-    land in ``sys.modules`` under ``plugin_<dir>.helper`` — never under a bare
-    ``helper`` key that a second plugin shipping its own ``helper.py`` could
-    clobber. No bare directory is added to ``sys.path``, so two plugins with
-    same-named helper modules can't shadow each other (A388).
-
-    On any exception every module this call added is rolled back so a failed or
-    partial import can't pollute later loads. Returns the executed module, or
-    ``None`` if the file has no importable spec.
-    """
-    package_name = f"plugin_{plugin_dir.name}"
-    before = set(sys.modules)
-    try:
-        if filepath.name == "__init__.py":
-            # The plugin's own package init carries the class.
-            spec = importlib.util.spec_from_file_location(
-                package_name, filepath,
-                submodule_search_locations=[str(plugin_dir)],
-            )
-            if spec is None or spec.loader is None:
-                return None
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[package_name] = module
-            spec.loader.exec_module(module)
-            return module
-
-        # Synthesize a parent package so the main module's relative imports
-        # resolve against the plugin directory, then load the file as a
-        # submodule of it.
-        if package_name not in sys.modules:
-            pkg_spec = importlib.machinery.ModuleSpec(
-                package_name, None, is_package=True
-            )
-            pkg = importlib.util.module_from_spec(pkg_spec)
-            pkg.__path__ = [str(plugin_dir)]
-            sys.modules[package_name] = pkg
-
-        # The main file is a regular module, not a package — relative imports
-        # resolve via the parent package's __path__ (set above), so don't pass
-        # submodule_search_locations here (that would mark it a package and make
-        # __spec__.parent disagree with __package__).
-        sub_name = f"{package_name}.{filepath.stem}"
-        spec = importlib.util.spec_from_file_location(sub_name, filepath)
-        if spec is None or spec.loader is None:
-            return None
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[sub_name] = module
-        spec.loader.exec_module(module)
-        return module
-    except BaseException:
-        for name in set(sys.modules) - before:
-            if name == package_name or name.startswith(package_name + "."):
-                sys.modules.pop(name, None)
-        raise
 
 
 class PluginLoader:
@@ -354,7 +280,8 @@ class PluginLoader:
 
     def scan_plugins(self, plugin_repo_dir: Path | None = None) -> dict[str, type]:
         """
-        Scan plugin_repo/ for valid plugin packages and register them.
+        Scan plugin_repo/ for plugin packages and register their classes
+        (core/plugin_import.py finds and imports them).
 
         Returns dict of plugin_id -> plugin_class for all discovered plugins.
         """
@@ -366,39 +293,11 @@ class PluginLoader:
             log.debug(f"Plugin repo directory not found: {plugin_repo_dir}")
             return {}
 
-        # Add .deps to sys.path if it exists. Append (don't insert at 0) so a
-        # bundled plugin dependency can't shadow a stdlib or first-party module
-        # — .deps holds extra packages plugins need, not overrides of ours.
-        deps_path = str(plugin_repo_dir / ".deps")
-        if os.path.isdir(deps_path) and deps_path not in sys.path:
-            sys.path.append(deps_path)
-
-        # On Windows, add .deps to DLL search path so native libs (e.g. hidapi.dll)
-        # are findable by ctypes.  Both methods needed: add_dll_directory for
-        # LoadLibrary calls, PATH for ctypes.util.find_library.
-        if os.path.isdir(deps_path) and platform.system().lower() == "windows":
-            try:
-                if hasattr(os, "add_dll_directory"):
-                    os.add_dll_directory(deps_path)
-                if deps_path not in os.environ.get("PATH", ""):
-                    os.environ["PATH"] = deps_path + os.pathsep + os.environ.get("PATH", "")
-            except OSError as e:
-                log.debug(f"Could not add .deps to DLL search path: {e}")
-
-        # On Linux, add .deps to LD_LIBRARY_PATH so dlopen finds native libs
-        if os.path.isdir(deps_path) and platform.system().lower() == "linux":
-            current_ld = os.environ.get("LD_LIBRARY_PATH", "")
-            if deps_path not in current_ld:
-                os.environ["LD_LIBRARY_PATH"] = deps_path + (":" + current_ld if current_ld else "")
-
+        make_deps_loadable(plugin_repo_dir / ".deps")
         discovered = {}
-
-        for entry in sorted(plugin_repo_dir.iterdir()):
-            if not entry.is_dir() or entry.name.startswith((".", "_")):
-                continue
-
+        for entry in plugin_folders(plugin_repo_dir):
             try:
-                plugin_class = self._load_plugin_from_dir(entry)
+                plugin_class = find_plugin_class(entry)
                 if plugin_class:
                     plugin_id = plugin_class.PLUGIN_INFO["id"]
                     register_plugin_class(plugin_class)
@@ -408,61 +307,6 @@ class PluginLoader:
 
         log.info(f"Discovered {len(discovered)} plugins from {plugin_repo_dir}")
         return discovered
-
-    def _load_plugin_from_dir(self, plugin_dir: Path) -> type | None:
-        """Load a plugin class from a directory."""
-        # Look for a Python file with a class that has PLUGIN_INFO
-        # Priority: __init__.py in package, then <dir_name>_plugin.py, then any .py
-        candidates = []
-
-        init_file = plugin_dir / "__init__.py"
-        if init_file.exists():
-            candidates.append(init_file)
-
-        named_file = plugin_dir / f"{plugin_dir.name}_plugin.py"
-        if named_file.exists():
-            candidates.append(named_file)
-
-        for py_file in sorted(plugin_dir.glob("*.py")):
-            if py_file.name.startswith("_") or py_file in candidates:
-                continue
-            candidates.append(py_file)
-
-        for filepath in candidates:
-            plugin_class = self._load_plugin_from_file(filepath, plugin_dir)
-            if plugin_class:
-                return plugin_class
-
-        return None
-
-    def _load_plugin_from_file(self, filepath: Path, plugin_dir: Path) -> type | None:
-        """Import a Python file and find a class with PLUGIN_INFO.
-
-        The file is executed inside a per-plugin package namespace (see
-        ``_exec_plugin_in_package``) so a multi-file plugin's helper modules
-        can't collide with another plugin's same-named helpers.
-        """
-        try:
-            module = _exec_plugin_in_package(filepath, plugin_dir)
-            if module is None:
-                return None
-
-            # Find the plugin class
-            for attr_name in dir(module):
-                attr = getattr(module, attr_name)
-                if (isinstance(attr, type) and
-                        hasattr(attr, "PLUGIN_INFO") and
-                        isinstance(attr.PLUGIN_INFO, dict) and
-                        "id" in attr.PLUGIN_INFO):
-                    return attr
-
-            # No plugin class in this file — drop the modules it loaded so a
-            # later candidate (or plugin) starts clean.
-            _purge_plugin_modules(f"plugin_{plugin_dir.name}")
-        except Exception:  # Catch-all: exec_module runs arbitrary plugin code
-            log.exception(f"Error loading plugin file {filepath}")
-
-        return None
 
     # ──── Validation ────
 

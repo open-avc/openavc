@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from openavc.core import plugin_installer as installer
-from openavc.core.plugin_loader import _purge_plugin_modules
+from openavc.core.plugin_import import purge_plugin_modules as _purge_plugin_modules
 from tests.test_plugin_installer_hardening import _plugin_src
 
 

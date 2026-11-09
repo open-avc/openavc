@@ -1,6 +1,6 @@
 """Tests for plugin import isolation (A36 + A388).
 
-`_register_installed_plugin` imports a plugin through `_exec_plugin_in_package`,
+`_register_installed_plugin` imports a plugin through `exec_plugin_in_package`,
 which loads each plugin inside its own ``plugin_<dir>`` package namespace
 instead of dropping the plugin's directory onto the bare ``sys.path``. That
 gives two properties:

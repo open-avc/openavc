@@ -112,10 +112,10 @@ async def install_native_deps(plugin_id: str, native_deps: list[dict]) -> None:
     # After installing native deps, inject .deps/ into DLL search paths
     # immediately (scan_plugins does this at startup, but runtime installs
     # need it too).
-    _inject_native_lib_paths(deps_dir)
+    inject_native_lib_paths(deps_dir)
 
 
-def _inject_native_lib_paths(deps_dir: Path) -> None:
+def inject_native_lib_paths(deps_dir: Path) -> None:
     """Add .deps/ to DLL/shared-library search paths for the current process."""
     deps_str = str(deps_dir)
     system = platform_mod.system().lower()

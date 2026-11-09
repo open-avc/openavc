@@ -21,11 +21,11 @@ import pytest
 from openavc.core import plugin_loader as loader_module
 from openavc.core.event_bus import EventBus
 from openavc.core.plugin_extensions import sanitize_state_pattern, sanitize_token_list
+from openavc.core.plugin_import import exec_plugin_in_package as _exec_plugin_in_package
 from openavc.core.plugin_loader import (
     PLUGIN_STOP_TIMEOUT,
     PluginLoader,
     _PLUGIN_CLASS_REGISTRY,
-    _exec_plugin_in_package,
     get_platform_id,
     register_plugin_class,
     validate_extensions,
