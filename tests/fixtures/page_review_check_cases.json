@@ -6221,6 +6221,83 @@
           "key": "binding_not_dispatched|mx|do.route for 'hdmi2'|delay"
         }
       ]
+    },
+    {
+      "name": "value_map entries read as text in order, wherever they were written",
+      "element": {
+        "id": "s1",
+        "type": "select",
+        "bindings": {
+          "do": {
+            "change": [
+              {
+                "action": "value_map",
+                "map": {
+                  "b": {
+                    "action": "delay"
+                  },
+                  "a": {
+                    "action": "wait_until"
+                  },
+                  "9": {
+                    "action": "nine.x"
+                  },
+                  "10": {
+                    "action": "ten.x"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "s1",
+          "kind": "binding_not_dispatched",
+          "message": "s1 (select) has do.change.map.10 action 'ten.x', which nothing dispatches, so nothing runs when it fires. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|s1|do.change.map.10|ten.x"
+        },
+        {
+          "element_id": "s1",
+          "kind": "binding_not_dispatched",
+          "message": "s1 (select) has do.change.map.9 action 'nine.x', which nothing dispatches, so nothing runs when it fires. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|s1|do.change.map.9|nine.x"
+        },
+        {
+          "element_id": "s1",
+          "kind": "binding_not_dispatched",
+          "message": "s1 (select) has do.change.map.a action 'wait_until', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|s1|do.change.map.a|wait_until"
+        },
+        {
+          "element_id": "s1",
+          "kind": "binding_not_dispatched",
+          "message": "s1 (select) has do.change.map.b action 'delay', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|s1|do.change.map.b|delay"
+        }
+      ]
+    },
+    {
+      "name": "a destination route on another type with a matrix_config is not read",
+      "element": {
+        "id": "l1",
+        "type": "label",
+        "matrix_config": {
+          "destinations": [
+            {
+              "value": 1,
+              "label": "Left",
+              "route": [
+                {
+                  "action": "delay"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": []
     }
   ],
   "overlap_findings": [
