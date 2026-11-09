@@ -270,6 +270,12 @@ describe("alignElements", () => {
     expect(out.layouts[0].placements).toEqual({ a: box(50, 10, 20, 10), b: box(45, 0, 25, 12.5) });
   });
 
+  it("writes new boxes in page order whatever order the controls were selected in", () => {
+    const p = page([el("a"), el("b")], [primary({})]);
+    const [out] = alignElements([p], "pg", ["b", "a"], "align-left");
+    expect(Object.keys(out.layouts[0].placements)).toEqual(["a", "b"]);
+  });
+
   it("hands back the same page when nothing selected is on it, or everything selected is locked", () => {
     const p = two();
     expect(alignElements([p], "pg", ["nope"], "align-left")[0]).toBe(p);
