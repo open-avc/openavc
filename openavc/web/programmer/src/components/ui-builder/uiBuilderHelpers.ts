@@ -1300,25 +1300,33 @@ export function slotActions(
   return Object.keys(obj).length > 0 ? [obj] : [];
 }
 
+/**
+ * The actions a value_map runs, as the binding card's checks read it: each
+ * option's action, an option written as a list read item by item, anything
+ * that is not an object skipped. Nothing for any other action.
+ *
+ * Looser than the runtime, which runs one action per option, and than Validate
+ * and the page review, which read only that shape. The badges, the "does it
+ * reach the device" test and the command list sent to the platform share this
+ * reading, so a change to it is made here.
+ */
+function valueMapActions(a: Record<string, unknown>): Record<string, unknown>[] {
+  if (a.action !== "value_map" || !a.map || typeof a.map !== "object") return [];
+  return Object.values(a.map as Record<string, unknown>)
+    .flatMap((option) => (Array.isArray(option) ? option : [option]))
+    .filter((sub): sub is Record<string, unknown> => !!sub && typeof sub === "object");
+}
+
 /** True when any action in the list issues a `device.command` — including the
  *  per-option actions inside a `value_map` (how a `select` drives a device:
  *  each chosen option maps to its own command). The engine and the AI validator
  *  treat a value_map's branches the same way, so the editor's "does this control
  *  reach the device?" check must look inside the map too, or a correct
- *  source-selector dropdown looks unwired. */
+ *  source-selector dropdown looks unwired. One map deep: a map inside an
+ *  option is not looked into. */
 export function actionsCommandDevice(actions: Record<string, unknown>[]): boolean {
-  const isDeviceCommand = (a: unknown) =>
-    !!a && typeof a === "object" && (a as Record<string, unknown>).action === "device.command";
-  return actions.some((a) => {
-    if (isDeviceCommand(a)) return true;
-    if (a.action === "value_map" && a.map && typeof a.map === "object") {
-      return Object.values(a.map as Record<string, unknown>).some((mapped) => {
-        const subs = Array.isArray(mapped) ? mapped : [mapped];
-        return subs.some(isDeviceCommand);
-      });
-    }
-    return false;
-  });
+  const isDeviceCommand = (a: Record<string, unknown>) => a.action === "device.command";
+  return actions.some((a) => isDeviceCommand(a) || valueMapActions(a).some(isDeviceCommand));
 }
 
 /** Reference ids an action can dangle against. */
@@ -1386,42 +1394,35 @@ export function actionDanglingRef(
 ): string | null {
   const broken = brokenReference(a, ids);
   if (broken) return `${REFERENCE_NOUNS[broken.kind]} "${broken.id}" not found`;
-  const act = a.action;
-  if (act === "value_map" && a.map && typeof a.map === "object") {
-    for (const branch of Object.values(a.map as Record<string, unknown>)) {
-      const subs = Array.isArray(branch) ? branch : [branch];
-      for (const sub of subs) {
-        if (sub && typeof sub === "object") {
-          const d = actionDanglingRef(sub as Record<string, unknown>, ids);
-          if (d) return d;
-        }
-      }
-    }
+  for (const sub of valueMapActions(a)) {
+    const found = actionDanglingRef(sub, ids);
+    if (found) return found;
   }
   return null;
 }
 
+/** The fields each action cannot run without. */
+const RUNS_ONLY_WITH = new Map<unknown, readonly string[]>([
+  ["device.command", ["device", "command"]],
+  ["macro", ["macro"]],
+  ["state.set", ["key"]],
+  ["ui.navigate", ["page"]],
+  ["script.call", ["function"]],
+  ["event.emit", ["event"]],
+]);
+
 /** True when an action is missing the field it can't run without — the
  *  runtime silently skips these (e.g. script.call only fires when `function`
  *  is set), so the editor badges them Incomplete instead. Descends into a
- *  value_map's per-option branches like the runtime does. */
+ *  value_map's per-option branches like the runtime does. An action named
+ *  something else is not judged; one with no name is incomplete. */
 export function actionIncompleteCheck(a: Record<string, unknown>): boolean {
-  const act = a.action;
-  if (act === "device.command") return !a.device || !a.command;
-  if (act === "macro") return !a.macro;
-  if (act === "state.set") return !a.key;
-  if (act === "ui.navigate") return !a.page;
-  if (act === "script.call") return !a.function;
-  if (act === "event.emit") return !a.event;
-  if (act === "value_map") {
+  const needs = RUNS_ONLY_WITH.get(a.action);
+  if (needs) return needs.some((field) => !a[field]);
+  if (a.action === "value_map") {
     const map = a.map as Record<string, unknown> | undefined;
     if (!map || Object.keys(map).length === 0) return true;
-    return Object.values(map).some((branch) => {
-      const subs = Array.isArray(branch) ? branch : [branch];
-      return subs.some(
-        (sub) => !!sub && typeof sub === "object" && actionIncompleteCheck(sub as Record<string, unknown>),
-      );
-    });
+    return valueMapActions(a).some(actionIncompleteCheck);
   }
   return !a.action;
 }
@@ -1445,13 +1446,7 @@ export function elementCommandActions(el: UIElement): Record<string, unknown>[] 
     if (a.action === "device.command" && a.device && a.command) found.push(a);
     // The engine runs each mapped entry as an action of its own, so a select's
     // per-option commands are as real as any other.
-    if (a.action === "value_map" && a.map && typeof a.map === "object") {
-      for (const branch of Object.values(a.map as Record<string, unknown>)) {
-        for (const sub of Array.isArray(branch) ? branch : [branch]) {
-          if (sub && typeof sub === "object") collect(sub as Record<string, unknown>);
-        }
-      }
-    }
+    valueMapActions(a).forEach(collect);
   };
   for (const slot of ACTION_SLOTS) {
     for (const a of slotActions(doMap, slot)) collect(a);
