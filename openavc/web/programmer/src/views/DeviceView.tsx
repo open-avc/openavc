@@ -14,6 +14,7 @@ import { DeviceGroupsPanel } from "./devices/DeviceGroupsPanel";
 import { DeviceListItem } from "./devices/DeviceListItem";
 import { AddDeviceDialog, EditDeviceDialog } from "./devices/DeviceDialogs";
 import { findDeviceReferences } from "./devices/deviceUtils";
+import { devicesOnBridgePort } from "./devices/bridgePorts";
 import { computeStatusCounts, deviceStatusOf, type DeviceListStatus } from "./deviceViewHelpers";
 
 type DeviceSubTab = "devices" | "groups" | "discovery" | "drivers";
@@ -104,10 +105,7 @@ export function DeviceView() {
         dev: b.dev,
         ports: b.ports.map((port) => ({
           port,
-          bound: deviceConfigs.filter((d) => {
-            const c = conns[d.id];
-            return c?.bridge === b.dev.id && c?.bridge_port === port.id;
-          }),
+          bound: devicesOnBridgePort(deviceConfigs, conns, b.dev.id, port.id),
         })),
       }));
   }, [devices, drivers, projectConnections]);
