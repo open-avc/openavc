@@ -1,7 +1,8 @@
 """Import-guard for the driver-contract modules.
 
 ``openavc/drivers/spec.py``, ``openavc/drivers/avcdriver_semantic.py`` and the
-check modules it imports (``condition_checks``, ``declared_names``),
+check modules it imports (``condition_checks``, ``declared_names``,
+``response_rule_checks``),
 ``openavc/drivers/child_ids.py`` and ``openavc/drivers/python_info.py`` are shared beyond the server runtime (the
 community driver catalog runs the same rules in its CI, in a job that installs
 no ``openavc`` package), so they must stay importable with nothing but the
@@ -25,6 +26,7 @@ ALLOWED = {
     "openavc.drivers.child_ids",
     "openavc.drivers.condition_checks",
     "openavc.drivers.declared_names",
+    "openavc.drivers.response_rule_checks",
     "openavc.utils",
     "openavc.utils.regex_safety",
 }
