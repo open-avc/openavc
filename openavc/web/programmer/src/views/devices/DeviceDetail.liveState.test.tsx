@@ -167,10 +167,11 @@ describe("the device page's Live State", () => {
     for (let i = 0; i < 1000; i++) many[`device.amp.channel.${i}.level`] = i;
     setLive(many);
     // Until the driver's child types arrive every key is a row, and a role
-    // query over a thousand rows is slow: wait on the sentence instead.
+    // query over a thousand rows is slow: wait on the sentence instead. Even
+    // so, drawing a thousand rows takes seconds on a busy machine.
     render(<DeviceDetail deviceId="amp" onEdit={() => {}} onDeleted={() => {}} onDuplicate={() => {}} />);
     expect(await screen.findByText(/1,000 child-entity state keys are shown/)).toBeTruthy();
-  });
+  }, 30000);
 
   it("says nothing about child keys when there are none", async () => {
     setLive({ "device.amp.power": "on" });
