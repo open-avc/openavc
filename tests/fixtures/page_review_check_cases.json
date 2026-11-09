@@ -1,0 +1,1359 @@
+{
+  "matrix_findings": [
+    {
+      "name": "not a matrix",
+      "element": {
+        "id": "b1",
+        "type": "button",
+        "matrix_config": {
+          "oops": 1
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "no matrix_config",
+      "element": {
+        "id": "mx",
+        "type": "matrix"
+      },
+      "expected": [
+        {
+          "element_id": "mx",
+          "kind": "matrix_not_configured",
+          "message": "mx (matrix) has no matrix_config, so it draws an empty box. Set sources and destinations -- each is a list of entries, or a generator standing for one, e.g. destinations: {'from': {'count': 8, 'route_key': 'device.<id>.output.*.input'}}.",
+          "key": "matrix_not_configured|mx"
+        }
+      ]
+    },
+    {
+      "name": "an empty matrix_config",
+      "element": {
+        "id": "mx",
+        "type": "matrix",
+        "matrix_config": {}
+      },
+      "expected": [
+        {
+          "element_id": "mx",
+          "kind": "matrix_not_configured",
+          "message": "mx (matrix) has no matrix_config, so it draws an empty box. Set sources and destinations -- each is a list of entries, or a generator standing for one, e.g. destinations: {'from': {'count': 8, 'route_key': 'device.<id>.output.*.input'}}.",
+          "key": "matrix_not_configured|mx"
+        }
+      ]
+    },
+    {
+      "name": "keys nothing reads, sources colliding by value and digits, three locks on a device key",
+      "element": {
+        "id": "mx",
+        "type": "matrix",
+        "matrix_config": {
+          "inputs": [
+            1
+          ],
+          "outputs": [
+            2
+          ],
+          "sources": [
+            {
+              "value": 1,
+              "label": "A"
+            },
+            {
+              "value": "1",
+              "label": "B"
+            },
+            {
+              "value": "in1",
+              "label": "C"
+            },
+            {
+              "value": 2,
+              "label": "D"
+            }
+          ],
+          "destinations": {
+            "from": {
+              "count": 3,
+              "route_key": "device.sw.output.*.input",
+              "lock_key": "device.sw.output.*.lock"
+            }
+          },
+          "show_lock": true
+        }
+      },
+      "expected": [
+        {
+          "element_id": "mx",
+          "kind": "matrix_config_unread",
+          "message": "mx (matrix) sets matrix_config 'inputs' and 'outputs', which the matrix renderer does not read. The keys it reads are: audio_follow_video, destinations, presets, show_lock, show_mute, sources.",
+          "key": "matrix_config_unread|mx|inputs|outputs"
+        },
+        {
+          "element_id": "mx",
+          "kind": "matrix_duplicate_values",
+          "message": "mx (matrix) has 2 of its sources claiming a value another one already has (B, C), and a routed source is matched by value -- so they cannot be told apart. Give each one the value its device actually reports.",
+          "key": "matrix_duplicate_values|mx|sources|B|C"
+        },
+        {
+          "element_id": "mx",
+          "kind": "matrix_lock_unbacked",
+          "message": "mx (matrix) draws lock buttons, but 3 destinations (Out 1, Out 2, Out 3) have no lock_key under 'var.' or 'plugin.', so locking them is this panel's own memory -- forgotten when the page redraws, and invisible to every other panel in the space. Give each one a variable, e.g. 'var.mx_lock_1'.",
+          "key": "matrix_lock_unbacked|mx"
+        }
+      ]
+    },
+    {
+      "name": "one lock unbacked and one destination blind, named by its value",
+      "element": {
+        "id": "mx",
+        "type": "matrix",
+        "matrix_config": {
+          "sources": [
+            {
+              "value": 1,
+              "label": "A"
+            }
+          ],
+          "destinations": [
+            {
+              "value": 1,
+              "label": "Main",
+              "route_key": "device.sw.output.1.input",
+              "lock_key": "var.lock_1"
+            },
+            {
+              "value": 2,
+              "label_key": "device.sw.output.2.name"
+            }
+          ],
+          "show_lock": true
+        }
+      },
+      "expected": [
+        {
+          "element_id": "mx",
+          "kind": "matrix_lock_unbacked",
+          "message": "mx (matrix) draws lock buttons, but 1 destination (2) has no lock_key under 'var.' or 'plugin.', so locking it is this panel's own memory -- forgotten when the page redraws, and invisible to every other panel in the space. Give each one a variable, e.g. 'var.mx_lock_1'.",
+          "key": "matrix_lock_unbacked|mx"
+        },
+        {
+          "element_id": "mx",
+          "kind": "matrix_no_route_feedback",
+          "message": "mx (matrix) has 1 destination with no route_key (2), so those never show what is routed -- the matrix routes, and the panel cannot say which source is selected. Give each one the state key holding its routed source, e.g. 'device.<id>.output.1.input'.",
+          "key": "matrix_no_route_feedback|mx"
+        }
+      ]
+    },
+    {
+      "name": "six blind destinations, four named and the rest counted",
+      "element": {
+        "id": "mx",
+        "type": "matrix",
+        "matrix_config": {
+          "sources": [
+            {
+              "value": 1
+            }
+          ],
+          "destinations": {
+            "from": {
+              "count": 6
+            }
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "mx",
+          "kind": "matrix_no_route_feedback",
+          "message": "mx (matrix) has 6 destinations with no route_key (Out 1, Out 2, Out 3, Out 4 and 2 more), so those never show what is routed -- the matrix routes, and the panel cannot say which source is selected. Give each one the state key holding its routed source, e.g. 'device.<id>.output.1.input'.",
+          "key": "matrix_no_route_feedback|mx"
+        }
+      ]
+    },
+    {
+      "name": "sources matched by what the device reports, no destinations, a lock that is not on",
+      "element": {
+        "id": "mx",
+        "type": "matrix",
+        "matrix_config": {
+          "sources": [
+            {
+              "value": "0",
+              "report_value": "Mic",
+              "label": "Mic"
+            },
+            {
+              "value": "1",
+              "report_value": "mic",
+              "label": "Mic 2"
+            },
+            {
+              "value": "2",
+              "label": "Laptop"
+            }
+          ],
+          "show_lock": "yes"
+        }
+      },
+      "expected": [
+        {
+          "element_id": "mx",
+          "kind": "matrix_duplicate_values",
+          "message": "mx (matrix) has 1 of its sources claiming a value another one already has (Mic 2), and a routed source is matched by value -- so they cannot be told apart. Give each one the value its device actually reports.",
+          "key": "matrix_duplicate_values|mx|sources|Mic 2"
+        },
+        {
+          "element_id": "mx",
+          "kind": "matrix_default_size",
+          "message": "mx (matrix) resolves to no destinations, so it draws nothing to route to. List them under matrix_config.destinations, or generate them with destinations.from.count.",
+          "key": "matrix_default_size|mx|destinations"
+        }
+      ]
+    },
+    {
+      "name": "destinations colliding by value, each lock prefix",
+      "element": {
+        "id": "mx",
+        "type": "matrix",
+        "matrix_config": {
+          "sources": [],
+          "destinations": [
+            {
+              "value": 1,
+              "label": "Left",
+              "route_key": "device.sw.o.1",
+              "lock_key": "var.l"
+            },
+            {
+              "value": 1,
+              "label": "Right",
+              "route_key": "device.sw.o.2",
+              "lock_key": "plugin.p.l"
+            },
+            {
+              "value": 3,
+              "label": "Rear",
+              "route_key": "device.sw.o.3",
+              "lock_key": "variable.l"
+            },
+            {
+              "value": 4,
+              "label": "Booth",
+              "route_key": "device.sw.o.4",
+              "lock_key": ""
+            }
+          ],
+          "show_lock": true
+        }
+      },
+      "expected": [
+        {
+          "element_id": "mx",
+          "kind": "matrix_default_size",
+          "message": "mx (matrix) resolves to no sources, so it draws nothing to route from. List them under matrix_config.sources, or generate them with sources.from.count.",
+          "key": "matrix_default_size|mx|sources"
+        },
+        {
+          "element_id": "mx",
+          "kind": "matrix_duplicate_values",
+          "message": "mx (matrix) has 1 of its destinations claiming a value another one already has (Right), and a routed source is matched by value -- so they cannot be told apart. Give each one the value its device actually reports.",
+          "key": "matrix_duplicate_values|mx|destinations|Right"
+        },
+        {
+          "element_id": "mx",
+          "kind": "matrix_lock_unbacked",
+          "message": "mx (matrix) draws lock buttons, but 2 destinations (Rear, Booth) have no lock_key under 'var.' or 'plugin.', so locking them is this panel's own memory -- forgotten when the page redraws, and invisible to every other panel in the space. Give each one a variable, e.g. 'var.mx_lock_1'.",
+          "key": "matrix_lock_unbacked|mx"
+        }
+      ]
+    }
+  ],
+  "style_finding": [
+    {
+      "name": "font_size exactly at the half-pixel allowance",
+      "element": {
+        "id": "e1",
+        "type": "label",
+        "style": {
+          "font_size": 2
+        }
+      },
+      "box_px": [
+        200,
+        27.5
+      ],
+      "expected": []
+    },
+    {
+      "name": "font_size in pixels on a one-line label",
+      "element": {
+        "id": "e1",
+        "type": "label",
+        "style": {
+          "font_size": 24
+        }
+      },
+      "box_px": [
+        120,
+        32
+      ],
+      "expected": [
+        {
+          "element_id": "e1",
+          "kind": "style_too_large",
+          "message": "e1 (label) is 120x32px and its style asks for more room than that: font_size 24 draws 336px of text in a box 32px tall. style measurements are rem, not pixels -- px / 14 -- so write font_size at most 2.29.",
+          "key": "style_too_large|e1"
+        }
+      ]
+    },
+    {
+      "name": "padding on both axes keeps the tighter ceiling",
+      "element": {
+        "id": "e1",
+        "type": "label",
+        "style": {
+          "padding": 3
+        }
+      },
+      "box_px": [
+        60,
+        50
+      ],
+      "expected": [
+        {
+          "element_id": "e1",
+          "kind": "style_too_large",
+          "message": "e1 (label) is 60x50px and its style asks for more room than that: padding 3 leaves 42px above and below in a box 50px tall; padding 3 leaves 42px each side in a box 60px wide. style measurements are rem, not pixels -- px / 14 -- so write padding at most 1.79.",
+          "key": "style_too_large|e1"
+        }
+      ]
+    },
+    {
+      "name": "padding_vertical outranks padding, which still governs the width",
+      "element": {
+        "id": "e1",
+        "type": "label",
+        "style": {
+          "padding_vertical": 2,
+          "padding": 10
+        }
+      },
+      "box_px": [
+        100,
+        40
+      ],
+      "expected": [
+        {
+          "element_id": "e1",
+          "kind": "style_too_large",
+          "message": "e1 (label) is 100x40px and its style asks for more room than that: padding_vertical 2 leaves 28px above and below in a box 40px tall; padding 10 leaves 140px each side in a box 100px wide. style measurements are rem, not pixels -- px / 14 -- so write padding_vertical at most 1.43 and padding at most 3.57.",
+          "key": "style_too_large|e1"
+        }
+      ]
+    },
+    {
+      "name": "padding_horizontal at exactly half the width",
+      "element": {
+        "id": "e1",
+        "type": "label",
+        "style": {
+          "padding_horizontal": 1
+        }
+      },
+      "box_px": [
+        28,
+        200
+      ],
+      "expected": [
+        {
+          "element_id": "e1",
+          "kind": "style_too_large",
+          "message": "e1 (label) is 28x200px and its style asks for more room than that: padding_horizontal 1 leaves 14px each side in a box 28px wide. style measurements are rem, not pixels -- px / 14 -- so write padding_horizontal at most 1.",
+          "key": "style_too_large|e1"
+        }
+      ]
+    },
+    {
+      "name": "border_width measured against the smaller side",
+      "element": {
+        "id": "e1",
+        "type": "label",
+        "style": {
+          "border_width": 2
+        }
+      },
+      "box_px": [
+        50,
+        200
+      ],
+      "expected": [
+        {
+          "element_id": "e1",
+          "kind": "style_too_large",
+          "message": "e1 (label) is 50x200px and its style asks for more room than that: border_width 2 draws a 28px border on a box 50x200px. style measurements are rem, not pixels -- px / 14 -- so write border_width at most 1.79.",
+          "key": "style_too_large|e1"
+        }
+      ]
+    },
+    {
+      "name": "letter_spacing wider than the box",
+      "element": {
+        "id": "e1",
+        "type": "label",
+        "style": {
+          "letter_spacing": 3
+        }
+      },
+      "box_px": [
+        40,
+        40
+      ],
+      "expected": [
+        {
+          "element_id": "e1",
+          "kind": "style_too_large",
+          "message": "e1 (label) is 40x40px and its style asks for more room than that: letter_spacing 3 puts 42px between letters in a box 40px wide. style measurements are rem, not pixels -- px / 14 -- so write letter_spacing at most 2.86.",
+          "key": "style_too_large|e1"
+        }
+      ]
+    },
+    {
+      "name": "letter_spacing exactly the box",
+      "element": {
+        "id": "e1",
+        "type": "label",
+        "style": {
+          "letter_spacing": 2
+        }
+      },
+      "box_px": [
+        28,
+        40
+      ],
+      "expected": []
+    },
+    {
+      "name": "all four that fire at once, four ceilings read out",
+      "element": {
+        "id": "e1",
+        "type": "label",
+        "style": {
+          "font_size": 4,
+          "padding": 2,
+          "border_width": 3,
+          "letter_spacing": 9
+        }
+      },
+      "box_px": [
+        100,
+        40
+      ],
+      "expected": [
+        {
+          "element_id": "e1",
+          "kind": "style_too_large",
+          "message": "e1 (label) is 100x40px and its style asks for more room than that: font_size 4 draws 56px of text in a box 40px tall; padding 2 leaves 28px above and below in a box 40px tall; border_width 3 draws a 42px border on a box 100x40px; letter_spacing 9 puts 126px between letters in a box 100px wide. style measurements are rem, not pixels -- px / 14 -- so write font_size at most 2.86, padding at most 1.43, border_width at most 1.43 and letter_spacing at most 7.14.",
+          "key": "style_too_large|e1"
+        }
+      ]
+    },
+    {
+      "name": "values that are not measurements",
+      "element": {
+        "id": "e1",
+        "type": "label",
+        "style": {
+          "font_size": true,
+          "padding": "24",
+          "border_width": 0,
+          "letter_spacing": -3
+        }
+      },
+      "box_px": [
+        10,
+        10
+      ],
+      "expected": []
+    },
+    {
+      "name": "a box with no height",
+      "element": {
+        "id": "e1",
+        "type": "label",
+        "style": {
+          "font_size": 30,
+          "padding": 30,
+          "letter_spacing": 1
+        }
+      },
+      "box_px": [
+        10,
+        0
+      ],
+      "expected": [
+        {
+          "element_id": "e1",
+          "kind": "style_too_large",
+          "message": "e1 (label) is 10x0px and its style asks for more room than that: padding 30 leaves 420px each side in a box 10px wide; letter_spacing 1 puts 14px between letters in a box 10px wide. style measurements are rem, not pixels -- px / 14 -- so write padding at most 0.36 and letter_spacing at most 0.71.",
+          "key": "style_too_large|e1"
+        }
+      ]
+    },
+    {
+      "name": "a box with no size at all",
+      "element": {
+        "id": "e1",
+        "type": "label",
+        "style": {
+          "border_width": 9,
+          "font_size": 9
+        }
+      },
+      "box_px": [
+        0,
+        0
+      ],
+      "expected": []
+    },
+    {
+      "name": "no style",
+      "element": {
+        "id": "e1",
+        "type": "label"
+      },
+      "box_px": [
+        10,
+        10
+      ],
+      "expected": []
+    }
+  ],
+  "property_findings": [
+    {
+      "name": "a label given another type's label and an invented field",
+      "element": {
+        "id": "l1",
+        "type": "label",
+        "text": "Hi",
+        "label": "Hello",
+        "segments": 20
+      },
+      "expected": [
+        {
+          "element_id": "l1",
+          "kind": "property_not_rendered",
+          "message": "l1 (label) sets 'label', which a label does not render. 'label' is read by `button`, `camera_preset`, `fader`, `gauge`, `group`, `image`, `keypad`, `level_meter`, `list`, `matrix`, `page_nav`, `select`, `slider`, `status_led` and `text_input`, not by a label. A label element draws `text`. A label reads: display_decimals, icon, icon_color, icon_position, icon_size, text.",
+          "key": "property_not_rendered|l1|label"
+        },
+        {
+          "element_id": "l1",
+          "kind": "property_not_rendered",
+          "message": "l1 (label) sets 'segments', which a label does not render. No element type reads 'segments'. A label reads: display_decimals, icon, icon_color, icon_position, icon_size, text.",
+          "key": "property_not_rendered|l1|segments"
+        }
+      ]
+    },
+    {
+      "name": "set-but-falsy values are decisions, unset ones are not",
+      "element": {
+        "id": "b1",
+        "type": "button",
+        "label": "Go",
+        "digits": 0,
+        "auto_send": false,
+        "text": "",
+        "options": [],
+        "custom_config": {},
+        "placeholder": null
+      },
+      "expected": [
+        {
+          "element_id": "b1",
+          "kind": "property_not_rendered",
+          "message": "b1 (button) sets 'digits', which a button does not render. 'digits' is read by `keypad`, not by a button. A button reads: button_image, display_mode, frameless, icon, icon_color, icon_position, icon_size, image_blend_mode, image_fit, image_opacity, label.",
+          "key": "property_not_rendered|b1|digits"
+        },
+        {
+          "element_id": "b1",
+          "kind": "property_not_rendered",
+          "message": "b1 (button) sets 'auto_send', which a button does not render. 'auto_send' is read by `keypad`, not by a button. A button reads: button_image, display_mode, frameless, icon, icon_color, icon_position, icon_size, image_blend_mode, image_fit, image_opacity, label.",
+          "key": "property_not_rendered|b1|auto_send"
+        }
+      ]
+    },
+    {
+      "name": "matrix settings one level too high",
+      "element": {
+        "id": "mx",
+        "type": "matrix",
+        "matrix_config": {
+          "sources": []
+        },
+        "sources": [
+          {
+            "value": 1
+          }
+        ],
+        "show_lock": true,
+        "arc_angle": 270
+      },
+      "expected": [
+        {
+          "element_id": "mx",
+          "kind": "property_not_rendered",
+          "message": "mx (matrix) sets 'sources', which a matrix does not render. 'sources' belongs inside matrix_config, not on the element. A matrix reads: label, matrix_config, matrix_style.",
+          "key": "property_not_rendered|mx|sources"
+        },
+        {
+          "element_id": "mx",
+          "kind": "property_not_rendered",
+          "message": "mx (matrix) sets 'show_lock', which a matrix does not render. 'show_lock' belongs inside matrix_config, not on the element. A matrix reads: label, matrix_config, matrix_style.",
+          "key": "property_not_rendered|mx|show_lock"
+        },
+        {
+          "element_id": "mx",
+          "kind": "property_not_rendered",
+          "message": "mx (matrix) sets 'arc_angle', which a matrix does not render. 'arc_angle' is read by `gauge`, not by a matrix. A matrix reads: label, matrix_config, matrix_style.",
+          "key": "property_not_rendered|mx|arc_angle"
+        }
+      ]
+    },
+    {
+      "name": "the structural fields every element carries",
+      "element": {
+        "id": "g1",
+        "type": "gauge",
+        "css_class": "big",
+        "locked": true,
+        "hidden": true,
+        "parent": "grp",
+        "aspect_lock": true,
+        "style": {
+          "font_size": 2
+        },
+        "bindings": {},
+        "placement": {
+          "x": 1
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "a type the panel has never heard of",
+      "element": {
+        "id": "q1",
+        "type": "hologram",
+        "label": "x"
+      },
+      "expected": []
+    }
+  ],
+  "master_box": [
+    {
+      "name": "no placements",
+      "master": {
+        "id": "m"
+      },
+      "orientation": "landscape",
+      "expected": null
+    },
+    {
+      "name": "placements that are not a mapping",
+      "master": {
+        "id": "m",
+        "placements": "landscape"
+      },
+      "orientation": "landscape",
+      "expected": null
+    },
+    {
+      "name": "this orientation's own box",
+      "master": {
+        "id": "m",
+        "placements": {
+          "landscape": {
+            "x": 1,
+            "y": 2,
+            "w": 3,
+            "h": 4
+          },
+          "portrait": {
+            "x": 5,
+            "y": 6,
+            "w": 7,
+            "h": 8
+          }
+        }
+      },
+      "orientation": "portrait",
+      "expected": {
+        "x": 5.0,
+        "y": 6.0,
+        "w": 7.0,
+        "h": 8.0
+      }
+    },
+    {
+      "name": "portrait asked, only landscape there",
+      "master": {
+        "id": "m",
+        "placements": {
+          "landscape": {
+            "x": 1,
+            "y": 2,
+            "w": 3,
+            "h": 4
+          }
+        }
+      },
+      "orientation": "portrait",
+      "expected": {
+        "x": 1.0,
+        "y": 2.0,
+        "w": 3.0,
+        "h": 4.0
+      }
+    },
+    {
+      "name": "landscape asked, only portrait there",
+      "master": {
+        "id": "m",
+        "placements": {
+          "portrait": {
+            "x": 5,
+            "y": 6,
+            "w": 7,
+            "h": 8
+          }
+        }
+      },
+      "orientation": "landscape",
+      "expected": {
+        "x": 5.0,
+        "y": 6.0,
+        "w": 7.0,
+        "h": 8.0
+      }
+    },
+    {
+      "name": "neither named, the first box there",
+      "master": {
+        "id": "m",
+        "placements": {
+          "wall": null,
+          "kiosk": {
+            "x": 9,
+            "y": 9,
+            "w": 9,
+            "h": 9
+          }
+        }
+      },
+      "orientation": "landscape",
+      "expected": {
+        "x": 9.0,
+        "y": 9.0,
+        "w": 9.0,
+        "h": 9.0
+      }
+    },
+    {
+      "name": "nothing there at all",
+      "master": {
+        "id": "m",
+        "placements": {
+          "landscape": null
+        }
+      },
+      "orientation": "landscape",
+      "expected": null
+    },
+    {
+      "name": "missing and zero coordinates take the panel's defaults",
+      "master": {
+        "id": "m",
+        "placements": {
+          "landscape": {
+            "x": 0,
+            "w": 0,
+            "h": null
+          }
+        }
+      },
+      "orientation": "landscape",
+      "expected": {
+        "x": 0.0,
+        "y": 0.0,
+        "w": 100.0,
+        "h": 100.0
+      }
+    },
+    {
+      "name": "a coordinate written as text",
+      "master": {
+        "id": "m",
+        "placements": {
+          "landscape": {
+            "x": "12.5",
+            "y": 0,
+            "w": "50",
+            "h": 10
+          }
+        }
+      },
+      "orientation": "landscape",
+      "expected": {
+        "x": 12.5,
+        "y": 0.0,
+        "w": 50.0,
+        "h": 10.0
+      }
+    },
+    {
+      "name": "a coordinate that is not a number",
+      "master": {
+        "id": "m",
+        "placements": {
+          "landscape": {
+            "x": "left",
+            "y": 0,
+            "w": 50,
+            "h": 10
+          }
+        }
+      },
+      "orientation": "landscape",
+      "expected": null
+    }
+  ],
+  "buried_master_findings": [
+    {
+      "name": "a control over a master nav bar",
+      "boxes": {
+        "video": {
+          "x": 3.984375,
+          "y": 0,
+          "w": 48.75,
+          "h": 20
+        }
+      },
+      "dumps": {
+        "video": {
+          "id": "video",
+          "type": "image"
+        }
+      },
+      "parents": {
+        "video": null
+      },
+      "masters": [
+        {
+          "id": "nav_bar",
+          "type": "button",
+          "pages": "*",
+          "placements": {
+            "landscape": {
+              "x": 0,
+              "y": 0,
+              "w": 15.859375,
+              "h": 7.875
+            }
+          }
+        }
+      ],
+      "page_id": "lobby",
+      "orientation": "landscape",
+      "in_scope": null,
+      "expected": [
+        {
+          "element_id": "video",
+          "kind": "covers_master",
+          "message": "video (image) is drawn over the master element nav_bar (button), which draws on every page and sits behind a page's own controls. Move video off it, or stop nav_bar drawing on lobby. video covers 152x63px of nav_bar, 75% of it.",
+          "key": "covers_master|video|nav_bar"
+        }
+      ]
+    },
+    {
+      "name": "a hidden master and one on other pages say nothing",
+      "boxes": {
+        "video": {
+          "x": 0,
+          "y": 0,
+          "w": 50,
+          "h": 50
+        }
+      },
+      "dumps": {
+        "video": {
+          "id": "video",
+          "type": "image"
+        }
+      },
+      "parents": {
+        "video": null
+      },
+      "masters": [
+        {
+          "id": "hid",
+          "type": "button",
+          "pages": "*",
+          "hidden": true,
+          "placements": {
+            "landscape": {
+              "x": 0,
+              "y": 0,
+              "w": 15.859375,
+              "h": 7.875
+            }
+          }
+        },
+        {
+          "id": "elsewhere",
+          "type": "button",
+          "pages": [
+            "kitchen"
+          ],
+          "placements": {
+            "landscape": {
+              "x": 0,
+              "y": 0,
+              "w": 15.859375,
+              "h": 7.875
+            }
+          }
+        }
+      ],
+      "page_id": "lobby",
+      "orientation": "landscape",
+      "in_scope": null,
+      "expected": []
+    },
+    {
+      "name": "a master on one page, one on two, one with no box, one with no width",
+      "boxes": {
+        "video": {
+          "x": 0,
+          "y": 0,
+          "w": 50,
+          "h": 50
+        }
+      },
+      "dumps": {
+        "video": {
+          "id": "video",
+          "type": "image"
+        }
+      },
+      "parents": {
+        "video": null
+      },
+      "masters": [
+        {
+          "id": "one",
+          "type": "button",
+          "pages": [
+            "lobby"
+          ],
+          "placements": {
+            "landscape": {
+              "x": 0,
+              "y": 0,
+              "w": 15.859375,
+              "h": 7.875
+            }
+          }
+        },
+        {
+          "id": "two",
+          "type": "button",
+          "pages": [
+            "lobby",
+            "hall"
+          ],
+          "placements": {
+            "landscape": {
+              "x": 0,
+              "y": 0,
+              "w": 15.859375,
+              "h": 7.875
+            }
+          }
+        },
+        {
+          "id": "boxless",
+          "type": "button",
+          "pages": "*"
+        },
+        {
+          "id": "flat",
+          "type": "button",
+          "pages": "*",
+          "placements": {
+            "landscape": {
+              "x": 0,
+              "y": 0,
+              "w": -5,
+              "h": 10
+            }
+          }
+        }
+      ],
+      "page_id": "lobby",
+      "orientation": "landscape",
+      "in_scope": null,
+      "expected": [
+        {
+          "element_id": "video",
+          "kind": "covers_master",
+          "message": "video (image) is drawn over the master element one (button), which draws on 1 page and sits behind a page's own controls. Move video off it, or stop one drawing on lobby. video covers 203x63px of one, 100% of it.",
+          "key": "covers_master|video|one"
+        },
+        {
+          "element_id": "video",
+          "kind": "covers_master",
+          "message": "video (image) is drawn over the master element two (button), which draws on 2 pages and sits behind a page's own controls. Move video off it, or stop two drawing on lobby. video covers 203x63px of two, 100% of it.",
+          "key": "covers_master|video|two"
+        }
+      ]
+    },
+    {
+      "name": "a control that is never on screen with the master",
+      "boxes": {
+        "video": {
+          "x": 0,
+          "y": 0,
+          "w": 50,
+          "h": 50
+        }
+      },
+      "dumps": {
+        "video": {
+          "id": "video",
+          "type": "image",
+          "bindings": {
+            "show": {
+              "visible_when": {
+                "key": "var.mode",
+                "operator": "eq",
+                "value": "film"
+              }
+            }
+          }
+        }
+      },
+      "parents": {
+        "video": null
+      },
+      "masters": [
+        {
+          "id": "nav_bar",
+          "type": "button",
+          "pages": "*",
+          "placements": {
+            "landscape": {
+              "x": 0,
+              "y": 0,
+              "w": 15.859375,
+              "h": 7.875
+            }
+          },
+          "bindings": {
+            "show": {
+              "visible_when": {
+                "key": "var.mode",
+                "operator": "eq",
+                "value": "talk"
+              }
+            }
+          }
+        }
+      ],
+      "page_id": "lobby",
+      "orientation": "landscape",
+      "in_scope": null,
+      "expected": []
+    },
+    {
+      "name": "a container over the master answers for the control inside it",
+      "boxes": {
+        "grp": {
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 40
+        },
+        "btn": {
+          "x": 0,
+          "y": 0,
+          "w": 10,
+          "h": 10
+        },
+        "zz_lone": {
+          "x": 5,
+          "y": 2,
+          "w": 5,
+          "h": 5
+        }
+      },
+      "dumps": {
+        "grp": {
+          "id": "grp",
+          "type": "group"
+        },
+        "btn": {
+          "id": "btn",
+          "type": "button"
+        },
+        "zz_lone": {
+          "id": "zz_lone",
+          "type": "label"
+        }
+      },
+      "parents": {
+        "grp": null,
+        "btn": "grp",
+        "zz_lone": null
+      },
+      "masters": [
+        {
+          "id": "nav_bar",
+          "type": "button",
+          "pages": "*",
+          "placements": {
+            "landscape": {
+              "x": 0,
+              "y": 0,
+              "w": 15.859375,
+              "h": 7.875
+            }
+          }
+        }
+      ],
+      "page_id": "lobby",
+      "orientation": "landscape",
+      "in_scope": null,
+      "expected": [
+        {
+          "element_id": "grp",
+          "kind": "covers_master",
+          "message": "grp (group) is drawn over the master element nav_bar (button), which draws on every page and sits behind a page's own controls. Move grp off it, or stop nav_bar drawing on lobby. grp covers 203x63px of nav_bar, 100% of it.",
+          "key": "covers_master|grp|nav_bar"
+        },
+        {
+          "element_id": "zz_lone",
+          "kind": "covers_master",
+          "message": "zz_lone (label) is drawn over the master element nav_bar (button), which draws on every page and sits behind a page's own controls. Move zz_lone off it, or stop nav_bar drawing on lobby. zz_lone covers 64x40px of nav_bar, 20% of it.",
+          "key": "covers_master|zz_lone|nav_bar"
+        }
+      ]
+    },
+    {
+      "name": "an untouched container still answers for the touched control inside it",
+      "boxes": {
+        "grp": {
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 40
+        },
+        "btn": {
+          "x": 0,
+          "y": 0,
+          "w": 10,
+          "h": 10
+        }
+      },
+      "dumps": {
+        "grp": {
+          "id": "grp",
+          "type": "group"
+        },
+        "btn": {
+          "id": "btn",
+          "type": "button"
+        }
+      },
+      "parents": {
+        "grp": null,
+        "btn": "grp"
+      },
+      "masters": [
+        {
+          "id": "nav_bar",
+          "type": "button",
+          "pages": "*",
+          "placements": {
+            "landscape": {
+              "x": 0,
+              "y": 0,
+              "w": 15.859375,
+              "h": 7.875
+            }
+          }
+        }
+      ],
+      "page_id": "lobby",
+      "orientation": "landscape",
+      "in_scope": [
+        "btn"
+      ],
+      "expected": []
+    },
+    {
+      "name": "only the touched control answers, in id order, master by master",
+      "boxes": {
+        "b": {
+          "x": 0,
+          "y": 0,
+          "w": 30,
+          "h": 30
+        },
+        "a": {
+          "x": 0,
+          "y": 0,
+          "w": 30,
+          "h": 30
+        },
+        "c": {
+          "x": 0,
+          "y": 0,
+          "w": 30,
+          "h": 30
+        }
+      },
+      "dumps": {
+        "a": {
+          "id": "a",
+          "type": "button"
+        },
+        "b": {
+          "id": "b",
+          "type": "slider"
+        },
+        "c": {
+          "id": "c",
+          "type": "label"
+        }
+      },
+      "parents": {
+        "a": null,
+        "b": null,
+        "c": null
+      },
+      "masters": [
+        {
+          "id": "second",
+          "type": "button",
+          "pages": "*",
+          "placements": {
+            "landscape": {
+              "x": 0,
+              "y": 0,
+              "w": 5,
+              "h": 5
+            }
+          }
+        },
+        {
+          "id": "first",
+          "type": "button",
+          "pages": "*",
+          "placements": {
+            "landscape": {
+              "x": 0,
+              "y": 0,
+              "w": 15.859375,
+              "h": 7.875
+            }
+          }
+        }
+      ],
+      "page_id": "lobby",
+      "orientation": "landscape",
+      "in_scope": [
+        "b",
+        "a"
+      ],
+      "expected": [
+        {
+          "element_id": "a",
+          "kind": "covers_master",
+          "message": "a (button) is drawn over the master element second (button), which draws on every page and sits behind a page's own controls. Move a off it, or stop second drawing on lobby. a covers 64x40px of second, 100% of it.",
+          "key": "covers_master|a|second"
+        },
+        {
+          "element_id": "b",
+          "kind": "covers_master",
+          "message": "b (slider) is drawn over the master element second (button), which draws on every page and sits behind a page's own controls. Move b off it, or stop second drawing on lobby. b covers 64x40px of second, 100% of it.",
+          "key": "covers_master|b|second"
+        },
+        {
+          "element_id": "a",
+          "kind": "covers_master",
+          "message": "a (button) is drawn over the master element first (button), which draws on every page and sits behind a page's own controls. Move a off it, or stop first drawing on lobby. a covers 203x63px of first, 100% of it.",
+          "key": "covers_master|a|first"
+        },
+        {
+          "element_id": "b",
+          "kind": "covers_master",
+          "message": "b (slider) is drawn over the master element first (button), which draws on every page and sits behind a page's own controls. Move b off it, or stop first drawing on lobby. b covers 203x63px of first, 100% of it.",
+          "key": "covers_master|b|first"
+        }
+      ]
+    },
+    {
+      "name": "a portrait page measures the master's portrait box against a portrait screen",
+      "boxes": {
+        "video": {
+          "x": 0,
+          "y": 0,
+          "w": 100,
+          "h": 30
+        }
+      },
+      "dumps": {
+        "video": {
+          "id": "video",
+          "type": "image"
+        }
+      },
+      "parents": {
+        "video": null
+      },
+      "masters": [
+        {
+          "id": "nav_bar",
+          "type": "button",
+          "pages": "*",
+          "placements": {
+            "landscape": {
+              "x": 80,
+              "y": 80,
+              "w": 20,
+              "h": 20
+            },
+            "portrait": {
+              "x": 0,
+              "y": 0,
+              "w": 25,
+              "h": 10
+            }
+          }
+        }
+      ],
+      "page_id": "lobby",
+      "orientation": "portrait",
+      "in_scope": null,
+      "expected": [
+        {
+          "element_id": "video",
+          "kind": "covers_master",
+          "message": "video (image) is drawn over the master element nav_bar (button), which draws on every page and sits behind a page's own controls. Move video off it, or stop nav_bar drawing on lobby. video covers 200x128px of nav_bar, 100% of it.",
+          "key": "covers_master|video|nav_bar"
+        }
+      ]
+    }
+  ]
+}
