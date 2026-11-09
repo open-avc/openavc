@@ -208,6 +208,7 @@ class TestDeviceGroups:
             {"id": "b_side", "name": "B side", "device_ids": ["a", "c"]},
             {"id": "a_side", "name": "A side", "device_ids": ["b"]},
         ]
+        assert [list(g) for g in out["device_groups"]] == [["id", "name", "device_ids"]] * 2
 
 
 # ---------------------------------------------------------------------------
@@ -495,6 +496,13 @@ class TestLayoutConversion:
         assert _layout(out)["placements"]["a"] == {"x": 5.0, "y": 1.0, "w": 2.9167, "h": 11.375}
         assert out["ui"]["pages"][0]["overlay"] == {"width": 12.5}
 
+    def test_a_sidebar_height_is_ignored_for_its_box_but_converted(self):
+        page = {"id": "s", "page_type": "sidebar", "overlay": {"width": 160, "height": 400},
+                "elements": [_cell("a", 1, 1)]}
+        out = migrate_0_7_to_0_8(_v07([page]))
+        assert _layout(out)["placements"]["a"] == {"x": 5.0, "y": 1.0, "w": 2.9167, "h": 11.375}
+        assert out["ui"]["pages"][0]["overlay"] == {"width": 12.5, "height": 50.0}
+
     def test_a_sidebar_with_no_width_uses_the_old_default(self):
         page = {"id": "s", "page_type": "sidebar", "elements": [_cell("a", 1, 1)]}
         out = migrate_0_7_to_0_8(_v07([page]))
@@ -507,9 +515,9 @@ class TestLayoutConversion:
                 "elements": [_cell("a", 1, 1)]}
         out = migrate_0_7_to_0_8(_v07([page]))
         assert _layout(out)["placements"]["a"] == {"x": 2.0, "y": 2.6667, "w": 6.1667, "h": 9.5}
-        assert _ordered(out["ui"]["pages"][0]["overlay"]) == [
-            ("width", "400"), ("height", 0.0), ("position", "center"),
-        ]
+        assert json.dumps(out["ui"]["pages"][0]["overlay"]) == (
+            '{"width": "400", "height": 0.0, "position": "center"}'
+        )
 
     def test_an_overlay_that_is_not_a_dict(self):
         page = {"id": "o", "page_type": "overlay", "overlay": "junk", "elements": [_cell("a")]}
@@ -590,10 +598,11 @@ class TestContainerAdoption:
             _cell("g", 1, 1, 2, 2, "group"),
             {"id": "a", "type": "button", "grid_area": "junk"},
             {"id": "b", "type": "button", "grid_area": {"col": "3"}},
+            {"id": "c", "type": "button", "grid_area": {"col": -2, "row": 0, "col_span": -1}},
         ]}
         out = migrate_0_7_to_0_8(_v07([page]))
         parents = {e["id"]: e["parent"] for e in out["ui"]["pages"][0]["elements"]}
-        assert parents == {"g": None, "a": "g", "b": "g"}
+        assert parents == {"g": None, "a": "g", "b": "g", "c": "g"}
 
     def test_equal_size_groups_go_by_their_order_on_the_page(self):
         page = {"id": "p", "elements": [
@@ -629,7 +638,19 @@ class TestContainerAdoption:
             _cell("g", 1, 1, 1, 1, "group"), _cell("a", 1, 1),
         ]}
         out = migrate_0_7_to_0_8(_v07([page], settings={"theme_overrides": {"grid_gap": 640}}))
-        assert _layout(out)["placements"]["a"] == {"x": 0.0, "y": 0.0, "w": 0.0, "h": 100.0}
+        # Saved as 0.0, never -0.0, though the y offset divides by a negative height.
+        assert json.dumps(_layout(out)["placements"]["a"]) == (
+            '{"x": 0.0, "y": 0.0, "w": 0.0, "h": 100.0}'
+        )
+
+    def test_an_offset_child_of_a_zero_width_container(self):
+        page = {"id": "p", "grid_gap": 8, "grid": {"columns": 2, "rows": 1}, "elements": [
+            _cell("g", 1, 1, 2, 1, "group"), _cell("a", 2, 1),
+        ]}
+        out = migrate_0_7_to_0_8(_v07([page], settings={"theme_overrides": {"grid_gap": 640}}))
+        placements = _layout(out)["placements"]
+        assert placements["g"] == {"x": 50.0, "y": 80.0, "w": 0.0, "h": -60.0}
+        assert placements["a"] == {"x": 0.3125, "y": 0.0, "w": -0.3125, "h": 100.0}
 
 
 class TestSpacers:
