@@ -1361,9 +1361,16 @@ function pageExists(page: unknown, pageIds: ReadonlySet<string>): boolean {
   return pageIds.has(page as string) || NAVIGATION_SENTINELS.has(page as string);
 }
 
+/** Which of the project's ids each kind is looked up in. */
+const IDS_OF_KIND: Record<ReferenceKind, keyof BindingRefIds> = {
+  device: "deviceIds",
+  macro: "macroIds",
+  page: "pageIds",
+};
+
 function resolves(kind: ReferenceKind, id: unknown, ids: BindingRefIds): boolean {
   if (kind === "page") return pageExists(id, ids.pageIds);
-  return (kind === "device" ? ids.deviceIds : ids.macroIds).has(id as string);
+  return ids[IDS_OF_KIND[kind]].has(id as string);
 }
 
 interface BrokenReference {
@@ -6669,18 +6676,21 @@ function pageIssues(
   review: Pick<ReviewOptions, "theme" | "masters">,
 ): ValidationIssue[] {
   const onPage = new Set(page.elements.map((e) => e.id));
-  const controls = page.elements.flatMap((el) => [
-    ...controlIssues(el, page.id, page.name, refs),
-    ...containerIssues(el, page, onPage),
-  ]);
-  const reviewed = reviewPage(page, review).map((finding): ValidationIssue => ({
-    severity: "warning",
-    message: finding.message,
-    location: `${page.name} > ${finding.elementId}`,
-    pageId: page.id,
-    elementId: finding.elementId,
-  }));
-  return [...pageGrantIssues(page, refs), ...arrangementIssues(page, onPage), ...controls, ...reviewed];
+  return [
+    ...pageGrantIssues(page, refs),
+    ...arrangementIssues(page, onPage),
+    ...page.elements.flatMap((el) => [
+      ...controlIssues(el, page.id, page.name, refs),
+      ...containerIssues(el, page, onPage),
+    ]),
+    ...reviewPage(page, review).map((finding): ValidationIssue => ({
+      severity: "warning",
+      message: finding.message,
+      location: `${page.name} > ${finding.elementId}`,
+      pageId: page.id,
+      elementId: finding.elementId,
+    })),
+  ];
 }
 
 /** A master element: the control checks with no page, its own review, then
