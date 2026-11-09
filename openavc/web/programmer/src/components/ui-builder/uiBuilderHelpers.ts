@@ -5601,10 +5601,75 @@ export function propertyFindings(el: UIElement): ReviewFinding[] {
  * The keypad's defaults, as panel.js renderKeypad reads them. The delay is also
  * the review's threshold: nobody has measured how long a person takes between
  * two keys on a panel, so the one number with a claim to it is the default.
- * Hand-mirrored from page_review.py.
+ * Hand-mirrored from page_review.py; the keypad's own properties show the same
+ * two numbers as its defaults.
  */
-const KEYPAD_DIGITS_DEFAULT = 4;
-const KEYPAD_SEND_DELAY_DEFAULT_MS = 1500;
+export const KEYPAD_DIGITS_DEFAULT = 4;
+export const KEYPAD_SEND_DELAY_DEFAULT_MS = 1500;
+
+/** How a keypad sends, with the panel's defaults filled in the way renderKeypad fills them. */
+interface Keypad {
+  id: string;
+  /** The Phone style, which has no Enter key. */
+  phone: boolean;
+  /** Send without Enter. */
+  autoSend: boolean;
+  digits: unknown;
+  /** Send Delay, in ms. */
+  delay: unknown;
+}
+
+function keypadOf(el: UIElement): Keypad {
+  return {
+    id: el.id,
+    phone: el.keypad_style === "phone",
+    autoSend: Boolean(el.auto_send),
+    digits: el.digits ?? KEYPAD_DIGITS_DEFAULT,
+    delay: el.auto_send_delay_ms ?? KEYPAD_SEND_DELAY_DEFAULT_MS,
+  };
+}
+
+/** Whether a pause after a key press sends what was typed: only with Send
+ *  without Enter on, and only with more than one digit to wait for. */
+function pauseSends(pad: Keypad): boolean {
+  if (!pad.autoSend || !Number.isInteger(pad.digits)) return false;
+  return (pad.digits as number) >= 2;
+}
+
+/** The Phone style has no Enter key, so with Send without Enter off nothing typed is sent. */
+function neverSends(pad: Keypad): ReviewFinding | null {
+  if (!pad.phone || pad.autoSend) return null;
+  return {
+    elementId: pad.id,
+    kind: "keypad_never_sends",
+    message:
+      `${pad.id} (keypad) uses the Phone style, which has no Enter key, and ` +
+      `Send without Enter is off, so nothing typed on it is ever sent. Turn on ` +
+      `Send without Enter, or choose the Numeric style.`,
+    key: `keypad_never_sends|${pad.id}`,
+  };
+}
+
+/** A Send Delay under the default can send a code before the last digit is typed. */
+function sendsEarly(pad: Keypad): ReviewFinding | null {
+  if (!pauseSends(pad) || typeof pad.delay !== "number") return null;
+  if (pad.delay >= KEYPAD_SEND_DELAY_DEFAULT_MS) return null;
+  return {
+    elementId: pad.id,
+    kind: "keypad_sends_early",
+    message:
+      `${pad.id} (keypad) sends what has been typed ${pad.delay} ms after the last ` +
+      `key press, shorter than the ${KEYPAD_SEND_DELAY_DEFAULT_MS} ms default, so a ` +
+      `code can be sent before it is finished. Set Send Delay to ` +
+      `${KEYPAD_SEND_DELAY_DEFAULT_MS} ms or more; an entry of ${pad.digits} digits is sent ` +
+      `as soon as the last one is pressed.`,
+    key: `keypad_sends_early|${pad.id}`,
+  };
+}
+
+/** A keypad's warnings, in the order they are said. The two cannot both fire:
+ *  one needs Send without Enter off and the other needs it on. */
+const KEYPAD_CHECKS: ((pad: Keypad) => ReviewFinding | null)[] = [neverSends, sendsEarly];
 
 /**
  * A keypad that never sends, or sends a code before it is finished.
@@ -5617,33 +5682,8 @@ const KEYPAD_SEND_DELAY_DEFAULT_MS = 1500;
  */
 export function keypadFindings(el: UIElement): ReviewFinding[] {
   if (el.type !== "keypad") return [];
-  const autoSend = Boolean(el.auto_send);
-  if (el.keypad_style === "phone" && !autoSend) {
-    return [{
-      elementId: el.id,
-      kind: "keypad_never_sends",
-      message:
-        `${el.id} (keypad) uses the Phone style, which has no Enter key, and ` +
-        `Send without Enter is off, so nothing typed on it is ever sent. Turn on ` +
-        `Send without Enter, or choose the Numeric style.`,
-      key: `keypad_never_sends|${el.id}`,
-    }];
-  }
-  const digits = el.digits ?? KEYPAD_DIGITS_DEFAULT;
-  const delay = el.auto_send_delay_ms ?? KEYPAD_SEND_DELAY_DEFAULT_MS;
-  if (!autoSend || !Number.isInteger(digits) || digits < 2) return [];
-  if (typeof delay !== "number" || delay >= KEYPAD_SEND_DELAY_DEFAULT_MS) return [];
-  return [{
-    elementId: el.id,
-    kind: "keypad_sends_early",
-    message:
-      `${el.id} (keypad) sends what has been typed ${delay} ms after the last ` +
-      `key press, shorter than the ${KEYPAD_SEND_DELAY_DEFAULT_MS} ms default, so a ` +
-      `code can be sent before it is finished. Set Send Delay to ` +
-      `${KEYPAD_SEND_DELAY_DEFAULT_MS} ms or more; an entry of ${digits} digits is sent ` +
-      `as soon as the last one is pressed.`,
-    key: `keypad_sends_early|${el.id}`,
-  }];
+  const pad = keypadOf(el);
+  return KEYPAD_CHECKS.map((check) => check(pad)).filter((f): f is ReviewFinding => f !== null);
 }
 
 /** Which direction each axis routes, for a sentence that has to say which. */

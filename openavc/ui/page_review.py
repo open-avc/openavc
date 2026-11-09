@@ -1747,6 +1747,78 @@ KEYPAD_DIGITS_DEFAULT = 4
 KEYPAD_SEND_DELAY_DEFAULT_MS = 1500
 
 
+@dataclass(frozen=True)
+class _Keypad:
+    """How a keypad sends, with the panel's defaults filled in the way renderKeypad fills them."""
+
+    el_id: str
+    phone: bool
+    """The Phone style, which has no Enter key."""
+    auto_send: bool
+    """Send without Enter."""
+    digits: Any
+    delay: Any
+    """Send Delay, in ms."""
+
+    @classmethod
+    def of(cls, element: Mapping[str, Any]) -> _Keypad:
+        digits = element.get("digits")
+        delay = element.get("auto_send_delay_ms")
+        return cls(
+            el_id=str(element.get("id", "?")),
+            phone=element.get("keypad_style") == "phone",
+            auto_send=bool(element.get("auto_send")),
+            digits=KEYPAD_DIGITS_DEFAULT if digits is None else digits,
+            delay=KEYPAD_SEND_DELAY_DEFAULT_MS if delay is None else delay,
+        )
+
+    @property
+    def pause_sends(self) -> bool:
+        """Whether a pause after a key press sends what was typed.
+
+        Only with Send without Enter on, and only with more than one digit to
+        wait for: the first key of a one-digit entry is the whole entry.
+        """
+        if not self.auto_send or not isinstance(self.digits, int):
+            return False
+        return self.digits >= 2
+
+
+def _never_sends(pad: _Keypad) -> Finding | None:
+    """The Phone style has no Enter key, so with Send without Enter off nothing typed is sent."""
+    if not pad.phone or pad.auto_send:
+        return None
+    return Finding(
+        pad.el_id,
+        "keypad_never_sends",
+        f"{pad.el_id} (keypad) uses the Phone style, which has no Enter key, and "
+        f"Send without Enter is off, so nothing typed on it is ever sent. Turn on "
+        f"Send without Enter, or choose the Numeric style.",
+    )
+
+
+def _sends_early(pad: _Keypad) -> Finding | None:
+    """A Send Delay under the default can send a code before the last digit is typed."""
+    if not pad.pause_sends or not isinstance(pad.delay, (int, float)):
+        return None
+    if pad.delay >= KEYPAD_SEND_DELAY_DEFAULT_MS:
+        return None
+    return Finding(
+        pad.el_id,
+        "keypad_sends_early",
+        f"{pad.el_id} (keypad) sends what has been typed {_num(pad.delay)} ms after the last "
+        f"key press, shorter than the {KEYPAD_SEND_DELAY_DEFAULT_MS} ms default, so a "
+        f"code can be sent before it is finished. Set Send Delay to "
+        f"{KEYPAD_SEND_DELAY_DEFAULT_MS} ms or more; an entry of {pad.digits} digits is sent "
+        f"as soon as the last one is pressed.",
+    )
+
+
+#: A keypad's warnings, in the order they are said. The two cannot both fire:
+#: one needs Send without Enter off and the other needs it on.
+_KEYPAD_CHECKS: tuple[Callable[[_Keypad], Finding | None], ...] = (_never_sends, _sends_early)
+
+
 def keypad_findings(element: Mapping[str, Any]) -> list[Finding]:
     """A keypad that never sends, or sends a code before it is finished.
 
@@ -1760,35 +1832,8 @@ def keypad_findings(element: Mapping[str, Any]) -> list[Finding]:
     """
     if element.get("type") != "keypad":
         return []
-    el_id = str(element.get("id", "?"))
-    auto_send = bool(element.get("auto_send"))
-    if element.get("keypad_style") == "phone" and not auto_send:
-        return [Finding(
-            el_id,
-            "keypad_never_sends",
-            f"{el_id} (keypad) uses the Phone style, which has no Enter key, and "
-            f"Send without Enter is off, so nothing typed on it is ever sent. Turn on "
-            f"Send without Enter, or choose the Numeric style.",
-        )]
-    digits = element.get("digits")
-    if digits is None:
-        digits = KEYPAD_DIGITS_DEFAULT
-    delay = element.get("auto_send_delay_ms")
-    if delay is None:
-        delay = KEYPAD_SEND_DELAY_DEFAULT_MS
-    if not auto_send or not isinstance(digits, int) or digits < 2:
-        return []
-    if not isinstance(delay, (int, float)) or delay >= KEYPAD_SEND_DELAY_DEFAULT_MS:
-        return []
-    return [Finding(
-        el_id,
-        "keypad_sends_early",
-        f"{el_id} (keypad) sends what has been typed {_num(delay)} ms after the last "
-        f"key press, shorter than the {KEYPAD_SEND_DELAY_DEFAULT_MS} ms default, so a "
-        f"code can be sent before it is finished. Set Send Delay to "
-        f"{KEYPAD_SEND_DELAY_DEFAULT_MS} ms or more; an entry of {digits} digits is sent "
-        f"as soon as the last one is pressed.",
-    )]
+    pad = _Keypad.of(element)
+    return [found for check in _KEYPAD_CHECKS if (found := check(pad))]
 
 
 #: Which direction each axis routes, for a sentence that has to say which one it

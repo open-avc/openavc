@@ -5,7 +5,13 @@ import { CopyButton } from "../../shared/CopyButton";
 import { IconPicker } from "../IconPicker";
 import { AssetPicker } from "../AssetPicker";
 import { getAssetUrl } from "../../../api/systemClient";
-import { pxToRem, remToPx, resolveMatrixAxis } from "../uiBuilderHelpers";
+import {
+  KEYPAD_DIGITS_DEFAULT,
+  KEYPAD_SEND_DELAY_DEFAULT_MS,
+  pxToRem,
+  remToPx,
+  resolveMatrixAxis,
+} from "../uiBuilderHelpers";
 import { HONORED_PROPERTIES, MATRIX_PANEL_WRITABLE_PREFIXES } from "../../../api/uiBindingReach.gen";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
 import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
@@ -1150,7 +1156,7 @@ export function BasicProperties({
       {element.type === "keypad" && (
         <>
           <FieldRow label="Digits">
-            <input type="number" value={element.digits ?? ""} onChange={(e) => onChange({ digits: numOrUndefined(e.target.value) })} placeholder="4" min={1} max={10} style={{ flex: 1 }} />
+            <input type="number" value={element.digits ?? ""} onChange={(e) => onChange({ digits: numOrUndefined(e.target.value) })} placeholder={String(KEYPAD_DIGITS_DEFAULT)} min={1} max={10} style={{ flex: 1 }} />
           </FieldRow>
           <FieldRow label="Style">
             <select value={element.keypad_style || "numeric"} onChange={(e) => onChange({ keypad_style: e.target.value })} style={{ flex: 1 }}>
@@ -1174,14 +1180,14 @@ export function BasicProperties({
               <FieldRow label="Send Delay">
                 <input
                   type="number"
-                  value={element.auto_send_delay_ms ?? 1500}
+                  value={element.auto_send_delay_ms ?? KEYPAD_SEND_DELAY_DEFAULT_MS}
                   onChange={(e) => onChange({ auto_send_delay_ms: e.target.value ? Number(e.target.value) : undefined })}
                   min={0} max={5000} step={100} style={{ flex: 1 }}
                 />
                 <span style={{ fontSize: 10, color: "var(--text-muted)" }}>ms</span>
               </FieldRow>
               <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
-                How long after the last key press a shorter entry is sent. Under 1500 ms, a code can be sent before it is finished.
+                How long after the last key press a shorter entry is sent. Under {KEYPAD_SEND_DELAY_DEFAULT_MS} ms, a code can be sent before it is finished.
               </div>
             </>
           )}
