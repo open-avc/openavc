@@ -10,7 +10,7 @@ import asyncio
 
 import pytest
 
-from openavc.drivers.compiled_protocol import send_regex
+from openavc.simulator.send_templates import send_regex
 from openavc.simulator.base import StateMachine
 from openavc.simulator.validate import (
     ValidationResult,

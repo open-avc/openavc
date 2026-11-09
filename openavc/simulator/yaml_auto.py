@@ -39,18 +39,9 @@ from openavc.drivers.compiled_protocol import (
     build_send_frame,
     conversion_of,
     decode_delimiter,
-    follow_up_queries,
-    read_back_queries,
-    is_passthrough_send,
-    infer_state_var,
-    name_switch,
     reading_from_wire,
     safe_substitute,
-    send_param_groups,
-    send_param_specs,
-    send_regex,
     value_for_map_word,
-    spec_int_base,
     split_send_frames,
     state_var_default,
     value_to_wire,
@@ -64,6 +55,7 @@ from openavc.drivers.inline_protocol import (
     normalize_config_state_vars,
 )
 from openavc.transport.binary_helpers import encode_escape_sequences
+from openavc.simulator.command_names import infer_state_var, name_switch
 from openavc.simulator.http_simulator import HTTPServerMixin
 from openavc.simulator.osc_simulator import OSCDispatchMixin
 from openavc.simulator.reply_templates import (
@@ -71,6 +63,14 @@ from openavc.simulator.reply_templates import (
     emit_template,
     emit_template_multi,
     fill_template,
+)
+from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
+from openavc.simulator.send_templates import (
+    is_passthrough_send,
+    send_param_groups,
+    send_param_specs,
+    send_regex,
+    spec_int_base,
 )
 from openavc.simulator.tcp_simulator import TCPSimulator
 

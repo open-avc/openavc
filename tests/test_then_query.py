@@ -23,7 +23,7 @@ from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.drivers import rereads
 from openavc.drivers.avcdriver_semantic import validate_driver_definition
-from openavc.drivers.compiled_protocol import follow_up_queries
+from openavc.simulator.reread_queries import follow_up_queries
 from openavc.drivers.configurable import create_configurable_driver_class
 
 

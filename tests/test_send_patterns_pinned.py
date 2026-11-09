@@ -17,9 +17,9 @@ import re
 
 import pytest
 
-from openavc.drivers.compiled_protocol import (
+from openavc.drivers.compiled_protocol import safe_substitute
+from openavc.simulator.send_templates import (
     is_passthrough_send,
-    safe_substitute,
     send_param_groups,
     send_param_specs,
     send_regex,
@@ -235,7 +235,7 @@ def test_the_base_an_integer_spec_puts_on_the_wire(spec, base):
 
 
 def test_a_read_back_names_its_child_id_param_as_child_id_and_keeps_the_spec():
-    from openavc.drivers.compiled_protocol import read_back_queries
+    from openavc.simulator.reread_queries import read_back_queries
 
     definition = {
         "child_entity_types": {"zone": {"state_variables": {"level": {"type": "integer"}}}},

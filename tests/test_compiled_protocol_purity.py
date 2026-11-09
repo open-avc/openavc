@@ -13,6 +13,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 ALLOWED = {
@@ -66,24 +68,50 @@ def test_compiled_protocol_stays_pure():
     )
 
 
-def test_reply_templates_stays_a_leaf():
-    # The simulator's reply-text walker imports nothing beyond the standard
-    # library, so anything that needs reply text can take it without the
-    # simulator's own stack. -I -S leaves only the standard library importable,
-    # so a third-party import fails the import itself.
+def _openavc_modules_loaded(module: str, *flags: str) -> set[str]:
+    """The openavc modules importing ``module`` loads, in a fresh interpreter."""
     code = (
         "import sys\n"
         "sys.path.insert(0, r'" + str(REPO_ROOT) + "')\n"
-        "import openavc.simulator.reply_templates\n"
+        "import " + module + "\n"
         "print('\\n'.join(sorted(m for m in sys.modules if m.startswith('openavc'))))\n"
     )
     result = subprocess.run(
-        [sys.executable, "-I", "-S", "-c", code],
+        [sys.executable, *flags, "-c", code],
         capture_output=True,
         text=True,
         cwd=REPO_ROOT,
         timeout=60,
     )
     assert result.returncode == 0, result.stderr
-    loaded = {line for line in result.stdout.splitlines() if line}
-    assert loaded == {"openavc", "openavc.simulator", "openavc.simulator.reply_templates"}
+    return {line for line in result.stdout.splitlines() if line}
+
+
+@pytest.mark.parametrize(
+    "module",
+    [
+        "openavc.simulator.reply_templates",
+        "openavc.simulator.send_templates",
+        "openavc.simulator.command_names",
+    ],
+)
+def test_the_simulators_template_and_name_readers_stay_leaves(module):
+    # The reply-text walker, the send-template inversion and the command-name
+    # fallback import nothing beyond the standard library, so anything that
+    # needs them can take them without the simulator's own stack. -I -S leaves
+    # only the standard library importable, so a third-party import fails the
+    # import itself.
+    assert _openavc_modules_loaded(module, "-I", "-S") == {"openavc", "openavc.simulator", module}
+
+
+def test_the_reread_queries_stay_within_the_protocol_closure():
+    # The validator imports the then_query / read_back query lists; they read
+    # a rule through compiled_protocol and a query line through
+    # send_templates, and nothing more.
+    loaded = _openavc_modules_loaded("openavc.simulator.reread_queries")
+    allowed = ALLOWED | {
+        "openavc.simulator",
+        "openavc.simulator.send_templates",
+        "openavc.simulator.reread_queries",
+    }
+    assert loaded <= allowed, sorted(loaded - allowed)

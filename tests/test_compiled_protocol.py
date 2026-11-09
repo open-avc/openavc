@@ -13,10 +13,12 @@ from openavc.drivers.compiled_protocol import (
     build_send_frame,
     compile_driver,
     decode_delimiter,
+    split_send_frames,
+)
+from openavc.simulator.send_templates import (
     send_param_specs,
     send_regex,
     spec_int_base,
-    split_send_frames,
 )
 from openavc.simulator.reply_templates import (
     emit_literal,
@@ -481,7 +483,7 @@ def test_compile_driver_drops_a_json_child_set_that_cannot_route():
 
 
 def test_send_param_groups_follow_template_order():
-    from openavc.drivers.compiled_protocol import send_param_groups
+    from openavc.simulator.send_templates import send_param_groups
 
     params = {"inp": {"type": "integer"}, "out": {"type": "integer"}}
     # Template references out first — groups number by template position.
@@ -489,7 +491,7 @@ def test_send_param_groups_follow_template_order():
 
 
 def test_send_param_groups_repeated_param_uses_first_occurrence():
-    from openavc.drivers.compiled_protocol import send_param_groups
+    from openavc.simulator.send_templates import send_param_groups
 
     params = {"n": {"type": "integer"}, "m": {"type": "integer"}}
     groups = send_param_groups("{n}+{m}={n}", params)
@@ -498,7 +500,7 @@ def test_send_param_groups_repeated_param_uses_first_occurrence():
 
 
 def test_send_param_groups_ignores_absent_params():
-    from openavc.drivers.compiled_protocol import send_param_groups
+    from openavc.simulator.send_templates import send_param_groups
 
     params = {"used": {"type": "string"}, "unused": {"type": "string"}}
     assert send_param_groups("GO {used}", params) == {"used": 1}

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from openavc.drivers.compiled_protocol import infer_state_var
+from openavc.simulator.command_names import infer_state_var
 from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
 _VARS = {

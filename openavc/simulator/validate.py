@@ -72,14 +72,12 @@ from openavc.simulator.single_client import single_client_problems
 from openavc.drivers.compiled_protocol import (
     decode_delimiter,
     derive_config,
-    follow_up_queries,
-    read_back_queries,
-    is_passthrough_send,
     parse_json_reply,
     safe_substitute,
-    send_regex,
     state_var_default,
 )
+from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
+from openavc.simulator.send_templates import is_passthrough_send, send_regex
 
 
 # ── Result types ──

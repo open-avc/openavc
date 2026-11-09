@@ -623,7 +623,7 @@ def _routed(**extra: Any) -> dict[str, Any]:
 
 
 def test_read_back_queries_reach_the_simulator_as_poll_entries() -> None:
-    from openavc.drivers.compiled_protocol import read_back_queries
+    from openavc.simulator.reread_queries import read_back_queries
 
     entries = read_back_queries(_routed())
     # What the command sets is what the query reports.
@@ -639,7 +639,7 @@ def test_read_back_queries_reach_the_simulator_as_poll_entries() -> None:
 
 
 def test_a_read_back_the_poll_already_sends_is_left_out() -> None:
-    from openavc.drivers.compiled_protocol import read_back_queries
+    from openavc.simulator.reread_queries import read_back_queries
 
     entries = read_back_queries(_acme())
     assert not any("GV" in str(e) for e in entries)

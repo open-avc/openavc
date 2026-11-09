@@ -18,11 +18,8 @@ from typing import Any
 
 import pytest
 
-from openavc.drivers.compiled_protocol import (
-    compile_driver,
-    follow_up_queries,
-    read_back_queries,
-)
+from openavc.drivers.compiled_protocol import compile_driver
+from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
 
 _ZONE = {
     "label": "Zone",
